@@ -48,6 +48,7 @@ BattleActionQueue
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [ ] Phase 5C Block Spec + Dexterity + Frailty implemented.
+  - [ ] Phase 5 regression Automation Tests implemented and passed.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -268,9 +269,16 @@ Build Phase 5 through vertical validation:
 5B1 FDamageSpec + DamageFlatAdd + Strength                    COMPLETE
 5B2 DamageRatio + Weak + Vulnerable                           COMPLETE
 5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty  NEXT
+5R  Phase 5 Automation Regression Gate                        AFTER 5C
 ```
 
-Do not mark Phase 5 complete until source compiles and all corresponding UE5.8 PIE validations pass.
+Do not mark Phase 5 complete until:
+
+```text
+Phase 5C source compiles
++ Phase 5C UE5.8 PIE validation passes
++ Phase 5 Automation regression tests pass
+```
 
 #### Phase 5A — Status Runtime — COMPLETE
 
@@ -408,7 +416,7 @@ DamageAction(BaseAmount, DamageKind)
 ↓ Execute
 FDamageSpec
 ↓
-collect current status modifiers
+collect current modifiers
 ↓
 filter Scope / ApplicableDamageKind
 ↓
@@ -420,6 +428,16 @@ ResolvedAmount
 ↓
 TakeCombatDamage(ResolvedAmount)
 ```
+
+Damage base-input invariant:
+
+```text
+BaseAmount < 0  → invalid DamageAction input; fail soft and Finish()
+BaseAmount == 0 → valid operation; enter DamageModifierPipeline
+BaseAmount > 0  → valid operation; enter DamageModifierPipeline
+```
+
+Do not skip a zero-base Damage operation before modifier resolution. FlatAdd modifiers such as Strength must be able to turn Base 0 into a positive `ResolvedAmount` when their applicability rules allow it.
 
 Strength is data-driven:
 
@@ -566,6 +584,38 @@ ResolvedAmount=5
 
 CardData, CardEffect, PlayCardAction and DeckRuntime should not require architecture changes for Phase 5 status modifiers.
 
+#### Phase 5R — Automation Regression Gate
+
+After Phase 5C PIE validation, add a focused Unreal Automation Test suite before declaring Phase 5 complete.
+
+Automation Tests are not a replacement for PIE. Their roles are:
+
+```text
+Automation Tests
+→ deterministic rules and regression invariants
+
+PIE
+→ real UE object assembly, DataAsset configuration and end-to-end runtime wiring
+```
+
+Minimum Phase 5 regression coverage should include tests equivalent to:
+
+```text
+Damage.BaseZeroCanReceiveFlatAdd
+Damage.StrengthScalesWithAmount
+Damage.WeakPresenceOnly
+Damage.VulnerablePresenceOnly
+Damage.RatioFloorsPerModifier
+Damage.PhaseBeforeRuntimeSequence
+Damage.EffectFiltersAttackModifiers
+Block.DexterityScalesWithAmount
+Block.FrailtyPresenceOnly
+Status.ReapplyPreservesRuntimeSequence
+Queue.FrontBackOrdering
+```
+
+Prefer direct deterministic rule tests over tests that merely parse logs. Do not build a large test framework beyond what these concrete invariants require.
+
 #### Phase 5 exclusions
 
 Do not implement these during Phase 5 without a concrete requirement:
@@ -590,9 +640,61 @@ Keyword presentation is intentionally deferred. Phase 5 establishes gameplay sem
 
 Introduce explicit post-commit events such as battle start, turn start/end, card played/drawn/exhausted, deck shuffled, damage events and enemy killed. Listeners normally enqueue actions rather than synchronously mutating unrelated state.
 
+Before implementing the event/trigger system, define and preserve deterministic trigger ordering. Do not rely on multicast delegate registration order, UObject addresses, actor discovery order, names or localized text.
+
+Conceptual trigger ordering should be explicit and stable, for example:
+
+```text
+Event
+→ TriggerPhase
+→ Priority
+→ RuntimeSequence
+→ LocalTriggerIndex
+```
+
+Use only phases actually required by implemented events/triggers; do not create speculative phase taxonomies.
+
+Multiple listeners reacting to one event must first be ordered deterministically, then produce a reaction batch. Individual listeners should not independently manipulate queue-front order in ways that make final execution depend on registration order.
+
+Default reaction semantics should be:
+
+```text
+Current Action commits
+↓
+BattleEvent is produced
+↓
+matching listeners are collected and sorted
+↓
+listeners build Reaction Actions in sorted order
+↓
+Reaction Batch is inserted immediately after the current Action
+↓
+pre-existing pending Actions continue afterward
+```
+
+If a future event requires tail placement or another timing rule, that exception must be explicit and event-specific rather than accidental.
+
+Because repeated `AddToFront(A)`, `AddToFront(B)`, `AddToFront(C)` currently executes as `C, B, A`, Phase 6 should introduce an explicit batch insertion operation such as `AddBatchToFrontPreserveOrder(...)` or equivalent before listeners begin producing multiple reactions. Do not require every trigger implementation to reverse its own list manually.
+
 ### Phase 7 — Relics
 
 Implement relic listeners through the event/trigger architecture. First validation: Sundial; optional Abacus.
+
+Phase 5 Damage/Block modifier collection is intentionally allowed to read directly from StatusContainers while Status is the only real modifier source. When Phase 7 introduces the first non-Status modifier source, do not disguise a Relic as a Status.
+
+At that point introduce the smallest explicit modifier contributor/collector boundary needed so typed pipelines can collect from multiple source families, conceptually:
+
+```text
+Typed Modifier Pipeline
+        ↓
+Modifier Collector
+        ↓
+Status contributors
+Relic contributors
+future concrete contributors only when needed
+```
+
+The collection boundary may evolve, but the typed operation specs, modifier applicability rules and deterministic sort semantics should remain stable. Do not introduce a universal modifier context merely to support Relics.
 
 ### Phase 8 — Combo Architecture Validation
 
@@ -822,6 +924,16 @@ Example:
 → Vulnerable 3/2 = 12
 ```
 
+### 5.8 Modifier collection boundary
+
+Current Phase 5 pipelines may collect directly from `StatusContainer` because Status is currently the only implemented runtime modifier source.
+
+This direct collection is an implementation detail, not a permanent statement that every modifier source is a Status.
+
+When the first concrete non-Status source appears, normally Phase 7 Relics, extract the smallest contributor/collector boundary required to extend collection without changing typed spec or modifier-application semantics.
+
+Never model a Relic, Stance, battle rule or another unrelated source as a fake `UStatusInstance` merely to reuse current collection code.
+
 ---
 
 ## 6. UE5 C++ Conventions
@@ -837,6 +949,16 @@ Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ 
 Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins.
 
 Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
+
+### 6.1 BattleManager and debug harness boundary
+
+`ABattleManager` may temporarily own battle orchestration, the battle-scoped sequence allocator and PIE debug entry points while the learning/demo framework is still being validated.
+
+Do not split it during Phase 5 merely for aesthetic purity.
+
+However, debug hooks are not intended to become permanent production battle APIs. Once Automation Tests cover core rule regressions and Phase 6 introduces formal event/input paths, stop growing `ABattleManager` as the default place for new test commands and incrementally separate debug harness responsibilities when there is a concrete maintenance benefit.
+
+Do not combine that cleanup with unrelated gameplay feature work unless the separation is required for the feature.
 
 ---
 
@@ -1022,6 +1144,10 @@ Saved/
 14. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy during Phase 5 without a concrete implemented need.
 15. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview during Phase 5 merely because status mechanics now have player-facing keyword names.
 16. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
+17. Do not introduce a generic modifier-contributor framework during Phase 5 while Status is the only real source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
+18. Never implement a Relic or another unrelated modifier source as a fake Status merely to reuse StatusContainer collection.
+19. Phase 6 Trigger/Event execution must not depend on multicast delegate registration order, UObject address, actor discovery order or unordered containers; listener order and reaction placement must be explicit.
+20. Do not keep adding permanent rule-test entry points to `ABattleManager` once Automation Tests can cover the same deterministic regression; preserve PIE hooks only where end-to-end editor validation still adds value.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1036,6 +1162,10 @@ After C++ changes:
 - report build errors instead of masking them;
 - never claim successful UE build/PIE without actually running it;
 - if source tooling cannot run UE, require user-side compile/PIE before marking a phase complete.
+
+For deterministic core rules, prefer adding focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
+
+Phase 5 cannot be marked complete after Phase 5C PIE alone. Its final acceptance additionally requires the Phase 5 regression Automation Test gate documented in Phase 5R.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -1101,7 +1231,7 @@ Modifiers/ModifierTypes.h
 Battle/BattleManager.h/.cpp
 ```
 
-`ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer.
+`ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
 
 ---
 
@@ -1114,7 +1244,7 @@ Battle/BattleManager.h/.cpp
 - Phase 5A — PASSED: queued status application, authoritative merge/create, Amount semantics and deterministic battle-wide RuntimeSequence behavior.
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
 - Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
-- Phase 5 — NOT YET PASSED: 5C remains.
+- Phase 5 — NOT YET PASSED: Phase 5C and the Phase 5 Automation regression gate remain.
 
 ---
 
@@ -1126,7 +1256,9 @@ Pommel Strike knows only its configured damage/draw effects. DeckRuntime knows o
 
 Player-facing keywords explain mechanics but do not own those mechanics. A Status keyword such as Vulnerable may map to Status + Modifier, while a card-mechanic keyword such as Exhaust may map to DeckRuntime/Card destination/Action logic. UI presentation must not force unrelated gameplay concepts into one Status hierarchy.
 
-If a new card/relic/status requires editing many unrelated classes or scattering concrete status checks through battle code, stop and reconsider the architecture.
+Relics and other future rule sources should contribute through explicit mechanisms appropriate to their domain; they must not be forced into Status purely for implementation convenience.
+
+If a new card/relic/status requires editing many unrelated classes or scattering concrete checks through battle code, stop and reconsider the architecture.
 
 ---
 
