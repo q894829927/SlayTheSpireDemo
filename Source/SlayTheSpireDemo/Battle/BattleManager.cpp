@@ -10,6 +10,7 @@
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
+#include "../Modifiers/ModifierTypes.h"
 #include "../Status/StatusData.h"
 
 ABattleManager::ABattleManager()
@@ -106,7 +107,7 @@ void ABattleManager::TestAttack()
 		MaxEnergy
 	);
 
-	QueueDamageAction(Player.Get(), Enemy.Get(), PlayerTestAttackDamage);
+	QueueDamageAction(Player.Get(), Enemy.Get(), PlayerTestAttackDamage, EDamageKind::Attack);
 	ActionQueue->StartProcessing();
 }
 
@@ -161,11 +162,11 @@ void ABattleManager::TestActionQueueOrder()
 		return;
 	}
 
-	QueueDamageAction(Player.Get(), Enemy.Get(), 7);
-	QueueDamageAction(Player.Get(), Enemy.Get(), 8);
+	QueueDamageAction(Player.Get(), Enemy.Get(), 7, EDamageKind::Attack);
+	QueueDamageAction(Player.Get(), Enemy.Get(), 8, EDamageKind::Attack);
 
 	UDamageAction* FrontAction = NewObject<UDamageAction>(ActionQueue.Get());
-	FrontAction->Initialize(Player.Get(), Enemy.Get(), 6);
+	FrontAction->Initialize(Player.Get(), Enemy.Get(), 6, EDamageKind::Attack);
 	ActionQueue->AddToFront(FrontAction);
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Queue-order test started. Expected BaseAmount order: 6, 7, 8."));
@@ -310,6 +311,74 @@ void ABattleManager::TestApplyPhase5AStatuses()
 	ActionQueue->StartProcessing();
 }
 
+void ABattleManager::TestApplyPhase5B1Strength()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestApplyPhase5B1Strength failed: combatants or ActionQueue are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B1Strength rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B1Strength rejected: action queue is busy."));
+		return;
+	}
+
+	if (DebugPhase5AStatuses.Num() < 1 || !IsValid(DebugPhase5AStatuses[0].Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B1Strength requires DebugPhase5AStatuses[0]."));
+		return;
+	}
+
+	UStatusData* StrengthDefinition = DebugPhase5AStatuses[0].Get();
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Phase 5B1 source-status test queued: %s +2 to Player."),
+		*StrengthDefinition->StatusId.ToString()
+	);
+	QueueApplyStatusAction(Player.Get(), Player.Get(), StrengthDefinition, 2);
+	ActionQueue->StartProcessing();
+}
+
+void ABattleManager::TestPhase5B1EffectDamage()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestPhase5B1EffectDamage failed: combatants or ActionQueue are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5B1EffectDamage rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5B1EffectDamage rejected: action queue is busy."));
+		return;
+	}
+
+	if (Enemy->IsDead())
+	{
+		CheckBattleResult();
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Phase 5B1 Effect-damage test queued: BaseAmount=9."));
+	QueueDamageAction(Player.Get(), Enemy.Get(), 9, EDamageKind::Effect);
+	ActionQueue->StartProcessing();
+}
+
 void ABattleManager::EndPlayerTurn()
 {
 	if (!HasValidCombatants())
@@ -407,7 +476,7 @@ void ABattleManager::StartEnemyTurn()
 		EnemyTestAttackDamage
 	);
 
-	QueueDamageAction(Enemy.Get(), Player.Get(), EnemyTestAttackDamage);
+	QueueDamageAction(Enemy.Get(), Player.Get(), EnemyTestAttackDamage, EDamageKind::Attack);
 	ActionQueue->StartProcessing();
 }
 
@@ -446,7 +515,12 @@ void ABattleManager::CheckBattleResult()
 	}
 }
 
-void ABattleManager::QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount)
+void ABattleManager::QueueDamageAction(
+	ACombatant* Source,
+	ACombatant* Target,
+	int32 BaseAmount,
+	EDamageKind DamageKind
+)
 {
 	if (!HasValidActionQueue())
 	{
@@ -454,7 +528,7 @@ void ABattleManager::QueueDamageAction(ACombatant* Source, ACombatant* Target, i
 	}
 
 	UDamageAction* Action = NewObject<UDamageAction>(ActionQueue.Get());
-	Action->Initialize(Source, Target, BaseAmount);
+	Action->Initialize(Source, Target, BaseAmount, DamageKind);
 	ActionQueue->AddToBack(Action);
 }
 
