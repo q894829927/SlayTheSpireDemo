@@ -1,5 +1,7 @@
 #include "Combatant.h"
 
+#include "../Status/StatusContainer.h"
+
 ACombatant::ACombatant()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -9,6 +11,16 @@ void ACombatant::InitializeCombatant()
 {
 	HP = FMath::Max(1, MaxHP);
 	Block = 0;
+
+	StatusContainer = NewObject<UStatusContainer>(this);
+	if (IsValid(StatusContainer.Get()))
+	{
+		StatusContainer->Initialize(this);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[%s] failed to create StatusContainer."), *GetName());
+	}
 
 	UE_LOG(LogTemp, Log, TEXT("[%s] initialized: HP=%d/%d Block=%d"), *GetName(), HP, MaxHP, Block);
 }
@@ -68,4 +80,9 @@ void ACombatant::ClearBlock()
 bool ACombatant::IsDead() const
 {
 	return HP <= 0;
+}
+
+UStatusContainer* ACombatant::GetStatusContainer() const
+{
+	return StatusContainer.Get();
 }
