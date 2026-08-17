@@ -5,6 +5,7 @@
 #include "BattleAction.generated.h"
 
 class UBattleAction;
+class UBattleActionQueue;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnBattleActionFinished, UBattleAction*);
 
@@ -14,7 +15,7 @@ class SLAYTHESPIREDEMO_API UBattleAction : public UObject
 	GENERATED_BODY()
 
 public:
-	virtual void Execute();
+	virtual void Execute(UBattleActionQueue* Queue);
 
 	bool IsFinished() const
 	{
