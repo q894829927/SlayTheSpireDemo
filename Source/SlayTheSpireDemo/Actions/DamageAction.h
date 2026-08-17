@@ -13,7 +13,7 @@ class SLAYTHESPIREDEMO_API UDamageAction : public UBattleAction
 
 public:
 	void Initialize(ACombatant* InSource, ACombatant* InTarget, int32 InBaseAmount);
-	virtual void Execute() override;
+	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
 	UPROPERTY(Transient)
