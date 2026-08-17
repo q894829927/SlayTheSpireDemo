@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "../Modifiers/Block/BlockModifier.h"
 #include "../Modifiers/Damage/DamageModifier.h"
 #include "StatusData.generated.h"
 
@@ -19,4 +20,7 @@ public:
 
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Status|Modifiers|Damage")
 	TArray<TObjectPtr<UDamageModifier>> DamageModifiers;
+
+	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Status|Modifiers|Block")
+	TArray<TObjectPtr<UBlockModifier>> BlockModifiers;
 };
