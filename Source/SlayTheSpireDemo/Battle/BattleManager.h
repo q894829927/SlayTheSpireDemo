@@ -10,6 +10,7 @@ class UCardData;
 class UCardInstance;
 class UDeckRuntime;
 class UStatusData;
+enum class EDamageKind : uint8;
 
 UENUM(BlueprintType)
 enum class EBattleState : uint8
@@ -86,6 +87,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Status")
 	void TestApplyPhase5AStatuses();
 
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Status")
+	void TestApplyPhase5B1Strength();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Damage")
+	void TestPhase5B1EffectDamage();
+
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
 
@@ -99,7 +106,7 @@ private:
 	void HandleActionQueueEmpty();
 	void CheckBattleResult();
 
-	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
+	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount, EDamageKind DamageKind);
 	void QueueGainBlockAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
 	void QueueDrawCardAction();
 	void QueueDiscardCardAction(UCardInstance* Card);
