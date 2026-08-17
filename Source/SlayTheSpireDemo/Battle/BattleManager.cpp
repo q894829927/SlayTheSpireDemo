@@ -1,5 +1,6 @@
 #include "BattleManager.h"
 
+#include "../Actions/ApplyStatusAction.h"
 #include "../Actions/BattleActionQueue.h"
 #include "../Actions/DamageAction.h"
 #include "../Actions/DiscardCardAction.h"
@@ -9,6 +10,7 @@
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
+#include "../Status/StatusData.h"
 
 ABattleManager::ABattleManager()
 {
@@ -45,13 +47,14 @@ void ABattleManager::StartBattle()
 		UE_LOG(LogTemp, Warning, TEXT("[Battle] DebugStartingDeck is empty. Configure Phase 4 CardData assets on BP_BattleManager."));
 	}
 
+	NextRuntimeSequence = 1;
 	Player->InitializeCombatant();
 	Enemy->InitializeCombatant();
 
 	BattleState = EBattleState::BattleStart;
 	Energy = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue and CardInstance DeckRuntime initialized."));
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue, DeckRuntime and StatusContainers initialized."));
 	StartPlayerTurn();
 }
 
@@ -222,7 +225,6 @@ void ABattleManager::TestDiscardCard()
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Test discard requested for %s."), *CardToDiscard->GetDebugLabel());
-
 	QueueDiscardCardAction(CardToDiscard);
 	ActionQueue->StartProcessing();
 }
@@ -256,6 +258,55 @@ void ABattleManager::TestPlayFirstCard()
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Test play requested for %s."), *CardToPlay->GetDebugLabel());
 	QueuePlayCardAction(CardToPlay, Enemy.Get());
+	ActionQueue->StartProcessing();
+}
+
+void ABattleManager::TestApplyPhase5AStatuses()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestApplyPhase5AStatuses failed: combatants or ActionQueue are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5AStatuses rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5AStatuses rejected: action queue is busy."));
+		return;
+	}
+
+	if (DebugPhase5AStatuses.Num() < 2 || !IsValid(DebugPhase5AStatuses[0].Get()) || !IsValid(DebugPhase5AStatuses[1].Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5AStatuses requires two configured StatusData assets."));
+		return;
+	}
+
+	UStatusData* FirstStatus = DebugPhase5AStatuses[0].Get();
+	UStatusData* SecondStatus = DebugPhase5AStatuses[1].Get();
+	if (FirstStatus->StatusId.IsNone() || SecondStatus->StatusId.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5AStatuses requires non-empty StatusId values."));
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Phase 5A status test queued: %s +2 to Player, %s +1 to Player, %s +2 to Enemy."),
+		*FirstStatus->StatusId.ToString(),
+		*FirstStatus->StatusId.ToString(),
+		*SecondStatus->StatusId.ToString()
+	);
+
+	QueueApplyStatusAction(Player.Get(), Player.Get(), FirstStatus, 2);
+	QueueApplyStatusAction(Player.Get(), Player.Get(), FirstStatus, 1);
+	QueueApplyStatusAction(Player.Get(), Enemy.Get(), SecondStatus, 2);
 	ActionQueue->StartProcessing();
 }
 
@@ -304,6 +355,17 @@ bool ABattleManager::TrySpendEnergy(int32 Amount)
 	Energy -= Amount;
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Energy spent: Amount=%d Energy=%d/%d"), Amount, Energy, MaxEnergy);
 	return true;
+}
+
+uint64 ABattleManager::AllocateRuntimeSequence()
+{
+	if (NextRuntimeSequence == 0)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] RuntimeSequence allocator overflowed."));
+		return 0;
+	}
+
+	return NextRuntimeSequence++;
 }
 
 void ABattleManager::StartPlayerTurn()
@@ -441,6 +503,23 @@ void ABattleManager::QueuePlayCardAction(UCardInstance* Card, ACombatant* Target
 
 	UPlayCardAction* Action = NewObject<UPlayCardAction>(ActionQueue.Get());
 	Action->Initialize(this, Card, Player.Get(), Target, DeckRuntime.Get());
+	ActionQueue->AddToBack(Action);
+}
+
+void ABattleManager::QueueApplyStatusAction(
+	ACombatant* Source,
+	ACombatant* Target,
+	UStatusData* StatusDefinition,
+	int32 AmountToAdd
+)
+{
+	if (!HasValidActionQueue() || !IsValid(Target) || !IsValid(StatusDefinition) || AmountToAdd <= 0)
+	{
+		return;
+	}
+
+	UApplyStatusAction* Action = NewObject<UApplyStatusAction>(ActionQueue.Get());
+	Action->Initialize(this, Source, Target, StatusDefinition, AmountToAdd);
 	ActionQueue->AddToBack(Action);
 }
 
