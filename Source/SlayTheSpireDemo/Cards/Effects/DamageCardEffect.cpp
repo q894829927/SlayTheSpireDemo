@@ -15,6 +15,6 @@ void UDamageCardEffect::BuildActions(
 	}
 
 	UDamageAction* Action = NewObject<UDamageAction>(Context.ActionOuter);
-	Action->Initialize(Context.Source, Context.Target, BaseAmount);
+	Action->Initialize(Context.Source, Context.Target, BaseAmount, DamageKind);
 	OutActions.Add(Action);
 }
