@@ -1,4 +1,4 @@
-#include "Combat/Combatant.h"
+#include "Combatant.h"
 
 ACombatant::ACombatant()
 {
