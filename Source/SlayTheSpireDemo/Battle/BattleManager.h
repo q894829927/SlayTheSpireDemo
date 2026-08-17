@@ -5,6 +5,7 @@
 #include "BattleManager.generated.h"
 
 class ACombatant;
+class UBattleActionQueue;
 
 UENUM(BlueprintType)
 enum class EBattleState : uint8
@@ -45,11 +46,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
 	int32 EnemyTestAttackDamage = 5;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
+	int32 PlayerTestBlockAmount = 4;
+
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartBattle();
 
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug")
 	void TestAttack();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug")
+	void TestGainBlock();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug")
+	void TestActionQueueOrder();
 
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
@@ -57,6 +67,14 @@ public:
 private:
 	void StartPlayerTurn();
 	void StartEnemyTurn();
+	void HandleActionQueueEmpty();
 	void CheckBattleResult();
+	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
+	void QueueGainBlockAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
 	bool HasValidCombatants() const;
+	bool HasValidActionQueue() const;
+	bool IsActionQueueBusy() const;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleActionQueue> ActionQueue = nullptr;
 };
