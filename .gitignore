@@ -8,6 +8,7 @@
 *.opensdf
 *.sdf
 *.sln
+*.slnx
 *.suo
 *.xcodeproj
 *.xcworkspace
