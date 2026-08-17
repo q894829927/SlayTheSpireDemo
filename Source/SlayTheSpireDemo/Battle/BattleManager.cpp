@@ -2,8 +2,11 @@
 
 #include "../Actions/BattleActionQueue.h"
 #include "../Actions/DamageAction.h"
+#include "../Actions/DiscardCardAction.h"
+#include "../Actions/DrawCardAction.h"
 #include "../Actions/GainBlockAction.h"
 #include "../Combat/Combatant.h"
+#include "../Deck/DeckRuntime.h"
 
 ABattleManager::ABattleManager()
 {
@@ -27,13 +30,21 @@ void ABattleManager::StartBattle()
 
 	ActionQueue->OnQueueEmpty.AddUObject(this, &ABattleManager::HandleActionQueueEmpty);
 
+	DeckRuntime = NewObject<UDeckRuntime>(this);
+	if (!HasValidDeckRuntime())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create DeckRuntime."));
+		return;
+	}
+	DeckRuntime->InitializeDebugDeck(DeckDebugSeed);
+
 	Player->InitializeCombatant();
 	Enemy->InitializeCombatant();
 
 	BattleState = EBattleState::BattleStart;
 	Energy = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue initialized."));
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue and DeckRuntime initialized."));
 	StartPlayerTurn();
 }
 
@@ -140,9 +151,6 @@ void ABattleManager::TestActionQueueOrder()
 		return;
 	}
 
-	// Queue two actions at the back, then insert one at the front. Processing
-	// starts only after the complete batch has been assembled, preventing a
-	// premature QueueEmpty notification between related actions.
 	QueueDamageAction(Player.Get(), Enemy.Get(), 7);
 	QueueDamageAction(Player.Get(), Enemy.Get(), 8);
 
@@ -151,6 +159,70 @@ void ABattleManager::TestActionQueueOrder()
 	ActionQueue->AddToFront(FrontAction);
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Queue-order test started. Expected BaseAmount order: 6, 7, 8."));
+	ActionQueue->StartProcessing();
+}
+
+void ABattleManager::TestDrawCard()
+{
+	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestDrawCard failed: ActionQueue or DeckRuntime is invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDrawCard rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDrawCard rejected: action queue is busy."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Test draw requested."));
+	QueueDrawCardAction();
+	ActionQueue->StartProcessing();
+}
+
+void ABattleManager::TestDiscardCard()
+{
+	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestDiscardCard failed: ActionQueue or DeckRuntime is invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDiscardCard rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDiscardCard rejected: action queue is busy."));
+		return;
+	}
+
+	FDeckCardToken CardToDiscard;
+	if (!DeckRuntime->GetFirstHandCard(CardToDiscard))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDiscardCard skipped: Hand is empty."));
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Test discard requested for %s#%d."),
+		*CardToDiscard.DebugName.ToString(),
+		CardToDiscard.RuntimeId
+	);
+
+	QueueDiscardCardAction(CardToDiscard.RuntimeId);
 	ActionQueue->StartProcessing();
 }
 
@@ -286,6 +358,30 @@ void ABattleManager::QueueGainBlockAction(ACombatant* Source, ACombatant* Target
 	ActionQueue->AddToBack(Action);
 }
 
+void ABattleManager::QueueDrawCardAction()
+{
+	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		return;
+	}
+
+	UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
+	Action->Initialize(DeckRuntime.Get());
+	ActionQueue->AddToBack(Action);
+}
+
+void ABattleManager::QueueDiscardCardAction(int32 RuntimeId)
+{
+	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		return;
+	}
+
+	UDiscardCardAction* Action = NewObject<UDiscardCardAction>(ActionQueue.Get());
+	Action->Initialize(DeckRuntime.Get(), RuntimeId);
+	ActionQueue->AddToBack(Action);
+}
+
 bool ABattleManager::HasValidCombatants() const
 {
 	return IsValid(Player.Get()) && IsValid(Enemy.Get());
@@ -294,6 +390,11 @@ bool ABattleManager::HasValidCombatants() const
 bool ABattleManager::HasValidActionQueue() const
 {
 	return IsValid(ActionQueue.Get());
+}
+
+bool ABattleManager::HasValidDeckRuntime() const
+{
+	return IsValid(DeckRuntime.Get());
 }
 
 bool ABattleManager::IsActionQueueBusy() const
