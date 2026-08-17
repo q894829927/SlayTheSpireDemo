@@ -1,30 +1,30 @@
 #include "DiscardCardAction.h"
 
+#include "../Cards/CardInstance.h"
 #include "../Deck/DeckRuntime.h"
 
-void UDiscardCardAction::Initialize(UDeckRuntime* InDeck, int32 InRuntimeId)
+void UDiscardCardAction::Initialize(UDeckRuntime* InDeck, UCardInstance* InCard)
 {
 	Deck = InDeck;
-	RuntimeId = InRuntimeId;
+	Card = InCard;
 }
 
 void UDiscardCardAction::Execute(UBattleActionQueue* /*Queue*/)
 {
-	if (!IsValid(Deck.Get()) || RuntimeId <= 0)
+	if (!IsValid(Deck.Get()) || !IsValid(Card.Get()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] DiscardCardAction skipped: invalid Deck or RuntimeId=%d."), RuntimeId);
+		UE_LOG(LogTemp, Warning, TEXT("[Action] DiscardCardAction skipped: invalid Deck or Card."));
 		Finish();
 		return;
 	}
 
-	FDeckCardToken DiscardedCard;
-	if (!Deck->TryDiscardCardByRuntimeId(RuntimeId, DiscardedCard))
+	if (!Deck->TryDiscardCard(Card.Get()))
 	{
 		UE_LOG(
 			LogTemp,
 			Warning,
-			TEXT("[Action] DiscardCardAction skipped: RuntimeId=%d is no longer in Hand."),
-			RuntimeId
+			TEXT("[Action] DiscardCardAction skipped: %s is no longer in Hand."),
+			*Card->GetDebugLabel()
 		);
 		Finish();
 		return;
