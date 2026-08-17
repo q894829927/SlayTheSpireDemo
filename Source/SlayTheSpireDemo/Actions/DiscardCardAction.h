@@ -4,6 +4,7 @@
 #include "BattleAction.h"
 #include "DiscardCardAction.generated.h"
 
+class UCardInstance;
 class UDeckRuntime;
 
 UCLASS()
@@ -12,12 +13,13 @@ class SLAYTHESPIREDEMO_API UDiscardCardAction : public UBattleAction
 	GENERATED_BODY()
 
 public:
-	void Initialize(UDeckRuntime* InDeck, int32 InRuntimeId);
+	void Initialize(UDeckRuntime* InDeck, UCardInstance* InCard);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> Deck = nullptr;
 
-	int32 RuntimeId = INDEX_NONE;
+	UPROPERTY(Transient)
+	TObjectPtr<UCardInstance> Card = nullptr;
 };
