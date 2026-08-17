@@ -3,9 +3,8 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "CardTypes.h"
+#include "Effects/CardEffect.h"
 #include "CardData.generated.h"
-
-class UCardEffect;
 
 UCLASS(BlueprintType)
 class SLAYTHESPIREDEMO_API UCardData : public UPrimaryDataAsset
