@@ -222,6 +222,55 @@ Normal cards should be configured from data and reusable effects. Avoid one C++ 
 
 Phase 4 should replace the temporary Phase 3 token representation with a real runtime card-instance model without moving authoritative deck state into UI.
 
+Phase 4 card-effect definitions may be represented as instanced UObject subobjects owned by `UCardData`, but those effect objects are shared definition data. Treat them as immutable at runtime.
+
+`UCardEffect::BuildActions(...)` should be logically const/stateless and should not cache runtime targets, calculated damage, counters or other mutable battle state inside the definition object. Runtime state belongs in `UCardInstance`, actions, typed specs or other battle-scoped runtime objects.
+
+Prefer a contract conceptually equivalent to:
+
+```cpp
+virtual void BuildActions(
+    const FCardPlayContext& Context,
+    TArray<UBattleAction*>& OutActions
+) const;
+```
+
+`BuildActions` should capture stable intent and base inputs, not precompute final values that depend on battle state at future execution time.
+
+Example:
+
+```text
+DamageCardEffect(BaseAmount=6)
+        ↓ BuildActions
+DamageAction(Source, Target, BaseAmount=6)
+        ↓ wait in queue
+DamageAction Execute
+        ↓
+Phase 5 modifier resolution using current battle state
+        ↓
+FinalAmount
+```
+
+A base value such as `BaseAmount=6` may be captured when the action is built. Do not snapshot Strength/Weak/Vulnerable or another future-state-dependent final result during enqueue unless a specific mechanic explicitly requires snapshot semantics.
+
+Card-play cleanup must not hard-code `PlayArea → DiscardPile`. A finish/cleanup action should resolve the card's destination when it executes, then ask `UDeckRuntime` to perform the authoritative move.
+
+Conceptual destinations may include:
+
+```text
+Discard
+Exhaust
+Removed / Power-like persistent destination
+```
+
+Phase 4 does not need to implement every destination or Power/Exhaust rule, but the API must not assume all played cards always discard. Future runtime rules may override a definition's default destination.
+
+Every action must validate its own execution preconditions at execution time. If a required object or target has become invalid, the action must fail softly: log when useful, call `Finish()`, and allow the queue to continue.
+
+Do not define one universal rule that every dead target is invalid. Preconditions are action-specific. For example, ordinary damage/debuff actions normally require a valid living target, while a future revive/death-processing action may intentionally target a dead combatant.
+
+`FInstancedStruct` / `TInstancedStruct` may be evaluated later as an alternative data representation for card-effect definitions if profiling, asset scale, cook size or editor workflow justifies it. Do not introduce it or an additional dependency during Phase 4 merely as a speculative UObject-count optimization.
+
 ### Phase 5 — Modifier-Based Framework and Status System
 
 Introduce the first production modifier pipelines and status-driven modifiers.
@@ -389,6 +438,34 @@ Queue executes RetryDraw
 ```
 
 The action must not call `PumpQueue`, `ProcessNext` or otherwise advance execution itself.
+
+### 4.12 Shared definition objects are immutable at runtime
+
+Objects stored inside definition assets, including instanced `UCardEffect` subobjects owned by `UCardData`, may be shared by many runtime card instances.
+
+Treat definition objects as immutable configuration. Definition methods that build runtime work should be const-like and must not cache battle-specific mutable state.
+
+### 4.13 Resolve future-state-dependent results at execution time
+
+Action creation/enqueue time defines stable intent and base inputs. Final results that depend on mutable battle state should normally be evaluated when the action executes.
+
+Capturing `BaseAmount=6` in a `DamageAction` is valid. Capturing a final damage value that already includes Strength, Weak, Vulnerable or other state that may change before execution is not the default architecture.
+
+Only use explicit snapshot semantics when a mechanic specifically requires a snapshot.
+
+### 4.14 Action validation must fail soft and remain action-specific
+
+An action must validate required runtime dependencies when it executes, because objects and combat state may change while the action waits in the queue.
+
+If execution preconditions fail, the action must terminate cleanly with `Finish()` so the queue cannot become stuck.
+
+Do not centralize a universal `Target->IsDead()` rejection in the base action class. Each action defines its own valid execution preconditions.
+
+### 4.15 Card destination is resolved, not hard-coded
+
+Card-play completion must not universally assume that every played card goes to DiscardPile.
+
+Resolve the destination through card definition/runtime rules at cleanup execution time, then let `UDeckRuntime` perform the authoritative zone move. This leaves room for Discard, Exhaust, removed/persistent Power-like destinations and future runtime overrides without rewriting the card-play queue architecture.
 
 ---
 
@@ -713,6 +790,7 @@ For every task:
 9. Preserve the ability to explain each system from a learning perspective.
 10. Do not skip development phases unless the user explicitly approves it.
 11. Do not prematurely implement planned MBF/domain/phase enums before Phase 5 merely because they are documented.
+12. Do not introduce `FInstancedStruct`, StructUtils or another card-effect representation dependency in Phase 4 unless a concrete requirement justifies the change.
 
 Prefer clear architecture and explainable code over clever abstractions.
 
