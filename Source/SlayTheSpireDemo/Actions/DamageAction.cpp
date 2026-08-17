@@ -9,7 +9,7 @@ void UDamageAction::Initialize(ACombatant* InSource, ACombatant* InTarget, int32
 	BaseAmount = InBaseAmount;
 }
 
-void UDamageAction::Execute()
+void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 {
 	if (!IsValid(Target.Get()))
 	{
@@ -34,7 +34,7 @@ void UDamageAction::Execute()
 		BaseAmount
 	);
 
-	// Phase 2 intentionally commits BaseAmount directly. Phase 5 will build an
+	// Phase 3 still commits BaseAmount directly. Phase 5 will build an
 	// FDamageSpec and resolve it through the Modifier Pipeline before commit.
 	Target->TakeCombatDamage(BaseAmount);
 	Finish();
