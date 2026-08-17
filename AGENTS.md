@@ -535,9 +535,14 @@ Artifact interception pipeline
 CardCost / Healing / Energy / Draw modifier pipelines
 relics
 GameplayTag-based damage taxonomy
+KeywordLibrary / CardTextFormatter / RichText parsing / keyword tooltips
+keyword color/style presentation
+dynamic card-text preview
 ```
 
 `bCancelled` is not required in Damage/Block specs until a concrete cancellation mechanic exists.
+
+Keyword presentation is intentionally deferred. Phase 5 establishes gameplay semantics for statuses such as Strength/Weak/Vulnerable/Dexterity/Frailty, but it must not make `Keyword` an alias for `UStatusData` or add UI keyword infrastructure merely because these mechanics have player-facing names.
 
 ### Phase 6 — Battle Events and Triggers
 
@@ -784,10 +789,12 @@ Use normal Unreal prefixes: `A`, `U`, `F`, `E`, `I`, and `b` for booleans.
 Target source areas as needed:
 
 ```text
-Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/
+Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/
 ```
 
-Do not create empty folders just to reserve future architecture. Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
+Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins.
+
+Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
 ---
 
@@ -829,6 +836,116 @@ DA_Relic_Sundial
 L_BattleTest
 ```
 
+### 7.1 Keyword presentation boundary
+
+Keep these concepts distinct:
+
+```text
+Status
+= a runtime combat state owned by StatusContainer
+
+Modifier
+= a rule that changes an operation/spec before commit
+
+Keyword
+= a player-facing rules term and presentation identity
+```
+
+A Keyword is not a gameplay implementation type and must not be equated with `UStatusData`.
+
+A player-facing keyword may describe mechanics implemented by different systems:
+
+```text
+Strength / Weak / Vulnerable
+→ Status + Modifier
+
+Exhaust
+→ Card destination / DeckRuntime / Exhaust-related Action
+
+Innate
+→ future opening-hand/deck rule
+
+Ethereal
+→ future turn-end Trigger/Action rule
+
+Block / Energy / Draw
+→ combat/deck concepts or Actions
+```
+
+Therefore the relationship is:
+
+```text
+Gameplay mechanic
+    ↓
+semantic KeywordId
+    ↓
+keyword presentation metadata
+```
+
+Keyword presentation should remain a lightweight metadata layer. A future implementation may use a shared library such as `UKeywordLibrary`/`DA_KeywordLibrary` containing records conceptually similar to:
+
+```text
+KeywordId
+DisplayName
+Description
+PresentationStyle
+optional Icon
+```
+
+Do not create one gameplay UObject subclass per keyword, and do not require one DataAsset per keyword unless a concrete content/tooling need later justifies it.
+
+Presentation style is not gameplay logic. `Buff`, `Debuff`, `CardMechanic` or similar presentation categories may drive UMG colors/icons, but battle code must not depend on red/gold/etc. UI colors.
+
+#### Card text templates
+
+Do not make localized card rules authoritative by storing already-colored final strings such as:
+
+```text
+"Deal 8 damage. Apply <red>2 Vulnerable</red>."
+```
+
+Future card descriptions should prefer semantic templates/tokens, conceptually:
+
+```text
+Deal {Damage} damage.
+Apply {VulnerableAmount} [Keyword:Vulnerable].
+```
+
+A future `CardTextTemplate` / `CardTextFormatter` / keyword presentation layer may resolve:
+
+```text
+numeric placeholders
+KeywordId → localized display name
+KeywordId → tooltip description
+KeywordId → presentation style
+```
+
+The exact parser/storage representation is deferred until card UI work begins.
+
+#### Dynamic card-value preview
+
+If card UI later shows current resolved values, UI must not reimplement combat formulas such as Strength/Weak/Vulnerable checks.
+
+Preferred future model:
+
+```text
+Gameplay:
+DamageAction
+→ FDamageSpec
+→ DamageModifierPipeline
+→ ResolvedAmount
+→ Commit
+
+UI Preview:
+CardTextResolver
+→ preview FDamageSpec
+→ same read-only DamageModifierPipeline rules
+→ ResolvedAmount
+→ no Commit / no state mutation
+```
+
+Preview and gameplay should share rule resolution wherever practical so the number shown on the card matches the number the operation would resolve from the same state. Preview evaluation must be explicitly read-only and must not consume RNG, enqueue Actions, mutate status state or emit gameplay events.
+
 Text/source agents must never claim to create/edit `.uasset` or `.umap` assets without UE Editor access.
 
 Do not intentionally commit generated/local files:
@@ -861,6 +978,8 @@ Saved/
 12. Do not introduce `FInstancedStruct`, StructUtils or another representation dependency without a concrete requirement.
 13. Do not implement Phase 6 status decay, battle-event listeners or relic triggers during Phase 5 merely to make Weak/Vulnerable/Frailty expire.
 14. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy during Phase 5 without a concrete implemented need.
+15. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview during Phase 5 merely because status mechanics now have player-facing keyword names.
+16. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
 
 Prefer clear architecture over clever abstractions.
 
@@ -956,6 +1075,8 @@ Cards/Effects/DamageCardEffect.h/.cpp
 Complex interactions must emerge from generic rules.
 
 Pommel Strike knows only its configured damage/draw effects. DeckRuntime knows only card zones/draw/shuffle. Sundial should eventually know only shuffle events. Damage statuses modify typed Damage specs through the Modifier Pipeline.
+
+Player-facing keywords explain mechanics but do not own those mechanics. A Status keyword such as Vulnerable may map to Status + Modifier, while a card-mechanic keyword such as Exhaust may map to DeckRuntime/Card destination/Action logic. UI presentation must not force unrelated gameplay concepts into one Status hierarchy.
 
 If a new card/relic/status requires editing many unrelated classes or scattering concrete status checks through battle code, stop and reconsider the architecture.
 
