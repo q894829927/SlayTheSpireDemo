@@ -1,47 +1,76 @@
 #include "DeckRuntime.h"
 
+#include "../Cards/CardData.h"
+#include "../Cards/CardInstance.h"
+
 namespace
 {
-	FString DescribeCards(const TArray<FDeckCardToken>& Cards)
+	FString DescribeCards(const TArray<TObjectPtr<UCardInstance>>& Cards)
 	{
 		TArray<FString> Parts;
 		Parts.Reserve(Cards.Num());
 
-		for (const FDeckCardToken& Card : Cards)
+		for (const TObjectPtr<UCardInstance>& Card : Cards)
 		{
-			Parts.Add(FString::Printf(TEXT("%s#%d"), *Card.DebugName.ToString(), Card.RuntimeId));
+			Parts.Add(IsValid(Card.Get()) ? Card->GetDebugLabel() : TEXT("InvalidCard"));
 		}
 
 		return FString::Join(Parts, TEXT(", "));
 	}
+
+	int32 FindCardIndex(const TArray<TObjectPtr<UCardInstance>>& Cards, const UCardInstance* Card)
+	{
+		return Cards.IndexOfByPredicate(
+			[Card](const TObjectPtr<UCardInstance>& Entry)
+			{
+				return Entry.Get() == Card;
+			}
+		);
+	}
 }
 
-void UDeckRuntime::InitializeDebugDeck(int32 Seed)
+void UDeckRuntime::InitializeFromDefinitions(const TArray<TObjectPtr<UCardData>>& Definitions, int32 Seed)
 {
 	DrawPile.Reset();
 	Hand.Reset();
 	DiscardPile.Reset();
 	ExhaustPile.Reset();
+	PlayArea.Reset();
+	RemovedPile.Reset();
 
 	InitialSeed = Seed;
+	NextRuntimeId = 1;
 	RandomStream.Initialize(InitialSeed);
 
-	FDeckCardToken CardA;
-	CardA.RuntimeId = 1;
-	CardA.DebugName = TEXT("Card_A");
-	DrawPile.Add(CardA);
+	for (const TObjectPtr<UCardData>& DefinitionPtr : Definitions)
+	{
+		UCardData* Definition = DefinitionPtr.Get();
+		if (!IsValid(Definition))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Deck] Skipped null card definition while building runtime deck."));
+			continue;
+		}
 
-	FDeckCardToken CardB;
-	CardB.RuntimeId = 2;
-	CardB.DebugName = TEXT("Card_B");
-	DrawPile.Add(CardB);
+		UCardInstance* Card = NewObject<UCardInstance>(this);
+		Card->Initialize(Definition, NextRuntimeId++);
+		DrawPile.Add(Card);
 
-	FDeckCardToken CardC;
-	CardC.RuntimeId = 3;
-	CardC.DebugName = TEXT("Card_C");
-	DrawPile.Add(CardC);
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("[Deck] Created runtime card %s from definition %s."),
+			*Card->GetDebugLabel(),
+			*GetNameSafe(Definition)
+		);
+	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Deck] Debug deck initialized. Seed=%d DrawPile top is the array end."), InitialSeed);
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Deck] Runtime deck initialized. Seed=%d Cards=%d DrawPile top is the array end."),
+		InitialSeed,
+		DrawPile.Num()
+	);
 	LogState(TEXT("Initial"));
 }
 
@@ -60,64 +89,156 @@ bool UDeckRuntime::IsHandFull() const
 	return Hand.Num() >= MaxHandSize;
 }
 
-bool UDeckRuntime::TryDrawTopCard(FDeckCardToken& OutCard)
+bool UDeckRuntime::IsCardInHand(const UCardInstance* Card) const
 {
+	return IsValid(Card) && FindCardIndex(Hand, Card) != INDEX_NONE;
+}
+
+bool UDeckRuntime::IsCardInPlayArea(const UCardInstance* Card) const
+{
+	return IsValid(Card) && FindCardIndex(PlayArea, Card) != INDEX_NONE;
+}
+
+bool UDeckRuntime::TryDrawTopCard(UCardInstance*& OutCard)
+{
+	OutCard = nullptr;
+
 	if (!HasCardsInDrawPile() || IsHandFull())
 	{
 		return false;
 	}
 
-	OutCard = DrawPile.Pop();
-	Hand.Add(OutCard);
+	TObjectPtr<UCardInstance> CardPtr = DrawPile.Pop();
+	UCardInstance* Card = CardPtr.Get();
+	if (!IsValid(Card))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Deck] Draw failed: top DrawPile card is invalid."));
+		return false;
+	}
 
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[Deck] Drew %s#%d from DrawPile to Hand."),
-		*OutCard.DebugName.ToString(),
-		OutCard.RuntimeId
-	);
+	Hand.Add(Card);
+	OutCard = Card;
+
+	UE_LOG(LogTemp, Log, TEXT("[Deck] Drew %s from DrawPile to Hand."), *Card->GetDebugLabel());
 	LogState(TEXT("AfterDraw"));
 	return true;
 }
 
-bool UDeckRuntime::GetFirstHandCard(FDeckCardToken& OutCard) const
+UCardInstance* UDeckRuntime::GetFirstHandCard() const
 {
-	if (Hand.Num() == 0)
+	return Hand.Num() > 0 ? Hand[0].Get() : nullptr;
+}
+
+bool UDeckRuntime::TryDiscardCard(UCardInstance* Card)
+{
+	if (!IsValid(Card))
 	{
 		return false;
 	}
 
-	OutCard = Hand[0];
-	return true;
-}
-
-bool UDeckRuntime::TryDiscardCardByRuntimeId(int32 RuntimeId, FDeckCardToken& OutCard)
-{
-	const int32 HandIndex = Hand.IndexOfByPredicate(
-		[RuntimeId](const FDeckCardToken& Card)
-		{
-			return Card.RuntimeId == RuntimeId;
-		}
-	);
-
+	const int32 HandIndex = FindCardIndex(Hand, Card);
 	if (HandIndex == INDEX_NONE)
 	{
 		return false;
 	}
 
-	OutCard = Hand[HandIndex];
 	Hand.RemoveAt(HandIndex);
-	DiscardPile.Add(OutCard);
+	DiscardPile.Add(Card);
+
+	UE_LOG(LogTemp, Log, TEXT("[Deck] Discarded %s from Hand to DiscardPile."), *Card->GetDebugLabel());
+	LogState(TEXT("AfterDiscard"));
+	return true;
+}
+
+bool UDeckRuntime::TryMoveHandCardToPlayArea(UCardInstance* Card)
+{
+	if (!IsValid(Card))
+	{
+		return false;
+	}
+
+	const int32 HandIndex = FindCardIndex(Hand, Card);
+	if (HandIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	Hand.RemoveAt(HandIndex);
+	PlayArea.Add(Card);
+
+	UE_LOG(LogTemp, Log, TEXT("[Deck] Moved %s from Hand to PlayArea."), *Card->GetDebugLabel());
+	LogState(TEXT("AfterBeginPlay"));
+	return true;
+}
+
+bool UDeckRuntime::TryReturnPlayAreaCardToHand(UCardInstance* Card)
+{
+	if (!IsValid(Card) || IsHandFull())
+	{
+		return false;
+	}
+
+	const int32 PlayIndex = FindCardIndex(PlayArea, Card);
+	if (PlayIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	PlayArea.RemoveAt(PlayIndex);
+	Hand.Add(Card);
+
+	UE_LOG(LogTemp, Warning, TEXT("[Deck] Rolled back %s from PlayArea to Hand."), *Card->GetDebugLabel());
+	LogState(TEXT("AfterPlayRollback"));
+	return true;
+}
+
+bool UDeckRuntime::TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDestination Destination)
+{
+	if (!IsValid(Card))
+	{
+		return false;
+	}
+
+	const int32 PlayIndex = FindCardIndex(PlayArea, Card);
+	if (PlayIndex == INDEX_NONE)
+	{
+		return false;
+	}
+
+	PlayArea.RemoveAt(PlayIndex);
+
+	const TCHAR* DestinationName = TEXT("Unknown");
+	switch (Destination)
+	{
+	case ECardDestination::Discard:
+		DiscardPile.Add(Card);
+		DestinationName = TEXT("DiscardPile");
+		break;
+
+	case ECardDestination::Exhaust:
+		ExhaustPile.Add(Card);
+		DestinationName = TEXT("ExhaustPile");
+		break;
+
+	case ECardDestination::Removed:
+		RemovedPile.Add(Card);
+		DestinationName = TEXT("RemovedPile");
+		break;
+
+	default:
+		PlayArea.Add(Card);
+		UE_LOG(LogTemp, Warning, TEXT("[Deck] Unsupported destination for %s; card restored to PlayArea."), *Card->GetDebugLabel());
+		return false;
+	}
 
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Deck] Discarded %s#%d from Hand to DiscardPile."),
-		*OutCard.DebugName.ToString(),
-		OutCard.RuntimeId
+		TEXT("[Deck] Finished %s: PlayArea -> %s."),
+		*Card->GetDebugLabel(),
+		DestinationName
 	);
-	LogState(TEXT("AfterDiscard"));
+	LogState(TEXT("AfterFinishPlay"));
 	return true;
 }
 
@@ -131,12 +252,7 @@ bool UDeckRuntime::ShuffleDiscardIntoDrawPile()
 
 	if (DrawPile.Num() != 0)
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[Deck] Shuffle skipped: DrawPile is not empty (Draw=%d)."),
-			DrawPile.Num()
-		);
+		UE_LOG(LogTemp, Warning, TEXT("[Deck] Shuffle skipped: DrawPile is not empty (Draw=%d)."), DrawPile.Num());
 		return false;
 	}
 
@@ -177,10 +293,20 @@ int32 UDeckRuntime::GetExhaustCount() const
 	return ExhaustPile.Num();
 }
 
+int32 UDeckRuntime::GetPlayAreaCount() const
+{
+	return PlayArea.Num();
+}
+
+int32 UDeckRuntime::GetRemovedCount() const
+{
+	return RemovedPile.Num();
+}
+
 FString UDeckRuntime::DescribeState() const
 {
 	return FString::Printf(
-		TEXT("Draw=%d [%s] Hand=%d [%s] Discard=%d [%s] Exhaust=%d [%s]"),
+		TEXT("Draw=%d [%s] Hand=%d [%s] Discard=%d [%s] Exhaust=%d [%s] Play=%d [%s] Removed=%d [%s]"),
 		DrawPile.Num(),
 		*DescribeCards(DrawPile),
 		Hand.Num(),
@@ -188,7 +314,11 @@ FString UDeckRuntime::DescribeState() const
 		DiscardPile.Num(),
 		*DescribeCards(DiscardPile),
 		ExhaustPile.Num(),
-		*DescribeCards(ExhaustPile)
+		*DescribeCards(ExhaustPile),
+		PlayArea.Num(),
+		*DescribeCards(PlayArea),
+		RemovedPile.Num(),
+		*DescribeCards(RemovedPile)
 	);
 }
 
