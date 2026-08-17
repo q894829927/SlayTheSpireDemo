@@ -66,6 +66,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5B2Statuses;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
+	TArray<TObjectPtr<UStatusData>> DebugPhase5CStatuses;
+
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartBattle();
 
@@ -98,6 +101,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Status")
 	void TestApplyPhase5B2DamageStatuses();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Block")
+	void TestPhase5CBlockPipeline();
 
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
