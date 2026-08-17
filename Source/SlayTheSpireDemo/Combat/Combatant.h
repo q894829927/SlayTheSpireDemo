@@ -4,6 +4,8 @@
 #include "GameFramework/Actor.h"
 #include "Combatant.generated.h"
 
+class UStatusContainer;
+
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API ACombatant : public AActor
 {
@@ -35,4 +37,10 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool IsDead() const;
+
+	UStatusContainer* GetStatusContainer() const;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UStatusContainer> StatusContainer = nullptr;
 };
