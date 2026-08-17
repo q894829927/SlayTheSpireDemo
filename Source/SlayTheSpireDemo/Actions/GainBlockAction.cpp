@@ -9,7 +9,7 @@ void UGainBlockAction::Initialize(ACombatant* InSource, ACombatant* InTarget, in
 	BaseAmount = InBaseAmount;
 }
 
-void UGainBlockAction::Execute()
+void UGainBlockAction::Execute(UBattleActionQueue* /*Queue*/)
 {
 	if (!IsValid(Target.Get()))
 	{
@@ -34,7 +34,7 @@ void UGainBlockAction::Execute()
 		BaseAmount
 	);
 
-	// Phase 2 intentionally commits BaseAmount directly. Phase 5 will build an
+	// Phase 3 still commits BaseAmount directly. Phase 5 will build an
 	// FBlockSpec and resolve it through the Modifier Pipeline before commit.
 	Target->GainBlock(BaseAmount);
 	Finish();
