@@ -11,9 +11,9 @@ void UDamageAction::Initialize(ACombatant* InSource, ACombatant* InTarget, int32
 
 void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 {
-	if (!IsValid(Target.Get()))
+	if (!IsValid(Target.Get()) || Target->IsDead())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] DamageAction skipped: invalid target."));
+		UE_LOG(LogTemp, Warning, TEXT("[Action] DamageAction skipped: target is invalid or dead."));
 		Finish();
 		return;
 	}
@@ -34,8 +34,9 @@ void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 		BaseAmount
 	);
 
-	// Phase 3 still commits BaseAmount directly. Phase 5 will build an
-	// FDamageSpec and resolve it through the Modifier Pipeline before commit.
+	// BaseAmount is stable intent captured when the action is built. Phase 5
+	// will resolve the final value here at execution time through FDamageSpec
+	// and the damage Modifier Pipeline before committing to the target.
 	Target->TakeCombatDamage(BaseAmount);
 	Finish();
 }
