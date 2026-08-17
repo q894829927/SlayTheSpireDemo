@@ -57,7 +57,7 @@ BattleActionQueue
 - [x] GitHub repository connected.
 - [x] Project-level agent constraints defined in this `AGENTS.md`.
 - [x] Phase 1 minimal combat loop implemented and validated in UE5.8 PIE.
-- [ ] Phase 2 `BattleActionQueue` implemented.
+- [x] Phase 2 `BattleActionQueue` implemented and validated in UE5.8 PIE.
 - [ ] Phase 3 deck / hand / discard / exhaust system implemented.
 - [ ] Phase 4 data-driven card system implemented.
 - [ ] Phase 5 Modifier-Based Framework / status system implemented.
@@ -97,13 +97,29 @@ Content/SlayTheSpireDemo/
             └── BP_TestEnemy
 ```
 
+### Phase 2 validation record
+
+Validated manually in UE5.8 PIE:
+
+- player test attack creates and executes `UDamageAction` through `UBattleActionQueue`;
+- `AddToBack(7)`, `AddToBack(8)`, then `AddToFront(6)` resolves in deterministic `6 → 7 → 8` order;
+- queue-empty notification occurs only after the complete queued batch resolves;
+- `UGainBlockAction` executes through the same queue and grants 4 block;
+- enemy attack is queued as `UDamageAction` and resolves before the next player turn starts;
+- the player-turn transition waits for `OnQueueEmpty` rather than occurring before enemy damage;
+- block still absorbs damage correctly when damage is delivered through an action;
+- victory is detected after queue resolution when enemy HP reaches 0;
+- defeat is detected after queue resolution when player HP reaches 0;
+- player commands remain rejected after victory/defeat.
+
 `L_BattleTest` Level Blueprint currently contains temporary debug wiring:
 
 ```text
 BeginPlay → StartBattle
 Keyboard 1 → TestAttack
 Space → EndPlayerTurn
-Keyboard B → GainBlock(4)   // temporary Phase 1 validation input
+Keyboard B → TestGainBlock
+Keyboard Q → TestActionQueueOrder
 ```
 
 Do not treat these temporary key bindings as the future card input architecture.
@@ -129,26 +145,18 @@ Implemented:
 - enemy test attack;
 - victory / defeat checks.
 
-Current direct-call flow is intentionally temporary:
+The Phase 1 direct combat-mutation path has been migrated to queued damage/block actions in Phase 2 where appropriate.
 
-```text
-BattleManager
-    ↓
-Combatant mutation
-```
+### Phase 2 — BattleActionQueue — COMPLETE
 
-Phase 2 will replace gameplay-command direct mutation with queued actions.
-
-### Phase 2 — BattleActionQueue
-
-Introduce only the minimum action architecture required to demonstrate ordered resolution:
+Implemented and PIE-validated:
 
 - `UBattleAction`;
 - `UBattleActionQueue`;
 - `UDamageAction`;
 - `UGainBlockAction`.
 
-Required flow:
+Required flow is now established:
 
 ```text
 request action
@@ -162,27 +170,19 @@ action finishes
 execute next action
 ```
 
-Requirements:
+Durable Phase 2 invariants:
 
 - one authoritative action executes at a time;
-- queue ordering must be explicit and deterministic;
-- prepare for future asynchronous presentation/animation without making gameplay depend on frame rate;
-- action completion must be explicit rather than assuming `Execute()` returning means resolution is finished;
-- support normal back insertion and explicit front insertion for future triggered actions;
-- allow `BattleManager` to observe when the queue becomes empty;
-- do not add cards yet;
-- do not add events/relics yet;
-- migrate Phase 1 test damage/block behavior through actions where appropriate.
+- queue ordering is explicit and deterministic;
+- action completion is explicit through `Finish()` rather than assuming `Execute()` returning means resolution is finished;
+- normal back insertion and explicit front insertion are supported;
+- `BattleManager` observes queue-empty completion before advancing enemy-turn flow;
+- queue processing does not require Tick;
+- synchronous actions may finish immediately while the API remains compatible with future asynchronous presentation/animation;
+- related action batches are assembled before `StartProcessing()` so a premature `QueueEmpty` cannot occur between batch members;
+- player/enemy damage and debug block behavior resolve through actions.
 
-`UDamageAction` should retain enough context for future modifier resolution:
-
-```text
-Source
-Target
-BaseAmount
-```
-
-`UGainBlockAction` should use the same `BaseAmount` terminology where practical:
+`UDamageAction` carries future modifier-resolution context:
 
 ```text
 Source
@@ -190,7 +190,15 @@ Target
 BaseAmount
 ```
 
-During Phase 2, actions may still commit `BaseAmount` directly. Do not implement the Modifier-Based Framework during Phase 2. Phase 2 only establishes deterministic action sequencing and action lifecycle.
+`UGainBlockAction` uses the same terminology:
+
+```text
+Source
+Target
+BaseAmount
+```
+
+Phase 2 intentionally does not implement the Modifier-Based Framework.
 
 ### Phase 3 — Deck System
 
@@ -798,13 +806,11 @@ Do not run every modifier in the battle for every operation.
 
 ### 5.7 Phase 2 compatibility with future MBF
 
-Phase 2 implements only the action queue.
+Phase 2 implements only the action queue and has been completed without introducing the full Modifier-Based Framework.
 
-Do not implement the full Modifier-Based Framework during Phase 2.
+The completed Phase 2 action APIs retain enough context to avoid unnecessary redesign when typed modifier pipelines are added later.
 
-However, Phase 2 action APIs must avoid decisions that force unnecessary redesign when typed modifier pipelines are added later.
-
-`UDamageAction` should conceptually carry:
+`UDamageAction` carries:
 
 ```text
 Source
@@ -812,19 +818,13 @@ Target
 BaseAmount
 ```
 
-instead of treating the stored amount as an already-finalized damage result.
-
-`UGainBlockAction` should conceptually carry:
+`UGainBlockAction` carries:
 
 ```text
 Source
 Target
 BaseAmount
 ```
-
-where practical.
-
-During Phase 2 these actions may still directly use `BaseAmount`.
 
 Future Phase 5 resolution evolves toward:
 
@@ -840,7 +840,7 @@ FinalAmount
 Commit
 ```
 
-Do not implement Strength, Weak, Vulnerable or other modifiers during Phase 2 merely because these fields exist.
+Do not implement Strength, Weak, Vulnerable or other modifiers before Phase 5 merely because these fields exist.
 
 ### 5.8 MBF design guardrails
 
@@ -1251,7 +1251,9 @@ Do not merely say “set it up in Blueprint” or “test it in UE.”
 
 ---
 
-## 11. Phase 1 Implemented Classes
+## 11. Implemented Core Classes
+
+### Phase 1
 
 ```text
 Source/SlayTheSpireDemo/
@@ -1263,34 +1265,24 @@ Source/SlayTheSpireDemo/
     └── Combatant.cpp
 ```
 
-### `ACombatant`
+### Phase 2
 
-Responsibilities:
+```text
+Source/SlayTheSpireDemo/
+└── Actions/
+    ├── BattleAction.h
+    ├── BattleAction.cpp
+    ├── BattleActionQueue.h
+    ├── BattleActionQueue.cpp
+    ├── DamageAction.h
+    ├── DamageAction.cpp
+    ├── GainBlockAction.h
+    └── GainBlockAction.cpp
+```
 
-- `MaxHP`;
-- `HP`;
-- `Block`;
-- initialize/reset combat values;
-- receive simple combat damage;
-- gain/clear block;
-- report death.
+`ABattleManager` owns the battle-scoped `UBattleActionQueue` and creates queued actions for the current debug battle commands.
 
-### `ABattleManager`
-
-Phase 1 responsibilities:
-
-- player reference;
-- enemy reference;
-- `EBattleState`;
-- player energy / max energy;
-- start battle;
-- start player turn;
-- test attack;
-- end player turn;
-- temporary enemy attack;
-- victory / defeat checks.
-
-Direct damage calls in this class are Phase 1 scaffolding and should be migrated to queued actions during Phase 2 rather than copied into future systems.
+`ACombatant` remains the low-level owner of HP and block mutation.
 
 ---
 
@@ -1313,7 +1305,26 @@ All criteria were validated in UE5.8 PIE:
 
 ---
 
-## 13. Architecture Validation Principle
+## 13. Phase 2 Acceptance Criteria — PASSED
+
+All criteria were validated in UE5.8 PIE:
+
+1. Player damage is executed through `UDamageAction` and `UBattleActionQueue`. ✅
+2. `AddToBack` preserves FIFO order. ✅
+3. `AddToFront` inserts the next action ahead of pending back actions. ✅
+4. The debug batch `Back(7), Back(8), Front(6)` resolves exactly `6 → 7 → 8`. ✅
+5. `OnQueueEmpty` fires after the entire batch, not between actions. ✅
+6. `UGainBlockAction` grants block through the action queue. ✅
+7. Enemy damage executes through the action queue. ✅
+8. Enemy turn waits for queue completion before entering the next player turn. ✅
+9. Block absorption remains correct through queued damage. ✅
+10. Victory is resolved after queue completion. ✅
+11. Defeat is resolved after queue completion. ✅
+12. Finished battle states reject further player commands. ✅
+
+---
+
+## 14. Architecture Validation Principle
 
 The project should eventually express complex interactions without special-case combo code.
 
@@ -1360,7 +1371,7 @@ If adding a card/relic/status requires editing many unrelated existing card clas
 
 ---
 
-## 14. Documentation and Progress Updates
+## 15. Documentation and Progress Updates
 
 When completing a meaningful phase:
 
