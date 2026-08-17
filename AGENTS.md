@@ -47,7 +47,7 @@ BattleActionQueue
   - [x] Phase 5A Status Runtime + ApplyStatusAction implemented and PIE-validated.
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
-  - [ ] Phase 5C Block Spec + Dexterity + Frailty implemented.
+  - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
   - [ ] Phase 5 regression Automation Tests implemented and passed.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
@@ -98,12 +98,22 @@ Phase 5B2 validated:
 - `UDamageRatioModifier` supports explicit `Numerator` / `Denominator`, `SourceMultiplier` / `TargetMultiplier`, and `PresenceOnly` / `ScaleWithAmount` semantics;
 - Weak configured as Source + Attack + SourceMultiplier + 3/4 + PresenceOnly reduces 11 to 8;
 - Vulnerable configured as Target + Attack + TargetMultiplier + 3/2 + PresenceOnly increases 8 to 12;
-- `Weak#2 Amount=3` still applies exactly once (`Applications=1`), proving PresenceOnly does not repeat per Amount;
-- `Vulnerable#1 Amount=2` also applies exactly once;
-- status creation order was deliberately `Vulnerable#1 → Weak#2 → Strength#3`, while modifier execution correctly remained `Strength FlatAdd → Weak SourceMultiplier → Vulnerable TargetMultiplier`, proving Phase ordering outranks RuntimeSequence;
+- `Weak#2 Amount=3` and `Vulnerable#1 Amount=2` each apply exactly once (`Applications=1`), proving PresenceOnly does not repeat per Amount;
+- status creation order was deliberately `Vulnerable#1 → Weak#2 → Strength#3`, while modifier execution remained `Strength FlatAdd → Weak SourceMultiplier → Vulnerable TargetMultiplier`, proving Phase ordering outranks RuntimeSequence;
 - each ratio modifier rounds immediately through integer arithmetic: `11 * 3 / 4 = 8`, then `8 * 3 / 2 = 12`;
 - Pommel Strike Attack Base 9 resolves to 12 and commits 12 damage;
 - with the same statuses active, Effect damage Base 9 collects zero modifiers and remains Resolved 9.
+
+Phase 5C validated:
+
+- `UGainBlockAction` now creates `FBlockSpec` at Execute-time and resolves through `FBlockModifierPipeline` before committing Block;
+- `UStatusData` owns typed instanced `BlockModifiers` separately from `DamageModifiers`;
+- Dexterity configured as Target + FlatAdd + Value 1 + ScaleWithAmount changes Base Block 5 to 7 at Amount=2;
+- Frailty configured as Target + Multiplier + 3/4 + PresenceOnly changes 7 to 5 at Amount=3 and logs `Applications=1`;
+- status creation order was deliberately `Frailty#1 → Dexterity#2`, while Block modifier execution remained `Dexterity FlatAdd → Frailty Multiplier`, proving Phase ordering outranks RuntimeSequence in the Block domain;
+- the direct Phase 5C test resolves Base Block 5 to 5 and commits one final 5 Block with one final `QueueEmpty`;
+- the real `DA_Card_Defend` path resolves through `PlayCardAction → GainBlockAction → FBlockSpec → BlockModifierPipeline → FinishCardPlayAction`, adding another 5 Block and moving Defend to Discard correctly;
+- existing Block=5 therefore becomes Block=10 after playing Defend, confirming the card path and pipeline integrate without breaking card cleanup.
 
 ### Manual UE assets/configuration
 
@@ -115,12 +125,14 @@ Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend
 ```
 
-Phase 5A/5B1/5B2:
+Phase 5 status assets:
 
 ```text
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Strength
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Weak
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Vulnerable
+Content/SlayTheSpireDemo/Data/Status/DA_Status_Dexterity
+Content/SlayTheSpireDemo/Data/Status/DA_Status_Frailty
 ```
 
 `DA_Status_Strength` DamageFlatAdd:
@@ -157,6 +169,27 @@ Denominator             = 2
 AmountMode              = PresenceOnly
 ```
 
+`DA_Status_Dexterity` BlockFlatAdd:
+
+```text
+Scope                  = Target
+Priority               = 0
+Value                   = 1
+AmountMode              = ScaleWithAmount
+```
+
+`DA_Status_Frailty` BlockRatio:
+
+```text
+Scope                  = Target
+Priority               = 0
+Numerator               = 3
+Denominator             = 4
+AmountMode              = PresenceOnly
+```
+
+For the Block domain, `Target` means the recipient of Block.
+
 Current temporary `L_BattleTest` wiring includes:
 
 ```text
@@ -172,6 +205,7 @@ Keyboard M → TestApplyPhase5AStatuses
 Keyboard N → TestApplyPhase5B1Strength
 Keyboard K → TestPhase5B1EffectDamage
 Keyboard V → TestApplyPhase5B2DamageStatuses
+Keyboard C → TestPhase5CBlockPipeline
 ```
 
 These bindings are debug-only, not the future card-input architecture.
@@ -265,11 +299,11 @@ Phase 4 durable rules:
 Build Phase 5 through vertical validation:
 
 ```text
-5A  Status Runtime + ApplyStatusAction                         COMPLETE
-5B1 FDamageSpec + DamageFlatAdd + Strength                    COMPLETE
-5B2 DamageRatio + Weak + Vulnerable                           COMPLETE
-5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty  NEXT
-5R  Phase 5 Automation Regression Gate                        AFTER 5C
+5A  Status Runtime + ApplyStatusAction                              COMPLETE
+5B1 FDamageSpec + DamageFlatAdd + Strength                         COMPLETE
+5B2 DamageRatio + Weak + Vulnerable                                COMPLETE
+5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty   COMPLETE
+5R  Phase 5 Automation Regression Gate                             NEXT
 ```
 
 Do not mark Phase 5 complete until:
@@ -279,6 +313,8 @@ Phase 5C source compiles
 + Phase 5C UE5.8 PIE validation passes
 + Phase 5 Automation regression tests pass
 ```
+
+The first two requirements are now satisfied. Phase 5R remains the final gate.
 
 #### Phase 5A — Status Runtime — COMPLETE
 
@@ -526,16 +562,16 @@ Both ratio statuses logged `Applications=1` despite Amount > 1.
 
 The same active statuses do not modify `EDamageKind::Effect`; Effect Base 9 resolves to 9 with zero applicable modifiers.
 
-#### Phase 5C — Block Spec + Dexterity + Frailty
+#### Phase 5C — Block Spec + Dexterity + Frailty — COMPLETE
 
-Next scope:
+Implemented and PIE-validated:
 
 ```text
 FBlockSpec
 UBlockModifier
-├── UBlockFlatAddModifier
-└── UBlockRatioModifier
-BlockModifierPipeline
+UBlockFlatAddModifier
+UBlockRatioModifier
+FBlockModifierPipeline
 ```
 
 Flow:
@@ -545,6 +581,12 @@ GainBlockAction(BaseAmount)
 ↓ Execute
 FBlockSpec
 ↓
+collect current Block modifiers
+↓
+filter Scope
+↓
+Phase → Priority → RuntimeSequence → LocalModifierIndex
+↓
 BlockModifierPipeline
 ↓
 ResolvedAmount
@@ -552,15 +594,24 @@ ResolvedAmount
 GainBlock(ResolvedAmount)
 ```
 
-Keep the existing `GainBlockAction(Source, Target, BaseAmount)` API. For Block recipient modifiers, `Target` is the recipient.
+Keep the existing `GainBlockAction(Source, Target, BaseAmount)` API. In the Block domain, `Target` is the Block recipient.
 
-Dexterity/Frailty are collected from `Target` unless a future modifier explicitly declares another scope.
+Block base-input invariant mirrors Damage:
+
+```text
+BaseAmount < 0  → invalid GainBlockAction input; fail soft and Finish()
+BaseAmount == 0 → valid operation; enter BlockModifierPipeline
+BaseAmount > 0  → valid operation; enter BlockModifierPipeline
+```
+
+Dexterity/Frailty are data-driven:
 
 ```text
 Dexterity
 └── BlockFlatAdd
     Scope = Target
     Phase = FlatAdd
+    Priority = 0
     Value = +1
     AmountMode = ScaleWithAmount
 
@@ -568,23 +619,49 @@ Frailty
 └── BlockRatio
     Scope = Target
     Phase = Multiplier
+    Priority = 0
     Numerator = 3
     Denominator = 4
     AmountMode = PresenceOnly
 ```
 
-Validation:
+Validated with deliberately reversed runtime creation order:
 
 ```text
-Defend Base 5
-Dexterity Amount=2 → 7
-Frailty 3/4 → 5
-ResolvedAmount=5
+Frailty#1 Amount=3
+Dexterity#2 Amount=2
 ```
 
-CardData, CardEffect, PlayCardAction and DeckRuntime should not require architecture changes for Phase 5 status modifiers.
+Resolution still follows Phase before RuntimeSequence:
 
-#### Phase 5R — Automation Regression Gate
+```text
+Base Block 5
+→ Dexterity#2 FlatAdd: 5 → 7
+→ Frailty#1 Multiplier 3/4: 7 → 5
+→ ResolvedAmount=5
+```
+
+Frailty logs `Applications=1` despite Amount=3.
+
+The same rule path is exercised by the real Defend card:
+
+```text
+DA_Card_Defend
+→ GainBlockCardEffect(Base=5)
+→ GainBlockAction
+→ FBlockSpec
+→ BlockModifierPipeline
+→ Resolved=5
+→ GainBlock
+→ FinishCardPlayAction
+→ DiscardPile
+```
+
+With 5 Block already present from the direct test, playing Defend increases Block to 10.
+
+CardData, CardEffect, PlayCardAction and DeckRuntime required no architecture changes for Phase 5C.
+
+#### Phase 5R — Automation Regression Gate — NEXT
 
 After Phase 5C PIE validation, add a focused Unreal Automation Test suite before declaring Phase 5 complete.
 
@@ -815,16 +892,22 @@ Phase → Priority → RuntimeSequence → LocalModifierIndex
 
 Do not use `StatusId`, names, localized text, UObject addresses, `TSet` iteration, registration order or actor discovery order as tie-breaks. Renaming content must not change gameplay.
 
-Damage domain phases currently reserve:
+Damage domain phases currently implemented:
 
 ```text
 FlatAdd
 SourceMultiplier
 TargetMultiplier
-FinalModifier
-Override
-Clamp
 ```
+
+Block domain phases currently implemented:
+
+```text
+FlatAdd
+Multiplier
+```
+
+Do not pre-add unused FinalModifier/Override/Clamp phases without a concrete mechanic.
 
 Priority only orders modifiers inside the same Domain + Phase.
 
@@ -916,12 +999,11 @@ Each Ratio Modifier resolves and floors immediately before the next modifier. Do
 
 Use `int64` intermediate arithmetic, then clamp to the supported non-negative `int32` range.
 
-Example:
+Examples:
 
 ```text
-11
-→ Weak 3/4 = 8
-→ Vulnerable 3/2 = 12
+Damage: 11 → Weak 3/4 = 8 → Vulnerable 3/2 = 12
+Block:   7 → Frailty 3/4 = 5
 ```
 
 ### 5.8 Modifier collection boundary
@@ -943,10 +1025,10 @@ Use normal Unreal prefixes: `A`, `U`, `F`, `E`, `I`, and `b` for booleans.
 Target source areas as needed:
 
 ```text
-Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/
+Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/ Tests/
 ```
 
-Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins.
+Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` should be created only when Phase 5R Automation Tests are implemented.
 
 Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
@@ -1020,7 +1102,7 @@ A Keyword is not a gameplay implementation type and must not be equated with `US
 A player-facing keyword may describe mechanics implemented by different systems:
 
 ```text
-Strength / Weak / Vulnerable
+Strength / Weak / Vulnerable / Dexterity / Frailty
 → Status + Modifier
 
 Exhaust
@@ -1094,16 +1176,16 @@ Preferred future model:
 
 ```text
 Gameplay:
-DamageAction
-→ FDamageSpec
-→ DamageModifierPipeline
+DamageAction / GainBlockAction
+→ typed Spec
+→ typed ModifierPipeline
 → ResolvedAmount
 → Commit
 
 UI Preview:
 CardTextResolver
-→ preview FDamageSpec
-→ same read-only DamageModifierPipeline rules
+→ preview typed Spec
+→ same read-only typed ModifierPipeline rules
 → ResolvedAmount
 → no Commit / no state mutation
 ```
@@ -1229,6 +1311,16 @@ Phase 5B2
 Modifiers/Damage/DamageRatioModifier.h/.cpp
 Modifiers/ModifierTypes.h
 Battle/BattleManager.h/.cpp
+
+Phase 5C
+Modifiers/Block/BlockSpec.h
+Modifiers/Block/BlockModifier.h/.cpp
+Modifiers/Block/BlockFlatAddModifier.h/.cpp
+Modifiers/Block/BlockRatioModifier.h/.cpp
+Modifiers/Block/BlockModifierPipeline.h/.cpp
+Status/StatusData.h
+Actions/GainBlockAction.cpp
+Battle/BattleManager.h/.cpp
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -1244,7 +1336,8 @@ Battle/BattleManager.h/.cpp
 - Phase 5A — PASSED: queued status application, authoritative merge/create, Amount semantics and deterministic battle-wide RuntimeSequence behavior.
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
 - Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
-- Phase 5 — NOT YET PASSED: Phase 5C and the Phase 5 Automation regression gate remain.
+- Phase 5C — PASSED: Execute-time typed Block resolution, data-driven Dexterity/Frailty, PresenceOnly semantics, deterministic Phase ordering and real Defend integration.
+- Phase 5 — NOT YET PASSED: only the Phase 5 Automation regression gate remains.
 
 ---
 
@@ -1252,7 +1345,7 @@ Battle/BattleManager.h/.cpp
 
 Complex interactions must emerge from generic rules.
 
-Pommel Strike knows only its configured damage/draw effects. DeckRuntime knows only card zones/draw/shuffle. Sundial should eventually know only shuffle events. Damage statuses modify typed Damage specs through the Modifier Pipeline.
+Pommel Strike knows only its configured damage/draw effects. Defend knows only its configured Block effect. DeckRuntime knows only card zones/draw/shuffle. Sundial should eventually know only shuffle events. Damage and Block statuses modify typed operation specs through their respective Modifier Pipelines.
 
 Player-facing keywords explain mechanics but do not own those mechanics. A Status keyword such as Vulnerable may map to Status + Modifier, while a card-mechanic keyword such as Exhaust may map to DeckRuntime/Card destination/Action logic. UI presentation must not force unrelated gameplay concepts into one Status hierarchy.
 
