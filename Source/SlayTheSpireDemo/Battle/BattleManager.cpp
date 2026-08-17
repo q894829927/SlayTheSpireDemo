@@ -434,6 +434,57 @@ void ABattleManager::TestApplyPhase5B2DamageStatuses()
 	ActionQueue->StartProcessing();
 }
 
+void ABattleManager::TestPhase5CBlockPipeline()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestPhase5CBlockPipeline failed: combatants or ActionQueue are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline rejected: action queue is busy."));
+		return;
+	}
+
+	if (DebugPhase5CStatuses.Num() < 2 || !IsValid(DebugPhase5CStatuses[0].Get()) || !IsValid(DebugPhase5CStatuses[1].Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline requires Dexterity/Frailty StatusData assets."));
+		return;
+	}
+
+	UStatusData* DexterityDefinition = DebugPhase5CStatuses[0].Get();
+	UStatusData* FrailtyDefinition = DebugPhase5CStatuses[1].Get();
+	if (DexterityDefinition->StatusId.IsNone() || FrailtyDefinition->StatusId.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline requires non-empty StatusId values."));
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Phase 5C block test queued in reverse modifier-phase order: %s +3 Player, %s +2 Player, then BaseBlock=5."),
+		*FrailtyDefinition->StatusId.ToString(),
+		*DexterityDefinition->StatusId.ToString()
+	);
+
+	// Deliberately create Frailty before Dexterity so RuntimeSequence opposes
+	// modifier phase order. Expected resolution remains Dexterity FlatAdd first,
+	// then Frailty Multiplier: 5 + 2 = 7; 7 * 3 / 4 = 5.
+	QueueApplyStatusAction(Player.Get(), Player.Get(), FrailtyDefinition, 3);
+	QueueApplyStatusAction(Player.Get(), Player.Get(), DexterityDefinition, 2);
+	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
+	ActionQueue->StartProcessing();
+}
+
 void ABattleManager::EndPlayerTurn()
 {
 	if (!HasValidCombatants())
