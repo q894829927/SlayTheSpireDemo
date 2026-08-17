@@ -138,5 +138,5 @@ void ABattleManager::CheckBattleResult()
 
 bool ABattleManager::HasValidCombatants() const
 {
-	return IsValid(Player) && IsValid(Enemy);
+	return IsValid(Player.Get()) && IsValid(Enemy.Get());
 }
