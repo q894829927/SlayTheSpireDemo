@@ -271,6 +271,64 @@ Do not define one universal rule that every dead target is invalid. Precondition
 
 `FInstancedStruct` / `TInstancedStruct` may be evaluated later as an alternative data representation for card-effect definitions if profiling, asset scale, cook size or editor workflow justifies it. Do not introduce it or an additional dependency during Phase 4 merely as a speculative UObject-count optimization.
 
+#### Phase 4 implementation constraints
+
+`ABattleManager` currently owns player Energy. Do not move Energy into `ACombatant` merely to make Phase 4 cleaner; that would be unrelated Phase 1-3 refactoring. `UPlayCardAction` may temporarily hold a narrow `ABattleManager` reference solely for battle-owned resource orchestration such as `TrySpendEnergy(...)`. Card effects must never receive or depend on `ABattleManager`.
+
+`FCardPlayContext` should expose only the dependencies needed to build effect actions. For action allocation, prefer a neutral `UObject* ActionOuter` rather than exposing the full `UBattleActionQueue` to `UCardEffect`. Effect definitions may use `ActionOuter` as the Outer passed to `NewObject<...>()`, but they must not call `AddToBack`, `AddToFront`, `StartProcessing` or otherwise control queue ordering.
+
+Phase 4 should not add `AddBatchToFrontPreservingOrder` merely for card play. Player card-play requests are accepted only while the queue is idle, so the effect chain may be appended in intended execution order with `AddToBack`. Keep `AddToFront` for dependency insertion that truly requires it, such as the already validated `Shuffle → RetryDraw` case. Add a batch helper later only when a concrete nested-chain use case requires one.
+
+`UPlayCardAction` must completely build and validate its dependent action list before committing that list to the queue. Once dependency submission begins, do not partially enqueue a batch and then early-return because a later effect failed to build.
+
+The required card-play ordering is conceptually:
+
+```text
+validate play request
+↓
+build complete dependent action list
+↓
+validate build result
+↓
+enqueue all effect actions in intended order
+↓
+enqueue FinishCardPlayAction
+↓
+PlayCardAction::Finish()
+↓
+queue continues through the complete dependency chain
+↓
+one final QueueEmpty
+```
+
+All dependent actions, including the finish/cleanup action, must be in the queue before `UPlayCardAction::Finish()` is called. This preserves the established invariant that a single logical card-play chain does not emit a premature intermediate `QueueEmpty`.
+
+When Phase 4 replaces `FDeckCardToken` with `UCardInstance`, the `UCardInstance*` object identity becomes the normal stable runtime identity used by deck movement actions. `UDiscardCardAction` should hold a `TObjectPtr<UCardInstance>` and `UDeckRuntime` should locate/move that exact instance rather than resolving normal gameplay by hand index or `RuntimeId`. Keep `RuntimeId` for deterministic debug labels, logging and future replay/serialization support.
+
+`UCardInstance` should expose a stable debug label, conceptually `GetDebugLabel()`, formatted from a stable card definition id plus runtime id, for example:
+
+```text
+Strike#1
+Strike#2
+Defend#3
+PommelStrike#4
+```
+
+Use a stable `CardId` such as `FName` for debug identity. Do not use localized `DisplayName` text as the stable log identity. `DisplayName` is presentation data for UI.
+
+Phase 4 requires explicit UE Editor work after the C++ layer is built. Expected manual assets/configuration include at least:
+
+```text
+DA_Card_Strike
+DA_Card_Defend
+DA_Card_PommelStrike
+DebugStartingDeck configuration
+instanced Effect subobjects and their values
+P → TestPlayFirstCard debug input
+```
+
+These are `USER ACTION REQUIRED` tasks. Source-only agents must provide exact Content Browser paths, asset classes, property values, Effect element setup, Level Blueprint wiring, expected PIE logs and failure-report instructions. Do not claim these `.uasset` / `.umap` changes were completed by text-only repository edits.
+
 ### Phase 5 — Modifier-Based Framework and Status System
 
 Introduce the first production modifier pipelines and status-driven modifiers.
