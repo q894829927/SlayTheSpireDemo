@@ -58,7 +58,7 @@ BattleActionQueue
 - [x] Project-level agent constraints defined in this `AGENTS.md`.
 - [x] Phase 1 minimal combat loop implemented and validated in UE5.8 PIE.
 - [x] Phase 2 `BattleActionQueue` implemented and validated in UE5.8 PIE.
-- [ ] Phase 3 deck / hand / discard / exhaust system implemented.
+- [x] Phase 3 deck / hand / discard / exhaust system implemented and validated in UE5.8 PIE.
 - [ ] Phase 4 data-driven card system implemented.
 - [ ] Phase 5 Modifier-Based Framework / status system implemented.
 - [ ] Phase 6 battle event / trigger system implemented.
@@ -81,22 +81,6 @@ Validated manually in UE5.8 PIE:
 - player reaching 0 HP enters `Defeat`;
 - commands are rejected after victory/defeat because battle state is no longer `PlayerTurn`.
 
-Editor assets created manually for Phase 1:
-
-```text
-Content/SlayTheSpireDemo/
-├── Maps/
-│   └── L_BattleTest
-└── Blueprints/
-    ├── Battle/
-    │   └── BP_BattleManager
-    └── Characters/
-        ├── Player/
-        │   └── BP_PlayerCombatant
-        └── Enemies/
-            └── BP_TestEnemy
-```
-
 ### Phase 2 validation record
 
 Validated manually in UE5.8 PIE:
@@ -106,11 +90,26 @@ Validated manually in UE5.8 PIE:
 - queue-empty notification occurs only after the complete queued batch resolves;
 - `UGainBlockAction` executes through the same queue and grants 4 block;
 - enemy attack is queued as `UDamageAction` and resolves before the next player turn starts;
-- the player-turn transition waits for `OnQueueEmpty` rather than occurring before enemy damage;
 - block still absorbs damage correctly when damage is delivered through an action;
-- victory is detected after queue resolution when enemy HP reaches 0;
-- defeat is detected after queue resolution when player HP reaches 0;
-- player commands remain rejected after victory/defeat.
+- victory/defeat are detected after queue resolution;
+- commands remain rejected after a terminal battle state.
+
+### Phase 3 validation record
+
+Validated manually in UE5.8 PIE:
+
+- `UDeckRuntime` initializes a deterministic three-card debug deck with `Card_A#1`, `Card_B#2`, `Card_C#3`;
+- the end of `DrawPile` is the top of the pile;
+- three draws resolve `Card_C#3 → Card_B#2 → Card_A#1` through `UDrawCardAction`;
+- drawing when both draw and discard piles are empty finishes safely without retry loops;
+- discard operations capture and resolve a stable `RuntimeId` instead of a transient hand index;
+- three discards move the three runtime tokens from Hand to DiscardPile;
+- an empty DrawPile with a non-empty DiscardPile inserts `ShuffleDeckAction` and a retry `DrawCardAction` through the existing queue;
+- because `AddToFront` is stack-like, retry is inserted first and shuffle second so execution is `Shuffle → RetryDraw`;
+- the original draw, shuffle and retry draw form one queue chain and produce only one final `QueueEmpty` notification;
+- shuffle moves DiscardPile into DrawPile and uses a battle-scoped `FRandomStream` with deterministic Fisher–Yates ordering;
+- two separate PIE runs using seed `1337` and the same input sequence produced identical shuffle/draw results;
+- `ExhaustPile` exists as authoritative runtime state but no exhaust action is introduced before it is needed.
 
 `L_BattleTest` Level Blueprint currently contains temporary debug wiring:
 
@@ -120,6 +119,8 @@ Keyboard 1 → TestAttack
 Space → EndPlayerTurn
 Keyboard B → TestGainBlock
 Keyboard Q → TestActionQueueOrder
+Keyboard D → TestDrawCard
+Keyboard X → TestDiscardCard
 ```
 
 Do not treat these temporary key bindings as the future card input architecture.
@@ -145,8 +146,6 @@ Implemented:
 - enemy test attack;
 - victory / defeat checks.
 
-The Phase 1 direct combat-mutation path has been migrated to queued damage/block actions in Phase 2 where appropriate.
-
 ### Phase 2 — BattleActionQueue — COMPLETE
 
 Implemented and PIE-validated:
@@ -156,41 +155,18 @@ Implemented and PIE-validated:
 - `UDamageAction`;
 - `UGainBlockAction`.
 
-Required flow is now established:
-
-```text
-request action
-    ↓
-queue action
-    ↓
-execute current action
-    ↓
-action finishes
-    ↓
-execute next action
-```
-
 Durable Phase 2 invariants:
 
 - one authoritative action executes at a time;
 - queue ordering is explicit and deterministic;
-- action completion is explicit through `Finish()` rather than assuming `Execute()` returning means resolution is finished;
+- action completion is explicit through `Finish()`;
 - normal back insertion and explicit front insertion are supported;
 - `BattleManager` observes queue-empty completion before advancing enemy-turn flow;
 - queue processing does not require Tick;
 - synchronous actions may finish immediately while the API remains compatible with future asynchronous presentation/animation;
-- related action batches are assembled before `StartProcessing()` so a premature `QueueEmpty` cannot occur between batch members;
-- player/enemy damage and debug block behavior resolve through actions.
+- related action batches are assembled before `StartProcessing()` so a premature `QueueEmpty` cannot occur between batch members.
 
-`UDamageAction` carries future modifier-resolution context:
-
-```text
-Source
-Target
-BaseAmount
-```
-
-`UGainBlockAction` uses the same terminology:
+`UDamageAction` and `UGainBlockAction` retain future modifier-resolution context:
 
 ```text
 Source
@@ -198,21 +174,38 @@ Target
 BaseAmount
 ```
 
-Phase 2 intentionally does not implement the Modifier-Based Framework.
+### Phase 3 — Deck System — COMPLETE
 
-### Phase 3 — Deck System
+Implemented and PIE-validated:
 
-Implement:
+- `FDeckCardToken`;
+- `UDeckRuntime`;
+- DrawPile;
+- Hand;
+- DiscardPile;
+- ExhaustPile;
+- `UDrawCardAction`;
+- `UDiscardCardAction`;
+- `UShuffleDeckAction`.
 
-- draw pile;
-- hand;
-- discard pile;
-- exhaust pile;
-- draw action;
-- discard action;
-- shuffle action.
+Durable Phase 3 invariants:
 
-UI must never own authoritative pile state.
+- `UDeckRuntime` is the authoritative owner of pile state; UI must never own pile truth;
+- all four runtime piles use explicit ordered storage;
+- `DrawPile` array end is the top of the pile;
+- Phase 3 uses lightweight runtime tokens only; `CardData` / `CardInstance` remain Phase 4 concerns;
+- a runtime token has a stable runtime identity distinct from its debug/display name;
+- discard actions target stable runtime identity, not hand-array position;
+- one `UDrawCardAction` represents one draw attempt;
+- if DrawPile is empty and DiscardPile is non-empty, draw does not directly shuffle; it inserts `ShuffleDeckAction` plus retry draw into `BattleActionQueue`;
+- actions may enqueue dependent actions through their explicit queue execution context, but actions must never advance/pump the queue themselves;
+- because `AddToFront` inserts at index 0, dependent front actions must be added in reverse of intended execution order when necessary;
+- `UShuffleDeckAction` only shuffles; it does not draw automatically;
+- shuffle uses one battle-scoped `FRandomStream` initialized once at battle setup and then consumed across future shuffles;
+- do not reinitialize the random stream on every shuffle;
+- deterministic Fisher–Yates shuffle is preferred for explicit reproducible ordering;
+- drawing with both DrawPile and DiscardPile empty finishes safely rather than recursively retrying;
+- `ExhaustPile` exists now, but do not add exhaust-specific behavior until a later phase requires it.
 
 ### Phase 4 — Data-Driven Cards
 
@@ -226,6 +219,8 @@ Introduce:
 - reusable card effects.
 
 Normal cards should be configured from data and reusable effects. Avoid one C++ or Blueprint class per ordinary card.
+
+Phase 4 should replace the temporary Phase 3 token representation with a real runtime card-instance model without moving authoritative deck state into UI.
 
 ### Phase 5 — Modifier-Based Framework and Status System
 
@@ -255,8 +250,6 @@ Possible later validation:
 - Artifact;
 - damage clamp effects;
 - cost override effects.
-
-Do not implement every gameplay mechanism as a Modifier. Status effects that react to completed events and create additional gameplay belong to the BattleEvent / Trigger architecture.
 
 ### Phase 6 — Battle Events and Triggers
 
@@ -344,32 +337,11 @@ request
 
 ### 4.4 Events notify; actions mutate
 
-Events announce facts:
-
-```text
-DeckShuffled
-CardPlayed
-TurnStarted
-DamageTaken
-```
-
-Listeners should normally enqueue actions rather than perform deep synchronous mutation chains.
+Events announce facts. Listeners should normally enqueue actions rather than perform deep synchronous mutation chains.
 
 ### 4.5 Avoid recursive gameplay chains
 
-Avoid designs like:
-
-```text
-DrawCard()
-→ Shuffle()
-→ OnShuffle()
-→ GainEnergy()
-→ OnGainEnergy()
-→ DrawCard()
-→ ...
-```
-
-Prefer queued resolution.
+Prefer queued resolution over synchronous recursive chains such as draw → shuffle → trigger → draw → ... .
 
 ### 4.6 Separate definitions from runtime instances
 
@@ -383,80 +355,76 @@ Do not mutate shared definition assets with runtime state such as temporary cost
 
 ### 4.7 Composition over card-specific inheritance
 
-Prefer reusable effects/components/data composition.
-
-Avoid inheritance trees such as:
-
-```text
-Card
-→ AttackCard
-→ DrawAttackCard
-→ StrengthDrawAttackCard
-```
+Prefer reusable effects/components/data composition. Avoid one class per ordinary card effect combination.
 
 ### 4.8 UI is presentation, not authority
 
-UMG may request gameplay actions and display state, but must not own authoritative:
-
-- HP;
-- block;
-- energy;
-- deck contents;
-- status stacks;
-- relic counters;
-- turn state.
+UMG may request gameplay actions and display state, but must not own authoritative HP, block, energy, deck contents, status stacks, relic counters or turn state.
 
 ### 4.9 Keep dependencies explicit
 
 Avoid repeated `GetAllActorsOfClass` / `GetActorOfClass` during normal gameplay execution.
 
-Core systems should receive/store explicit references or use a clear battle context/manager relationship.
-
 ### 4.10 No premature GAS migration
 
-Do not introduce GAS merely because the project uses Unreal Engine.
+Implement and understand the card-battle-specific action queue, deck rules, modifier pipeline and deterministic resolution model first.
 
-Understand and implement the card-battle-specific action queue, modifier pipeline and deterministic resolution model first. GAS may be evaluated later for specific concerns.
+### 4.11 Actions may schedule dependencies but do not drive the queue
+
+An executing action may receive the current `UBattleActionQueue` explicitly and enqueue dependent follow-up actions when the gameplay operation requires them.
+
+Example:
+
+```text
+DrawCardAction
+    ↓ empty DrawPile + non-empty DiscardPile
+AddToFront(RetryDraw)
+AddToFront(Shuffle)
+    ↓
+Finish current DrawCardAction
+    ↓
+Queue executes Shuffle
+    ↓
+Queue executes RetryDraw
+```
+
+The action must not call `PumpQueue`, `ProcessNext` or otherwise advance execution itself.
 
 ---
 
 ## 5. Modifier-Based Framework Architecture
 
-The project adopts selected ideas from a Modifier-Based Framework (MBF) to standardize how stackable, interceptable and order-sensitive gameplay effects are resolved.
+The project adopts selected ideas from a Modifier-Based Framework (MBF) to standardize stackable, interceptable and order-sensitive gameplay effects.
 
 MBF does not replace the battle action queue.
 
-The three core responsibilities are:
-
 ```text
 BattleActionQueue
-→ controls when gameplay operations execute and in what order
+→ when operations execute and in what order
 
 Modifier Pipeline
-→ modifies, intercepts, overrides or constrains an operation before it is committed
+→ pre-commit modification / interception / override / clamp
 
 Battle Event / Trigger
-→ reacts to completed gameplay events and may enqueue new BattleActions
+→ post-commit reaction that may enqueue new BattleActions
 ```
-
-These concepts must remain separate.
 
 ### 5.1 Action vs Modifier vs Trigger
 
-Use a `BattleAction` when the effect represents an authoritative gameplay operation.
+Use a `BattleAction` for an authoritative gameplay operation.
 
 Examples:
 
 ```text
 DamageAction
 GainBlockAction
-DrawAction
-ShuffleAction
+DrawCardAction
+ShuffleDeckAction
 GainEnergyAction
 ApplyStatusAction
 ```
 
-Use a `Modifier` when an existing operation must be changed before the final gameplay mutation is committed.
+Use a `Modifier` when an existing operation must be changed before commit.
 
 Examples:
 
@@ -472,7 +440,7 @@ cost overrides
 operation cancellation
 ```
 
-Use a `Trigger` when an effect reacts to something that has already happened and produces additional gameplay.
+Use a `Trigger` when an effect reacts to a completed gameplay fact and produces additional gameplay.
 
 Examples:
 
@@ -480,37 +448,15 @@ Examples:
 Sundial reacting to DeckShuffled
 Thorns reacting to damage received
 gain energy after killing an enemy
-draw a card after playing a Power
 ```
 
-Triggers should normally create/enqueue new `BattleAction` objects instead of directly mutating unrelated gameplay state.
+Triggers should normally enqueue new actions instead of mutating unrelated state directly.
 
-Preferred:
-
-```text
-DeckShuffled
-    ↓
-Sundial Trigger
-    ↓
-GainEnergyAction
-    ↓
-BattleActionQueue
-```
-
-Avoid:
-
-```cpp
-if (HasSundial())
-{
-    Energy += 2;
-}
-```
-
-### 5.2 Modifier ordering rules
+### 5.2 Modifier ordering
 
 Do not resolve all modifiers with one global integer priority.
 
-Modifier resolution must use this ordering hierarchy:
+Use:
 
 ```text
 Domain
@@ -522,42 +468,9 @@ Priority
 StableOrder
 ```
 
-#### Domain
+`Domain` identifies the gameplay mechanism, such as Damage, Block, CardCost or StatusApplication.
 
-`Domain` identifies which gameplay mechanism is being modified.
-
-Possible domains include:
-
-```text
-Damage
-Block
-CardCost
-StatusApplication
-Healing
-Energy
-Draw
-```
-
-Effects from unrelated domains must not compete in the same priority list.
-
-Examples:
-
-```text
-Strength       → Damage
-Weak           → Damage
-Vulnerable     → Damage
-Dexterity      → Block
-Frailty        → Block
-Artifact       → StatusApplication
-```
-
-Do not ask whether `Strength` should execute before `Artifact`; they belong to different mechanisms.
-
-#### Phase
-
-Each domain should define a fixed, explicit resolution pipeline.
-
-A future damage pipeline may resemble:
+Each domain defines explicit phases. A future damage pipeline may resemble:
 
 ```text
 Base
@@ -577,88 +490,15 @@ Clamp
 Commit
 ```
 
-Example classification:
+`Priority` only orders modifiers inside the same Domain + Phase.
 
-```text
-Strength       → Damage / FlatAdd
-Weak           → Damage / SourceMultiplier
-Vulnerable     → Damage / TargetMultiplier
-Intangible     → Damage / Clamp
-```
+When Phase and Priority are equal, use a deterministic tie-break such as stable definition id plus runtime instance sequence.
 
-Phase ordering is more important than raw priority. A lower-priority modifier in a later phase still executes after a higher-priority modifier in an earlier phase.
-
-#### Priority
-
-`Priority` is only used to order modifiers that belong to the same:
-
-```text
-Domain + Phase
-```
-
-Do not use arbitrary global values such as:
-
-```text
-Strength = 100
-Weak = 200
-Vulnerable = 300
-Artifact = 400
-Barricade = 500
-```
-
-unless those values are scoped to a well-defined domain and phase.
-
-#### StableOrder
-
-Modifier execution must remain deterministic when both `Phase` and `Priority` are equal.
-
-Do not rely on unstable ordering sources such as:
-
-```text
-TSet iteration order
-UObject memory address
-Actor discovery order
-unordered registration order
-GetAllActorsOfClass return order
-```
-
-Use a deterministic tie-break rule.
-
-Recommended conceptual ordering:
-
-```text
-Phase
-↓
-Priority
-↓
-ModifierDefinitionId
-↓
-RuntimeInstanceSequence
-```
-
-For the same initial battle state, input sequence and RNG seed, modifier order must be reproducible.
+Never rely on `TSet` iteration, UObject address, actor discovery order or unordered registration order.
 
 ### 5.3 Typed modifier pipelines
 
-Do not create one universal modifier context containing every possible gameplay field.
-
-Avoid designs such as:
-
-```text
-FModifierContext
-├── Damage
-├── Block
-├── Cost
-├── Status
-├── Draw
-├── Healing
-├── Energy
-├── ...
-```
-
-Prefer shared modifier infrastructure with typed operation specs.
-
-Examples:
+Prefer typed specs such as:
 
 ```text
 FDamageSpec
@@ -667,236 +507,64 @@ FCardCostSpec
 FStatusApplySpec
 ```
 
-A future damage operation should conceptually follow:
+Avoid one universal context containing every possible mechanism.
 
-```text
-UDamageAction
-    ↓
-FDamageSpec
-    ↓
-Damage Modifier Pipeline
-    ↓
-Final Damage Spec
-    ↓
-Commit damage
-```
-
-A future block operation should follow:
-
-```text
-UGainBlockAction
-    ↓
-FBlockSpec
-    ↓
-Block Modifier Pipeline
-    ↓
-Final Block Spec
-    ↓
-Commit block
-```
-
-### 5.4 Modifier lifecycle
-
-Preferred resolution lifecycle:
+Preferred lifecycle:
 
 ```text
 Create operation spec
 ↓
 Collect relevant modifiers
 ↓
-Filter modifiers by applicability
+Filter
 ↓
 Sort by Domain / Phase / Priority / StableOrder
 ↓
 Apply modifiers
 ↓
-Check cancellation / overrides
+Check cancellation / override
 ↓
-Commit authoritative gameplay mutation
+Commit
 ↓
 Emit BattleEvent
-↓
-Triggers react
 ↓
 Triggers enqueue new BattleActions
 ```
 
-Modifiers act before `Commit`.
+### 5.4 Cancellation and interception
 
-Triggers normally react after `Commit`.
+Pending operations may be cancelled before commit.
 
-Do not recursively perform large gameplay chains inside modifier callbacks.
-
-### 5.5 Cancellation and interception
-
-Modifier pipelines may cancel an operation before it commits.
-
-This must be represented explicitly in the operation spec or resolution result.
-
-Conceptually:
+Example:
 
 ```text
 ApplyStatusAction
-    ↓
+↓
 FStatusApplySpec
-    ↓
-StatusApplication Pipeline
-    ↓
-Artifact Modifier
-    ↓
+↓
+Artifact modifier
+↓
 bCancelled = true
-    ↓
-No status is committed
-```
-
-Preferred:
-
-```text
-intercept pending operation
-→ cancel before commit
-```
-
-Avoid:
-
-```text
-apply Weak
-→ detect Artifact
-→ remove Weak again
-```
-
-The same principle may later support rules such as:
-
-```text
-cannot gain Block
-cannot draw cards
-cost is fixed to 0
-damage cannot exceed 1
-```
-
-through appropriate intercept, override or clamp phases.
-
-### 5.6 Modifier scope and collection
-
-Modifiers should only be evaluated when their scope is relevant to the current operation.
-
-Possible sources include:
-
-```text
-Source combatant modifiers
-Target combatant modifiers
-Source relic modifiers
-Target relic modifiers
-Battle/global modifiers
-Card/runtime modifiers
-```
-
-A damage pipeline may conceptually collect:
-
-```text
-Source Status
-Source Relic
-Target Status
-Target Relic
-Battle Rules
-```
-
-then filter them against the current `FDamageSpec`.
-
-Do not run every modifier in the battle for every operation.
-
-### 5.7 Phase 2 compatibility with future MBF
-
-Phase 2 implements only the action queue and has been completed without introducing the full Modifier-Based Framework.
-
-The completed Phase 2 action APIs retain enough context to avoid unnecessary redesign when typed modifier pipelines are added later.
-
-`UDamageAction` carries:
-
-```text
-Source
-Target
-BaseAmount
-```
-
-`UGainBlockAction` carries:
-
-```text
-Source
-Target
-BaseAmount
-```
-
-Future Phase 5 resolution evolves toward:
-
-```text
-BaseAmount
 ↓
-Typed Spec
-↓
-Modifier Pipeline
-↓
-FinalAmount
-↓
-Commit
+no status commit
 ```
 
-Do not implement Strength, Weak, Vulnerable or other modifiers before Phase 5 merely because these fields exist.
+Do not commit an invalid operation and then undo it afterward.
 
-### 5.8 MBF design guardrails
+### 5.5 MBF guardrail
 
-When adding a new buff, debuff, relic or battle rule, do not begin by asking:
-
-```text
-What Priority number should this use?
-```
-
-First determine:
+When adding a buff/debuff/relic/rule, determine in this order:
 
 ```text
-1. Is this an Action, Modifier or Trigger?
-2. If Modifier, what Domain does it modify?
-3. Which Phase of that Domain applies?
+1. Action, Modifier or Trigger?
+2. If Modifier, what Domain?
+3. Which Phase?
 4. Does same-phase ordering matter?
-5. Only then assign Priority.
-6. Define a deterministic StableOrder tie-break.
+5. Then assign Priority.
+6. Define deterministic StableOrder.
 ```
 
-Do not solve modifier interactions with scattered special-case conditionals in cards, `ABattleManager` or unrelated gameplay classes.
-
-Avoid card-local logic such as:
-
-```cpp
-if (HasStrength)
-{
-    Damage += Strength;
-}
-
-if (HasWeak)
-{
-    Damage *= 0.75f;
-}
-
-if (TargetHasVulnerable)
-{
-    Damage *= 1.5f;
-}
-```
-
-Prefer:
-
-```text
-Card
-↓
-DamageAction(BaseAmount)
-↓
-DamageSpec
-↓
-Damage Modifier Pipeline
-↓
-Final Damage
-```
-
-The battle core should not need to know the concrete identity of every buff, debuff or relic.
+Do not scatter concrete status checks through cards or `ABattleManager`.
 
 ---
 
@@ -911,20 +579,7 @@ Follow Unreal naming conventions:
 - `I` — interface;
 - `b` prefix for booleans.
 
-Examples:
-
-```text
-ABattleManager
-ACombatant
-UBattleAction
-UBattleActionQueue
-FCardEffectSpec
-EBattleState
-```
-
-### Source organization
-
-Target structure as systems are introduced:
+Target source organization as systems are introduced:
 
 ```text
 Source/SlayTheSpireDemo/
@@ -943,19 +598,9 @@ Source/SlayTheSpireDemo/
 
 Do not create empty folders merely to reserve future architecture.
 
-### Headers
-
-- prefer forward declarations where practical;
-- keep public headers small;
-- avoid unnecessary engine-wide includes;
-- use include paths that are valid for the module's actual directory layout;
-- do not assume nested source folders are automatically include roots.
-
-### UObject ownership
+Prefer forward declarations where practical, keep public headers small, and use include paths valid for the actual module layout.
 
 Any UObject that must survive GC must have clear ownership and an appropriate `UPROPERTY` / `TObjectPtr` reference.
-
-### Tick
 
 Do not enable Tick by default. Card-battle gameplay should primarily be event/action driven.
 
@@ -963,27 +608,9 @@ Do not enable Tick by default. Card-battle gameplay should primarily be event/ac
 
 ## 7. Blueprint and Asset Rules
 
-### C++ vs Blueprint
+Prefer C++ for battle state, action queue, combat rules, deck rules, modifier pipelines, event dispatch, status/relic runtime logic and validation logic.
 
-Prefer C++ for:
-
-- battle state;
-- action queue;
-- combat rules;
-- modifier pipelines;
-- deck rules;
-- event dispatch rules;
-- status/relic runtime logic;
-- validation logic.
-
-Prefer Blueprint / UMG / DataAssets for:
-
-- visual assembly;
-- widget layout;
-- artwork;
-- simple presentation animation;
-- content configuration;
-- editor-created test actors/assets.
+Prefer Blueprint / UMG / DataAssets for visual assembly, widget layout, artwork, simple presentation animation, content configuration and editor-created test assets.
 
 ### Content root policy
 
@@ -993,132 +620,48 @@ All project-owned Unreal assets should live under:
 Content/SlayTheSpireDemo/
 ```
 
-Do not place project assets directly under `Content/` without a specific reason.
-
-Do not create every directory below in advance. Add folders only when the related system or asset type is introduced.
-
-### Recommended long-term Content directory tree
+Recommended long-term tree:
 
 ```text
-Content/
-└── SlayTheSpireDemo/
-    ├── Maps/
-    │   ├── L_BattleTest
-    │   ├── L_MainMenu
-    │   └── L_MapTest
-    │
-    ├── Blueprints/
-    │   ├── Battle/
-    │   │   └── BP_BattleManager
-    │   ├── Characters/
-    │   │   ├── Player/
-    │   │   │   └── BP_PlayerCombatant
-    │   │   └── Enemies/
-    │   │       ├── BP_TestEnemy
-    │   │       ├── BP_JawWorm
-    │   │       └── BP_Cultist
-    │   ├── Cards/
-    │   │   └── (only special Blueprint-backed behavior when genuinely needed)
-    │   └── Debug/
-    │       └── BP_BattleDebugController
-    │
-    ├── Data/
-    │   ├── Cards/
-    │   │   ├── Ironclad/
-    │   │   │   ├── Attacks/
-    │   │   │   │   ├── DA_Card_Strike
-    │   │   │   │   ├── DA_Card_Bash
-    │   │   │   │   └── DA_Card_PommelStrike
-    │   │   │   ├── Skills/
-    │   │   │   │   ├── DA_Card_Defend
-    │   │   │   │   └── DA_Card_ShrugItOff
-    │   │   │   └── Powers/
-    │   │   │       └── DA_Card_Inflame
-    │   │   └── Shared/
-    │   ├── Enemies/
-    │   │   ├── DA_Enemy_JawWorm
-    │   │   └── DA_Enemy_Cultist
-    │   ├── Status/
-    │   │   ├── DA_Status_Strength
-    │   │   ├── DA_Status_Weak
-    │   │   └── DA_Status_Vulnerable
-    │   └── Relics/
-    │       ├── DA_Relic_Sundial
-    │       └── DA_Relic_Abacus
-    │
-    ├── UI/
-    │   ├── Battle/
-    │   │   ├── WBP_BattleHUD
-    │   │   ├── WBP_PlayerPanel
-    │   │   ├── WBP_EnemyPanel
-    │   │   └── WBP_EnergyCounter
-    │   ├── Cards/
-    │   │   ├── WBP_Card
-    │   │   ├── WBP_Hand
-    │   │   └── WBP_CardTargetSelector
-    │   ├── Status/
-    │   │   └── WBP_StatusIcon
-    │   ├── Relics/
-    │   │   └── WBP_RelicIcon
-    │   └── Common/
-    │       ├── WBP_HealthBar
-    │       └── WBP_Tooltip
-    │
-    ├── Art/
-    │   ├── Characters/
-    │   │   ├── Player/
-    │   │   └── Enemies/
-    │   ├── Cards/
-    │   │   ├── Ironclad/
-    │   │   └── Common/
-    │   ├── Relics/
-    │   ├── Status/
-    │   ├── Backgrounds/
-    │   └── Icons/
-    │
-    ├── Materials/
-    │   ├── Cards/
-    │   ├── UI/
-    │   └── VFX/
-    │
-    ├── VFX/
-    │   ├── Combat/
-    │   ├── Cards/
-    │   └── Status/
-    │
-    ├── Audio/
-    │   ├── Music/
-    │   ├── SFX/
-    │   │   ├── Cards/
-    │   │   ├── Combat/
-    │   │   └── UI/
-    │   └── Ambience/
-    │
-    └── Dev/
-        ├── Debug/
-        └── Tests/
+Content/SlayTheSpireDemo/
+├── Maps/
+├── Blueprints/
+│   ├── Battle/
+│   ├── Characters/
+│   ├── Cards/
+│   └── Debug/
+├── Data/
+│   ├── Cards/
+│   ├── Enemies/
+│   ├── Status/
+│   └── Relics/
+├── UI/
+├── Art/
+├── Materials/
+├── VFX/
+├── Audio/
+└── Dev/
 ```
 
-Do not create all folders in advance. The tree is a target organization, not a requirement to create placeholder directories/assets.
+Do not create all folders in advance.
 
-### Phase 1 Content directory tree
+Current Phase 1-3 editor assets remain:
 
 ```text
-Content/
-└── SlayTheSpireDemo/
-    ├── Maps/
-    │   └── L_BattleTest
-    └── Blueprints/
-        ├── Battle/
-        │   └── BP_BattleManager
-        └── Characters/
-            ├── Player/
-            │   └── BP_PlayerCombatant
-            └── Enemies/
-                └── BP_TestEnemy
+Content/SlayTheSpireDemo/
+├── Maps/
+│   └── L_BattleTest
+└── Blueprints/
+    ├── Battle/
+    │   └── BP_BattleManager
+    └── Characters/
+        ├── Player/
+        │   └── BP_PlayerCombatant
+        └── Enemies/
+            └── BP_TestEnemy
 ```
 
-### Asset naming conventions
+### Asset naming
 
 | Asset type | Prefix | Example |
 |---|---|---|
@@ -1130,51 +673,16 @@ Content/
 | Material | `M_` | `M_Card` |
 | Material Instance | `MI_` | `MI_Card_Attack` |
 | Niagara System | `NS_` | `NS_Hit` |
-| Niagara Emitter | `NE_` | `NE_HitBurst` |
 | Sound Wave | `S_` | `S_Card_Play` |
 | Sound Cue | `SC_` | `SC_Attack` |
-| Animation asset | `A_` | `A_EnemyAttack` |
 
-Prefer domain-qualified DataAsset names:
+Prefer domain-qualified names such as `DA_Card_Strike`, `DA_Relic_Sundial`, `DA_Status_Strength`, `DA_Enemy_JawWorm`.
 
-```text
-DA_Card_Strike
-DA_Relic_Sundial
-DA_Status_Strength
-DA_Enemy_JawWorm
-```
+Keep gameplay rules, configuration and presentation distinct.
 
-### Asset responsibility separation
+Text/source agents must not pretend to create or wire `.uasset` / `.umap` files without UE Editor access. Never hand-edit them.
 
-Keep rules, configuration and presentation distinct.
-
-Example card split:
-
-```text
-Source/Cards/...                  -> gameplay schemas/rules
-Content/.../Data/Cards/...        -> content configuration
-Content/.../Art/Cards/...         -> artwork
-Content/.../UI/Cards/...          -> presentation
-```
-
-Example enemy split:
-
-```text
-Source/Enemy/...                              -> runtime rules / intent logic
-Content/.../Data/Enemies/...                  -> numeric/content configuration
-Content/.../Blueprints/Characters/Enemies/... -> actor assembly/presentation
-Content/.../Art/Characters/Enemies/...        -> visual assets
-```
-
-### Binary assets
-
-Text/source agents must not pretend to have correctly created or wired `.uasset` / `.umap` files without UE Editor access.
-
-Never hand-edit binary `.uasset` or `.umap` files.
-
-### Generated UE files
-
-Do not intentionally commit machine-local/generated files such as:
+Do not intentionally commit generated/local files such as:
 
 ```text
 Binaries/
@@ -1186,7 +694,7 @@ Saved/
 *.slnx
 ```
 
-unless repository policy is explicitly changed.
+unless repository policy explicitly changes.
 
 ---
 
@@ -1198,13 +706,13 @@ For every task:
 2. Make the smallest coherent change that completes the requested task.
 3. Do not refactor unrelated code.
 4. Do not rename public APIs/assets without need.
-5. Do not silently change project plugins, engine association or build target settings.
-6. Do not add third-party dependencies without explicit user approval.
+5. Do not silently change plugins, engine association or build target settings.
+6. Do not add third-party dependencies without explicit approval.
 7. Do not add multiplayer/network architecture unless requested.
 8. Do not add map/shop/event/meta-progression systems before core combat architecture is validated unless requested.
 9. Preserve the ability to explain each system from a learning perspective.
 10. Do not skip development phases unless the user explicitly approves it.
-11. Do not prematurely implement planned MBF/domain/phase enums during an earlier development phase merely because the architecture is documented.
+11. Do not prematurely implement planned MBF/domain/phase enums before Phase 5 merely because they are documented.
 
 Prefer clear architecture and explainable code over clever abstractions.
 
@@ -1238,16 +746,7 @@ The user performs UE Editor operations that cannot be safely represented by text
 - saving `.uasset` / `.umap` assets;
 - PIE validation and returning logs/screenshots.
 
-Whenever user action is required, instructions must include:
-
-1. exact menu/content-browser path;
-2. exact class/asset name;
-3. exact property values;
-4. what to click/run;
-5. expected result;
-6. what to return if it differs.
-
-Do not merely say “set it up in Blueprint” or “test it in UE.”
+Whenever user action is required, instructions must include exact path/menu, asset/class name, property values, what to run, expected result and what to return if it differs.
 
 ---
 
@@ -1268,63 +767,47 @@ Source/SlayTheSpireDemo/
 ### Phase 2
 
 ```text
-Source/SlayTheSpireDemo/
-└── Actions/
-    ├── BattleAction.h
-    ├── BattleAction.cpp
-    ├── BattleActionQueue.h
-    ├── BattleActionQueue.cpp
-    ├── DamageAction.h
-    ├── DamageAction.cpp
-    ├── GainBlockAction.h
-    └── GainBlockAction.cpp
+Source/SlayTheSpireDemo/Actions/
+├── BattleAction.h/.cpp
+├── BattleActionQueue.h/.cpp
+├── DamageAction.h/.cpp
+└── GainBlockAction.h/.cpp
 ```
 
-`ABattleManager` owns the battle-scoped `UBattleActionQueue` and creates queued actions for the current debug battle commands.
+### Phase 3
 
-`ACombatant` remains the low-level owner of HP and block mutation.
+```text
+Source/SlayTheSpireDemo/
+├── Deck/
+│   ├── DeckTypes.h
+│   └── DeckRuntime.h/.cpp
+└── Actions/
+    ├── DrawCardAction.h/.cpp
+    ├── DiscardCardAction.h/.cpp
+    └── ShuffleDeckAction.h/.cpp
+```
 
----
-
-## 12. Phase 1 Acceptance Criteria — PASSED
-
-All criteria were validated in UE5.8 PIE:
-
-1. Battle starts in player turn. ✅
-2. Player starts with 3 energy. ✅
-3. Test attack costs 1 energy. ✅
-4. Test attack deals 6 damage. ✅
-5. Test attack is rejected at 0 energy. ✅
-6. Ending player turn causes enemy turn. ✅
-7. Enemy test attack deals 5 damage. ✅
-8. New player turn restores energy to 3. ✅
-9. Block absorbs damage before HP. ✅
-10. Enemy HP reaching 0 enters victory. ✅
-11. Player HP reaching 0 enters defeat. ✅
-12. Results were verified through PIE logs. ✅
+`ABattleManager` owns the battle-scoped `UBattleActionQueue` and `UDeckRuntime` during the current debug battle flow.
 
 ---
 
-## 13. Phase 2 Acceptance Criteria — PASSED
+## 12. Acceptance Summary
 
-All criteria were validated in UE5.8 PIE:
+### Phase 1 — PASSED
 
-1. Player damage is executed through `UDamageAction` and `UBattleActionQueue`. ✅
-2. `AddToBack` preserves FIFO order. ✅
-3. `AddToFront` inserts the next action ahead of pending back actions. ✅
-4. The debug batch `Back(7), Back(8), Front(6)` resolves exactly `6 → 7 → 8`. ✅
-5. `OnQueueEmpty` fires after the entire batch, not between actions. ✅
-6. `UGainBlockAction` grants block through the action queue. ✅
-7. Enemy damage executes through the action queue. ✅
-8. Enemy turn waits for queue completion before entering the next player turn. ✅
-9. Block absorption remains correct through queued damage. ✅
-10. Victory is resolved after queue completion. ✅
-11. Defeat is resolved after queue completion. ✅
-12. Finished battle states reject further player commands. ✅
+Minimal battle loop, HP, block, energy, turn transition and terminal states validated in UE5.8 PIE.
+
+### Phase 2 — PASSED
+
+Action queue ordering, front/back insertion, explicit finish lifecycle, queued damage/block and queue-empty turn progression validated in UE5.8 PIE.
+
+### Phase 3 — PASSED
+
+Deck state, one-card draw actions, stable-identity discard, empty-deck safety, queued shuffle/retry behavior, single queue-empty completion and deterministic seeded shuffle behavior validated in UE5.8 PIE.
 
 ---
 
-## 14. Architecture Validation Principle
+## 13. Architecture Validation Principle
 
 The project should eventually express complex interactions without special-case combo code.
 
@@ -1350,28 +833,19 @@ Pommel Strike+ B
 repeat
 ```
 
-Sundial should know only about shuffle events. Pommel Strike should know only that it deals damage and draws cards. The deck system should know only how drawing and shuffling work.
+Pommel Strike should know only that it deals damage and draws cards.
 
-Damage-related statuses should modify a typed damage operation through the Modifier Pipeline rather than being hard-coded into Pommel Strike or another individual card.
+The deck system should know only how drawing, pile movement and shuffling work.
 
-The intended separation is:
+Sundial should know only about shuffle events.
 
-```text
-Action Queue
-= execution timing/order
+Damage-related statuses should modify typed damage operations through the Modifier Pipeline rather than being hard-coded into cards.
 
-Modifier Pipeline
-= pre-commit rule/value modification
-
-BattleEvent / Trigger
-= post-commit reactions and new actions
-```
-
-If adding a card/relic/status requires editing many unrelated existing card classes or scattering concrete status checks through battle code, stop and reconsider the architecture.
+If adding a card/relic/status requires editing many unrelated card classes or scattering concrete status checks through battle code, stop and reconsider the architecture.
 
 ---
 
-## 15. Documentation and Progress Updates
+## 14. Documentation and Progress Updates
 
 When completing a meaningful phase:
 
