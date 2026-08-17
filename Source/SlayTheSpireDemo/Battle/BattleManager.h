@@ -6,6 +6,8 @@
 
 class ACombatant;
 class UBattleActionQueue;
+class UCardData;
+class UCardInstance;
 class UDeckRuntime;
 
 UENUM(BlueprintType)
@@ -53,6 +55,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Deck")
 	int32 DeckDebugSeed = 1337;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Cards")
+	TArray<TObjectPtr<UCardData>> DebugStartingDeck;
+
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartBattle();
 
@@ -71,8 +76,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Deck")
 	void TestDiscardCard();
 
+	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Cards")
+	void TestPlayFirstCard();
+
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
+
+	bool CanSpendEnergy(int32 Amount) const;
+	bool TrySpendEnergy(int32 Amount);
 
 private:
 	void StartPlayerTurn();
@@ -83,7 +94,8 @@ private:
 	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
 	void QueueGainBlockAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
 	void QueueDrawCardAction();
-	void QueueDiscardCardAction(int32 RuntimeId);
+	void QueueDiscardCardAction(UCardInstance* Card);
+	void QueuePlayCardAction(UCardInstance* Card, ACombatant* Target);
 
 	bool HasValidCombatants() const;
 	bool HasValidActionQueue() const;
