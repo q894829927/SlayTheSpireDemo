@@ -46,7 +46,7 @@ BattleActionQueue
 - [ ] Phase 5 Modifier-Based Framework / status system implemented.
   - [x] Phase 5A Status Runtime + ApplyStatusAction implemented and PIE-validated.
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
-  - [ ] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented.
+  - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [ ] Phase 5C Block Spec + Dexterity + Frailty implemented.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
@@ -92,6 +92,18 @@ Phase 5B1 validated:
 - the same Strength does not modify an `Effect` damage operation: Base 9 remains Resolved 9;
 - Pommel Strike still completes `DamageAction → DrawCardAction → FinishCardPlayAction → QueueEmpty`, so modifier resolution does not break the existing card-play chain.
 
+Phase 5B2 validated:
+
+- `UDamageRatioModifier` supports explicit `Numerator` / `Denominator`, `SourceMultiplier` / `TargetMultiplier`, and `PresenceOnly` / `ScaleWithAmount` semantics;
+- Weak configured as Source + Attack + SourceMultiplier + 3/4 + PresenceOnly reduces 11 to 8;
+- Vulnerable configured as Target + Attack + TargetMultiplier + 3/2 + PresenceOnly increases 8 to 12;
+- `Weak#2 Amount=3` still applies exactly once (`Applications=1`), proving PresenceOnly does not repeat per Amount;
+- `Vulnerable#1 Amount=2` also applies exactly once;
+- status creation order was deliberately `Vulnerable#1 → Weak#2 → Strength#3`, while modifier execution correctly remained `Strength FlatAdd → Weak SourceMultiplier → Vulnerable TargetMultiplier`, proving Phase ordering outranks RuntimeSequence;
+- each ratio modifier rounds immediately through integer arithmetic: `11 * 3 / 4 = 8`, then `8 * 3 / 2 = 12`;
+- Pommel Strike Attack Base 9 resolves to 12 and commits 12 damage;
+- with the same statuses active, Effect damage Base 9 collects zero modifiers and remains Resolved 9.
+
 ### Manual UE assets/configuration
 
 Phase 4:
@@ -102,14 +114,15 @@ Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend
 ```
 
-Phase 5A/5B1:
+Phase 5A/5B1/5B2:
 
 ```text
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Strength
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Weak
+Content/SlayTheSpireDemo/Data/Status/DA_Status_Vulnerable
 ```
 
-`DA_Status_Strength` currently has one DamageFlatAdd modifier configured as:
+`DA_Status_Strength` DamageFlatAdd:
 
 ```text
 Scope                  = Source
@@ -119,7 +132,29 @@ Value                   = 1
 AmountMode              = ScaleWithAmount
 ```
 
-`DA_Status_Weak` has no Damage modifier until Phase 5B2.
+`DA_Status_Weak` DamageRatio:
+
+```text
+Scope                  = Source
+Priority               = 0
+ApplicableDamageKind   = Attack
+Phase                   = SourceMultiplier
+Numerator               = 3
+Denominator             = 4
+AmountMode              = PresenceOnly
+```
+
+`DA_Status_Vulnerable` DamageRatio:
+
+```text
+Scope                  = Target
+Priority               = 0
+ApplicableDamageKind   = Attack
+Phase                   = TargetMultiplier
+Numerator               = 3
+Denominator             = 2
+AmountMode              = PresenceOnly
+```
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -135,6 +170,7 @@ Keyboard P → TestPlayFirstCard
 Keyboard M → TestApplyPhase5AStatuses
 Keyboard N → TestApplyPhase5B1Strength
 Keyboard K → TestPhase5B1EffectDamage
+Keyboard V → TestApplyPhase5B2DamageStatuses
 ```
 
 These bindings are debug-only, not the future card-input architecture.
@@ -230,8 +266,8 @@ Build Phase 5 through vertical validation:
 ```text
 5A  Status Runtime + ApplyStatusAction                         COMPLETE
 5B1 FDamageSpec + DamageFlatAdd + Strength                    COMPLETE
-5B2 DamageRatio + Weak + Vulnerable                           NEXT
-5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty
+5B2 DamageRatio + Weak + Vulnerable                           COMPLETE
+5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty  NEXT
 ```
 
 Do not mark Phase 5 complete until source compiles and all corresponding UE5.8 PIE validations pass.
@@ -414,19 +450,19 @@ Effect damage Base=9
 
 The same DataAsset modifier definition is shared/immutable; runtime Amount and RuntimeSequence come from `UStatusInstance`.
 
-#### Phase 5B2 — Weak + Vulnerable
+#### Phase 5B2 — Weak + Vulnerable — COMPLETE
 
-Next scope:
+Implemented and PIE-validated:
 
 ```text
 UDamageRatioModifier
-Weak
-Vulnerable
+EDamageModifierPhase::SourceMultiplier
+EDamageModifierPhase::TargetMultiplier
 ```
 
-Do not add `UWeakModifier` or `UVulnerableModifier`; keep status effects data-driven.
+Weak/Vulnerable remain generic DataAsset composition rather than content-specific C++ modifier classes.
 
-Target configuration:
+Configuration:
 
 ```text
 Weak
@@ -448,27 +484,33 @@ Vulnerable
     ApplicableDamageKind = Attack
 ```
 
-Amount modes:
+`PresenceOnly` applies once whenever Amount > 0. It does not repeat the ratio Amount times.
+
+Validated with deliberately reversed runtime creation order:
 
 ```text
-PresenceOnly
-ScaleWithAmount
+Vulnerable#1 Amount=2
+Weak#2 Amount=3
+Strength#3 Amount=2
 ```
 
-`PresenceOnly` applies once whenever Amount > 0. Weak Amount=3 must still apply `3/4` only once.
-
-Required validation:
+Damage resolution still follows Phase before RuntimeSequence:
 
 ```text
-9 + Strength(2) = 11
-11 * 3/4 = 8
-8 * 3/2 = 12
-ResolvedAmount = 12
+Pommel Strike Base 9
+→ Strength#3 FlatAdd: 9 → 11
+→ Weak#2 SourceMultiplier 3/4: 11 → 8
+→ Vulnerable#1 TargetMultiplier 3/2: 8 → 12
+→ ResolvedAmount=12
 ```
+
+Both ratio statuses logged `Applications=1` despite Amount > 1.
+
+The same active statuses do not modify `EDamageKind::Effect`; Effect Base 9 resolves to 9 with zero applicable modifiers.
 
 #### Phase 5C — Block Spec + Dexterity + Frailty
 
-Introduce:
+Next scope:
 
 ```text
 FBlockSpec
@@ -1052,6 +1094,11 @@ Modifiers/Damage/DamageFlatAddModifier.h/.cpp
 Modifiers/Damage/DamageModifierPipeline.h/.cpp
 Actions/DamageAction.h/.cpp
 Cards/Effects/DamageCardEffect.h/.cpp
+
+Phase 5B2
+Modifiers/Damage/DamageRatioModifier.h/.cpp
+Modifiers/ModifierTypes.h
+Battle/BattleManager.h/.cpp
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer.
@@ -1066,7 +1113,8 @@ Cards/Effects/DamageCardEffect.h/.cpp
 - Phase 4 — PASSED: data-driven CardData/CardInstance/effect composition and complete card-play queue chain.
 - Phase 5A — PASSED: queued status application, authoritative merge/create, Amount semantics and deterministic battle-wide RuntimeSequence behavior.
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
-- Phase 5 — NOT YET PASSED: 5B2 and 5C remain.
+- Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
+- Phase 5 — NOT YET PASSED: 5C remains.
 
 ---
 
