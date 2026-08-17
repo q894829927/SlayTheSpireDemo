@@ -26,9 +26,9 @@ void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 		return;
 	}
 
-	if (BaseAmount <= 0)
+	if (BaseAmount < 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] DamageAction skipped: BaseAmount=%d"), BaseAmount);
+		UE_LOG(LogTemp, Warning, TEXT("[Action] DamageAction skipped: invalid negative BaseAmount=%d"), BaseAmount);
 		Finish();
 		return;
 	}
