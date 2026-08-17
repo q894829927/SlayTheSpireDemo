@@ -44,6 +44,10 @@ BattleActionQueue
 - [x] Phase 3 deck system implemented and PIE-validated.
 - [x] Phase 4 data-driven cards implemented and PIE-validated.
 - [ ] Phase 5 Modifier-Based Framework / status system implemented.
+  - [x] Phase 5A Status Runtime + ApplyStatusAction implemented and PIE-validated.
+  - [ ] Phase 5B1 Damage Spec + Strength implemented.
+  - [ ] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented.
+  - [ ] Phase 5C Block Spec + Dexterity + Frailty implemented.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -66,12 +70,30 @@ Phase 4 validated:
 - Energy spending/rejection;
 - Phase 3 shuffle/retry behavior after migrating from `FDeckCardToken` to `UCardInstance`.
 
+Phase 5A validated:
+
+- `UStatusData`, `UStatusInstance`, `UStatusContainer` and `UApplyStatusAction` compile and run in UE5.8 PIE;
+- `ApplyStatusAction` resolves through the existing `BattleActionQueue` rather than mutating StatusContainer directly from debug code;
+- first application creates `Strength#1 Amount=2` on Player;
+- reapplication merges into the same `Strength#1`, producing Amount=3 while candidate sequence 2 remains intentionally unused;
+- applying Weak to Enemy then creates `Weak#3 Amount=2`, proving one battle-wide sequence across Player and Enemy and allowing gaps;
+- a second test batch preserves runtime identities while merging to `Strength#1 Amount=6` and `Weak#3 Amount=4`;
+- restarting PIE resets battle-scoped status state and sequence allocation so the same deterministic input again produces `Strength#1` and `Weak#3`;
+- each three-action status batch produces one final `QueueEmpty` after all queued applications resolve.
+
 Phase 4 manual assets:
 
 ```text
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Strike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend
+```
+
+Phase 5A manual assets:
+
+```text
+Content/SlayTheSpireDemo/Data/Status/DA_Status_Strength
+Content/SlayTheSpireDemo/Data/Status/DA_Status_Weak
 ```
 
 Current temporary `L_BattleTest` wiring:
@@ -85,6 +107,7 @@ Keyboard Q → TestActionQueueOrder
 Keyboard D → TestDrawCard
 Keyboard X → TestDiscardCard
 Keyboard P → TestPlayFirstCard
+Keyboard M → TestApplyPhase5AStatuses
 ```
 
 These key bindings are debug-only, not the future card-input architecture.
@@ -178,17 +201,17 @@ Phase 4 durable rules:
 Build Phase 5 through vertical validation:
 
 ```text
-5A  Status Runtime + ApplyStatusAction
-5B1 FDamageSpec + DamageFlatAdd + Strength
+5A  Status Runtime + ApplyStatusAction                         COMPLETE
+5B1 FDamageSpec + DamageFlatAdd + Strength                    NEXT
 5B2 DamageRatio + Weak + Vulnerable
 5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty
 ```
 
 Do not mark Phase 5 complete until source compiles and all corresponding UE5.8 PIE validations pass.
 
-#### Phase 5A — Status Runtime
+#### Phase 5A — Status Runtime — COMPLETE
 
-Introduce:
+Implemented and PIE-validated:
 
 ```text
 UStatusData
@@ -273,6 +296,23 @@ absent   → create instance, use candidate sequence
 ```
 
 Removing and later recreating a status gets a new sequence. Sequence gaps are valid.
+
+Validated sequence behavior:
+
+```text
+first batch:
+Strength +2 → Strength#1 Amount=2
+Strength +1 → Strength#1 Amount=3; candidate #2 unused
+Weak +2     → Weak#3 Amount=2
+
+second batch:
+Strength#1 Amount=6
+Weak#3 Amount=4
+
+restart PIE + same input:
+Strength#1 Amount=3
+Weak#3 Amount=2
+```
 
 #### Phase 5B1 — Damage Spec + Strength
 
@@ -841,9 +881,15 @@ Cards/Effects/GainBlockCardEffect.h/.cpp
 Cards/Effects/DrawCardEffect.h/.cpp
 Actions/PlayCardAction.h/.cpp
 Actions/FinishCardPlayAction.h/.cpp
+
+Phase 5A
+Status/StatusData.h/.cpp
+Status/StatusInstance.h/.cpp
+Status/StatusContainer.h/.cpp
+Actions/ApplyStatusAction.h/.cpp
 ```
 
-`ABattleManager` currently owns the battle-scoped ActionQueue and DeckRuntime.
+`ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer.
 
 ---
 
@@ -853,7 +899,8 @@ Actions/FinishCardPlayAction.h/.cpp
 - Phase 2 — PASSED: deterministic ActionQueue and queued combat.
 - Phase 3 — PASSED: deterministic deck state and queued shuffle/retry.
 - Phase 4 — PASSED: data-driven CardData/CardInstance/effect composition and complete card-play queue chain.
-- Phase 5 — NOT YET PASSED.
+- Phase 5A — PASSED: queued status application, authoritative merge/create, Amount semantics and deterministic battle-wide RuntimeSequence behavior.
+- Phase 5 — NOT YET PASSED: 5B1, 5B2 and 5C remain.
 
 ---
 
