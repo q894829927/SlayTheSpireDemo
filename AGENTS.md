@@ -45,7 +45,7 @@ BattleActionQueue
 - [x] Phase 4 data-driven cards implemented and PIE-validated.
 - [ ] Phase 5 Modifier-Based Framework / status system implemented.
   - [x] Phase 5A Status Runtime + ApplyStatusAction implemented and PIE-validated.
-  - [ ] Phase 5B1 Damage Spec + Strength implemented.
+  - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [ ] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented.
   - [ ] Phase 5C Block Spec + Dexterity + Frailty implemented.
 - [ ] Phase 6 battle events / triggers implemented.
@@ -73,15 +73,28 @@ Phase 4 validated:
 Phase 5A validated:
 
 - `UStatusData`, `UStatusInstance`, `UStatusContainer` and `UApplyStatusAction` compile and run in UE5.8 PIE;
-- `ApplyStatusAction` resolves through the existing `BattleActionQueue` rather than mutating StatusContainer directly from debug code;
-- first application creates `Strength#1 Amount=2` on Player;
-- reapplication merges into the same `Strength#1`, producing Amount=3 while candidate sequence 2 remains intentionally unused;
-- applying Weak to Enemy then creates `Weak#3 Amount=2`, proving one battle-wide sequence across Player and Enemy and allowing gaps;
-- a second test batch preserves runtime identities while merging to `Strength#1 Amount=6` and `Weak#3 Amount=4`;
-- restarting PIE resets battle-scoped status state and sequence allocation so the same deterministic input again produces `Strength#1` and `Weak#3`;
-- each three-action status batch produces one final `QueueEmpty` after all queued applications resolve.
+- status application resolves through `BattleActionQueue` rather than direct debug mutation;
+- first application creates `Strength#1 Amount=2`;
+- reapplication merges into the same `Strength#1`, producing Amount=3 while candidate sequence 2 is intentionally unused;
+- Enemy Weak then creates `Weak#3 Amount=2`, proving one battle-wide sequence across combatants and allowing gaps;
+- repeated batches preserve runtime identities while increasing Amount;
+- restarting PIE resets battle-scoped status state and sequence allocation;
+- each status batch produces one final `QueueEmpty`.
 
-Phase 4 manual assets:
+Phase 5B1 validated:
+
+- `UDamageAction` creates `FDamageSpec` at Execute-time instead of committing `BaseAmount` directly;
+- `UDamageCardEffect` explicitly carries `EDamageKind` and ordinary card damage is `Attack`;
+- `UStatusData` owns typed instanced `DamageModifiers` rather than concrete Strength-specific battle logic;
+- `UDamageFlatAddModifier` configured on `DA_Status_Strength` resolves from current `StatusInstance.Amount`;
+- the Damage pipeline collects current Source/Target status modifiers, filters scope/applicability and uses deterministic `Phase → Priority → RuntimeSequence → LocalModifierIndex` ordering;
+- `Strength#1 Amount=2` changes Pommel Strike Attack damage from Base 9 to Resolved 11;
+- the same Strength does not modify an `Effect` damage operation: Base 9 remains Resolved 9;
+- Pommel Strike still completes `DamageAction → DrawCardAction → FinishCardPlayAction → QueueEmpty`, so modifier resolution does not break the existing card-play chain.
+
+### Manual UE assets/configuration
+
+Phase 4:
 
 ```text
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Strike
@@ -89,14 +102,26 @@ Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend
 ```
 
-Phase 5A manual assets:
+Phase 5A/5B1:
 
 ```text
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Strength
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Weak
 ```
 
-Current temporary `L_BattleTest` wiring:
+`DA_Status_Strength` currently has one DamageFlatAdd modifier configured as:
+
+```text
+Scope                  = Source
+Priority               = 0
+ApplicableDamageKind   = Attack
+Value                   = 1
+AmountMode              = ScaleWithAmount
+```
+
+`DA_Status_Weak` has no Damage modifier until Phase 5B2.
+
+Current temporary `L_BattleTest` wiring includes:
 
 ```text
 BeginPlay → StartBattle
@@ -108,9 +133,11 @@ Keyboard D → TestDrawCard
 Keyboard X → TestDiscardCard
 Keyboard P → TestPlayFirstCard
 Keyboard M → TestApplyPhase5AStatuses
+Keyboard N → TestApplyPhase5B1Strength
+Keyboard K → TestPhase5B1EffectDamage
 ```
 
-These key bindings are debug-only, not the future card-input architecture.
+These bindings are debug-only, not the future card-input architecture.
 
 ---
 
@@ -191,7 +218,7 @@ Phase 4 durable rules:
 - effects may receive neutral `ActionOuter` but must not control the queue;
 - `UPlayCardAction` may temporarily use a narrow `ABattleManager` Energy interface; effects must not depend on BattleManager;
 - all dependent card-play actions are queued before `PlayCardAction::Finish()`;
-- `UCardInstance*` is the normal runtime identity; `RuntimeId` is for stable labels/logging/replay support;
+- `UCardInstance*` is normal runtime identity; `RuntimeId` is for stable labels/logging/replay support;
 - `GetDebugLabel()` uses stable `CardId#RuntimeId`, not localized `DisplayName`;
 - card destination resolves at cleanup Execute-time;
 - actions fail soft and always `Finish()` on invalid execution preconditions.
@@ -202,8 +229,8 @@ Build Phase 5 through vertical validation:
 
 ```text
 5A  Status Runtime + ApplyStatusAction                         COMPLETE
-5B1 FDamageSpec + DamageFlatAdd + Strength                    NEXT
-5B2 DamageRatio + Weak + Vulnerable
+5B1 FDamageSpec + DamageFlatAdd + Strength                    COMPLETE
+5B2 DamageRatio + Weak + Vulnerable                           NEXT
 5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty
 ```
 
@@ -241,7 +268,7 @@ Use `Amount`, not `Stacks`, because status values may represent magnitude, durat
 
 `UApplyStatusAction` carries `AmountToAdd`.
 
-Phase 5 invariants:
+Phase 5 status invariants:
 
 ```text
 AmountToAdd > 0
@@ -297,26 +324,19 @@ absent   → create instance, use candidate sequence
 
 Removing and later recreating a status gets a new sequence. Sequence gaps are valid.
 
-Validated sequence behavior:
+#### Phase 5B1 — Damage Spec + Strength — COMPLETE
+
+Implemented and PIE-validated:
 
 ```text
-first batch:
-Strength +2 → Strength#1 Amount=2
-Strength +1 → Strength#1 Amount=3; candidate #2 unused
-Weak +2     → Weak#3 Amount=2
-
-second batch:
-Strength#1 Amount=6
-Weak#3 Amount=4
-
-restart PIE + same input:
-Strength#1 Amount=3
-Weak#3 Amount=2
+EDamageKind
+FDamageSpec
+UDamageModifier
+UDamageFlatAddModifier
+FDamageModifierPipeline
 ```
 
-#### Phase 5B1 — Damage Spec + Strength
-
-Introduce typed `FDamageSpec` with operation-specific data:
+`FDamageSpec` carries:
 
 ```text
 Source
@@ -327,9 +347,9 @@ WorkingAmount
 ResolvedAmount
 ```
 
-Use `ResolvedAmount`, not `FinalAmount`, because Block/HP commit can still transform the result.
+Use `ResolvedAmount`, not `FinalAmount`, because Block/HP commit can still transform the resolved incoming damage.
 
-Introduce minimal damage semantics:
+Damage semantics currently remain deliberately small:
 
 ```cpp
 enum class EDamageKind : uint8
@@ -341,7 +361,9 @@ enum class EDamageKind : uint8
 
 `DamageKind` is not hard-bound to `ECardType`.
 
-`UDamageCardEffect` explicitly supplies the kind to `UDamageAction`; DamageAction must not infer it from CardType.
+`UDamageCardEffect` explicitly supplies DamageKind to `UDamageAction`; DamageAction must not infer it from card type.
+
+Execute-time flow:
 
 ```text
 DamageCardEffect(BaseAmount, DamageKind)
@@ -350,6 +372,12 @@ DamageAction(BaseAmount, DamageKind)
 ↓ Execute
 FDamageSpec
 ↓
+collect current status modifiers
+↓
+filter Scope / ApplicableDamageKind
+↓
+deterministic sort
+↓
 DamageModifierPipeline
 ↓
 ResolvedAmount
@@ -357,39 +385,48 @@ ResolvedAmount
 TakeCombatDamage(ResolvedAmount)
 ```
 
-Strength configuration:
+Strength is data-driven:
 
 ```text
 Strength
 └── DamageFlatAdd
     Scope = Source
     Phase = FlatAdd
+    Priority = 0
     Value = +1
     AmountMode = ScaleWithAmount
     ApplicableDamageKind = Attack
 ```
 
-Validation:
+Validated:
 
 ```text
-Pommel Strike Base 9
 Strength Amount=2
-→ 11
+Pommel Strike Attack Base=9
+→ FlatAdd +2
+→ Resolved=11
+
+same Strength Amount=2
+Effect damage Base=9
+→ modifier filtered out
+→ Resolved=9
 ```
+
+The same DataAsset modifier definition is shared/immutable; runtime Amount and RuntimeSequence come from `UStatusInstance`.
 
 #### Phase 5B2 — Weak + Vulnerable
 
-Keep modifiers data-driven. Do not add `UStrengthModifier`, `UWeakModifier`, etc.
-
-Prefer:
+Next scope:
 
 ```text
-UDamageModifier
-├── UDamageFlatAddModifier
-└── UDamageRatioModifier
+UDamageRatioModifier
+Weak
+Vulnerable
 ```
 
-Modifier applicability must be distinct from operation identity; use semantics such as `ApplicableDamageKind`.
+Do not add `UWeakModifier` or `UVulnerableModifier`; keep status effects data-driven.
+
+Target configuration:
 
 ```text
 Weak
@@ -411,7 +448,7 @@ Vulnerable
     ApplicableDamageKind = Attack
 ```
 
-Amount modes initially support:
+Amount modes:
 
 ```text
 PresenceOnly
@@ -420,7 +457,7 @@ ScaleWithAmount
 
 `PresenceOnly` applies once whenever Amount > 0. Weak Amount=3 must still apply `3/4` only once.
 
-Validation:
+Required validation:
 
 ```text
 9 + Strength(2) = 11
@@ -629,7 +666,7 @@ Phase → Priority → RuntimeSequence → LocalModifierIndex
 
 Do not use `StatusId`, names, localized text, UObject addresses, `TSet` iteration, registration order or actor discovery order as tie-breaks. Renaming content must not change gameplay.
 
-A Damage domain may use:
+Damage domain phases currently reserve:
 
 ```text
 FlatAdd
@@ -671,7 +708,7 @@ Action Execute
 → future Trigger Actions
 ```
 
-Operation semantics and modifier applicability are distinct. Example: `FDamageSpec.DamageKind` describes the current operation; `ApplicableDamageKind` describes which operations a modifier accepts.
+Operation semantics and modifier applicability are distinct. `FDamageSpec.DamageKind` describes the operation; `ApplicableDamageKind` describes which operations a modifier accepts.
 
 Use `ResolvedAmount` for pipeline output when commit may still transform the actual gameplay result.
 
@@ -887,6 +924,15 @@ Status/StatusData.h/.cpp
 Status/StatusInstance.h/.cpp
 Status/StatusContainer.h/.cpp
 Actions/ApplyStatusAction.h/.cpp
+
+Phase 5B1
+Modifiers/ModifierTypes.h
+Modifiers/Damage/DamageSpec.h
+Modifiers/Damage/DamageModifier.h/.cpp
+Modifiers/Damage/DamageFlatAddModifier.h/.cpp
+Modifiers/Damage/DamageModifierPipeline.h/.cpp
+Actions/DamageAction.h/.cpp
+Cards/Effects/DamageCardEffect.h/.cpp
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer.
@@ -900,7 +946,8 @@ Actions/ApplyStatusAction.h/.cpp
 - Phase 3 — PASSED: deterministic deck state and queued shuffle/retry.
 - Phase 4 — PASSED: data-driven CardData/CardInstance/effect composition and complete card-play queue chain.
 - Phase 5A — PASSED: queued status application, authoritative merge/create, Amount semantics and deterministic battle-wide RuntimeSequence behavior.
-- Phase 5 — NOT YET PASSED: 5B1, 5B2 and 5C remain.
+- Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
+- Phase 5 — NOT YET PASSED: 5B2 and 5C remain.
 
 ---
 
