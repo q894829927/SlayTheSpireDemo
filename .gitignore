@@ -1,0 +1,144 @@
+# ============================================================
+# Unreal Engine
+# ============================================================
+
+# Generated project files
+*.VC.db
+*.VC.opendb
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.xcodeproj
+*.xcworkspace
+
+# Visual Studio
+.vs/
+.vscode/
+.idea/
+
+# Unreal generated directories
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Build outputs
+Build/Receipts/
+Build/BatchFiles/
+
+# Packaged builds
+Builds/
+Packaged/
+StagedBuilds/
+
+# ============================================================
+# Plugins
+# ============================================================
+
+# Ignore generated plugin files, but keep plugin source/content
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+Plugins/*/DerivedDataCache/
+Plugins/*/Saved/
+
+# Recursive plugin generated directories
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+Plugins/**/DerivedDataCache/
+Plugins/**/Saved/
+
+# ============================================================
+# IDE / Compiler
+# ============================================================
+
+*.VC.db
+*.VC.VC.opendb
+*.opendb
+*.opensdf
+*.sdf
+*.suo
+*.user
+*.userprefs
+*.sln.docstates
+
+# Rider
+.idea/
+*.sln.iml
+
+# Visual Studio Code
+.vscode/
+
+# ============================================================
+# Operating System
+# ============================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+
+# ============================================================
+# Logs / Temporary files
+# ============================================================
+
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*.orig
+
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+.venv/
+venv/
+env/
+
+# ============================================================
+# Unreal autosaves / crashes
+# ============================================================
+
+Saved/Autosaves/
+Saved/Backup/
+Saved/Crashes/
+Saved/Logs/
+
+# ============================================================
+# Local caches
+# ============================================================
+
+.cache/
+.DDC/
+
+# ============================================================
+# Do NOT ignore important UE project content
+# ============================================================
+
+# These should normally remain tracked:
+#
+# Config/
+# Content/
+# Source/
+# Plugins/
+# *.uproject
+#
+# Do not add them to .gitignore.
