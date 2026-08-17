@@ -1,6 +1,6 @@
-#include "Battle/BattleManager.h"
+#include "BattleManager.h"
 
-#include "Combat/Combatant.h"
+#include "../Combat/Combatant.h"
 
 ABattleManager::ABattleManager()
 {
