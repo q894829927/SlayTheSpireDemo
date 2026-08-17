@@ -32,6 +32,13 @@ enum class EDamageModifierPhase : uint8
 	TargetMultiplier UMETA(DisplayName = "Target Multiplier")
 };
 
+UENUM(BlueprintType)
+enum class EBlockModifierPhase : uint8
+{
+	FlatAdd UMETA(DisplayName = "Flat Add"),
+	Multiplier UMETA(DisplayName = "Multiplier")
+};
+
 inline const TCHAR* DamageKindToString(EDamageKind DamageKind)
 {
 	switch (DamageKind)
@@ -55,6 +62,19 @@ inline const TCHAR* DamageModifierPhaseToString(EDamageModifierPhase Phase)
 		return TEXT("SourceMultiplier");
 	case EDamageModifierPhase::TargetMultiplier:
 		return TEXT("TargetMultiplier");
+	default:
+		return TEXT("Unknown");
+	}
+}
+
+inline const TCHAR* BlockModifierPhaseToString(EBlockModifierPhase Phase)
+{
+	switch (Phase)
+	{
+	case EBlockModifierPhase::FlatAdd:
+		return TEXT("FlatAdd");
+	case EBlockModifierPhase::Multiplier:
+		return TEXT("Multiplier");
 	default:
 		return TEXT("Unknown");
 	}
