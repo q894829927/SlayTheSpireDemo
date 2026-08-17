@@ -427,6 +427,210 @@ Prefer Blueprint / UMG / DataAssets for:
 - content configuration;
 - editor-created test actors/assets.
 
+### Content root policy
+
+All project-owned Unreal assets should live under a dedicated project namespace:
+
+```text
+Content/SlayTheSpireDemo/
+```
+
+Do not place project assets directly in the `Content/` root unless there is a specific reason. This keeps first-party assets separate from Marketplace packs, Starter Content, Megascans and plugin content.
+
+Do not create every directory below in advance. Treat the tree as the target organization and add folders only when the related system or asset type is actually introduced.
+
+### Recommended long-term Content directory tree
+
+```text
+Content/
+└── SlayTheSpireDemo/
+    │
+    ├── Maps/
+    │   ├── L_BattleTest
+    │   ├── L_MainMenu
+    │   └── L_MapTest
+    │
+    ├── Blueprints/
+    │   │
+    │   ├── Battle/
+    │   │   └── BP_BattleManager
+    │   │
+    │   ├── Characters/
+    │   │   ├── Player/
+    │   │   │   └── BP_PlayerCombatant
+    │   │   │
+    │   │   └── Enemies/
+    │   │       ├── BP_TestEnemy
+    │   │       ├── BP_JawWorm
+    │   │       └── BP_Cultist
+    │   │
+    │   ├── Cards/
+    │   │   └── (only Blueprint-backed special card behavior when genuinely needed)
+    │   │
+    │   └── Debug/
+    │       └── BP_BattleDebugController
+    │
+    ├── Data/
+    │   │
+    │   ├── Cards/
+    │   │   ├── Ironclad/
+    │   │   │   ├── Attacks/
+    │   │   │   │   ├── DA_Card_Strike
+    │   │   │   │   ├── DA_Card_Bash
+    │   │   │   │   └── DA_Card_PommelStrike
+    │   │   │   ├── Skills/
+    │   │   │   │   ├── DA_Card_Defend
+    │   │   │   │   └── DA_Card_ShrugItOff
+    │   │   │   └── Powers/
+    │   │   │       └── DA_Card_Inflame
+    │   │   └── Shared/
+    │   │
+    │   ├── Enemies/
+    │   │   ├── DA_Enemy_JawWorm
+    │   │   └── DA_Enemy_Cultist
+    │   │
+    │   ├── Status/
+    │   │   ├── DA_Status_Strength
+    │   │   ├── DA_Status_Weak
+    │   │   └── DA_Status_Vulnerable
+    │   │
+    │   └── Relics/
+    │       ├── DA_Relic_Sundial
+    │       └── DA_Relic_Abacus
+    │
+    ├── UI/
+    │   ├── Battle/
+    │   │   ├── WBP_BattleHUD
+    │   │   ├── WBP_PlayerPanel
+    │   │   ├── WBP_EnemyPanel
+    │   │   └── WBP_EnergyCounter
+    │   ├── Cards/
+    │   │   ├── WBP_Card
+    │   │   ├── WBP_Hand
+    │   │   └── WBP_CardTargetSelector
+    │   ├── Status/
+    │   │   └── WBP_StatusIcon
+    │   ├── Relics/
+    │   │   └── WBP_RelicIcon
+    │   └── Common/
+    │       ├── WBP_HealthBar
+    │       └── WBP_Tooltip
+    │
+    ├── Art/
+    │   ├── Characters/
+    │   │   ├── Player/
+    │   │   └── Enemies/
+    │   ├── Cards/
+    │   │   ├── Ironclad/
+    │   │   └── Common/
+    │   ├── Relics/
+    │   ├── Status/
+    │   ├── Backgrounds/
+    │   └── Icons/
+    │
+    ├── Materials/
+    │   ├── Cards/
+    │   ├── UI/
+    │   └── VFX/
+    │
+    ├── VFX/
+    │   ├── Combat/
+    │   ├── Cards/
+    │   └── Status/
+    │
+    ├── Audio/
+    │   ├── Music/
+    │   ├── SFX/
+    │   │   ├── Cards/
+    │   │   ├── Combat/
+    │   │   └── UI/
+    │   └── Ambience/
+    │
+    └── Dev/
+        ├── Debug/
+        └── Tests/
+```
+
+The directory tree describes organization, not a requirement to create all assets shown. Example assets such as `BP_JawWorm`, `DA_Relic_Sundial` and `WBP_Card` should only be created when their development phase begins.
+
+### Phase 1 Content directory tree
+
+During Phase 1, create only the assets and folders required for the minimal battle-loop validation:
+
+```text
+Content/
+└── SlayTheSpireDemo/
+    ├── Maps/
+    │   └── L_BattleTest
+    │
+    └── Blueprints/
+        ├── Battle/
+        │   └── BP_BattleManager
+        │
+        └── Characters/
+            ├── Player/
+            │   └── BP_PlayerCombatant
+            │
+            └── Enemies/
+                └── BP_TestEnemy
+```
+
+Do not create `Data/`, `UI/`, `Cards/`, `Relics/`, `Status/`, `Art/`, `VFX/` or `Audio/` merely to reserve them during Phase 1.
+
+### Asset naming conventions
+
+Use stable prefixes so Content Browser searches remain predictable:
+
+| Asset type | Prefix | Example |
+|---|---|---|
+| Blueprint Class | `BP_` | `BP_BattleManager` |
+| Widget Blueprint | `WBP_` | `WBP_Card` |
+| Data Asset | `DA_` | `DA_Card_Strike` |
+| Level / Map | `L_` | `L_BattleTest` |
+| Texture | `T_` | `T_Card_Strike` |
+| Material | `M_` | `M_Card` |
+| Material Instance | `MI_` | `MI_Card_Attack` |
+| Niagara System | `NS_` | `NS_Hit` |
+| Niagara Emitter | `NE_` | `NE_HitBurst` |
+| Sound Wave | `S_` | `S_Card_Play` |
+| Sound Cue | `SC_` | `SC_Attack` |
+| Animation asset | `A_` | `A_EnemyAttack` |
+
+Prefer descriptive DataAsset prefixes that include the domain:
+
+```text
+DA_Card_Strike
+DA_Relic_Sundial
+DA_Status_Strength
+DA_Enemy_JawWorm
+```
+
+instead of ambiguous names such as `DA_Strike` or `DA_Strength`.
+
+### Asset responsibility separation
+
+Keep rules, configuration and presentation distinct.
+
+Example card split:
+
+```text
+Source/Cards/CardData.*              -> card data schema / gameplay rules
+Content/.../Data/Cards/...           -> card configuration instances
+Content/.../Art/Cards/...            -> card art
+Content/.../UI/Cards/...             -> card presentation widgets
+```
+
+Example enemy split:
+
+```text
+Source/Enemy/...                     -> enemy runtime rules / intent logic
+Content/.../Data/Enemies/...         -> numeric/content configuration
+Content/.../Blueprints/Characters/Enemies/... -> actor assembly/presentation
+Content/.../Art/Characters/Enemies/...        -> visual assets
+```
+
+Do not place DataAssets into `Blueprints/` just because they are editor-created assets, and do not mix card artwork into `Data/Cards/`.
+
 ### Binary assets
 
 Agents working only through source control/text tools must not pretend to have created or correctly wired `.uasset` / `.umap` assets when they cannot actually operate the UE editor.
