@@ -379,6 +379,61 @@ void ABattleManager::TestPhase5B1EffectDamage()
 	ActionQueue->StartProcessing();
 }
 
+void ABattleManager::TestApplyPhase5B2DamageStatuses()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestApplyPhase5B2DamageStatuses failed: combatants or ActionQueue are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B2DamageStatuses rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B2DamageStatuses rejected: action queue is busy."));
+		return;
+	}
+
+	if (DebugPhase5AStatuses.Num() < 1 || !IsValid(DebugPhase5AStatuses[0].Get()) ||
+		DebugPhase5B2Statuses.Num() < 2 || !IsValid(DebugPhase5B2Statuses[0].Get()) || !IsValid(DebugPhase5B2Statuses[1].Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B2DamageStatuses requires Strength plus Weak/Vulnerable StatusData assets."));
+		return;
+	}
+
+	UStatusData* StrengthDefinition = DebugPhase5AStatuses[0].Get();
+	UStatusData* WeakDefinition = DebugPhase5B2Statuses[0].Get();
+	UStatusData* VulnerableDefinition = DebugPhase5B2Statuses[1].Get();
+
+	if (StrengthDefinition->StatusId.IsNone() || WeakDefinition->StatusId.IsNone() || VulnerableDefinition->StatusId.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestApplyPhase5B2DamageStatuses requires non-empty StatusId values."));
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Phase 5B2 status test queued in reverse modifier-phase order: %s +2 Enemy, %s +3 Player, %s +2 Player."),
+		*VulnerableDefinition->StatusId.ToString(),
+		*WeakDefinition->StatusId.ToString(),
+		*StrengthDefinition->StatusId.ToString()
+	);
+
+	// Deliberately create statuses in the opposite order from their modifier phases.
+	// Expected runtime sequence: Vulnerable#1, Weak#2, Strength#3 on a fresh battle.
+	// Expected damage resolution remains: Strength FlatAdd -> Weak SourceMultiplier -> Vulnerable TargetMultiplier.
+	QueueApplyStatusAction(Player.Get(), Enemy.Get(), VulnerableDefinition, 2);
+	QueueApplyStatusAction(Player.Get(), Player.Get(), WeakDefinition, 3);
+	QueueApplyStatusAction(Player.Get(), Player.Get(), StrengthDefinition, 2);
+	ActionQueue->StartProcessing();
+}
+
 void ABattleManager::EndPlayerTurn()
 {
 	if (!HasValidCombatants())
