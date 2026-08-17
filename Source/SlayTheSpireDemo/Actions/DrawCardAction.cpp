@@ -2,6 +2,7 @@
 
 #include "BattleActionQueue.h"
 #include "ShuffleDeckAction.h"
+#include "../Cards/CardInstance.h"
 #include "../Deck/DeckRuntime.h"
 
 void UDrawCardAction::Initialize(UDeckRuntime* InDeck)
@@ -27,7 +28,7 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 
 	if (Deck->HasCardsInDrawPile())
 	{
-		FDeckCardToken DrawnCard;
+		UCardInstance* DrawnCard = nullptr;
 		if (!Deck->TryDrawTopCard(DrawnCard))
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction failed to draw despite a non-empty DrawPile."));
