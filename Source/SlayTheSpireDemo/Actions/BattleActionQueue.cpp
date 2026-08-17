@@ -77,7 +77,10 @@ void UBattleActionQueue::PumpQueue()
 			PendingActions.Num()
 		);
 
-		ActionToExecute->Execute();
+		// The queue is passed explicitly so an action may enqueue dependent
+		// follow-up actions without discovering its Outer or advancing the queue
+		// itself. Only UBattleActionQueue controls execution progression.
+		ActionToExecute->Execute(this);
 
 		// A synchronous action calls Finish() during Execute(), which clears
 		// CurrentAction through HandleActionFinished. The loop can then continue
