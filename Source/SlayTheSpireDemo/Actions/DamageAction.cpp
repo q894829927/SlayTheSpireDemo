@@ -1,12 +1,20 @@
 #include "DamageAction.h"
 
 #include "../Combat/Combatant.h"
+#include "../Modifiers/Damage/DamageModifierPipeline.h"
+#include "../Modifiers/Damage/DamageSpec.h"
 
-void UDamageAction::Initialize(ACombatant* InSource, ACombatant* InTarget, int32 InBaseAmount)
+void UDamageAction::Initialize(
+	ACombatant* InSource,
+	ACombatant* InTarget,
+	int32 InBaseAmount,
+	EDamageKind InDamageKind
+)
 {
 	Source = InSource;
 	Target = InTarget;
 	BaseAmount = InBaseAmount;
+	DamageKind = InDamageKind;
 }
 
 void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
@@ -25,18 +33,29 @@ void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 		return;
 	}
 
+	FDamageSpec Spec;
+	Spec.Source = Source.Get();
+	Spec.Target = Target.Get();
+	Spec.DamageKind = DamageKind;
+	Spec.BaseAmount = BaseAmount;
+
+	FDamageModifierPipeline::Resolve(Spec);
+
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Action] DamageAction: Source=%s Target=%s BaseAmount=%d"),
+		TEXT("[Action] DamageAction resolved: Source=%s Target=%s Kind=%s Base=%d Resolved=%d"),
 		*GetNameSafe(Source.Get()),
 		*GetNameSafe(Target.Get()),
-		BaseAmount
+		DamageKindToString(DamageKind),
+		BaseAmount,
+		Spec.ResolvedAmount
 	);
 
-	// BaseAmount is stable intent captured when the action is built. Phase 5
-	// will resolve the final value here at execution time through FDamageSpec
-	// and the damage Modifier Pipeline before committing to the target.
-	Target->TakeCombatDamage(BaseAmount);
+	if (Spec.ResolvedAmount > 0)
+	{
+		Target->TakeCombatDamage(Spec.ResolvedAmount);
+	}
+
 	Finish();
 }
