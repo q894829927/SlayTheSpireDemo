@@ -11,9 +11,9 @@ void UGainBlockAction::Initialize(ACombatant* InSource, ACombatant* InTarget, in
 
 void UGainBlockAction::Execute(UBattleActionQueue* /*Queue*/)
 {
-	if (!IsValid(Target.Get()))
+	if (!IsValid(Target.Get()) || Target->IsDead())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] GainBlockAction skipped: invalid target."));
+		UE_LOG(LogTemp, Warning, TEXT("[Action] GainBlockAction skipped: target is invalid or dead."));
 		Finish();
 		return;
 	}
@@ -34,8 +34,9 @@ void UGainBlockAction::Execute(UBattleActionQueue* /*Queue*/)
 		BaseAmount
 	);
 
-	// Phase 3 still commits BaseAmount directly. Phase 5 will build an
-	// FBlockSpec and resolve it through the Modifier Pipeline before commit.
+	// BaseAmount is stable intent captured when the action is built. Phase 5
+	// will resolve the final value here at execution time through FBlockSpec
+	// and the block Modifier Pipeline before committing to the target.
 	Target->GainBlock(BaseAmount);
 	Finish();
 }
