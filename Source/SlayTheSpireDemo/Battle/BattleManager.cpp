@@ -5,6 +5,8 @@
 #include "../Actions/DiscardCardAction.h"
 #include "../Actions/DrawCardAction.h"
 #include "../Actions/GainBlockAction.h"
+#include "../Actions/PlayCardAction.h"
+#include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 
@@ -36,7 +38,12 @@ void ABattleManager::StartBattle()
 		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create DeckRuntime."));
 		return;
 	}
-	DeckRuntime->InitializeDebugDeck(DeckDebugSeed);
+	DeckRuntime->InitializeFromDefinitions(DebugStartingDeck, DeckDebugSeed);
+
+	if (DebugStartingDeck.Num() == 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] DebugStartingDeck is empty. Configure Phase 4 CardData assets on BP_BattleManager."));
+	}
 
 	Player->InitializeCombatant();
 	Enemy->InitializeCombatant();
@@ -44,7 +51,7 @@ void ABattleManager::StartBattle()
 	BattleState = EBattleState::BattleStart;
 	Energy = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue and DeckRuntime initialized."));
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue and CardInstance DeckRuntime initialized."));
 	StartPlayerTurn();
 }
 
@@ -207,22 +214,48 @@ void ABattleManager::TestDiscardCard()
 		return;
 	}
 
-	FDeckCardToken CardToDiscard;
-	if (!DeckRuntime->GetFirstHandCard(CardToDiscard))
+	UCardInstance* CardToDiscard = DeckRuntime->GetFirstHandCard();
+	if (!IsValid(CardToDiscard))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestDiscardCard skipped: Hand is empty."));
 		return;
 	}
 
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[Battle] Test discard requested for %s#%d."),
-		*CardToDiscard.DebugName.ToString(),
-		CardToDiscard.RuntimeId
-	);
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Test discard requested for %s."), *CardToDiscard->GetDebugLabel());
 
-	QueueDiscardCardAction(CardToDiscard.RuntimeId);
+	QueueDiscardCardAction(CardToDiscard);
+	ActionQueue->StartProcessing();
+}
+
+void ABattleManager::TestPlayFirstCard()
+{
+	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] TestPlayFirstCard failed: battle references, ActionQueue or DeckRuntime are invalid."));
+		return;
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard rejected: it is not the player's turn."));
+		return;
+	}
+
+	if (IsActionQueueBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard rejected: action queue is busy."));
+		return;
+	}
+
+	UCardInstance* CardToPlay = DeckRuntime->GetFirstHandCard();
+	if (!IsValid(CardToPlay))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard skipped: Hand is empty."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Test play requested for %s."), *CardToPlay->GetDebugLabel());
+	QueuePlayCardAction(CardToPlay, Enemy.Get());
 	ActionQueue->StartProcessing();
 }
 
@@ -254,6 +287,23 @@ void ABattleManager::EndPlayerTurn()
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Player turn ended."));
 	StartEnemyTurn();
+}
+
+bool ABattleManager::CanSpendEnergy(int32 Amount) const
+{
+	return Amount >= 0 && Energy >= Amount;
+}
+
+bool ABattleManager::TrySpendEnergy(int32 Amount)
+{
+	if (!CanSpendEnergy(Amount))
+	{
+		return false;
+	}
+
+	Energy -= Amount;
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Energy spent: Amount=%d Energy=%d/%d"), Amount, Energy, MaxEnergy);
+	return true;
 }
 
 void ABattleManager::StartPlayerTurn()
@@ -370,15 +420,27 @@ void ABattleManager::QueueDrawCardAction()
 	ActionQueue->AddToBack(Action);
 }
 
-void ABattleManager::QueueDiscardCardAction(int32 RuntimeId)
+void ABattleManager::QueueDiscardCardAction(UCardInstance* Card)
 {
-	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	if (!HasValidActionQueue() || !HasValidDeckRuntime() || !IsValid(Card))
 	{
 		return;
 	}
 
 	UDiscardCardAction* Action = NewObject<UDiscardCardAction>(ActionQueue.Get());
-	Action->Initialize(DeckRuntime.Get(), RuntimeId);
+	Action->Initialize(DeckRuntime.Get(), Card);
+	ActionQueue->AddToBack(Action);
+}
+
+void ABattleManager::QueuePlayCardAction(UCardInstance* Card, ACombatant* Target)
+{
+	if (!HasValidActionQueue() || !HasValidDeckRuntime() || !IsValid(Card))
+	{
+		return;
+	}
+
+	UPlayCardAction* Action = NewObject<UPlayCardAction>(ActionQueue.Get());
+	Action->Initialize(this, Card, Player.Get(), Target, DeckRuntime.Get());
 	ActionQueue->AddToBack(Action);
 }
 
