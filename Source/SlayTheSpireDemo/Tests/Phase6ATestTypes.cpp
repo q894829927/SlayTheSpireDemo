@@ -2,6 +2,7 @@
 
 #include "../Actions/BattleActionQueue.h"
 #include "../Combat/Combatant.h"
+#include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEvent.h"
 #include "../Events/BattleEventDispatcher.h"
 
@@ -13,6 +14,14 @@ namespace
 		return TurnEnded != nullptr
 			&& IsValid(TurnEnded->TurnOwner)
 			&& TurnEnded->TurnOwner == Context.GetOwner();
+	}
+
+	bool IsExpectedDeckShuffled(const FBattleEvent& Event, const UDeckRuntime* ExpectedDeck)
+	{
+		const FDeckShuffledEvent* DeckShuffled = Event.TryGet<FDeckShuffledEvent>();
+		return DeckShuffled != nullptr
+			&& IsValid(DeckShuffled->Deck)
+			&& DeckShuffled->Deck == ExpectedDeck;
 	}
 }
 
@@ -29,14 +38,34 @@ const TArray<int32>& UPhase6ATestExecutionRecorder::GetValues() const
 void UPhase6ATestRecordAction::Initialize(UPhase6ATestExecutionRecorder* InRecorder, int32 InValue)
 {
 	Recorder = InRecorder;
+	Deck = nullptr;
 	Value = InValue;
+	bRecordDeckHandCount = false;
+}
+
+void UPhase6ATestRecordAction::InitializeDeckHandCount(
+	UPhase6ATestExecutionRecorder* InRecorder,
+	UDeckRuntime* InDeck
+)
+{
+	Recorder = InRecorder;
+	Deck = InDeck;
+	Value = 0;
+	bRecordDeckHandCount = true;
 }
 
 void UPhase6ATestRecordAction::Execute(UBattleActionQueue* /*Queue*/)
 {
 	if (IsValid(Recorder.Get()))
 	{
-		Recorder->Record(Value);
+		if (bRecordDeckHandCount && IsValid(Deck.Get()))
+		{
+			Recorder->Record(Deck->GetHandCount());
+		}
+		else
+		{
+			Recorder->Record(Value);
+		}
 	}
 	Finish();
 }
@@ -44,12 +73,35 @@ void UPhase6ATestRecordAction::Execute(UBattleActionQueue* /*Queue*/)
 void UPhase6ATestRecordTrigger::Initialize(UPhase6ATestExecutionRecorder* InRecorder, int32 InValue)
 {
 	Recorder = InRecorder;
+	Deck = nullptr;
 	Value = InValue;
+	bReactToDeckShuffled = false;
+}
+
+void UPhase6ATestRecordTrigger::InitializeForDeckShuffled(
+	UPhase6ATestExecutionRecorder* InRecorder,
+	UDeckRuntime* InDeck
+)
+{
+	Recorder = InRecorder;
+	Deck = InDeck;
+	Value = 0;
+	bReactToDeckShuffled = true;
 }
 
 bool UPhase6ATestRecordTrigger::CanReact(const FBattleEvent& Event, const FTriggerContext& Context) const
 {
-	return IsValid(Recorder.Get()) && IsOwnerTurnEnded(Event, Context);
+	if (!IsValid(Recorder.Get()))
+	{
+		return false;
+	}
+
+	if (bReactToDeckShuffled)
+	{
+		return IsValid(Deck.Get()) && IsExpectedDeckShuffled(Event, Deck.Get());
+	}
+
+	return IsOwnerTurnEnded(Event, Context);
 }
 
 void UPhase6ATestRecordTrigger::BuildReactions(
@@ -64,7 +116,18 @@ void UPhase6ATestRecordTrigger::BuildReactions(
 	}
 
 	UPhase6ATestRecordAction* Action = NewObject<UPhase6ATestRecordAction>(Context.GetActionOuter());
-	Action->Initialize(Recorder.Get(), Value);
+	if (bReactToDeckShuffled)
+	{
+		if (!IsValid(Deck.Get()))
+		{
+			return;
+		}
+		Action->InitializeDeckHandCount(Recorder.Get(), Deck.Get());
+	}
+	else
+	{
+		Action->Initialize(Recorder.Get(), Value);
+	}
 	OutActions.Add(Action);
 }
 
@@ -95,9 +158,6 @@ void UPhase6ATestEmitTurnEndedAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	// This Record is the test Action's observable commit. The nested event is
-	// deliberately dispatched after commit and before Finish(), matching the
-	// production event-emission contract required by Phase 6.
 	Recorder->Record(CommitValue);
 
 	TArray<ACombatant*> RawCombatants;
