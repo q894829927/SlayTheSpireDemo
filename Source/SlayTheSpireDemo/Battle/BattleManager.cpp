@@ -7,9 +7,12 @@
 #include "../Actions/DrawCardAction.h"
 #include "../Actions/GainBlockAction.h"
 #include "../Actions/PlayCardAction.h"
+#include "../Actions/TurnEndedAction.h"
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
+#include "../Events/BattleEvent.h"
+#include "../Events/BattleEventDispatcher.h"
 #include "../Modifiers/ModifierTypes.h"
 #include "../Status/StatusData.h"
 
@@ -34,6 +37,14 @@ void ABattleManager::StartBattle()
 	}
 
 	ActionQueue->OnQueueEmpty.AddUObject(this, &ABattleManager::HandleActionQueueEmpty);
+	ActionQueue->OnResolutionFaulted.AddUObject(this, &ABattleManager::HandleActionQueueResolutionFaulted);
+
+	EventDispatcher = NewObject<UBattleEventDispatcher>(this);
+	if (!HasValidEventDispatcher())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create EventDispatcher."));
+		return;
+	}
 
 	DeckRuntime = NewObject<UDeckRuntime>(this);
 	if (!HasValidDeckRuntime())
@@ -55,7 +66,13 @@ void ABattleManager::StartBattle()
 	BattleState = EBattleState::BattleStart;
 	Energy = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue, DeckRuntime and StatusContainers initialized."));
+#if WITH_DEV_AUTOMATION_TESTS
+	bForceInvalidPlayerEndBatchForTesting = false;
+	bForceInvalidEnemyTurnBatchForTesting = false;
+	StateBeforeLastResolutionFaultForTesting = EBattleState::BattleStart;
+#endif
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue, EventDispatcher, DeckRuntime and StatusContainers initialized."));
 	StartPlayerTurn();
 }
 
@@ -493,9 +510,9 @@ void ABattleManager::EndPlayerTurn()
 		return;
 	}
 
-	if (!HasValidActionQueue())
+	if (!HasValidActionQueue() || !HasValidEventDispatcher())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed: ActionQueue is not initialized."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed: ActionQueue or EventDispatcher is not initialized."));
 		return;
 	}
 
@@ -511,8 +528,42 @@ void ABattleManager::EndPlayerTurn()
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Player turn ended."));
-	StartEnemyTurn();
+	if (Player->IsDead() || Enemy->IsDead())
+	{
+		CheckBattleResult();
+		return;
+	}
+
+	UObject* TurnEndedOuter = ActionQueue.Get();
+#if WITH_DEV_AUTOMATION_TESTS
+	if (bForceInvalidPlayerEndBatchForTesting)
+	{
+		TurnEndedOuter = this;
+		bForceInvalidPlayerEndBatchForTesting = false;
+	}
+#endif
+
+	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
+	TurnEndedAction->Initialize(this, Player.Get());
+	TArray<UBattleAction*> TurnEndBatch{TurnEndedAction};
+
+	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnEndBatch))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic TurnEndedAction batch."));
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch insertion failed before PlayerTurnEnding state commit."));
+		return;
+	}
+
+	// Commit the ending state only after the complete batch is accepted.
+	BattleState = EBattleState::PlayerTurnEnding;
+	Energy = 0;
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Player turn ending committed. TurnEndedAction queued atomically."));
+
+	if (!ActionQueue->StartProcessing())
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch was accepted but could not start processing."));
+	}
 }
 
 bool ABattleManager::CanSpendEnergy(int32 Amount) const
@@ -543,8 +594,35 @@ uint64 ABattleManager::AllocateRuntimeSequence()
 	return NextRuntimeSequence++;
 }
 
+#if WITH_DEV_AUTOMATION_TESTS
+UBattleActionQueue* ABattleManager::GetActionQueueForTesting() const
+{
+	return ActionQueue.Get();
+}
+
+void ABattleManager::SetForceInvalidPlayerEndBatchForTesting(bool bForceInvalid)
+{
+	bForceInvalidPlayerEndBatchForTesting = bForceInvalid;
+}
+
+void ABattleManager::SetForceInvalidEnemyTurnBatchForTesting(bool bForceInvalid)
+{
+	bForceInvalidEnemyTurnBatchForTesting = bForceInvalid;
+}
+
+EBattleState ABattleManager::GetStateBeforeLastResolutionFaultForTesting() const
+{
+	return StateBeforeLastResolutionFaultForTesting;
+}
+#endif
+
 void ABattleManager::StartPlayerTurn()
 {
+	if (BattleState == EBattleState::ResolutionFaulted)
+	{
+		return;
+	}
+
 	if (!HasValidCombatants() || Player->IsDead() || Enemy->IsDead())
 	{
 		CheckBattleResult();
@@ -560,47 +638,181 @@ void ABattleManager::StartPlayerTurn()
 
 void ABattleManager::StartEnemyTurn()
 {
+	if (BattleState == EBattleState::ResolutionFaulted)
+	{
+		return;
+	}
+
 	if (!HasValidCombatants() || Player->IsDead() || Enemy->IsDead())
 	{
 		CheckBattleResult();
 		return;
 	}
 
-	if (!HasValidActionQueue())
+	if (!HasValidActionQueue() || !HasValidEventDispatcher())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed: ActionQueue is not initialized."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed: ActionQueue or EventDispatcher is not initialized."));
 		return;
 	}
 
+	UDamageAction* DamageAction = NewObject<UDamageAction>(ActionQueue.Get());
+	DamageAction->Initialize(Enemy.Get(), Player.Get(), EnemyTestAttackDamage, EDamageKind::Attack);
+
+	UObject* TurnEndedOuter = ActionQueue.Get();
+#if WITH_DEV_AUTOMATION_TESTS
+	if (bForceInvalidEnemyTurnBatchForTesting)
+	{
+		TurnEndedOuter = this;
+		bForceInvalidEnemyTurnBatchForTesting = false;
+	}
+#endif
+
+	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
+	TurnEndedAction->Initialize(this, Enemy.Get());
+
+	TArray<UBattleAction*> EnemyTurnBatch{DamageAction, TurnEndedAction};
+	if (!ActionQueue->AddBatchToBackPreserveOrder(EnemyTurnBatch))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy action batch."));
+		ActionQueue->RequestResolutionFault(TEXT("Enemy turn batch insertion failed before EnemyTurn state commit."));
+		return;
+	}
+
+	// Enemy turn state and start-of-turn mutation commit only after the whole
+	// [EnemyDamageAction, TurnEndedAction] batch is accepted.
 	BattleState = EBattleState::EnemyTurn;
+	Energy = 0;
 	Enemy->ClearBlock();
 
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Battle] Enemy turn started. Queueing DamageAction BaseAmount=%d"),
+		TEXT("[Battle] Enemy turn started. Atomic batch queued: Damage BaseAmount=%d -> TurnEndedAction."),
 		EnemyTestAttackDamage
 	);
 
-	QueueDamageAction(Enemy.Get(), Player.Get(), EnemyTestAttackDamage, EDamageKind::Attack);
-	ActionQueue->StartProcessing();
+	if (!ActionQueue->StartProcessing())
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Enemy turn batch was accepted but could not start processing."));
+	}
 }
 
 void ABattleManager::HandleActionQueueEmpty()
 {
-	UE_LOG(LogTemp, Log, TEXT("[Battle] ActionQueue empty. Resolving post-queue battle flow."));
+	UE_LOG(LogTemp, Log, TEXT("[Battle] ActionQueue empty. Resolving post-queue battle flow. State=%d"), static_cast<int32>(BattleState));
+
+	if (BattleState == EBattleState::ResolutionFaulted)
+	{
+		return;
+	}
 
 	CheckBattleResult();
-
-	if (BattleState == EBattleState::EnemyTurn)
+	if (BattleState == EBattleState::Victory || BattleState == EBattleState::Defeat || BattleState == EBattleState::ResolutionFaulted)
 	{
-		StartPlayerTurn();
+		return;
 	}
+
+	switch (BattleState)
+	{
+	case EBattleState::PlayerTurnEnding:
+		StartEnemyTurn();
+		break;
+
+	case EBattleState::EnemyTurnEnding:
+		StartPlayerTurn();
+		break;
+
+	default:
+		break;
+	}
+}
+
+void ABattleManager::HandleActionQueueResolutionFaulted(
+	const FString& Reason,
+	int32 ExecutedCount,
+	UBattleAction* LastAction
+)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	StateBeforeLastResolutionFaultForTesting = BattleState;
+#endif
+
+	BattleState = EBattleState::ResolutionFaulted;
+	Energy = 0;
+
+	UE_LOG(
+		LogTemp,
+		Error,
+		TEXT("[Battle] Resolution faulted. Reason=%s Executed=%d LastAction=%s"),
+		*Reason,
+		ExecutedCount,
+		*GetNameSafe(LastAction)
+	);
+}
+
+void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue)
+{
+	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidEventDispatcher() ||
+		!IsValid(TurnOwner) || Queue != ActionQueue.Get())
+	{
+		if (IsValid(Queue))
+		{
+			Queue->RequestResolutionFault(TEXT("TurnEndedAction reached BattleManager with invalid battle wiring."));
+		}
+		return;
+	}
+
+	// A lethal action earlier in the same atomic turn batch suppresses the normal
+	// TurnEnded event. The authoritative Victory/Defeat transition is deferred to
+	// the one real QueueEmpty after the batch drains.
+	if (Player->IsDead() || Enemy->IsDead())
+	{
+		UE_LOG(LogTemp, Log, TEXT("[Battle] TurnEndedAction skipped event dispatch because a combatant is dead. TurnOwner=%s"), *GetNameSafe(TurnOwner));
+		return;
+	}
+
+	if (TurnOwner == Player.Get())
+	{
+		if (BattleState != EBattleState::PlayerTurnEnding)
+		{
+			Queue->RequestResolutionFault(TEXT("Player TurnEndedAction executed outside PlayerTurnEnding state."));
+			return;
+		}
+	}
+	else if (TurnOwner == Enemy.Get())
+	{
+		if (BattleState != EBattleState::EnemyTurn)
+		{
+			Queue->RequestResolutionFault(TEXT("Enemy TurnEndedAction executed outside EnemyTurn state."));
+			return;
+		}
+
+		// EnemyTurnEnding begins only when the sentinel reaches execution, after all
+		// preceding enemy actions have committed successfully.
+		BattleState = EBattleState::EnemyTurnEnding;
+	}
+	else
+	{
+		Queue->RequestResolutionFault(TEXT("TurnEndedAction TurnOwner is not an authoritative battle combatant."));
+		return;
+	}
+
+	TArray<ACombatant*> Combatants;
+	Combatants.Add(Player.Get());
+	Combatants.Add(Enemy.Get());
+
+	if (!EventDispatcher->Dispatch(FBattleEvent::MakeTurnEnded(TurnOwner), Queue, Combatants))
+	{
+		Queue->RequestResolutionFault(TEXT("TurnEnded event dispatch failed during Phase 6B turn wiring."));
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] TurnEnded event dispatched. TurnOwner=%s State=%d"), *GetNameSafe(TurnOwner), static_cast<int32>(BattleState));
 }
 
 void ABattleManager::CheckBattleResult()
 {
-	if (!HasValidCombatants())
+	if (BattleState == EBattleState::ResolutionFaulted || !HasValidCombatants())
 	{
 		return;
 	}
@@ -716,6 +928,11 @@ bool ABattleManager::HasValidActionQueue() const
 bool ABattleManager::HasValidDeckRuntime() const
 {
 	return IsValid(DeckRuntime.Get());
+}
+
+bool ABattleManager::HasValidEventDispatcher() const
+{
+	return IsValid(EventDispatcher.Get());
 }
 
 bool ABattleManager::IsActionQueueBusy() const
