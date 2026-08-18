@@ -23,6 +23,9 @@ public:
 		bool& bOutCreated
 	);
 
+	bool ReduceStatus(UStatusInstance* ExpectedInstance, int32 AmountToRemove);
+	bool ContainsStatusInstance(const UStatusInstance* Instance) const;
+
 	const UStatusInstance* FindStatusById(FName StatusId) const;
 	bool RemoveStatusById(FName StatusId);
 
