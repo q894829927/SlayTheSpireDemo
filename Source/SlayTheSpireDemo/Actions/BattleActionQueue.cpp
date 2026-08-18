@@ -105,6 +105,12 @@ bool UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(TFunction<void()>&& 
 		return false;
 	}
 
+	if (!Continuation)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] QueueEmpty continuation rejected: callable is unbound."));
+		return false;
+	}
+
 	if (bHasDeferredQueueEmptyContinuation)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] QueueEmpty continuation rejected: an authoritative continuation is already registered for this boundary."));
@@ -193,15 +199,18 @@ bool UBattleActionQueue::ValidateBatchForInsertion(const TArray<UBattleAction*>&
 		return false;
 	}
 
+	// Empty batches are always a legal no-op for a healthy Queue, including
+	// while QueueEmpty observers are being notified. They cannot mutate pending
+	// work, so the non-reentrant observer protection only applies to non-empty work.
+	if (Actions.Num() == 0)
+	{
+		return true;
+	}
+
 	if (bIsBroadcastingQueueEmpty)
 	{
 		OutReason = TEXT("Actions cannot be inserted directly while QueueEmpty observers are being notified; defer authoritative macro progression first.");
 		return false;
-	}
-
-	if (Actions.Num() == 0)
-	{
-		return true;
 	}
 
 	TSet<UBattleAction*> Seen;
