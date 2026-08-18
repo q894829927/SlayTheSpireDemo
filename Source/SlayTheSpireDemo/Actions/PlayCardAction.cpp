@@ -77,11 +77,15 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 			RawEventCombatants.Add(Combatant.Get());
 		}
 	}
-	else if (!Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawEventCombatants))
+	else
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: battle event-dispatch context is unavailable."));
-		Finish();
-		return;
+		// Event wiring is optional at the generic PlayCard layer. Non-draw cards
+		// must not gain a new hard dependency just because Phase 6C added a shuffle
+		// event. Draw actions receive this context when available and only require it
+		// if they later reach the empty-draw -> shuffle path.
+		ResolvedEventDispatcher = nullptr;
+		RawEventCombatants.Reset();
+		Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawEventCombatants);
 	}
 
 	if (Source->IsDead())
