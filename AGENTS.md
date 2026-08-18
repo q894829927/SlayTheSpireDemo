@@ -2146,3 +2146,1027 @@ When completing a meaningful phase:
 - record required manual UE assets/configuration;
 - keep documentation synchronized with actual source/PIE/Automation state;
 - do not fill this file with daily implementation trivia.
+
+---
+
+## 15. Planned Playable UI, MVVM and Presentation Architecture
+
+This section is the authoritative long-term plan for work after Phase 6R. Where an older section merely places Phase 7 directly after Phase 6R, this section supersedes that shorthand ordering.
+
+Do not implement these UI systems before Phase 6R unless the user explicitly changes the development order.
+
+### 15.1 Post-Phase-6 development order
+
+```text
+Phase 6R
+    test-module extraction
+    full Phase 5/6 regression
+    Shipping/package-oriented validation
+↓
+Phase 6UI-A
+    UI-A0 playable gameplay boundary
+    UI-A1 operable Battle HUD
+    UI-A2 basic committed presentation
+    UI-A3 deterministic immediate preview
+↓
+Phase 7
+    Relics
+    Relic UI / trigger feedback
+↓
+Phase 8
+    Pommel Strike+ / Sundial gameplay + presentation-legibility validation
+↓
+Phase 6UI-B
+    advanced preview
+    Keyword / CardText presentation
+    Developer Overlay
+    presentation timeline tooling
+    controller/accessibility/responsive layout
+↓
+Presentation Polish
+```
+
+Phase 6UI-A is the first formal playable presentation/input vertical slice. Its goal is not final visual polish. Its acceptance target is that a normal battle loop can be understood and operated through the game UI without gameplay-driving debug keyboard commands such as `TestDrawCard` or `TestPlayFirstCard`.
+
+UI-A0 through UI-A3 are implementation slices inside Phase 6UI-A, not separate top-level project phases.
+
+### 15.2 Phase 6UI-A0 — Playable Gameplay Boundary
+
+Do not begin formal Battle Widgets before gameplay exposes enough non-debug behavior for one complete normal player turn loop.
+
+UI-A0 must establish:
+
+```text
+Playable Turn / Hand Lifecycle
+Formal gameplay Request APIs
+Shared gameplay-owned validation
+Advisory playability queries + authoritative Request revalidation
+Read-only coherent UI state/query boundary
+Minimal authoritative Enemy Intent
+```
+
+The normal playable loop after UI-A0 must not require:
+
+```text
+TestDrawCard
+TestPlayFirstCard
+or equivalent rule-driving debug commands
+```
+
+#### PlayerTurn is input-ready, not turn-start work in progress
+
+`PlayerTurn` means all authoritative turn-start work for that player turn has completed and normal player Requests may be accepted.
+
+Phase 6UI-A0 should introduce an explicit non-interactive `PlayerTurnStarting` boundary:
+
+```text
+EnemyTurnEnding
+↓
+choose/commit next authoritative Enemy Intent at the defined boundary
+↓
+PlayerTurnStarting
+↓
+restore turn resources
+↓
+atomically enqueue required turn-start work
+↓
+Draw / Shuffle / Trigger reactions resolve
+↓
+final gameplay resolution boundary
+↓
+PlayerTurn
+↓
+normal player input is eligible to open after presentation catch-up
+```
+
+Durable invariant:
+
+```text
+PlayerTurn = authoritative player-input-ready state
+```
+
+Do not enter `PlayerTurn` merely because turn-start Actions were scheduled.
+
+The existing `BattleStart` state may serve as the equivalent non-interactive battle-opening boundary. Do not add or rename a separate `BattleStarting` state unless implementation later demonstrates a concrete need.
+
+Opening battle should conceptually resolve as:
+
+```text
+BattleStart
+↓
+initialize combatants / deck / battle-scoped state
+↓
+choose and commit initial Enemy Intent
+↓
+enqueue opening-Hand gameplay work
+↓
+Draw / Shuffle / Trigger resolution completes
+↓
+presentation catch-up
+↓
+coherent authoritative snapshot refresh
+↓
+PlayerTurn
+↓
+input enabled
+```
+
+#### Turn / Hand lifecycle is authoritative gameplay
+
+UI must not compensate for missing gameplay lifecycle by directly drawing, discarding or retaining cards.
+
+Before Phase 6UI-A is considered playable, gameplay must own explicit rules for:
+
+```text
+BattleStart opening Hand setup
+PlayerTurnStarting / PlayerTurnStart draw
+PlayerTurn card play
+PlayerTurnEnd remaining-Hand handling
+transition to EnemyTurn
+next PlayerTurn draw
+```
+
+The exact content rule is intentionally deferred until UI-A0 implementation. Examples include drawing N cards, discarding all remaining cards, retaining selected cards, or using a distinct opening-Hand count.
+
+Durable rule:
+
+```text
+Widget code never creates the Hand lifecycle.
+Gameplay owns it.
+```
+
+#### Hand cleanup timing relative to TurnEnded
+
+For the initial playable semantics, player turn ending should use this ordering:
+
+```text
+RequestEndPlayerTurn
+↓
+final authoritative validation
+↓
+build required end-turn Action batch
+↓
+atomic insertion succeeds
+↓
+BattleState = PlayerTurnEnding
+↓
+current-version Hand cleanup Actions
+↓
+TurnEndedAction(Player)
+↓
+FTurnEndedEvent(Player)
+↓
+TurnEnded reactions
+↓
+QueueEmpty
+↓
+EnemyTurn progression
+```
+
+Therefore the initial `FTurnEndedEvent(Player)` describes a player turn whose current-version remaining-Hand cleanup has already committed.
+
+Do not silently change this established timing when future mechanics such as Retain, Ethereal, end-of-turn Hand triggers or Relics that inspect Hand arrive.
+
+If a future concrete mechanic must observe Hand state before normal cleanup, add an explicit earlier timing boundary/event for that real mechanic. Do not pre-implement speculative pre-cleanup events, and do not overload or silently reinterpret `TurnEnded`.
+
+### 15.3 Formal gameplay Request boundary
+
+Normal UI must not construct or enqueue authoritative BattleActions directly.
+
+Forbidden permanent UI path:
+
+```text
+Widget
+→ NewObject<UPlayCardAction>
+→ ActionQueue.Add...
+```
+
+Temporary debug helpers such as `TestPlayFirstCard()` and `TestDrawCard()` must not become the permanent UI interface.
+
+Preferred conceptual player command API:
+
+```text
+UI / ViewModel
+↓
+RequestPlayCard(CardInstance, RequestedTarget)
+↓
+final authoritative validation
+↓
+Rejected(reason)
+or
+AcceptedForResolution
+```
+
+and:
+
+```text
+UI / ViewModel
+↓
+RequestEndPlayerTurn()
+↓
+final authoritative validation
+↓
+Rejected(reason)
+or
+AcceptedForResolution
+```
+
+After acceptance, gameplay owns creation/insertion of the required BattleActions and queue sequencing.
+
+#### AcceptedForResolution is not completed gameplay
+
+`AcceptedForResolution` means only:
+
+```text
+the Request passed final authoritative validation
+the required initial Action / Action batch was accepted by the gameplay resolution system
+gameplay is responsible for resolving it
+```
+
+It does not mean:
+
+```text
+all card effects committed
+the target definitely lost HP
+all Trigger reactions completed
+ResolutionFault cannot occur
+the battle cannot end early
+```
+
+On `AcceptedForResolution`, the UI enters its `Resolving`/presentation-locked policy. Widget callbacks must not directly mutate or assume final HP/Block/Energy/zone results. Final results come from authoritative gameplay state plus committed Presentation Records.
+
+### 15.4 Query and Request share one gameplay validator
+
+Playability Query is advisory presentation data. Request validation is authoritative.
+
+Preferred structure:
+
+```text
+QueryPlayCard(Card, Target)
+↓
+common gameplay-owned validator
+↓
+current validation result
+```
+
+and:
+
+```text
+RequestPlayCard(Card, Target)
+↓
+same common gameplay-owned validator
+↓
+re-evaluate against current authoritative state
+↓
+if valid:
+    enqueue authoritative work
+    return AcceptedForResolution
+else:
+    return Rejected + structured reason
+```
+
+Durable rule:
+
+```text
+one gameplay validator
+multiple callers
+fresh validation at Request time
+```
+
+Never treat a previous Query as a capability token or permanent permission. At the same time, Query and Request must not duplicate independent rules for turn state, Energy, card zone, target validity, battle terminal state or resolution availability.
+
+Structured failure reasons may eventually include concepts such as:
+
+```text
+NotEnoughEnergy
+WrongTurn
+InvalidTarget
+NoValidTarget
+BattleEnded
+ResolutionBusy
+CardNoLongerInHand
+```
+
+Do not freeze a large permanent enum until the concrete UI implementation requires it.
+
+### 15.5 MVVM-style responsibility split
+
+Phase 6UI should follow an MVVM-style boundary even if the first implementation does not require Unreal's full MVVM plugin/tooling.
+
+Do not enable a new plugin or create a large ViewModel hierarchy merely to satisfy the term “MVVM”. Adopt the responsibility boundaries first; introduce UE MVVM tooling only if the concrete implementation benefits from it.
+
+Conceptual ownership:
+
+```text
+MODEL / authoritative gameplay runtime
+
+BattleManager / battle orchestration
+Combatants
+DeckRuntime
+Status runtime
+Enemy Intent
+BattleActionQueue
+```
+
+```text
+VIEWMODEL / read model
+
+coherent read-only presentation-facing state
+formal gameplay Request forwarding
+presentation-only selection/focus state
+formatted display state
+immediate preview state
+```
+
+```text
+VIEW
+
+UMG Widgets
+```
+
+Preferred read direction:
+
+```text
+Authoritative Gameplay Model
+↓
+coherent read snapshot
+↓
+Battle ViewModel / Read Model
+↓
+UMG View
+```
+
+Player commands flow back only through formal gameplay Requests:
+
+```text
+UMG View
+↓
+ViewModel command
+↓
+Gameplay Request API
+↓
+authoritative validation / resolution
+```
+
+The ViewModel may own presentation-only concepts such as:
+
+```text
+selected Card
+focused/inspected UI element
+target-selection UI state
+presentation-lock state
+formatted text
+display ordering
+temporary deterministic preview result
+```
+
+It must not become a second gameplay authority or reimplement damage, Block, Energy, Status, card legality, target legality or Enemy behavior rules.
+
+### 15.6 Coherent read snapshot boundary
+
+UI must not assemble one displayed battle state from unrelated live reads that may belong to different gameplay commit points.
+
+Avoid:
+
+```text
+read HP
+↓ gameplay advances
+read Energy
+↓ gameplay advances
+read Hand
+read Status
+read BattleState
+```
+
+Preferred boundary:
+
+```text
+Authoritative Gameplay State
+↓
+capture one coherent read snapshot
+↓
+Battle ViewModel
+↓
+UI refresh
+```
+
+A mature snapshot may conceptually contain:
+
+```text
+Battle identity
+State revision
+BattleState
+Combatant views
+Energy
+Hand view
+Draw / Discard / Exhaust views
+Status views
+committed Enemy Intent view
+advisory playability / legal-target data where useful
+```
+
+Not every field must exist in UI-A0. Durable invariant:
+
+```text
+one UI refresh observes one coherent authoritative state revision
+```
+
+Any playability/legal-target information embedded in a snapshot remains advisory and revision-bound; formal Requests revalidate against current authoritative gameplay state.
+
+UI presentation caches may exist for rendering convenience but are not authoritative. Widgets must not reach into private DeckRuntime arrays, maintain a competing fake Hand, infer card zones from animation position or scan the world for gameplay actors.
+
+`GetFirstHandCard()`-style debug/helper access is not sufficient as the formal UI read model. Expose only the minimum safe read-only Hand/pile information that gameplay rules allow the player to inspect; do not expose mutable pile containers merely for Widget convenience.
+
+#### Read snapshot revision identity
+
+A mature snapshot should be identifiable as belonging to one coherent gameplay revision, conceptually through:
+
+```text
+BattleId
+StateRevision
+```
+
+UI-A0 does not need a complex transactional state database. The first implementation may advance revision identity only at meaningful gameplay snapshot boundaries. Do not use frame number or Widget refresh time as authoritative gameplay revision identity.
+
+### 15.7 Authoritative Enemy Intent
+
+Enemy Intent is player-visible gameplay information and must be authoritative gameplay state, not a UI-only prediction.
+
+Forbidden split source:
+
+```text
+Enemy logic decides Attack 5
+├── UI stores Intent = Attack 5
+└── unrelated code independently builds DamageAction(5)
+```
+
+Preferred flow:
+
+```text
+Enemy chooses Intent
+↓
+Intent becomes committed authoritative gameplay state
+↓
+UI reads that exact committed Intent
+↓
+EnemyTurn builds/consumes Actions from that same committed Intent
+↓
+current Intent resolves
+↓
+next Intent is chosen and committed at the defined timing boundary
+↓
+next PlayerTurn displays the new committed Intent
+```
+
+Durable invariant:
+
+```text
+The displayed committed Enemy Intent is the authoritative source
+from which the corresponding EnemyTurn Actions are built.
+```
+
+Phase 6UI-A0 may start with only a minimal `Attack 5` Intent, but it must obey the same source-of-truth rule.
+
+Intent representation should remain extensible to future single attack, multi-hit attack, Block, Buff, Debuff, combined, unknown and conditional behavior.
+
+Widget code must not infer Intent from `EnemyTestAttackDamage`, pending `DamageAction`s or other debug/internal implementation details.
+
+Do not overwrite the current Intent with the next Intent while the current EnemyTurn still needs its committed data for execution or presentation. A concrete implementation may split current/resolving/next intent state if a real need appears.
+
+### 15.8 Gameplay and Presentation are separate timelines
+
+`BattleActionQueue` is the authoritative gameplay-resolution timeline. It is not the animation timeline.
+
+Forbidden coupling:
+
+```text
+BattleAction
+↓
+wait for animation to finish
+↓
+allow next gameplay Action
+```
+
+Also avoid reconstructing historical visuals by reading only the latest mutable runtime state after gameplay has already advanced.
+
+Preferred conceptual boundary:
+
+```text
+Gameplay Action
+↓
+Commit
+↓
+produce Presentation Record / committed presentation snapshot
+↓
+gameplay may continue deterministically
+
+Presentation Record
+↓
+Presentation Queue / presentation layer
+↓
+visual playback at normal / accelerated / skipped speed
+```
+
+Gameplay must produce the same authoritative result when presentation is normal-speed, accelerated, skipped or disabled.
+
+Presentation may lock normal player input for readability, but it never becomes authoritative gameplay state.
+
+### 15.9 Presentation Records are deterministic historical facts
+
+Presentation Records are not gameplay mutation objects. The direction is one-way:
+
+```text
+Gameplay State
+↓
+Commit
+↓
+Presentation Record
+↓
+UI / animation
+```
+
+Never:
+
+```text
+Presentation Record
+↓
+modify authoritative gameplay state
+```
+
+A committed Presentation Record should conceptually belong to:
+
+```text
+Battle identity
+Resolution identity
+PresentationSequence
+```
+
+and preserve enough historical data for later rendering, potentially including:
+
+```text
+presentation operation type
+stable Source visual identity
+stable Target visual identity
+Before values
+After values
+resolved values / reason needed for presentation
+```
+
+Example damage presentation snapshot:
+
+```text
+HPBefore = 50
+HPAfter = 41
+BlockBefore = 3
+BlockAfter = 0
+BlockedDamage = 3
+HPDamage = 9
+```
+
+Not every field needs to be implemented in the first slice. Durable requirements:
+
+```text
+records cannot leak across battles
+records from separate resolutions remain distinguishable
+presentation order is deterministic
+historical playback does not depend on mutable latest gameplay state
+```
+
+Presentation order must not depend on UObject address, delegate registration order, Widget creation order, animation start time, frame timing or unordered-container iteration.
+
+Historical presentation may outlive the exact runtime moment that produced it. Do not assume every referenced UObject will still be valid when playback occurs. Prefer stable visual identity, snapshot values and safe/weak live references when live lookup is optional. If a live Actor no longer exists, presentation should skip/collapse/render safely without affecting gameplay.
+
+Do not force every low-level internal Action to have a visible animation. Player-facing records should represent meaningful facts such as card played, damage dealt, Block gained, shuffle occurred, Relic triggered, Energy gained or card drawn. Internal class names such as `UDamageAction` belong in future developer tooling, not normal player UI.
+
+### 15.10 Presentation catch-up and input release
+
+Gameplay may resolve ahead of presentation, but normal player-visible decision sequences must not overlap unpredictably.
+
+Conceptual flow:
+
+```text
+Player input-ready
+↓
+Request accepted for resolution
+↓
+UI enters Resolving / presentation-locked state
+↓
+Gameplay resolution completes deterministically
+↓
+Presentation Records accumulate/play
+↓
+presentation catches up
+↓
+capture latest coherent authoritative snapshot
+↓
+refresh Battle ViewModel as one boundary
+↓
+if gameplay state is input-ready, release normal player input
+```
+
+This is a UI/input policy. It does not make BattleActionQueue wait for animations.
+
+Do not allow the player to submit a new normal card-play Request while presentation from the previous player-visible resolution is materially behind.
+
+Skip / fast-forward should conceptually:
+
+```text
+consume or collapse remaining presentation records
+↓
+discard obsolete transitional display state
+↓
+refresh from latest coherent authoritative snapshot
+↓
+release input when gameplay is input-ready
+```
+
+Presentation backlog must remain bounded by UX policy. High-volume/low-importance records may eventually be accelerated, coalesced, collapsed or omitted without changing gameplay results.
+
+### 15.11 Phase 6UI-A interaction policy
+
+Phase 6UI-A intentionally uses a simple explicit two-stage card interaction to validate selection, cancellation, legal target highlighting, Request submission and Resolving lock.
+
+Conceptual UI state:
+
+```text
+Idle
+↓
+CardSelected
+↓
+ChoosingTarget / ReadyToConfirm
+↓
+PlayRequested
+↓
+Resolving
+↓
+Idle or terminal state
+```
+
+Initial examples:
+
+```text
+Enemy-target card
+select card
+→ select legal enemy
+→ RequestPlayCard
+
+Self-target card
+select card
+→ select self
+→ RequestPlayCard
+
+No-target card
+select card
+→ clear explicit confirmation affordance
+→ RequestPlayCard
+```
+
+Cancellation must be explicit and discoverable. Exact controls may vary by input device, but the player should have a clear cancel path such as reselecting the card, right click, Escape/equivalent focus action or a visible cancel affordance.
+
+The explicit two-stage flow is a Phase 6UI-A interaction policy, not a permanent gameplay rule or API requirement. Do not encode mandatory two-stage behavior into `CardData`, `PlayCardAction`, `BattleActionQueue` or the formal `RequestPlayCard` API.
+
+Later presentation work may add single-target fast play, automatic target shortcuts, drag/drop, double-click/quick-cast or controller-specific confirmation without changing authoritative gameplay semantics.
+
+### 15.12 UI-A only previews trustworthy immediate outcomes
+
+Phase 6UI-A3 previews deterministic immediate results only.
+
+Initial suitable scope:
+
+```text
+immediate Damage
+immediate Block
+Energy cost / immediate Energy result
+```
+
+Preview should reuse the same read-only gameplay rule resolution where practical:
+
+```text
+Damage preview
+→ build preview FDamageSpec
+→ run same read-only Damage Modifier Pipeline
+→ show ResolvedAmount
+→ no Commit
+```
+
+UI must not independently reimplement Strength / Weak / Vulnerable / Dexterity / Frailty formulas.
+
+Do not present a complete future battle result as certain when it depends on TurnEnd reactions, Status decay, Enemy multi-action resolution, Relic triggers, RNG, conditional branches, future draws/shuffles or unknown Intent branches.
+
+Future preview should distinguish conceptually between:
+
+```text
+deterministic immediate preview
+conditional preview based on currently known information
+uncertain/random outcome
+```
+
+Do not build a full future-turn battle simulator merely to support first-pass card inspection.
+
+### 15.13 Operable HUD and scalability guardrails
+
+Phase 6UI-A1 should cover the minimum coherent playable surface:
+
+```text
+Player HP / Block / Energy / Status
+Enemy HP / Block / committed Intent / Status
+Hand
+Draw / Discard / Exhaust information
+End Turn control
+card playable/unplayable state + reason
+card selection / cancellation
+legal-target selection
+Resolving input lock
+Victory / Defeat / ResolutionFaulted
+```
+
+Core information must not depend on color or mouse hover alone.
+
+Status presentation should be able to communicate through a combination of icon shape, amount, optional abbreviation/name, focus/inspect text and color. Energy numeric value is authoritative; dots/orbs may be auxiliary but must not scale into arbitrarily many icons when Energy grows.
+
+Any information available through mouse Hover must also have a path for keyboard focus, gamepad focus or touch selection. Prefer one logical focused/inspected element model rather than mouse-specific information access.
+
+Phase 6UI-A may initially contain one Enemy, but UI architecture must not permanently assume a single fixed Enemy slot. Conceptually prefer:
+
+```text
+EnemyArea
+└── EnemyPresentation[]
+```
+
+Target selection should operate on a legal target set rather than hard-coding `BattleManager.Enemy`.
+
+The first layout does not need final responsive polish, but data/API assumptions must not require rewriting gameplay/UI ownership when multiple enemies, many Status effects, many Relics, near-maximum Hand size or different aspect ratios arrive.
+
+`ResolutionFaulted` must have visible development-facing presentation. A fault must not appear merely as buttons no longer responding or the battle silently freezing.
+
+### 15.14 UI-A implementation slices
+
+#### UI-A0 — Playable Gameplay Boundary
+
+Acceptance requires all of the following:
+
+```text
+opening Hand comes from authoritative gameplay lifecycle
+PlayerTurn is entered only after turn-start work finishes
+normal player card play uses formal RequestPlayCard
+normal end turn uses formal RequestEndPlayerTurn
+Query and Request share gameplay-owned validation rules
+Request revalidates current state
+accepted Requests mean AcceptedForResolution, not completed effects
+remaining-Hand cleanup timing relative to TurnEnded is explicit
+Enemy Intent is authoritative and drives corresponding EnemyTurn Actions
+UI can obtain one coherent authoritative read snapshot
+normal playable flow does not require TestDrawCard or TestPlayFirstCard
+```
+
+Authoritative playable flow:
+
+```text
+BattleStart
+↓
+initialize battle + commit initial Enemy Intent
+↓
+opening-Hand gameplay batch
+↓
+gameplay resolution
+↓
+presentation catch-up
+↓
+coherent snapshot refresh
+↓
+PlayerTurn
+```
+
+```text
+PlayerTurn
+↓
+QueryPlayCard
+↓
+shared validator
+↓
+RequestPlayCard
+↓
+shared validator re-runs on current state
+↓
+Rejected(reason)
+or AcceptedForResolution
+↓
+Resolving
+↓
+Gameplay Actions / Events / Triggers commit
+↓
+Presentation Records
+↓
+presentation catch-up
+↓
+coherent snapshot refresh
+↓
+PlayerTurn / Victory / Defeat / ResolutionFaulted
+```
+
+```text
+RequestEndPlayerTurn
+↓
+shared authoritative validation
+↓
+Hand-cleanup + TurnEnded batch
+↓
+atomic enqueue
+↓
+PlayerTurnEnding
+↓
+Hand cleanup
+↓
+TurnEndedAction(Player)
+↓
+TurnEnded reactions
+↓
+EnemyTurn
+```
+
+```text
+EnemyTurn
+↓
+build authoritative Actions from committed Enemy Intent
+↓
+execute current Intent
+↓
+TurnEndedAction(Enemy)
+↓
+EnemyTurnEnding
+↓
+TurnEnded reactions
+↓
+QueueEmpty
+↓
+choose/commit next Enemy Intent at defined boundary
+↓
+PlayerTurnStarting
+↓
+restore turn resources
+↓
+turn-start Draw work
+↓
+Draw / Shuffle / Trigger resolution
+↓
+presentation catch-up
+↓
+coherent snapshot refresh
+↓
+PlayerTurn
+```
+
+#### UI-A1 — Operable Battle HUD
+
+Begin only after UI-A0 provides the playable gameplay boundary.
+
+Scope:
+
+```text
+HP / Block / Energy / Status
+Hand / pile views
+Enemy Intent
+End Turn
+card selection / cancel / target selection
+playability / rejection feedback
+Resolving lock
+Victory / Defeat / ResolutionFaulted
+```
+
+Acceptance: a normal battle turn can be operated without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands.
+
+#### UI-A2 — Basic Committed Presentation
+
+Introduce the first Presentation Record playback surface with deliberately small scope:
+
+```text
+Damage
+Block change
+Card draw
+Discard
+Shuffle
+Status amount change
+Victory
+Defeat
+ResolutionFault
+```
+
+Goal is gameplay legibility, not final animation quality. Use committed snapshots rather than reconstructing historical results from current mutable state.
+
+#### UI-A3 — Deterministic Immediate Preview
+
+Initial preview scope:
+
+```text
+immediate Damage
+immediate Block
+Energy cost / immediate Energy result
+```
+
+Do not block Phase 6UI-A completion on advanced conditional/random prediction.
+
+### 15.15 Phase 7, Phase 8, UI-B and Presentation Polish
+
+After Phase 6UI-A is playable:
+
+```text
+Phase 7
+→ Relic runtime
+→ Sundial first validation
+→ Relic UI / trigger feedback
+```
+
+Phase 8 validates two upgraded Pommel Strikes + Sundial as both a generic gameplay interaction and a visually understandable interaction through the playable UI.
+
+Phase 6UI-B is the advanced UX/tooling pass. Potential scope:
+
+```text
+advanced / conditional Outcome Preview
+Keyword presentation
+CardText formatting
+Developer Overlay
+Action / Event / Presentation inspection
+Presentation Timeline tooling
+gamepad navigation
+accessibility improvements
+responsive layout work
+```
+
+Do not move these features into UI-A unless they become necessary to make the basic battle playable or diagnosable.
+
+Presentation Polish comes after gameplay architecture and playable UI are validated. Potential work:
+
+```text
+drag-and-drop card play
+single-target fast play
+automatic target shortcuts
+fan-shaped hand layout
+target arrows
+card motion
+damage reactions
+floating combat text
+Status / Relic trigger animation
+VFX
+SFX
+animation speed controls
+skip / fast-forward presentation
+```
+
+These features must not change authoritative gameplay semantics.
+
+### 15.16 UI/MVVM architecture summary
+
+```text
+                     GAMEPLAY / MODEL
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+      Gameplay Validator          Authoritative State
+             │                           │
+ Query ──────┤                           │
+ Request ────┘                           │
+      │                                  │
+      ▼                                  │
+AcceptedForResolution                    │
+      │                                  │
+      ▼                                  │
+BattleActionQueue                        │
+      │                                  │
+      ▼                                  │
+Modifier / Action / Event / Trigger      │
+      │                                  │
+      ├──────────── Commit ──────────────┤
+      │                                  │
+      ▼                                  ▼
+Presentation Records              Coherent Read Snapshot
+      │                                  │
+      ▼                                  ▼
+Presentation Queue              VIEWMODEL / READ MODEL
+      │                                  │
+      └──────────────┬───────────────────┘
+                     ▼
+                    VIEW
+                     │
+                    UMG
+                     │
+                     ▼
+              Player Interaction
+                     │
+                     ▼
+               Formal Request
+```
+
+Durable interpretation:
+
+```text
+Gameplay
+= what is true
+
+ViewModel / Read Model
+= what coherent authoritative state should be exposed to presentation now
+
+Presentation
+= how already-committed facts are played back and explained
+```
+
+The three responsibilities must remain distinct.
