@@ -21,13 +21,15 @@ struct FBattleEvent
 	template <typename T>
 	const T* TryGet() const
 	{
-		if constexpr (TIsSame<T, FTurnEndedEvent>::Value)
-		{
-			return &TurnEndedPayload;
-		}
 		return nullptr;
 	}
 
 private:
 	FTurnEndedEvent TurnEndedPayload;
 };
+
+template <>
+inline const FTurnEndedEvent* FBattleEvent::TryGet<FTurnEndedEvent>() const
+{
+	return &TurnEndedPayload;
+}
