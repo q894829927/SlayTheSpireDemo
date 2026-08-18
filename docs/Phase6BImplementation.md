@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **GAMEPLAY SLICE PASSED / QUEUE CONTRACT FIXES PENDING**. The hardened 42/42 gate and PIE cycle passed before six additional QueueEmpty continuation contract regressions were added. Two new tests intentionally expose the current empty-batch and empty-callable defects; Phase 6C remains blocked until those fixes make the expanded 48/48 gate green.
+Status: **GAMEPLAY SLICE PASSED / QUEUE CONTRACT FIXES LANDED / EXPANDED 48/48 RERUN PENDING**. The hardened 42/42 gate and PIE cycle passed before six additional QueueEmpty continuation contract regressions were added. Those regressions exposed two Queue API defects; both production fixes are now on `main`. Phase 6C remains blocked until the expanded gate passes.
 
 ## Runtime wiring implemented
 
@@ -65,7 +65,7 @@ A lethal action earlier in the enemy batch suppresses the normal enemy `TurnEnde
 
 Queue `ResolutionFault` transitions the BattleManager to `EBattleState::ResolutionFaulted`, sets Energy to zero, and prevents normal turn progression.
 
-## QueueEmpty non-reentrancy hardening — PASSED
+## QueueEmpty non-reentrancy hardening — PASSED BASELINE, CONTRACT EXPANSION FIXED
 
 A post-6B review identified that synchronous macro progression inside `OnQueueEmpty.Broadcast()` could recursively run the next resolution before later QueueEmpty listeners had observed the current boundary.
 
@@ -85,7 +85,7 @@ Resolution A becomes empty
 → Resolution B QueueEmpty is therefore not nested inside A's multicast
 ```
 
-`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` accepts at most one authoritative continuation for a QueueEmpty boundary. Direct Action insertion during the QueueEmpty observer multicast is rejected; authoritative producers must first defer macro progression.
+`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` accepts at most one authoritative continuation for a QueueEmpty boundary. Direct non-empty Action insertion during the QueueEmpty observer multicast is rejected; authoritative producers must first defer macro progression.
 
 `ABattleManager::HandleActionQueueEmpty()` no longer calls `StartEnemyTurn()` / `StartPlayerTurn()` synchronously. It defers those transitions until every observer of the current boundary has returned.
 
@@ -97,9 +97,55 @@ second QueueEmpty callback → BattleState == EnemyTurnEnding
 final state after both boundaries = PlayerTurn
 ```
 
-The existing `Turn.OneFinalQueueEmptyPerTurnBoundary` Automation test was strengthened to assert these observed states instead of only asserting `QueueEmptyCount == 2`.
+The existing `Turn.OneFinalQueueEmptyPerTurnBoundary` Automation test asserts these observed states instead of only asserting `QueueEmptyCount == 2`.
 
-## Phase 6B Automation gate — 12 TESTS EXPECTED / 2 CONTRACT FAILURES EXPOSED
+### Expanded Queue API contracts
+
+Six Queue-level regressions were added after the original hardening:
+
+```text
+Queue.EmptyBatchIsLegalDuringObserverNotification
+Queue.ContinuationOutsideBroadcastRejected
+Queue.SecondContinuationRejected
+Queue.NonEmptyInsertionRejectedDuringBroadcast
+Queue.FaultCancelsDeferredContinuation
+Queue.EmptyContinuationRejectedSafely
+```
+
+The expanded review exposed two defects and both are now fixed in production code:
+
+```text
+1. Healthy Queue + empty batch
+   → legal no-op success even during QueueEmpty observer notification
+
+2. Empty/unbound TFunction continuation
+   → rejected at DeferUntilAfterQueueEmptyBroadcast registration
+   → never stored or invoked
+```
+
+The empty-batch validator order is now:
+
+```text
+faulted / fault-requested Queue → reject
+healthy empty batch             → success
+QueueEmpty broadcast + nonempty → reject
+normal nonempty batch           → full atomic validation
+```
+
+This preserves the earlier invariant that a healthy empty batch is always a legal no-op while keeping faulted Queues closed to all Add/AddBatch requests.
+
+Deferred continuation registration now requires:
+
+```text
+healthy Queue
++ active QueueEmpty broadcast
++ bound callable
++ no continuation already registered for this boundary
+```
+
+A fault requested by any QueueEmpty observer still cancels and clears a previously deferred continuation before it can execute.
+
+## Phase 6B Automation gate — 12 TESTS / EXPANDED RERUN PENDING
 
 Prefix:
 
@@ -107,7 +153,7 @@ Prefix:
 SlayTheSpireDemo.Phase6B
 ```
 
-The Phase 6B prefix now contains exactly 12 tests:
+The Phase 6B prefix contains exactly 12 tests:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -124,14 +170,7 @@ Queue.FaultCancelsDeferredContinuation
 Queue.EmptyContinuationRejectedSafely
 ```
 
-The first six tests and four of the new Queue contract tests are expected to pass on the current source. These two new regressions are intentionally red until production fixes land:
-
-```text
-Queue.EmptyBatchIsLegalDuringObserverNotification
-Queue.EmptyContinuationRejectedSafely
-```
-
-Previously validated on the hardened QueueEmpty source before expanding the suite:
+Previously validated before expanding the Queue contract suite:
 
 ```text
 Phase 5   13/13 PASS
@@ -140,7 +179,7 @@ Phase 6B   6/6  PASS
 Total     42/42 PASS
 ```
 
-After the two defects are fixed, the owner-only gate must require:
+The next owner-only gate must require:
 
 ```text
 Phase 5   13/13 PASS
@@ -148,6 +187,8 @@ Phase 6A  23/23 PASS
 Phase 6B  12/12 PASS
 Total     48/48 PASS
 ```
+
+Do not mark the expanded Queue contract hardening fully revalidated until this run passes on the fixed source.
 
 ## Manual UE Editor configuration — COMPLETE
 
@@ -265,9 +306,9 @@ Player turn started
 
 No `Resolution fault requested` or `Resolution faulted` log occurred.
 
-### Final Phase 6B acceptance
+## Current acceptance state
 
-Validated:
+Already validated:
 
 ```text
 Weak / Vulnerable / Frailty decay only on their owner's TurnEnded event
@@ -278,15 +319,21 @@ Enemy QueueEmpty observers see EnemyTurnEnding before PlayerTurn starts
 QueueEmpty broadcasts are not recursively nested by macro turn progression
 Normal player → enemy → player flow still works after hardening
 No ResolutionFault occurred in the validation cycles
-Prior hardened UE5.8 Automation evidence remains 42/42 green
-Expanded Queue contract suite requires 48/48 after the two exposed defects are fixed
+Prior hardened UE5.8 Automation evidence is 42/42 green
+```
+
+Awaiting expanded revalidation:
+
+```text
+Phase6B Queue contract tests 12/12
+Total Phase5 + Phase6A + Phase6B 48/48
 ```
 
 ## Next
 
 ```text
 Phase 6A  COMPLETE / UE5.8 CI PASSED
-Phase 6B  GAMEPLAY PASSED / 2 QUEUE CONTRACT FIXES + 48/48 RERUN REQUIRED
+Phase 6B  GAMEPLAY PASSED / QUEUE CONTRACT FIXES LANDED / 48/48 RERUN REQUIRED
 Phase 6C  DeckShuffled Event — BLOCKED until expanded Phase 6B gate passes
 Phase 6R  Full Regression + deferred test-module extraction
 ```
