@@ -2,10 +2,18 @@
 
 #include "BattleActionQueue.h"
 #include "ShuffleDeckAction.h"
+#include "../Battle/BattleManager.h"
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEventDispatcher.h"
+
+void UDrawCardAction::Initialize(UDeckRuntime* InDeck)
+{
+	Deck = InDeck;
+	EventDispatcher = nullptr;
+	EventCombatants.Reset();
+}
 
 void UDrawCardAction::Initialize(
 	UDeckRuntime* InDeck,
@@ -52,31 +60,42 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 
 	if (Deck->HasCardsInDiscardPile())
 	{
-		if (!IsValid(EventDispatcher.Get()) || EventCombatants.Num() == 0)
-		{
-			Queue->RequestResolutionFault(TEXT("DrawCardAction requires valid battle-event wiring before scheduling Shuffle -> RetryDraw."));
-			Finish();
-			return;
-		}
-
+		UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
 		TArray<ACombatant*> RawCombatants;
-		RawCombatants.Reserve(EventCombatants.Num());
-		for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
+
+		if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
 		{
-			if (!IsValid(Combatant.Get()))
+			RawCombatants.Reserve(EventCombatants.Num());
+			for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
 			{
-				Queue->RequestResolutionFault(TEXT("DrawCardAction found an invalid authoritative combatant in its event-dispatch context."));
+				if (!IsValid(Combatant.Get()))
+				{
+					Queue->RequestResolutionFault(TEXT("DrawCardAction found an invalid authoritative combatant in its event-dispatch context."));
+					Finish();
+					return;
+				}
+				RawCombatants.Add(Combatant.Get());
+			}
+		}
+		else
+		{
+			// Direct BattleManager debug draws still use the original Initialize(Deck)
+			// entry point. Resolve the same narrow battle-scoped dependencies from the
+			// Queue's authoritative owner without searching the world.
+			ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
+			if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
+			{
+				Queue->RequestResolutionFault(TEXT("DrawCardAction requires valid battle-event wiring before scheduling Shuffle -> RetryDraw."));
 				Finish();
 				return;
 			}
-			RawCombatants.Add(Combatant.Get());
 		}
 
 		UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
-		ShuffleAction->Initialize(Deck.Get(), EventDispatcher.Get(), RawCombatants);
+		ShuffleAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
 
 		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
-		RetryDrawAction->Initialize(Deck.Get(), EventDispatcher.Get(), RawCombatants);
+		RetryDrawAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
 
 		TArray<UBattleAction*> ContinuationBatch;
 		ContinuationBatch.Add(ShuffleAction);
