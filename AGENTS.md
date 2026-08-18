@@ -52,8 +52,8 @@ BattleActionQueue
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
   - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
-  - [ ] Phase 6C DeckShuffled Event — NEXT.
-  - [ ] Phase 6R Regression Gate + deferred test-module extraction.
+  - [ ] Phase 6C DeckShuffled Event — SOURCE IMPLEMENTED; UE5.8 Editor build + Phase6C 5/5 and total 53/53 Automation validation pending.
+  - [ ] Phase 6R Regression Gate + deferred test-module extraction — PENDING until Phase 6C validation passes.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
 
@@ -155,6 +155,20 @@ Phase 6B validated:
 - expanded UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 = 48/48;
 - post-hardening PIE validated `PlayerTurnEnding → QueueEmpty → EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn` with no ResolutionFault.
 
+Phase 6C source implemented; validation pending:
+
+- `FBattleEvent` now discriminates `FTurnEndedEvent` from the second real payload, `FDeckShuffledEvent`;
+- `FDeckShuffledEvent` carries the exact `UDeckRuntime*` whose shuffle committed;
+- `ShuffleDeckAction` emits `FDeckShuffledEvent` only after `ShuffleDiscardIntoDrawPile()` succeeds;
+- expected shuffle no-ops emit no event and do not require event wiring merely to remain no-ops;
+- empty-draw continuation ordering is `Draw → Shuffle commit → DeckShuffled reactions → RetryDraw`;
+- event-dispatch dependencies are propagated explicitly without a persistent Trigger Registry or actor search;
+- generic `PlayCardAction` does not make event wiring a mandatory dependency for non-draw cards;
+- pre-6C `Initialize(Deck)` / PlayCard initializer call shapes remain available;
+- no new test-only reflected `UCLASS` was added; existing Phase6A test helpers were reused for execution-order recording;
+- `SlayTheSpireDemo.Phase6C` currently contains 5 new source-level regressions, but UE5.8 execution evidence is still pending;
+- `.github/workflows/ue-phase6c-tests.yml` expects Phase5 13 + Phase6A 23 + Phase6B 12 + Phase6C 5 = 53 tests.
+
 ### Manual UE assets/configuration
 
 Phase 4:
@@ -242,6 +256,8 @@ DA_Status_Frailty
 ```
 
 Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
+
+Phase 6C requires no new `.uasset` / `.umap` configuration.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -824,8 +840,8 @@ BattleActionQueue executes reactions
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
 6B  Battle Turn Wiring                                             COMPLETE / CI PASSED 12/12, TOTAL 48/48 + PIE PASSED
-6C  DeckShuffled Event                                             NEXT
-6R  Phase 6 Regression Gate + test-module extraction               PENDING
+6C  DeckShuffled Event                                             SOURCE IMPLEMENTED / UE5.8 53-TEST GATE PENDING
+6R  Phase 6 Regression Gate + test-module extraction               PENDING AFTER 6C
 ```
 
 Do not implement Phase 7 relics during Phase 6.
@@ -865,7 +881,7 @@ focused Unreal Automation Tests
 
 Events are short-lived typed value data, not gameplay UObjects and not persistent registry entries.
 
-Phase 6A introduced only `FTurnEndedEvent`. Phase 6C adds the real second event, `FDeckShuffledEvent`. Do not predeclare speculative event alternatives.
+Phase 6A introduced `FTurnEndedEvent`; Phase 6C source now adds the second real event, `FDeckShuffledEvent`. Do not predeclare speculative event alternatives.
 
 `FBattleEvent` uses a small type-safe checked representation. Requirements:
 
@@ -1348,13 +1364,13 @@ The expanded owner-only UE5.8 workflow passed Phase6B 12/12 while Phase5 13/13 a
 
 Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
-#### Phase 6C — DeckShuffled Event — NEXT
+#### Phase 6C — DeckShuffled Event — SOURCE IMPLEMENTED / VALIDATION PENDING
 
-Add `FDeckShuffledEvent` only when implementing this slice.
+Phase 6C source adds `FDeckShuffledEvent` as the second real typed event.
 
-`ShuffleDeckAction` emits the event only after `DeckRuntime::ShuffleDiscardIntoDrawPile()` actually succeeds. Failed/no-op shuffles emit no event.
+`ShuffleDeckAction` emits it only after `DeckRuntime::ShuffleDiscardIntoDrawPile()` actually succeeds. Failed/no-op shuffles emit no event.
 
-Required ordering for the existing empty-draw flow:
+Required ordering for the existing empty-draw flow is implemented as:
 
 ```text
 DrawCardAction
@@ -1370,7 +1386,42 @@ RetryDrawAction
 
 Reaction insertion therefore occurs before the already-pending RetryDraw action.
 
-Do not implement Sundial in Phase 6C. Phase 7 should be able to add Sundial as a new trigger source without rewriting DeckRuntime/ShuffleDeckAction event timing.
+`FBattleEvent::TryGet<T>()` now distinguishes `FTurnEndedEvent` and `FDeckShuffledEvent`; wrong-payload access returns null.
+
+Phase 6C preserves existing public Draw/Shuffle/Play initializer shapes. Event wiring remains optional for generic card play and ordinary/non-shuffle draws. If a successful shuffle is possible, valid battle-scoped dispatcher/combatant context is required before commit. Expected Deck-level no-ops remain fail-soft without requiring event wiring.
+
+No persistent Trigger Registry, Relic source, or Sundial implementation is added in Phase 6C. Phase 7 should be able to add Sundial as a new trigger source without rewriting DeckRuntime/ShuffleDeckAction event timing.
+
+Phase 6C Automation source currently contains exactly 5 tests:
+
+```text
+Event.TypedPayloadIsolation
+Shuffle.SuccessEmitsAfterCommit
+Shuffle.EmptyDiscardDoesNotEmit
+Shuffle.NonEmptyDrawPileDoesNotEmit
+Draw.ShuffleReactionBeforeRetryDraw
+```
+
+The strongest test observes actual DrawPile state at queued Action execution time and requires:
+
+```text
+shuffle reaction sees DrawPile = 1
+RetryDraw consumes the shuffled card
+post-retry tail sees DrawPile = 0
+one final QueueEmpty for the whole resolution
+```
+
+The owner-only `.github/workflows/ue-phase6c-tests.yml` expects:
+
+```text
+Phase 5    13/13
+Phase 6A   23/23
+Phase 6B   12/12
+Phase 6C    5/5
+Total      53/53
+```
+
+Do not mark Phase 6C complete or start Phase 6R until this fixed source is built and the 53/53 UE5.8 gate passes.
 
 #### Phase 6R — Regression Gate
 
@@ -1499,6 +1550,10 @@ For Trigger collection, derive Owner, RuntimeSequence and definition metadata fr
 `OnQueueEmpty` observers must all see the same completed boundary before authoritative macro progression mutates `BattleState` or starts the next resolution.
 
 BattleManager must defer the one authoritative turn continuation until after the multicast returns. Do not make correctness depend on multicast registration order, and do not recursively run the next PumpQueue from inside the current QueueEmpty broadcast.
+
+### 4.19 DeckShuffled is a post-commit fact
+
+`FDeckShuffledEvent` may be emitted only after a real discard-to-draw shuffle commits successfully. Expected/no-op shuffle attempts emit no event. In an empty-draw continuation, DeckShuffled reactions execute before the already-pending RetryDraw action.
 
 ---
 
@@ -1891,6 +1946,7 @@ Saved/
 30. ResolutionFault is framework safety, not gameplay balance. Keep a high safety budget in all builds and expose any lower configurable budget only through test-specific code.
 31. `OnQueueEmpty` is an observable non-reentrant boundary. BattleManager must defer macro turn progression until all observers return; never repair QueueEmpty ordering by relying on multicast registration order.
 32. Until Phase 6R extracts an Editor/Developer-only test module, do not add new test-only reflected `UCLASS` types to the Runtime module.
+33. `FDeckShuffledEvent` is emitted only after a successful shuffle commit. Expected/no-op shuffles emit no event, and reactions to a successful shuffle resolve before the already-pending RetryDraw continuation.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1908,7 +1964,7 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence:
+Current trusted self-hosted regression evidence before Phase 6C source validation:
 
 ```text
 Phase 5   13/13 PASS
@@ -1919,9 +1975,19 @@ Total     48/48 PASS
 
 The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault` and with observer-visible QueueEmpty states remaining `PlayerTurnEnding` then `EnemyTurnEnding` before macro progression.
 
-The Phase 6B owner-only workflow is `.github/workflows/ue-phase6b-tests.yml`. Keep self-hosted workflows manually triggered, owner-only and restricted to trusted `main`; do not add PR/external triggers.
+Phase 6C source is implemented but is **not validated yet**. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
 
-Phase 6C is the next implementation slice. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+Required next gate:
+
+```text
+Phase 5    13/13
+Phase 6A   23/23
+Phase 6B   12/12
+Phase 6C    5/5
+Total      53/53
+```
+
+Phase 6R must not start until that gate passes. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2019,6 +2085,19 @@ Battle/BattleManager.h/.cpp
 Actions/BattleActionQueue.h/.cpp
 Tests/Phase6BRegressionTests.cpp
 .github/workflows/ue-phase6b-tests.yml
+
+Phase 6C source
+Events/BattleEvent.h
+Actions/ShuffleDeckAction.h/.cpp
+Actions/DrawCardAction.h/.cpp
+Cards/CardPlayContext.h
+Cards/Effects/DrawCardEffect.cpp
+Actions/PlayCardAction.h/.cpp
+Battle/BattleManager.h
+Tests/Phase6ATestTypes.h/.cpp
+Tests/Phase6CRegressionTests.cpp
+.github/workflows/ue-phase6c-tests.yml
+docs/Phase6CImplementation.md
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, EventDispatcher, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -2039,8 +2118,8 @@ Tests/Phase6BRegressionTests.cpp
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
 - Phase 6B — PASSED: expanded 12/12 UE5.8 Automation, total Phase5 + Phase6A + Phase6B 48/48, real Status DataAsset PIE validation, QueueEmpty non-reentrancy PIE validation, and all six Queue continuation/broadcast contracts green.
-- Phase 6C — NEXT: DeckShuffled Event.
-- Phase 6 — NOT YET COMPLETE: 6C and 6R remain.
+- Phase 6C — SOURCE IMPLEMENTED / VALIDATION PENDING: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, 5 Automation tests and a 53-test owner-only UE5.8 workflow are on `main`; do not mark passed until that workflow succeeds.
+- Phase 6 — NOT YET COMPLETE: 6C validation and 6R remain.
 
 ---
 
