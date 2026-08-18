@@ -117,7 +117,7 @@ namespace Phase6CRegression
 	bool AddDeckShuffledRecordStatus(FFixture& Fixture)
 	{
 		UStatusData* Definition = NewObject<UStatusData>(Fixture.World);
-		Definition->StatusId = TEXT("Phase6CDeckObserver");
+		Definition->StatusId = FName(TEXT("Phase6CDeckObserver"));
 
 		UPhase6ATestRecordTrigger* Trigger = NewObject<UPhase6ATestRecordTrigger>(Definition);
 		Trigger->Priority = 0;
