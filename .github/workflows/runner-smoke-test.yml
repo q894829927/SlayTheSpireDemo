@@ -1,0 +1,32 @@
+name: Runner Smoke Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: [self-hosted, windows, x64, ue58]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System Info
+        shell: powershell
+        run: |
+          Write-Host "Runner OK"
+          Write-Host "Computer: $env:COMPUTERNAME"
+          Write-Host "Workspace: $env:GITHUB_WORKSPACE"
+          Get-Location
+
+      - name: Check Unreal Engine
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          if (!(Test-Path "$UE\Engine\Build\BatchFiles\Build.bat")) {
+              throw "UE5.8 Build.bat not found"
+          }
+          if (!(Test-Path "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe")) {
+              throw "UnrealEditor-Cmd.exe not found"
+          }
+          Write-Host "UE5.8 found."
