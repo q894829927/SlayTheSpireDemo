@@ -9,7 +9,7 @@ class UBattleAction;
 class UStatusInstance;
 struct FBattleEvent;
 
-struct FTriggerContext
+struct SLAYTHESPIREDEMO_API FTriggerContext
 {
 public:
 	FTriggerContext(UStatusInstance* InRuntimeSource, UObject* InActionOuter);
