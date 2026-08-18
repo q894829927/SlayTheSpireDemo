@@ -51,8 +51,8 @@ BattleActionQueue
   - [x] Phase 5R regression Automation gate implemented and UE5.8 self-hosted CI validated at 13/13.
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
-  - [ ] Phase 6B Battle Turn Wiring — gameplay slice and hardened 42/42 gate passed; six Queue contract regressions were added and intentionally expose two remaining defects. Require expanded Phase6B 12/12 and total 48/48 before closure.
-  - [ ] Phase 6C DeckShuffled Event — BLOCKED until the expanded Phase 6B gate passes.
+  - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
+  - [ ] Phase 6C DeckShuffled Event — NEXT.
   - [ ] Phase 6R Regression Gate + deferred test-module extraction.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -151,7 +151,8 @@ Phase 6B validated:
 - `OnQueueEmpty` is a non-reentrant observable boundary: BattleManager defers macro progression until every listener has observed the current ending state;
 - the Queue keeps one pump frame alive across deferred macro continuation instead of nesting another QueueEmpty broadcast;
 - the strengthened QueueEmpty regression requires observer-visible `PlayerTurnEnding` followed by `EnemyTurnEnding`;
-- hardened UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42;
+- Queue contract coverage additionally verifies healthy empty batches remain legal no-op success during observer notification, non-empty insertion is rejected during broadcast, continuation registration is broadcast-scoped and single-owner, fault cancels deferred continuation, and empty/unbound continuations are rejected safely;
+- expanded UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 = 48/48;
 - post-hardening PIE validated `PlayerTurnEnding → QueueEmpty → EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn` with no ResolutionFault.
 
 ### Manual UE assets/configuration
@@ -822,8 +823,8 @@ BattleActionQueue executes reactions
 
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
-6B  Battle Turn Wiring                                             2 QUEUE CONTRACT FIXES / 48-TEST RERUN REQUIRED
-6C  DeckShuffled Event                                             BLOCKED ON 6B
+6B  Battle Turn Wiring                                             COMPLETE / CI PASSED 12/12, TOTAL 48/48 + PIE PASSED
+6C  DeckShuffled Event                                             NEXT
 6R  Phase 6 Regression Gate + test-module extraction               PENDING
 ```
 
@@ -1057,7 +1058,7 @@ AddBatchToFrontPreserveOrder(...)
 AddBatchToBackPreserveOrder(...)
 ```
 
-Both share one batch validator. Empty batch is a legal no-op success.
+Both share one batch validator. For a healthy Queue, an empty batch is always a legal no-op success, including during QueueEmpty observer notification. Faulted/fault-requested Queues remain closed to all Add/AddBatch requests.
 
 For every non-empty batch, validate the complete batch before modifying `PendingActions`:
 
@@ -1069,6 +1070,8 @@ no duplicate Action pointer inside the batch
 no batch Action equals CurrentAction
 no batch Action already exists in PendingActions
 ```
+
+During `OnQueueEmpty` observer notification, direct non-empty Action insertion is rejected so observers cannot create a nested/registration-order-dependent resolution. Macro progression must use the deferred continuation boundary.
 
 A `TSet` may be used only for membership checks; never iterate an unordered set to determine gameplay execution order.
 
@@ -1220,7 +1223,7 @@ Safety.ResolutionBudgetFaultsInsteadOfLoopingForever
 
 All 23 passed through the UE5.8 self-hosted Automation gate.
 
-#### Phase 6B — Battle Turn Wiring — GAMEPLAY PASSED / QUEUE CONTRACT FIXES PENDING
+#### Phase 6B — Battle Turn Wiring — COMPLETE
 
 Phase 6B wires the real battle turn lifecycle.
 
@@ -1306,7 +1309,7 @@ existing PumpQueue frame continues the next resolution
 
 Do not synchronously call `StartEnemyTurn`, `StartPlayerTurn` or recursively start a new Queue pump from inside the QueueEmpty multicast. Do not repair ordering by changing delegate registration order.
 
-`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` is the narrow boundary for this macro continuation. At most one authoritative continuation may be registered for one QueueEmpty boundary. Direct Action insertion during QueueEmpty observer notification is rejected.
+`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` is the narrow boundary for this macro continuation. Registration requires a healthy Queue, an active QueueEmpty broadcast, a bound callable, and no continuation already registered for the same boundary. At most one authoritative continuation may be registered for one QueueEmpty boundary. A fault requested by any observer cancels the deferred continuation before execution.
 
 The observer-visible boundary sequence must be:
 
@@ -1322,7 +1325,7 @@ The upfront Enemy batch rule is deliberately narrow. It applies to the current f
 
 When dynamic Enemy continuation becomes concrete, introduce an explicit continuation/barrier insertion mechanism so dynamic follow-ups can be placed before the turn-end continuation. Do not make "all future Enemy actions must be precomputed" or "dynamic actions may never AddToBack" a permanent architecture rule.
 
-Phase 6B Automation now contains exactly 12 tests:
+Phase 6B Automation contains exactly 12 tests:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -1341,18 +1344,11 @@ Queue.EmptyContinuationRejectedSafely
 
 `Turn.OneFinalQueueEmptyPerTurnBoundary` asserts observer-visible boundary state order, not only a count of two QueueEmpty callbacks.
 
-The earlier hardened Phase 6B owner-only UE5.8 workflow passed at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total. The expanded suite intentionally exposes these two current contract defects:
-
-```text
-Queue.EmptyBatchIsLegalDuringObserverNotification
-Queue.EmptyContinuationRejectedSafely
-```
-
-After fixing them, require Phase6B 12/12 and Phase5+6A+6B 48/48 before proceeding.
+The expanded owner-only UE5.8 workflow passed Phase6B 12/12 while Phase5 13/13 and Phase6A 23/23 also remained green, for 48/48 total.
 
 Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
-#### Phase 6C — DeckShuffled Event — BLOCKED ON EXPANDED PHASE 6B GATE
+#### Phase 6C — DeckShuffled Event — NEXT
 
 Add `FDeckShuffledEvent` only when implementing this slice.
 
@@ -1912,20 +1908,20 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence before the six new Queue contract tests:
+Current trusted self-hosted regression evidence:
 
 ```text
 Phase 5   13/13 PASS
 Phase 6A  23/23 PASS
-Phase 6B   6/6  PASS
-Total     42/42 PASS
+Phase 6B  12/12 PASS
+Total     48/48 PASS
 ```
 
-This evidence is from the hardened QueueEmpty non-reentrancy source. The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault`.
+The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault` and with observer-visible QueueEmpty states remaining `PlayerTurnEnding` then `EnemyTurnEnding` before macro progression.
 
 The Phase 6B owner-only workflow is `.github/workflows/ue-phase6b-tests.yml`. Keep self-hosted workflows manually triggered, owner-only and restricted to trusted `main`; do not add PR/external triggers.
 
-The workflow now expects Phase6B 12/12 and 48/48 total. Phase 6C must not begin until the two exposed Queue defects are fixed and that expanded gate passes. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+Phase 6C is the next implementation slice. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2042,8 +2038,8 @@ Tests/Phase6BRegressionTests.cpp
 - Phase 5R — PASSED: 13/13 focused Unreal Automation tests passed UE5.8 self-hosted CI.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
-- Phase 6B — GAMEPLAY PASSED / CONTRACT FIXES PENDING: prior hardened 6/6 and total 42/42 passed with PIE, but the expanded 12-test suite now exposes empty-batch and empty-continuation defects; require 48/48 after fixes.
-- Phase 6C — BLOCKED until expanded Phase 6B gate passes.
+- Phase 6B — PASSED: expanded 12/12 UE5.8 Automation, total Phase5 + Phase6A + Phase6B 48/48, real Status DataAsset PIE validation, QueueEmpty non-reentrancy PIE validation, and all six Queue continuation/broadcast contracts green.
+- Phase 6C — NEXT: DeckShuffled Event.
 - Phase 6 — NOT YET COMPLETE: 6C and 6R remain.
 
 ---
