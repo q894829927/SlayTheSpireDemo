@@ -51,8 +51,8 @@ BattleActionQueue
   - [x] Phase 5R regression Automation gate implemented and UE5.8 self-hosted CI validated at 13/13.
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
-  - [x] Phase 6B Battle Turn Wiring — COMPLETE gameplay slice; baseline UE5.8 build + Automation + PIE passed. QueueEmpty non-reentrancy hardening is implemented on current HEAD and requires one 42/42 rerun before Phase 6C starts.
-  - [ ] Phase 6C DeckShuffled Event — NEXT after the hardened Phase 6B rerun.
+  - [x] Phase 6B Battle Turn Wiring — COMPLETE; hardened UE5.8 build + Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42 passed, and post-hardening PIE turn-cycle validation passed.
+  - [ ] Phase 6C DeckShuffled Event — NEXT.
   - [ ] Phase 6R Regression Gate + deferred test-module extraction.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -140,7 +140,7 @@ Phase 6A validated:
 - PlayCard and Draw shuffle continuations use atomic batch insertion where they form one logical dependent chain;
 - the Phase 6A suite contains 23 tests and passed UE5.8 self-hosted CI at 23/23.
 
-Phase 6B baseline validated:
+Phase 6B validated:
 
 - `PlayerTurnEnding`, `EnemyTurnEnding` and `ResolutionFaulted` are explicit battle states;
 - player turn ending and fixed enemy `[DamageAction, TurnEndedAction]` batches are atomic and state commits happen only after successful insertion;
@@ -148,17 +148,11 @@ Phase 6B baseline validated:
 - ResolutionFault transitions BattleManager to `ResolutionFaulted` and stops normal turn progression;
 - player TurnEnd reactions finish before enemy actions begin;
 - Weak/Vulnerable/Frailty DataAssets decay only on their owner's TurnEnded event while Strength/Dexterity remain unchanged;
-- baseline UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42;
-- baseline PIE validated player → enemy → player turn flow and the real configured Status DataAssets.
-
-Post-baseline Phase 6B hardening:
-
-- `OnQueueEmpty` is now a non-reentrant observable boundary;
-- BattleManager no longer synchronously starts the next turn from inside the QueueEmpty multicast;
-- one authoritative continuation is deferred until every QueueEmpty observer has returned;
-- the existing PumpQueue frame continues the next resolution without recursively nesting another QueueEmpty broadcast;
-- the Phase 6B QueueEmpty regression now records observer-visible boundary states and requires `PlayerTurnEnding` followed by `EnemyTurnEnding`;
-- this hardened HEAD requires one owner-triggered 42/42 UE5.8 rerun before Phase 6C starts.
+- `OnQueueEmpty` is a non-reentrant observable boundary: BattleManager defers macro progression until every listener has observed the current ending state;
+- the Queue keeps one pump frame alive across deferred macro continuation instead of nesting another QueueEmpty broadcast;
+- the strengthened QueueEmpty regression requires observer-visible `PlayerTurnEnding` followed by `EnemyTurnEnding`;
+- hardened UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42;
+- post-hardening PIE validated `PlayerTurnEnding → QueueEmpty → EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn` with no ResolutionFault.
 
 ### Manual UE assets/configuration
 
@@ -828,9 +822,8 @@ BattleActionQueue executes reactions
 
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
-6B  Battle Turn Wiring                                             COMPLETE baseline / CI + PIE PASSED
-    QueueEmpty non-reentrancy hardening                            IMPLEMENTED / 42-test rerun pending
-6C  DeckShuffled Event                                             NEXT after rerun
+6B  Battle Turn Wiring                                             COMPLETE / HARDENED CI 42/42 + PIE PASSED
+6C  DeckShuffled Event                                             NEXT
 6R  Phase 6 Regression Gate + test-module extraction               PENDING
 ```
 
@@ -1227,7 +1220,7 @@ Safety.ResolutionBudgetFaultsInsteadOfLoopingForever
 
 All 23 passed through the UE5.8 self-hosted Automation gate.
 
-#### Phase 6B — Battle Turn Wiring — COMPLETE BASELINE / HARDENING RERUN PENDING
+#### Phase 6B — Battle Turn Wiring — COMPLETE / HARDENED PASSED
 
 Phase 6B wires the real battle turn lifecycle.
 
@@ -1340,11 +1333,11 @@ Turn.ResolutionFaultTransitionsBattleState
 Turn.TurnEndReactionCompletesBeforeNextTurn
 ```
 
-`Turn.OneFinalQueueEmptyPerTurnBoundary` must assert observer-visible boundary state order, not only a count of two QueueEmpty callbacks.
+`Turn.OneFinalQueueEmptyPerTurnBoundary` asserts observer-visible boundary state order, not only a count of two QueueEmpty callbacks.
 
-Baseline Phase 6B passed the owner-only UE5.8 gate at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total. Baseline PIE validated the real Weak/Vulnerable/Frailty DataAssets and player → enemy → player flow.
+The hardened Phase 6B owner-only UE5.8 workflow passed at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total.
 
-The current QueueEmpty non-reentrancy hardening changed core Queue control flow, so rerun the 42-test Phase 6B workflow before starting Phase 6C. After it passes, perform one short PIE cycle confirming the normal turn loop still has no ResolutionFault.
+Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
 #### Phase 6C — DeckShuffled Event — NEXT
 
@@ -1906,7 +1899,7 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence before the latest QueueEmpty hardening:
+Current trusted self-hosted regression evidence:
 
 ```text
 Phase 5   13/13 PASS
@@ -1915,11 +1908,11 @@ Phase 6B   6/6  PASS
 Total     42/42 PASS
 ```
 
+This evidence is from the hardened QueueEmpty non-reentrancy source. The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault`.
+
 The Phase 6B owner-only workflow is `.github/workflows/ue-phase6b-tests.yml`. Keep self-hosted workflows manually triggered, owner-only and restricted to trusted `main`; do not add PR/external triggers.
 
-Because the QueueEmpty non-reentrancy hardening changes core queue control flow, rerun the full Phase 6B workflow and require the same 42/42 result before starting Phase 6C. Then do one short PIE player → enemy → player cycle and confirm no `ResolutionFault`.
-
-Phase 6R must rerun all 13 Phase 5 tests plus the complete Phase 6 suite and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+Phase 6C may now begin. Phase 6R must later rerun all 13 Phase 5 tests plus the complete Phase 6 suite and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2036,9 +2029,8 @@ Tests/Phase6BRegressionTests.cpp
 - Phase 5R — PASSED: 13/13 focused Unreal Automation tests passed UE5.8 self-hosted CI.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
-- Phase 6B — BASELINE PASSED: 6/6 UE5.8 Automation while Phase5+6A remained green (42/42 total), plus real DataAsset PIE validation.
-- Phase 6B QueueEmpty non-reentrancy hardening — IMPLEMENTED / REVALIDATION REQUIRED: source and strengthened observer-order regression are on current HEAD; rerun 42/42 and one short PIE cycle before proceeding.
-- Phase 6C — NEXT after the hardened Phase 6B rerun.
+- Phase 6B — PASSED: hardened 6/6 UE5.8 Automation while Phase5+6A remained green (42/42 total), real DataAsset PIE validation, non-reentrant QueueEmpty observer ordering, and post-hardening player → enemy → player PIE cycle with no ResolutionFault.
+- Phase 6C — NEXT.
 - Phase 6 — NOT YET COMPLETE: 6C and 6R remain.
 
 ---
