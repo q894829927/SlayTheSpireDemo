@@ -149,11 +149,17 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		FollowUpActions.Num()
 	);
 
-	// Commit the entire dependent batch before Finish(). This preserves one
-	// continuous queue chain and prevents an intermediate QueueEmpty broadcast.
-	for (UBattleAction* FollowUpAction : FollowUpActions)
+	// Card movement and Energy are already committed. The dependent continuation
+	// must therefore enter the Queue atomically; partial insertion would leave the
+	// battle in an unrecoverable half-resolved card play.
+	if (!Queue->AddBatchToBackPreserveOrder(FollowUpActions))
 	{
-		Queue->AddToBack(FollowUpAction);
+		Queue->RequestResolutionFault(FString::Printf(
+			TEXT("PlayCardAction committed %s but failed to enqueue its dependent follow-up batch."),
+			*Card->GetDebugLabel()
+		));
+		Finish();
+		return;
 	}
 
 	Finish();
