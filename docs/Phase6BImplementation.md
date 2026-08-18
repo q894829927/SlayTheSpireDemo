@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **COMPLETE / PASSED**. Source implementation, UE5.8 Editor build, hardened Automation gate (42/42), real Status DataAsset configuration, baseline status PIE validation, and post-hardening QueueEmpty turn-cycle PIE validation have all passed.
+Status: **GAMEPLAY SLICE PASSED / QUEUE CONTRACT FIXES PENDING**. The hardened 42/42 gate and PIE cycle passed before six additional QueueEmpty continuation contract regressions were added. Two new tests intentionally expose the current empty-batch and empty-callable defects; Phase 6C remains blocked until those fixes make the expanded 48/48 gate green.
 
 ## Runtime wiring implemented
 
@@ -99,7 +99,7 @@ final state after both boundaries = PlayerTurn
 
 The existing `Turn.OneFinalQueueEmptyPerTurnBoundary` Automation test was strengthened to assert these observed states instead of only asserting `QueueEmptyCount == 2`.
 
-## Phase 6B Automation gate — HARDENED HEAD PASSED
+## Phase 6B Automation gate — 12 TESTS EXPECTED / 2 CONTRACT FAILURES EXPOSED
 
 Prefix:
 
@@ -107,7 +107,7 @@ Prefix:
 SlayTheSpireDemo.Phase6B
 ```
 
-Exactly 6 Phase 6B tests passed:
+The Phase 6B prefix now contains exactly 12 tests:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -116,9 +116,22 @@ Turn.LethalEnemyActionSkipsTurnEndedEvent
 Turn.OneFinalQueueEmptyPerTurnBoundary
 Turn.ResolutionFaultTransitionsBattleState
 Turn.TurnEndReactionCompletesBeforeNextTurn
+Queue.EmptyBatchIsLegalDuringObserverNotification
+Queue.ContinuationOutsideBroadcastRejected
+Queue.SecondContinuationRejected
+Queue.NonEmptyInsertionRejectedDuringBroadcast
+Queue.FaultCancelsDeferredContinuation
+Queue.EmptyContinuationRejectedSafely
 ```
 
-Validated on the hardened QueueEmpty source:
+The first six tests and four of the new Queue contract tests are expected to pass on the current source. These two new regressions are intentionally red until production fixes land:
+
+```text
+Queue.EmptyBatchIsLegalDuringObserverNotification
+Queue.EmptyContinuationRejectedSafely
+```
+
+Previously validated on the hardened QueueEmpty source before expanding the suite:
 
 ```text
 Phase 5   13/13 PASS
@@ -127,7 +140,14 @@ Phase 6B   6/6  PASS
 Total     42/42 PASS
 ```
 
-The UE5.8 Editor build also succeeded as part of the owner-only self-hosted workflow.
+After the two defects are fixed, the owner-only gate must require:
+
+```text
+Phase 5   13/13 PASS
+Phase 6A  23/23 PASS
+Phase 6B  12/12 PASS
+Total     48/48 PASS
+```
 
 ## Manual UE Editor configuration — COMPLETE
 
@@ -258,14 +278,15 @@ Enemy QueueEmpty observers see EnemyTurnEnding before PlayerTurn starts
 QueueEmpty broadcasts are not recursively nested by macro turn progression
 Normal player → enemy → player flow still works after hardening
 No ResolutionFault occurred in the validation cycles
-Hardened UE5.8 Automation remains 42/42 green
+Prior hardened UE5.8 Automation evidence remains 42/42 green
+Expanded Queue contract suite requires 48/48 after the two exposed defects are fixed
 ```
 
 ## Next
 
 ```text
 Phase 6A  COMPLETE / UE5.8 CI PASSED
-Phase 6B  COMPLETE / hardened UE5.8 CI 42/42 + PIE PASSED
-Phase 6C  DeckShuffled Event — NEXT
+Phase 6B  GAMEPLAY PASSED / 2 QUEUE CONTRACT FIXES + 48/48 RERUN REQUIRED
+Phase 6C  DeckShuffled Event — BLOCKED until expanded Phase 6B gate passes
 Phase 6R  Full Regression + deferred test-module extraction
 ```

@@ -51,8 +51,8 @@ BattleActionQueue
   - [x] Phase 5R regression Automation gate implemented and UE5.8 self-hosted CI validated at 13/13.
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
-  - [x] Phase 6B Battle Turn Wiring — COMPLETE; hardened UE5.8 build + Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42 passed, and post-hardening PIE turn-cycle validation passed.
-  - [ ] Phase 6C DeckShuffled Event — NEXT.
+  - [ ] Phase 6B Battle Turn Wiring — gameplay slice and hardened 42/42 gate passed; six Queue contract regressions were added and intentionally expose two remaining defects. Require expanded Phase6B 12/12 and total 48/48 before closure.
+  - [ ] Phase 6C DeckShuffled Event — BLOCKED until the expanded Phase 6B gate passes.
   - [ ] Phase 6R Regression Gate + deferred test-module extraction.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -822,8 +822,8 @@ BattleActionQueue executes reactions
 
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
-6B  Battle Turn Wiring                                             COMPLETE / HARDENED CI 42/42 + PIE PASSED
-6C  DeckShuffled Event                                             NEXT
+6B  Battle Turn Wiring                                             2 QUEUE CONTRACT FIXES / 48-TEST RERUN REQUIRED
+6C  DeckShuffled Event                                             BLOCKED ON 6B
 6R  Phase 6 Regression Gate + test-module extraction               PENDING
 ```
 
@@ -1220,7 +1220,7 @@ Safety.ResolutionBudgetFaultsInsteadOfLoopingForever
 
 All 23 passed through the UE5.8 self-hosted Automation gate.
 
-#### Phase 6B — Battle Turn Wiring — COMPLETE / HARDENED PASSED
+#### Phase 6B — Battle Turn Wiring — GAMEPLAY PASSED / QUEUE CONTRACT FIXES PENDING
 
 Phase 6B wires the real battle turn lifecycle.
 
@@ -1322,7 +1322,7 @@ The upfront Enemy batch rule is deliberately narrow. It applies to the current f
 
 When dynamic Enemy continuation becomes concrete, introduce an explicit continuation/barrier insertion mechanism so dynamic follow-ups can be placed before the turn-end continuation. Do not make "all future Enemy actions must be precomputed" or "dynamic actions may never AddToBack" a permanent architecture rule.
 
-Phase 6B Automation contains exactly 6 tests:
+Phase 6B Automation now contains exactly 12 tests:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -1331,15 +1331,28 @@ Turn.LethalEnemyActionSkipsTurnEndedEvent
 Turn.OneFinalQueueEmptyPerTurnBoundary
 Turn.ResolutionFaultTransitionsBattleState
 Turn.TurnEndReactionCompletesBeforeNextTurn
+Queue.EmptyBatchIsLegalDuringObserverNotification
+Queue.ContinuationOutsideBroadcastRejected
+Queue.SecondContinuationRejected
+Queue.NonEmptyInsertionRejectedDuringBroadcast
+Queue.FaultCancelsDeferredContinuation
+Queue.EmptyContinuationRejectedSafely
 ```
 
 `Turn.OneFinalQueueEmptyPerTurnBoundary` asserts observer-visible boundary state order, not only a count of two QueueEmpty callbacks.
 
-The hardened Phase 6B owner-only UE5.8 workflow passed at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total.
+The earlier hardened Phase 6B owner-only UE5.8 workflow passed at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total. The expanded suite intentionally exposes these two current contract defects:
+
+```text
+Queue.EmptyBatchIsLegalDuringObserverNotification
+Queue.EmptyContinuationRejectedSafely
+```
+
+After fixing them, require Phase6B 12/12 and Phase5+6A+6B 48/48 before proceeding.
 
 Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
-#### Phase 6C — DeckShuffled Event — NEXT
+#### Phase 6C — DeckShuffled Event — BLOCKED ON EXPANDED PHASE 6B GATE
 
 Add `FDeckShuffledEvent` only when implementing this slice.
 
@@ -1899,7 +1912,7 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence:
+Current trusted self-hosted regression evidence before the six new Queue contract tests:
 
 ```text
 Phase 5   13/13 PASS
@@ -1912,7 +1925,7 @@ This evidence is from the hardened QueueEmpty non-reentrancy source. The post-ha
 
 The Phase 6B owner-only workflow is `.github/workflows/ue-phase6b-tests.yml`. Keep self-hosted workflows manually triggered, owner-only and restricted to trusted `main`; do not add PR/external triggers.
 
-Phase 6C may now begin. Phase 6R must later rerun all 13 Phase 5 tests plus the complete Phase 6 suite and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+The workflow now expects Phase6B 12/12 and 48/48 total. Phase 6C must not begin until the two exposed Queue defects are fixed and that expanded gate passes. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2029,8 +2042,8 @@ Tests/Phase6BRegressionTests.cpp
 - Phase 5R — PASSED: 13/13 focused Unreal Automation tests passed UE5.8 self-hosted CI.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
-- Phase 6B — PASSED: hardened 6/6 UE5.8 Automation while Phase5+6A remained green (42/42 total), real DataAsset PIE validation, non-reentrant QueueEmpty observer ordering, and post-hardening player → enemy → player PIE cycle with no ResolutionFault.
-- Phase 6C — NEXT.
+- Phase 6B — GAMEPLAY PASSED / CONTRACT FIXES PENDING: prior hardened 6/6 and total 42/42 passed with PIE, but the expanded 12-test suite now exposes empty-batch and empty-continuation defects; require 48/48 after fixes.
+- Phase 6C — BLOCKED until expanded Phase 6B gate passes.
 - Phase 6 — NOT YET COMPLETE: 6C and 6R remain.
 
 ---

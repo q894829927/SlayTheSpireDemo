@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "../Actions/BattleActionQueue.h"
+#include "../Actions/GainBlockAction.h"
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
 #include "../Events/TurnEndStatusDecayTrigger.h"
@@ -302,6 +303,208 @@ namespace Phase6BRegression
 		);
 		TestEqual(TEXT("Enemy ending completes and next PlayerTurn starts"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
 		TestFalse(TEXT("Normal turn cycle does not fault resolution"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptyBatchIsLegalDuringObserverNotificationTest,
+		"SlayTheSpireDemo.Phase6B.Queue.EmptyBatchIsLegalDuringObserverNotification",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptyBatchIsLegalDuringObserverNotificationTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		bool bBackAccepted = false;
+		bool bFrontAccepted = false;
+		Queue->OnQueueEmpty.AddLambda(
+			[Queue, &bBackAccepted, &bFrontAccepted]()
+			{
+				const TArray<UBattleAction*> EmptyBatch;
+				bBackAccepted = Queue->AddBatchToBackPreserveOrder(EmptyBatch);
+				bFrontAccepted = Queue->AddBatchToFrontPreserveOrder(EmptyBatch);
+			}
+		);
+
+		Fixture.Battle->TestGainBlock();
+
+		TestTrue(TEXT("Empty back batch remains a legal no-op during QueueEmpty notification"), bBackAccepted);
+		TestTrue(TEXT("Empty front batch remains a legal no-op during QueueEmpty notification"), bFrontAccepted);
+		TestEqual(TEXT("Only the original GainBlock action committed"), Fixture.Player->Block, Fixture.Battle->PlayerTestBlockAmount);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptyContinuationOutsideBroadcastRejectedTest,
+		"SlayTheSpireDemo.Phase6B.Queue.ContinuationOutsideBroadcastRejected",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptyContinuationOutsideBroadcastRejectedTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		int32 ContinuationExecutions = 0;
+		const bool bAccepted = Fixture.Battle->GetActionQueueForTesting()->DeferUntilAfterQueueEmptyBroadcast(
+			[&ContinuationExecutions]()
+			{
+				++ContinuationExecutions;
+			}
+		);
+
+		TestFalse(TEXT("QueueEmpty continuation cannot be registered outside the observer broadcast"), bAccepted);
+		TestEqual(TEXT("Rejected continuation never executes"), ContinuationExecutions, 0);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptySecondContinuationRejectedTest,
+		"SlayTheSpireDemo.Phase6B.Queue.SecondContinuationRejected",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptySecondContinuationRejectedTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		bool bFirstAccepted = false;
+		bool bSecondAccepted = false;
+		int32 ContinuationExecutions = 0;
+		Queue->OnQueueEmpty.AddLambda(
+			[Queue, &bFirstAccepted, &bSecondAccepted, &ContinuationExecutions]()
+			{
+				bFirstAccepted = Queue->DeferUntilAfterQueueEmptyBroadcast(
+					[&ContinuationExecutions]()
+					{
+						++ContinuationExecutions;
+					}
+				);
+				bSecondAccepted = Queue->DeferUntilAfterQueueEmptyBroadcast(
+					[&ContinuationExecutions]()
+					{
+						ContinuationExecutions += 100;
+					}
+				);
+			}
+		);
+
+		Fixture.Battle->TestGainBlock();
+
+		TestTrue(TEXT("First authoritative continuation is accepted"), bFirstAccepted);
+		TestFalse(TEXT("Second continuation for the same QueueEmpty boundary is rejected"), bSecondAccepted);
+		TestEqual(TEXT("Only the accepted continuation executes"), ContinuationExecutions, 1);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptyNonEmptyInsertionRejectedDuringBroadcastTest,
+		"SlayTheSpireDemo.Phase6B.Queue.NonEmptyInsertionRejectedDuringBroadcast",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptyNonEmptyInsertionRejectedDuringBroadcastTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		ACombatant* Player = Fixture.Player;
+		bool bInsertionAccepted = true;
+		Queue->OnQueueEmpty.AddLambda(
+			[Queue, Player, &bInsertionAccepted]()
+			{
+				UGainBlockAction* ForbiddenAction = NewObject<UGainBlockAction>(Queue);
+				ForbiddenAction->Initialize(Player, Player, 1);
+				TArray<UBattleAction*> ForbiddenBatch{ForbiddenAction};
+				bInsertionAccepted = Queue->AddBatchToBackPreserveOrder(ForbiddenBatch);
+			}
+		);
+
+		Fixture.Battle->TestGainBlock();
+
+		TestFalse(TEXT("Non-empty Action insertion is rejected while QueueEmpty observers run"), bInsertionAccepted);
+		TestEqual(TEXT("Rejected observer insertion cannot mutate Block"), Fixture.Player->Block, Fixture.Battle->PlayerTestBlockAmount);
+		TestEqual(TEXT("Rejected observer insertion leaves no pending work"), Queue->GetPendingCount(), 0);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptyFaultCancelsDeferredContinuationTest,
+		"SlayTheSpireDemo.Phase6B.Queue.FaultCancelsDeferredContinuation",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptyFaultCancelsDeferredContinuationTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		ExpectImmediateResolutionFaultLogs(*this);
+
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		bool bContinuationAccepted = false;
+		bool bFaultRequested = false;
+		int32 ContinuationExecutions = 0;
+		Queue->OnQueueEmpty.AddLambda(
+			[Queue, &bContinuationAccepted, &bFaultRequested, &ContinuationExecutions]()
+			{
+				bContinuationAccepted = Queue->DeferUntilAfterQueueEmptyBroadcast(
+					[&ContinuationExecutions]()
+					{
+						++ContinuationExecutions;
+					}
+				);
+				bFaultRequested = Queue->RequestResolutionFault(TEXT("Phase 6B QueueEmpty cancellation test fault."));
+			}
+		);
+
+		Fixture.Battle->TestGainBlock();
+
+		TestTrue(TEXT("Continuation was registered before the observer requested a fault"), bContinuationAccepted);
+		TestTrue(TEXT("Observer fault request was accepted"), bFaultRequested);
+		TestEqual(TEXT("Fault prevents the deferred continuation from executing"), ContinuationExecutions, 0);
+		TestTrue(TEXT("Queue enters ResolutionFault after all observers return"), Queue->IsResolutionFaulted());
+		TestEqual(TEXT("Battle mirrors the Queue fault"), Fixture.Battle->BattleState, EBattleState::ResolutionFaulted);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6BQueueEmptyEmptyContinuationRejectedSafelyTest,
+		"SlayTheSpireDemo.Phase6B.Queue.EmptyContinuationRejectedSafely",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6BQueueEmptyEmptyContinuationRejectedSafelyTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		// Request a fault in the same observer so the current buggy implementation
+		// cannot invoke the accepted empty TFunction after the multicast returns.
+		// The assertion still exposes bAccepted=true without crashing Automation.
+		ExpectImmediateResolutionFaultLogs(*this);
+
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		bool bAccepted = true;
+		Queue->OnQueueEmpty.AddLambda(
+			[Queue, &bAccepted]()
+			{
+				TFunction<void()> EmptyContinuation;
+				bAccepted = Queue->DeferUntilAfterQueueEmptyBroadcast(MoveTemp(EmptyContinuation));
+				Queue->RequestResolutionFault(TEXT("Phase 6B empty continuation safety test fault."));
+			}
+		);
+
+		Fixture.Battle->TestGainBlock();
+
+		TestFalse(TEXT("Unbound QueueEmpty continuation is rejected at registration"), bAccepted);
+		TestTrue(TEXT("Safety fault prevents an invalid callable invocation"), Queue->IsResolutionFaulted());
 		return true;
 	}
 }

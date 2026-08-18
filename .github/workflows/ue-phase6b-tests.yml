@@ -129,6 +129,6 @@ jobs:
 
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase5" -ExpectedCount 13 -ReportName "Phase5"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 6 -ReportName "Phase6B"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
 
           Write-Host "Phase 5, Phase 6A and Phase 6B automation gates passed."
