@@ -1,0 +1,255 @@
+name: UE Phase 6R Regression and Shipping Exclusion
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ue58-phase6r-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  phase6r-regression:
+    if: github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, windows, x64, ue58]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      - name: Verify trusted execution context
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -ne "workflow_dispatch") {
+              throw "This self-hosted workflow must only run via workflow_dispatch."
+          }
+          if ("${{ github.actor }}" -ne "${{ github.repository_owner }}") {
+              throw "Only the repository owner may run this self-hosted workflow."
+          }
+          if ("${{ github.ref }}" -ne "refs/heads/main") {
+              throw "This self-hosted workflow may only run from main."
+          }
+
+      - name: Verify test-module extraction boundary
+        shell: powershell
+        run: |
+          $ProjectPath = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $ProjectJson = Get-Content $ProjectPath -Raw | ConvertFrom-Json
+          $TestModules = @($ProjectJson.Modules | Where-Object { $_.Name -eq "SlayTheSpireDemoTests" })
+          if ($TestModules.Count -ne 1) {
+              throw "Expected exactly one SlayTheSpireDemoTests module declaration."
+          }
+          if ($TestModules[0].Type -ne "Editor") {
+              throw "SlayTheSpireDemoTests must be declared as an Editor module."
+          }
+
+          $RuntimeTestsPath = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo\Tests"
+          if (Test-Path $RuntimeTestsPath) {
+              $RuntimeTestFiles = @(Get-ChildItem $RuntimeTestsPath -Recurse -File)
+              if ($RuntimeTestFiles.Count -gt 0) {
+                  throw "Automation sources still exist inside the Runtime module: $($RuntimeTestFiles.FullName -join '; ')"
+              }
+          }
+
+          $RuntimeSource = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo"
+          $RuntimeTestTypeHits = @(Get-ChildItem $RuntimeSource -Recurse -File -Include *.h,*.cpp | Select-String -Pattern "UPhase6ATest")
+          if ($RuntimeTestTypeHits.Count -gt 0) {
+              throw "Phase6A reflected test helpers still appear in Runtime source."
+          }
+
+          $RuntimeBuildCs = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo\SlayTheSpireDemo.Build.cs" -Raw
+          if ($RuntimeBuildCs -match "SlayTheSpireDemoTests") {
+              throw "Runtime module must never depend on SlayTheSpireDemoTests."
+          }
+
+          $GameTarget = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo.Target.cs" -Raw
+          if ($GameTarget -match "SlayTheSpireDemoTests") {
+              throw "Game target must not include SlayTheSpireDemoTests."
+          }
+
+          $EditorTarget = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemoEditor.Target.cs" -Raw
+          if ($EditorTarget -notmatch "SlayTheSpireDemoTests") {
+              throw "Editor target must include SlayTheSpireDemoTests."
+          }
+
+      - name: Check UE5.8 toolchain
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          foreach ($Path in @($Build, $EditorCmd, $Project)) {
+              if (!(Test-Path $Path)) {
+                  throw "Required path not found: $Path"
+              }
+          }
+
+      - name: Build SlayTheSpireDemoEditor with test module
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          & $Build SlayTheSpireDemoEditor Win64 Development $Project -WaitMutex -NoHotReloadFromIDE
+          if ($LASTEXITCODE -ne 0) {
+              throw "UE Editor build failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Run complete Phase 5 and Phase 6 regression gate
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          function Run-AutomationGate {
+              param(
+                  [string]$Prefix,
+                  [int]$ExpectedCount,
+                  [string]$ReportName
+              )
+
+              $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\$ReportName"
+              $IndexJson = "$Report\index.json"
+              if (Test-Path $Report) {
+                  Remove-Item $Report -Recurse -Force
+              }
+              New-Item -ItemType Directory -Force -Path $Report | Out-Null
+
+              & $EditorCmd `
+                  $Project `
+                  -unattended `
+                  -nop4 `
+                  -NullRHI `
+                  -NoSplash `
+                  -NoSound `
+                  "-ExecCmds=Automation RunTest $Prefix;Quit" `
+                  "-ReportExportPath=$Report" `
+                  -log
+
+              $EditorExitCode = $LASTEXITCODE
+              if (!(Test-Path $IndexJson)) {
+                  throw "Automation report was not generated for $Prefix at $IndexJson"
+              }
+
+              $Result = Get-Content $IndexJson -Raw | ConvertFrom-Json
+              $Tests = @($Result.tests | Where-Object { $_.fullTestPath -like "$Prefix.*" })
+              $NonSuccess = @($Tests | Where-Object { $_.state -ne 'Success' })
+
+              Write-Host "$Prefix tests discovered: $($Tests.Count)"
+              Write-Host "Succeeded: $($Result.succeeded) Failed: $($Result.failed) NotRun: $($Result.notRun) EditorExit: $EditorExitCode"
+
+              "| $Prefix | $($Tests.Count)/$ExpectedCount | $($Result.failed) | $($Result.notRun) | $EditorExitCode |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+              if ($Tests.Count -ne $ExpectedCount) {
+                  throw "Expected exactly $ExpectedCount tests for $Prefix, but found $($Tests.Count)."
+              }
+              if ($NonSuccess.Count -gt 0) {
+                  $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
+                  throw "Non-success tests for ${Prefix}: $Names"
+              }
+              if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) {
+                  throw "Automation gate failed for $Prefix."
+              }
+          }
+
+          "## UE Phase 6R Regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase5" -ExpectedCount 13 -ReportName "Phase5"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
+
+          Write-Host "Phase 5 + Phase 6 regression gate passed. Expected total: 53 tests."
+
+  shipping-exclusion:
+    needs: phase6r-regression
+    if: github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, windows, x64, ue58]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout trusted main cleanly
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      - name: Verify trusted execution context
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -ne "workflow_dispatch") {
+              throw "This self-hosted workflow must only run via workflow_dispatch."
+          }
+          if ("${{ github.actor }}" -ne "${{ github.repository_owner }}") {
+              throw "Only the repository owner may run this self-hosted workflow."
+          }
+          if ("${{ github.ref }}" -ne "refs/heads/main") {
+              throw "This self-hosted workflow may only run from main."
+          }
+
+      - name: Build Shipping game target
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          foreach ($Path in @($Build, $Project)) {
+              if (!(Test-Path $Path)) {
+                  throw "Required path not found: $Path"
+              }
+          }
+
+          & $Build SlayTheSpireDemo Win64 Shipping $Project -WaitMutex -NoHotReloadFromIDE
+          if ($LASTEXITCODE -ne 0) {
+              throw "UE Shipping build failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Verify test module is absent from Shipping artifacts
+        shell: powershell
+        run: |
+          $ArtifactRoots = @(
+              "$env:GITHUB_WORKSPACE\Binaries",
+              "$env:GITHUB_WORKSPACE\Intermediate"
+          )
+
+          $Forbidden = @()
+          foreach ($Root in $ArtifactRoots) {
+              if (Test-Path $Root) {
+                  $Forbidden += @(Get-ChildItem $Root -Recurse -File | Where-Object {
+                      $_.Name -match "SlayTheSpireDemoTests" -or $_.Name -match "Phase6ATest"
+                  })
+              }
+          }
+
+          if ($Forbidden.Count -gt 0) {
+              $Paths = ($Forbidden | ForEach-Object { $_.FullName }) -join '; '
+              throw "Editor/test-only module artifacts appeared in the Shipping build: $Paths"
+          }
+
+          $RuntimeSource = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo"
+          $RuntimeTestTypeHits = @(Get-ChildItem $RuntimeSource -Recurse -File -Include *.h,*.cpp | Select-String -Pattern "UPhase6ATest")
+          if ($RuntimeTestTypeHits.Count -gt 0) {
+              throw "Runtime source still contains Phase6ATest reflected helpers."
+          }
+
+          "## UE Phase 6R Shipping Exclusion" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Shipping target built successfully and produced no SlayTheSpireDemoTests / Phase6ATest artifacts." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append

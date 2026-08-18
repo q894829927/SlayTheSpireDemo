@@ -10,7 +10,7 @@ class UBattleEventDispatcher;
 class UDeckRuntime;
 
 UCLASS(Transient)
-class SLAYTHESPIREDEMO_API UPhase6ATestExecutionRecorder : public UObject
+class SLAYTHESPIREDEMOTESTS_API UPhase6ATestExecutionRecorder : public UObject
 {
 	GENERATED_BODY()
 
@@ -23,7 +23,7 @@ private:
 };
 
 UCLASS(Transient)
-class SLAYTHESPIREDEMO_API UPhase6ATestRecordAction : public UBattleAction
+class SLAYTHESPIREDEMOTESTS_API UPhase6ATestRecordAction : public UBattleAction
 {
 	GENERATED_BODY()
 
@@ -44,7 +44,7 @@ private:
 };
 
 UCLASS(Transient, EditInlineNew, DefaultToInstanced)
-class SLAYTHESPIREDEMO_API UPhase6ATestRecordTrigger : public UBattleTrigger
+class SLAYTHESPIREDEMOTESTS_API UPhase6ATestRecordTrigger : public UBattleTrigger
 {
 	GENERATED_BODY()
 
@@ -70,7 +70,7 @@ private:
 };
 
 UCLASS(Transient)
-class SLAYTHESPIREDEMO_API UPhase6ATestEmitTurnEndedAction : public UBattleAction
+class SLAYTHESPIREDEMOTESTS_API UPhase6ATestEmitTurnEndedAction : public UBattleAction
 {
 	GENERATED_BODY()
 
@@ -101,7 +101,7 @@ private:
 };
 
 UCLASS(Transient, EditInlineNew, DefaultToInstanced)
-class SLAYTHESPIREDEMO_API UPhase6ATestNestedTrigger : public UBattleTrigger
+class SLAYTHESPIREDEMOTESTS_API UPhase6ATestNestedTrigger : public UBattleTrigger
 {
 	GENERATED_BODY()
 
