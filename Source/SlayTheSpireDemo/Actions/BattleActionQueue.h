@@ -23,6 +23,10 @@ class SLAYTHESPIREDEMO_API UBattleActionQueue : public UObject
 public:
 	bool AddToBack(UBattleAction* Action);
 	bool AddToFront(UBattleAction* Action);
+
+	// On a healthy Queue, an empty batch is always a legal no-op success,
+	// including during QueueEmpty observer notification. Non-empty batches remain
+	// subject to the normal atomic validation and QueueEmpty non-reentrancy guard.
 	bool AddBatchToBackPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool AddBatchToFrontPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool StartProcessing();
@@ -33,6 +37,9 @@ public:
 	// runs only after every QueueEmpty listener has returned. If it enqueues and
 	// starts another batch, the existing PumpQueue call continues that work without
 	// nesting another QueueEmpty broadcast inside the previous one.
+	// Registration is rejected when the Queue is faulted/fault-requested, when no
+	// QueueEmpty broadcast is active, when the callable is unbound, or when another
+	// continuation is already registered for the same boundary.
 	bool DeferUntilAfterQueueEmptyBroadcast(TFunction<void()>&& Continuation);
 
 	bool RequestResolutionFault(const FString& Reason);
