@@ -214,15 +214,34 @@ namespace Phase6BRegression
 		UStatusInstance* PlayerInstance = ApplyStatus(Fixture.Player, PlayerDecay, 2, 1);
 		UStatusInstance* EnemyInstance = ApplyStatus(Fixture.Enemy, EnemyDecay, 2, 2);
 
-		int32 QueueEmptyCount = 0;
-		Fixture.Battle->GetActionQueueForTesting()->OnQueueEmpty.AddLambda([&QueueEmptyCount]() { ++QueueEmptyCount; });
+		TArray<EBattleState> ObservedBoundaryStates;
+		ABattleManager* ObservedBattle = Fixture.Battle;
+		Fixture.Battle->GetActionQueueForTesting()->OnQueueEmpty.AddLambda(
+			[&ObservedBoundaryStates, ObservedBattle]()
+			{
+				ObservedBoundaryStates.Add(ObservedBattle->BattleState);
+			}
+		);
 
 		Fixture.Battle->EndPlayerTurn();
 
-		TestEqual(TEXT("Player ending and enemy ending each produce one final QueueEmpty"), QueueEmptyCount, 2);
+		TestEqual(TEXT("Player ending and enemy ending each produce one final QueueEmpty"), ObservedBoundaryStates.Num(), 2);
+		if (ObservedBoundaryStates.Num() == 2)
+		{
+			TestEqual(
+				TEXT("First observer callback sees the completed player-ending boundary before EnemyTurn begins"),
+				ObservedBoundaryStates[0],
+				EBattleState::PlayerTurnEnding
+			);
+			TestEqual(
+				TEXT("Second observer callback sees the completed enemy-ending boundary before PlayerTurn begins"),
+				ObservedBoundaryStates[1],
+				EBattleState::EnemyTurnEnding
+			);
+		}
 		TestEqual(TEXT("Player reaction completed before its turn boundary emptied"), PlayerInstance ? PlayerInstance->GetAmount() : 0, 1);
 		TestEqual(TEXT("Enemy reaction completed before its turn boundary emptied"), EnemyInstance ? EnemyInstance->GetAmount() : 0, 1);
-		TestEqual(TEXT("Full cycle returns to PlayerTurn"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
+		TestEqual(TEXT("Full cycle returns to PlayerTurn after both observer broadcasts return"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
 		return true;
 	}
 
