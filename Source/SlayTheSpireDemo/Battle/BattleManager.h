@@ -118,6 +118,26 @@ public:
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
 
+	// Narrow runtime dependency bridge used while BattleManager still owns the
+	// battle-scoped dispatcher and authoritative combatant references. Action and
+	// card-effect code receives the returned references explicitly; it does not
+	// search the world or own trigger-source membership.
+	bool TryBuildEventDispatchContext(
+		UBattleEventDispatcher*& OutDispatcher,
+		TArray<ACombatant*>& OutCombatants
+	) const
+	{
+		OutDispatcher = EventDispatcher.Get();
+		OutCombatants.Reset();
+		if (OutDispatcher == nullptr || Player.Get() == nullptr || Enemy.Get() == nullptr)
+		{
+			return false;
+		}
+		OutCombatants.Add(Player.Get());
+		OutCombatants.Add(Enemy.Get());
+		return true;
+	}
+
 #if WITH_DEV_AUTOMATION_TESTS
 	UBattleActionQueue* GetActionQueueForTesting() const;
 	void SetForceInvalidPlayerEndBatchForTesting(bool bForceInvalid);
