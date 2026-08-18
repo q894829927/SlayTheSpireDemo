@@ -49,7 +49,9 @@ Phase6CRegressionTests.cpp
 
 The reflected test helpers now export from the test module through `SLAYTHESPIREDEMOTESTS_API` rather than the Runtime module API macro.
 
-Because the existing Runtime project predates a `Public/Private` header layout, the test module keeps a private legacy include anchor at the existing Runtime `Actions/` directory. The migrated tests retain their established `../Actions`, `../Status`, `../Cards`, etc. include shapes; resolving them through this private anchor avoids widening the Runtime module's public include surface solely for Automation.
+Because the existing Runtime project predates a `Public/Private` header layout, the test module keeps two private compatibility include paths: the Runtime module root for module-root-relative includes used by the reflected helper header, plus the existing Runtime `Actions/` directory as a legacy anchor for migrated tests that still use `../Actions`, `../Status`, `../Cards`, etc. This avoids widening the Runtime module's public include surface solely for Automation.
+
+`FTriggerContext` is now exported with `SLAYTHESPIREDEMO_API`. Its constructor/getters were already Runtime behavior; the export only makes that existing trigger-context API linkable from the separate Editor test module and does not change gameplay semantics.
 
 ## Runtime / Shipping boundary
 
