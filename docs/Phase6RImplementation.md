@@ -1,6 +1,6 @@
 # Phase 6R — Regression Gate and Test Module Extraction
 
-Status: **SOURCE IMPLEMENTED / UE5.8 REGRESSION + SHIPPING EXCLUSION VALIDATION PENDING**.
+Status: **COMPLETE / UE5.8 FULL 53/53 REGRESSION + SHIPPING EXCLUSION PASSED**.
 
 Phase 6R is an engineering/regression slice. It does not add new gameplay, UI, Relic or card mechanics.
 
@@ -23,7 +23,7 @@ The Runtime module never depends on the test module.
 
 `SlayTheSpireDemoTests` is declared as an `Editor` module and is included by `SlayTheSpireDemoEditorTarget`, not the Game target.
 
-The following Automation sources are moved from:
+The following Automation sources were moved from:
 
 ```text
 Source/SlayTheSpireDemo/Tests/
@@ -76,7 +76,7 @@ The project descriptor declares `SlayTheSpireDemoTests` as `Type = Editor`, so i
 
 ## Phase 6R workflow
 
-New owner-only manual workflow:
+Owner-only manual workflow:
 
 ```text
 .github/workflows/ue-phase6r-tests.yml
@@ -103,7 +103,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-The second job starts from a clean checkout, builds the normal `SlayTheSpireDemo Win64 Shipping` target, and fails if Shipping build artifacts contain names associated with:
+The second job starts from a clean checkout, builds the normal `SlayTheSpireDemo Win64 Shipping` target, and verifies Shipping build artifacts contain no names associated with:
 
 ```text
 SlayTheSpireDemoTests
@@ -112,26 +112,26 @@ Phase6ATest
 
 It also rechecks that Runtime source contains no `UPhase6ATest*` reflected helper.
 
-## Acceptance criteria
+## Validation result
 
-Phase 6R is complete only after the UE5.8 workflow proves all of the following:
+The UE5.8 Phase 6R workflow completed successfully:
 
 ```text
-SlayTheSpireDemoEditor builds with SlayTheSpireDemoTests
-Editor Automation still discovers exactly 53 Phase5–Phase6C tests
-all 53 tests pass
-Runtime source contains no Phase6ATest reflected helpers
-Runtime Build.cs does not depend on SlayTheSpireDemoTests
-Game target does not include SlayTheSpireDemoTests
-Shipping game target builds
-Shipping build artifacts contain no SlayTheSpireDemoTests / Phase6ATest artifacts
+SlayTheSpireDemoEditor builds with SlayTheSpireDemoTests   PASS
+Editor Automation discovers exactly 53 Phase5–Phase6C tests PASS
+Phase5–Phase6C full regression                              53/53 PASS
+Runtime source contains no Phase6ATest reflected helpers     PASS
+Runtime Build.cs has no SlayTheSpireDemoTests dependency     PASS
+Game target excludes SlayTheSpireDemoTests                   PASS
+SlayTheSpireDemo Win64 Shipping build                        PASS
+Shipping artifacts exclude SlayTheSpireDemoTests/Phase6ATest PASS
 ```
 
-No Phase 6R validation is claimed until that workflow passes on the UE5.8 self-hosted runner.
+Phase 6R is complete. No additional PIE, Blueprint, DataAsset or map validation is required for this engineering-only slice because it introduced no new gameplay semantics and the full regression gate remained green.
 
 ## Next phase
 
-After Phase 6R passes and documentation is synchronized, the next implementation slice is:
+The next implementation slice is:
 
 ```text
 Phase 6UI-A0 — Playable Gameplay Boundary
