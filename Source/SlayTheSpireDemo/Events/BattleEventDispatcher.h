@@ -8,7 +8,7 @@ class ACombatant;
 class UBattleActionQueue;
 struct FBattleEvent;
 
-struct FTriggerDispatchRecord
+struct FTriggerEligibilityRecord
 {
 	FName StatusId = NAME_None;
 	int32 Priority = 0;
@@ -26,6 +26,6 @@ public:
 		const FBattleEvent& Event,
 		UBattleActionQueue* Queue,
 		const TArray<ACombatant*>& Combatants,
-		TArray<FTriggerDispatchRecord>* OutDispatchTrace = nullptr
+		TArray<FTriggerEligibilityRecord>* OutEligibilityTrace = nullptr
 	) const;
 };
