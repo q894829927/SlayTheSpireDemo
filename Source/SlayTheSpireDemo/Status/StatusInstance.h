@@ -26,6 +26,7 @@ private:
 
 	void Initialize(UStatusData* InDefinition, ACombatant* InOwner, int32 InAmount, uint64 InRuntimeSequence);
 	bool AddAmount(int32 AmountToAdd);
+	bool ReduceAmount(int32 AmountToRemove);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStatusData> Definition = nullptr;
