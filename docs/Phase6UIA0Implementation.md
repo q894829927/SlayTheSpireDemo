@@ -1,6 +1,6 @@
 # Phase 6UI-A0 — Playable Gameplay Boundary
 
-Status: **SOURCE REVIEW FIXES IMPLEMENTED / UE5.8 BUILD + AUTOMATION VALIDATION PENDING**.
+Status: **COMPLETE — UE5.8 Editor build + existing Phase 5/6 regression gates + all current Phase 6UI-A0 named invariants passed on the owner-only self-hosted workflow**.
 
 Phase 6UI-A0 establishes the non-debug gameplay/read boundary required before formal UMG work begins. It does not implement Battle HUD Widgets, Presentation Records, animation playback, Relics or Outcome Preview.
 
@@ -457,7 +457,20 @@ The trusted owner-only workflow remains:
 
 The workflow uses exact discovered counts operationally to detect missing tests, but the long-term architecture acceptance rule is **not** a permanent numeric total.
 
-UI-A0 passes only when:
+### Validation result
+
+The owner-confirmed UE5.8 self-hosted workflow passed after the final ticker-handle fix. The successful gate built `SlayTheSpireDemoEditor` and then passed every existing regression prefix plus every current UI-A0 invariant prefix:
+
+```text
+Phase5       13/13
+Phase6A      23/23
+Phase6B      12/12
+Phase6C       5/5
+Phase6UIA0   20/20
+current run  73/73
+```
+
+`73/73` is evidence for this completed run only; it is not a permanent architecture constant. The durable acceptance rule remains:
 
 ```text
 all existing Phase 5 / Phase 6 regression gates pass
@@ -467,14 +480,14 @@ all currently named UI-A0 invariants pass
 UE5.8 Editor build passes
 ```
 
-No UE5.8 build/Automation pass is claimed until the self-hosted workflow is actually run successfully.
+Phase 6UI-A0 satisfies that rule and is **COMPLETE**.
 
 ## Next slice
 
-After UI-A0 passes and documentation is synchronized:
+The next active slice is:
 
 ```text
 Phase 6UI-A1 — Operable Battle HUD
 ```
 
-UI-A1 may then bind UMG/ViewModel presentation to the formal Request, `OnReadStateReady`, and player-facing coherent snapshot boundaries rather than using gameplay-driving debug keys or polling Queue state.
+UI-A1 may now bind UMG/ViewModel presentation to the formal Request, `OnReadStateReady`, and player-facing coherent snapshot boundaries rather than using gameplay-driving debug keys or polling Queue state.
