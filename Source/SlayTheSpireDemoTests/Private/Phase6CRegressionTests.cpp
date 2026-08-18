@@ -13,6 +13,7 @@
 #include "../Events/BattleEventDispatcher.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
+#include "../Status/StatusInstance.h"
 #include "Phase6ATestTypes.h"
 #include "Engine/World.h"
 #include "UObject/Package.h"
