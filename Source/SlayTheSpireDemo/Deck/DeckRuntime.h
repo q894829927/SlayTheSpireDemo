@@ -30,12 +30,17 @@ public:
 	bool TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDestination Destination);
 	bool ShuffleDiscardIntoDrawPile();
 
+	const TArray<TObjectPtr<UCardInstance>>& GetHandCards() const;
+	const TArray<TObjectPtr<UCardInstance>>& GetDiscardCards() const;
+	const TArray<TObjectPtr<UCardInstance>>& GetExhaustCards() const;
+
 	int32 GetDrawCount() const;
 	int32 GetHandCount() const;
 	int32 GetDiscardCount() const;
 	int32 GetExhaustCount() const;
 	int32 GetPlayAreaCount() const;
 	int32 GetRemovedCount() const;
+	int32 GetMaxHandSize() const;
 
 	FString DescribeState() const;
 	void LogState(const TCHAR* Context) const;

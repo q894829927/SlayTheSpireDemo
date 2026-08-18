@@ -1,5 +1,6 @@
 #include "BattleManager.h"
 
+#include "BattleReadSnapshot.h"
 #include "../Actions/ApplyStatusAction.h"
 #include "../Actions/BattleActionQueue.h"
 #include "../Actions/DamageAction.h"
@@ -8,13 +9,85 @@
 #include "../Actions/GainBlockAction.h"
 #include "../Actions/PlayCardAction.h"
 #include "../Actions/TurnEndedAction.h"
+#include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEvent.h"
 #include "../Events/BattleEventDispatcher.h"
 #include "../Modifiers/ModifierTypes.h"
+#include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
+#include "../Status/StatusInstance.h"
+
+namespace
+{
+	FCardReadView MakeCardReadView(UCardInstance* Card)
+	{
+		FCardReadView View;
+		if (!IsValid(Card))
+		{
+			return View;
+		}
+
+		View.Card = Card;
+		View.CardId = Card->GetCardId();
+		View.RuntimeId = Card->GetRuntimeId();
+		View.CurrentCost = Card->GetCurrentCost();
+		View.TargetType = Card->GetTargetType();
+		return View;
+	}
+
+	void AppendCardReadViews(
+		const TArray<TObjectPtr<UCardInstance>>& Cards,
+		TArray<FCardReadView>& OutViews
+	)
+	{
+		OutViews.Reset();
+		OutViews.Reserve(Cards.Num());
+		for (const TObjectPtr<UCardInstance>& Card : Cards)
+		{
+			if (IsValid(Card.Get()))
+			{
+				OutViews.Add(MakeCardReadView(Card.Get()));
+			}
+		}
+	}
+
+	FCombatantReadView MakeCombatantReadView(ACombatant* Combatant)
+	{
+		FCombatantReadView View;
+		if (!IsValid(Combatant))
+		{
+			return View;
+		}
+
+		View.Combatant = Combatant;
+		View.HP = Combatant->HP;
+		View.MaxHP = Combatant->MaxHP;
+		View.Block = Combatant->Block;
+		View.bDead = Combatant->IsDead();
+
+		if (const UStatusContainer* StatusContainer = Combatant->GetStatusContainer())
+		{
+			for (const TObjectPtr<UStatusInstance>& Status : StatusContainer->GetStatuses())
+			{
+				if (!IsValid(Status.Get()))
+				{
+					continue;
+				}
+
+				FStatusReadView StatusView;
+				StatusView.StatusId = Status->GetStatusId();
+				StatusView.Amount = Status->GetAmount();
+				StatusView.RuntimeSequence = Status->GetRuntimeSequence();
+				View.Statuses.Add(StatusView);
+			}
+		}
+
+		return View;
+	}
+}
 
 ABattleManager::ABattleManager()
 {
@@ -56,7 +129,7 @@ void ABattleManager::StartBattle()
 
 	if (DebugStartingDeck.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Battle] DebugStartingDeck is empty. Configure Phase 4 CardData assets on BP_BattleManager."));
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] DebugStartingDeck is empty. Configure CardData assets on BP_BattleManager for a playable opening Hand."));
 	}
 
 	NextRuntimeSequence = 1;
@@ -65,6 +138,14 @@ void ABattleManager::StartBattle()
 
 	BattleState = EBattleState::BattleStart;
 	Energy = 0;
+	CommittedEnemyIntent = FEnemyIntent{};
+
+	++BattleId;
+	if (BattleId == 0)
+	{
+		BattleId = 1;
+	}
+	StateRevision = 1;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bForceInvalidPlayerEndBatchForTesting = false;
@@ -72,8 +153,15 @@ void ABattleManager::StartBattle()
 	StateBeforeLastResolutionFaultForTesting = EBattleState::BattleStart;
 #endif
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Battle started. ActionQueue, EventDispatcher, DeckRuntime and StatusContainers initialized."));
-	StartPlayerTurn();
+	CommitNextEnemyIntent();
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Battle started. BattleId=%llu ActionQueue, EventDispatcher, DeckRuntime and StatusContainers initialized."),
+		BattleId
+	);
+	StartOpeningHand();
 }
 
 void ABattleManager::TestAttack()
@@ -255,18 +343,6 @@ void ABattleManager::TestPlayFirstCard()
 		return;
 	}
 
-	if (BattleState != EBattleState::PlayerTurn)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard rejected: it is not the player's turn."));
-		return;
-	}
-
-	if (IsActionQueueBusy())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard rejected: action queue is busy."));
-		return;
-	}
-
 	UCardInstance* CardToPlay = DeckRuntime->GetFirstHandCard();
 	if (!IsValid(CardToPlay))
 	{
@@ -274,9 +350,27 @@ void ABattleManager::TestPlayFirstCard()
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Test play requested for %s."), *CardToPlay->GetDebugLabel());
-	QueuePlayCardAction(CardToPlay, Enemy.Get());
-	ActionQueue->StartProcessing();
+	ACombatant* RequestedTarget = nullptr;
+	switch (CardToPlay->GetTargetType())
+	{
+	case ECardTargetType::None:
+		break;
+	case ECardTargetType::Self:
+		RequestedTarget = Player.Get();
+		break;
+	case ECardTargetType::Enemy:
+		RequestedTarget = Enemy.Get();
+		break;
+	default:
+		break;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Test play requested through formal RequestPlayCard for %s."), *CardToPlay->GetDebugLabel());
+	const FGameplayRequestResult Result = RequestPlayCard(CardToPlay, RequestedTarget);
+	if (!Result.IsAcceptedForResolution())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPlayFirstCard rejected. Reason=%d"), static_cast<int32>(Result.FailureReason));
+	}
 }
 
 void ABattleManager::TestApplyPhase5AStatuses()
@@ -442,9 +536,6 @@ void ABattleManager::TestApplyPhase5B2DamageStatuses()
 		*StrengthDefinition->StatusId.ToString()
 	);
 
-	// Deliberately create statuses in the opposite order from their modifier phases.
-	// Expected runtime sequence: Vulnerable#1, Weak#2, Strength#3 on a fresh battle.
-	// Expected damage resolution remains: Strength FlatAdd -> Weak SourceMultiplier -> Vulnerable TargetMultiplier.
 	QueueApplyStatusAction(Player.Get(), Enemy.Get(), VulnerableDefinition, 2);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), WeakDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), StrengthDefinition, 2);
@@ -493,9 +584,6 @@ void ABattleManager::TestPhase5CBlockPipeline()
 		*DexterityDefinition->StatusId.ToString()
 	);
 
-	// Deliberately create Frailty before Dexterity so RuntimeSequence opposes
-	// modifier phase order. Expected resolution remains Dexterity FlatAdd first,
-	// then Frailty Multiplier: 5 + 2 = 7; 7 * 3 / 4 = 5.
 	QueueApplyStatusAction(Player.Get(), Player.Get(), FrailtyDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), DexterityDefinition, 2);
 	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
@@ -504,66 +592,166 @@ void ABattleManager::TestPhase5CBlockPipeline()
 
 void ABattleManager::EndPlayerTurn()
 {
-	if (!HasValidCombatants())
+	const FGameplayRequestResult Result = RequestEndPlayerTurn();
+	if (!Result.IsAcceptedForResolution())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed: Player or Enemy reference is not assigned."));
-		return;
+		UE_LOG(LogTemp, Warning, TEXT("[Battle] EndPlayerTurn wrapper rejected. Reason=%d"), static_cast<int32>(Result.FailureReason));
+	}
+}
+
+FGameplayValidationResult ABattleManager::QueryCardPlayability(const UCardInstance* Card) const
+{
+	return ValidateCardPlayBase(Card);
+}
+
+FGameplayValidationResult ABattleManager::QueryPlayCard(
+	const UCardInstance* Card,
+	const ACombatant* RequestedTarget
+) const
+{
+	return ValidatePlayCard(Card, RequestedTarget);
+}
+
+FGameplayRequestResult ABattleManager::RequestPlayCard(UCardInstance* Card, ACombatant* RequestedTarget)
+{
+	const FGameplayValidationResult Validation = ValidatePlayCard(Card, RequestedTarget);
+	if (!Validation.bAllowed)
+	{
+		return FGameplayRequestResult::Rejected(Validation.FailureReason);
 	}
 
-	if (!HasValidActionQueue() || !HasValidEventDispatcher())
+	UBattleEventDispatcher* Dispatcher = nullptr;
+	TArray<ACombatant*> Combatants;
+	if (!TryBuildEventDispatchContext(Dispatcher, Combatants))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed: ActionQueue or EventDispatcher is not initialized."));
-		return;
+		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::InvalidBattle);
 	}
 
-	if (BattleState != EBattleState::PlayerTurn)
+	UPlayCardAction* Action = NewObject<UPlayCardAction>(ActionQueue.Get());
+	Action->Initialize(this, Card, Player.Get(), RequestedTarget, DeckRuntime.Get(), Dispatcher, Combatants);
+
+	if (!ActionQueue->AddToBack(Action))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Battle] EndPlayerTurn rejected: it is not the player's turn."));
-		return;
+		UE_LOG(LogTemp, Error, TEXT("[Battle] RequestPlayCard failed to enqueue %s after successful validation."), *Card->GetDebugLabel());
+		ActionQueue->RequestResolutionFault(TEXT("Formal card-play request validated but its initial PlayCardAction could not be enqueued."));
+		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::QueueRejected);
 	}
 
-	if (IsActionQueueBusy())
+	UE_LOG(LogTemp, Log, TEXT("[Battle] RequestPlayCard accepted for resolution: %s."), *Card->GetDebugLabel());
+	if (!ActionQueue->StartProcessing())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Battle] EndPlayerTurn rejected: action queue is busy."));
-		return;
+		ActionQueue->RequestResolutionFault(TEXT("Formal card-play request was accepted but ActionQueue could not start processing."));
 	}
 
-	if (Player->IsDead() || Enemy->IsDead())
+	return FGameplayRequestResult::Accepted();
+}
+
+FGameplayValidationResult ABattleManager::QueryEndPlayerTurn() const
+{
+	return ValidatePlayerCommandBase();
+}
+
+FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
+{
+	const FGameplayValidationResult Validation = ValidatePlayerCommandBase();
+	if (!Validation.bAllowed)
 	{
-		CheckBattleResult();
-		return;
+		return FGameplayRequestResult::Rejected(Validation.FailureReason);
 	}
 
-	UObject* TurnEndedOuter = ActionQueue.Get();
-#if WITH_DEV_AUTOMATION_TESTS
-	if (bForceInvalidPlayerEndBatchForTesting)
+	TArray<UBattleAction*> TurnEndBatch;
+	if (!BuildPlayerTurnEndBatch(TurnEndBatch))
 	{
-		TurnEndedOuter = this;
-		bForceInvalidPlayerEndBatchForTesting = false;
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch construction failed after authoritative validation."));
+		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::QueueRejected);
 	}
-#endif
-
-	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
-	TurnEndedAction->Initialize(this, Player.Get());
-	TArray<UBattleAction*> TurnEndBatch{TurnEndedAction};
 
 	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnEndBatch))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic TurnEndedAction batch."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic HandCleanup + TurnEndedAction batch."));
 		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch insertion failed before PlayerTurnEnding state commit."));
-		return;
+		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::QueueRejected);
 	}
 
-	// Commit the ending state only after the complete batch is accepted.
 	BattleState = EBattleState::PlayerTurnEnding;
 	Energy = 0;
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Player turn ending committed. TurnEndedAction queued atomically."));
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Player turn ending committed. HandCleanup=%d TurnEndedAction queued atomically."),
+		FMath::Max(0, TurnEndBatch.Num() - 1)
+	);
 
 	if (!ActionQueue->StartProcessing())
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch was accepted but could not start processing."));
 	}
+
+	return FGameplayRequestResult::Accepted();
+}
+
+void ABattleManager::GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const
+{
+	OutTargets.Reset();
+	const FGameplayValidationResult Validation = ValidateCardPlayBase(Card);
+	if (!Validation.bAllowed || !IsValid(Card))
+	{
+		return;
+	}
+
+	switch (Card->GetTargetType())
+	{
+	case ECardTargetType::None:
+		break;
+	case ECardTargetType::Self:
+		OutTargets.Add(Player.Get());
+		break;
+	case ECardTargetType::Enemy:
+		OutTargets.Add(Enemy.Get());
+		break;
+	default:
+		break;
+	}
+}
+
+bool ABattleManager::TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const
+{
+	OutSnapshot = FBattleReadSnapshot{};
+	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		return false;
+	}
+
+	if (ActionQueue->IsBusy() && !ActionQueue->IsResolutionFaulted())
+	{
+		return false;
+	}
+
+	OutSnapshot.BattleId = BattleId;
+	OutSnapshot.StateRevision = StateRevision;
+	OutSnapshot.BattleState = BattleState;
+	OutSnapshot.Energy = Energy;
+	OutSnapshot.MaxEnergy = MaxEnergy;
+	OutSnapshot.Player = MakeCombatantReadView(Player.Get());
+	OutSnapshot.Enemy = MakeCombatantReadView(Enemy.Get());
+	OutSnapshot.EnemyIntent = CommittedEnemyIntent;
+
+	AppendCardReadViews(DeckRuntime->GetHandCards(), OutSnapshot.HandCards);
+	AppendCardReadViews(DeckRuntime->GetDiscardCards(), OutSnapshot.DiscardCards);
+	AppendCardReadViews(DeckRuntime->GetExhaustCards(), OutSnapshot.ExhaustCards);
+
+	OutSnapshot.DrawCount = DeckRuntime->GetDrawCount();
+	OutSnapshot.HandCount = DeckRuntime->GetHandCount();
+	OutSnapshot.DiscardCount = DeckRuntime->GetDiscardCount();
+	OutSnapshot.ExhaustCount = DeckRuntime->GetExhaustCount();
+	OutSnapshot.PlayAreaCount = DeckRuntime->GetPlayAreaCount();
+	return true;
+}
+
+const FEnemyIntent& ABattleManager::GetCommittedEnemyIntent() const
+{
+	return CommittedEnemyIntent;
 }
 
 bool ABattleManager::CanSpendEnergy(int32 Amount) const
@@ -600,6 +788,11 @@ UBattleActionQueue* ABattleManager::GetActionQueueForTesting() const
 	return ActionQueue.Get();
 }
 
+UDeckRuntime* ABattleManager::GetDeckRuntimeForTesting() const
+{
+	return DeckRuntime.Get();
+}
+
 void ABattleManager::SetForceInvalidPlayerEndBatchForTesting(bool bForceInvalid)
 {
 	bForceInvalidPlayerEndBatchForTesting = bForceInvalid;
@@ -610,11 +803,58 @@ void ABattleManager::SetForceInvalidEnemyTurnBatchForTesting(bool bForceInvalid)
 	bForceInvalidEnemyTurnBatchForTesting = bForceInvalid;
 }
 
+void ABattleManager::SetCommittedEnemyAttackIntentForTesting(int32 BaseAmount)
+{
+	CommittedEnemyIntent = FEnemyIntent::MakeAttack(BaseAmount);
+}
+
 EBattleState ABattleManager::GetStateBeforeLastResolutionFaultForTesting() const
 {
 	return StateBeforeLastResolutionFaultForTesting;
 }
 #endif
+
+void ABattleManager::StartOpeningHand()
+{
+	if (BattleState == EBattleState::ResolutionFaulted)
+	{
+		return;
+	}
+
+	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidDeckRuntime() || !HasValidEventDispatcher())
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Opening Hand could not start because battle runtime dependencies are invalid."));
+		return;
+	}
+
+	TArray<UBattleAction*> OpeningBatch;
+	if (!BuildDrawActionBatch(OpeningHandDrawCount, OpeningBatch))
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Opening Hand draw batch could not be built."));
+		return;
+	}
+
+	if (!ActionQueue->AddBatchToBackPreserveOrder(OpeningBatch))
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Opening Hand draw batch insertion failed while BattleStart was authoritative."));
+		return;
+	}
+
+	Energy = MaxEnergy;
+	Player->ClearBlock();
+
+	if (OpeningBatch.Num() == 0)
+	{
+		CompletePlayerTurnStart();
+		return;
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Opening Hand resolution started. DrawAttempts=%d"), OpeningBatch.Num());
+	if (!ActionQueue->StartProcessing())
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Opening Hand batch was accepted but could not start processing."));
+	}
+}
 
 void ABattleManager::StartPlayerTurn()
 {
@@ -629,11 +869,76 @@ void ABattleManager::StartPlayerTurn()
 		return;
 	}
 
-	BattleState = EBattleState::PlayerTurn;
+	if (!HasValidActionQueue() || !HasValidDeckRuntime() || !HasValidEventDispatcher())
+	{
+		if (HasValidActionQueue())
+		{
+			ActionQueue->RequestResolutionFault(TEXT("Player turn-start could not begin because battle runtime dependencies are invalid."));
+		}
+		return;
+	}
+
+	TArray<UBattleAction*> TurnStartBatch;
+	if (!BuildDrawActionBatch(PlayerTurnDrawCount, TurnStartBatch))
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-start draw batch could not be built."));
+		return;
+	}
+
+	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnStartBatch))
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-start draw batch insertion failed before PlayerTurnStarting state commit."));
+		return;
+	}
+
+	BattleState = EBattleState::PlayerTurnStarting;
 	Energy = MaxEnergy;
 	Player->ClearBlock();
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Player turn started. Energy=%d/%d"), Energy, MaxEnergy);
+	if (TurnStartBatch.Num() == 0)
+	{
+		CompletePlayerTurnStart();
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] PlayerTurnStarting committed. Energy=%d/%d DrawAttempts=%d"),
+		Energy,
+		MaxEnergy,
+		TurnStartBatch.Num()
+	);
+
+	if (!ActionQueue->StartProcessing())
+	{
+		ActionQueue->RequestResolutionFault(TEXT("Player turn-start batch was accepted but could not start processing."));
+	}
+}
+
+void ABattleManager::CompletePlayerTurnStart()
+{
+	if (BattleState != EBattleState::BattleStart && BattleState != EBattleState::PlayerTurnStarting)
+	{
+		if (HasValidActionQueue())
+		{
+			ActionQueue->RequestResolutionFault(TEXT("Player turn-start completion reached an unexpected BattleState."));
+		}
+		return;
+	}
+
+	BattleState = EBattleState::PlayerTurn;
+	AdvanceStateRevision();
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Player turn is gameplay request-eligible. Energy=%d/%d Hand=%d Revision=%llu"),
+		Energy,
+		MaxEnergy,
+		HasValidDeckRuntime() ? DeckRuntime->GetHandCount() : 0,
+		StateRevision
+	);
 }
 
 void ABattleManager::StartEnemyTurn()
@@ -649,14 +954,30 @@ void ABattleManager::StartEnemyTurn()
 		return;
 	}
 
-	if (!HasValidActionQueue() || !HasValidEventDispatcher())
+	if (!HasValidActionQueue() || !HasValidEventDispatcher() || !CommittedEnemyIntent.IsCommitted())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed: ActionQueue or EventDispatcher is not initialized."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed: runtime dependencies or committed Enemy Intent are invalid."));
+		if (HasValidActionQueue())
+		{
+			ActionQueue->RequestResolutionFault(TEXT("Enemy turn has no valid committed Intent source."));
+		}
 		return;
 	}
 
-	UDamageAction* DamageAction = NewObject<UDamageAction>(ActionQueue.Get());
-	DamageAction->Initialize(Enemy.Get(), Player.Get(), EnemyTestAttackDamage, EDamageKind::Attack);
+	TArray<UBattleAction*> EnemyTurnBatch;
+	switch (CommittedEnemyIntent.Type)
+	{
+	case EEnemyIntentType::Attack:
+	{
+		UDamageAction* DamageAction = NewObject<UDamageAction>(ActionQueue.Get());
+		DamageAction->Initialize(Enemy.Get(), Player.Get(), CommittedEnemyIntent.BaseAmount, EDamageKind::Attack);
+		EnemyTurnBatch.Add(DamageAction);
+		break;
+	}
+	default:
+		ActionQueue->RequestResolutionFault(TEXT("Unsupported committed Enemy Intent reached EnemyTurn action construction."));
+		return;
+	}
 
 	UObject* TurnEndedOuter = ActionQueue.Get();
 #if WITH_DEV_AUTOMATION_TESTS
@@ -669,17 +990,15 @@ void ABattleManager::StartEnemyTurn()
 
 	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
 	TurnEndedAction->Initialize(this, Enemy.Get());
+	EnemyTurnBatch.Add(TurnEndedAction);
 
-	TArray<UBattleAction*> EnemyTurnBatch{DamageAction, TurnEndedAction};
 	if (!ActionQueue->AddBatchToBackPreserveOrder(EnemyTurnBatch))
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy action batch."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy Intent action batch."));
 		ActionQueue->RequestResolutionFault(TEXT("Enemy turn batch insertion failed before EnemyTurn state commit."));
 		return;
 	}
 
-	// Enemy turn state and start-of-turn mutation commit only after the whole
-	// [EnemyDamageAction, TurnEndedAction] batch is accepted.
 	BattleState = EBattleState::EnemyTurn;
 	Energy = 0;
 	Enemy->ClearBlock();
@@ -687,14 +1006,34 @@ void ABattleManager::StartEnemyTurn()
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Battle] Enemy turn started. Atomic batch queued: Damage BaseAmount=%d -> TurnEndedAction."),
-		EnemyTestAttackDamage
+		TEXT("[Battle] Enemy turn started from committed Intent: Type=%d BaseAmount=%d."),
+		static_cast<int32>(CommittedEnemyIntent.Type),
+		CommittedEnemyIntent.BaseAmount
 	);
 
 	if (!ActionQueue->StartProcessing())
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Enemy turn batch was accepted but could not start processing."));
 	}
+}
+
+void ABattleManager::CommitNextEnemyIntent()
+{
+	CommittedEnemyIntent = ChooseNextEnemyIntent();
+	AdvanceStateRevision();
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Battle] Enemy Intent committed. Type=%d BaseAmount=%d Revision=%llu"),
+		static_cast<int32>(CommittedEnemyIntent.Type),
+		CommittedEnemyIntent.BaseAmount,
+		StateRevision
+	);
+}
+
+FEnemyIntent ABattleManager::ChooseNextEnemyIntent() const
+{
+	return FEnemyIntent::MakeAttack(EnemyTestAttackDamage);
 }
 
 void ABattleManager::HandleActionQueueEmpty()
@@ -707,6 +1046,7 @@ void ABattleManager::HandleActionQueueEmpty()
 	}
 
 	CheckBattleResult();
+	AdvanceStateRevision();
 	if (BattleState == EBattleState::Victory || BattleState == EBattleState::Defeat || BattleState == EBattleState::ResolutionFaulted)
 	{
 		return;
@@ -723,6 +1063,19 @@ void ABattleManager::HandleActionQueueEmpty()
 
 	switch (BattleState)
 	{
+	case EBattleState::BattleStart:
+	case EBattleState::PlayerTurnStarting:
+		bDeferred = ActionQueue->DeferUntilAfterQueueEmptyBroadcast(
+			[WeakThis]()
+			{
+				if (ABattleManager* Battle = WeakThis.Get())
+				{
+					Battle->CompletePlayerTurnStart();
+				}
+			}
+		);
+		break;
+
 	case EBattleState::PlayerTurnEnding:
 		bDeferred = ActionQueue->DeferUntilAfterQueueEmptyBroadcast(
 			[WeakThis]()
@@ -741,6 +1094,7 @@ void ABattleManager::HandleActionQueueEmpty()
 			{
 				if (ABattleManager* Battle = WeakThis.Get())
 				{
+					Battle->CommitNextEnemyIntent();
 					Battle->StartPlayerTurn();
 				}
 			}
@@ -769,6 +1123,7 @@ void ABattleManager::HandleActionQueueResolutionFaulted(
 
 	BattleState = EBattleState::ResolutionFaulted;
 	Energy = 0;
+	AdvanceStateRevision();
 
 	UE_LOG(
 		LogTemp,
@@ -792,9 +1147,6 @@ void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBatt
 		return;
 	}
 
-	// A lethal action earlier in the same atomic turn batch suppresses the normal
-	// TurnEnded event. The authoritative Victory/Defeat transition is deferred to
-	// the one real QueueEmpty after the batch drains.
 	if (Player->IsDead() || Enemy->IsDead())
 	{
 		UE_LOG(LogTemp, Log, TEXT("[Battle] TurnEndedAction skipped event dispatch because a combatant is dead. TurnOwner=%s"), *GetNameSafe(TurnOwner));
@@ -817,8 +1169,6 @@ void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBatt
 			return;
 		}
 
-		// EnemyTurnEnding begins only when the sentinel reaches execution, after all
-		// preceding enemy actions have committed successfully.
 		BattleState = EBattleState::EnemyTurnEnding;
 	}
 	else
@@ -833,7 +1183,7 @@ void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBatt
 
 	if (!EventDispatcher->Dispatch(FBattleEvent::MakeTurnEnded(TurnOwner), Queue, Combatants))
 	{
-		Queue->RequestResolutionFault(TEXT("TurnEnded event dispatch failed during Phase 6B turn wiring."));
+		Queue->RequestResolutionFault(TEXT("TurnEnded event dispatch failed during battle turn wiring."));
 		return;
 	}
 
@@ -860,6 +1210,180 @@ void ABattleManager::CheckBattleResult()
 		BattleState = EBattleState::Defeat;
 		Energy = 0;
 		UE_LOG(LogTemp, Log, TEXT("[Battle] Defeat."));
+	}
+}
+
+FGameplayValidationResult ABattleManager::ValidatePlayerCommandBase() const
+{
+	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidDeckRuntime() || !HasValidEventDispatcher())
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidBattle);
+	}
+
+	if (BattleState == EBattleState::ResolutionFaulted || ActionQueue->IsResolutionFaulted())
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::ResolutionFaulted);
+	}
+
+	if (BattleState == EBattleState::Victory || BattleState == EBattleState::Defeat || Player->IsDead() || Enemy->IsDead())
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::BattleEnded);
+	}
+
+	if (BattleState != EBattleState::PlayerTurn)
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::WrongTurn);
+	}
+
+	if (IsActionQueueBusy())
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::ResolutionBusy);
+	}
+
+	return FGameplayValidationResult::Allowed();
+}
+
+FGameplayValidationResult ABattleManager::ValidateCardPlayBase(const UCardInstance* Card) const
+{
+	const FGameplayValidationResult Base = ValidatePlayerCommandBase();
+	if (!Base.bAllowed)
+	{
+		return Base;
+	}
+
+	if (!IsValid(Card) || Card->GetDefinition() == nullptr)
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidCard);
+	}
+
+	if (!DeckRuntime->IsCardInHand(Card))
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::CardNoLongerInHand);
+	}
+
+	const int32 Cost = Card->GetCurrentCost();
+	if (Cost < 0)
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidCard);
+	}
+
+	if (!CanSpendEnergy(Cost))
+	{
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::NotEnoughEnergy);
+	}
+
+	switch (Card->GetTargetType())
+	{
+	case ECardTargetType::None:
+	case ECardTargetType::Self:
+	case ECardTargetType::Enemy:
+		return FGameplayValidationResult::Allowed();
+	default:
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidTarget);
+	}
+}
+
+FGameplayValidationResult ABattleManager::ValidatePlayCard(
+	const UCardInstance* Card,
+	const ACombatant* RequestedTarget
+) const
+{
+	const FGameplayValidationResult Base = ValidateCardPlayBase(Card);
+	if (!Base.bAllowed)
+	{
+		return Base;
+	}
+
+	switch (Card->GetTargetType())
+	{
+	case ECardTargetType::None:
+		return RequestedTarget == nullptr
+			? FGameplayValidationResult::Allowed()
+			: FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidTarget);
+
+	case ECardTargetType::Self:
+		return RequestedTarget == Player.Get()
+			? FGameplayValidationResult::Allowed()
+			: FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidTarget);
+
+	case ECardTargetType::Enemy:
+		return RequestedTarget == Enemy.Get() && IsValid(Enemy.Get()) && !Enemy->IsDead()
+			? FGameplayValidationResult::Allowed()
+			: FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidTarget);
+
+	default:
+		return FGameplayValidationResult::Rejected(EGameplayRequestFailureReason::InvalidTarget);
+	}
+}
+
+bool ABattleManager::BuildDrawActionBatch(int32 DrawCount, TArray<UBattleAction*>& OutActions)
+{
+	OutActions.Reset();
+	if (DrawCount < 0 || !HasValidActionQueue() || !HasValidDeckRuntime() || !HasValidEventDispatcher())
+	{
+		return false;
+	}
+
+	UBattleEventDispatcher* Dispatcher = nullptr;
+	TArray<ACombatant*> Combatants;
+	if (!TryBuildEventDispatchContext(Dispatcher, Combatants))
+	{
+		return false;
+	}
+
+	OutActions.Reserve(DrawCount);
+	for (int32 Index = 0; Index < DrawCount; ++Index)
+	{
+		UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
+		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants);
+		OutActions.Add(Action);
+	}
+	return true;
+}
+
+bool ABattleManager::BuildPlayerTurnEndBatch(TArray<UBattleAction*>& OutActions)
+{
+	OutActions.Reset();
+	if (!HasValidActionQueue() || !HasValidDeckRuntime())
+	{
+		return false;
+	}
+
+	const TArray<TObjectPtr<UCardInstance>>& HandCards = DeckRuntime->GetHandCards();
+	OutActions.Reserve(HandCards.Num() + 1);
+	for (const TObjectPtr<UCardInstance>& Card : HandCards)
+	{
+		if (!IsValid(Card.Get()))
+		{
+			return false;
+		}
+
+		UDiscardCardAction* DiscardAction = NewObject<UDiscardCardAction>(ActionQueue.Get());
+		DiscardAction->Initialize(DeckRuntime.Get(), Card.Get());
+		OutActions.Add(DiscardAction);
+	}
+
+	UObject* TurnEndedOuter = ActionQueue.Get();
+#if WITH_DEV_AUTOMATION_TESTS
+	if (bForceInvalidPlayerEndBatchForTesting)
+	{
+		TurnEndedOuter = this;
+		bForceInvalidPlayerEndBatchForTesting = false;
+	}
+#endif
+
+	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
+	TurnEndedAction->Initialize(this, Player.Get());
+	OutActions.Add(TurnEndedAction);
+	return true;
+}
+
+void ABattleManager::AdvanceStateRevision()
+{
+	++StateRevision;
+	if (StateRevision == 0)
+	{
+		StateRevision = 1;
 	}
 }
 
@@ -900,7 +1424,16 @@ void ABattleManager::QueueDrawCardAction()
 	}
 
 	UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
-	Action->Initialize(DeckRuntime.Get());
+	UBattleEventDispatcher* Dispatcher = nullptr;
+	TArray<ACombatant*> Combatants;
+	if (TryBuildEventDispatchContext(Dispatcher, Combatants))
+	{
+		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants);
+	}
+	else
+	{
+		Action->Initialize(DeckRuntime.Get());
+	}
 	ActionQueue->AddToBack(Action);
 }
 
@@ -913,18 +1446,6 @@ void ABattleManager::QueueDiscardCardAction(UCardInstance* Card)
 
 	UDiscardCardAction* Action = NewObject<UDiscardCardAction>(ActionQueue.Get());
 	Action->Initialize(DeckRuntime.Get(), Card);
-	ActionQueue->AddToBack(Action);
-}
-
-void ABattleManager::QueuePlayCardAction(UCardInstance* Card, ACombatant* Target)
-{
-	if (!HasValidActionQueue() || !HasValidDeckRuntime() || !IsValid(Card))
-	{
-		return;
-	}
-
-	UPlayCardAction* Action = NewObject<UPlayCardAction>(ActionQueue.Get());
-	Action->Initialize(this, Card, Player.Get(), Target, DeckRuntime.Get());
 	ActionQueue->AddToBack(Action);
 }
 

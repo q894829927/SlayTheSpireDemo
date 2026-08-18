@@ -273,6 +273,21 @@ bool UDeckRuntime::ShuffleDiscardIntoDrawPile()
 	return true;
 }
 
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetHandCards() const
+{
+	return Hand;
+}
+
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetDiscardCards() const
+{
+	return DiscardPile;
+}
+
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetExhaustCards() const
+{
+	return ExhaustPile;
+}
+
 int32 UDeckRuntime::GetDrawCount() const
 {
 	return DrawPile.Num();
@@ -301,6 +316,11 @@ int32 UDeckRuntime::GetPlayAreaCount() const
 int32 UDeckRuntime::GetRemovedCount() const
 {
 	return RemovedPile.Num();
+}
+
+int32 UDeckRuntime::GetMaxHandSize() const
+{
+	return MaxHandSize;
 }
 
 FString UDeckRuntime::DescribeState() const

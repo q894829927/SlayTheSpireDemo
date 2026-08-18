@@ -126,7 +126,7 @@ namespace Phase6BRegression
 		FFixture Fixture;
 		if (!RequireReady(*this, Fixture)) return false;
 
-		AddExpectedErrorPlain(TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic TurnEndedAction batch."), EAutomationExpectedErrorFlags::Contains, 1);
+		AddExpectedErrorPlain(TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic HandCleanup + TurnEndedAction batch."), EAutomationExpectedErrorFlags::Contains, 1);
 		ExpectImmediateResolutionFaultLogs(*this);
 
 		Fixture.Battle->SetForceInvalidPlayerEndBatchForTesting(true);
@@ -154,7 +154,7 @@ namespace Phase6BRegression
 		FFixture Fixture;
 		if (!RequireReady(*this, Fixture)) return false;
 
-		AddExpectedErrorPlain(TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy action batch."), EAutomationExpectedErrorFlags::Contains, 1);
+		AddExpectedErrorPlain(TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy Intent action batch."), EAutomationExpectedErrorFlags::Contains, 1);
 		ExpectImmediateResolutionFaultLogs(*this);
 
 		Fixture.Battle->SetForceInvalidEnemyTurnBatchForTesting(true);
@@ -184,7 +184,7 @@ namespace Phase6BRegression
 
 		UStatusData* EnemyDecay = CreateDecayStatus(Fixture.World, TEXT("EnemyDecay"));
 		UStatusInstance* EnemyDecayInstance = ApplyStatus(Fixture.Enemy, EnemyDecay, 2, 1);
-		Fixture.Battle->EnemyTestAttackDamage = 100;
+		Fixture.Battle->SetCommittedEnemyAttackIntentForTesting(100);
 
 		Fixture.Battle->EndPlayerTurn();
 
@@ -226,8 +226,8 @@ namespace Phase6BRegression
 
 		Fixture.Battle->EndPlayerTurn();
 
-		TestEqual(TEXT("Player ending and enemy ending each produce one final QueueEmpty"), ObservedBoundaryStates.Num(), 2);
-		if (ObservedBoundaryStates.Num() == 2)
+		TestEqual(TEXT("Player ending, enemy ending and player turn-start each produce one final QueueEmpty"), ObservedBoundaryStates.Num(), 3);
+		if (ObservedBoundaryStates.Num() == 3)
 		{
 			TestEqual(
 				TEXT("First observer callback sees the completed player-ending boundary before EnemyTurn begins"),
@@ -235,14 +235,19 @@ namespace Phase6BRegression
 				EBattleState::PlayerTurnEnding
 			);
 			TestEqual(
-				TEXT("Second observer callback sees the completed enemy-ending boundary before PlayerTurn begins"),
+				TEXT("Second observer callback sees the completed enemy-ending boundary before PlayerTurnStarting begins"),
 				ObservedBoundaryStates[1],
 				EBattleState::EnemyTurnEnding
+			);
+			TestEqual(
+				TEXT("Third observer callback sees completed turn-start gameplay before PlayerTurn becomes request-eligible"),
+				ObservedBoundaryStates[2],
+				EBattleState::PlayerTurnStarting
 			);
 		}
 		TestEqual(TEXT("Player reaction completed before its turn boundary emptied"), PlayerInstance ? PlayerInstance->GetAmount() : 0, 1);
 		TestEqual(TEXT("Enemy reaction completed before its turn boundary emptied"), EnemyInstance ? EnemyInstance->GetAmount() : 0, 1);
-		TestEqual(TEXT("Full cycle returns to PlayerTurn after both observer broadcasts return"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
+		TestEqual(TEXT("Full cycle returns to PlayerTurn after all observer broadcasts return"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
 		return true;
 	}
 
@@ -291,7 +296,7 @@ namespace Phase6BRegression
 		Vulnerable->DamageModifiers.Add(VulnerableRatio);
 
 		ApplyStatus(Fixture.Player, Vulnerable, 1, 1);
-		Fixture.Battle->EnemyTestAttackDamage = 5;
+		Fixture.Battle->SetCommittedEnemyAttackIntentForTesting(5);
 
 		Fixture.Battle->EndPlayerTurn();
 
@@ -301,7 +306,7 @@ namespace Phase6BRegression
 			Fixture.Player->HP,
 			95
 		);
-		TestEqual(TEXT("Enemy ending completes and next PlayerTurn starts"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
+		TestEqual(TEXT("Enemy ending and turn-start resolution complete before next PlayerTurn"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
 		TestFalse(TEXT("Normal turn cycle does not fault resolution"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
 		return true;
 	}
@@ -485,9 +490,6 @@ namespace Phase6BRegression
 		FFixture Fixture;
 		if (!RequireReady(*this, Fixture)) return false;
 
-		// Request a fault in the same observer so the current buggy implementation
-		// cannot invoke the accepted empty TFunction after the multicast returns.
-		// The assertion still exposes bAccepted=true without crashing Automation.
 		ExpectImmediateResolutionFaultLogs(*this);
 
 		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();

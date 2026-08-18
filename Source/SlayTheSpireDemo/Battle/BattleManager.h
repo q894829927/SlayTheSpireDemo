@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "BattleRequestTypes.h"
+#include "../Enemy/EnemyIntent.h"
 #include "BattleManager.generated.h"
 
 class ACombatant;
@@ -13,12 +15,14 @@ class UCardInstance;
 class UDeckRuntime;
 class UStatusData;
 class UTurnEndedAction;
+struct FBattleReadSnapshot;
 enum class EDamageKind : uint8;
 
 UENUM(BlueprintType)
 enum class EBattleState : uint8
 {
 	BattleStart UMETA(DisplayName = "Battle Start"),
+	PlayerTurnStarting UMETA(DisplayName = "Player Turn Starting"),
 	PlayerTurn UMETA(DisplayName = "Player Turn"),
 	PlayerTurnEnding UMETA(DisplayName = "Player Turn Ending"),
 	EnemyTurn UMETA(DisplayName = "Enemy Turn"),
@@ -51,9 +55,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Energy", meta = (ClampMin = "0"))
 	int32 MaxEnergy = 3;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Rules|Hand", meta = (ClampMin = "0"))
+	int32 OpeningHandDrawCount = 5;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Rules|Hand", meta = (ClampMin = "0"))
+	int32 PlayerTurnDrawCount = 5;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
 	int32 PlayerTestAttackDamage = 6;
 
+	// Temporary fixed-enemy intent generator input. Once an Intent is committed,
+	// EnemyTurn executes the committed Intent rather than reading this value again.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
 	int32 EnemyTestAttackDamage = 5;
 
@@ -111,8 +123,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Block")
 	void TestPhase5CBlockPipeline();
 
+	// Legacy Blueprint/debug wrapper. Formal UI should call RequestEndPlayerTurn.
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
+
+	FGameplayValidationResult QueryCardPlayability(const UCardInstance* Card) const;
+	FGameplayValidationResult QueryPlayCard(const UCardInstance* Card, const ACombatant* RequestedTarget) const;
+	FGameplayRequestResult RequestPlayCard(UCardInstance* Card, ACombatant* RequestedTarget);
+
+	FGameplayValidationResult QueryEndPlayerTurn() const;
+	FGameplayRequestResult RequestEndPlayerTurn();
+
+	void GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const;
+	bool TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
+	const FEnemyIntent& GetCommittedEnemyIntent() const;
 
 	bool CanSpendEnergy(int32 Amount) const;
 	bool TrySpendEnergy(int32 Amount);
@@ -140,26 +164,40 @@ public:
 
 #if WITH_DEV_AUTOMATION_TESTS
 	UBattleActionQueue* GetActionQueueForTesting() const;
+	UDeckRuntime* GetDeckRuntimeForTesting() const;
 	void SetForceInvalidPlayerEndBatchForTesting(bool bForceInvalid);
 	void SetForceInvalidEnemyTurnBatchForTesting(bool bForceInvalid);
+	void SetCommittedEnemyAttackIntentForTesting(int32 BaseAmount);
 	EBattleState GetStateBeforeLastResolutionFaultForTesting() const;
 #endif
 
 private:
 	friend class UTurnEndedAction;
 
+	void StartOpeningHand();
 	void StartPlayerTurn();
+	void CompletePlayerTurnStart();
 	void StartEnemyTurn();
+	void CommitNextEnemyIntent();
+	FEnemyIntent ChooseNextEnemyIntent() const;
+
 	void HandleActionQueueEmpty();
 	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
 	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
 	void CheckBattleResult();
 
+	FGameplayValidationResult ValidatePlayerCommandBase() const;
+	FGameplayValidationResult ValidateCardPlayBase(const UCardInstance* Card) const;
+	FGameplayValidationResult ValidatePlayCard(const UCardInstance* Card, const ACombatant* RequestedTarget) const;
+
+	bool BuildDrawActionBatch(int32 DrawCount, TArray<UBattleAction*>& OutActions);
+	bool BuildPlayerTurnEndBatch(TArray<UBattleAction*>& OutActions);
+	void AdvanceStateRevision();
+
 	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount, EDamageKind DamageKind);
 	void QueueGainBlockAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount);
 	void QueueDrawCardAction();
 	void QueueDiscardCardAction(UCardInstance* Card);
-	void QueuePlayCardAction(UCardInstance* Card, ACombatant* Target);
 	void QueueApplyStatusAction(ACombatant* Source, ACombatant* Target, UStatusData* StatusDefinition, int32 AmountToAdd);
 
 	bool HasValidCombatants() const;
@@ -177,6 +215,9 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
 
+	FEnemyIntent CommittedEnemyIntent;
+	uint64 BattleId = 0;
+	uint64 StateRevision = 0;
 	uint64 NextRuntimeSequence = 1;
 
 #if WITH_DEV_AUTOMATION_TESTS
