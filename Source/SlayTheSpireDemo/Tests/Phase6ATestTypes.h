@@ -29,7 +29,7 @@ class SLAYTHESPIREDEMO_API UPhase6ATestRecordAction : public UBattleAction
 
 public:
 	void Initialize(UPhase6ATestExecutionRecorder* InRecorder, int32 InValue);
-	void InitializeDeckHandCount(UPhase6ATestExecutionRecorder* InRecorder, UDeckRuntime* InDeck);
+	void InitializeDeckDrawCount(UPhase6ATestExecutionRecorder* InRecorder, UDeckRuntime* InDeck);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
@@ -40,7 +40,7 @@ private:
 	TObjectPtr<UDeckRuntime> Deck = nullptr;
 
 	int32 Value = 0;
-	bool bRecordDeckHandCount = false;
+	bool bRecordDeckDrawCount = false;
 };
 
 UCLASS(Transient, EditInlineNew, DefaultToInstanced)
