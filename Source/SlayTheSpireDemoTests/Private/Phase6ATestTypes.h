@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../Actions/BattleAction.h"
-#include "../Events/BattleTrigger.h"
+#include "Actions/BattleAction.h"
+#include "Events/BattleTrigger.h"
 #include "Phase6ATestTypes.generated.h"
 
 class ACombatant;
