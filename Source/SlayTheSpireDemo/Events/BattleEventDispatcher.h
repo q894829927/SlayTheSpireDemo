@@ -8,6 +8,9 @@ class ACombatant;
 class UBattleActionQueue;
 struct FBattleEvent;
 
+// Records the deterministic order of triggers that passed CanReact. This is an
+// eligibility/candidate trace only; it does not claim that reaction Actions were
+// successfully built, inserted or executed in this same order.
 struct FTriggerEligibilityRecord
 {
 	FName StatusId = NAME_None;
@@ -15,6 +18,10 @@ struct FTriggerEligibilityRecord
 	uint64 RuntimeSequence = 0;
 	int32 LocalTriggerIndex = INDEX_NONE;
 };
+
+// Temporary source-compatibility alias for the original Phase 6A tests. New
+// code should use FTriggerEligibilityRecord so the trace semantics stay clear.
+using FTriggerDispatchRecord = FTriggerEligibilityRecord;
 
 UCLASS()
 class SLAYTHESPIREDEMO_API UBattleEventDispatcher : public UObject
