@@ -16,6 +16,23 @@ void UPlayCardAction::Initialize(
 	UCardInstance* InCard,
 	ACombatant* InSource,
 	ACombatant* InRequestedTarget,
+	UDeckRuntime* InDeck
+)
+{
+	Battle = InBattle;
+	Card = InCard;
+	Source = InSource;
+	RequestedTarget = InRequestedTarget;
+	Deck = InDeck;
+	EventDispatcher = nullptr;
+	EventCombatants.Reset();
+}
+
+void UPlayCardAction::Initialize(
+	ABattleManager* InBattle,
+	UCardInstance* InCard,
+	ACombatant* InSource,
+	ACombatant* InRequestedTarget,
 	UDeckRuntime* InDeck,
 	UBattleEventDispatcher* InEventDispatcher,
 	const TArray<ACombatant*>& InEventCombatants
@@ -36,25 +53,35 @@ void UPlayCardAction::Initialize(
 
 void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 {
-	if (!IsValid(Queue) || !IsValid(Battle.Get()) || !IsValid(Card.Get()) || !IsValid(Source.Get()) ||
-		!IsValid(Deck.Get()) || !IsValid(EventDispatcher.Get()) || EventCombatants.Num() == 0)
+	if (!IsValid(Queue) || !IsValid(Battle.Get()) || !IsValid(Card.Get()) || !IsValid(Source.Get()) || !IsValid(Deck.Get()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid runtime or event-dispatch dependency."));
+		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid runtime dependency."));
 		Finish();
 		return;
 	}
 
+	UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
 	TArray<ACombatant*> RawEventCombatants;
-	RawEventCombatants.Reserve(EventCombatants.Num());
-	for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
+
+	if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
 	{
-		if (!IsValid(Combatant.Get()))
+		RawEventCombatants.Reserve(EventCombatants.Num());
+		for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid authoritative combatant in event-dispatch context."));
-			Finish();
-			return;
+			if (!IsValid(Combatant.Get()))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid authoritative combatant in event-dispatch context."));
+				Finish();
+				return;
+			}
+			RawEventCombatants.Add(Combatant.Get());
 		}
-		RawEventCombatants.Add(Combatant.Get());
+	}
+	else if (!Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawEventCombatants))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: battle event-dispatch context is unavailable."));
+		Finish();
+		return;
 	}
 
 	if (Source->IsDead())
@@ -118,7 +145,7 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	Context.Source = Source.Get();
 	Context.Target = ResolvedTarget;
 	Context.Deck = Deck.Get();
-	Context.EventDispatcher = EventDispatcher.Get();
+	Context.EventDispatcher = ResolvedEventDispatcher;
 	Context.EventCombatants = RawEventCombatants;
 	Context.ActionOuter = Queue;
 
@@ -174,9 +201,6 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		FollowUpActions.Num()
 	);
 
-	// Card movement and Energy are already committed. The dependent continuation
-	// must therefore enter the Queue atomically; partial insertion would leave the
-	// battle in an unrecoverable half-resolved card play.
 	if (!Queue->AddBatchToBackPreserveOrder(FollowUpActions))
 	{
 		Queue->RequestResolutionFault(FString::Printf(
