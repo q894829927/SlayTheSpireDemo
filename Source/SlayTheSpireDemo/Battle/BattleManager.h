@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Containers/Ticker.h"
 #include "GameFramework/Actor.h"
 #include "BattleRequestTypes.h"
 #include "../Enemy/EnemyIntent.h"
@@ -251,7 +252,7 @@ private:
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
 	bool bReadStateReadyPublishScheduled = false;
-	FDelegateHandle ReadStateReadyTickerHandle;
+	FTSTicker::FDelegateHandle ReadStateReadyTickerHandle;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bool bForceInvalidPlayerEndBatchForTesting = false;
