@@ -89,6 +89,9 @@ bool UBattleActionQueue::StartProcessing()
 	}
 
 	PumpQueue();
+	// PumpQueue has now genuinely returned to its caller. Only this post-return
+	// check may publish healthy ResolutionIdle.
+	BroadcastResolutionIdleIfSettled();
 	return true;
 }
 
@@ -401,11 +404,9 @@ void UBattleActionQueue::PumpQueue()
 
 		if (PendingActions.Num() == 0)
 		{
-			// Only now has the complete PumpQueue frame settled. QueueEmpty may have
-			// occurred multiple times above, and deferred continuations may have
-			// produced more authoritative work. ResolutionIdle is intentionally later.
+			// No signal is emitted from inside PumpQueue. The caller will perform the
+			// settled check only after this function has actually returned.
 			bIsPumping = false;
-			BroadcastResolutionIdleIfSettled();
 			return;
 		}
 
@@ -434,6 +435,9 @@ void UBattleActionQueue::HandleActionFinished(UBattleAction* FinishedAction)
 	if (!bIsPumping)
 	{
 		PumpQueue();
+		// As with StartProcessing, healthy idle is published only after PumpQueue
+		// has returned from the resumed asynchronous resolution.
+		BroadcastResolutionIdleIfSettled();
 	}
 }
 
