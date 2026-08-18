@@ -40,10 +40,10 @@ void UPhase6ATestRecordAction::Initialize(UPhase6ATestExecutionRecorder* InRecor
 	Recorder = InRecorder;
 	Deck = nullptr;
 	Value = InValue;
-	bRecordDeckHandCount = false;
+	bRecordDeckDrawCount = false;
 }
 
-void UPhase6ATestRecordAction::InitializeDeckHandCount(
+void UPhase6ATestRecordAction::InitializeDeckDrawCount(
 	UPhase6ATestExecutionRecorder* InRecorder,
 	UDeckRuntime* InDeck
 )
@@ -51,16 +51,16 @@ void UPhase6ATestRecordAction::InitializeDeckHandCount(
 	Recorder = InRecorder;
 	Deck = InDeck;
 	Value = 0;
-	bRecordDeckHandCount = true;
+	bRecordDeckDrawCount = true;
 }
 
 void UPhase6ATestRecordAction::Execute(UBattleActionQueue* /*Queue*/)
 {
 	if (IsValid(Recorder.Get()))
 	{
-		if (bRecordDeckHandCount && IsValid(Deck.Get()))
+		if (bRecordDeckDrawCount && IsValid(Deck.Get()))
 		{
-			Recorder->Record(Deck->GetHandCount());
+			Recorder->Record(Deck->GetDrawCount());
 		}
 		else
 		{
@@ -122,7 +122,7 @@ void UPhase6ATestRecordTrigger::BuildReactions(
 		{
 			return;
 		}
-		Action->InitializeDeckHandCount(Recorder.Get(), Deck.Get());
+		Action->InitializeDeckDrawCount(Recorder.Get(), Deck.Get());
 	}
 	else
 	{
