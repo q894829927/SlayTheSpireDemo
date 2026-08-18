@@ -66,12 +66,53 @@ bool UBattleActionQueue::StartProcessing()
 		return false;
 	}
 
-	if (bIsPumping || IsValid(CurrentAction.Get()) || PendingActions.Num() == 0)
+	if (bIsPumping)
+	{
+		// A post-QueueEmpty macro continuation may enqueue the next authoritative
+		// batch while the existing PumpQueue frame is intentionally still alive.
+		// Report success without recursively entering PumpQueue; the outer frame
+		// will observe PendingActions and continue the next resolution itself.
+		if (bIsExecutingPostQueueEmptyContinuation &&
+			!IsValid(CurrentAction.Get()) &&
+			PendingActions.Num() > 0)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	if (IsValid(CurrentAction.Get()) || PendingActions.Num() == 0)
 	{
 		return false;
 	}
 
 	PumpQueue();
+	return true;
+}
+
+bool UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(TFunction<void()>&& Continuation)
+{
+	if (bResolutionFaulted || bResolutionFaultRequested)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] QueueEmpty continuation rejected: resolution is faulted or fault-requested."));
+		return false;
+	}
+
+	if (!bIsBroadcastingQueueEmpty)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] QueueEmpty continuation rejected: no QueueEmpty broadcast is active."));
+		return false;
+	}
+
+	if (bHasDeferredQueueEmptyContinuation)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] QueueEmpty continuation rejected: an authoritative continuation is already registered for this boundary."));
+		return false;
+	}
+
+	DeferredQueueEmptyContinuation = MoveTemp(Continuation);
+	bHasDeferredQueueEmptyContinuation = true;
 	return true;
 }
 
@@ -152,6 +193,12 @@ bool UBattleActionQueue::ValidateBatchForInsertion(const TArray<UBattleAction*>&
 		return false;
 	}
 
+	if (bIsBroadcastingQueueEmpty)
+	{
+		OutReason = TEXT("Actions cannot be inserted directly while QueueEmpty observers are being notified; defer authoritative macro progression first.");
+		return false;
+	}
+
 	if (Actions.Num() == 0)
 	{
 		return true;
@@ -224,51 +271,68 @@ void UBattleActionQueue::PumpQueue()
 
 	bIsPumping = true;
 
-	while (!IsValid(CurrentAction.Get()) && PendingActions.Num() > 0)
+	while (true)
 	{
-		if (bResolutionFaultRequested)
+		while (!IsValid(CurrentAction.Get()) && PendingActions.Num() > 0)
 		{
-			EnterResolutionFaultAtSafePoint();
-			return;
-		}
+			if (bResolutionFaultRequested)
+			{
+				EnterResolutionFaultAtSafePoint();
+				return;
+			}
 
-		if (ExecutedCountInResolution >= MaxActionsPerResolution)
-		{
-			bResolutionFaultRequested = true;
-			ResolutionFaultReason = FString::Printf(
-				TEXT("Resolution action budget exceeded before the next dequeue. Executed=%d Max=%d."),
+			if (ExecutedCountInResolution >= MaxActionsPerResolution)
+			{
+				bResolutionFaultRequested = true;
+				ResolutionFaultReason = FString::Printf(
+					TEXT("Resolution action budget exceeded before the next dequeue. Executed=%d Max=%d."),
+					ExecutedCountInResolution,
+					MaxActionsPerResolution
+				);
+				EnterResolutionFaultAtSafePoint();
+				return;
+			}
+
+			CurrentAction = PendingActions[0];
+			PendingActions.RemoveAt(0);
+
+			UBattleAction* ActionToExecute = CurrentAction.Get();
+			if (!IsValid(ActionToExecute))
+			{
+				CurrentAction = nullptr;
+				continue;
+			}
+
+			LastExecutedAction = ActionToExecute;
+			++ExecutedCountInResolution;
+			ActionToExecute->OnFinished.AddUObject(this, &UBattleActionQueue::HandleActionFinished);
+
+			UE_LOG(
+				LogTemp,
+				Log,
+				TEXT("[ActionQueue] Execute: %s Remaining=%d ResolutionCount=%d/%d"),
+				*GetNameSafe(ActionToExecute),
+				PendingActions.Num(),
 				ExecutedCountInResolution,
 				MaxActionsPerResolution
 			);
-			EnterResolutionFaultAtSafePoint();
-			return;
+
+			ActionToExecute->Execute(this);
+
+			if (bResolutionFaultRequested && !IsValid(CurrentAction.Get()))
+			{
+				EnterResolutionFaultAtSafePoint();
+				return;
+			}
+
+			if (IsValid(CurrentAction.Get()))
+			{
+				// An asynchronous Action still owns the Queue. Release the pump frame;
+				// HandleActionFinished will resume when that Action eventually finishes.
+				bIsPumping = false;
+				return;
+			}
 		}
-
-		CurrentAction = PendingActions[0];
-		PendingActions.RemoveAt(0);
-
-		UBattleAction* ActionToExecute = CurrentAction.Get();
-		if (!IsValid(ActionToExecute))
-		{
-			CurrentAction = nullptr;
-			continue;
-		}
-
-		LastExecutedAction = ActionToExecute;
-		++ExecutedCountInResolution;
-		ActionToExecute->OnFinished.AddUObject(this, &UBattleActionQueue::HandleActionFinished);
-
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[ActionQueue] Execute: %s Remaining=%d ResolutionCount=%d/%d"),
-			*GetNameSafe(ActionToExecute),
-			PendingActions.Num(),
-			ExecutedCountInResolution,
-			MaxActionsPerResolution
-		);
-
-		ActionToExecute->Execute(this);
 
 		if (bResolutionFaultRequested && !IsValid(CurrentAction.Get()))
 		{
@@ -278,24 +342,62 @@ void UBattleActionQueue::PumpQueue()
 
 		if (IsValid(CurrentAction.Get()))
 		{
-			break;
+			bIsPumping = false;
+			return;
 		}
-	}
 
-	if (bResolutionFaultRequested && !IsValid(CurrentAction.Get()))
-	{
-		EnterResolutionFaultAtSafePoint();
-		return;
-	}
+		if (PendingActions.Num() > 0)
+		{
+			continue;
+		}
 
-	const bool bQueueEmpty = !IsValid(CurrentAction.Get()) && PendingActions.Num() == 0;
-	bIsPumping = false;
-
-	if (bQueueEmpty)
-	{
+		// This resolution is genuinely empty. Keep bIsPumping true across the
+		// complete multicast so no listener can recursively start another pump.
 		UE_LOG(LogTemp, Log, TEXT("[ActionQueue] Empty. Resolution actions executed=%d."), ExecutedCountInResolution);
 		ExecutedCountInResolution = 0;
+
+		bIsBroadcastingQueueEmpty = true;
 		OnQueueEmpty.Broadcast();
+		bIsBroadcastingQueueEmpty = false;
+
+		if (bResolutionFaultRequested)
+		{
+			EnterResolutionFaultAtSafePoint();
+			return;
+		}
+
+		if (bHasDeferredQueueEmptyContinuation)
+		{
+			TFunction<void()> ContinuationToExecute = MoveTemp(DeferredQueueEmptyContinuation);
+			DeferredQueueEmptyContinuation = TFunction<void()>();
+			bHasDeferredQueueEmptyContinuation = false;
+
+			bIsExecutingPostQueueEmptyContinuation = true;
+			ContinuationToExecute();
+			bIsExecutingPostQueueEmptyContinuation = false;
+		}
+
+		if (bResolutionFaultRequested)
+		{
+			EnterResolutionFaultAtSafePoint();
+			return;
+		}
+
+		if (IsValid(CurrentAction.Get()))
+		{
+			bIsPumping = false;
+			return;
+		}
+
+		if (PendingActions.Num() == 0)
+		{
+			bIsPumping = false;
+			return;
+		}
+
+		// The deferred authoritative continuation produced the next batch. Loop in
+		// this same pump frame so its eventual QueueEmpty broadcast cannot be nested
+		// inside the previous QueueEmpty multicast.
 	}
 }
 
@@ -337,6 +439,10 @@ void UBattleActionQueue::EnterResolutionFaultAtSafePoint()
 	bResolutionFaulted = true;
 	bResolutionFaultRequested = false;
 	PendingActions.Reset();
+	bIsBroadcastingQueueEmpty = false;
+	bIsExecutingPostQueueEmptyContinuation = false;
+	bHasDeferredQueueEmptyContinuation = false;
+	DeferredQueueEmptyContinuation = TFunction<void()>();
 	bIsPumping = false;
 
 	UE_LOG(
