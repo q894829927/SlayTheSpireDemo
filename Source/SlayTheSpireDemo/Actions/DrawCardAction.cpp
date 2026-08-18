@@ -40,18 +40,27 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 
 	if (Deck->HasCardsInDiscardPile())
 	{
-		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
-		RetryDrawAction->Initialize(Deck.Get());
-		Queue->AddToFront(RetryDrawAction);
-
 		UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
 		ShuffleAction->Initialize(Deck.Get());
-		Queue->AddToFront(ShuffleAction);
+
+		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
+		RetryDrawAction->Initialize(Deck.Get());
+
+		TArray<UBattleAction*> ContinuationBatch;
+		ContinuationBatch.Add(ShuffleAction);
+		ContinuationBatch.Add(RetryDrawAction);
+
+		if (!Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
+		{
+			Queue->RequestResolutionFault(TEXT("DrawCardAction failed to enqueue the atomic Shuffle -> RetryDraw continuation."));
+			Finish();
+			return;
+		}
 
 		UE_LOG(
 			LogTemp,
 			Log,
-			TEXT("[Action] DrawCardAction found an empty DrawPile. Queued ShuffleDeckAction then RetryDraw at the front.")
+			TEXT("[Action] DrawCardAction found an empty DrawPile. Queued atomic ShuffleDeckAction -> RetryDraw continuation at the front.")
 		);
 
 		Finish();
