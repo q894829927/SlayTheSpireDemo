@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **source implemented; UE5.8 Editor build + Automation PASSED (42/42); manual DataAsset configuration and PIE validation pending**.
+Status: **COMPLETE / PASSED**. Source implementation, UE5.8 Editor build, Automation gate (42/42), manual Status DataAsset configuration, and PIE validation have all passed.
 
 ## Runtime wiring implemented
 
@@ -41,9 +41,9 @@ Defeat
 ResolutionFaulted
 ```
 
-`ABattleManager` now creates and owns one transient `UBattleEventDispatcher` for the battle and subscribes to `UBattleActionQueue::OnResolutionFaulted`.
+`ABattleManager` creates and owns one transient `UBattleEventDispatcher` for the battle and subscribes to `UBattleActionQueue::OnResolutionFaulted`.
 
-`UTurnEndedAction` is a production BattleAction. It does not directly start the next turn. It coordinates the post-commit event-emission point and always lets final `QueueEmpty` own macro turn progression.
+`UTurnEndedAction` is a production BattleAction. It does not directly start the next turn. It coordinates the post-commit event-emission point and lets final `QueueEmpty` own macro turn progression.
 
 ## Transactional rules
 
@@ -84,27 +84,6 @@ Turn.ResolutionFaultTransitionsBattleState
 Turn.TurnEndReactionCompletesBeforeNextTurn
 ```
 
-The execution-order timing test gives the player a one-point Vulnerable status that both modifies incoming Attack damage and decays on the player's `TurnEndedEvent`.
-
-Validated behavior:
-
-```text
-Player Vulnerable Amount=1
-→ player TurnEnded reaction removes Vulnerable
-→ player-ending QueueEmpty
-→ enemy Attack Base=5
-→ Vulnerable is already absent
-→ resolved damage remains 5, not 7
-```
-
-This proves turn-end reactions complete before the next turn's actions begin.
-
-Owner-only workflow:
-
-```text
-.github/workflows/ue-phase6b-tests.yml
-```
-
 Validated UE5.8 gates:
 
 ```text
@@ -116,11 +95,9 @@ Total     42/42 PASS
 
 The UE5.8 Editor build completed successfully as part of the workflow.
 
-## Manual UE Editor configuration — pending
+## Manual UE Editor configuration — COMPLETE
 
-Do not text-edit `.uasset` files.
-
-Configure these existing Status DataAssets in the UE Editor:
+The existing Status DataAssets were configured in the UE Editor with one instanced `TurnEndStatusDecayTrigger` each:
 
 ```text
 DA_Status_Weak
@@ -128,31 +105,113 @@ DA_Status_Vulnerable
 DA_Status_Frailty
 ```
 
-For each, add one instanced Trigger:
+Configuration:
 
 ```text
-Class          = TurnEndStatusDecayTrigger
 Priority       = 0
 AmountToRemove = 1
 ```
 
-Do not add turn-end decay to:
+No turn-end decay trigger was added to:
 
 ```text
 DA_Status_Strength
 DA_Status_Dexterity
 ```
 
-## Final PIE validation — pending
+## PIE validation — PASSED
 
-PIE must verify:
+### Weak / Vulnerable / Strength cycle
+
+Observed setup:
+
+```text
+Enemy  Vulnerable Amount=2
+Player Weak       Amount=3
+Player Strength   Amount=2
+```
+
+Observed player turn ending:
+
+```text
+PlayerTurn
+→ PlayerTurnEnding
+→ TurnEndedAction(Player)
+→ TurnEndedEvent(Player)
+→ 1 reaction queued
+→ Weak Amount 3 - 1 = 2
+→ Strength remains Amount=2
+→ QueueEmpty
+→ EnemyTurn
+```
+
+The enemy attack then resolved at Base=5 / Resolved=5, proving the player turn-end reactions had completed before the enemy action began.
+
+Observed enemy turn ending:
+
+```text
+Enemy DamageAction
+→ TurnEndedAction(Enemy)
+→ EnemyTurnEnding
+→ TurnEndedEvent(Enemy)
+→ 1 reaction queued
+→ Vulnerable Amount 2 - 1 = 1
+→ QueueEmpty
+→ PlayerTurn
+```
+
+This validates owner-specific turn-end decay: Player Weak decayed on the player's TurnEnded event, while Enemy Vulnerable did not decay until the enemy's TurnEnded event.
+
+### Frailty / Dexterity cycle
+
+Observed setup:
+
+```text
+Player Frailty   Amount=3
+Player Dexterity Amount=2
+```
+
+The existing Block modifier pipeline still resolved correctly:
+
+```text
+Base 5
+→ Dexterity: 5 -> 7
+→ Frailty:   7 -> 5
+→ committed Block=5
+```
+
+Observed player turn ending:
+
+```text
+TurnEndedEvent(Player)
+→ 1 reaction queued
+→ Frailty Amount 3 - 1 = 2
+→ Dexterity remains Amount=2
+→ QueueEmpty
+→ EnemyTurn
+```
+
+Enemy damage consumed the existing 5 Block, then the enemy TurnEnded event completed with no decay reaction, followed by one final `QueueEmpty` and return to `PlayerTurn`.
+
+### Final PIE acceptance
+
+Validated:
 
 ```text
 Weak / Vulnerable / Frailty decay only on their owner's TurnEnded event
-Turn-end reaction completes before the opposing turn begins
-Strength / Dexterity remain unchanged at turn end
-Normal player → enemy → player cycle produces no ResolutionFault
-Turn boundary progression still occurs only from the final QueueEmpty
+Strength / Dexterity do not decay at turn end
+Turn-end reactions finish before the opposing turn begins
+PlayerTurn → PlayerTurnEnding → QueueEmpty → EnemyTurn is correct
+EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn is correct
+No ResolutionFault occurred in either validation cycle
+Turn progression occurs only from final QueueEmpty boundaries
 ```
 
-After these DataAsset and PIE checks pass, Phase 6B can be recorded as fully COMPLETE and Phase 6C becomes NEXT.
+## Next
+
+```text
+Phase 6A  COMPLETE
+Phase 6B  COMPLETE
+Phase 6C  DeckShuffled Event — NEXT
+Phase 6R  Full Regression + deferred test-module extraction
+```
