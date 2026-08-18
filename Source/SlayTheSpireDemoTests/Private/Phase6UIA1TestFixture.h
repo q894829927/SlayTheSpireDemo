@@ -1,6 +1,10 @@
 #pragma once
 
 #include "Misc/AutomationTest.h"
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Actions/BattleActionQueue.h"
 #include "Battle/BattleManager.h"
 #include "Cards/CardData.h"
 #include "Cards/CardInstance.h"
@@ -102,3 +106,5 @@ namespace Phase6UIA1Test
 		return false;
 	}
 }
+
+#endif
