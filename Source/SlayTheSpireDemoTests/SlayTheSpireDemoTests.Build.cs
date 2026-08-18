@@ -16,10 +16,11 @@ public class SlayTheSpireDemoTests : ModuleRules
 		});
 
 		// Runtime headers currently live under the Runtime module root rather than Public/.
-		// The migrated tests intentionally keep their existing ../Actions, ../Status, ...
-		// include shapes. Anchor those private legacy paths at one real Runtime subdirectory
-		// so "../<Area>" resolves inside SlayTheSpireDemo without widening Runtime's public
-		// include surface solely for Automation.
+		// Keep both paths private to this Editor-only test module: the Runtime root supports
+		// module-root-relative includes in reflected test headers, while the real Actions/
+		// subdirectory anchors the migrated tests' existing ../Actions, ../Status, ...
+		// include shapes. Runtime's public include surface is not widened for Automation.
+		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "..", "SlayTheSpireDemo"));
 		PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "..", "SlayTheSpireDemo", "Actions"));
 	}
 }
