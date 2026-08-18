@@ -115,7 +115,7 @@ jobs:
               }
               if ($NonSuccess.Count -gt 0) {
                   $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
-                  throw "Non-success tests for $Prefix: $Names"
+                  throw "Non-success tests for ${Prefix}: $Names"
               }
               if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) {
                   throw "Automation gate failed for $Prefix."
