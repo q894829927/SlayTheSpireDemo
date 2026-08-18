@@ -64,12 +64,12 @@ bool UBattleEventDispatcher::Dispatch(
 	const FBattleEvent& Event,
 	UBattleActionQueue* Queue,
 	const TArray<ACombatant*>& Combatants,
-	TArray<FTriggerDispatchRecord>* OutDispatchTrace
+	TArray<FTriggerEligibilityRecord>* OutEligibilityTrace
 ) const
 {
-	if (OutDispatchTrace)
+	if (OutEligibilityTrace)
 	{
-		OutDispatchTrace->Reset();
+		OutEligibilityTrace->Reset();
 	}
 
 	if (!IsValid(Queue) || Queue->IsResolutionFaulted())
@@ -160,14 +160,14 @@ bool UBattleEventDispatcher::Dispatch(
 
 	for (const FTriggerCandidate& Candidate : Candidates)
 	{
-		if (OutDispatchTrace)
+		if (OutEligibilityTrace)
 		{
-			FTriggerDispatchRecord Record;
+			FTriggerEligibilityRecord Record;
 			Record.StatusId = Candidate.RuntimeSource->GetStatusId();
 			Record.Priority = Candidate.TriggerDefinition->Priority;
 			Record.RuntimeSequence = Candidate.RuntimeSource->GetRuntimeSequence();
 			Record.LocalTriggerIndex = Candidate.LocalTriggerIndex;
-			OutDispatchTrace->Add(Record);
+			OutEligibilityTrace->Add(Record);
 		}
 
 		FTriggerContext Context(Candidate.RuntimeSource, Queue);
