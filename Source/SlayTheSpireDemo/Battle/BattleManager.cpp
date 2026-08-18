@@ -712,18 +712,48 @@ void ABattleManager::HandleActionQueueEmpty()
 		return;
 	}
 
+	if (!HasValidActionQueue())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] QueueEmpty progression failed: ActionQueue is invalid."));
+		return;
+	}
+
+	const TWeakObjectPtr<ABattleManager> WeakThis(this);
+	bool bDeferred = true;
+
 	switch (BattleState)
 	{
 	case EBattleState::PlayerTurnEnding:
-		StartEnemyTurn();
+		bDeferred = ActionQueue->DeferUntilAfterQueueEmptyBroadcast(
+			[WeakThis]()
+			{
+				if (ABattleManager* Battle = WeakThis.Get())
+				{
+					Battle->StartEnemyTurn();
+				}
+			}
+		);
 		break;
 
 	case EBattleState::EnemyTurnEnding:
-		StartPlayerTurn();
+		bDeferred = ActionQueue->DeferUntilAfterQueueEmptyBroadcast(
+			[WeakThis]()
+			{
+				if (ABattleManager* Battle = WeakThis.Get())
+				{
+					Battle->StartPlayerTurn();
+				}
+			}
+		);
 		break;
 
 	default:
-		break;
+		return;
+	}
+
+	if (!bDeferred)
+	{
+		ActionQueue->RequestResolutionFault(TEXT("BattleManager failed to defer authoritative macro turn progression until after QueueEmpty observers returned."));
 	}
 }
 
