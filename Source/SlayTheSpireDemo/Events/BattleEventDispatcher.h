@@ -19,10 +19,6 @@ struct FTriggerEligibilityRecord
 	int32 LocalTriggerIndex = INDEX_NONE;
 };
 
-// Temporary source-compatibility alias for the original Phase 6A tests. New
-// code should use FTriggerEligibilityRecord so the trace semantics stay clear.
-using FTriggerDispatchRecord = FTriggerEligibilityRecord;
-
 UCLASS()
 class SLAYTHESPIREDEMO_API UBattleEventDispatcher : public UObject
 {
