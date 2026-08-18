@@ -15,6 +15,7 @@
 #include "../Status/StatusData.h"
 #include "Phase6ATestTypes.h"
 #include "Engine/World.h"
+#include "UObject/Package.h"
 
 namespace Phase6CRegression
 {
@@ -135,7 +136,7 @@ namespace Phase6CRegression
 
 	bool FPhase6CDeckShuffledTypedPayloadIsolationTest::RunTest(const FString& Parameters)
 	{
-		UDeckRuntime* Deck = NewObject<UDeckRuntime>();
+		UDeckRuntime* Deck = NewObject<UDeckRuntime>(GetTransientPackage());
 		FBattleEvent ShuffledEvent = FBattleEvent::MakeDeckShuffled(Deck);
 
 		const FDeckShuffledEvent* ShuffledPayload = ShuffledEvent.TryGet<FDeckShuffledEvent>();
