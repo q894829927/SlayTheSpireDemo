@@ -52,10 +52,17 @@ BattleActionQueue
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
   - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
-  - [ ] Phase 6C DeckShuffled Event — SOURCE IMPLEMENTED; UE5.8 Editor build + Phase6C 5/5 and total 53/53 Automation validation pending.
-  - [ ] Phase 6R Regression Gate + deferred test-module extraction — PENDING until Phase 6C validation passes.
-- [ ] Phase 7 relic system implemented.
-- [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
+  - [ ] Phase 6C DeckShuffled Event — SOURCE IMPLEMENTED; UE5.8 Editor build + Phase6C 5/5 and total 53/53 Automation validation pending exact confirmation.
+  - [ ] Phase 6R Regression Gate + deferred test-module extraction — PENDING until Phase 6C validation is confirmed.
+- [ ] Phase 6UI-A playable Battle UI — PLANNED AFTER Phase 6R.
+  - [ ] UI-A0 Playable Gameplay Boundary.
+  - [ ] UI-A1 Operable Battle HUD.
+  - [ ] UI-A2 Basic Committed Presentation.
+  - [ ] UI-A3 Deterministic Immediate Preview.
+- [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
+- [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
+- [ ] Phase 6UI-B advanced UX / preview / developer tooling — PLANNED AFTER Phase 8.
+- [ ] Presentation Polish — PLANNED AFTER Phase 6UI-B.
 
 ### Validation summary
 
@@ -155,7 +162,7 @@ Phase 6B validated:
 - expanded UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 = 48/48;
 - post-hardening PIE validated `PlayerTurnEnding → QueueEmpty → EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn` with no ResolutionFault.
 
-Phase 6C source implemented; validation pending:
+Phase 6C source implemented; exact UE5.8 53/53 validation evidence is still pending confirmation in this document:
 
 - `FBattleEvent` now discriminates `FTurnEndedEvent` from the second real payload, `FDeckShuffledEvent`;
 - `FDeckShuffledEvent` carries the exact `UDeckRuntime*` whose shuffle committed;
@@ -166,7 +173,7 @@ Phase 6C source implemented; validation pending:
 - generic `PlayCardAction` does not make event wiring a mandatory dependency for non-draw cards;
 - pre-6C `Initialize(Deck)` / PlayCard initializer call shapes remain available;
 - no new test-only reflected `UCLASS` was added; existing Phase6A test helpers were reused for execution-order recording;
-- `SlayTheSpireDemo.Phase6C` currently contains 5 new source-level regressions, but UE5.8 execution evidence is still pending;
+- `SlayTheSpireDemo.Phase6C` contains 5 regressions;
 - `.github/workflows/ue-phase6c-tests.yml` expects Phase5 13 + Phase6A 23 + Phase6B 12 + Phase6C 5 = 53 tests.
 
 ### Manual UE assets/configuration
@@ -840,7 +847,7 @@ BattleActionQueue executes reactions
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
 6B  Battle Turn Wiring                                             COMPLETE / CI PASSED 12/12, TOTAL 48/48 + PIE PASSED
-6C  DeckShuffled Event                                             SOURCE IMPLEMENTED / UE5.8 53-TEST GATE PENDING
+6C  DeckShuffled Event                                             SOURCE IMPLEMENTED / UE5.8 53-TEST GATE PENDING CONFIRMATION
 6R  Phase 6 Regression Gate + test-module extraction               PENDING AFTER 6C
 ```
 
@@ -1335,6 +1342,8 @@ second QueueEmpty callback → BattleState == EnemyTurnEnding
 then final macro state      → BattleState == PlayerTurn
 ```
 
+This observer sequence describes the already-validated Phase 6B implementation. Phase 6UI-A0 later introduces explicit turn-start work and `PlayerTurnStarting`; at that point `PlayerTurn` remains the authoritative gameplay request-eligible state, while UI input release may still be delayed by presentation.
+
 `OnResolutionFaulted` makes BattleManager enter `EBattleState::ResolutionFaulted`, zero/reject player input, and stop turn/victory progression for that resolution. Log fault reason, executed count and last Action so PIE does not appear to freeze silently.
 
 The upfront Enemy batch rule is deliberately narrow. It applies to the current fixed Enemy behavior only. Future Enemy Intent/composite Actions may need Execute-time state to decide follow-ups and must continue to obey the project's Execute-time resolution rule.
@@ -1364,7 +1373,7 @@ The expanded owner-only UE5.8 workflow passed Phase6B 12/12 while Phase5 13/13 a
 
 Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
-#### Phase 6C — DeckShuffled Event — SOURCE IMPLEMENTED / VALIDATION PENDING
+#### Phase 6C — DeckShuffled Event — SOURCE IMPLEMENTED / VALIDATION PENDING CONFIRMATION
 
 Phase 6C source adds `FDeckShuffledEvent` as the second real typed event.
 
@@ -1392,7 +1401,7 @@ Phase 6C preserves existing public Draw/Shuffle/Play initializer shapes. Event w
 
 No persistent Trigger Registry, Relic source, or Sundial implementation is added in Phase 6C. Phase 7 should be able to add Sundial as a new trigger source without rewriting DeckRuntime/ShuffleDeckAction event timing.
 
-Phase 6C Automation source currently contains exactly 5 tests:
+Phase 6C Automation source contains exactly 5 tests:
 
 ```text
 Event.TypedPayloadIsolation
@@ -1421,7 +1430,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Do not mark Phase 6C complete or start Phase 6R until this fixed source is built and the 53/53 UE5.8 gate passes.
+Do not mark Phase 6C complete or start Phase 6R until exact 53/53 UE5.8 evidence is confirmed.
 
 #### Phase 6R — Regression Gate
 
@@ -1437,7 +1446,23 @@ Use `Trigger.CollectionOrderDoesNotMatter`, not the obsolete `RegistrationOrderD
 
 Phase 6R also owns the deferred engineering cleanup recorded in `docs/Phase6DeferredEngineering.md`: move Automation-only reflected test helpers out of the Runtime module into an Editor/Developer-only test module. Until that cleanup is complete, do not add new test-only `UCLASS` types to the Runtime module.
 
-### Phase 7 — Relics
+### Phase 6UI-A — Playable Battle UI — PLANNED AFTER PHASE 6R
+
+Implementation order inside this phase:
+
+```text
+UI-A0 Playable Gameplay Boundary
+↓
+UI-A1 Operable Battle HUD
+↓
+UI-A2 Basic Committed Presentation
+↓
+UI-A3 Deterministic Immediate Preview
+```
+
+The durable UI/MVVM/Presentation architecture and acceptance criteria are defined in Section 15. Do not begin Phase 7 until Phase 6UI-A is playable unless the user explicitly changes the order.
+
+### Phase 7 — Relics — PLANNED AFTER PHASE 6UI-A
 
 Implement relic listeners through the event/trigger architecture. First validation: Sundial; optional Abacus.
 
@@ -1457,9 +1482,17 @@ future concrete contributors only when needed
 
 The collection boundary may evolve, but the typed operation specs, modifier applicability rules and deterministic sort semantics should remain stable. Do not introduce a universal modifier context merely to support Relics.
 
-### Phase 8 — Combo Architecture Validation
+### Phase 8 — Combo Architecture Validation — PLANNED AFTER PHASE 7
 
-Validate two upgraded Pommel Strikes + Sundial without special-case combo code. The interaction must emerge from generic card, draw, shuffle, event, modifier and action rules.
+Validate two upgraded Pommel Strikes + Sundial without special-case combo code. The interaction must emerge from generic card, draw, shuffle, event, modifier and action rules and should be visually understandable through the playable UI.
+
+### Phase 6UI-B — Advanced UX / Presentation Tooling — PLANNED AFTER PHASE 8
+
+Advanced preview, Keyword/CardText presentation, Developer Overlay, presentation timeline tooling, controller/accessibility work and responsive-layout work belong here unless required earlier for basic playability or diagnosis.
+
+### Presentation Polish — PLANNED AFTER PHASE 6UI-B
+
+Drag/drop, fast-play shortcuts, final hand layout, target arrows, animation refinement, VFX/SFX and speed/skip polish belong here. Presentation remains non-authoritative.
 
 ---
 
@@ -1947,6 +1980,9 @@ Saved/
 31. `OnQueueEmpty` is an observable non-reentrant boundary. BattleManager must defer macro turn progression until all observers return; never repair QueueEmpty ordering by relying on multicast registration order.
 32. Until Phase 6R extracts an Editor/Developer-only test module, do not add new test-only reflected `UCLASS` types to the Runtime module.
 33. `FDeckShuffledEvent` is emitted only after a successful shuffle commit. Expected/no-op shuffles emit no event, and reactions to a successful shuffle resolve before the already-pending RetryDraw continuation.
+34. Phase 6UI-A does not begin before Phase 6R unless the user explicitly changes the order. Phase 7 follows the playable UI-A slice, not Phase 6R directly.
+35. `PlayerTurn` is an authoritative gameplay request-eligible state. Presentation may still lock the View after Gameplay enters `PlayerTurn`; animation completion must never be required to commit `BattleState = PlayerTurn`.
+36. Before UI-A2 exists, presentation catch-up in UI-A0/UI-A1 is an immediate/no-op boundary followed by coherent authoritative snapshot refresh; UI-A0 must not depend on Presentation Records/Presentation Queue.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1964,7 +2000,7 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence before Phase 6C source validation:
+Current trusted self-hosted regression evidence before exact Phase 6C 53/53 confirmation in this document:
 
 ```text
 Phase 5   13/13 PASS
@@ -1975,9 +2011,9 @@ Total     48/48 PASS
 
 The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault` and with observer-visible QueueEmpty states remaining `PlayerTurnEnding` then `EnemyTurnEnding` before macro progression.
 
-Phase 6C source is implemented but is **not validated yet**. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
+Phase 6C source is implemented. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
 
-Required next gate:
+Required confirmation gate:
 
 ```text
 Phase 5    13/13
@@ -1987,7 +2023,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Phase 6R must not start until that gate passes. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+Phase 6R must not start until exact 53/53 evidence is confirmed. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2118,8 +2154,17 @@ docs/Phase6CImplementation.md
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
 - Phase 6B — PASSED: expanded 12/12 UE5.8 Automation, total Phase5 + Phase6A + Phase6B 48/48, real Status DataAsset PIE validation, QueueEmpty non-reentrancy PIE validation, and all six Queue continuation/broadcast contracts green.
-- Phase 6C — SOURCE IMPLEMENTED / VALIDATION PENDING: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, 5 Automation tests and a 53-test owner-only UE5.8 workflow are on `main`; do not mark passed until that workflow succeeds.
-- Phase 6 — NOT YET COMPLETE: 6C validation and 6R remain.
+- Phase 6C — SOURCE IMPLEMENTED / VALIDATION PENDING EXACT CONFIRMATION: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, 5 Automation tests and a 53-test owner-only UE5.8 workflow are on `main`.
+- Phase 6 — NOT YET COMPLETE: exact 6C validation confirmation and 6R remain.
+- Phase 6UI-A0 — PLANNED AFTER 6R: authoritative playable turn/hand lifecycle, formal Request APIs, shared gameplay validation, coherent read snapshot and minimal authoritative Enemy Intent.
+- Phase 6UI-A1 — PLANNED: first operable Battle HUD without gameplay-driving debug keyboard commands.
+- Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.
+- Phase 6UI-A3 — PLANNED: deterministic immediate Damage / Block / Energy preview only.
+- Phase 6UI-A — PASSED only when the normal player battle loop is operable through UI without `TestDrawCard`, `TestPlayFirstCard` or equivalent gameplay-driving debug commands.
+- Phase 7 — PLANNED AFTER Phase 6UI-A: Relic runtime, Sundial first validation and Relic presentation.
+- Phase 8 — PLANNED AFTER Phase 7: Pommel Strike+ / Sundial generic gameplay and presentation-legibility validation.
+- Phase 6UI-B — PLANNED AFTER Phase 8: advanced Outcome Preview, Keyword/CardText presentation, developer tooling, accessibility/input expansion and responsive layout.
+- Presentation Polish — PLANNED LAST: interaction-speed shortcuts, animations, VFX/SFX and visual refinement; presentation remains non-authoritative.
 
 ---
 
@@ -2144,6 +2189,8 @@ When completing a meaningful phase:
 - update Current Repository State;
 - record durable architecture invariants;
 - record required manual UE assets/configuration;
+- keep Current Repository State, Development Order, Acceptance Summary and detailed phase sections synchronized;
+- do not rely on a later section to silently override a stale earlier development order;
 - keep documentation synchronized with actual source/PIE/Automation state;
 - do not fill this file with daily implementation trivia.
 
@@ -2151,7 +2198,7 @@ When completing a meaningful phase:
 
 ## 15. Planned Playable UI, MVVM and Presentation Architecture
 
-This section is the authoritative long-term plan for work after Phase 6R. Where an older section merely places Phase 7 directly after Phase 6R, this section supersedes that shorthand ordering.
+This section is the detailed long-term specification for work after Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
 
 Do not implement these UI systems before Phase 6R unless the user explicitly changes the development order.
 
@@ -2213,9 +2260,11 @@ TestPlayFirstCard
 or equivalent rule-driving debug commands
 ```
 
-#### PlayerTurn is input-ready, not turn-start work in progress
+#### PlayerTurn is gameplay request-eligible; Presentation may still lock the View
 
-`PlayerTurn` means all authoritative turn-start work for that player turn has completed and normal player Requests may be accepted.
+`PlayerTurn` means all authoritative turn-start gameplay work for that player turn has completed and normal gameplay Requests are eligible to be accepted.
+
+It does **not** mean the View must immediately release input while historical presentation is still catching up.
 
 Phase 6UI-A0 should introduce an explicit non-interactive `PlayerTurnStarting` boundary:
 
@@ -2232,20 +2281,25 @@ atomically enqueue required turn-start work
 ↓
 Draw / Shuffle / Trigger reactions resolve
 ↓
-final gameplay resolution boundary
+final turn-start gameplay resolution boundary
 ↓
-PlayerTurn
+BattleState = PlayerTurn
 ↓
-normal player input is eligible to open after presentation catch-up
+presentation catch-up policy
+↓
+coherent authoritative snapshot refresh
+↓
+UI releases normal input
 ```
 
-Durable invariant:
+Durable invariants:
 
 ```text
-PlayerTurn = authoritative player-input-ready state
+PlayerTurn = authoritative gameplay Request-eligible state
+UI input release = presentation policy layered on top
 ```
 
-Do not enter `PlayerTurn` merely because turn-start Actions were scheduled.
+Do not enter `PlayerTurn` merely because turn-start Actions were scheduled. Conversely, do not delay `BattleState = PlayerTurn` until animation playback completes.
 
 The existing `BattleStart` state may serve as the equivalent non-interactive battle-opening boundary. Do not add or rename a separate `BattleStarting` state unless implementation later demonstrates a concrete need.
 
@@ -2260,15 +2314,15 @@ choose and commit initial Enemy Intent
 ↓
 enqueue opening-Hand gameplay work
 ↓
-Draw / Shuffle / Trigger resolution completes
+Draw / Shuffle / Trigger gameplay resolution completes
 ↓
-presentation catch-up
+BattleState = PlayerTurn
+↓
+presentation catch-up policy
 ↓
 coherent authoritative snapshot refresh
 ↓
-PlayerTurn
-↓
-input enabled
+UI input enabled
 ```
 
 #### Turn / Hand lifecycle is authoritative gameplay
@@ -2393,7 +2447,9 @@ ResolutionFault cannot occur
 the battle cannot end early
 ```
 
-On `AcceptedForResolution`, the UI enters its `Resolving`/presentation-locked policy. Widget callbacks must not directly mutate or assume final HP/Block/Energy/zone results. Final results come from authoritative gameplay state plus committed Presentation Records.
+On `AcceptedForResolution`, the UI enters its `Resolving`/presentation-locked policy. Widget callbacks must not directly mutate or assume final HP/Block/Energy/zone results. Final results come from authoritative gameplay state plus committed Presentation Records when UI-A2 exists.
+
+Before UI-A2 exists, the same rule still holds: UI-A0/UI-A1 learn final results by refreshing one coherent authoritative snapshot after gameplay resolution; there is simply no historical Presentation Record playback yet.
 
 ### 15.4 Query and Request share one gameplay validator
 
@@ -2742,7 +2798,7 @@ Do not force every low-level internal Action to have a visible animation. Player
 
 Gameplay may resolve ahead of presentation, but normal player-visible decision sequences must not overlap unpredictably.
 
-Conceptual flow:
+Conceptual flow once UI-A2 exists:
 
 ```text
 Player input-ready
@@ -2753,6 +2809,8 @@ UI enters Resolving / presentation-locked state
 ↓
 Gameplay resolution completes deterministically
 ↓
+authoritative BattleState/result is already current
+↓
 Presentation Records accumulate/play
 ↓
 presentation catches up
@@ -2761,12 +2819,26 @@ capture latest coherent authoritative snapshot
 ↓
 refresh Battle ViewModel as one boundary
 ↓
-if gameplay state is input-ready, release normal player input
+if gameplay state is Request-eligible, release normal player input
 ```
 
-This is a UI/input policy. It does not make BattleActionQueue wait for animations.
+This is a UI/input policy. It does not make BattleActionQueue or BattleState wait for animations.
 
-Do not allow the player to submit a new normal card-play Request while presentation from the previous player-visible resolution is materially behind.
+Before UI-A2 exists:
+
+```text
+presentation catch-up = immediate / no-op boundary
+↓
+capture coherent authoritative snapshot
+↓
+refresh ViewModel / HUD immediately
+↓
+release UI input only when authoritative gameplay state is Request-eligible
+```
+
+Therefore UI-A0 validates gameplay completion and coherent snapshot semantics only. UI-A1 may operate with instantaneous state changes. Neither UI-A0 nor UI-A1 depends on Presentation Records or a Presentation Queue; UI-A2 later replaces the no-op catch-up boundary with historical committed-fact playback.
+
+Do not allow the player to submit a new normal card-play Request while presentation from the previous player-visible resolution is materially behind once UI-A2 exists.
 
 Skip / fast-forward should conceptually:
 
@@ -2777,7 +2849,7 @@ discard obsolete transitional display state
 ↓
 refresh from latest coherent authoritative snapshot
 ↓
-release input when gameplay is input-ready
+release input when gameplay is Request-eligible
 ```
 
 Presentation backlog must remain bounded by UX policy. High-volume/low-importance records may eventually be accelerated, coalesced, collapsed or omitted without changing gameplay results.
@@ -2907,7 +2979,8 @@ Acceptance requires all of the following:
 
 ```text
 opening Hand comes from authoritative gameplay lifecycle
-PlayerTurn is entered only after turn-start work finishes
+PlayerTurn is entered only after turn-start gameplay work finishes
+PlayerTurn transition does not depend on presentation completion
 normal player card play uses formal RequestPlayCard
 normal end turn uses formal RequestEndPlayerTurn
 Query and Request share gameplay-owned validation rules
@@ -2917,7 +2990,10 @@ remaining-Hand cleanup timing relative to TurnEnded is explicit
 Enemy Intent is authoritative and drives corresponding EnemyTurn Actions
 UI can obtain one coherent authoritative read snapshot
 normal playable flow does not require TestDrawCard or TestPlayFirstCard
+UI-A0 does not require Presentation Records / Presentation Queue
 ```
+
+Before UI-A2 exists, every `presentation catch-up` label below means an immediate/no-op presentation boundary followed by coherent snapshot refresh.
 
 Authoritative playable flow:
 
@@ -2928,13 +3004,15 @@ initialize battle + commit initial Enemy Intent
 ↓
 opening-Hand gameplay batch
 ↓
-gameplay resolution
+turn-opening gameplay resolution completes
 ↓
-presentation catch-up
+BattleState = PlayerTurn
+↓
+presentation catch-up (no-op before UI-A2)
 ↓
 coherent snapshot refresh
 ↓
-PlayerTurn
+UI releases input
 ```
 
 ```text
@@ -2951,17 +3029,17 @@ shared validator re-runs on current state
 Rejected(reason)
 or AcceptedForResolution
 ↓
-Resolving
+Resolving presentation/input policy
 ↓
 Gameplay Actions / Events / Triggers commit
 ↓
-Presentation Records
+authoritative BattleState/result is current
 ↓
-presentation catch-up
+presentation catch-up (no-op before UI-A2)
 ↓
 coherent snapshot refresh
 ↓
-PlayerTurn / Victory / Defeat / ResolutionFaulted
+UI releases input only if authoritative state is Request-eligible
 ```
 
 ```text
@@ -3007,13 +3085,15 @@ restore turn resources
 ↓
 turn-start Draw work
 ↓
-Draw / Shuffle / Trigger resolution
+Draw / Shuffle / Trigger gameplay resolution completes
 ↓
-presentation catch-up
+BattleState = PlayerTurn
+↓
+presentation catch-up (no-op before UI-A2)
 ↓
 coherent snapshot refresh
 ↓
-PlayerTurn
+UI releases input
 ```
 
 #### UI-A1 — Operable Battle HUD
@@ -3033,7 +3113,7 @@ Resolving lock
 Victory / Defeat / ResolutionFaulted
 ```
 
-Acceptance: a normal battle turn can be operated without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands.
+Acceptance: a normal battle turn can be operated without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands. Until UI-A2, committed state changes may appear immediately after coherent snapshot refresh rather than through historical animation playback.
 
 #### UI-A2 — Basic Committed Presentation
 
@@ -3051,7 +3131,7 @@ Defeat
 ResolutionFault
 ```
 
-Goal is gameplay legibility, not final animation quality. Use committed snapshots rather than reconstructing historical results from current mutable state.
+Goal is gameplay legibility, not final animation quality. Use committed snapshots rather than reconstructing historical results from current mutable state. UI-A2 replaces the UI-A0/UI-A1 no-op presentation catch-up boundary with real committed-fact playback while leaving Gameplay/BattleState timing unchanged.
 
 #### UI-A3 — Deterministic Immediate Preview
 
