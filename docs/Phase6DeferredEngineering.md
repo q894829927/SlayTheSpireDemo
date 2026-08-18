@@ -1,12 +1,14 @@
 # Phase 6 Deferred Engineering Work
 
-This document records accepted engineering cleanup that should not interrupt the Phase 6B / 6C gameplay slices.
+This document records Phase 6 engineering cleanup that was intentionally deferred until the gameplay slices were stable.
 
-## Deferred to Phase 6R — move Automation test UObjects out of the Runtime module
+## Phase 6R — Automation test-module extraction
 
-### Current state
+Status: **SOURCE IMPLEMENTED / UE5.8 REGRESSION + SHIPPING EXCLUSION VALIDATION PENDING**.
 
-`Source/SlayTheSpireDemo/Tests/Phase6ATestTypes.h/.cpp` currently defines reflected test-only UObject types inside the main `SlayTheSpireDemo` Runtime module:
+The previous temporary state placed reflected Automation-only helper UObjects inside the main `SlayTheSpireDemo` Runtime module. That source debt has now been removed.
+
+The reflected helpers are:
 
 - `UPhase6ATestExecutionRecorder`
 - `UPhase6ATestRecordAction`
@@ -14,30 +16,26 @@ This document records accepted engineering cleanup that should not interrupt the
 - `UPhase6ATestEmitTurnEndedAction`
 - `UPhase6ATestNestedTrigger`
 
-`UCLASS(Transient)` does not make a reflected class editor/test-only. Because these types belong to the Runtime module, they remain part of that module's reflected/generated code and can be carried by non-editor builds.
+They now live in the Editor-only test module rather than Runtime.
 
-This is accepted temporarily for the learning project because it does not change Phase 6A gameplay semantics or the verified Automation behavior, but it is technical debt and must not become the pattern for future test support.
-
-### Guardrail until the cleanup is done
-
-Do **not** add new test-only `UCLASS` types to the `SlayTheSpireDemo` Runtime module.
-
-If Phase 6B / 6C tests need additional reflected test helpers, prefer reusing the existing Phase 6A test types when that remains semantically clear. If genuinely new reflected helpers are required, perform the test-module extraction first instead of expanding Runtime test infrastructure.
-
-Do not use a casual `#if WITH_DEV_AUTOMATION_TESTS` wrapper around reflected `UCLASS` declarations as a substitute for module separation; UHT/generated-code behavior must stay structurally valid across targets.
-
-### Phase 6R target architecture
-
-Create a separate editor/developer-only test module, tentatively:
+### Implemented architecture
 
 ```text
 SlayTheSpireDemo          Runtime
-SlayTheSpireDemoTests     Editor-only test module
+SlayTheSpireDemoTests     Editor-only
         ↓ depends on
 SlayTheSpireDemo
 ```
 
-Move Automation-only sources out of the Runtime module, including at minimum:
+The Runtime module does not depend on the test module.
+
+Automation-only sources have been moved to:
+
+```text
+Source/SlayTheSpireDemoTests/Private/
+```
+
+including:
 
 ```text
 Phase5RegressionTests.cpp
@@ -45,33 +43,69 @@ Phase6ARegressionTests.cpp
 Phase6AExecutionOrderTests.cpp
 Phase6ATestTypes.h
 Phase6ATestTypes.cpp
+Phase6BRegressionTests.cpp
+Phase6CRegressionTests.cpp
 ```
 
-Move later Phase 6B / 6C Automation sources there as part of the same cleanup.
+The test-only reflected classes now use `SLAYTHESPIREDEMOTESTS_API`.
 
-The Runtime module must never depend on the test module.
+`SlayTheSpireDemoTests` is declared as an `Editor` module in the project descriptor and is included by the Editor target only. The normal Game target does not include it.
 
-### Required migration work
+Runtime source contains no `UPhase6ATest*` reflected helper declarations after the extraction.
 
-1. Add the test module and its `Build.cs` / project module declaration using an editor/developer-only module type appropriate for UE5.8 Automation.
-2. Make the test module depend on `SlayTheSpireDemo`, never the reverse.
-3. Move Automation sources and reflected test helper types into the test module.
-4. Replace `SLAYTHESPIREDEMO_API` on test-only reflected types with the test-module API macro if export is required.
-5. Update include paths without weakening Runtime encapsulation solely for tests.
-6. Keep the existing owner-only manual self-hosted UE5.8 CI gate working after the module split.
-7. Add a packaging/Shipping-oriented check demonstrating that Phase 6 test-only reflected classes are not part of the Runtime/Shipping product.
+### Include/link boundary
+
+The existing Runtime module predates a normal `Public/Private` header split. Phase 6R therefore keeps Runtime-header compatibility paths private to `SlayTheSpireDemoTests`; it does not widen the Runtime module's public include surface merely for Automation.
+
+`FTriggerContext` is exported from Runtime because its existing non-inline constructor/getters are legitimately consumed across the new module boundary. This is a linkage/export change only; trigger gameplay semantics are unchanged.
+
+### Validation gate
+
+The owner-only manual workflow is:
+
+```text
+.github/workflows/ue-phase6r-tests.yml
+```
+
+Its regression job must build `SlayTheSpireDemoEditor` with the test module and pass the complete fixed gate:
+
+```text
+Phase 5    13/13
+Phase 6A   23/23
+Phase 6B   12/12
+Phase 6C    5/5
+----------------
+Total      53/53
+```
+
+Its Shipping-exclusion job must start from a clean checkout, build:
+
+```text
+SlayTheSpireDemo Win64 Shipping
+```
+
+and verify that Shipping build artifacts contain no:
+
+```text
+SlayTheSpireDemoTests
+Phase6ATest
+```
 
 ### Acceptance criteria
 
-The cleanup is complete only when all of the following are true:
+Phase 6R is complete only when all of the following are proven on UE5.8:
 
 ```text
 Runtime module contains no Phase6ATest* reflected classes
 Runtime module has no dependency on SlayTheSpireDemoTests
-Editor Automation discovers the migrated tests
-Phase 5 + Phase 6 regression gates still pass
-Shipping/package-oriented validation does not contain the test-only reflected types
+Editor target builds the Editor-only test module
+Editor Automation discovers all migrated tests
+Phase 5 + Phase 6 regression gates pass at 53/53
+Shipping game target builds
+Shipping artifacts exclude the test module and reflected test helpers
 ```
+
+Until that workflow passes, Phase 6R remains source-implemented but not validated.
 
 ## Completed cleanup — trigger trace terminology
 
@@ -84,14 +118,13 @@ OutEligibilityTrace
 
 An eligibility trace records triggers that passed `CanReact` in deterministic candidate order. It does **not** claim that their Reaction Actions were successfully built, inserted, or executed. Actual execution ordering remains covered separately by execution-level Automation tests.
 
-## Scheduling
-
-Current order remains:
+## Current scheduling
 
 ```text
-Phase 6A  COMPLETE / UE5.8 Automation passed
-Phase 6B  Battle Turn Wiring
-Phase 6C  DeckShuffled
-Phase 6R  Full regression + test-module extraction described above
-Phase 7   Relics
+Phase 6A    COMPLETE
+Phase 6B    COMPLETE
+Phase 6C    COMPLETE / 53-test gate passed before extraction
+Phase 6R    SOURCE IMPLEMENTED / VALIDATION PENDING
+Phase 6UI-A NEXT AFTER 6R
+Phase 7     AFTER Phase 6UI-A
 ```
