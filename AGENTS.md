@@ -52,8 +52,8 @@ BattleActionQueue
 - [ ] Phase 6 battle events / triggers in progress.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
   - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
-  - [ ] Phase 6C DeckShuffled Event — SOURCE IMPLEMENTED; UE5.8 Editor build + Phase6C 5/5 and total 53/53 Automation validation pending exact confirmation.
-  - [ ] Phase 6R Regression Gate + deferred test-module extraction — PENDING until Phase 6C validation is confirmed.
+  - [x] Phase 6C DeckShuffled Event — COMPLETE; UE5.8 Editor build + Phase6C 5/5 and total Phase5–Phase6C 53/53 Automation gate passed.
+  - [ ] Phase 6R Regression Gate + deferred test-module extraction — NEXT.
 - [ ] Phase 6UI-A playable Battle UI — PLANNED AFTER Phase 6R.
   - [ ] UI-A0 Playable Gameplay Boundary.
   - [ ] UI-A1 Operable Battle HUD.
@@ -162,7 +162,7 @@ Phase 6B validated:
 - expanded UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 = 48/48;
 - post-hardening PIE validated `PlayerTurnEnding → QueueEmpty → EnemyTurn → EnemyTurnEnding → QueueEmpty → PlayerTurn` with no ResolutionFault.
 
-Phase 6C source implemented; exact UE5.8 53/53 validation evidence is still pending confirmation in this document:
+Phase 6C validated:
 
 - `FBattleEvent` now discriminates `FTurnEndedEvent` from the second real payload, `FDeckShuffledEvent`;
 - `FDeckShuffledEvent` carries the exact `UDeckRuntime*` whose shuffle committed;
@@ -174,7 +174,7 @@ Phase 6C source implemented; exact UE5.8 53/53 validation evidence is still pend
 - pre-6C `Initialize(Deck)` / PlayCard initializer call shapes remain available;
 - no new test-only reflected `UCLASS` was added; existing Phase6A test helpers were reused for execution-order recording;
 - `SlayTheSpireDemo.Phase6C` contains 5 regressions;
-- `.github/workflows/ue-phase6c-tests.yml` expects Phase5 13 + Phase6A 23 + Phase6B 12 + Phase6C 5 = 53 tests.
+- the owner-only `.github/workflows/ue-phase6c-tests.yml` passed Phase5 13 + Phase6A 23 + Phase6B 12 + Phase6C 5 = 53/53 tests.
 
 ### Manual UE assets/configuration
 
@@ -847,8 +847,8 @@ BattleActionQueue executes reactions
 ```text
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
 6B  Battle Turn Wiring                                             COMPLETE / CI PASSED 12/12, TOTAL 48/48 + PIE PASSED
-6C  DeckShuffled Event                                             SOURCE IMPLEMENTED / UE5.8 53-TEST GATE PENDING CONFIRMATION
-6R  Phase 6 Regression Gate + test-module extraction               PENDING AFTER 6C
+6C  DeckShuffled Event                                             COMPLETE / UE5.8 5/5, TOTAL 53/53 PASSED
+6R  Phase 6 Regression Gate + test-module extraction               NEXT
 ```
 
 Do not implement Phase 7 relics during Phase 6.
@@ -1373,7 +1373,7 @@ The expanded owner-only UE5.8 workflow passed Phase6B 12/12 while Phase5 13/13 a
 
 Post-hardening PIE also passed: one clean `Space` end-turn cycle observed Player `QueueEmpty` while `BattleState == PlayerTurnEnding`, then EnemyTurn began; later Enemy `QueueEmpty` was observed while `BattleState == EnemyTurnEnding`, then PlayerTurn began. No `ResolutionFault` occurred.
 
-#### Phase 6C — DeckShuffled Event — SOURCE IMPLEMENTED / VALIDATION PENDING CONFIRMATION
+#### Phase 6C — DeckShuffled Event — COMPLETE / UE5.8 53/53 PASSED
 
 Phase 6C source adds `FDeckShuffledEvent` as the second real typed event.
 
@@ -1420,7 +1420,7 @@ post-retry tail sees DrawPile = 0
 one final QueueEmpty for the whole resolution
 ```
 
-The owner-only `.github/workflows/ue-phase6c-tests.yml` expects:
+The owner-only `.github/workflows/ue-phase6c-tests.yml` passed:
 
 ```text
 Phase 5    13/13
@@ -1430,7 +1430,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Do not mark Phase 6C complete or start Phase 6R until exact 53/53 UE5.8 evidence is confirmed.
+Phase 6C is complete. Phase 6R is the next implementation slice.
 
 #### Phase 6R — Regression Gate
 
@@ -2000,20 +2000,21 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence before exact Phase 6C 53/53 confirmation in this document:
+Current trusted self-hosted regression evidence:
 
 ```text
 Phase 5   13/13 PASS
 Phase 6A  23/23 PASS
 Phase 6B  12/12 PASS
-Total     48/48 PASS
+Phase 6C   5/5  PASS
+Total     53/53 PASS
 ```
 
 The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault` and with observer-visible QueueEmpty states remaining `PlayerTurnEnding` then `EnemyTurnEnding` before macro progression.
 
-Phase 6C source is implemented. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
+Phase 6C source and validation are complete. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
 
-Required confirmation gate:
+Validated gate:
 
 ```text
 Phase 5    13/13
@@ -2023,7 +2024,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Phase 6R must not start until exact 53/53 evidence is confirmed. Phase 6R must later rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+Phase 6R is next. It must rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2154,8 +2155,8 @@ docs/Phase6CImplementation.md
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
 - Phase 6B — PASSED: expanded 12/12 UE5.8 Automation, total Phase5 + Phase6A + Phase6B 48/48, real Status DataAsset PIE validation, QueueEmpty non-reentrancy PIE validation, and all six Queue continuation/broadcast contracts green.
-- Phase 6C — SOURCE IMPLEMENTED / VALIDATION PENDING EXACT CONFIRMATION: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, 5 Automation tests and a 53-test owner-only UE5.8 workflow are on `main`.
-- Phase 6 — NOT YET COMPLETE: exact 6C validation confirmation and 6R remain.
+- Phase 6C — PASSED: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, Phase6C 5/5 and total Phase5–Phase6C 53/53 passed through the owner-only UE5.8 workflow.
+- Phase 6 — NOT YET COMPLETE: Phase 6R remains.
 - Phase 6UI-A0 — PLANNED AFTER 6R: authoritative playable turn/hand lifecycle, formal Request APIs, shared gameplay validation, coherent read snapshot and minimal authoritative Enemy Intent.
 - Phase 6UI-A1 — PLANNED: first operable Battle HUD without gameplay-driving debug keyboard commands.
 - Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.

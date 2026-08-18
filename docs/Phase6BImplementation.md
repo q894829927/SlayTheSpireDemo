@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **GAMEPLAY SLICE PASSED / QUEUE CONTRACT FIXES LANDED / EXPANDED 48/48 RERUN PENDING**. The hardened 42/42 gate and PIE cycle passed before six additional QueueEmpty continuation contract regressions were added. Those regressions exposed two Queue API defects; both production fixes are now on `main`. Phase 6C remains blocked until the expanded gate passes.
+Status: **COMPLETE / EXPANDED PHASE6B 12/12 + TOTAL 48/48 PASSED**. The QueueEmpty hardening, six additional Queue contract regressions and both exposed production fixes passed through the owner-only UE5.8 gate. Phase 6C subsequently passed its expanded total 53/53 gate.
 
 ## Runtime wiring implemented
 
@@ -145,7 +145,7 @@ healthy Queue
 
 A fault requested by any QueueEmpty observer still cancels and clears a previously deferred continuation before it can execute.
 
-## Phase 6B Automation gate — 12 TESTS / EXPANDED RERUN PENDING
+## Phase 6B Automation gate — 12 TESTS / PASSED
 
 Prefix:
 
@@ -322,7 +322,7 @@ No ResolutionFault occurred in the validation cycles
 Prior hardened UE5.8 Automation evidence is 42/42 green
 ```
 
-Awaiting expanded revalidation:
+Validated expanded gate:
 
 ```text
 Phase6B Queue contract tests 12/12
@@ -333,7 +333,7 @@ Total Phase5 + Phase6A + Phase6B 48/48
 
 ```text
 Phase 6A  COMPLETE / UE5.8 CI PASSED
-Phase 6B  GAMEPLAY PASSED / QUEUE CONTRACT FIXES LANDED / 48/48 RERUN REQUIRED
-Phase 6C  DeckShuffled Event — BLOCKED until expanded Phase 6B gate passes
-Phase 6R  Full Regression + deferred test-module extraction
+Phase 6B  COMPLETE / UE5.8 12/12, TOTAL 48/48 PASSED
+Phase 6C  COMPLETE / UE5.8 5/5, TOTAL 53/53 PASSED
+Phase 6R  NEXT / Full Regression + deferred test-module extraction
 ```

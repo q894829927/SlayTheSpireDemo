@@ -1,6 +1,6 @@
 # Phase 6C — DeckShuffled Event
 
-Status: **SOURCE IMPLEMENTED / UE5.8 BUILD + AUTOMATION VALIDATION PENDING**.
+Status: **COMPLETE / UE5.8 BUILD + PHASE6C 5/5 + TOTAL 53/53 AUTOMATION PASSED**.
 
 Phase 6C adds the second real post-commit battle event without introducing Relics or Sundial yet.
 
@@ -166,7 +166,7 @@ New workflow:
 
 It remains owner-only, manual `workflow_dispatch`, trusted `main`, self-hosted Windows `ue58`.
 
-Expected gate after source compiles:
+Validated gate:
 
 ```text
 Phase 5    13/13
@@ -177,7 +177,7 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Do not mark Phase 6C complete until this gate passes.
+The owner-only UE5.8 workflow passed this gate. Phase 6C is complete.
 
 ## UE Editor assets
 
@@ -185,9 +185,9 @@ No new `.uasset` or `.umap` configuration is required for this source slice.
 
 Sundial is intentionally not implemented in Phase 6C. Phase 7 must be able to add Sundial as a new trigger source using the `FDeckShuffledEvent` timing established here without changing DeckRuntime shuffle semantics.
 
-## Next validation step
+## Validation result
 
-Run:
+The trusted owner-only workflow ran against `main`:
 
 ```text
 Actions
@@ -196,6 +196,6 @@ Actions
 → main
 ```
 
-Expected result: **53/53 PASS**.
+Result: **53/53 PASS**.
 
-`AGENTS.md` should show Phase 6C as source-implemented / validation-pending until that result is confirmed. After a green gate, mark Phase 6C complete and advance to Phase 6R.
+`AGENTS.md` records Phase 6C as complete. Phase 6R is the next implementation slice.
