@@ -18,20 +18,15 @@ bool UTurnEndStatusDecayTrigger::CanReact(const FBattleEvent& Event, const FTrig
 }
 
 void UTurnEndStatusDecayTrigger::BuildReactions(
-	const FBattleEvent& Event,
+	const FBattleEvent& /*Event*/,
 	const FTriggerContext& Context,
 	TArray<UBattleAction*>& OutActions
 ) const
 {
-	if (!CanReact(Event, Context))
-	{
-		return;
-	}
-
 	ACombatant* Owner = Context.GetOwner();
 	UStatusInstance* RuntimeSource = Context.GetRuntimeSource();
 	UObject* ActionOuter = Context.GetActionOuter();
-	if (!IsValid(Owner) || !IsValid(RuntimeSource) || !IsValid(ActionOuter))
+	if (!IsValid(Owner) || !IsValid(RuntimeSource) || !IsValid(ActionOuter) || AmountToRemove <= 0)
 	{
 		return;
 	}
