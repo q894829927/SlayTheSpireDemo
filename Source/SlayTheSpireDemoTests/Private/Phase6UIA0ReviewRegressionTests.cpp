@@ -9,7 +9,6 @@
 #include "Cards/CardInstance.h"
 #include "Cards/Effects/DamageCardEffect.h"
 #include "Combat/Combatant.h"
-#include "Containers/Ticker.h"
 #include "Deck/DeckRuntime.h"
 #include "Events/BattleEvent.h"
 #include "Events/BattleEventDispatcher.h"
@@ -26,9 +25,14 @@
 
 namespace Phase6UIA0ReviewRegression
 {
+	TWeakObjectPtr<ABattleManager> ReadStateReadyBattleForTest;
+
 	void TickReadStateReady()
 	{
-		FTSTicker::GetCoreTicker().Tick(0.0f);
+		if (ABattleManager* Battle = ReadStateReadyBattleForTest.Get())
+		{
+			Battle->FlushScheduledReadStateReadyForTesting();
+		}
 	}
 
 	UCardData* CreateCard(
@@ -158,6 +162,7 @@ namespace Phase6UIA0ReviewRegression
 				Battle->DebugStartingDeck.Add(CardDefinition);
 			}
 
+			ReadStateReadyBattleForTest = Battle;
 			Battle->StartBattle();
 			// Drain the initial battle-ready publication before individual tests bind.
 			TickReadStateReady();
@@ -165,6 +170,10 @@ namespace Phase6UIA0ReviewRegression
 
 		~FBattleFixture()
 		{
+			if (ReadStateReadyBattleForTest.Get() == Battle)
+			{
+				ReadStateReadyBattleForTest.Reset();
+			}
 			if (IsValid(World)) World->DestroyWorld(false);
 		}
 
@@ -349,6 +358,7 @@ namespace Phase6UIA0ReviewRegression
 			}
 		);
 
+		ReadStateReadyBattleForTest = Battle;
 		Battle->StartBattle();
 		TickReadStateReady();
 		UBattleEventDispatcher::OnEventDispatchedForTesting.Remove(Handle);
@@ -356,6 +366,7 @@ namespace Phase6UIA0ReviewRegression
 		TestEqual(TEXT("Real BattleManager/EventDispatcher initialization path emits no DeckShuffled event"), DeckShuffledDispatchCount, 0);
 		TestEqual(TEXT("Opening Hand still draws all five initialized cards"), Battle->GetDeckRuntimeForTesting()->GetHandCount(), 5);
 
+		ReadStateReadyBattleForTest.Reset();
 		World->DestroyWorld(false);
 		return true;
 	}
@@ -540,6 +551,7 @@ namespace Phase6UIA0ReviewRegression
 			}
 		);
 
+		ReadStateReadyBattleForTest = Battle;
 		Battle->StartBattle();
 		TestEqual(TEXT("First battle does not publish re-entrantly from StartBattle"), PublishedKeys.Num(), 0);
 		TickReadStateReady();
@@ -554,6 +566,7 @@ namespace Phase6UIA0ReviewRegression
 			TestEqual(TEXT("Equivalent setup may legitimately repeat the same StateRevision"), PublishedKeys[1].Value, PublishedKeys[0].Value);
 		}
 
+		ReadStateReadyBattleForTest.Reset();
 		World->DestroyWorld(false);
 		return true;
 	}

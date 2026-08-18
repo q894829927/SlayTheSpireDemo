@@ -194,6 +194,7 @@ public:
 	void SetForceInvalidEnemyTurnBatchForTesting(bool bForceInvalid);
 	void SetCommittedEnemyAttackIntentForTesting(int32 BaseAmount);
 	EBattleState GetStateBeforeLastResolutionFaultForTesting() const;
+	void FlushScheduledReadStateReadyForTesting();
 #endif
 
 private:
@@ -250,6 +251,7 @@ private:
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
 	bool bReadStateReadyPublishScheduled = false;
+	FDelegateHandle ReadStateReadyTickerHandle;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bool bForceInvalidPlayerEndBatchForTesting = false;

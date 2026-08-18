@@ -72,7 +72,7 @@ void ABattleManager::ScheduleReadStateReadyPublish()
 	}
 
 	bReadStateReadyPublishScheduled = true;
-	FTSTicker::GetCoreTicker().AddTicker(
+	ReadStateReadyTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateUObject(this, &ABattleManager::HandleScheduledReadStateReady),
 		0.0f
 	);
@@ -81,9 +81,28 @@ void ABattleManager::ScheduleReadStateReadyPublish()
 bool ABattleManager::HandleScheduledReadStateReady(float /*DeltaTime*/)
 {
 	bReadStateReadyPublishScheduled = false;
+	ReadStateReadyTickerHandle.Reset();
 	TryPublishReadStateReady();
 	return false;
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+void ABattleManager::FlushScheduledReadStateReadyForTesting()
+{
+	if (!bReadStateReadyPublishScheduled)
+	{
+		return;
+	}
+
+	if (ReadStateReadyTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ReadStateReadyTickerHandle);
+		ReadStateReadyTickerHandle.Reset();
+	}
+
+	HandleScheduledReadStateReady(0.0f);
+}
+#endif
 
 void ABattleManager::TryPublishReadStateReady()
 {
