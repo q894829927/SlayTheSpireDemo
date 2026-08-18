@@ -512,6 +512,37 @@ bool FPhase5BlockFrailtyPresenceOnlyTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPhase5BlockPhaseBeforeRuntimeSequenceTest,
+	"SlayTheSpireDemo.Phase5.Block.PhaseBeforeRuntimeSequence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FPhase5BlockPhaseBeforeRuntimeSequenceTest::RunTest(const FString& Parameters)
+{
+	FFixture Fixture;
+	if (!RequireReady(*this, Fixture))
+	{
+		return false;
+	}
+
+	UStatusData* Frailty = CreateStatus(Fixture.World, TEXT("Frailty"));
+	AddBlockRatio(Frailty, EModifierScope::Target, 3, 4, EModifierAmountMode::PresenceOnly);
+	UStatusData* Dexterity = CreateStatus(Fixture.World, TEXT("Dexterity"));
+	AddBlockFlat(Dexterity, EModifierScope::Target, 1, EModifierAmountMode::ScaleWithAmount);
+
+	const UStatusInstance* FrailtyInstance = ApplyStatus(Fixture.Target, Frailty, 3, 1);
+	const UStatusInstance* DexterityInstance = ApplyStatus(Fixture.Target, Dexterity, 2, 2);
+
+	TestEqual(TEXT("Frailty sequence"), FrailtyInstance ? FrailtyInstance->GetRuntimeSequence() : 0ull, 1ull);
+	TestEqual(TEXT("Dexterity sequence"), DexterityInstance ? DexterityInstance->GetRuntimeSequence() : 0ull, 2ull);
+
+	// Correct phase order: (7 + 2) * 3 / 4 = 6.
+	// RuntimeSequence-first order would incorrectly produce (7 * 3 / 4) + 2 = 7.
+	TestEqual(TEXT("Block phase ordering outranks runtime sequence"), ResolveBlock(Fixture.Source, Fixture.Target, 7), 6);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPhase5StatusReapplyPreservesRuntimeSequenceTest,
 	"SlayTheSpireDemo.Phase5.Status.ReapplyPreservesRuntimeSequence",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter

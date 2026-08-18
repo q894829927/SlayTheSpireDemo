@@ -121,8 +121,8 @@ jobs:
           "| Not run | $($Result.notRun) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "| UnrealEditor-Cmd exit code | $EditorExitCode |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
-          if ($Phase5Tests.Count -ne 12) {
-              throw "Expected exactly 12 SlayTheSpireDemo.Phase5 tests, but found $($Phase5Tests.Count)."
+          if ($Phase5Tests.Count -ne 13) {
+              throw "Expected exactly 13 SlayTheSpireDemo.Phase5 tests, but found $($Phase5Tests.Count)."
           }
 
           if ($NonSuccess.Count -gt 0) {
@@ -134,4 +134,4 @@ jobs:
               throw "Phase 5 Automation gate failed. Unreal exit=$EditorExitCode failed=$($Result.failed) notRun=$($Result.notRun)"
           }
 
-          Write-Host "Phase 5 Automation gate passed: 12/12 tests succeeded."
+          Write-Host "Phase 5 Automation gate passed: 13/13 tests succeeded."

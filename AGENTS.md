@@ -48,7 +48,7 @@ BattleActionQueue
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
-  - [x] Phase 5R regression Automation Tests implemented and passed through UE5.8 self-hosted CI.
+  - [x] Phase 5R regression Automation Tests implemented; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated 13-test suite passes locally pending an owner-triggered CI rerun.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -119,11 +119,11 @@ Phase 5R validated:
 
 - focused Unreal Automation Tests run against transient runtime objects and assert resolved gameplay state/results directly rather than parsing expected log text;
 - Damage regression coverage includes BaseZeroCanReceiveFlatAdd, Strength ScaleWithAmount, Weak/Vulnerable PresenceOnly, per-modifier integer flooring, Phase-before-RuntimeSequence ordering and Attack-vs-Effect filtering;
-- Block regression coverage includes BaseZeroCanReceiveFlatAdd, Dexterity ScaleWithAmount and Frailty PresenceOnly;
+- Block regression coverage includes BaseZeroCanReceiveFlatAdd, Dexterity ScaleWithAmount, Frailty PresenceOnly and Phase-before-RuntimeSequence ordering;
 - Status regression coverage verifies reapplication preserves runtime identity/RuntimeSequence while merging Amount;
 - Queue regression coverage verifies existing front/back insertion semantics deterministically;
-- the suite contains 12 Phase 5 tests;
-- the Windows `ue58` self-hosted runner successfully completed both the runner smoke test and `phase5-tests` job, including `SlayTheSpireDemoEditor` build and Phase 5 Automation execution.
+- the suite contains 13 Phase 5 tests and passes locally in UE5.8;
+- the previous 12-test suite passed through the Windows `ue58` self-hosted runner; the updated 13-test gate requires a new owner-triggered `workflow_dispatch` run before its CI evidence is recorded.
 
 ### Manual UE assets/configuration
 
@@ -694,6 +694,7 @@ Damage.EffectFiltersAttackModifiers
 Block.BaseZeroCanReceiveFlatAdd
 Block.DexterityScalesWithAmount
 Block.FrailtyPresenceOnly
+Block.PhaseBeforeRuntimeSequence
 Status.ReapplyPreservesRuntimeSequence
 Queue.FrontBackOrdering
 ```
@@ -708,7 +709,7 @@ PIE
 → real UE object assembly, DataAsset configuration and end-to-end runtime wiring
 ```
 
-The hardened `.github/workflows/ue-phase5-tests.yml` workflow builds `SlayTheSpireDemoEditor` and runs `Automation RunTest SlayTheSpireDemo.Phase5` on the Windows UE5.8 self-hosted runner. The Phase 5 gate passed end-to-end.
+The hardened `.github/workflows/ue-phase5-tests.yml` workflow builds `SlayTheSpireDemoEditor` and runs `Automation RunTest SlayTheSpireDemo.Phase5` on the Windows UE5.8 self-hosted runner. The previous 12-test gate passed end-to-end. The updated 13-test suite passes locally and awaits the next owner-triggered workflow run.
 
 #### Phase 5 exclusions
 
@@ -1359,7 +1360,7 @@ Tests/Phase5RegressionTests.cpp
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
 - Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
 - Phase 5C — PASSED: Execute-time typed Block resolution, data-driven Dexterity/Frailty, PresenceOnly semantics, deterministic Phase ordering and real Defend integration.
-- Phase 5R — PASSED: 12 focused Unreal Automation regression tests passed through the UE5.8 self-hosted CI workflow.
+- Phase 5R — LOCAL PASSED / CI RERUN REQUIRED: all 13 focused Unreal Automation regression tests pass locally; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated gate awaits an owner-triggered run.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 
 ---
