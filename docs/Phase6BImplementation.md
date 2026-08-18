@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **implemented in source; UE5.8 build/Automation/PIE validation pending**.
+Status: **source implemented; UE5.8 Editor build + Automation PASSED (42/42); manual DataAsset configuration and PIE validation pending**.
 
 ## Runtime wiring implemented
 
@@ -65,15 +65,15 @@ A lethal action earlier in the enemy batch suppresses the normal enemy `TurnEnde
 
 Queue `ResolutionFault` transitions the BattleManager to `EBattleState::ResolutionFaulted`, sets Energy to zero, and prevents normal turn progression.
 
-## Phase 6B Automation gate
+## Phase 6B Automation gate — PASSED
 
-New prefix:
+Prefix:
 
 ```text
 SlayTheSpireDemo.Phase6B
 ```
 
-Exactly 6 tests are expected:
+Exactly 6 Phase 6B tests passed:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -86,7 +86,7 @@ Turn.TurnEndReactionCompletesBeforeNextTurn
 
 The execution-order timing test gives the player a one-point Vulnerable status that both modifies incoming Attack damage and decays on the player's `TurnEndedEvent`.
 
-Expected behavior:
+Validated behavior:
 
 ```text
 Player Vulnerable Amount=1
@@ -97,7 +97,7 @@ Player Vulnerable Amount=1
 → resolved damage remains 5, not 7
 ```
 
-This directly proves turn-end reactions complete before the next turn's actions begin.
+This proves turn-end reactions complete before the next turn's actions begin.
 
 Owner-only workflow:
 
@@ -105,22 +105,22 @@ Owner-only workflow:
 .github/workflows/ue-phase6b-tests.yml
 ```
 
-Expected gates:
+Validated UE5.8 gates:
 
 ```text
-Phase 5   13
-Phase 6A  23
-Phase 6B   6
-Total     42
+Phase 5   13/13 PASS
+Phase 6A  23/23 PASS
+Phase 6B   6/6  PASS
+Total     42/42 PASS
 ```
 
-Do not mark Phase 6B COMPLETE until the UE5.8 Editor build succeeds and all 42 tests pass.
+The UE5.8 Editor build completed successfully as part of the workflow.
 
-## Manual UE Editor configuration after source validation
+## Manual UE Editor configuration — pending
 
 Do not text-edit `.uasset` files.
 
-After the source/Automation gate passes, configure these existing Status DataAssets in the UE Editor:
+Configure these existing Status DataAssets in the UE Editor:
 
 ```text
 DA_Status_Weak
@@ -143,4 +143,16 @@ DA_Status_Strength
 DA_Status_Dexterity
 ```
 
-Then PIE-validate that Weak/Vulnerable/Frailty decay only on their owner's turn end, their reactions complete before the opposing turn begins, and Strength/Dexterity remain unchanged.
+## Final PIE validation — pending
+
+PIE must verify:
+
+```text
+Weak / Vulnerable / Frailty decay only on their owner's TurnEnded event
+Turn-end reaction completes before the opposing turn begins
+Strength / Dexterity remain unchanged at turn end
+Normal player → enemy → player cycle produces no ResolutionFault
+Turn boundary progression still occurs only from the final QueueEmpty
+```
+
+After these DataAsset and PIE checks pass, Phase 6B can be recorded as fully COMPLETE and Phase 6C becomes NEXT.
