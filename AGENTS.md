@@ -50,6 +50,10 @@ BattleActionQueue
   - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
   - [x] Phase 5R regression Automation Tests implemented; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated 13-test suite passes locally pending an owner-triggered CI rerun.
 - [ ] Phase 6 battle events / triggers implemented.
+  - [ ] Phase 6A TurnEnd Trigger Vertical Slice — NEXT.
+  - [ ] Phase 6B Battle Turn Wiring.
+  - [ ] Phase 6C DeckShuffled Event.
+  - [ ] Phase 6R Regression Gate.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
 
@@ -733,43 +737,573 @@ Keyword presentation remains deferred. Phase 5 establishes gameplay semantics fo
 
 ### Phase 6 — Battle Events and Triggers — NEXT
 
-Introduce explicit post-commit events such as battle start, turn start/end, card played/drawn/exhausted, deck shuffled, damage events and enemy killed. Listeners normally enqueue actions rather than synchronously mutating unrelated state.
+Phase 6 introduces deterministic post-commit facts and queued reactions without weakening the existing ActionQueue / Modifier / Commit boundaries.
 
-Before implementing the event/trigger system, define and preserve deterministic trigger ordering. Do not rely on multicast delegate registration order, UObject addresses, actor discovery order, names or localized text.
-
-Conceptual trigger ordering should be explicit and stable, for example:
+Core responsibility split:
 
 ```text
-Event
-→ TriggerPhase
-→ Priority
+BattleEvent
+= immutable-by-contract fact describing something that already committed
+
+Trigger
+= read-only rule that decides whether it reacts and builds Reaction Actions
+
+BattleAction
+= the only object that performs authoritative gameplay mutation
+```
+
+Never implement:
+
+```text
+Event → listener → direct gameplay mutation
+```
+
+Required flow:
+
+```text
+Action Execute
+↓
+Modifier Pipeline when applicable
+↓
+Commit
+↓
+BattleEvent
+↓
+collect current trigger sources
+↓
+filter + deterministic sort
+↓
+Build Reaction Actions
+↓
+atomic Reaction Batch insertion
+↓
+Current Action Finish
+↓
+BattleActionQueue executes reactions
+```
+
+#### Phase 6 development order
+
+```text
+6A  TurnEnd Trigger Vertical Slice                                 NEXT
+6B  Battle Turn Wiring
+6C  DeckShuffled Event
+6R  Phase 6 Regression Gate
+```
+
+Do not implement Phase 7 relics during Phase 6.
+
+#### Phase 6A — TurnEnd Trigger Vertical Slice — NEXT
+
+Phase 6A must be a real vertical slice rather than horizontal infrastructure built around fake triggers.
+
+Minimum implemented mechanic:
+
+```text
+transient Weak Amount=2
+↓
+FTurnEndedEvent(Player)
+↓
+TurnEndStatusDecayTrigger
+↓
+ReduceStatusAction(exact Weak instance, 1)
+↓
+Weak Amount=1
+```
+
+Phase 6A includes:
+
+```text
+atomic Queue batch insertion front/back
+Queue resolution-fault safety
+FTurnEndedEvent as the only initial event payload
+synchronous on-demand Status trigger collection
+transient deterministic TriggerCandidate sorting
+TurnEndStatusDecayTrigger
+exact-instance ReduceStatusAction
+queued depth-first nested reactions
+focused Unreal Automation Tests
+```
+
+Do not wire the complete `ABattleManager` player/enemy turn lifecycle until Phase 6B.
+
+##### Event representation and lifetime
+
+Events are short-lived typed value data, not gameplay UObjects and not persistent registry entries.
+
+Phase 6A introduces only `FTurnEndedEvent`. When Phase 6C adds a real second event, add `FDeckShuffledEvent` then. Do not predeclare speculative event alternatives.
+
+`FBattleEvent` may use a small tagged variant such as `TVariant` or an equivalently type-safe checked representation. Requirements are more important than the exact representation:
+
+```text
+UBattleTrigger receives const FBattleEvent&
+Trigger accesses payload only through checked TryGet<T>()-style access
+Trigger code must not use unchecked static_cast/reinterpret_cast on event payloads
+Dispatcher synchronously consumes Event/Context
+Dispatcher/Trigger must never cache Event* or Event& for later use
+Reaction Actions copy/store every UObject/reference they need for later Execute-time work
+```
+
+An Event being `const` does not make the UObjects it points to immutable. Trigger code is read-only by architecture rule: it may inspect state and build actions, but must never call gameplay mutation methods directly.
+
+##### Trigger definitions and on-demand collection
+
+Do not add a persistent Trigger Registry in Phase 6.
+
+`StatusContainer` remains the authoritative runtime membership source. Dispatch performs on-demand collection from current combatant StatusContainers:
+
+```text
+Dispatch Event
+↓
+enumerate current StatusInstances
+↓
+read StatusData Trigger definitions
+↓
+build transient candidates
+↓
+filter
+↓
+sort
+↓
+build reactions
+↓
+discard candidates after Dispatch returns
+```
+
+When Phase 7 introduces a real `RelicContainer`, extract the smallest trigger contributor/collector boundary needed to collect both Status and Relic sources. Do not prebuild that generic boundary during Phase 6A.
+
+`RuntimeSource` is authoritative for trigger-source metadata. For a Status candidate:
+
+```text
+RuntimeSource     = UStatusInstance*
+Owner             = RuntimeSource->GetOwner()
+RuntimeSequence   = RuntimeSource->GetRuntimeSequence()
+Definition        = RuntimeSource->GetDefinition()
+TriggerDefinition = Definition->Triggers[LocalTriggerIndex]
+```
+
+Do not let callers independently supply `Owner` or `RuntimeSequence` alongside a runtime source. Candidate metadata must be derived from the exact runtime source so inconsistent states such as `Enemy Weak + Player Owner` cannot be constructed.
+
+Candidate `TriggerDefinition` is logically const/shared configuration. `LocalTriggerIndex` is the stable order inside its owning definition.
+
+##### Trigger applicability and deterministic ordering
+
+Phase 6A sorting:
+
+```text
+Priority
 → RuntimeSequence
 → LocalTriggerIndex
 ```
 
-Use only phases actually required by implemented events/triggers; do not create speculative phase taxonomies.
+Lower values execute earlier.
 
-Multiple listeners reacting to one event must first be ordered deterministically, then produce a reaction batch. Individual listeners should not independently manipulate queue-front order in ways that make final execution depend on registration order.
+`Priority` expresses real gameplay semantic ordering. `RuntimeSequence` is only a deterministic tie-break when gameplay semantics do not otherwise distinguish sources. Do not use arbitrary hidden priorities to patch missing timing semantics.
 
-Default reaction semantics should be:
+Do not create `TriggerPhase::Normal`. Add Trigger phases only after a concrete implemented mechanic requires true before/after semantic timing.
+
+Do not use registration order, source enumeration order, UObject addresses, names, localized text, actor discovery order or unordered-container iteration as gameplay order.
+
+For TurnEnd decay, owner applicability belongs in the Trigger rule rather than the collector. Conceptually:
+
+```text
+Event.TryGet<FTurnEndedEvent>() succeeds
+&& Event.TurnOwner == Context.Owner
+```
+
+The collector may enumerate both Player and Enemy sources; `OtherActorsTurnDoesNotDecay` must be preserved by Trigger applicability.
+
+##### Trigger snapshot semantics
+
+Trigger eligibility is snapshotted at Event dispatch time:
+
+```text
+Event commits
+↓
+collect all currently eligible runtime sources
+↓
+create candidate snapshot
+↓
+sort
+↓
+Build all reactions
+↓
+insert final Reaction Batch
+```
+
+After eligibility is snapshotted, a sibling Reaction removing a source does not retroactively cancel another already-built sibling Reaction.
+
+However every resulting BattleAction still validates live state at its own Execute-time. Therefore:
+
+```text
+Trigger eligibility = snapshot semantics
+Action mutation      = live validation
+```
+
+This distinction is required for deterministic reasoning.
+
+##### Trigger reaction building and failure semantics
+
+Triggers build actions but never control queue execution.
+
+Trigger code must not call:
+
+```text
+AddToFront / AddToBack
+AddBatch...
+StartProcessing
+PumpQueue / ProcessNext
+Finish current unrelated Action
+```
+
+The Dispatcher owns collection, ordering and final Reaction Batch insertion.
+
+Each Trigger builds into its own temporary batch. Validate that temporary batch before appending it to the final reaction list:
+
+```text
+Trigger A valid [A1, A2] → append
+Trigger B invalid [B1, Invalid] → discard B batch, log error, continue
+Trigger C valid [C1] → append
+```
+
+Per-trigger content/build failure is fail-soft so one bad trigger does not prevent unrelated triggers from building.
+
+After all valid Trigger batches are concatenated, perform one final atomic `AddBatchToFrontPreserveOrder(...)` validation/insertion. If this final framework-level insertion fails, request a Queue resolution fault. Do not silently drop the complete Reaction Batch and continue battle resolution.
+
+The current Action must still follow its finish contract after requesting a fault.
+
+##### Reaction placement and nested reactions
+
+Default Phase 6 reaction placement:
 
 ```text
 Current Action commits
 ↓
-BattleEvent is produced
+Event
 ↓
-matching listeners are collected and sorted
+Reaction Batch [R1, R2, ...]
 ↓
-listeners build Reaction Actions in sorted order
-↓
-Reaction Batch is inserted immediately after the current Action
-↓
-pre-existing pending Actions continue afterward
+existing Pending Actions
 ```
 
-If a future event requires tail placement or another timing rule, that exception must be explicit and event-specific rather than accidental.
+Reaction Batch is inserted immediately after the current Action and before pre-existing pending work.
 
-Because repeated `AddToFront(A)`, `AddToFront(B)`, `AddToFront(C)` currently executes as `C, B, A`, Phase 6 should introduce an explicit batch insertion operation such as `AddBatchToFrontPreserveOrder(...)` or equivalent before listeners begin producing multiple reactions. Do not require every trigger implementation to reverse its own list manually.
+Nested Event reactions use queued depth-first semantics:
+
+```text
+Original Action
+↓
+A1
+↓
+B1   (reaction generated by A1)
+↓
+A2
+↓
+original pending work
+```
+
+This is queue-driven depth-first resolution, not recursive gameplay function calls.
+
+If a future event requires tail placement or a different explicit timing boundary, implement that as event-specific semantics rather than accidental queue behavior.
+
+##### Atomic ActionQueue batch APIs
+
+Preserve current individual `AddToFront()` LIFO behavior because Phase 3 deliberately relies on it.
+
+Add ordered atomic batch APIs:
+
+```text
+AddBatchToFrontPreserveOrder(...)
+AddBatchToBackPreserveOrder(...)
+```
+
+Both should share one batch validator. Empty batch is a legal no-op success.
+
+For every non-empty batch, validate the complete batch before modifying `PendingActions`:
+
+```text
+all Actions are valid
+all Actions are unfinished
+all Action Outer values are this Queue
+no duplicate Action pointer inside the batch
+no batch Action equals CurrentAction
+no batch Action already exists in PendingActions
+```
+
+A `TSet` may be used only for membership checks; never iterate an unordered set to determine gameplay execution order.
+
+If any validation fails:
+
+```text
+insert nothing
+leave PendingActions unchanged
+return failure
+```
+
+Front insertion must preserve:
+
+```text
+Existing [X, Y]
+Batch    [A, B, C]
+Result   [A, B, C, X, Y]
+```
+
+Back insertion must preserve:
+
+```text
+Existing [X, Y]
+Batch    [A, B, C]
+Result   [X, Y, A, B, C]
+```
+
+##### Queue resolution-fault safety
+
+Phase 6 introduces a hard safety boundary against infinite or structurally invalid reaction chains.
+
+A finite action budget exists in all build configurations, including Shipping. It is a high framework safety limit, not a gameplay balance rule, and must not be exposed as normal DataAsset/designer configuration.
+
+Automation may have a test-only way to lower the budget so fault behavior can be tested without executing thousands of Actions.
+
+Budget is checked at the Queue safe point **before dequeuing/executing the next Action**:
+
+```text
+while next Action could execute:
+    if ExecutedCount >= MaxActionsPerResolution:
+        enter/request ResolutionFault
+        do not dequeue another Action
+
+    dequeue next Action
+    ExecutedCount++
+    Execute
+```
+
+A true completed `QueueEmpty` resets the resolution counter. Reactions and nested reactions are part of the same logical resolution chain and consume the same budget.
+
+When a structural error is discovered while a current Action is still inside `Execute()` (for example Dispatcher final reaction insertion fails), do not clear `CurrentAction` from inside that Action's call stack. Instead:
+
+```text
+Queue.RequestResolutionFault(Reason)
+Current Action Finish()
+Execute returns to Queue
+Queue reaches safe point before next dequeue
+Queue enters ResolutionFaulted
+```
+
+Formal fault entry happens only at a Queue safe point. Fault behavior:
+
+```text
+mark faulted exactly once
+record reason / executed count / last Action information
+clear or isolate PendingActions so they cannot execute
+set bIsPumping=false before broadcasting the fault
+broadcast OnResolutionFaulted exactly once
+never broadcast normal OnQueueEmpty for that faulted resolution
+reject all subsequent Add / AddBatch / StartProcessing requests
+remain faulted until a new ActionQueue is created for a new battle
+```
+
+`IsBusy()` must not report a faulted Queue as an ordinary idle/accepting Queue.
+
+Do not use `checkf` as the normal ResolutionFault mechanism. `ensure` alone is also insufficient because it does not stop the pump. The Queue must enter a real fault state.
+
+Phase 6B will make `ABattleManager` explicitly transition to `EBattleState::ResolutionFaulted` when `OnResolutionFaulted` fires.
+
+##### Exact-instance status decay
+
+Do not implement turn-end decay as negative `ApplyStatusAction`.
+
+Introduce a dedicated `ReduceStatusAction` carrying the exact expected runtime `UStatusInstance*` plus the amount to remove.
+
+Authoritative mutation remains in `UStatusContainer`. Conceptually:
+
+```text
+ReduceStatus(ExpectedInstance, AmountToRemove)
+↓
+validate exact instance is still a member of this Container
+↓
+remaining Amount > 0 → update same instance
+remaining Amount <= 0 → remove that exact instance
+```
+
+Never reduce by only `(Owner, StatusId)` because an old Trigger reaction must not reduce a newly recreated status instance.
+
+Required scenario:
+
+```text
+Weak#3 generates ReduceStatusAction(Weak#3)
+↓
+Weak#3 removed before reduction executes
+↓
+new Weak#8 applied
+↓
+old ReduceStatusAction executes
+↓
+exact Weak#3 membership validation fails
+↓
+Weak#8 remains unchanged
+```
+
+Runtime identity and RuntimeSequence semantics must remain intact.
+
+##### Phase 6A Automation acceptance
+
+Required focused tests:
+
+```text
+Queue.BatchFrontPreservesOrder
+Queue.BatchBackPreservesOrder
+Queue.BatchInsertionIsAtomic
+Queue.BatchRejectsDuplicateAndAlreadyQueuedActions
+Queue.FaultDoesNotBroadcastQueueEmpty
+Queue.FaultRejectsFurtherMutation
+
+Trigger.PriorityOrdering
+Trigger.RuntimeSequenceOrdering
+Trigger.LocalTriggerIndexOrdering
+Trigger.CollectionOrderDoesNotMatter
+Trigger.ReactionBeforeExistingPending
+Trigger.NestedReactionDepthFirst
+
+Status.TurnEndDecay
+Status.TurnEndDecayRemovesExactInstanceAtZero
+Status.RemovedAndRecreatedInstanceIsNotReduced
+Status.OtherActorsTurnDoesNotDecay
+Status.SnapshotEligibilityVsLiveActionValidation
+
+Safety.ResolutionBudgetFaultsInsteadOfLoopingForever
+```
+
+Do not mark Phase 6A complete until these intended semantics compile and pass in UE5.8 Automation.
+
+#### Phase 6B — Battle Turn Wiring
+
+After Phase 6A is stable, wire the real battle turn lifecycle.
+
+Add explicit ending/fault states as needed:
+
+```text
+PlayerTurnEnding
+EnemyTurnEnding
+ResolutionFaulted
+```
+
+Turn state changes that depend on queued work are transactional:
+
+```text
+Build required Action / complete turn batch
+↓
+validate and atomically enqueue successfully
+↓
+commit the corresponding BattleState transition
+↓
+StartProcessing
+```
+
+Never commit `PlayerTurnEnding`/`EnemyTurn` transition first and then discover that the required sentinel/batch failed to enqueue.
+
+Player end-turn flow:
+
+```text
+PlayerTurn
+↓
+EndPlayerTurn request accepted
+↓
+build TurnEndedAction(Player)
+↓
+atomic enqueue succeeds
+↓
+BattleState = PlayerTurnEnding
+↓
+StartProcessing
+↓
+TurnEndedAction verifies ending state and combatants alive
+↓
+FTurnEndedEvent(Player)
+↓
+reactions
+↓
+one true final QueueEmpty
+```
+
+Current Phase 6 fixed Enemy behavior may be constructed upfront because it is a known `DamageAction`:
+
+```text
+Build [EnemyDamageAction, TurnEndedAction(Enemy)]
+↓
+atomic AddBatchToBackPreserveOrder succeeds
+↓
+BattleState = EnemyTurn
+↓
+StartProcessing
+```
+
+When the Enemy `TurnEndedAction` executes, if combatants are still alive it transitions/ensures `EnemyTurnEnding` before emitting the event. If the preceding Enemy Action was lethal, it does not emit a normal TurnEnded event.
+
+`TurnEndedAction` checks actual combatant death directly; it must not depend on `BattleState == Victory/Defeat`, because battle-result state is finalized at the real QueueEmpty boundary.
+
+Final QueueEmpty flow:
+
+```text
+CheckBattleResult
+↓
+Victory/Defeat → stop
+PlayerTurnEnding → StartEnemyTurn
+EnemyTurnEnding  → StartPlayerTurn
+ResolutionFaulted → no transition
+```
+
+`OnResolutionFaulted` makes BattleManager enter `EBattleState::ResolutionFaulted`, zero/reject player input, and stop turn/victory progression for that resolution. Log fault reason, executed count and last Action so PIE does not appear to freeze silently.
+
+The upfront Enemy batch rule is deliberately narrow. It applies to the current fixed Enemy behavior only. Future Enemy Intent/composite Actions may need Execute-time state to decide follow-ups and must continue to obey the project's Execute-time resolution rule.
+
+When dynamic Enemy continuation becomes concrete, introduce an explicit continuation/barrier insertion mechanism so dynamic follow-ups can be placed before the turn-end continuation. Do not make "all future Enemy actions must be precomputed" or "dynamic actions may never AddToBack" a permanent architecture rule, and do not implement a speculative continuation API in Phase 6.
+
+Phase 6B Automation should include:
+
+```text
+Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
+Turn.EnemyBatchInsertionIsAtomic
+Turn.LethalEnemyActionSkipsTurnEndedEvent
+Turn.OneFinalQueueEmpty
+```
+
+PIE should validate real Weak/Vulnerable/Frailty turn-end decay for both Player and Enemy without growing new permanent `ABattleManager` rule-test entry points.
+
+#### Phase 6C — DeckShuffled Event
+
+Add `FDeckShuffledEvent` only when implementing this slice.
+
+`ShuffleDeckAction` emits the event only after `DeckRuntime::ShuffleDiscardIntoDrawPile()` actually succeeds. Failed/no-op shuffles emit no event.
+
+Required ordering for the existing empty-draw flow:
+
+```text
+DrawCardAction
+↓
+ShuffleDeckAction commits successful shuffle
+↓
+FDeckShuffledEvent
+↓
+Shuffle reactions
+↓
+RetryDrawAction
+```
+
+Reaction insertion therefore occurs before the already-pending RetryDraw action.
+
+Do not implement Sundial in Phase 6C. Phase 7 should be able to add Sundial as a new trigger source without rewriting DeckRuntime/ShuffleDeckAction event timing.
+
+#### Phase 6R — Regression Gate
+
+Phase 6 completion requires:
+
+```text
+all Phase 6 Automation tests pass
++ all 13 Phase 5 regression tests still pass
++ required UE5.8 PIE turn-flow validation passes
+```
+
+Use `Trigger.CollectionOrderDoesNotMatter`, not the obsolete `RegistrationOrderDoesNotMatter`, because Phase 6 has no persistent Trigger Registry.
 
 ### Phase 7 — Relics
 
@@ -855,7 +1389,7 @@ Actions may enqueue follow-ups when required but never call `PumpQueue`, `Proces
 
 ### 4.12 Shared definition objects are immutable at runtime
 
-Instanced definition subobjects such as CardEffects/Modifiers are shared configuration and must be logically const/stateless.
+Instanced definition subobjects such as CardEffects/Modifiers/Triggers are shared configuration and must be logically const/stateless.
 
 ### 4.13 Resolve future-state-dependent results at Execute-time
 
@@ -865,9 +1399,19 @@ Enqueue-time captures stable intent/base inputs. Mutable-state-dependent values 
 
 Invalid execution dependencies must log when useful, call `Finish()`, and never wedge the queue. Do not impose a universal dead-target rule in the base action.
 
+Framework invariant failures discovered while an Action is executing may request a Queue resolution fault, but the current Action must still honor the safe Finish/return contract so the Queue can enter fault at a safe point.
+
 ### 4.15 Card destination is resolved, not hard-coded
 
 Card cleanup resolves destination at Execute-time and delegates authoritative zone movement to DeckRuntime.
+
+### 4.16 Turn-state transitions depending on queued work are transactional
+
+Build and validate the required Action or full turn batch, atomically enqueue it, then commit the associated `BattleState`, then start processing. Never enter a TurnEnding state before the required queued work is successfully present.
+
+### 4.17 Runtime trigger source is identity authority
+
+For Trigger collection, derive Owner, RuntimeSequence and definition metadata from the exact runtime source. Do not let callers independently pair a runtime source with separately supplied identity/order metadata.
 
 ---
 
@@ -1240,14 +1784,24 @@ Saved/
 10. Do not skip development phases without explicit approval.
 11. Do not implement future mechanisms merely because they are documented.
 12. Do not introduce `FInstancedStruct`, StructUtils or another representation dependency without a concrete requirement.
-13. Do not implement Phase 6 status decay, battle-event listeners or relic triggers during Phase 5 merely to make Weak/Vulnerable/Frailty expire.
-14. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy without a concrete implemented need.
-15. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview merely because status mechanics have player-facing keyword names.
-16. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
-17. Do not introduce a generic modifier-contributor framework while Status is the only real source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
-18. Never implement a Relic or another unrelated modifier source as a fake Status merely to reuse StatusContainer collection.
-19. Phase 6 Trigger/Event execution must not depend on multicast delegate registration order, UObject address, actor discovery order or unordered containers; listener order and reaction placement must be explicit.
-20. Do not keep adding permanent rule-test entry points to `ABattleManager` when Automation Tests can cover the same deterministic regression; preserve PIE hooks only where end-to-end editor validation still adds value.
+13. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy without a concrete implemented need.
+14. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview merely because status mechanics have player-facing keyword names.
+15. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
+16. Do not introduce a generic modifier-contributor framework while Status is the only real modifier source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
+17. Never implement a Relic or another unrelated modifier source as a fake Status merely to reuse StatusContainer collection.
+18. Phase 6 Trigger/Event execution must not depend on multicast delegate registration order, UObject address, actor discovery order, source enumeration order or unordered-container iteration; listener order and reaction placement must be explicit.
+19. Do not keep adding permanent rule-test entry points to `ABattleManager` when Automation Tests can cover the same deterministic regression; preserve PIE hooks only where end-to-end editor validation still adds value.
+20. Phase 6 must not introduce a persistent Trigger Registry while StatusContainer is the only real trigger-source membership authority; collect Status triggers on demand.
+21. Turn state changes occur only after the required turn Action/batch is atomically enqueued successfully.
+22. Resolution budget is checked before dequeuing/executing the next Action. A fault broadcasts once, rejects further queue mutation, and never broadcasts a normal `QueueEmpty` for the faulted resolution.
+23. RuntimeSource is authoritative for Trigger Owner, RuntimeSequence and exact identity; TriggerCandidate metadata must be derived rather than independently supplied.
+24. Event and Trigger Context references are synchronous dispatch-lifetime values and must not be cached for later execution.
+25. Trigger definitions are read-only rule builders; they must not directly mutate gameplay state or drive the ActionQueue.
+26. Per-trigger reaction-build failure is fail-soft for that trigger batch, but failure of the final framework-level atomic Reaction Batch insertion requests a Queue ResolutionFault.
+27. `ReduceStatusAction` must target an exact runtime StatusInstance and must never reduce a replacement instance found only by StatusId.
+28. Do not add `TriggerPhase` until a concrete same-event before/after timing mechanic requires it.
+29. Current fixed Enemy behavior may use an upfront turn batch ending in `TurnEndedAction`; do not generalize this into a requirement to precompute future dynamic Enemy follow-ups. Add an explicit continuation/barrier mechanism only when a real dynamic Enemy mechanic needs it.
+30. ResolutionFault is framework safety, not gameplay balance. Keep a high safety budget in all builds and expose any lower configurable budget only through test-specific code.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1265,7 +1819,9 @@ After C++ changes:
 
 For deterministic core rules, prefer adding focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-The Phase 5 regression gate is now automated by `.github/workflows/ue-phase5-tests.yml` on the Windows `ue58` self-hosted runner. Keep the workflow manually triggered and restricted to trusted `main` execution unless the self-hosted security model is deliberately changed.
+The Phase 5 regression gate is automated by `.github/workflows/ue-phase5-tests.yml` on the Windows `ue58` self-hosted runner. Keep the workflow manually triggered and restricted to trusted `main` execution unless the self-hosted security model is deliberately changed.
+
+Phase 6A must be Automation-validated before Phase 6B editor wiring. Phase 6R must rerun all 13 Phase 5 tests in addition to the Phase 6 suite.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -1362,6 +1918,7 @@ Tests/Phase5RegressionTests.cpp
 - Phase 5C — PASSED: Execute-time typed Block resolution, data-driven Dexterity/Frailty, PresenceOnly semantics, deterministic Phase ordering and real Defend integration.
 - Phase 5R — LOCAL PASSED / CI RERUN REQUIRED: all 13 focused Unreal Automation regression tests pass locally; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated gate awaits an owner-triggered run.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
+- Phase 6 — NOT YET PASSED: Phase 6A is the next implementation slice.
 
 ---
 
