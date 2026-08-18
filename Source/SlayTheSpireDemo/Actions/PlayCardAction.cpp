@@ -9,13 +9,16 @@
 #include "../Cards/Effects/CardEffect.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
+#include "../Events/BattleEventDispatcher.h"
 
 void UPlayCardAction::Initialize(
 	ABattleManager* InBattle,
 	UCardInstance* InCard,
 	ACombatant* InSource,
 	ACombatant* InRequestedTarget,
-	UDeckRuntime* InDeck
+	UDeckRuntime* InDeck,
+	UBattleEventDispatcher* InEventDispatcher,
+	const TArray<ACombatant*>& InEventCombatants
 )
 {
 	Battle = InBattle;
@@ -23,15 +26,35 @@ void UPlayCardAction::Initialize(
 	Source = InSource;
 	RequestedTarget = InRequestedTarget;
 	Deck = InDeck;
+	EventDispatcher = InEventDispatcher;
+	EventCombatants.Reset();
+	for (ACombatant* Combatant : InEventCombatants)
+	{
+		EventCombatants.Add(Combatant);
+	}
 }
 
 void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 {
-	if (!IsValid(Queue) || !IsValid(Battle.Get()) || !IsValid(Card.Get()) || !IsValid(Source.Get()) || !IsValid(Deck.Get()))
+	if (!IsValid(Queue) || !IsValid(Battle.Get()) || !IsValid(Card.Get()) || !IsValid(Source.Get()) ||
+		!IsValid(Deck.Get()) || !IsValid(EventDispatcher.Get()) || EventCombatants.Num() == 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid runtime dependency."));
+		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid runtime or event-dispatch dependency."));
 		Finish();
 		return;
+	}
+
+	TArray<ACombatant*> RawEventCombatants;
+	RawEventCombatants.Reserve(EventCombatants.Num());
+	for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
+	{
+		if (!IsValid(Combatant.Get()))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: invalid authoritative combatant in event-dispatch context."));
+			Finish();
+			return;
+		}
+		RawEventCombatants.Add(Combatant.Get());
 	}
 
 	if (Source->IsDead())
@@ -95,6 +118,8 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	Context.Source = Source.Get();
 	Context.Target = ResolvedTarget;
 	Context.Deck = Deck.Get();
+	Context.EventDispatcher = EventDispatcher.Get();
+	Context.EventCombatants = RawEventCombatants;
 	Context.ActionOuter = Queue;
 
 	TArray<UBattleAction*> FollowUpActions;
