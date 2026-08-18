@@ -45,9 +45,9 @@ bool FResolutionFaultVisibleTerminalTest::RunTest(const FString& Parameters)
 	Fixture.InitializeViewModel();
 	if (!RequireFixture(*this, Fixture)) return false;
 
-	AddExpectedError(TEXT("[ActionQueue] Resolution fault requested:"), EAutomationExpectedErrorFlags::Contains, 1);
-	AddExpectedError(TEXT("[ActionQueue] Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
-	AddExpectedError(TEXT("[Battle] Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
+	AddExpectedErrorPlain(TEXT("[ActionQueue] Resolution fault requested:"), EAutomationExpectedErrorFlags::Contains, 1);
+	AddExpectedErrorPlain(TEXT("[ActionQueue] Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
+	AddExpectedErrorPlain(TEXT("[Battle] Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
 
 	TestTrue(TEXT("Fault request is accepted by Queue"), Fixture.Battle->GetActionQueueForTesting()->RequestResolutionFault(TEXT("UI-A1 visible fault regression.")));
 	TestNotEqual(TEXT("ViewModel does not claim terminal until public Ready arrives"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Terminal);
