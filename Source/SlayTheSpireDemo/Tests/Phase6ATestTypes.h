@@ -7,6 +7,7 @@
 
 class ACombatant;
 class UBattleEventDispatcher;
+class UDeckRuntime;
 
 UCLASS(Transient)
 class SLAYTHESPIREDEMO_API UPhase6ATestExecutionRecorder : public UObject
@@ -28,13 +29,18 @@ class SLAYTHESPIREDEMO_API UPhase6ATestRecordAction : public UBattleAction
 
 public:
 	void Initialize(UPhase6ATestExecutionRecorder* InRecorder, int32 InValue);
+	void InitializeDeckHandCount(UPhase6ATestExecutionRecorder* InRecorder, UDeckRuntime* InDeck);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UPhase6ATestExecutionRecorder> Recorder = nullptr;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UDeckRuntime> Deck = nullptr;
+
 	int32 Value = 0;
+	bool bRecordDeckHandCount = false;
 };
 
 UCLASS(Transient, EditInlineNew, DefaultToInstanced)
@@ -44,6 +50,7 @@ class SLAYTHESPIREDEMO_API UPhase6ATestRecordTrigger : public UBattleTrigger
 
 public:
 	void Initialize(UPhase6ATestExecutionRecorder* InRecorder, int32 InValue);
+	void InitializeForDeckShuffled(UPhase6ATestExecutionRecorder* InRecorder, UDeckRuntime* InDeck);
 	virtual bool CanReact(const FBattleEvent& Event, const FTriggerContext& Context) const override;
 	virtual void BuildReactions(
 		const FBattleEvent& Event,
@@ -55,7 +62,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UPhase6ATestExecutionRecorder> Recorder = nullptr;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UDeckRuntime> Deck = nullptr;
+
 	int32 Value = 0;
+	bool bReactToDeckShuffled = false;
 };
 
 UCLASS(Transient)
