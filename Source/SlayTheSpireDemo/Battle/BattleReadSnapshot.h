@@ -34,6 +34,17 @@ struct SLAYTHESPIREDEMO_API FCardReadView
 	ECardTargetType TargetType = ECardTargetType::None;
 };
 
+// Gameplay-derived player-facing data for the committed Enemy Intent at the
+// exact snapshot revision being observed. CurrentResolvedDamageAmount reuses the
+// same Damage Modifier Pipeline as DamageAction, but it is intentionally a
+// current-state value, not a promise about a future EnemyTurn after intervening
+// TurnEnded reactions or other authoritative state changes.
+struct SLAYTHESPIREDEMO_API FEnemyIntentPlayerFacingReadView
+{
+	bool bHasCurrentResolvedDamageAmount = false;
+	int32 CurrentResolvedDamageAmount = 0;
+};
+
 struct SLAYTHESPIREDEMO_API FBattleReadSnapshot
 {
 	uint64 BattleId = 0;
@@ -44,7 +55,15 @@ struct SLAYTHESPIREDEMO_API FBattleReadSnapshot
 
 	FCombatantReadView Player;
 	FCombatantReadView Enemy;
+
+	// The committed authoritative action plan. BaseAmount remains the source used
+	// later to build the EnemyTurn Action.
 	FEnemyIntent EnemyIntent;
+
+	// Player-facing value derived from the current snapshot state. UI must not
+	// relabel this as guaranteed future damage unless a future gameplay predictor
+	// explicitly models all mandatory pre-execution state transitions.
+	FEnemyIntentPlayerFacingReadView EnemyIntentPlayerFacing;
 
 	TArray<FCardReadView> HandCards;
 	TArray<FCardReadView> DiscardCards;

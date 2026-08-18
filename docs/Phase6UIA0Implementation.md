@@ -1,6 +1,6 @@
 # Phase 6UI-A0 — Playable Gameplay Boundary
 
-Status: **SOURCE IMPLEMENTED / UE5.8 BUILD + AUTOMATION VALIDATION PENDING**.
+Status: **SOURCE REVIEW FIXES IMPLEMENTED / UE5.8 BUILD + AUTOMATION VALIDATION PENDING**.
 
 Phase 6UI-A0 establishes the non-debug gameplay/read boundary required before formal UMG work begins. It does not implement Battle HUD Widgets, Presentation Records, animation playback, Relics or Outcome Preview.
 
@@ -14,7 +14,10 @@ formal Query + Request APIs
 shared gameplay-owned validation
 AcceptedForResolution request semantics
 minimal authoritative Enemy Intent
+current-state gameplay-derived Intent display value
 coherent battle read snapshot / MVVM-style read boundary
+battle-scoped ReadStateReady notification
+battle-RNG initial deck shuffle
 ```
 
 ## Turn and Hand lifecycle
@@ -35,6 +38,8 @@ Opening battle:
 BattleStart
 ↓
 initialize combatants / deck / battle scope
+↓
+deterministically shuffle initial DrawPile with battle RNG
 ↓
 commit initial Enemy Intent
 ↓
@@ -89,6 +94,37 @@ EnemyTurn
 
 Therefore the established UI-A0 `FTurnEndedEvent(Player)` observes the current-version Hand cleanup as already committed. Future Retain/Ethereal/pre-cleanup mechanics must introduce an explicit earlier timing boundary rather than silently changing this event meaning.
 
+## Initial deck shuffle
+
+`UDeckRuntime::InitializeFromDefinitions(...)` now randomizes the initial DrawPile before the opening Hand is drawn.
+
+The rule is:
+
+```text
+create runtime CardInstances in configured definition order
+↓
+initialize battle-scoped FRandomStream from DeckDebugSeed
+↓
+initial Fisher-Yates shuffle
+↓
+Opening Hand draw
+```
+
+Initial setup and later gameplay reshuffles reuse one private DrawPile Fisher-Yates helper and the same `FRandomStream`, so initial randomization advances the deterministic battle RNG before later reshuffles.
+
+Event semantics are intentionally different:
+
+```text
+Initial DrawPile shuffle during battle setup
+→ no DeckShuffled event
+
+DiscardPile -> DrawPile gameplay reshuffle
+→ ShuffleDeckAction commit
+→ DeckShuffled event
+```
+
+Initialization is not counted as a gameplay shuffle trigger. This prevents future shuffle-reactive mechanics such as Sundial from gaining progress merely because battle setup randomized the starting deck.
+
 ## Formal player requests
 
 Gameplay exposes:
@@ -121,6 +157,8 @@ QueueRejected
 
 An accepted Request returns `AcceptedForResolution`. This means the initial authoritative Action/batch was accepted for resolution; it does not claim that all resulting effects/triggers already committed.
 
+A `ReadStateReady` notification may occur synchronously or asynchronously relative to a request call, depending on whether the accepted Actions finish synchronously. ViewModel code must subscribe to the battle read-state notification before issuing requests and treat the notification/snapshot revision, not the request callback, as the completion/read-refresh boundary.
+
 `EndPlayerTurn()` remains only as the legacy Blueprint/debug wrapper and forwards into `RequestEndPlayerTurn()`.
 
 ## Authoritative target query
@@ -139,24 +177,58 @@ The formal API is target-set based so future multi-enemy UI does not need to har
 
 ## Enemy Intent
 
-Phase 6UI-A0 introduces the minimum committed Intent model:
+Phase 6UI-A0 keeps two distinct concepts.
+
+### Committed plan
+
+The authoritative committed Intent currently supports:
 
 ```text
 None
 Attack(BaseAmount)
 ```
 
-The current fixed intent chooser uses `EnemyTestAttackDamage` only when choosing/committing an Intent. Once committed:
+The fixed intent chooser uses `EnemyTestAttackDamage` only when choosing/committing an Intent. Once committed:
 
 ```text
-UI/read model reads the committed Intent
-↓
 EnemyTurn builds its authoritative Action from that same committed Intent
 ```
 
-Changing the future fixed test amount after the Intent is already committed cannot silently change the currently displayed/executing Intent. The next Intent is committed only after the current EnemyTurn has resolved.
+Changing the future fixed test amount after an Intent is committed cannot silently change the currently committed/executing Intent.
 
-This is intentionally minimal and may later expand to multi-hit, Block, Buff, Debuff, combined, unknown and conditional intents without changing the source-of-truth invariant.
+### Gameplay-derived player-facing current value
+
+`TryBuildPlayerFacingReadSnapshot(...)` starts from the coherent authoritative snapshot and, for a committed Attack Intent, builds a read-only `FDamageSpec` using:
+
+```text
+Source = Enemy
+Target = Player
+DamageKind = Attack
+BaseAmount = committed Intent BaseAmount
+↓
+FDamageModifierPipeline::Resolve
+↓
+EnemyIntentPlayerFacing.CurrentResolvedDamageAmount
+```
+
+This deliberately reuses the same Modifier Pipeline as `DamageAction`; Widget/ViewModel code must not reimplement Strength, Weak, Vulnerable or other damage formulas.
+
+The semantic name is important:
+
+```text
+CurrentResolvedDamageAmount
+= damage amount produced by the current authoritative state at this snapshot revision
+```
+
+It is **not**:
+
+```text
+guaranteed future EnemyTurn damage
+```
+
+A normal counterexample is an expiring player Vulnerable status: the player-turn snapshot can currently resolve Attack 5 to 7, then Player `TurnEnded` reactions can remove Vulnerable before EnemyTurn, allowing the real attack to resolve to 5. A future guaranteed-execution predictor, if required, must model all mandatory pre-execution gameplay transitions rather than hard-code status decay or relabel the current-state value.
+
+The value is therefore described as a **gameplay-derived player-facing value**, not UI authority. Gameplay remains authoritative; UI only presents the coherent snapshot.
 
 ## Coherent read snapshot / MVVM boundary
 
@@ -174,7 +246,9 @@ future Battle ViewModel
 future UMG View
 ```
 
-The snapshot is captured only at a safe non-busy gameplay boundary and currently contains:
+The raw `TryBuildReadSnapshot(...)` preserves the coherent gameplay state and committed Intent plan. Formal UI/ViewModel consumers should use `TryBuildPlayerFacingReadSnapshot(...)`, which enriches that same snapshot revision with gameplay-derived current Intent display data.
+
+A readable snapshot currently contains:
 
 ```text
 BattleId
@@ -184,6 +258,7 @@ Energy / MaxEnergy
 Player / Enemy HP, MaxHP, Block, death state
 StatusId / Amount / RuntimeSequence copies
 committed Enemy Intent
+current-state player-facing Intent damage value
 Hand card read views
 Discard / Exhaust inspectable card read views
 Draw / Hand / Discard / Exhaust / PlayArea counts
@@ -193,19 +268,68 @@ Card views preserve stable runtime identity through `UCardInstance*` weak identi
 
 `DeckRuntime` therefore exposes only const read-only Hand/Discard/Exhaust collections. Mutable pile containers remain private.
 
-`BattleId` distinguishes battle scope. `StateRevision` advances at meaningful authoritative safe boundaries so UI cache/debug tooling can recognize stale snapshots without using frame time as gameplay identity.
+`BattleId` distinguishes battle scope. `StateRevision` identifies meaningful authoritative safe boundaries. UI caches must key freshness by the pair `(BattleId, StateRevision)`, not by revision alone and never by frame time.
+
+## ReadStateReady completion boundary
+
+UI-A0 provides a public battle-level stable-read notification:
+
+```text
+OnReadStateReady(BattleId, StateRevision)
+```
+
+Widgets must not use `BattleActionQueue::OnQueueEmpty` or the Queue-level idle signal directly.
+
+### Healthy resolution path
+
+`BattleActionQueue::OnResolutionIdle` is intentionally later than `OnQueueEmpty`. It may publish only after the complete `PumpQueue()` frame has exited and all of the following are true:
+
+```text
+CurrentAction == nullptr
+PendingActions.Num() == 0
+bIsPumping == false
+not inside QueueEmpty broadcast
+not executing a post-QueueEmpty continuation
+no deferred continuation remains
+no resolution fault request
+Queue is not faulted
+```
+
+A full end-turn flow may therefore broadcast several intermediate `QueueEmpty` boundaries while producing no `OnResolutionIdle`. Only after PlayerTurnEnding -> EnemyTurn -> EnemyTurnEnding -> PlayerTurnStarting macro progression finishes and the Queue truly settles can BattleManager publish `ReadStateReady`.
+
+### Fault path
+
+A faulted Queue is never treated as healthy idle.
+
+Instead:
+
+```text
+Queue enters ResolutionFaulted
+↓
+existing OnResolutionFaulted listener commits BattleState = ResolutionFaulted
+↓
+BattleManager builds readable fault snapshot
+↓
+OnReadStateReady(BattleId, StateRevision)
+```
+
+This guarantees a UI in `Resolving` can still leave that state and display `ResolutionFaulted` rather than waiting forever for healthy idle.
+
+### Publication deduplication
+
+BattleManager deduplicates by the complete key:
+
+```text
+(LastPublishedBattleId, LastPublishedReadStateRevision)
+```
+
+A new battle is therefore not suppressed merely because its `StateRevision` happens to equal the final revision number from a prior battle.
 
 ## Automation
 
-New Editor-only Automation source:
+Editor-only UI-A0 Automation sources now cover both the original vertical slice and the review invariants.
 
-```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA0RegressionTests.cpp
-```
-
-Expected UI-A0 tests: 9.
-
-Coverage:
+Current named invariant coverage includes:
 
 ```text
 Turn.OpeningHandLifecycle
@@ -217,24 +341,35 @@ Request.EnergyFailureIsShared
 Intent.CommittedIntentDrivesExecution
 Snapshot.CoherentRevisionAndCardIdentity
 Targets.AuthoritativeLegalTargetSet
+
+Intent.CurrentResolvedDamageUsesDamagePipeline
+Intent.ExpiringTargetModifierDoesNotClaimGuaranteedFutureDamage
+Deck.InitialShuffleHasExpectedSeededPermutation
+Deck.InitialShufflePreservesCardIdentitySet
+Deck.InitialShuffleDoesNotEmitDeckShuffled
+ReadStateReady.CardResolutionPublishesOnceWhenReadable
+ReadStateReady.AsyncActionDoesNotPublishBeforeFinish
+ReadStateReady.FullTurnPublishesOnlyAfterMacroFlowStabilizes
+ReadStateReady.ResolutionFaultPublishesReadableSnapshot
+ReadStateReady.NewBattleIsNotSuppressedByRepeatedRevision
 ```
 
-New trusted owner-only workflow:
+The trusted owner-only workflow remains:
 
 ```text
 .github/workflows/ue-phase6uia0-tests.yml
 ```
 
-It must build `SlayTheSpireDemoEditor` and preserve all prior gates:
+The workflow uses exact discovered counts operationally to detect missing tests, but the long-term architecture acceptance rule is **not** a permanent numeric total.
+
+UI-A0 passes only when:
 
 ```text
-Phase 5       13/13
-Phase 6A      23/23
-Phase 6B      12/12
-Phase 6C       5/5
-Phase 6UI-A0   9/9
--------------------
-Total         62/62
+all existing Phase 5 / Phase 6 regression gates pass
++
+all currently named UI-A0 invariants pass
++
+UE5.8 Editor build passes
 ```
 
 No UE5.8 build/Automation pass is claimed until the self-hosted workflow is actually run successfully.
@@ -247,4 +382,4 @@ After UI-A0 passes and documentation is synchronized:
 Phase 6UI-A1 — Operable Battle HUD
 ```
 
-UI-A1 may then bind UMG/ViewModel presentation to the formal Request and read-snapshot boundaries rather than using gameplay-driving debug keys.
+UI-A1 may then bind UMG/ViewModel presentation to the formal Request, `OnReadStateReady`, and player-facing coherent snapshot boundaries rather than using gameplay-driving debug keys or polling Queue state.

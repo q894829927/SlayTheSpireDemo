@@ -64,7 +64,7 @@ jobs:
               throw "UE Editor build failed with exit code $LASTEXITCODE"
           }
 
-      - name: Run Phase 5 through Phase 6UI-A0 automation gates
+      - name: Run existing regression and Phase 6UI-A0 invariant gates
         shell: powershell
         run: |
           $UE = "E:\Unreal engine\UE_5.8"
@@ -131,6 +131,6 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 9 -ReportName "Phase6UIA0"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 19 -ReportName "Phase6UIA0"
 
-          Write-Host "Phase 5 through Phase 6UI-A0 automation gates passed. Expected total: 62 tests."
+          Write-Host "All existing regression gates and all currently named Phase 6UI-A0 invariants passed. Current discovered total: 72 tests."

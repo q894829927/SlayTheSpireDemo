@@ -32,6 +32,8 @@ enum class EBattleState : uint8
 	ResolutionFaulted UMETA(DisplayName = "Resolution Faulted")
 };
 
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBattleReadStateReady, uint64, uint64);
+
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API ABattleManager : public AActor
 {
@@ -135,12 +137,33 @@ public:
 	FGameplayRequestResult RequestEndPlayerTurn();
 
 	void GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const;
+
+	// Raw coherent gameplay snapshot used by existing runtime/tests. It preserves
+	// the committed Intent plan but does not derive player-facing damage display.
 	bool TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
+
+	// Formal UI/ViewModel snapshot boundary. It starts from the same coherent
+	// gameplay snapshot and enriches the committed Intent with a gameplay-derived
+	// current-state value by reusing the Damage Modifier Pipeline. The value is not
+	// a guarantee of damage at a future EnemyTurn after intervening reactions.
+	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 	const FEnemyIntent& GetCommittedEnemyIntent() const;
 
 	bool CanSpendEnergy(int32 Amount) const;
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
+
+	// UI/ViewModel-facing stable-read notification. It is battle-scoped and
+	// revision-scoped; Queue-level OnResolutionIdle is intentionally not the public
+	// presentation boundary.
+	FOnBattleReadStateReady OnReadStateReady;
+
+	// Internal owner callbacks invoked only by this BattleManager's ActionQueue
+	// after a healthy PumpQueue has fully exited or after fault state has committed.
+	// These are public solely to keep the Queue->owner bridge explicit; Widgets
+	// must never call them.
+	void NotifyActionQueueResolutionIdle(UBattleActionQueue* SettledQueue);
+	void NotifyActionQueueResolutionFaultSettled(UBattleActionQueue* FaultedQueue);
 
 	// Narrow runtime dependency bridge used while BattleManager still owns the
 	// battle-scoped dispatcher and authoritative combatant references. Action and
@@ -185,6 +208,7 @@ private:
 	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
 	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
 	void CheckBattleResult();
+	void TryPublishReadStateReady();
 
 	FGameplayValidationResult ValidatePlayerCommandBase() const;
 	FGameplayValidationResult ValidateCardPlayBase(const UCardInstance* Card) const;
@@ -219,6 +243,8 @@ private:
 	uint64 BattleId = 0;
 	uint64 StateRevision = 0;
 	uint64 NextRuntimeSequence = 1;
+	uint64 LastPublishedBattleId = 0;
+	uint64 LastPublishedReadStateRevision = 0;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bool bForceInvalidPlayerEndBatchForTesting = false;

@@ -8,6 +8,7 @@
 class UBattleAction;
 
 DECLARE_MULTICAST_DELEGATE(FOnBattleActionQueueEmpty);
+DECLARE_MULTICAST_DELEGATE(FOnBattleActionQueueResolutionIdle);
 DECLARE_MULTICAST_DELEGATE_ThreeParams(
 	FOnBattleActionQueueResolutionFaulted,
 	const FString&,
@@ -55,6 +56,12 @@ public:
 #endif
 
 	FOnBattleActionQueueEmpty OnQueueEmpty;
+
+	// Internal resolution-settled signal. This is deliberately later than
+	// OnQueueEmpty: it is emitted only after the complete PumpQueue frame has
+	// exited and no deferred authoritative continuation remains. Widgets must not
+	// treat this Queue-level signal as the public battle read-state boundary.
+	FOnBattleActionQueueResolutionIdle OnResolutionIdle;
 	FOnBattleActionQueueResolutionFaulted OnResolutionFaulted;
 
 private:
@@ -64,6 +71,7 @@ private:
 	void PumpQueue();
 	void HandleActionFinished(UBattleAction* FinishedAction);
 	void EnterResolutionFaultAtSafePoint();
+	void BroadcastResolutionIdleIfSettled();
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UBattleAction>> PendingActions;

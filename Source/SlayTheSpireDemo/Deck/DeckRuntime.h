@@ -46,6 +46,13 @@ public:
 	void LogState(const TCHAR* Context) const;
 
 private:
+	// One Fisher-Yates implementation owns all DrawPile randomization. Both the
+	// initial battle setup and later Discard->Draw reshuffles consume the same
+	// battle-scoped RandomStream. Event semantics remain outside this helper:
+	// initialization never emits DeckShuffled, while ShuffleDeckAction does after
+	// a successful gameplay reshuffle commit.
+	void ShuffleDrawPileWithBattleRng();
+
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UCardInstance>> DrawPile;
 

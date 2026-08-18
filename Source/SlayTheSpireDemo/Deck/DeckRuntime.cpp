@@ -64,10 +64,15 @@ void UDeckRuntime::InitializeFromDefinitions(const TArray<TObjectPtr<UCardData>>
 		);
 	}
 
+	// Battle setup randomization is deterministic and consumes the same
+	// battle-scoped RNG stream used by future gameplay reshuffles. This is setup,
+	// not a ShuffleDeckAction commit, so it intentionally emits no DeckShuffled.
+	ShuffleDrawPileWithBattleRng();
+
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Deck] Runtime deck initialized. Seed=%d Cards=%d DrawPile top is the array end."),
+		TEXT("[Deck] Runtime deck initialized and initially shuffled. Seed=%d Cards=%d DrawPile top is the array end."),
 		InitialSeed,
 		DrawPile.Num()
 	);
@@ -258,15 +263,7 @@ bool UDeckRuntime::ShuffleDiscardIntoDrawPile()
 
 	DrawPile.Append(DiscardPile);
 	DiscardPile.Reset();
-
-	for (int32 Index = DrawPile.Num() - 1; Index > 0; --Index)
-	{
-		const int32 SwapIndex = RandomStream.RandRange(0, Index);
-		if (SwapIndex != Index)
-		{
-			DrawPile.Swap(Index, SwapIndex);
-		}
-	}
+	ShuffleDrawPileWithBattleRng();
 
 	UE_LOG(LogTemp, Log, TEXT("[Deck] Shuffled DiscardPile into DrawPile using the battle RNG stream."));
 	LogState(TEXT("AfterShuffle"));
@@ -351,4 +348,16 @@ void UDeckRuntime::LogState(const TCHAR* Context) const
 		Context,
 		*DescribeState()
 	);
+}
+
+void UDeckRuntime::ShuffleDrawPileWithBattleRng()
+{
+	for (int32 Index = DrawPile.Num() - 1; Index > 0; --Index)
+	{
+		const int32 SwapIndex = RandomStream.RandRange(0, Index);
+		if (SwapIndex != Index)
+		{
+			DrawPile.Swap(Index, SwapIndex);
+		}
+	}
 }
