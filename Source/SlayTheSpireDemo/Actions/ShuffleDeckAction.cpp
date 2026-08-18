@@ -1,10 +1,18 @@
 #include "ShuffleDeckAction.h"
 
 #include "BattleActionQueue.h"
+#include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEvent.h"
 #include "../Events/BattleEventDispatcher.h"
+
+void UShuffleDeckAction::Initialize(UDeckRuntime* InDeck)
+{
+	Deck = InDeck;
+	EventDispatcher = nullptr;
+	EventCombatants.Reset();
+}
 
 void UShuffleDeckAction::Initialize(
 	UDeckRuntime* InDeck,
@@ -30,24 +38,32 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!IsValid(EventDispatcher.Get()) || EventCombatants.Num() == 0)
-	{
-		Queue->RequestResolutionFault(TEXT("ShuffleDeckAction requires valid battle-event wiring before shuffle commit."));
-		Finish();
-		return;
-	}
-
+	UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
 	TArray<ACombatant*> RawCombatants;
-	RawCombatants.Reserve(EventCombatants.Num());
-	for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
+
+	if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
 	{
-		if (!IsValid(Combatant.Get()))
+		RawCombatants.Reserve(EventCombatants.Num());
+		for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
 		{
-			Queue->RequestResolutionFault(TEXT("ShuffleDeckAction found an invalid authoritative combatant in its event-dispatch context."));
+			if (!IsValid(Combatant.Get()))
+			{
+				Queue->RequestResolutionFault(TEXT("ShuffleDeckAction found an invalid authoritative combatant in its event-dispatch context."));
+				Finish();
+				return;
+			}
+			RawCombatants.Add(Combatant.Get());
+		}
+	}
+	else
+	{
+		ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
+		if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
+		{
+			Queue->RequestResolutionFault(TEXT("ShuffleDeckAction requires valid battle-event wiring before shuffle commit."));
 			Finish();
 			return;
 		}
-		RawCombatants.Add(Combatant.Get());
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Action] ShuffleDeckAction executing."));
@@ -59,7 +75,7 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!EventDispatcher->Dispatch(FBattleEvent::MakeDeckShuffled(Deck.Get()), Queue, RawCombatants))
+	if (!ResolvedEventDispatcher->Dispatch(FBattleEvent::MakeDeckShuffled(Deck.Get()), Queue, RawCombatants))
 	{
 		Queue->RequestResolutionFault(TEXT("DeckShuffled event dispatch failed after a successful shuffle commit."));
 		Finish();
