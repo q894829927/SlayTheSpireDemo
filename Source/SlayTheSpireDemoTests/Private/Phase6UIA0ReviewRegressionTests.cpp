@@ -9,7 +9,9 @@
 #include "Cards/CardInstance.h"
 #include "Cards/Effects/DamageCardEffect.h"
 #include "Combat/Combatant.h"
+#include "Containers/Ticker.h"
 #include "Deck/DeckRuntime.h"
+#include "Events/BattleEvent.h"
 #include "Events/BattleEventDispatcher.h"
 #include "Events/TurnEndStatusDecayTrigger.h"
 #include "Modifiers/Damage/DamageFlatAddModifier.h"
@@ -18,13 +20,17 @@
 #include "Status/StatusContainer.h"
 #include "Status/StatusData.h"
 #include "Status/StatusInstance.h"
-#include "Phase6ATestTypes.h"
 #include "Phase6UIA0TestTypes.h"
 #include "Engine/World.h"
 #include "UObject/Package.h"
 
 namespace Phase6UIA0ReviewRegression
 {
+	void TickReadStateReady()
+	{
+		FTSTicker::GetCoreTicker().Tick(0.0f);
+	}
+
 	UCardData* CreateCard(
 		UObject* Outer,
 		const TCHAR* CardId,
@@ -153,6 +159,8 @@ namespace Phase6UIA0ReviewRegression
 			}
 
 			Battle->StartBattle();
+			// Drain the initial battle-ready publication before individual tests bind.
+			TickReadStateReady();
 		}
 
 		~FBattleFixture()
@@ -207,6 +215,7 @@ namespace Phase6UIA0ReviewRegression
 
 		TestTrue(TEXT("End-turn request accepted"), Fixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
 		TestEqual(TEXT("With no intervening modifier change, actual EnemyTurn also deals 10"), Fixture.Player->HP, 90);
+		TickReadStateReady();
 		return true;
 	}
 
@@ -233,6 +242,7 @@ namespace Phase6UIA0ReviewRegression
 		FBattleReadSnapshot After;
 		TestTrue(TEXT("Next player-facing snapshot is readable"), Fixture.Battle->TryBuildPlayerFacingReadSnapshot(After));
 		TestEqual(TEXT("Current value after decay is now 5"), After.EnemyIntentPlayerFacing.CurrentResolvedDamageAmount, 5);
+		TickReadStateReady();
 		return true;
 	}
 
@@ -311,21 +321,40 @@ namespace Phase6UIA0ReviewRegression
 
 		FActorSpawnParameters SpawnParameters;
 		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		ACombatant* Combatant = World->SpawnActor<ACombatant>(ACombatant::StaticClass(), FTransform::Identity, SpawnParameters);
-		Combatant->MaxHP = 100;
-		Combatant->InitializeCombatant();
+		ACombatant* Player = World->SpawnActor<ACombatant>(ACombatant::StaticClass(), FTransform::Identity, SpawnParameters);
+		ACombatant* Enemy = World->SpawnActor<ACombatant>(ACombatant::StaticClass(), FTransform(FVector(100.0, 0.0, 0.0)), SpawnParameters);
+		ABattleManager* Battle = World->SpawnActor<ABattleManager>(ABattleManager::StaticClass(), FTransform::Identity, SpawnParameters);
+		if (!IsValid(Player) || !IsValid(Enemy) || !IsValid(Battle))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
 
-		UDeckRuntime* Deck = NewObject<UDeckRuntime>(World);
-		UPhase6ATestExecutionRecorder* Recorder = NewObject<UPhase6ATestExecutionRecorder>(World);
-		UStatusData* ObserverDefinition = NewObject<UStatusData>(World);
-		ObserverDefinition->StatusId = TEXT("InitialShuffleObserver");
-		UPhase6ATestRecordTrigger* Trigger = NewObject<UPhase6ATestRecordTrigger>(ObserverDefinition);
-		Trigger->InitializeForDeckShuffled(Recorder, Deck);
-		ObserverDefinition->Triggers.Add(Trigger);
-		TestTrue(TEXT("DeckShuffled observer installed"), ApplyStatus(Combatant, ObserverDefinition, 1, 1));
+		Player->MaxHP = 100;
+		Enemy->MaxHP = 100;
+		Battle->Player = Player;
+		Battle->Enemy = Enemy;
+		Battle->OpeningHandDrawCount = 5;
+		Battle->PlayerTurnDrawCount = 0;
+		Battle->DebugStartingDeck = CreateNumberedCards(World, 5);
 
-		Deck->InitializeFromDefinitions(CreateNumberedCards(World, 5), 1337);
-		TestEqual(TEXT("Initialization shuffle is setup and emits no DeckShuffled reaction"), Recorder->GetValues().Num(), 0);
+		int32 DeckShuffledDispatchCount = 0;
+		const FDelegateHandle Handle = UBattleEventDispatcher::OnEventDispatchedForTesting.AddLambda(
+			[&DeckShuffledDispatchCount](const FBattleEvent& Event)
+			{
+				if (Event.TryGet<FDeckShuffledEvent>() != nullptr)
+				{
+					++DeckShuffledDispatchCount;
+				}
+			}
+		);
+
+		Battle->StartBattle();
+		TickReadStateReady();
+		UBattleEventDispatcher::OnEventDispatchedForTesting.Remove(Handle);
+
+		TestEqual(TEXT("Real BattleManager/EventDispatcher initialization path emits no DeckShuffled event"), DeckShuffledDispatchCount, 0);
+		TestEqual(TEXT("Opening Hand still draws all five initialized cards"), Battle->GetDeckRuntimeForTesting()->GetHandCount(), 5);
 
 		World->DestroyWorld(false);
 		return true;
@@ -343,6 +372,8 @@ namespace Phase6UIA0ReviewRegression
 		if (!RequireReady(*this, Fixture)) return false;
 
 		int32 ReadyCount = 0;
+		bool bRequestReturned = false;
+		bool bCallbackObservedRequestReturned = false;
 		bool bSnapshotReadableInCallback = false;
 		uint64 PublishedBattleId = 0;
 		uint64 PublishedRevision = 0;
@@ -350,6 +381,7 @@ namespace Phase6UIA0ReviewRegression
 			[&](uint64 BattleId, uint64 Revision)
 			{
 				++ReadyCount;
+				bCallbackObservedRequestReturned = bRequestReturned;
 				PublishedBattleId = BattleId;
 				PublishedRevision = Revision;
 				FBattleReadSnapshot Snapshot;
@@ -364,8 +396,13 @@ namespace Phase6UIA0ReviewRegression
 		if (!Card) return false;
 
 		const FGameplayRequestResult Result = Fixture.Battle->RequestPlayCard(Card, Fixture.Enemy);
+		bRequestReturned = true;
 		TestTrue(TEXT("Formal card request accepted"), Result.IsAcceptedForResolution());
+		TestEqual(TEXT("ReadStateReady is never re-entrant before RequestPlayCard returns"), ReadyCount, 0);
+
+		TickReadStateReady();
 		TestEqual(TEXT("Exactly one stable read notification is published for the completed card resolution"), ReadyCount, 1);
+		TestTrue(TEXT("Callback observes that the public Request already returned"), bCallbackObservedRequestReturned);
 		TestTrue(TEXT("Published revision is readable inside the callback"), bSnapshotReadableInCallback);
 		TestTrue(TEXT("Published BattleId is non-zero"), PublishedBattleId != 0);
 		TestTrue(TEXT("Published revision is non-zero"), PublishedRevision != 0);
@@ -397,7 +434,9 @@ namespace Phase6UIA0ReviewRegression
 		TestFalse(TEXT("Player-facing snapshot is not readable while async Action is unresolved"), Fixture.Battle->TryBuildPlayerFacingReadSnapshot(BusySnapshot));
 
 		Action->CompleteManually();
-		TestEqual(TEXT("One ReadStateReady publishes only after async Action finishes and PumpQueue exits"), ReadyCount, 1);
+		TestEqual(TEXT("Completing the async Action schedules but does not synchronously publish ReadStateReady"), ReadyCount, 0);
+		TickReadStateReady();
+		TestEqual(TEXT("One ReadStateReady publishes after async Action finishes and deferred stable boundary runs"), ReadyCount, 1);
 		return true;
 	}
 
@@ -425,7 +464,9 @@ namespace Phase6UIA0ReviewRegression
 		);
 
 		TestTrue(TEXT("End-turn request accepted"), Fixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
-		TestEqual(TEXT("Intermediate PlayerTurnEnding/EnemyTurnEnding QueueEmpty boundaries do not publish"), PublishedStates.Num(), 1);
+		TestEqual(TEXT("No intermediate QueueEmpty boundary publishes before Request returns"), PublishedStates.Num(), 0);
+		TickReadStateReady();
+		TestEqual(TEXT("Only one macro-stable state publishes after deferred completion"), PublishedStates.Num(), 1);
 		if (PublishedStates.Num() == 1)
 		{
 			TestEqual(TEXT("Only final macro-stable PlayerTurn is published"), PublishedStates[0], EBattleState::PlayerTurn);
@@ -460,6 +501,8 @@ namespace Phase6UIA0ReviewRegression
 		);
 
 		TestTrue(TEXT("Resolution fault request accepted"), Fixture.Battle->GetActionQueueForTesting()->RequestResolutionFault(TEXT("UI-A0 readable fault test.")));
+		TestEqual(TEXT("Fault state commits immediately but public stable-read notification is deferred"), ReadyCount, 0);
+		TickReadStateReady();
 		TestEqual(TEXT("Fault path publishes exactly one stable read notification"), ReadyCount, 1);
 		TestTrue(TEXT("Published fault snapshot is readable and committed"), bFaultSnapshotReadable);
 		return true;
@@ -498,7 +541,11 @@ namespace Phase6UIA0ReviewRegression
 		);
 
 		Battle->StartBattle();
+		TestEqual(TEXT("First battle does not publish re-entrantly from StartBattle"), PublishedKeys.Num(), 0);
+		TickReadStateReady();
 		Battle->StartBattle();
+		TestEqual(TEXT("Second battle also waits for its stable publication boundary"), PublishedKeys.Num(), 1);
+		TickReadStateReady();
 
 		TestEqual(TEXT("Both battle starts publish stable read state"), PublishedKeys.Num(), 2);
 		if (PublishedKeys.Num() == 2)

@@ -96,7 +96,7 @@ Therefore the established UI-A0 `FTurnEndedEvent(Player)` observes the current-v
 
 ## Initial deck shuffle
 
-`UDeckRuntime::InitializeFromDefinitions(...)` now randomizes the initial DrawPile before the opening Hand is drawn.
+`UDeckRuntime::InitializeFromDefinitions(...)` randomizes the initial DrawPile before the opening Hand is drawn.
 
 The rule is:
 
@@ -124,6 +124,8 @@ DiscardPile -> DrawPile gameplay reshuffle
 ```
 
 Initialization is not counted as a gameplay shuffle trigger. This prevents future shuffle-reactive mechanics such as Sundial from gaining progress merely because battle setup randomized the starting deck.
+
+The initialization-event regression observes the real `BattleManager -> BattleEventDispatcher` path through a test-only dispatcher observation hook. It does not infer “no event” merely because `DeckRuntime` itself lacks a dispatcher.
 
 ## Formal player requests
 
@@ -157,7 +159,31 @@ QueueRejected
 
 An accepted Request returns `AcceptedForResolution`. This means the initial authoritative Action/batch was accepted for resolution; it does not claim that all resulting effects/triggers already committed.
 
-A `ReadStateReady` notification may occur synchronously or asynchronously relative to a request call, depending on whether the accepted Actions finish synchronously. ViewModel code must subscribe to the battle read-state notification before issuing requests and treat the notification/snapshot revision, not the request callback, as the completion/read-refresh boundary.
+`OnReadStateReady` is deliberately **not re-entrant with a public Request**. Even when every accepted Action resolves synchronously inside `RequestPlayCard` or `RequestEndPlayerTurn`, the stable-read publication is deferred through the CoreTicker. Therefore:
+
+```text
+Request...
+↓
+AcceptedForResolution returns to caller
+↓
+only later may OnReadStateReady(BattleId, StateRevision) publish
+```
+
+A ViewModel may therefore use the natural protocol:
+
+```text
+submit Request
+↓
+if AcceptedForResolution: enter Resolving
+↓
+wait for OnReadStateReady
+↓
+refresh coherent snapshot
+↓
+leave Resolving when the published authoritative state allows it
+```
+
+No request-before-lock/revision-race workaround is required or supported as the canonical UI contract.
 
 `EndPlayerTurn()` remains only as the legacy Blueprint/debug wrapper and forwards into `RequestEndPlayerTurn()`.
 
@@ -295,7 +321,39 @@ no resolution fault request
 Queue is not faulted
 ```
 
-A full end-turn flow may therefore broadcast several intermediate `QueueEmpty` boundaries while producing no `OnResolutionIdle`. Only after PlayerTurnEnding -> EnemyTurn -> EnemyTurnEnding -> PlayerTurnStarting macro progression finishes and the Queue truly settles can BattleManager publish `ReadStateReady`.
+A full end-turn flow may therefore broadcast several intermediate `QueueEmpty` boundaries while producing no `OnResolutionIdle`.
+
+BattleManager does not immediately forward `OnResolutionIdle` to UI. It schedules the public read-state publication through the CoreTicker, so the public notification is outside both `PumpQueue()` and the public Request call stack:
+
+```text
+final Queue settlement
+↓
+OnResolutionIdle
+↓
+BattleManager schedules stable-read publication
+↓
+public Request returns if this resolution came from a Request
+↓
+CoreTicker boundary
+↓
+TryBuildPlayerFacingReadSnapshot
+↓
+OnReadStateReady(BattleId, StateRevision)
+```
+
+### QueueEmpty no-op contract
+
+Healthy empty batches remain legal no-op successes even while QueueEmpty observers are being notified:
+
+```text
+empty batch during QueueEmpty
+→ accepted no-op
+
+non-empty insertion during QueueEmpty
+→ rejected; authoritative progression must use the deferred continuation contract
+```
+
+The existing Phase 6B regression `Queue.EmptyBatchIsLegalDuringObserverNotification` remains the guard for this invariant.
 
 ### Fault path
 
@@ -308,12 +366,16 @@ Queue enters ResolutionFaulted
 ↓
 existing OnResolutionFaulted listener commits BattleState = ResolutionFaulted
 ↓
+BattleManager schedules stable-read publication
+↓
+CoreTicker boundary
+↓
 BattleManager builds readable fault snapshot
 ↓
 OnReadStateReady(BattleId, StateRevision)
 ```
 
-This guarantees a UI in `Resolving` can still leave that state and display `ResolutionFaulted` rather than waiting forever for healthy idle.
+This guarantees a UI in `Resolving` can still leave that state and display `ResolutionFaulted` rather than waiting forever for healthy idle, while preserving the no-reentrant-public-notification rule.
 
 ### Publication deduplication
 
@@ -327,7 +389,7 @@ A new battle is therefore not suppressed merely because its `StateRevision` happ
 
 ## Automation
 
-Editor-only UI-A0 Automation sources now cover both the original vertical slice and the review invariants.
+Editor-only UI-A0 Automation sources cover both the original vertical slice and the review invariants.
 
 Current named invariant coverage includes:
 
@@ -353,6 +415,8 @@ ReadStateReady.FullTurnPublishesOnlyAfterMacroFlowStabilizes
 ReadStateReady.ResolutionFaultPublishesReadableSnapshot
 ReadStateReady.NewBattleIsNotSuppressedByRepeatedRevision
 ```
+
+`ReadStateReady.CardResolutionPublishesOnceWhenReadable` additionally verifies that a synchronously resolved public card Request returns before its Ready notification can fire.
 
 The trusted owner-only workflow remains:
 

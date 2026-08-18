@@ -9,6 +9,10 @@
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
 
+#if WITH_DEV_AUTOMATION_TESTS
+FOnBattleEventDispatchedForTesting UBattleEventDispatcher::OnEventDispatchedForTesting;
+#endif
+
 namespace
 {
 	struct FTriggerCandidate
@@ -77,6 +81,10 @@ bool UBattleEventDispatcher::Dispatch(
 		UE_LOG(LogTemp, Warning, TEXT("[Event] Dispatch rejected: invalid or faulted ActionQueue."));
 		return false;
 	}
+
+#if WITH_DEV_AUTOMATION_TESTS
+	OnEventDispatchedForTesting.Broadcast(Event);
+#endif
 
 	TArray<FTriggerCandidate> Candidates;
 	TSet<UStatusInstance*> SeenRuntimeSources;

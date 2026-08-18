@@ -19,6 +19,10 @@ struct FTriggerEligibilityRecord
 	int32 LocalTriggerIndex = INDEX_NONE;
 };
 
+#if WITH_DEV_AUTOMATION_TESTS
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnBattleEventDispatchedForTesting, const FBattleEvent&);
+#endif
+
 UCLASS()
 class SLAYTHESPIREDEMO_API UBattleEventDispatcher : public UObject
 {
@@ -31,4 +35,10 @@ public:
 		const TArray<ACombatant*>& Combatants,
 		TArray<FTriggerEligibilityRecord>* OutEligibilityTrace = nullptr
 	) const;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	// Test-only observation hook for proving whether a real Dispatcher path emitted
+	// a gameplay event. It does not participate in reaction ordering or mutation.
+	static FOnBattleEventDispatchedForTesting OnEventDispatchedForTesting;
+#endif
 };

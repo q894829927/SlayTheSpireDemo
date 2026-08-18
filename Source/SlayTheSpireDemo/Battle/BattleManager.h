@@ -155,7 +155,9 @@ public:
 
 	// UI/ViewModel-facing stable-read notification. It is battle-scoped and
 	// revision-scoped; Queue-level OnResolutionIdle is intentionally not the public
-	// presentation boundary.
+	// presentation boundary. Publication is deferred by at least one CoreTicker
+	// turn after Queue settlement so it cannot re-enter a public Request before
+	// that Request has returned AcceptedForResolution to its caller.
 	FOnBattleReadStateReady OnReadStateReady;
 
 	// Internal owner callbacks invoked only by this BattleManager's ActionQueue
@@ -208,6 +210,8 @@ private:
 	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
 	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
 	void CheckBattleResult();
+	void ScheduleReadStateReadyPublish();
+	bool HandleScheduledReadStateReady(float DeltaTime);
 	void TryPublishReadStateReady();
 
 	FGameplayValidationResult ValidatePlayerCommandBase() const;
@@ -245,6 +249,7 @@ private:
 	uint64 NextRuntimeSequence = 1;
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
+	bool bReadStateReadyPublishScheduled = false;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bool bForceInvalidPlayerEndBatchForTesting = false;

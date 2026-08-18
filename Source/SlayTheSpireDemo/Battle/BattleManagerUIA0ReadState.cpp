@@ -5,6 +5,7 @@
 #include "../Combat/Combatant.h"
 #include "../Modifiers/Damage/DamageModifierPipeline.h"
 #include "../Modifiers/Damage/DamageSpec.h"
+#include "Containers/Ticker.h"
 
 bool ABattleManager::TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const
 {
@@ -45,7 +46,7 @@ void ABattleManager::NotifyActionQueueResolutionIdle(UBattleActionQueue* Settled
 		return;
 	}
 
-	TryPublishReadStateReady();
+	ScheduleReadStateReadyPublish();
 }
 
 void ABattleManager::NotifyActionQueueResolutionFaultSettled(UBattleActionQueue* FaultedQueue)
@@ -60,7 +61,28 @@ void ABattleManager::NotifyActionQueueResolutionFaultSettled(UBattleActionQueue*
 		return;
 	}
 
+	ScheduleReadStateReadyPublish();
+}
+
+void ABattleManager::ScheduleReadStateReadyPublish()
+{
+	if (bReadStateReadyPublishScheduled)
+	{
+		return;
+	}
+
+	bReadStateReadyPublishScheduled = true;
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ABattleManager::HandleScheduledReadStateReady),
+		0.0f
+	);
+}
+
+bool ABattleManager::HandleScheduledReadStateReady(float /*DeltaTime*/)
+{
+	bReadStateReadyPublishScheduled = false;
 	TryPublishReadStateReady();
+	return false;
 }
 
 void ABattleManager::TryPublishReadStateReady()
