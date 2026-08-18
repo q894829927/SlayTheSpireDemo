@@ -128,6 +128,6 @@ jobs:
           "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase5" -ExpectedCount 13 -ReportName "Phase5"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 18 -ReportName "Phase6A"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
 
           Write-Host "Phase 5 and Phase 6A automation gates passed."
