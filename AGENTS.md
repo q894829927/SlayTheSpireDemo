@@ -48,12 +48,12 @@ BattleActionQueue
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
-  - [x] Phase 5R regression Automation Tests implemented; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated 13-test suite passes locally pending an owner-triggered CI rerun.
-- [ ] Phase 6 battle events / triggers implemented.
-  - [ ] Phase 6A TurnEnd Trigger Vertical Slice — NEXT.
-  - [ ] Phase 6B Battle Turn Wiring.
-  - [ ] Phase 6C DeckShuffled Event.
-  - [ ] Phase 6R Regression Gate.
+  - [x] Phase 5R regression Automation gate implemented and UE5.8 self-hosted CI validated at 13/13.
+- [ ] Phase 6 battle events / triggers in progress.
+  - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
+  - [x] Phase 6B Battle Turn Wiring — COMPLETE gameplay slice; baseline UE5.8 build + Automation + PIE passed. QueueEmpty non-reentrancy hardening is implemented on current HEAD and requires one 42/42 rerun before Phase 6C starts.
+  - [ ] Phase 6C DeckShuffled Event — NEXT after the hardened Phase 6B rerun.
+  - [ ] Phase 6R Regression Gate + deferred test-module extraction.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
 
@@ -126,8 +126,39 @@ Phase 5R validated:
 - Block regression coverage includes BaseZeroCanReceiveFlatAdd, Dexterity ScaleWithAmount, Frailty PresenceOnly and Phase-before-RuntimeSequence ordering;
 - Status regression coverage verifies reapplication preserves runtime identity/RuntimeSequence while merging Amount;
 - Queue regression coverage verifies existing front/back insertion semantics deterministically;
-- the suite contains 13 Phase 5 tests and passes locally in UE5.8;
-- the previous 12-test suite passed through the Windows `ue58` self-hosted runner; the updated 13-test gate requires a new owner-triggered `workflow_dispatch` run before its CI evidence is recorded.
+- the suite contains 13 Phase 5 tests;
+- all 13 tests passed through the Windows `ue58` self-hosted runner.
+
+Phase 6A validated:
+
+- atomic ordered front/back Action batches and transactional validation;
+- ResolutionFault safety, finite action budget and no normal QueueEmpty on fault;
+- typed `FTurnEndedEvent`, on-demand Status trigger collection and deterministic `Priority → RuntimeSequence → LocalTriggerIndex` ordering;
+- eligibility/candidate tracing is distinct from actual Reaction execution ordering;
+- exact-instance `ReduceStatusAction` semantics and snapshot eligibility vs live mutation validation;
+- Execute-time nested event dispatch resolves depth-first through the Queue rather than recursive gameplay mutation;
+- PlayCard and Draw shuffle continuations use atomic batch insertion where they form one logical dependent chain;
+- the Phase 6A suite contains 23 tests and passed UE5.8 self-hosted CI at 23/23.
+
+Phase 6B baseline validated:
+
+- `PlayerTurnEnding`, `EnemyTurnEnding` and `ResolutionFaulted` are explicit battle states;
+- player turn ending and fixed enemy `[DamageAction, TurnEndedAction]` batches are atomic and state commits happen only after successful insertion;
+- `TurnEndedAction` emits events at the correct post-commit point and lethal enemy actions suppress the normal enemy TurnEnded event;
+- ResolutionFault transitions BattleManager to `ResolutionFaulted` and stops normal turn progression;
+- player TurnEnd reactions finish before enemy actions begin;
+- Weak/Vulnerable/Frailty DataAssets decay only on their owner's TurnEnded event while Strength/Dexterity remain unchanged;
+- baseline UE5.8 gates passed Phase5 13/13 + Phase6A 23/23 + Phase6B 6/6 = 42/42;
+- baseline PIE validated player → enemy → player turn flow and the real configured Status DataAssets.
+
+Post-baseline Phase 6B hardening:
+
+- `OnQueueEmpty` is now a non-reentrant observable boundary;
+- BattleManager no longer synchronously starts the next turn from inside the QueueEmpty multicast;
+- one authoritative continuation is deferred until every QueueEmpty observer has returned;
+- the existing PumpQueue frame continues the next resolution without recursively nesting another QueueEmpty broadcast;
+- the Phase 6B QueueEmpty regression now records observer-visible boundary states and requires `PlayerTurnEnding` followed by `EnemyTurnEnding`;
+- this hardened HEAD requires one owner-triggered 42/42 UE5.8 rerun before Phase 6C starts.
 
 ### Manual UE assets/configuration
 
@@ -139,7 +170,7 @@ Content/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend
 ```
 
-Phase 5 status assets:
+Phase 5/6 status assets:
 
 ```text
 Content/SlayTheSpireDemo/Data/Status/DA_Status_Strength
@@ -203,6 +234,19 @@ AmountMode              = PresenceOnly
 ```
 
 For the Block domain, `Target` means the recipient of Block.
+
+Phase 6 turn-end trigger configuration:
+
+```text
+DA_Status_Weak
+DA_Status_Vulnerable
+DA_Status_Frailty
+└── Triggers[0] = TurnEndStatusDecayTrigger
+    Priority = 0
+    AmountToRemove = 1
+```
+
+Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -317,7 +361,7 @@ Phase 5 was built and validated through these vertical slices:
 5B1 FDamageSpec + DamageFlatAdd + Strength                         COMPLETE
 5B2 DamageRatio + Weak + Vulnerable                                COMPLETE
 5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty   COMPLETE
-5R  Phase 5 Automation Regression Gate                             COMPLETE
+5R  Phase 5 Automation Regression Gate                             COMPLETE / CI PASSED 13/13
 ```
 
 Phase 5 acceptance is satisfied:
@@ -325,10 +369,8 @@ Phase 5 acceptance is satisfied:
 ```text
 Phase 5C source compiles
 + Phase 5C UE5.8 PIE validation passes
-+ Phase 5 Automation regression tests pass
++ Phase 5 Automation regression tests pass in UE5.8 CI
 ```
-
-Next development phase is Phase 6 Battle Events and Triggers.
 
 #### Phase 5A — Status Runtime — COMPLETE
 
@@ -713,7 +755,7 @@ PIE
 → real UE object assembly, DataAsset configuration and end-to-end runtime wiring
 ```
 
-The hardened `.github/workflows/ue-phase5-tests.yml` workflow builds `SlayTheSpireDemoEditor` and runs `Automation RunTest SlayTheSpireDemo.Phase5` on the Windows UE5.8 self-hosted runner. The previous 12-test gate passed end-to-end. The updated 13-test suite passes locally and awaits the next owner-triggered workflow run.
+The hardened `.github/workflows/ue-phase5-tests.yml` workflow builds `SlayTheSpireDemoEditor` and runs `Automation RunTest SlayTheSpireDemo.Phase5` on the Windows UE5.8 self-hosted runner. The current 13-test gate has passed end-to-end.
 
 #### Phase 5 exclusions
 
@@ -735,7 +777,7 @@ dynamic card-text preview
 
 Keyword presentation remains deferred. Phase 5 establishes gameplay semantics for statuses such as Strength/Weak/Vulnerable/Dexterity/Frailty, but it does not make `Keyword` an alias for `UStatusData` or add UI keyword infrastructure merely because these mechanics have player-facing names.
 
-### Phase 6 — Battle Events and Triggers — NEXT
+### Phase 6 — Battle Events and Triggers — IN PROGRESS
 
 Phase 6 introduces deterministic post-commit facts and queued reactions without weakening the existing ActionQueue / Modifier / Commit boundaries.
 
@@ -785,19 +827,18 @@ BattleActionQueue executes reactions
 #### Phase 6 development order
 
 ```text
-6A  TurnEnd Trigger Vertical Slice                                 NEXT
-6B  Battle Turn Wiring
-6C  DeckShuffled Event
-6R  Phase 6 Regression Gate
+6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
+6B  Battle Turn Wiring                                             COMPLETE baseline / CI + PIE PASSED
+    QueueEmpty non-reentrancy hardening                            IMPLEMENTED / 42-test rerun pending
+6C  DeckShuffled Event                                             NEXT after rerun
+6R  Phase 6 Regression Gate + test-module extraction               PENDING
 ```
 
 Do not implement Phase 7 relics during Phase 6.
 
-#### Phase 6A — TurnEnd Trigger Vertical Slice — NEXT
+#### Phase 6A — TurnEnd Trigger Vertical Slice — COMPLETE
 
-Phase 6A must be a real vertical slice rather than horizontal infrastructure built around fake triggers.
-
-Minimum implemented mechanic:
+Implemented as a real vertical slice:
 
 ```text
 transient Weak Amount=2
@@ -816,24 +857,23 @@ Phase 6A includes:
 ```text
 atomic Queue batch insertion front/back
 Queue resolution-fault safety
-FTurnEndedEvent as the only initial event payload
+FTurnEndedEvent as the first event payload
 synchronous on-demand Status trigger collection
 transient deterministic TriggerCandidate sorting
 TurnEndStatusDecayTrigger
 exact-instance ReduceStatusAction
 queued depth-first nested reactions
+actual execution-order Automation coverage
 focused Unreal Automation Tests
 ```
-
-Do not wire the complete `ABattleManager` player/enemy turn lifecycle until Phase 6B.
 
 ##### Event representation and lifetime
 
 Events are short-lived typed value data, not gameplay UObjects and not persistent registry entries.
 
-Phase 6A introduces only `FTurnEndedEvent`. When Phase 6C adds a real second event, add `FDeckShuffledEvent` then. Do not predeclare speculative event alternatives.
+Phase 6A introduced only `FTurnEndedEvent`. Phase 6C adds the real second event, `FDeckShuffledEvent`. Do not predeclare speculative event alternatives.
 
-`FBattleEvent` may use a small tagged variant such as `TVariant` or an equivalently type-safe checked representation. Requirements are more important than the exact representation:
+`FBattleEvent` uses a small type-safe checked representation. Requirements:
 
 ```text
 UBattleTrigger receives const FBattleEvent&
@@ -870,7 +910,7 @@ build reactions
 discard candidates after Dispatch returns
 ```
 
-When Phase 7 introduces a real `RelicContainer`, extract the smallest trigger contributor/collector boundary needed to collect both Status and Relic sources. Do not prebuild that generic boundary during Phase 6A.
+When Phase 7 introduces a real `RelicContainer`, extract the smallest trigger contributor/collector boundary needed to collect both Status and Relic sources. Do not prebuild that generic boundary during Phase 6.
 
 `RuntimeSource` is authoritative for trigger-source metadata. For a Status candidate:
 
@@ -888,7 +928,7 @@ Candidate `TriggerDefinition` is logically const/shared configuration. `LocalTri
 
 ##### Trigger applicability and deterministic ordering
 
-Phase 6A sorting:
+Phase 6 sorting:
 
 ```text
 Priority
@@ -912,6 +952,15 @@ Event.TryGet<FTurnEndedEvent>() succeeds
 ```
 
 The collector may enumerate both Player and Enemy sources; `OtherActorsTurnDoesNotDecay` must be preserved by Trigger applicability.
+
+Eligibility trace terminology is intentionally explicit:
+
+```text
+FTriggerEligibilityRecord
+OutEligibilityTrace
+```
+
+It records candidates that passed `CanReact` in deterministic order; it does not claim successful reaction construction/insertion/execution. Actual execution ordering is tested separately. Do not reintroduce the old `FTriggerDispatchRecord` alias.
 
 ##### Trigger snapshot semantics
 
@@ -939,8 +988,6 @@ However every resulting BattleAction still validates live state at its own Execu
 Trigger eligibility = snapshot semantics
 Action mutation      = live validation
 ```
-
-This distinction is required for deterministic reasoning.
 
 ##### Trigger reaction building and failure semantics
 
@@ -1010,14 +1057,14 @@ If a future event requires tail placement or a different explicit timing boundar
 
 Preserve current individual `AddToFront()` LIFO behavior because Phase 3 deliberately relies on it.
 
-Add ordered atomic batch APIs:
+Ordered atomic batch APIs:
 
 ```text
 AddBatchToFrontPreserveOrder(...)
 AddBatchToBackPreserveOrder(...)
 ```
 
-Both should share one batch validator. Empty batch is a legal no-op success.
+Both share one batch validator. Empty batch is a legal no-op success.
 
 For every non-empty batch, validate the complete batch before modifying `PendingActions`:
 
@@ -1056,9 +1103,11 @@ Batch    [A, B, C]
 Result   [X, Y, A, B, C]
 ```
 
+Multiple Actions forming one inseparable logical continuation/dependent chain must use an atomic batch. `PlayCardAction` follow-ups and Draw `Shuffle → RetryDraw` are current examples.
+
 ##### Queue resolution-fault safety
 
-Phase 6 introduces a hard safety boundary against infinite or structurally invalid reaction chains.
+Phase 6 has a hard safety boundary against infinite or structurally invalid reaction chains.
 
 A finite action budget exists in all build configurations, including Shipping. It is a high framework safety limit, not a gameplay balance rule, and must not be exposed as normal DataAsset/designer configuration.
 
@@ -1079,7 +1128,7 @@ while next Action could execute:
 
 A true completed `QueueEmpty` resets the resolution counter. Reactions and nested reactions are part of the same logical resolution chain and consume the same budget.
 
-When a structural error is discovered while a current Action is still inside `Execute()` (for example Dispatcher final reaction insertion fails), do not clear `CurrentAction` from inside that Action's call stack. Instead:
+When a structural error is discovered while a current Action is still inside `Execute()`, do not clear `CurrentAction` from inside that Action's call stack. Instead:
 
 ```text
 Queue.RequestResolutionFault(Reason)
@@ -1106,13 +1155,11 @@ remain faulted until a new ActionQueue is created for a new battle
 
 Do not use `checkf` as the normal ResolutionFault mechanism. `ensure` alone is also insufficient because it does not stop the pump. The Queue must enter a real fault state.
 
-Phase 6B will make `ABattleManager` explicitly transition to `EBattleState::ResolutionFaulted` when `OnResolutionFaulted` fires.
-
 ##### Exact-instance status decay
 
 Do not implement turn-end decay as negative `ApplyStatusAction`.
 
-Introduce a dedicated `ReduceStatusAction` carrying the exact expected runtime `UStatusInstance*` plus the amount to remove.
+`ReduceStatusAction` carries the exact expected runtime `UStatusInstance*` plus the amount to remove.
 
 Authoritative mutation remains in `UStatusContainer`. Conceptually:
 
@@ -1145,9 +1192,9 @@ Weak#8 remains unchanged
 
 Runtime identity and RuntimeSequence semantics must remain intact.
 
-##### Phase 6A Automation acceptance
+##### Phase 6A Automation acceptance — PASSED
 
-Required focused tests:
+Phase 6A currently contains 23 tests. Core coverage includes:
 
 ```text
 Queue.BatchFrontPreservesOrder
@@ -1163,6 +1210,11 @@ Trigger.LocalTriggerIndexOrdering
 Trigger.CollectionOrderDoesNotMatter
 Trigger.ReactionBeforeExistingPending
 Trigger.NestedReactionDepthFirst
+Trigger.ActualPriorityExecutionOrdering
+Trigger.ActualRuntimeSequenceExecutionOrdering
+Trigger.ActualLocalTriggerIndexExecutionOrdering
+Trigger.ActualCollectionOrderDoesNotMatter
+Trigger.NestedReactionDepthFirstExecuteTimeDispatch
 
 Status.TurnEndDecay
 Status.TurnEndDecayRemovesExactInstanceAtZero
@@ -1173,13 +1225,13 @@ Status.SnapshotEligibilityVsLiveActionValidation
 Safety.ResolutionBudgetFaultsInsteadOfLoopingForever
 ```
 
-Do not mark Phase 6A complete until these intended semantics compile and pass in UE5.8 Automation.
+All 23 passed through the UE5.8 self-hosted Automation gate.
 
-#### Phase 6B — Battle Turn Wiring
+#### Phase 6B — Battle Turn Wiring — COMPLETE BASELINE / HARDENING RERUN PENDING
 
-After Phase 6A is stable, wire the real battle turn lifecycle.
+Phase 6B wires the real battle turn lifecycle.
 
-Add explicit ending/fault states as needed:
+Explicit ending/fault states:
 
 ```text
 PlayerTurnEnding
@@ -1225,7 +1277,7 @@ reactions
 one true final QueueEmpty
 ```
 
-Current Phase 6 fixed Enemy behavior may be constructed upfront because it is a known `DamageAction`:
+Current fixed Enemy behavior:
 
 ```text
 Build [EnemyDamageAction, TurnEndedAction(Enemy)]
@@ -1241,35 +1293,60 @@ When the Enemy `TurnEndedAction` executes, if combatants are still alive it tran
 
 `TurnEndedAction` checks actual combatant death directly; it must not depend on `BattleState == Victory/Defeat`, because battle-result state is finalized at the real QueueEmpty boundary.
 
-Final QueueEmpty flow:
+Final QueueEmpty macro progression is non-reentrant:
 
 ```text
-CheckBattleResult
+Resolution reaches QueueEmpty
 ↓
-Victory/Defeat → stop
-PlayerTurnEnding → StartEnemyTurn
-EnemyTurnEnding  → StartPlayerTurn
-ResolutionFaulted → no transition
+OnQueueEmpty.Broadcast begins
+↓
+BattleManager observes current ending state and registers one deferred authoritative continuation
+↓
+all other QueueEmpty listeners observe the same completed boundary state
+↓
+Broadcast fully returns
+↓
+deferred continuation starts the next turn / enqueues next batch
+↓
+existing PumpQueue frame continues the next resolution
+```
+
+Do not synchronously call `StartEnemyTurn`, `StartPlayerTurn` or recursively start a new Queue pump from inside the QueueEmpty multicast. Do not repair ordering by changing delegate registration order.
+
+`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` is the narrow boundary for this macro continuation. At most one authoritative continuation may be registered for one QueueEmpty boundary. Direct Action insertion during QueueEmpty observer notification is rejected.
+
+The observer-visible boundary sequence must be:
+
+```text
+first QueueEmpty callback  → BattleState == PlayerTurnEnding
+second QueueEmpty callback → BattleState == EnemyTurnEnding
+then final macro state      → BattleState == PlayerTurn
 ```
 
 `OnResolutionFaulted` makes BattleManager enter `EBattleState::ResolutionFaulted`, zero/reject player input, and stop turn/victory progression for that resolution. Log fault reason, executed count and last Action so PIE does not appear to freeze silently.
 
 The upfront Enemy batch rule is deliberately narrow. It applies to the current fixed Enemy behavior only. Future Enemy Intent/composite Actions may need Execute-time state to decide follow-ups and must continue to obey the project's Execute-time resolution rule.
 
-When dynamic Enemy continuation becomes concrete, introduce an explicit continuation/barrier insertion mechanism so dynamic follow-ups can be placed before the turn-end continuation. Do not make "all future Enemy actions must be precomputed" or "dynamic actions may never AddToBack" a permanent architecture rule, and do not implement a speculative continuation API in Phase 6.
+When dynamic Enemy continuation becomes concrete, introduce an explicit continuation/barrier insertion mechanism so dynamic follow-ups can be placed before the turn-end continuation. Do not make "all future Enemy actions must be precomputed" or "dynamic actions may never AddToBack" a permanent architecture rule.
 
-Phase 6B Automation should include:
+Phase 6B Automation contains exactly 6 tests:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
 Turn.EnemyBatchInsertionIsAtomic
 Turn.LethalEnemyActionSkipsTurnEndedEvent
-Turn.OneFinalQueueEmpty
+Turn.OneFinalQueueEmptyPerTurnBoundary
+Turn.ResolutionFaultTransitionsBattleState
+Turn.TurnEndReactionCompletesBeforeNextTurn
 ```
 
-PIE should validate real Weak/Vulnerable/Frailty turn-end decay for both Player and Enemy without growing new permanent `ABattleManager` rule-test entry points.
+`Turn.OneFinalQueueEmptyPerTurnBoundary` must assert observer-visible boundary state order, not only a count of two QueueEmpty callbacks.
 
-#### Phase 6C — DeckShuffled Event
+Baseline Phase 6B passed the owner-only UE5.8 gate at 6/6 while Phase5 13/13 and Phase6A 23/23 also remained green, for 42/42 total. Baseline PIE validated the real Weak/Vulnerable/Frailty DataAssets and player → enemy → player flow.
+
+The current QueueEmpty non-reentrancy hardening changed core Queue control flow, so rerun the 42-test Phase 6B workflow before starting Phase 6C. After it passes, perform one short PIE cycle confirming the normal turn loop still has no ResolutionFault.
+
+#### Phase 6C — DeckShuffled Event — NEXT
 
 Add `FDeckShuffledEvent` only when implementing this slice.
 
@@ -1304,6 +1381,8 @@ all Phase 6 Automation tests pass
 ```
 
 Use `Trigger.CollectionOrderDoesNotMatter`, not the obsolete `RegistrationOrderDoesNotMatter`, because Phase 6 has no persistent Trigger Registry.
+
+Phase 6R also owns the deferred engineering cleanup recorded in `docs/Phase6DeferredEngineering.md`: move Automation-only reflected test helpers out of the Runtime module into an Editor/Developer-only test module. Until that cleanup is complete, do not add new test-only `UCLASS` types to the Runtime module.
 
 ### Phase 7 — Relics
 
@@ -1413,6 +1492,12 @@ Build and validate the required Action or full turn batch, atomically enqueue it
 
 For Trigger collection, derive Owner, RuntimeSequence and definition metadata from the exact runtime source. Do not let callers independently pair a runtime source with separately supplied identity/order metadata.
 
+### 4.18 QueueEmpty is a non-reentrant observable boundary
+
+`OnQueueEmpty` observers must all see the same completed boundary before authoritative macro progression mutates `BattleState` or starts the next resolution.
+
+BattleManager must defer the one authoritative turn continuation until after the multicast returns. Do not make correctness depend on multicast registration order, and do not recursively run the next PumpQueue from inside the current QueueEmpty broadcast.
+
 ---
 
 ## 5. Modifier-Based Framework Architecture
@@ -1498,8 +1583,8 @@ Action Execute
 → cancellation/override when supported
 → produce resolved values
 → Commit
-→ future BattleEvent
-→ future Trigger Actions
+→ BattleEvent when the operation has a concrete event contract
+→ Trigger Actions
 ```
 
 Operation semantics and modifier applicability are distinct. `FDamageSpec.DamageKind` describes the operation; `ApplicableDamageKind` describes which operations a modifier accepts.
@@ -1539,7 +1624,7 @@ ScaleWithAmount
 
 Reapplication preserves RuntimeSequence; removal followed by recreation gets a new one.
 
-During Phase 5, `AmountToAdd > 0` and active Amount > 0. Do not use negative ApplyStatus deltas for lifecycle decay.
+Do not use negative ApplyStatus deltas for lifecycle decay; use exact-instance reduction Actions.
 
 ### 5.7 Integer modifier arithmetic
 
@@ -1570,7 +1655,7 @@ Block:   7 → Frailty 3/4 = 5
 
 ### 5.8 Modifier collection boundary
 
-Current Phase 5 pipelines may collect directly from `StatusContainer` because Status is currently the only implemented runtime modifier source.
+Current pipelines may collect directly from `StatusContainer` because Status is currently the only implemented runtime modifier source.
 
 This direct collection is an implementation detail, not a permanent statement that every modifier source is a Status.
 
@@ -1590,7 +1675,7 @@ Target source areas as needed:
 Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/ Tests/
 ```
 
-Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` now contains focused automation regressions and should remain small and rule-oriented.
+Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` contains focused automation regressions and should remain small and rule-oriented.
 
 Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
@@ -1600,7 +1685,7 @@ Prefer forward declarations and small public headers. UObject runtime ownership 
 
 Do not split it merely for aesthetic purity.
 
-Debug hooks are not intended to become permanent production battle APIs. Automation Tests now cover the stabilized Phase 5 deterministic rules. As Phase 6 introduces formal event/input paths, stop growing `ABattleManager` as the default place for new rule-test commands and incrementally separate debug harness responsibilities when there is a concrete maintenance benefit.
+Debug hooks are not intended to become permanent production battle APIs. Automation Tests cover stabilized deterministic rules. As formal event/input paths grow, stop growing `ABattleManager` as the default place for new rule-test commands and incrementally separate debug harness responsibilities when there is a concrete maintenance benefit.
 
 Do not combine that cleanup with unrelated gameplay feature work unless the separation is required for the feature.
 
@@ -1702,7 +1787,7 @@ optional Icon
 
 Do not create one gameplay UObject subclass per keyword, and do not require one DataAsset per keyword unless a concrete content/tooling need later justifies it.
 
-Presentation style is not gameplay logic. `Buff`, `Debuff`, `CardMechanic` or similar presentation categories may drive UMG colors/icons, but battle code must not depend on red/gold/etc. UI colors.
+Presentation style is not gameplay logic. `Buff`, `Debuff`, `CardMechanic` or similar presentation categories may drive UMG colors/icons, but battle code must not depend on UI colors.
 
 #### Card text templates
 
@@ -1802,6 +1887,8 @@ Saved/
 28. Do not add `TriggerPhase` until a concrete same-event before/after timing mechanic requires it.
 29. Current fixed Enemy behavior may use an upfront turn batch ending in `TurnEndedAction`; do not generalize this into a requirement to precompute future dynamic Enemy follow-ups. Add an explicit continuation/barrier mechanism only when a real dynamic Enemy mechanic needs it.
 30. ResolutionFault is framework safety, not gameplay balance. Keep a high safety budget in all builds and expose any lower configurable budget only through test-specific code.
+31. `OnQueueEmpty` is an observable non-reentrant boundary. BattleManager must defer macro turn progression until all observers return; never repair QueueEmpty ordering by relying on multicast registration order.
+32. Until Phase 6R extracts an Editor/Developer-only test module, do not add new test-only reflected `UCLASS` types to the Runtime module.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1815,13 +1902,24 @@ After C++ changes:
 - build `SlayTheSpireDemoEditor` when a build environment is available;
 - report build errors instead of masking them;
 - never claim successful UE build/PIE without actually running it;
-- if source tooling cannot run UE, require user-side compile/PIE before marking a phase complete.
+- if source tooling cannot run UE, require user-side compile/PIE before marking new source changes validated.
 
-For deterministic core rules, prefer adding focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
+For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-The Phase 5 regression gate is automated by `.github/workflows/ue-phase5-tests.yml` on the Windows `ue58` self-hosted runner. Keep the workflow manually triggered and restricted to trusted `main` execution unless the self-hosted security model is deliberately changed.
+Current trusted self-hosted regression evidence before the latest QueueEmpty hardening:
 
-Phase 6A must be Automation-validated before Phase 6B editor wiring. Phase 6R must rerun all 13 Phase 5 tests in addition to the Phase 6 suite.
+```text
+Phase 5   13/13 PASS
+Phase 6A  23/23 PASS
+Phase 6B   6/6  PASS
+Total     42/42 PASS
+```
+
+The Phase 6B owner-only workflow is `.github/workflows/ue-phase6b-tests.yml`. Keep self-hosted workflows manually triggered, owner-only and restricted to trusted `main`; do not add PR/external triggers.
+
+Because the QueueEmpty non-reentrancy hardening changes core queue control flow, rerun the full Phase 6B workflow and require the same 42/42 result before starting Phase 6C. Then do one short PIE player → enemy → player cycle and confirm no `ResolutionFault`.
+
+Phase 6R must rerun all 13 Phase 5 tests plus the complete Phase 6 suite and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -1900,9 +1998,28 @@ Phase 5R
 Tests/Phase5RegressionTests.cpp
 .github/workflows/ue-phase5-tests.yml
 .github/workflows/runner-smoke-test.yml
+
+Phase 6A
+Events/BattleEvent.h
+Events/BattleTrigger.h/.cpp
+Events/BattleEventDispatcher.h/.cpp
+Events/TurnEndStatusDecayTrigger.h/.cpp
+Actions/ReduceStatusAction.h/.cpp
+Actions/BattleActionQueue.h/.cpp
+Tests/Phase6ARegressionTests.cpp
+Tests/Phase6AExecutionOrderTests.cpp
+Tests/Phase6ATestTypes.h/.cpp
+.github/workflows/ue-phase6a-tests.yml
+
+Phase 6B
+Actions/TurnEndedAction.h/.cpp
+Battle/BattleManager.h/.cpp
+Actions/BattleActionQueue.h/.cpp
+Tests/Phase6BRegressionTests.cpp
+.github/workflows/ue-phase6b-tests.yml
 ```
 
-`ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
+`ABattleManager` currently owns the battle-scoped ActionQueue, EventDispatcher, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
 
 ---
 
@@ -1916,9 +2033,13 @@ Tests/Phase5RegressionTests.cpp
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
 - Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
 - Phase 5C — PASSED: Execute-time typed Block resolution, data-driven Dexterity/Frailty, PresenceOnly semantics, deterministic Phase ordering and real Defend integration.
-- Phase 5R — LOCAL PASSED / CI RERUN REQUIRED: all 13 focused Unreal Automation regression tests pass locally; the previous 12-test suite passed through UE5.8 self-hosted CI, and the updated gate awaits an owner-triggered run.
+- Phase 5R — PASSED: 13/13 focused Unreal Automation tests passed UE5.8 self-hosted CI.
 - Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
-- Phase 6 — NOT YET PASSED: Phase 6A is the next implementation slice.
+- Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
+- Phase 6B — BASELINE PASSED: 6/6 UE5.8 Automation while Phase5+6A remained green (42/42 total), plus real DataAsset PIE validation.
+- Phase 6B QueueEmpty non-reentrancy hardening — IMPLEMENTED / REVALIDATION REQUIRED: source and strengthened observer-order regression are on current HEAD; rerun 42/42 and one short PIE cycle before proceeding.
+- Phase 6C — NEXT after the hardened Phase 6B rerun.
+- Phase 6 — NOT YET COMPLETE: 6C and 6R remain.
 
 ---
 
