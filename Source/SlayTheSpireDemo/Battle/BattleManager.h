@@ -5,11 +5,14 @@
 #include "BattleManager.generated.h"
 
 class ACombatant;
+class UBattleAction;
 class UBattleActionQueue;
+class UBattleEventDispatcher;
 class UCardData;
 class UCardInstance;
 class UDeckRuntime;
 class UStatusData;
+class UTurnEndedAction;
 enum class EDamageKind : uint8;
 
 UENUM(BlueprintType)
@@ -17,9 +20,12 @@ enum class EBattleState : uint8
 {
 	BattleStart UMETA(DisplayName = "Battle Start"),
 	PlayerTurn UMETA(DisplayName = "Player Turn"),
+	PlayerTurnEnding UMETA(DisplayName = "Player Turn Ending"),
 	EnemyTurn UMETA(DisplayName = "Enemy Turn"),
+	EnemyTurnEnding UMETA(DisplayName = "Enemy Turn Ending"),
 	Victory UMETA(DisplayName = "Victory"),
-	Defeat UMETA(DisplayName = "Defeat")
+	Defeat UMETA(DisplayName = "Defeat"),
+	ResolutionFaulted UMETA(DisplayName = "Resolution Faulted")
 };
 
 UCLASS(Blueprintable)
@@ -112,10 +118,21 @@ public:
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
 
+#if WITH_DEV_AUTOMATION_TESTS
+	UBattleActionQueue* GetActionQueueForTesting() const;
+	void SetForceInvalidPlayerEndBatchForTesting(bool bForceInvalid);
+	void SetForceInvalidEnemyTurnBatchForTesting(bool bForceInvalid);
+	EBattleState GetStateBeforeLastResolutionFaultForTesting() const;
+#endif
+
 private:
+	friend class UTurnEndedAction;
+
 	void StartPlayerTurn();
 	void StartEnemyTurn();
 	void HandleActionQueueEmpty();
+	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
+	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
 	void CheckBattleResult();
 
 	void QueueDamageAction(ACombatant* Source, ACombatant* Target, int32 BaseAmount, EDamageKind DamageKind);
@@ -128,13 +145,23 @@ private:
 	bool HasValidCombatants() const;
 	bool HasValidActionQueue() const;
 	bool HasValidDeckRuntime() const;
+	bool HasValidEventDispatcher() const;
 	bool IsActionQueueBusy() const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleActionQueue> ActionQueue = nullptr;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UBattleEventDispatcher> EventDispatcher = nullptr;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
 
 	uint64 NextRuntimeSequence = 1;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	bool bForceInvalidPlayerEndBatchForTesting = false;
+	bool bForceInvalidEnemyTurnBatchForTesting = false;
+	EBattleState StateBeforeLastResolutionFaultForTesting = EBattleState::BattleStart;
+#endif
 };
