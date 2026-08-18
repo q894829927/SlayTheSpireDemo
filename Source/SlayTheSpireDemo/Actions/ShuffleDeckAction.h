@@ -14,6 +14,7 @@ class SLAYTHESPIREDEMO_API UShuffleDeckAction : public UBattleAction
 	GENERATED_BODY()
 
 public:
+	void Initialize(UDeckRuntime* InDeck);
 	void Initialize(
 		UDeckRuntime* InDeck,
 		UBattleEventDispatcher* InEventDispatcher,
