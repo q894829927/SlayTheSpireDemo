@@ -22,6 +22,17 @@ bool UStatusInstance::AddAmount(int32 AmountToAdd)
 	return true;
 }
 
+bool UStatusInstance::ReduceAmount(int32 AmountToRemove)
+{
+	if (AmountToRemove <= 0 || Amount <= AmountToRemove)
+	{
+		return false;
+	}
+
+	Amount -= AmountToRemove;
+	return true;
+}
+
 const UStatusData* UStatusInstance::GetDefinition() const
 {
 	return Definition.Get();
