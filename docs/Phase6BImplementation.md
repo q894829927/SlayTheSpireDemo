@@ -1,6 +1,6 @@
 # Phase 6B — Battle Turn Wiring
 
-Status: **COMPLETE / PASSED**. Source implementation, UE5.8 Editor build, Automation gate (42/42), manual Status DataAsset configuration, and PIE validation have all passed.
+Status: **COMPLETE at the gameplay-slice level; baseline UE5.8 Editor build + Automation (42/42) + PIE passed. QueueEmpty non-reentrancy hardening has now been implemented and requires one UE5.8 regression rerun before Phase 6C starts.**
 
 ## Runtime wiring implemented
 
@@ -15,7 +15,7 @@ PlayerTurn
 → TurnEndedEvent(Player)
 → reactions
 → one final QueueEmpty for the player-ending boundary
-→ StartEnemyTurn
+→ after all QueueEmpty observers return, start EnemyTurn
 
 StartEnemyTurn
 → atomically enqueue [EnemyDamageAction, TurnEndedAction(Enemy)]
@@ -25,7 +25,7 @@ StartEnemyTurn
 → TurnEndedEvent(Enemy)
 → reactions
 → one final QueueEmpty for the enemy-ending boundary
-→ StartPlayerTurn
+→ after all QueueEmpty observers return, start PlayerTurn
 ```
 
 Implemented battle states:
@@ -65,7 +65,41 @@ A lethal action earlier in the enemy batch suppresses the normal enemy `TurnEnde
 
 Queue `ResolutionFault` transitions the BattleManager to `EBattleState::ResolutionFaulted`, sets Energy to zero, and prevents normal turn progression.
 
-## Phase 6B Automation gate — PASSED
+## QueueEmpty non-reentrancy hardening — IMPLEMENTED, REGRESSION RERUN PENDING
+
+A post-6B review identified that synchronous macro progression inside `OnQueueEmpty.Broadcast()` could recursively run the next resolution before later QueueEmpty listeners had observed the current boundary.
+
+The hardened contract is now:
+
+```text
+Resolution A becomes empty
+→ Queue keeps the pump frame active
+→ OnQueueEmpty.Broadcast()
+    → BattleManager records exactly one deferred authoritative continuation
+    → UI / debugger / other observers see the completed A boundary state
+→ Broadcast fully returns
+→ deferred continuation runs
+→ next authoritative batch is enqueued
+→ StartProcessing reports success without recursively entering PumpQueue
+→ the existing PumpQueue frame continues Resolution B
+→ Resolution B QueueEmpty is therefore not nested inside A's multicast
+```
+
+`UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(...)` accepts at most one authoritative continuation for a QueueEmpty boundary. Direct Action insertion during the QueueEmpty observer multicast is rejected; authoritative producers must first defer macro progression.
+
+`ABattleManager::HandleActionQueueEmpty()` no longer calls `StartEnemyTurn()` / `StartPlayerTurn()` synchronously. It defers those transitions until every observer of the current boundary has returned.
+
+This preserves the observable boundary order independently of multicast registration order:
+
+```text
+observer callback #1 sees PlayerTurnEnding
+observer callback #2 sees EnemyTurnEnding
+final state after both boundaries = PlayerTurn
+```
+
+The existing `Turn.OneFinalQueueEmptyPerTurnBoundary` Automation test has been strengthened to assert these observed states instead of only asserting `QueueEmptyCount == 2`.
+
+## Phase 6B Automation gate — BASELINE PASSED; HARDENED HEAD RERUN REQUIRED
 
 Prefix:
 
@@ -73,7 +107,7 @@ Prefix:
 SlayTheSpireDemo.Phase6B
 ```
 
-Exactly 6 Phase 6B tests passed:
+Exactly 6 Phase 6B tests remain expected:
 
 ```text
 Turn.PlayerEndingStateCommitsOnlyAfterEnqueueSuccess
@@ -84,7 +118,7 @@ Turn.ResolutionFaultTransitionsBattleState
 Turn.TurnEndReactionCompletesBeforeNextTurn
 ```
 
-Validated UE5.8 gates:
+Previously validated UE5.8 gates before the non-reentrancy hardening:
 
 ```text
 Phase 5   13/13 PASS
@@ -93,7 +127,7 @@ Phase 6B   6/6  PASS
 Total     42/42 PASS
 ```
 
-The UE5.8 Editor build completed successfully as part of the workflow.
+The current hardened source must rerun the same 42-test owner-only UE5.8 workflow before Phase 6C work begins.
 
 ## Manual UE Editor configuration — COMPLETE
 
@@ -119,7 +153,7 @@ DA_Status_Strength
 DA_Status_Dexterity
 ```
 
-## PIE validation — PASSED
+## PIE validation — BASELINE PASSED
 
 ### Weak / Vulnerable / Strength cycle
 
@@ -193,7 +227,7 @@ TurnEndedEvent(Player)
 
 Enemy damage consumed the existing 5 Block, then the enemy TurnEnded event completed with no decay reaction, followed by one final `QueueEmpty` and return to `PlayerTurn`.
 
-### Final PIE acceptance
+### Baseline PIE acceptance
 
 Validated:
 
@@ -207,11 +241,14 @@ No ResolutionFault occurred in either validation cycle
 Turn progression occurs only from final QueueEmpty boundaries
 ```
 
+The non-reentrancy hardening changes QueueEmpty observer timing rather than gameplay results. After the 42/42 Automation rerun, do one short PIE cycle to confirm the normal player → enemy → player loop still has no ResolutionFault.
+
 ## Next
 
 ```text
-Phase 6A  COMPLETE
-Phase 6B  COMPLETE
-Phase 6C  DeckShuffled Event — NEXT
+Phase 6A  COMPLETE / UE5.8 CI PASSED
+Phase 6B  COMPLETE gameplay slice / baseline UE5.8 CI + PIE PASSED
+          QueueEmpty non-reentrancy hardening implemented; rerun pending
+Phase 6C  DeckShuffled Event — NEXT after hardened 42/42 rerun
 Phase 6R  Full Regression + deferred test-module extraction
 ```
