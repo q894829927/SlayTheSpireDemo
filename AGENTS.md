@@ -43,12 +43,12 @@ BattleActionQueue
 - [x] Phase 2 `BattleActionQueue` implemented and PIE-validated.
 - [x] Phase 3 deck system implemented and PIE-validated.
 - [x] Phase 4 data-driven cards implemented and PIE-validated.
-- [ ] Phase 5 Modifier-Based Framework / status system implemented.
+- [x] Phase 5 Modifier-Based Framework / status system implemented and validated.
   - [x] Phase 5A Status Runtime + ApplyStatusAction implemented and PIE-validated.
   - [x] Phase 5B1 Damage Spec + DamageFlatAdd + Strength implemented and PIE-validated.
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
-  - [ ] Phase 5 regression Automation Tests implemented and passed.
+  - [x] Phase 5R regression Automation Tests implemented and passed through UE5.8 self-hosted CI.
 - [ ] Phase 6 battle events / triggers implemented.
 - [ ] Phase 7 relic system implemented.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture validation implemented.
@@ -114,6 +114,16 @@ Phase 5C validated:
 - the direct Phase 5C test resolves Base Block 5 to 5 and commits one final 5 Block with one final `QueueEmpty`;
 - the real `DA_Card_Defend` path resolves through `PlayCardAction → GainBlockAction → FBlockSpec → BlockModifierPipeline → FinishCardPlayAction`, adding another 5 Block and moving Defend to Discard correctly;
 - existing Block=5 therefore becomes Block=10 after playing Defend, confirming the card path and pipeline integrate without breaking card cleanup.
+
+Phase 5R validated:
+
+- focused Unreal Automation Tests run against transient runtime objects and assert resolved gameplay state/results directly rather than parsing expected log text;
+- Damage regression coverage includes BaseZeroCanReceiveFlatAdd, Strength ScaleWithAmount, Weak/Vulnerable PresenceOnly, per-modifier integer flooring, Phase-before-RuntimeSequence ordering and Attack-vs-Effect filtering;
+- Block regression coverage includes BaseZeroCanReceiveFlatAdd, Dexterity ScaleWithAmount and Frailty PresenceOnly;
+- Status regression coverage verifies reapplication preserves runtime identity/RuntimeSequence while merging Amount;
+- Queue regression coverage verifies existing front/back insertion semantics deterministically;
+- the suite contains 12 Phase 5 tests;
+- the Windows `ue58` self-hosted runner successfully completed both the runner smoke test and `phase5-tests` job, including `SlayTheSpireDemoEditor` build and Phase 5 Automation execution.
 
 ### Manual UE assets/configuration
 
@@ -294,19 +304,19 @@ Phase 4 durable rules:
 - card destination resolves at cleanup Execute-time;
 - actions fail soft and always `Finish()` on invalid execution preconditions.
 
-### Phase 5 — Modifier-Based Framework and Status System
+### Phase 5 — Modifier-Based Framework and Status System — COMPLETE
 
-Build Phase 5 through vertical validation:
+Phase 5 was built and validated through these vertical slices:
 
 ```text
 5A  Status Runtime + ApplyStatusAction                              COMPLETE
 5B1 FDamageSpec + DamageFlatAdd + Strength                         COMPLETE
 5B2 DamageRatio + Weak + Vulnerable                                COMPLETE
 5C  FBlockSpec + BlockFlatAdd + BlockRatio + Dexterity + Frailty   COMPLETE
-5R  Phase 5 Automation Regression Gate                             NEXT
+5R  Phase 5 Automation Regression Gate                             COMPLETE
 ```
 
-Do not mark Phase 5 complete until:
+Phase 5 acceptance is satisfied:
 
 ```text
 Phase 5C source compiles
@@ -314,7 +324,7 @@ Phase 5C source compiles
 + Phase 5 Automation regression tests pass
 ```
 
-The first two requirements are now satisfied. Phase 5R remains the final gate.
+Next development phase is Phase 6 Battle Events and Triggers.
 
 #### Phase 5A — Status Runtime — COMPLETE
 
@@ -661,21 +671,17 @@ With 5 Block already present from the direct test, playing Defend increases Bloc
 
 CardData, CardEffect, PlayCardAction and DeckRuntime required no architecture changes for Phase 5C.
 
-#### Phase 5R — Automation Regression Gate — NEXT
+#### Phase 5R — Automation Regression Gate — COMPLETE
 
-After Phase 5C PIE validation, add a focused Unreal Automation Test suite before declaring Phase 5 complete.
-
-Automation Tests are not a replacement for PIE. Their roles are:
+Implemented a focused Unreal Automation suite at:
 
 ```text
-Automation Tests
-→ deterministic rules and regression invariants
-
-PIE
-→ real UE object assembly, DataAsset configuration and end-to-end runtime wiring
+Source/SlayTheSpireDemo/Tests/Phase5RegressionTests.cpp
 ```
 
-Minimum Phase 5 regression coverage should include tests equivalent to:
+Tests construct transient runtime objects and validate state/results directly. They do not depend on `L_BattleTest`, manual DataAsset setup or log parsing.
+
+Validated test set:
 
 ```text
 Damage.BaseZeroCanReceiveFlatAdd
@@ -685,17 +691,28 @@ Damage.VulnerablePresenceOnly
 Damage.RatioFloorsPerModifier
 Damage.PhaseBeforeRuntimeSequence
 Damage.EffectFiltersAttackModifiers
+Block.BaseZeroCanReceiveFlatAdd
 Block.DexterityScalesWithAmount
 Block.FrailtyPresenceOnly
 Status.ReapplyPreservesRuntimeSequence
 Queue.FrontBackOrdering
 ```
 
-Prefer direct deterministic rule tests over tests that merely parse logs. Do not build a large test framework beyond what these concrete invariants require.
+Automation Tests and PIE have separate roles:
+
+```text
+Automation Tests
+→ deterministic rules and regression invariants
+
+PIE
+→ real UE object assembly, DataAsset configuration and end-to-end runtime wiring
+```
+
+The hardened `.github/workflows/ue-phase5-tests.yml` workflow builds `SlayTheSpireDemoEditor` and runs `Automation RunTest SlayTheSpireDemo.Phase5` on the Windows UE5.8 self-hosted runner. The Phase 5 gate passed end-to-end.
 
 #### Phase 5 exclusions
 
-Do not implement these during Phase 5 without a concrete requirement:
+These were intentionally not implemented during Phase 5:
 
 ```text
 status turn-end decay
@@ -711,9 +728,9 @@ dynamic card-text preview
 
 `bCancelled` is not required in Damage/Block specs until a concrete cancellation mechanic exists.
 
-Keyword presentation is intentionally deferred. Phase 5 establishes gameplay semantics for statuses such as Strength/Weak/Vulnerable/Dexterity/Frailty, but it must not make `Keyword` an alias for `UStatusData` or add UI keyword infrastructure merely because these mechanics have player-facing names.
+Keyword presentation remains deferred. Phase 5 establishes gameplay semantics for statuses such as Strength/Weak/Vulnerable/Dexterity/Frailty, but it does not make `Keyword` an alias for `UStatusData` or add UI keyword infrastructure merely because these mechanics have player-facing names.
 
-### Phase 6 — Battle Events and Triggers
+### Phase 6 — Battle Events and Triggers — NEXT
 
 Introduce explicit post-commit events such as battle start, turn start/end, card played/drawn/exhausted, deck shuffled, damage events and enemy killed. Listeners normally enqueue actions rather than synchronously mutating unrelated state.
 
@@ -1028,7 +1045,7 @@ Target source areas as needed:
 Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/ Tests/
 ```
 
-Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` should be created only when Phase 5R Automation Tests are implemented.
+Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` now contains focused automation regressions and should remain small and rule-oriented.
 
 Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
@@ -1036,9 +1053,9 @@ Prefer forward declarations and small public headers. UObject runtime ownership 
 
 `ABattleManager` may temporarily own battle orchestration, the battle-scoped sequence allocator and PIE debug entry points while the learning/demo framework is still being validated.
 
-Do not split it during Phase 5 merely for aesthetic purity.
+Do not split it merely for aesthetic purity.
 
-However, debug hooks are not intended to become permanent production battle APIs. Once Automation Tests cover core rule regressions and Phase 6 introduces formal event/input paths, stop growing `ABattleManager` as the default place for new test commands and incrementally separate debug harness responsibilities when there is a concrete maintenance benefit.
+Debug hooks are not intended to become permanent production battle APIs. Automation Tests now cover the stabilized Phase 5 deterministic rules. As Phase 6 introduces formal event/input paths, stop growing `ABattleManager` as the default place for new rule-test commands and incrementally separate debug harness responsibilities when there is a concrete maintenance benefit.
 
 Do not combine that cleanup with unrelated gameplay feature work unless the separation is required for the feature.
 
@@ -1223,13 +1240,13 @@ Saved/
 11. Do not implement future mechanisms merely because they are documented.
 12. Do not introduce `FInstancedStruct`, StructUtils or another representation dependency without a concrete requirement.
 13. Do not implement Phase 6 status decay, battle-event listeners or relic triggers during Phase 5 merely to make Weak/Vulnerable/Frailty expire.
-14. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy during Phase 5 without a concrete implemented need.
-15. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview during Phase 5 merely because status mechanics now have player-facing keyword names.
+14. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy without a concrete implemented need.
+15. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview merely because status mechanics have player-facing keyword names.
 16. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
-17. Do not introduce a generic modifier-contributor framework during Phase 5 while Status is the only real source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
+17. Do not introduce a generic modifier-contributor framework while Status is the only real source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
 18. Never implement a Relic or another unrelated modifier source as a fake Status merely to reuse StatusContainer collection.
 19. Phase 6 Trigger/Event execution must not depend on multicast delegate registration order, UObject address, actor discovery order or unordered containers; listener order and reaction placement must be explicit.
-20. Do not keep adding permanent rule-test entry points to `ABattleManager` once Automation Tests can cover the same deterministic regression; preserve PIE hooks only where end-to-end editor validation still adds value.
+20. Do not keep adding permanent rule-test entry points to `ABattleManager` when Automation Tests can cover the same deterministic regression; preserve PIE hooks only where end-to-end editor validation still adds value.
 
 Prefer clear architecture over clever abstractions.
 
@@ -1247,7 +1264,7 @@ After C++ changes:
 
 For deterministic core rules, prefer adding focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Phase 5 cannot be marked complete after Phase 5C PIE alone. Its final acceptance additionally requires the Phase 5 regression Automation Test gate documented in Phase 5R.
+The Phase 5 regression gate is now automated by `.github/workflows/ue-phase5-tests.yml` on the Windows `ue58` self-hosted runner. Keep the workflow manually triggered and restricted to trusted `main` execution unless the self-hosted security model is deliberately changed.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -1321,6 +1338,11 @@ Modifiers/Block/BlockModifierPipeline.h/.cpp
 Status/StatusData.h
 Actions/GainBlockAction.cpp
 Battle/BattleManager.h/.cpp
+
+Phase 5R
+Tests/Phase5RegressionTests.cpp
+.github/workflows/ue-phase5-tests.yml
+.github/workflows/runner-smoke-test.yml
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -1337,7 +1359,8 @@ Battle/BattleManager.h/.cpp
 - Phase 5B1 — PASSED: Execute-time typed damage resolution, data-driven Strength FlatAdd and Attack-vs-Effect applicability filtering.
 - Phase 5B2 — PASSED: integer DamageRatio resolution, PresenceOnly semantics, deterministic Phase ordering and Weak/Vulnerable Attack filtering.
 - Phase 5C — PASSED: Execute-time typed Block resolution, data-driven Dexterity/Frailty, PresenceOnly semantics, deterministic Phase ordering and real Defend integration.
-- Phase 5 — NOT YET PASSED: only the Phase 5 Automation regression gate remains.
+- Phase 5R — PASSED: 12 focused Unreal Automation regression tests passed through the UE5.8 self-hosted CI workflow.
+- Phase 5 — PASSED: Modifier-Based Framework and Status System complete for the defined Phase 5 scope.
 
 ---
 
@@ -1362,5 +1385,5 @@ When completing a meaningful phase:
 - update Current Repository State;
 - record durable architecture invariants;
 - record required manual UE assets/configuration;
-- keep documentation synchronized with actual source/PIE state;
+- keep documentation synchronized with actual source/PIE/Automation state;
 - do not fill this file with daily implementation trivia.
