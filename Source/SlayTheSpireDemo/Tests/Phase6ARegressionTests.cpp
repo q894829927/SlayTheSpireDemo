@@ -153,7 +153,8 @@ namespace Phase6ARegression
 	}
 }
 
-using namespace Phase6ARegression;
+namespace Phase6ARegression
+{
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FPhase6AQueueBatchFrontPreservesOrderTest,
@@ -681,5 +682,7 @@ bool FPhase6ASafetyResolutionBudgetFaultsInsteadOfLoopingForeverTest::RunTest(co
 	TestEqual(TEXT("Fault isolates remaining pending actions"), Queue->GetPendingCount(), 0);
 	return true;
 }
+
+} // namespace Phase6ARegression
 
 #endif
