@@ -1,11 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../Cards/CardInstance.h"
 #include "../Cards/CardTypes.h"
+#include "../Combat/Combatant.h"
 #include "../Enemy/EnemyIntent.h"
 
-class ACombatant;
-class UCardInstance;
 enum class EBattleState : uint8;
 
 struct SLAYTHESPIREDEMO_API FStatusReadView
