@@ -1,8 +1,23 @@
 # Phase 6UI-A1 — Operable Battle HUD
 
-Status: **SOURCE FOUNDATION IMPLEMENTED / UE5.8 BUILD + AUTOMATION + UMG ASSET/PIE VALIDATION PENDING**.
+Status: **SOURCE GATE PASSED / UMG ASSET + PIE VALIDATION PENDING**.
 
-UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions after the source gate is green.
+UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions.
+
+The owner-confirmed UE5.8 source gate passed after the final literal fault-log expectation fix:
+
+```text
+SlayTheSpireDemoEditor build  PASS
+Phase5       13/13 PASS
+Phase6A      23/23 PASS
+Phase6B      12/12 PASS
+Phase6C       5/5  PASS
+Phase6UIA0   20/20 PASS
+Phase6UIA1    9/9  PASS
+Current run  82/82 PASS
+```
+
+The exact total is run evidence, not a permanent architecture acceptance constant.
 
 ## Responsibility split
 
@@ -155,17 +170,20 @@ Source/SlayTheSpireDemo/UI/BattleHUDWidgetBase.h/.cpp
 Source/SlayTheSpireDemo/UI/BattleHUDPresenter.h/.cpp
 ```
 
-The Runtime module now depends on `UMG` because `UBattleHUDWidgetBase` is a public Runtime type. The project still does not enable the Unreal MVVM plugin; the architecture uses MVVM-style responsibility boundaries without adding a plugin dependency.
+The Runtime module depends on `UMG` because `UBattleHUDWidgetBase` is a public Runtime type. The project still does not enable the Unreal MVVM plugin; the architecture uses MVVM-style responsibility boundaries without adding a plugin dependency.
 
-## Automation source gate
+## Automation source gate — PASSED
 
-Editor-only UI-A1 tests live in:
+Editor-only UI-A1 tests live under:
 
 ```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA1RegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA1TestFixture.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA1ViewModelTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA1InteractionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA1TerminalTests.cpp
 ```
 
-Current named invariants cover:
+Validated named invariants:
 
 ```text
 ViewModel.SubscribeThenPullBuildsHUD
@@ -197,9 +215,11 @@ all currently named UI-A1 ViewModel invariants pass
 concrete WBP_BattleHUD can be assembled and PIE-validates one normal playable battle loop
 ```
 
-## User asset work after source gate
+The first three requirements are now satisfied. UI-A1 remains incomplete until the concrete UMG/PIE requirement passes.
 
-After the C++/Automation gate is green, user action is required in UE Editor:
+## User asset work — CURRENT NEXT STEP
+
+User action is required in UE Editor:
 
 ```text
 create WBP_BattleHUD derived from UBattleHUDWidgetBase
@@ -210,8 +230,6 @@ assign the existing BattleManager instance
 assign WBP_BattleHUD as WidgetClass
 PIE one player → enemy → player cycle without gameplay-driving debug keys
 ```
-
-Exact widget construction steps should be given only after source compilation/Automation is green, so Blueprint work is not built on an unvalidated C++ surface.
 
 ## Not in UI-A1
 
