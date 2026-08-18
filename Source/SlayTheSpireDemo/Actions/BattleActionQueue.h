@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Templates/Function.h"
 #include "UObject/Object.h"
 #include "BattleActionQueue.generated.h"
 
@@ -25,6 +26,14 @@ public:
 	bool AddBatchToBackPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool AddBatchToFrontPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool StartProcessing();
+
+	// QueueEmpty observers may inspect the completed boundary, but authoritative
+	// macro progression must not synchronously start a new resolution from inside
+	// the multicast broadcast. The one authoritative continuation registered here
+	// runs only after every QueueEmpty listener has returned. If it enqueues and
+	// starts another batch, the existing PumpQueue call continues that work without
+	// nesting another QueueEmpty broadcast inside the previous one.
+	bool DeferUntilAfterQueueEmptyBroadcast(TFunction<void()>&& Continuation);
 
 	bool RequestResolutionFault(const FString& Reason);
 	bool IsResolutionFaulted() const;
@@ -59,9 +68,13 @@ private:
 	TObjectPtr<UBattleAction> LastExecutedAction = nullptr;
 
 	bool bIsPumping = false;
+	bool bIsBroadcastingQueueEmpty = false;
+	bool bIsExecutingPostQueueEmptyContinuation = false;
+	bool bHasDeferredQueueEmptyContinuation = false;
 	bool bResolutionFaultRequested = false;
 	bool bResolutionFaulted = false;
 	int32 ExecutedCountInResolution = 0;
 	int32 MaxActionsPerResolution = DefaultMaxActionsPerResolution;
 	FString ResolutionFaultReason;
+	TFunction<void()> DeferredQueueEmptyContinuation;
 };
