@@ -21,6 +21,14 @@ public:
 		UCardInstance* InCard,
 		ACombatant* InSource,
 		ACombatant* InRequestedTarget,
+		UDeckRuntime* InDeck
+	);
+
+	void Initialize(
+		ABattleManager* InBattle,
+		UCardInstance* InCard,
+		ACombatant* InSource,
+		ACombatant* InRequestedTarget,
 		UDeckRuntime* InDeck,
 		UBattleEventDispatcher* InEventDispatcher,
 		const TArray<ACombatant*>& InEventCombatants
