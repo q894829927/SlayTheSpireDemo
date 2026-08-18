@@ -49,7 +49,7 @@ Phase6CRegressionTests.cpp
 
 The reflected test helpers now export from the test module through `SLAYTHESPIREDEMOTESTS_API` rather than the Runtime module API macro.
 
-Because the existing Runtime project predates a `Public/Private` header layout, the test module keeps a private legacy include path rooted at `Source/SlayTheSpireDemo/Tests`. This lets the moved tests preserve their existing relative Runtime-header include shapes without widening the Runtime module's public include surface solely for tests.
+Because the existing Runtime project predates a `Public/Private` header layout, the test module keeps a private legacy include anchor at the existing Runtime `Actions/` directory. The migrated tests retain their established `../Actions`, `../Status`, `../Cards`, etc. include shapes; resolving them through this private anchor avoids widening the Runtime module's public include surface solely for Automation.
 
 ## Runtime / Shipping boundary
 
