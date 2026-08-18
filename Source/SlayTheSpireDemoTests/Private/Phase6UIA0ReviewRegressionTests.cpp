@@ -520,6 +520,42 @@ namespace Phase6UIA0ReviewRegression
 	}
 
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FLateSubscriberPullsCurrentSnapshotTest,
+		"SlayTheSpireDemo.Phase6UIA0.ReadStateReady.LateSubscriberPullsCurrentSnapshotBeforeWaiting",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FLateSubscriberPullsCurrentSnapshotTest::RunTest(const FString& Parameters)
+	{
+		// FBattleFixture completes and flushes the initial battle-ready publication
+		// before this test attaches its simulated ViewModel listener.
+		FBattleFixture Fixture(1, 1, 0, 5);
+		if (!RequireReady(*this, Fixture)) return false;
+
+		int32 ReadyCount = 0;
+		Fixture.Battle->OnReadStateReady.AddLambda([&](uint64, uint64) { ++ReadyCount; });
+
+		FBattleReadSnapshot InitialSnapshot;
+		TestTrue(
+			TEXT("Late subscriber performs its required immediate player-facing snapshot pull"),
+			Fixture.Battle->TryBuildPlayerFacingReadSnapshot(InitialSnapshot)
+		);
+		TestEqual(TEXT("Initial pull observes the authoritative opening Hand"), InitialSnapshot.HandCount, 1);
+		TestEqual(TEXT("Initial pull observes the request-eligible state"), InitialSnapshot.BattleState, EBattleState::PlayerTurn);
+		TestEqual(TEXT("Ready events are not replayed to a late subscriber"), ReadyCount, 0);
+
+		UCardInstance* Card = Fixture.Battle->GetDeckRuntimeForTesting()->GetFirstHandCard();
+		TestNotNull(TEXT("Initial pull corresponds to a real playable Hand card"), Card);
+		if (!Card) return false;
+
+		TestTrue(TEXT("Late subscriber can continue through the normal request path"), Fixture.Battle->RequestPlayCard(Card, Fixture.Enemy).IsAcceptedForResolution());
+		TestEqual(TEXT("Future Ready publication remains deferred"), ReadyCount, 0);
+		TickReadStateReady();
+		TestEqual(TEXT("Late subscriber receives future Ready publications after its initial pull"), ReadyCount, 1);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 		FNewBattleNotSuppressedByRepeatedRevisionTest,
 		"SlayTheSpireDemo.Phase6UIA0.ReadStateReady.NewBattleIsNotSuppressedByRepeatedRevision",
 		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter

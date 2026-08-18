@@ -102,6 +102,16 @@ void ABattleManager::StartBattle()
 		return;
 	}
 
+	// A restarted battle replaces the complete Queue scope. Detach this manager
+	// from the old Queue first so late completion/fault signals from abandoned
+	// work cannot affect the new battle.
+	if (IsValid(ActionQueue.Get()))
+	{
+		ActionQueue->OnQueueEmpty.RemoveAll(this);
+		ActionQueue->OnResolutionIdle.RemoveAll(this);
+		ActionQueue->OnResolutionFaulted.RemoveAll(this);
+	}
+
 	ActionQueue = NewObject<UBattleActionQueue>(this);
 	if (!HasValidActionQueue())
 	{
@@ -110,6 +120,7 @@ void ABattleManager::StartBattle()
 	}
 
 	ActionQueue->OnQueueEmpty.AddUObject(this, &ABattleManager::HandleActionQueueEmpty);
+	ActionQueue->OnResolutionIdle.AddUObject(this, &ABattleManager::HandleActionQueueResolutionIdle);
 	ActionQueue->OnResolutionFaulted.AddUObject(this, &ABattleManager::HandleActionQueueResolutionFaulted);
 
 	EventDispatcher = NewObject<UBattleEventDispatcher>(this);
@@ -1133,6 +1144,10 @@ void ABattleManager::HandleActionQueueResolutionFaulted(
 		ExecutedCount,
 		*GetNameSafe(LastAction)
 	);
+
+	// Fault state is now fully committed at the battle layer. Publish it through
+	// the same deferred UI boundary used by healthy Queue settlement.
+	ScheduleReadStateReadyPublish();
 }
 
 void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue)

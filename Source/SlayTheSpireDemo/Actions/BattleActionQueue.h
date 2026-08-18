@@ -59,8 +59,10 @@ public:
 
 	// Internal resolution-settled signal. This is deliberately later than
 	// OnQueueEmpty: it is emitted only after the complete PumpQueue frame has
-	// exited and no deferred authoritative continuation remains. Widgets must not
-	// treat this Queue-level signal as the public battle read-state boundary.
+	// exited and no deferred authoritative continuation remains. The Queue does
+	// not discover or call a concrete owner through its UObject Outer. Its owner
+	// may subscribe explicitly, while Widgets must not treat this Queue-level
+	// signal as the public battle read-state boundary.
 	FOnBattleActionQueueResolutionIdle OnResolutionIdle;
 	FOnBattleActionQueueResolutionFaulted OnResolutionFaulted;
 

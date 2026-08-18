@@ -2714,6 +2714,32 @@ StateRevision
 
 UI-A0 does not need a complex transactional state database. The first implementation may advance revision identity only at meaningful gameplay snapshot boundaries. Do not use frame number or Widget refresh time as authoritative gameplay revision identity.
 
+#### Read consumer initialization is subscribe-then-pull
+
+`OnReadStateReady` is a non-replaying edge notification. A ViewModel or other
+read consumer may attach after the initial battle-ready notification has already
+published. Its mandatory initialization order is:
+
+```text
+subscribe to OnReadStateReady
+↓
+immediately request the current coherent player-facing snapshot
+↓
+render that snapshot when readable
+↓
+use later notifications to refresh future revisions
+```
+
+Never initialize the HUD by waiting only for the next event. Subscribe before the
+initial pull so a state change cannot occur between pulling and registering the
+listener.
+
+`BattleActionQueue` publishes Queue-level settled/fault facts only. It must not
+discover or call `ABattleManager` through its UObject `Outer`. BattleManager owns
+the mapping from explicitly subscribed Queue signals to the deferred public
+`OnReadStateReady` boundary and must detach from a replaced Queue when a new battle
+scope begins.
+
 ### 15.7 Authoritative Enemy Intent
 
 Enemy Intent is player-visible gameplay information and must be authoritative gameplay state, not a UI-only prediction.

@@ -1,7 +1,6 @@
 #include "BattleActionQueue.h"
 
 #include "BattleAction.h"
-#include "../Battle/BattleManager.h"
 
 bool UBattleActionQueue::AddToBack(UBattleAction* Action)
 {
@@ -472,15 +471,10 @@ void UBattleActionQueue::EnterResolutionFaultAtSafePoint()
 		*GetNameSafe(LastExecutedAction.Get())
 	);
 
-	// BattleManager's existing fault listener commits BattleState=ResolutionFaulted
-	// during this broadcast. Only after that commit do we ask the owning battle to
-	// publish a readable fault snapshot. A faulted Queue is never reported as a
-	// healthy ResolutionIdle.
+	// The Queue publishes only its own fault boundary. Its owning battle decides
+	// how that boundary maps into battle state and player-facing read publication.
+	// A faulted Queue is never reported as a healthy ResolutionIdle.
 	OnResolutionFaulted.Broadcast(ResolutionFaultReason, ExecutedCountInResolution, LastExecutedAction.Get());
-	if (ABattleManager* OwningBattle = Cast<ABattleManager>(GetOuter()))
-	{
-		OwningBattle->NotifyActionQueueResolutionFaultSettled(this);
-	}
 }
 
 void UBattleActionQueue::BroadcastResolutionIdleIfSettled()
@@ -503,16 +497,4 @@ void UBattleActionQueue::BroadcastResolutionIdleIfSettled()
 	}
 
 	OnResolutionIdle.Broadcast();
-
-	// Internal observers are expected to be read-only. Re-check anyway so a
-	// misbehaving listener cannot cause BattleManager to publish a stale read state.
-	if (!IsSettled())
-	{
-		return;
-	}
-
-	if (ABattleManager* OwningBattle = Cast<ABattleManager>(GetOuter()))
-	{
-		OwningBattle->NotifyActionQueueResolutionIdle(this);
-	}
 }

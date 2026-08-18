@@ -131,6 +131,6 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 19 -ReportName "Phase6UIA0"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 20 -ReportName "Phase6UIA0"
 
-          Write-Host "All existing regression gates and all currently named Phase 6UI-A0 invariants passed. Current discovered total: 72 tests."
+          Write-Host "All existing regression gates and all currently named Phase 6UI-A0 invariants passed. Current discovered total: 73 tests."

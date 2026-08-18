@@ -306,6 +306,30 @@ OnReadStateReady(BattleId, StateRevision)
 
 Widgets must not use `BattleActionQueue::OnQueueEmpty` or the Queue-level idle signal directly.
 
+### Consumer initialization: subscribe, then pull
+
+`OnReadStateReady` is an edge notification, not a replaying state container. A
+ViewModel may be created after the battle's initial Ready publication has already
+run. Every read consumer must therefore initialize in this order:
+
+```text
+bind OnReadStateReady
+↓
+immediately call TryBuildPlayerFacingReadSnapshot
+↓
+if readable, build the initial HUD from that snapshot
+↓
+use later OnReadStateReady keys to refresh future revisions
+```
+
+Do not wait for a future Ready event before attempting the initial pull. In the
+normal late-subscription case, no event needs to occur again until the player
+submits gameplay, so event-only initialization could otherwise leave the opening
+Hand and HUD blank indefinitely.
+
+Subscribe-before-pull is the durable ordering rule. It prevents a state change
+between an initial pull and listener registration from being missed.
+
 ### Healthy resolution path
 
 `BattleActionQueue::OnResolutionIdle` is intentionally later than `OnQueueEmpty`. It may publish only after the complete `PumpQueue()` frame has exited and all of the following are true:
@@ -320,6 +344,12 @@ no deferred continuation remains
 no resolution fault request
 Queue is not faulted
 ```
+
+The Queue publishes only Queue-level completion/fault facts. It does not discover
+`ABattleManager` through `GetOuter()` and does not call battle methods. During
+battle setup, `ABattleManager` explicitly subscribes to the Queue delegates and
+maps them into its deferred player-facing read boundary. Restarting a battle
+detaches those bindings from the replaced Queue before creating the new scope.
 
 A full end-turn flow may therefore broadcast several intermediate `QueueEmpty` boundaries while producing no `OnResolutionIdle`.
 
@@ -413,6 +443,7 @@ ReadStateReady.CardResolutionPublishesOnceWhenReadable
 ReadStateReady.AsyncActionDoesNotPublishBeforeFinish
 ReadStateReady.FullTurnPublishesOnlyAfterMacroFlowStabilizes
 ReadStateReady.ResolutionFaultPublishesReadableSnapshot
+ReadStateReady.LateSubscriberPullsCurrentSnapshotBeforeWaiting
 ReadStateReady.NewBattleIsNotSuppressedByRepeatedRevision
 ```
 

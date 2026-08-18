@@ -34,29 +34,14 @@ bool ABattleManager::TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSn
 	return true;
 }
 
-void ABattleManager::NotifyActionQueueResolutionIdle(UBattleActionQueue* SettledQueue)
+void ABattleManager::HandleActionQueueResolutionIdle()
 {
-	if (SettledQueue != ActionQueue.Get() || !IsValid(SettledQueue))
+	if (!IsValid(ActionQueue.Get()))
 	{
 		return;
 	}
 
-	if (SettledQueue->IsResolutionFaulted() || SettledQueue->IsBusy())
-	{
-		return;
-	}
-
-	ScheduleReadStateReadyPublish();
-}
-
-void ABattleManager::NotifyActionQueueResolutionFaultSettled(UBattleActionQueue* FaultedQueue)
-{
-	if (FaultedQueue != ActionQueue.Get() || !IsValid(FaultedQueue))
-	{
-		return;
-	}
-
-	if (!FaultedQueue->IsResolutionFaulted() || BattleState != EBattleState::ResolutionFaulted)
+	if (ActionQueue->IsResolutionFaulted() || ActionQueue->IsBusy())
 	{
 		return;
 	}

@@ -147,6 +147,8 @@ public:
 	// gameplay snapshot and enriches the committed Intent with a gameplay-derived
 	// current-state value by reusing the Damage Modifier Pipeline. The value is not
 	// a guarantee of damage at a future EnemyTurn after intervening reactions.
+	// This is also the required initial pull for a newly attached read consumer:
+	// subscribe to OnReadStateReady first, then call this once immediately.
 	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 	const FEnemyIntent& GetCommittedEnemyIntent() const;
 
@@ -158,15 +160,11 @@ public:
 	// revision-scoped; Queue-level OnResolutionIdle is intentionally not the public
 	// presentation boundary. Publication is deferred by at least one CoreTicker
 	// turn after Queue settlement so it cannot re-enter a public Request before
-	// that Request has returned AcceptedForResolution to its caller.
+	// that Request has returned AcceptedForResolution to its caller. This delegate
+	// does not replay the latest state to late subscribers. Every consumer must bind
+	// first and then immediately call TryBuildPlayerFacingReadSnapshot before it
+	// begins waiting for future notifications.
 	FOnBattleReadStateReady OnReadStateReady;
-
-	// Internal owner callbacks invoked only by this BattleManager's ActionQueue
-	// after a healthy PumpQueue has fully exited or after fault state has committed.
-	// These are public solely to keep the Queue->owner bridge explicit; Widgets
-	// must never call them.
-	void NotifyActionQueueResolutionIdle(UBattleActionQueue* SettledQueue);
-	void NotifyActionQueueResolutionFaultSettled(UBattleActionQueue* FaultedQueue);
 
 	// Narrow runtime dependency bridge used while BattleManager still owns the
 	// battle-scoped dispatcher and authoritative combatant references. Action and
@@ -209,6 +207,7 @@ private:
 	FEnemyIntent ChooseNextEnemyIntent() const;
 
 	void HandleActionQueueEmpty();
+	void HandleActionQueueResolutionIdle();
 	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
 	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
 	void CheckBattleResult();
