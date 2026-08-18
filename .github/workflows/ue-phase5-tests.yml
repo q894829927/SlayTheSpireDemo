@@ -1,0 +1,137 @@
+name: UE Phase 5 Automation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ue58-phase5-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  phase5-tests:
+    if: github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, windows, x64, ue58]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      - name: Verify trusted execution context
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -ne "workflow_dispatch") {
+              throw "This self-hosted workflow must only run via workflow_dispatch."
+          }
+          if ("${{ github.actor }}" -ne "${{ github.repository_owner }}") {
+              throw "Only the repository owner may run this self-hosted workflow."
+          }
+          if ("${{ github.ref }}" -ne "refs/heads/main") {
+              throw "This self-hosted workflow may only run from main."
+          }
+          Write-Host "Trusted context verified: actor=${{ github.actor }} ref=${{ github.ref }}"
+
+      - name: Check UE5.8 toolchain
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          foreach ($Path in @($Build, $EditorCmd, $Project)) {
+              if (!(Test-Path $Path)) {
+                  throw "Required path not found: $Path"
+              }
+          }
+
+          Write-Host "UE5.8 toolchain and project found."
+
+      - name: Build SlayTheSpireDemoEditor
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          & $Build SlayTheSpireDemoEditor Win64 Development $Project -WaitMutex -NoHotReloadFromIDE
+          $BuildExitCode = $LASTEXITCODE
+
+          if ($BuildExitCode -ne 0) {
+              throw "UE Editor build failed with exit code $BuildExitCode"
+          }
+
+      - name: Run and verify Phase 5 automation tests
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\Phase5"
+          $IndexJson = "$Report\index.json"
+
+          if (Test-Path $Report) {
+              Remove-Item $Report -Recurse -Force
+          }
+          New-Item -ItemType Directory -Force -Path $Report | Out-Null
+
+          & $EditorCmd `
+              $Project `
+              -unattended `
+              -nop4 `
+              -NullRHI `
+              -NoSplash `
+              -NoSound `
+              '-ExecCmds=Automation RunTest SlayTheSpireDemo.Phase5;Quit' `
+              "-ReportExportPath=$Report" `
+              -log
+
+          $EditorExitCode = $LASTEXITCODE
+
+          if (!(Test-Path $IndexJson)) {
+              throw "Automation report was not generated at $IndexJson"
+          }
+
+          $Result = Get-Content $IndexJson -Raw | ConvertFrom-Json
+          $Phase5Tests = @($Result.tests | Where-Object { $_.fullTestPath -like 'SlayTheSpireDemo.Phase5.*' })
+          $NonSuccess = @($Phase5Tests | Where-Object { $_.state -ne 'Success' })
+
+          Write-Host "Phase5 tests discovered: $($Phase5Tests.Count)"
+          Write-Host "Succeeded: $($Result.succeeded)"
+          Write-Host "Succeeded with warnings: $($Result.succeededWithWarnings)"
+          Write-Host "Failed: $($Result.failed)"
+          Write-Host "Not run: $($Result.notRun)"
+
+          "## UE Phase 5 Automation" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Metric | Value |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "|---|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Phase5 tests discovered | $($Phase5Tests.Count) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Succeeded | $($Result.succeeded) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Succeeded with warnings | $($Result.succeededWithWarnings) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Failed | $($Result.failed) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Not run | $($Result.notRun) |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| UnrealEditor-Cmd exit code | $EditorExitCode |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+          if ($Phase5Tests.Count -ne 12) {
+              throw "Expected exactly 12 SlayTheSpireDemo.Phase5 tests, but found $($Phase5Tests.Count)."
+          }
+
+          if ($NonSuccess.Count -gt 0) {
+              $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
+              throw "Non-success Phase5 tests: $Names"
+          }
+
+          if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) {
+              throw "Phase 5 Automation gate failed. Unreal exit=$EditorExitCode failed=$($Result.failed) notRun=$($Result.notRun)"
+          }
+
+          Write-Host "Phase 5 Automation gate passed: 12/12 tests succeeded."
