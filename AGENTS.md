@@ -54,9 +54,9 @@ BattleActionQueue
   - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
   - [x] Phase 6C DeckShuffled Event — COMPLETE; UE5.8 Editor build + Phase6C 5/5 and total Phase5–Phase6C 53/53 Automation gate passed.
   - [x] Phase 6R Regression Gate + test-module extraction — COMPLETE; UE5.8 full 53/53 regression gate and Shipping exclusion validation passed.
-- [ ] Phase 6UI-A playable Battle UI — NEXT.
-  - [ ] UI-A0 Playable Gameplay Boundary — NEXT.
-  - [ ] UI-A1 Operable Battle HUD.
+- [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
+  - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
+  - [ ] UI-A1 Operable Battle HUD — NEXT.
   - [ ] UI-A2 Basic Committed Presentation.
   - [ ] UI-A3 Deterministic Immediate Preview.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
@@ -186,6 +186,19 @@ Phase 6R validated:
 - the normal `SlayTheSpireDemo Win64 Shipping` target builds and the Shipping exclusion gate finds no `SlayTheSpireDemoTests` / `Phase6ATest*` artifacts;
 - Phase 6R adds no gameplay, UI, DataAsset or map semantics, so no additional manual PIE/asset validation is required beyond the already-passed Phase 6 gameplay evidence.
 
+Phase 6UI-A0 validated:
+
+- opening Hand and normal player-turn draws are authoritative gameplay lifecycle, with explicit `PlayerTurnStarting` before turn-start work and `PlayerTurn` remaining the Request-eligible state;
+- formal `QueryCardPlayability` / `QueryPlayCard` / `RequestPlayCard` and EndTurn Query/Request APIs share gameplay-owned validation, and Request always revalidates current authoritative state;
+- `AcceptedForResolution` means accepted into gameplay resolution, not completed effects;
+- the initial DrawPile is deterministically shuffled with the battle-scoped RNG before the opening Hand, while initialization intentionally emits no `DeckShuffled` event;
+- the committed Enemy Intent is the source for the corresponding EnemyTurn Actions; player-facing `CurrentResolvedDamageAmount` reuses the Damage Modifier Pipeline for the current snapshot revision but is explicitly not a guarantee of future EnemyTurn damage after intervening reactions;
+- `FBattleReadSnapshot` provides one coherent `(BattleId, StateRevision)` read boundary and `OnReadStateReady` is deferred beyond the public Request call stack so it cannot fire before an accepted Request returns;
+- read consumers use subscribe-then-pull initialization because `OnReadStateReady` is a non-replaying edge notification;
+- healthy QueueEmpty still accepts empty batches as no-op success while rejecting direct non-empty insertion during observer notification;
+- faulted resolutions publish a readable `ResolutionFaulted` snapshot through the battle-level Ready path rather than masquerading as healthy idle;
+- the owner-only `.github/workflows/ue-phase6uia0-tests.yml` built `SlayTheSpireDemoEditor` and passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 = 73/73 for the completed run.
+
 ### Manual UE assets/configuration
 
 Phase 4:
@@ -274,7 +287,7 @@ DA_Status_Frailty
 
 Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
 
-Phase 6C and Phase 6R require no new `.uasset` / `.umap` configuration.
+Phase 6C, Phase 6R and Phase 6UI-A0 require no new `.uasset` / `.umap` configuration.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -1500,19 +1513,21 @@ Phase 6R passed. Phase 6 is complete for the defined scope.
 
 No additional PIE, Blueprint, DataAsset or map action is required for 6R because the slice only changes test/module engineering boundaries and the full gameplay regression gate remained green.
 
-### Phase 6UI-A — Playable Battle UI — NEXT
+### Phase 6UI-A — Playable Battle UI — IN PROGRESS
 
 Implementation order inside this phase:
 
 ```text
-UI-A0 Playable Gameplay Boundary   NEXT
+UI-A0 Playable Gameplay Boundary   COMPLETE / UE5.8 UI-A0 20/20, CURRENT TOTAL 73/73 PASSED
 ↓
-UI-A1 Operable Battle HUD
+UI-A1 Operable Battle HUD          NEXT
 ↓
 UI-A2 Basic Committed Presentation
 ↓
 UI-A3 Deterministic Immediate Preview
 ```
+
+UI-A0 is complete. It established authoritative Hand/turn lifecycle, formal Query/Request boundaries, deterministic initial battle shuffle, committed Enemy Intent, coherent player-facing snapshots, and deferred battle-level `OnReadStateReady` semantics. Detailed evidence lives in `docs/Phase6UIA0Implementation.md`.
 
 The durable UI/MVVM/Presentation architecture and acceptance criteria are defined in Section 15. Do not begin Phase 7 until Phase 6UI-A is playable unless the user explicitly changes the order.
 
@@ -1641,6 +1656,22 @@ BattleManager must defer the one authoritative turn continuation until after the
 ### 4.19 DeckShuffled is a post-commit fact
 
 `FDeckShuffledEvent` may be emitted only after a real discard-to-draw shuffle commits successfully. Expected/no-op shuffle attempts emit no event. In an empty-draw continuation, DeckShuffled reactions execute before the already-pending RetryDraw action.
+
+### 4.20 Public stable-read completion is battle-level and non-reentrant
+
+`BattleActionQueue::OnResolutionIdle` is an internal settled-resolution fact. Widgets must not bind to it or to `OnQueueEmpty` as their completion protocol. BattleManager maps settled/fault outcomes into the public `OnReadStateReady(BattleId, StateRevision)` boundary.
+
+A public `OnReadStateReady` publication must not fire before a public `RequestPlayCard` / `RequestEndPlayerTurn` call has returned its `AcceptedForResolution` result. The current implementation defers publication through the CoreTicker. Read consumers initialize by subscribing first and then immediately pulling the current player-facing snapshot because Ready is a non-replaying edge notification.
+
+### 4.21 Player-facing Intent values must state their time semantics
+
+The committed Enemy Intent remains the authoritative plan from which EnemyTurn Actions are built. `EnemyIntentPlayerFacing.CurrentResolvedDamageAmount` is a gameplay-derived value produced by running the current snapshot state through the same Damage Modifier Pipeline; it is not guaranteed future EnemyTurn damage when mandatory reactions may alter state before execution.
+
+Never let Widget/ViewModel code reimplement Strength/Weak/Vulnerable formulas or relabel a current-state value as a guaranteed future result.
+
+### 4.22 Initial battle shuffle is setup, not DeckShuffled gameplay
+
+`DeckRuntime::InitializeFromDefinitions` uses the battle-scoped RNG stream to deterministically shuffle the initial DrawPile before the opening Hand. This setup randomization advances the same RNG stream used by later reshuffles but emits no `FDeckShuffledEvent`. Only successful discard-to-draw gameplay reshuffles emit the event.
 
 ---
 
@@ -2043,6 +2074,11 @@ Saved/
 34. Phase 6UI-A does not begin before Phase 6R unless the user explicitly changes the order. Phase 7 follows the playable UI-A slice, not Phase 6R directly.
 35. `PlayerTurn` is an authoritative gameplay request-eligible state. Presentation may still lock the View after Gameplay enters `PlayerTurn`; animation completion must never be required to commit `BattleState = PlayerTurn`.
 36. Before UI-A2 exists, presentation catch-up in UI-A0/UI-A1 is an immediate/no-op boundary followed by coherent authoritative snapshot refresh; UI-A0 must not depend on Presentation Records/Presentation Queue.
+37. Formal UI/ViewModel consumers must use `OnReadStateReady` plus coherent player-facing snapshots rather than treating `QueueEmpty` or Queue-level idle as the public completion protocol.
+38. `OnReadStateReady` must not fire re-entrantly before a public accepted Request returns. Read consumers bind first, then immediately pull the current snapshot because Ready is a non-replaying edge notification.
+39. `EnemyIntentPlayerFacing.CurrentResolvedDamageAmount` means current-snapshot resolved damage, not guaranteed future EnemyTurn damage; never hard-code TurnEnd decay rules in UI to manufacture a future guarantee.
+40. Initial battle setup shuffle consumes the battle RNG but emits no `DeckShuffled`; only successful discard-to-draw gameplay reshuffles emit that event.
+41. During QueueEmpty observer notification, healthy empty Action batches remain legal no-op success; only non-empty direct insertion is rejected.
 
 Prefer clear architecture over clever abstractions.
 
@@ -2060,7 +2096,7 @@ After C++ changes:
 
 For deterministic core rules, prefer focused Unreal Automation Tests once the rule has stabilized. Tests should validate state/results directly where practical instead of relying only on expected log text.
 
-Current trusted self-hosted regression evidence:
+Current trusted Phase 5/6 self-hosted regression evidence remains:
 
 ```text
 Phase 5   13/13 PASS
@@ -2081,9 +2117,23 @@ SlayTheSpireDemo Win64 Shipping build                  PASS
 SlayTheSpireDemoTests / Phase6ATest Shipping exclusion PASS
 ```
 
-The Phase 6R workflow remains manual, owner-only and restricted to trusted `main` because it runs on the self-hosted UE5.8 runner.
+Phase 6UI-A0 validation is complete through `.github/workflows/ue-phase6uia0-tests.yml` based on the owner-confirmed successful run after the final UE5.8 ticker-handle fix:
 
-Phase 6 is complete. The next implementation slice is `Phase 6UI-A0 — Playable Gameplay Boundary`.
+```text
+SlayTheSpireDemoEditor build  PASS
+Phase 5       13/13 PASS
+Phase 6A      23/23 PASS
+Phase 6B      12/12 PASS
+Phase 6C       5/5  PASS
+Phase 6UI-A0  20/20 PASS
+Current run   73/73 PASS
+```
+
+The exact `73/73` total is evidence for that completed run, not a permanent architecture acceptance constant. The durable UI-A0 gate is: Editor build passes + all existing Phase5/6 regressions pass + all currently named UI-A0 invariants pass.
+
+The self-hosted workflows remain manual, owner-only and restricted to trusted `main`.
+
+Phase 6 is complete. Phase 6UI-A0 is complete. The next implementation slice is `Phase 6UI-A1 — Operable Battle HUD`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2203,6 +2253,21 @@ Events/BattleTrigger.h
 .github/workflows/ue-phase6r-tests.yml
 docs/Phase6RImplementation.md
 docs/Phase6DeferredEngineering.md
+
+Phase 6UI-A0
+Battle/BattleRequestTypes.h
+Battle/BattleReadSnapshot.h
+Battle/BattleManager.h/.cpp
+Battle/BattleManagerUIA0ReadState.cpp
+Enemy/EnemyIntent.h
+Deck/DeckRuntime.h/.cpp
+Actions/BattleActionQueue.h/.cpp
+Events/BattleEventDispatcher.h/.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA0RegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA0ReviewRegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA0TestTypes.h/.cpp
+.github/workflows/ue-phase6uia0-tests.yml
+docs/Phase6UIA0Implementation.md
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, EventDispatcher, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -2226,8 +2291,8 @@ docs/Phase6DeferredEngineering.md
 - Phase 6C — PASSED: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, Phase6C 5/5 and total Phase5–Phase6C 53/53 passed through the owner-only UE5.8 workflow.
 - Phase 6R — PASSED: Automation-only tests/reflected helpers extracted into Editor-only `SlayTheSpireDemoTests`; Editor build + full 53/53 regression + Shipping build/exclusion gate passed.
 - Phase 6 — PASSED: Battle Event/Trigger scope and the Phase 6R regression/test-module isolation gate are complete.
-- Phase 6UI-A0 — NEXT: authoritative playable turn/hand lifecycle, formal Request APIs, shared gameplay validation, coherent read snapshot and minimal authoritative Enemy Intent.
-- Phase 6UI-A1 — PLANNED: first operable Battle HUD without gameplay-driving debug keyboard commands.
+- Phase 6UI-A0 — PASSED: authoritative turn/Hand lifecycle, deterministic initial battle shuffle, formal Query/Request APIs with shared revalidation, committed Enemy Intent, current-state gameplay-derived Intent display value, coherent `(BattleId, StateRevision)` snapshots and non-reentrant battle-level `OnReadStateReady`; owner-only UE5.8 workflow passed UI-A0 20/20 with current total 73/73.
+- Phase 6UI-A1 — NEXT: first operable Battle HUD without gameplay-driving debug keyboard commands.
 - Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.
 - Phase 6UI-A3 — PLANNED: deterministic immediate Damage / Block / Energy preview only.
 - Phase 6UI-A — PASSED only when the normal player battle loop is operable through UI without `TestDrawCard`, `TestPlayFirstCard` or equivalent gameplay-driving debug commands.
@@ -2270,7 +2335,7 @@ When completing a meaningful phase:
 
 This section is the detailed long-term specification for work after the now-complete Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
 
-Phase 6UI-A0 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
+Phase 6UI-A0 is complete. Phase 6UI-A1 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -2280,9 +2345,9 @@ Phase 6R                              COMPLETE
     full Phase 5/6 regression
     Shipping/package-oriented validation
 ↓
-Phase 6UI-A                           NEXT
-    UI-A0 playable gameplay boundary NEXT
-    UI-A1 operable Battle HUD
+Phase 6UI-A                           IN PROGRESS
+    UI-A0 playable gameplay boundary COMPLETE
+    UI-A1 operable Battle HUD        NEXT
     UI-A2 basic committed presentation
     UI-A3 deterministic immediate preview
 ↓
@@ -2307,11 +2372,11 @@ Phase 6UI-A is the first formal playable presentation/input vertical slice. Its 
 
 UI-A0 through UI-A3 are implementation slices inside Phase 6UI-A, not separate top-level project phases.
 
-### 15.2 Phase 6UI-A0 — Playable Gameplay Boundary
+### 15.2 Phase 6UI-A0 — Playable Gameplay Boundary — COMPLETE
 
-Do not begin formal Battle Widgets before gameplay exposes enough non-debug behavior for one complete normal player turn loop.
+UI-A0 established the non-debug gameplay/read boundary required before formal Battle Widgets begin.
 
-UI-A0 must establish:
+Implemented and validated:
 
 ```text
 Playable Turn / Hand Lifecycle
@@ -2320,9 +2385,11 @@ Shared gameplay-owned validation
 Advisory playability queries + authoritative Request revalidation
 Read-only coherent UI state/query boundary
 Minimal authoritative Enemy Intent
+Deterministic initial DrawPile shuffle using battle RNG
+Battle-level deferred OnReadStateReady completion boundary
 ```
 
-The normal playable loop after UI-A0 must not require:
+The normal playable loop after UI-A0 does not require:
 
 ```text
 TestDrawCard
@@ -2336,7 +2403,7 @@ or equivalent rule-driving debug commands
 
 It does **not** mean the View must immediately release input while historical presentation is still catching up.
 
-Phase 6UI-A0 should introduce an explicit non-interactive `PlayerTurnStarting` boundary:
+UI-A0 introduced the explicit non-interactive `PlayerTurnStarting` boundary:
 
 ```text
 EnemyTurnEnding
@@ -2371,14 +2438,16 @@ UI input release = presentation policy layered on top
 
 Do not enter `PlayerTurn` merely because turn-start Actions were scheduled. Conversely, do not delay `BattleState = PlayerTurn` until animation playback completes.
 
-The existing `BattleStart` state may serve as the equivalent non-interactive battle-opening boundary. Do not add or rename a separate `BattleStarting` state unless implementation later demonstrates a concrete need.
+The existing `BattleStart` state serves as the equivalent non-interactive battle-opening boundary. Do not add or rename a separate `BattleStarting` state unless implementation later demonstrates a concrete need.
 
-Opening battle should conceptually resolve as:
+Opening battle resolves conceptually as:
 
 ```text
 BattleStart
 ↓
 initialize combatants / deck / battle-scoped state
+↓
+deterministically shuffle initial DrawPile with battle RNG
 ↓
 choose and commit initial Enemy Intent
 ↓
@@ -2395,11 +2464,23 @@ coherent authoritative snapshot refresh
 UI input enabled
 ```
 
+The initialization shuffle is setup randomization and intentionally emits no `DeckShuffled` event. Later successful discard-to-draw reshuffles continue to emit the event after commit.
+
 #### Turn / Hand lifecycle is authoritative gameplay
 
 UI must not compensate for missing gameplay lifecycle by directly drawing, discarding or retaining cards.
 
-Before Phase 6UI-A is considered playable, gameplay must own explicit rules for:
+Current first playable rules are explicit/configurable:
+
+```text
+OpeningHandDrawCount = 5
+PlayerTurnDrawCount  = 5
+PlayerTurnEnd        = discard all remaining Hand cards
+```
+
+These are initial content rules, not permanent architecture constants.
+
+Gameplay owns:
 
 ```text
 BattleStart opening Hand setup
@@ -2410,8 +2491,6 @@ transition to EnemyTurn
 next PlayerTurn draw
 ```
 
-The exact content rule is intentionally deferred until UI-A0 implementation. Examples include drawing N cards, discarding all remaining cards, retaining selected cards, or using a distinct opening-Hand count.
-
 Durable rule:
 
 ```text
@@ -2421,7 +2500,7 @@ Gameplay owns it.
 
 #### Hand cleanup timing relative to TurnEnded
 
-For the initial playable semantics, player turn ending should use this ordering:
+The established playable semantics use this ordering:
 
 ```text
 RequestEndPlayerTurn
@@ -2447,7 +2526,7 @@ QueueEmpty
 EnemyTurn progression
 ```
 
-Therefore the initial `FTurnEndedEvent(Player)` describes a player turn whose current-version remaining-Hand cleanup has already committed.
+Therefore `FTurnEndedEvent(Player)` describes a player turn whose current-version remaining-Hand cleanup has already committed.
 
 Do not silently change this established timing when future mechanics such as Retain, Ethereal, end-of-turn Hand triggers or Relics that inspect Hand arrive.
 
@@ -2521,6 +2600,16 @@ On `AcceptedForResolution`, the UI enters its `Resolving`/presentation-locked po
 
 Before UI-A2 exists, the same rule still holds: UI-A0/UI-A1 learn final results by refreshing one coherent authoritative snapshot after gameplay resolution; there is simply no historical Presentation Record playback yet.
 
+Public completion publication has an additional hard timing rule:
+
+```text
+public Request returns AcceptedForResolution
+↓
+only later may OnReadStateReady(BattleId, StateRevision) publish
+```
+
+The current implementation schedules Ready through the CoreTicker after the Queue fully settles. A ViewModel may therefore safely enter `Resolving` after seeing `AcceptedForResolution` and leave it after the later Ready/snapshot refresh without a re-entrant completion race.
+
 ### 15.4 Query and Request share one gameplay validator
 
 Playability Query is advisory presentation data. Request validation is authoritative.
@@ -2561,19 +2650,22 @@ fresh validation at Request time
 
 Never treat a previous Query as a capability token or permanent permission. At the same time, Query and Request must not duplicate independent rules for turn state, Energy, card zone, target validity, battle terminal state or resolution availability.
 
-Structured failure reasons may eventually include concepts such as:
+Current concrete failure reasons include the UI-A0 needs such as:
 
 ```text
-NotEnoughEnergy
-WrongTurn
-InvalidTarget
-NoValidTarget
+InvalidBattle
 BattleEnded
+ResolutionFaulted
+WrongTurn
 ResolutionBusy
+InvalidCard
 CardNoLongerInHand
+NotEnoughEnergy
+InvalidTarget
+QueueRejected
 ```
 
-Do not freeze a large permanent enum until the concrete UI implementation requires it.
+Do not grow this into a speculative giant enum; add reasons when a concrete gameplay/UI need appears.
 
 ### 15.5 MVVM-style responsibility split
 
@@ -2676,28 +2768,27 @@ Battle ViewModel
 UI refresh
 ```
 
-A mature snapshot may conceptually contain:
+The implemented UI-A0 snapshot contains the current battle/read needs including:
 
 ```text
-Battle identity
-State revision
+BattleId
+StateRevision
 BattleState
-Combatant views
+Player / Enemy combatant views
 Energy
-Hand view
-Draw / Discard / Exhaust views
+Hand / pile views and counts
 Status views
-committed Enemy Intent view
-advisory playability / legal-target data where useful
+committed Enemy Intent
+current-state player-facing Intent damage value
 ```
 
-Not every field must exist in UI-A0. Durable invariant:
+Durable invariant:
 
 ```text
 one UI refresh observes one coherent authoritative state revision
 ```
 
-Any playability/legal-target information embedded in a snapshot remains advisory and revision-bound; formal Requests revalidate against current authoritative gameplay state.
+Any playability/legal-target information remains advisory and revision-bound; formal Requests revalidate against current authoritative gameplay state.
 
 UI presentation caches may exist for rendering convenience but are not authoritative. Widgets must not reach into private DeckRuntime arrays, maintain a competing fake Hand, infer card zones from animation position or scan the world for gameplay actors.
 
@@ -2705,20 +2796,18 @@ UI presentation caches may exist for rendering convenience but are not authorita
 
 #### Read snapshot revision identity
 
-A mature snapshot should be identifiable as belonging to one coherent gameplay revision, conceptually through:
+Snapshots are identified by the coherent gameplay key:
 
 ```text
 BattleId
 StateRevision
 ```
 
-UI-A0 does not need a complex transactional state database. The first implementation may advance revision identity only at meaningful gameplay snapshot boundaries. Do not use frame number or Widget refresh time as authoritative gameplay revision identity.
+Do not use frame number or Widget refresh time as authoritative gameplay revision identity. Publication de-duplication must compare the full `(BattleId, StateRevision)` key so a new battle is not suppressed merely because its revision number repeats a prior battle's value.
 
 #### Read consumer initialization is subscribe-then-pull
 
-`OnReadStateReady` is a non-replaying edge notification. A ViewModel or other
-read consumer may attach after the initial battle-ready notification has already
-published. Its mandatory initialization order is:
+`OnReadStateReady` is a non-replaying edge notification. A ViewModel or other read consumer may attach after the initial battle-ready notification has already published. Its mandatory initialization order is:
 
 ```text
 subscribe to OnReadStateReady
@@ -2730,15 +2819,11 @@ render that snapshot when readable
 use later notifications to refresh future revisions
 ```
 
-Never initialize the HUD by waiting only for the next event. Subscribe before the
-initial pull so a state change cannot occur between pulling and registering the
-listener.
+Never initialize the HUD by waiting only for the next event. Subscribe before the initial pull so a state change cannot occur between pulling and registering the listener.
 
-`BattleActionQueue` publishes Queue-level settled/fault facts only. It must not
-discover or call `ABattleManager` through its UObject `Outer`. BattleManager owns
-the mapping from explicitly subscribed Queue signals to the deferred public
-`OnReadStateReady` boundary and must detach from a replaced Queue when a new battle
-scope begins.
+`BattleActionQueue` publishes Queue-level settled/fault facts only. It must not discover or call `ABattleManager` through its UObject `Outer`. BattleManager owns the mapping from explicitly subscribed Queue signals to the deferred public `OnReadStateReady` boundary and must detach from a replaced Queue when a new battle scope begins.
+
+Healthy Ready and fault Ready are separate paths: a faulted Queue is never reported as healthy idle, but after BattleManager commits `BattleState = ResolutionFaulted`, the public Ready path still publishes a readable fault snapshot so UI cannot remain stuck in `Resolving`.
 
 ### 15.7 Authoritative Enemy Intent
 
@@ -2777,7 +2862,25 @@ The displayed committed Enemy Intent is the authoritative source
 from which the corresponding EnemyTurn Actions are built.
 ```
 
-Phase 6UI-A0 may start with only a minimal `Attack 5` Intent, but it must obey the same source-of-truth rule.
+UI-A0 currently supports the minimal committed Attack Intent and obeys the same source-of-truth rule.
+
+Player-facing snapshots may additionally expose:
+
+```text
+EnemyIntentPlayerFacing.CurrentResolvedDamageAmount
+```
+
+For an Attack Intent this value is computed by building a read-only `FDamageSpec` from the committed BaseAmount and running the same Damage Modifier Pipeline against the **current snapshot state**. Widget/ViewModel code must not reimplement Strength, Weak, Vulnerable or other damage rules.
+
+The semantic boundary is strict:
+
+```text
+CurrentResolvedDamageAmount
+= current-state gameplay-derived value at this snapshot revision
+≠ guaranteed future EnemyTurn damage
+```
+
+Mandatory TurnEnded reactions may alter statuses before the enemy actually executes. If a future feature requires a guaranteed execution-time prediction, it must model the mandatory pre-execution gameplay transitions through a dedicated gameplay-owned predictor rather than hard-code decay rules in UI.
 
 Intent representation should remain extensible to future single attack, multi-hit attack, Block, Buff, Debuff, combined, unknown and conditional behavior.
 
@@ -2920,19 +3023,29 @@ if gameplay state is Request-eligible, release normal player input
 
 This is a UI/input policy. It does not make BattleActionQueue or BattleState wait for animations.
 
-Before UI-A2 exists:
+Before UI-A2 exists, UI-A1 uses the UI-A0 stable-read boundary:
 
 ```text
-presentation catch-up = immediate / no-op boundary
+Request returns AcceptedForResolution
 ↓
-capture coherent authoritative snapshot
+UI enters Resolving
 ↓
-refresh ViewModel / HUD immediately
+Gameplay / Trigger / turn macro work fully settles
+↓
+BattleManager schedules public stable-read publication
+↓
+OnReadStateReady(BattleId, StateRevision)
+↓
+ViewModel pulls one coherent player-facing snapshot
+↓
+presentation catch-up = immediate / no-op
+↓
+refresh HUD
 ↓
 release UI input only when authoritative gameplay state is Request-eligible
 ```
 
-Therefore UI-A0 validates gameplay completion and coherent snapshot semantics only. UI-A1 may operate with instantaneous state changes. Neither UI-A0 nor UI-A1 depends on Presentation Records or a Presentation Queue; UI-A2 later replaces the no-op catch-up boundary with historical committed-fact playback.
+Therefore UI-A1 may operate with instantaneous committed-state changes. It does not depend on Presentation Records or a Presentation Queue; UI-A2 later replaces the no-op catch-up boundary with historical committed-fact playback.
 
 Do not allow the player to submit a new normal card-play Request while presentation from the previous player-visible resolution is materially behind once UI-A2 exists.
 
@@ -3069,12 +3182,13 @@ The first layout does not need final responsive polish, but data/API assumptions
 
 ### 15.14 UI-A implementation slices
 
-#### UI-A0 — Playable Gameplay Boundary
+#### UI-A0 — Playable Gameplay Boundary — COMPLETE
 
-Acceptance requires all of the following:
+Acceptance requires all of the following, all now validated:
 
 ```text
 opening Hand comes from authoritative gameplay lifecycle
+initial DrawPile uses deterministic battle-RNG setup shuffle without DeckShuffled event
 PlayerTurn is entered only after turn-start gameplay work finishes
 PlayerTurn transition does not depend on presentation completion
 normal player card play uses formal RequestPlayCard
@@ -3082,21 +3196,29 @@ normal end turn uses formal RequestEndPlayerTurn
 Query and Request share gameplay-owned validation rules
 Request revalidates current state
 accepted Requests mean AcceptedForResolution, not completed effects
+public ReadStateReady cannot fire before an accepted Request returns
+read consumers initialize subscribe-then-pull
 remaining-Hand cleanup timing relative to TurnEnded is explicit
 Enemy Intent is authoritative and drives corresponding EnemyTurn Actions
-UI can obtain one coherent authoritative read snapshot
+current player-facing Intent damage value uses shared pipeline but is current-state, not guaranteed-future semantics
+UI can obtain one coherent (BattleId, StateRevision) read snapshot
+ResolutionFaulted publishes a readable battle-level Ready snapshot
 normal playable flow does not require TestDrawCard or TestPlayFirstCard
 UI-A0 does not require Presentation Records / Presentation Queue
 ```
 
-Before UI-A2 exists, every `presentation catch-up` label below means an immediate/no-op presentation boundary followed by coherent snapshot refresh.
+Before UI-A2 exists, every `presentation catch-up` label below means an immediate/no-op presentation boundary following the battle-level stable-read publication and coherent snapshot refresh.
 
 Authoritative playable flow:
 
 ```text
 BattleStart
 ↓
-initialize battle + commit initial Enemy Intent
+initialize battle scope
+↓
+deterministic initial DrawPile shuffle using battle RNG
+↓
+commit initial Enemy Intent
 ↓
 opening-Hand gameplay batch
 ↓
@@ -3104,9 +3226,13 @@ turn-opening gameplay resolution completes
 ↓
 BattleState = PlayerTurn
 ↓
-presentation catch-up (no-op before UI-A2)
+Queue fully settles
 ↓
-coherent snapshot refresh
+BattleManager schedules stable-read publication
+↓
+OnReadStateReady(BattleId, StateRevision)
+↓
+coherent player-facing snapshot refresh
 ↓
 UI releases input
 ```
@@ -3125,15 +3251,19 @@ shared validator re-runs on current state
 Rejected(reason)
 or AcceptedForResolution
 ↓
+Request returns to caller
+↓
 Resolving presentation/input policy
 ↓
-Gameplay Actions / Events / Triggers commit
+Gameplay Actions / Events / Triggers / macro work settle
 ↓
 authoritative BattleState/result is current
 ↓
-presentation catch-up (no-op before UI-A2)
+OnReadStateReady(BattleId, StateRevision)
 ↓
 coherent snapshot refresh
+↓
+presentation catch-up (no-op before UI-A2)
 ↓
 UI releases input only if authoritative state is Request-eligible
 ```
@@ -3185,16 +3315,32 @@ Draw / Shuffle / Trigger gameplay resolution completes
 ↓
 BattleState = PlayerTurn
 ↓
-presentation catch-up (no-op before UI-A2)
+Queue fully settles
+↓
+OnReadStateReady(BattleId, StateRevision)
 ↓
 coherent snapshot refresh
 ↓
 UI releases input
 ```
 
-#### UI-A1 — Operable Battle HUD
+Validation evidence for the completed UI-A0 run:
 
-Begin only after UI-A0 provides the playable gameplay boundary.
+```text
+SlayTheSpireDemoEditor build  PASS
+Phase5       13/13
+Phase6A      23/23
+Phase6B      12/12
+Phase6C       5/5
+Phase6UIA0   20/20
+current run  73/73
+```
+
+The numeric total is run evidence, not the permanent acceptance definition.
+
+#### UI-A1 — Operable Battle HUD — NEXT
+
+Begin from the now-validated UI-A0 gameplay/read boundary.
 
 Scope:
 
