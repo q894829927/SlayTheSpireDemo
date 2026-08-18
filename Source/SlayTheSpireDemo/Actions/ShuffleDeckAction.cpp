@@ -38,6 +38,16 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
+	// Expected Deck-level no-ops do not need event wiring because there will be
+	// no committed DeckShuffled fact to publish. Delegate the no-op itself to
+	// DeckRuntime so its authoritative validation/logging remains unchanged.
+	if (!Deck->HasCardsInDiscardPile() || Deck->HasCardsInDrawPile())
+	{
+		Deck->ShuffleDiscardIntoDrawPile();
+		Finish();
+		return;
+	}
+
 	UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
 	TArray<ACombatant*> RawCombatants;
 
@@ -69,8 +79,8 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 	UE_LOG(LogTemp, Log, TEXT("[Action] ShuffleDeckAction executing."));
 	if (!Deck->ShuffleDiscardIntoDrawPile())
 	{
-		// Failed/no-op shuffles are not committed gameplay facts and therefore
-		// emit no FDeckShuffledEvent.
+		// A preflight-valid shuffle can still fail soft if DeckRuntime rejects it.
+		// No commit means no FDeckShuffledEvent.
 		Finish();
 		return;
 	}
