@@ -6,6 +6,7 @@
 
 class ABattleManager;
 class ACombatant;
+class UBattleEventDispatcher;
 class UCardInstance;
 class UDeckRuntime;
 
@@ -20,7 +21,9 @@ public:
 		UCardInstance* InCard,
 		ACombatant* InSource,
 		ACombatant* InRequestedTarget,
-		UDeckRuntime* InDeck
+		UDeckRuntime* InDeck,
+		UBattleEventDispatcher* InEventDispatcher,
+		const TArray<ACombatant*>& InEventCombatants
 	);
 
 	virtual void Execute(UBattleActionQueue* Queue) override;
@@ -40,4 +43,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> Deck = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleEventDispatcher> EventDispatcher = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACombatant>> EventCombatants;
 };
