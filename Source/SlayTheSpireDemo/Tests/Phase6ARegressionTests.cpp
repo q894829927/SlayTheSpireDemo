@@ -345,7 +345,7 @@ namespace Phase6ARegression
 		ApplyStatus(Fixture.Player, C, 2, 2);
 
 		UBattleActionQueue* Queue = NewObject<UBattleActionQueue>(Fixture.World);
-		TArray<FTriggerDispatchRecord> Trace;
+		TArray<FTriggerEligibilityRecord> Trace;
 		CreateDispatcher(Fixture)->Dispatch(FBattleEvent::MakeTurnEnded(Fixture.Player), Queue, BothCombatants(Fixture), &Trace);
 
 		TestEqual(TEXT("Three eligible triggers"), Trace.Num(), 3);
@@ -377,7 +377,7 @@ namespace Phase6ARegression
 		ApplyStatus(Fixture.Player, C, 2, 2);
 
 		UBattleActionQueue* Queue = NewObject<UBattleActionQueue>(Fixture.World);
-		TArray<FTriggerDispatchRecord> Trace;
+		TArray<FTriggerEligibilityRecord> Trace;
 		CreateDispatcher(Fixture)->Dispatch(FBattleEvent::MakeTurnEnded(Fixture.Player), Queue, BothCombatants(Fixture), &Trace);
 
 		TestEqual(TEXT("Three eligible triggers"), Trace.Num(), 3);
@@ -406,7 +406,7 @@ namespace Phase6ARegression
 		ApplyStatus(Fixture.Player, Status, 5, 1);
 
 		UBattleActionQueue* Queue = NewObject<UBattleActionQueue>(Fixture.World);
-		TArray<FTriggerDispatchRecord> Trace;
+		TArray<FTriggerEligibilityRecord> Trace;
 		CreateDispatcher(Fixture)->Dispatch(FBattleEvent::MakeTurnEnded(Fixture.Player), Queue, BothCombatants(Fixture), &Trace);
 
 		TestEqual(TEXT("Three eligible local triggers"), Trace.Num(), 3);
@@ -448,8 +448,8 @@ namespace Phase6ARegression
 		ApplyStatus(Second.Player, B2, 2, 1);
 		ApplyStatus(Second.Player, A2, 2, 3);
 
-		TArray<FTriggerDispatchRecord> FirstTrace;
-		TArray<FTriggerDispatchRecord> SecondTrace;
+		TArray<FTriggerEligibilityRecord> FirstTrace;
+		TArray<FTriggerEligibilityRecord> SecondTrace;
 		CreateDispatcher(First)->Dispatch(FBattleEvent::MakeTurnEnded(First.Player), NewObject<UBattleActionQueue>(First.World), BothCombatants(First), &FirstTrace);
 		CreateDispatcher(Second)->Dispatch(FBattleEvent::MakeTurnEnded(Second.Player), NewObject<UBattleActionQueue>(Second.World), BothCombatants(Second), &SecondTrace);
 
@@ -640,7 +640,7 @@ namespace Phase6ARegression
 		UStatusData* Weak = CreateStatus(Fixture.World, TEXT("Weak")); AddDecayTrigger(Weak);
 		UStatusInstance* Instance = ApplyStatus(Fixture.Player, Weak, 2, 1);
 		UBattleActionQueue* Queue = NewObject<UBattleActionQueue>(Fixture.World);
-		TArray<FTriggerDispatchRecord> Trace;
+		TArray<FTriggerEligibilityRecord> Trace;
 		CreateDispatcher(Fixture)->Dispatch(FBattleEvent::MakeTurnEnded(Fixture.Player), Queue, BothCombatants(Fixture), &Trace);
 
 		TestEqual(TEXT("Eligibility snapshot builds one reaction"), Trace.Num(), 1);
