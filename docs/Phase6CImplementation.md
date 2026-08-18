@@ -17,7 +17,9 @@ A successful shuffle now resolves as:
 
 ```text
 ShuffleDeckAction Execute
-→ validate Deck / Queue / event-dispatch dependencies
+→ validate Deck / Queue
+→ confirm this is not an expected Deck-level no-op
+→ resolve event-dispatch dependencies
 → DeckRuntime::ShuffleDiscardIntoDrawPile()
 → shuffle commit succeeds
 → FDeckShuffledEvent(ExactDeck)
@@ -77,11 +79,36 @@ Enemy
 
 Card effects receive only the generic dispatcher/combatant references in `FCardPlayContext`; they do not search actors and do not own trigger membership.
 
-The pre-6C `Initialize(Deck)` and `PlayCardAction::Initialize(...)` call shapes are preserved for compatibility. A direct BattleManager debug draw may resolve the same narrow context from its authoritative Queue owner only when a shuffle is actually required.
+Event context is deliberately **optional at the generic PlayCard layer**. A Strike/Defend-style card must not gain a new hard failure dependency merely because shuffle events now exist. Draw actions receive the context when available and only require valid battle event wiring if they actually reach the empty-draw → shuffle path.
 
-## Failure semantics
+The pre-6C public call shapes are preserved:
 
-Before a shuffle commit, invalid event wiring requests a Queue ResolutionFault rather than committing a shuffle that cannot emit its required post-commit event.
+```text
+DrawCardAction::Initialize(Deck)
+ShuffleDeckAction::Initialize(Deck)
+PlayCardAction::Initialize(Battle, Card, Source, Target, Deck)
+```
+
+When those legacy entry points genuinely need a successful shuffle, they may resolve the same narrow battle-scoped dispatcher/combatants from the authoritative Queue/BattleManager relationship. They never search the world.
+
+## Failure / no-op semantics
+
+Expected Deck-level no-ops are checked before event wiring becomes mandatory:
+
+```text
+DiscardPile empty
+DrawPile not empty
+```
+
+They remain ordinary no-op/fail-soft Deck outcomes:
+
+```text
+no shuffle commit
+no DeckShuffled event
+no new ResolutionFault merely because event context is absent
+```
+
+If a shuffle can commit, valid event wiring is required **before** that commit. Missing/invalid wiring requests Queue `ResolutionFault` instead of committing an unpublishable post-commit fact.
 
 After a successful shuffle commit:
 
@@ -91,15 +118,6 @@ Dispatcher final reaction insertion failure → ResolutionFault
 ```
 
 The current Action still calls `Finish()` so the Queue can enter the fault at its normal safe point.
-
-Expected deck-level no-ops are not framework faults:
-
-```text
-DiscardPile empty
-DrawPile not empty
-```
-
-They simply emit no event and Finish.
 
 ## Regression coverage
 
@@ -180,4 +198,4 @@ Actions
 
 Expected result: **53/53 PASS**.
 
-After that result is confirmed, synchronize `AGENTS.md` to mark Phase 6C complete and advance to Phase 6R.
+`AGENTS.md` should show Phase 6C as source-implemented / validation-pending until that result is confirmed. After a green gate, mark Phase 6C complete and advance to Phase 6R.
