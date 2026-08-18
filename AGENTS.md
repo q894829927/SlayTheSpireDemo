@@ -49,13 +49,13 @@ BattleActionQueue
   - [x] Phase 5B2 Damage Ratio + Weak + Vulnerable implemented and PIE-validated.
   - [x] Phase 5C Block Spec + Dexterity + Frailty implemented and PIE-validated.
   - [x] Phase 5R regression Automation gate implemented and UE5.8 self-hosted CI validated at 13/13.
-- [ ] Phase 6 battle events / triggers in progress.
+- [x] Phase 6 battle events / triggers complete for the defined Phase 6 scope.
   - [x] Phase 6A TurnEnd Trigger Vertical Slice — COMPLETE; UE5.8 self-hosted CI validated at 23/23.
   - [x] Phase 6B Battle Turn Wiring — COMPLETE; expanded Queue contract suite passed at 12/12, total Phase5 + Phase6A + Phase6B gate passed 48/48, and post-hardening PIE turn-cycle validation passed.
   - [x] Phase 6C DeckShuffled Event — COMPLETE; UE5.8 Editor build + Phase6C 5/5 and total Phase5–Phase6C 53/53 Automation gate passed.
-  - [ ] Phase 6R Regression Gate + deferred test-module extraction — NEXT.
-- [ ] Phase 6UI-A playable Battle UI — PLANNED AFTER Phase 6R.
-  - [ ] UI-A0 Playable Gameplay Boundary.
+  - [x] Phase 6R Regression Gate + test-module extraction — COMPLETE; UE5.8 full 53/53 regression gate and Shipping exclusion validation passed.
+- [ ] Phase 6UI-A playable Battle UI — NEXT.
+  - [ ] UI-A0 Playable Gameplay Boundary — NEXT.
   - [ ] UI-A1 Operable Battle HUD.
   - [ ] UI-A2 Basic Committed Presentation.
   - [ ] UI-A3 Deterministic Immediate Preview.
@@ -176,6 +176,16 @@ Phase 6C validated:
 - `SlayTheSpireDemo.Phase6C` contains 5 regressions;
 - the owner-only `.github/workflows/ue-phase6c-tests.yml` passed Phase5 13 + Phase6A 23 + Phase6B 12 + Phase6C 5 = 53/53 tests.
 
+Phase 6R validated:
+
+- all Automation-only Phase5/6A/6B/6C sources and reflected `UPhase6ATest*` helpers were moved out of the Runtime module into the Editor-only `SlayTheSpireDemoTests` module;
+- `SlayTheSpireDemoTests` depends on `SlayTheSpireDemo`; the Runtime module and Game target do not depend on or include the test module;
+- `FTriggerContext` is exported from Runtime only as required for the cross-module test-helper boundary; gameplay semantics are unchanged;
+- `SlayTheSpireDemoEditor` builds with the extracted test module;
+- Editor Automation still discovers and passes exactly Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 = 53/53;
+- the normal `SlayTheSpireDemo Win64 Shipping` target builds and the Shipping exclusion gate finds no `SlayTheSpireDemoTests` / `Phase6ATest*` artifacts;
+- Phase 6R adds no gameplay, UI, DataAsset or map semantics, so no additional manual PIE/asset validation is required beyond the already-passed Phase 6 gameplay evidence.
+
 ### Manual UE assets/configuration
 
 Phase 4:
@@ -264,7 +274,7 @@ DA_Status_Frailty
 
 Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
 
-Phase 6C requires no new `.uasset` / `.umap` configuration.
+Phase 6C and Phase 6R require no new `.uasset` / `.umap` configuration.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -737,11 +747,13 @@ CardData, CardEffect, PlayCardAction and DeckRuntime required no architecture ch
 
 #### Phase 5R — Automation Regression Gate — COMPLETE
 
-Implemented a focused Unreal Automation suite at:
+Implemented a focused Unreal Automation suite now located at:
 
 ```text
-Source/SlayTheSpireDemo/Tests/Phase5RegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase5RegressionTests.cpp
 ```
+
+It was originally introduced in the Runtime module and was moved into the Editor-only test module by Phase 6R.
 
 Tests construct transient runtime objects and validate state/results directly. They do not depend on `L_BattleTest`, manual DataAsset setup or log parsing.
 
@@ -795,9 +807,9 @@ dynamic card-text preview
 
 Keyword presentation remains deferred. Phase 5 establishes gameplay semantics for statuses such as Strength/Weak/Vulnerable/Dexterity/Frailty, but it does not make `Keyword` an alias for `UStatusData` or add UI keyword infrastructure merely because these mechanics have player-facing names.
 
-### Phase 6 — Battle Events and Triggers — IN PROGRESS
+### Phase 6 — Battle Events and Triggers — COMPLETE
 
-Phase 6 introduces deterministic post-commit facts and queued reactions without weakening the existing ActionQueue / Modifier / Commit boundaries.
+Phase 6 introduced deterministic post-commit facts and queued reactions without weakening the existing ActionQueue / Modifier / Commit boundaries.
 
 Core responsibility split:
 
@@ -848,7 +860,7 @@ BattleActionQueue executes reactions
 6A  TurnEnd Trigger Vertical Slice                                 COMPLETE / CI PASSED 23/23
 6B  Battle Turn Wiring                                             COMPLETE / CI PASSED 12/12, TOTAL 48/48 + PIE PASSED
 6C  DeckShuffled Event                                             COMPLETE / UE5.8 5/5, TOTAL 53/53 PASSED
-6R  Phase 6 Regression Gate + test-module extraction               NEXT
+6R  Phase 6 Regression Gate + test-module extraction               COMPLETE / TOTAL 53/53 + SHIPPING EXCLUSION PASSED
 ```
 
 Do not implement Phase 7 relics during Phase 6.
@@ -888,7 +900,7 @@ focused Unreal Automation Tests
 
 Events are short-lived typed value data, not gameplay UObjects and not persistent registry entries.
 
-Phase 6A introduced `FTurnEndedEvent`; Phase 6C source now adds the second real event, `FDeckShuffledEvent`. Do not predeclare speculative event alternatives.
+Phase 6A introduced `FTurnEndedEvent`; Phase 6C adds the second real event, `FDeckShuffledEvent`. Do not predeclare speculative event alternatives.
 
 `FBattleEvent` uses a small type-safe checked representation. Requirements:
 
@@ -1430,28 +1442,70 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-Phase 6C is complete. Phase 6R is the next implementation slice.
+Phase 6C is complete.
 
-#### Phase 6R — Regression Gate
+#### Phase 6R — Regression Gate + Test Module Extraction — COMPLETE
 
-Phase 6 completion requires:
+Phase 6R is an engineering/regression slice. It adds no new gameplay behavior.
+
+Final module boundary:
 
 ```text
-all Phase 6 Automation tests pass
-+ all 13 Phase 5 regression tests still pass
-+ required UE5.8 PIE turn-flow validation passes
+SlayTheSpireDemo          Runtime
+SlayTheSpireDemoTests     Editor-only
+        ↓ depends on
+SlayTheSpireDemo
 ```
 
-Use `Trigger.CollectionOrderDoesNotMatter`, not the obsolete `RegistrationOrderDoesNotMatter`, because Phase 6 has no persistent Trigger Registry.
+Automation-only sources now live under:
 
-Phase 6R also owns the deferred engineering cleanup recorded in `docs/Phase6DeferredEngineering.md`: move Automation-only reflected test helpers out of the Runtime module into an Editor/Developer-only test module. Until that cleanup is complete, do not add new test-only `UCLASS` types to the Runtime module.
+```text
+Source/SlayTheSpireDemoTests/Private/
+```
 
-### Phase 6UI-A — Playable Battle UI — PLANNED AFTER PHASE 6R
+including:
+
+```text
+Phase5RegressionTests.cpp
+Phase6ARegressionTests.cpp
+Phase6AExecutionOrderTests.cpp
+Phase6ATestTypes.h/.cpp
+Phase6BRegressionTests.cpp
+Phase6CRegressionTests.cpp
+```
+
+The reflected test helpers use `SLAYTHESPIREDEMOTESTS_API`. The Runtime module contains no `UPhase6ATest*` reflected helper and never depends on `SlayTheSpireDemoTests`.
+
+`SlayTheSpireDemo.uproject` declares the test module as `Type = Editor`; `SlayTheSpireDemoEditorTarget` includes it, while the normal Game target does not.
+
+`FTriggerContext` is exported from the Runtime module because the extracted test trigger helpers call its runtime methods across the module/DLL boundary. This export does not alter Trigger semantics.
+
+The owner-only `.github/workflows/ue-phase6r-tests.yml` validates:
+
+```text
+Editor build with SlayTheSpireDemoTests
+Phase 5    13/13
+Phase 6A   23/23
+Phase 6B   12/12
+Phase 6C    5/5
+----------------
+Total      53/53
+
+Shipping game target build
+SlayTheSpireDemoTests excluded from Shipping artifacts
+Phase6ATest* excluded from Shipping artifacts
+```
+
+Phase 6R passed. Phase 6 is complete for the defined scope.
+
+No additional PIE, Blueprint, DataAsset or map action is required for 6R because the slice only changes test/module engineering boundaries and the full gameplay regression gate remained green.
+
+### Phase 6UI-A — Playable Battle UI — NEXT
 
 Implementation order inside this phase:
 
 ```text
-UI-A0 Playable Gameplay Boundary
+UI-A0 Playable Gameplay Boundary   NEXT
 ↓
 UI-A1 Operable Battle HUD
 ↓
@@ -1759,13 +1813,19 @@ Never model a Relic, Stance, battle rule or another unrelated source as a fake `
 
 Use normal Unreal prefixes: `A`, `U`, `F`, `E`, `I`, and `b` for booleans.
 
-Target source areas as needed:
+Target Runtime source areas as needed:
 
 ```text
-Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/ Tests/
+Battle/ Combat/ Actions/ Cards/ Deck/ Status/ Modifiers/ Relics/ Events/ Enemy/ UI/ Keywords/
 ```
 
-Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. `Tests/` contains focused automation regressions and should remain small and rule-oriented.
+Automation-only source belongs under the Editor-only test module:
+
+```text
+Source/SlayTheSpireDemoTests/Private/
+```
+
+Do not create empty folders just to reserve future architecture. `Keywords/` is a future presentation-oriented source area and should be created only when keyword/card-text presentation work actually begins. Focused Automation regressions and test-only reflected helpers must remain in `SlayTheSpireDemoTests`, not in the Runtime module.
 
 Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through clear Outer/`UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
@@ -1978,7 +2038,7 @@ Saved/
 29. Current fixed Enemy behavior may use an upfront turn batch ending in `TurnEndedAction`; do not generalize this into a requirement to precompute future dynamic Enemy follow-ups. Add an explicit continuation/barrier mechanism only when a real dynamic Enemy mechanic needs it.
 30. ResolutionFault is framework safety, not gameplay balance. Keep a high safety budget in all builds and expose any lower configurable budget only through test-specific code.
 31. `OnQueueEmpty` is an observable non-reentrant boundary. BattleManager must defer macro turn progression until all observers return; never repair QueueEmpty ordering by relying on multicast registration order.
-32. Until Phase 6R extracts an Editor/Developer-only test module, do not add new test-only reflected `UCLASS` types to the Runtime module.
+32. Automation-only reflected `UCLASS` types and regression sources belong in the Editor-only `SlayTheSpireDemoTests` module. Never reintroduce test-only reflected classes into the Runtime module merely for convenience.
 33. `FDeckShuffledEvent` is emitted only after a successful shuffle commit. Expected/no-op shuffles emit no event, and reactions to a successful shuffle resolve before the already-pending RetryDraw continuation.
 34. Phase 6UI-A does not begin before Phase 6R unless the user explicitly changes the order. Phase 7 follows the playable UI-A slice, not Phase 6R directly.
 35. `PlayerTurn` is an authoritative gameplay request-eligible state. Presentation may still lock the View after Gameplay enters `PlayerTurn`; animation completion must never be required to commit `BattleState = PlayerTurn`.
@@ -2012,19 +2072,18 @@ Total     53/53 PASS
 
 The post-hardening PIE player → enemy → player cycle also passed with no `ResolutionFault` and with observer-visible QueueEmpty states remaining `PlayerTurnEnding` then `EnemyTurnEnding` before macro progression.
 
-Phase 6C source and validation are complete. Its owner-only workflow is `.github/workflows/ue-phase6c-tests.yml` and must remain manual, owner-only and restricted to trusted `main`.
-
-Validated gate:
+Phase 6R validation is complete through `.github/workflows/ue-phase6r-tests.yml`:
 
 ```text
-Phase 5    13/13
-Phase 6A   23/23
-Phase 6B   12/12
-Phase 6C    5/5
-Total      53/53
+SlayTheSpireDemoEditor + SlayTheSpireDemoTests build  PASS
+Phase5–Phase6C full regression                         53/53 PASS
+SlayTheSpireDemo Win64 Shipping build                  PASS
+SlayTheSpireDemoTests / Phase6ATest Shipping exclusion PASS
 ```
 
-Phase 6R is next. It must rerun the complete Phase 5 and Phase 6 suites and perform the deferred test-module extraction/package check recorded in `docs/Phase6DeferredEngineering.md`.
+The Phase 6R workflow remains manual, owner-only and restricted to trusted `main` because it runs on the self-hosted UE5.8 runner.
+
+Phase 6 is complete. The next implementation slice is `Phase 6UI-A0 — Playable Gameplay Boundary`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2100,7 +2159,7 @@ Actions/GainBlockAction.cpp
 Battle/BattleManager.h/.cpp
 
 Phase 5R
-Tests/Phase5RegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase5RegressionTests.cpp
 .github/workflows/ue-phase5-tests.yml
 .github/workflows/runner-smoke-test.yml
 
@@ -2111,19 +2170,19 @@ Events/BattleEventDispatcher.h/.cpp
 Events/TurnEndStatusDecayTrigger.h/.cpp
 Actions/ReduceStatusAction.h/.cpp
 Actions/BattleActionQueue.h/.cpp
-Tests/Phase6ARegressionTests.cpp
-Tests/Phase6AExecutionOrderTests.cpp
-Tests/Phase6ATestTypes.h/.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6ARegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6AExecutionOrderTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6ATestTypes.h/.cpp
 .github/workflows/ue-phase6a-tests.yml
 
 Phase 6B
 Actions/TurnEndedAction.h/.cpp
 Battle/BattleManager.h/.cpp
 Actions/BattleActionQueue.h/.cpp
-Tests/Phase6BRegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6BRegressionTests.cpp
 .github/workflows/ue-phase6b-tests.yml
 
-Phase 6C source
+Phase 6C
 Events/BattleEvent.h
 Actions/ShuffleDeckAction.h/.cpp
 Actions/DrawCardAction.h/.cpp
@@ -2131,10 +2190,19 @@ Cards/CardPlayContext.h
 Cards/Effects/DrawCardEffect.cpp
 Actions/PlayCardAction.h/.cpp
 Battle/BattleManager.h
-Tests/Phase6ATestTypes.h/.cpp
-Tests/Phase6CRegressionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6CRegressionTests.cpp
 .github/workflows/ue-phase6c-tests.yml
 docs/Phase6CImplementation.md
+
+Phase 6R
+Source/SlayTheSpireDemoTests/SlayTheSpireDemoTests.Build.cs
+Source/SlayTheSpireDemoTests/Private/SlayTheSpireDemoTests.cpp
+SlayTheSpireDemo.uproject
+Source/SlayTheSpireDemoEditor.Target.cs
+Events/BattleTrigger.h
+.github/workflows/ue-phase6r-tests.yml
+docs/Phase6RImplementation.md
+docs/Phase6DeferredEngineering.md
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, EventDispatcher, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -2156,8 +2224,9 @@ docs/Phase6CImplementation.md
 - Phase 6A — PASSED: 23/23 UE5.8 Automation; typed TurnEnded event/trigger vertical slice, exact-instance decay, deterministic candidate and actual execution ordering.
 - Phase 6B — PASSED: expanded 12/12 UE5.8 Automation, total Phase5 + Phase6A + Phase6B 48/48, real Status DataAsset PIE validation, QueueEmpty non-reentrancy PIE validation, and all six Queue continuation/broadcast contracts green.
 - Phase 6C — PASSED: typed DeckShuffled post-commit event, shuffle reaction-before-retry ordering, Phase6C 5/5 and total Phase5–Phase6C 53/53 passed through the owner-only UE5.8 workflow.
-- Phase 6 — NOT YET COMPLETE: Phase 6R remains.
-- Phase 6UI-A0 — PLANNED AFTER 6R: authoritative playable turn/hand lifecycle, formal Request APIs, shared gameplay validation, coherent read snapshot and minimal authoritative Enemy Intent.
+- Phase 6R — PASSED: Automation-only tests/reflected helpers extracted into Editor-only `SlayTheSpireDemoTests`; Editor build + full 53/53 regression + Shipping build/exclusion gate passed.
+- Phase 6 — PASSED: Battle Event/Trigger scope and the Phase 6R regression/test-module isolation gate are complete.
+- Phase 6UI-A0 — NEXT: authoritative playable turn/hand lifecycle, formal Request APIs, shared gameplay validation, coherent read snapshot and minimal authoritative Enemy Intent.
 - Phase 6UI-A1 — PLANNED: first operable Battle HUD without gameplay-driving debug keyboard commands.
 - Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.
 - Phase 6UI-A3 — PLANNED: deterministic immediate Damage / Block / Energy preview only.
@@ -2199,20 +2268,20 @@ When completing a meaningful phase:
 
 ## 15. Planned Playable UI, MVVM and Presentation Architecture
 
-This section is the detailed long-term specification for work after Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
+This section is the detailed long-term specification for work after the now-complete Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
 
-Do not implement these UI systems before Phase 6R unless the user explicitly changes the development order.
+Phase 6UI-A0 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
 
 ### 15.1 Post-Phase-6 development order
 
 ```text
-Phase 6R
+Phase 6R                              COMPLETE
     test-module extraction
     full Phase 5/6 regression
     Shipping/package-oriented validation
 ↓
-Phase 6UI-A
-    UI-A0 playable gameplay boundary
+Phase 6UI-A                           NEXT
+    UI-A0 playable gameplay boundary NEXT
     UI-A1 operable Battle HUD
     UI-A2 basic committed presentation
     UI-A3 deterministic immediate preview
