@@ -95,6 +95,80 @@ UStatusInstance* UStatusContainer::ApplyStatus(
 	return NewInstance;
 }
 
+bool UStatusContainer::ReduceStatus(UStatusInstance* ExpectedInstance, int32 AmountToRemove)
+{
+	if (!IsValid(ExpectedInstance) || AmountToRemove <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Status] ReduceStatus rejected: invalid ExpectedInstance or AmountToRemove=%d."), AmountToRemove);
+		return false;
+	}
+
+	const int32 Index = Statuses.IndexOfByPredicate(
+		[ExpectedInstance](const TObjectPtr<UStatusInstance>& InstancePtr)
+		{
+			return InstancePtr.Get() == ExpectedInstance;
+		}
+	);
+
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 OldAmount = ExpectedInstance->GetAmount();
+	const FString Label = ExpectedInstance->GetDebugLabel();
+
+	if (OldAmount <= AmountToRemove)
+	{
+		Statuses.RemoveAt(Index);
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("[Status] Reduced %s on %s: Amount %d - %d => removed exact instance."),
+			*Label,
+			*GetNameSafe(Owner.Get()),
+			OldAmount,
+			AmountToRemove
+		);
+		LogState(TEXT("AfterReduceRemove"));
+		return true;
+	}
+
+	if (!ExpectedInstance->ReduceAmount(AmountToRemove))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Status] ReduceStatus failed for %s."), *Label);
+		return false;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Status] Reduced %s on %s: Amount %d - %d = %d."),
+		*Label,
+		*GetNameSafe(Owner.Get()),
+		OldAmount,
+		AmountToRemove,
+		ExpectedInstance->GetAmount()
+	);
+	LogState(TEXT("AfterReduce"));
+	return true;
+}
+
+bool UStatusContainer::ContainsStatusInstance(const UStatusInstance* Instance) const
+{
+	if (!IsValid(Instance))
+	{
+		return false;
+	}
+
+	return Statuses.ContainsByPredicate(
+		[Instance](const TObjectPtr<UStatusInstance>& InstancePtr)
+		{
+			return InstancePtr.Get() == Instance;
+		}
+	);
+}
+
 const UStatusInstance* UStatusContainer::FindStatusById(FName StatusId) const
 {
 	return FindMutableStatusById(StatusId);
