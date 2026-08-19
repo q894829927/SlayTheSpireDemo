@@ -42,8 +42,10 @@ bool FCardPresentationFieldsComeFromDefinitionTest::RunTest(const FString& Param
 		return false;
 	}
 
+	UTexture2D* TestCardArt = NewObject<UTexture2D>(GetTransientPackage());
 	Definition->CardType = ECardType::Skill;
 	Definition->Description = FText::FromString(TEXT("Draw 1 card."));
+	Definition->CardArt = TestCardArt;
 
 	Fixture.DrainInitialReady();
 	Fixture.InitializeViewModel();
@@ -51,6 +53,7 @@ bool FCardPresentationFieldsComeFromDefinitionTest::RunTest(const FString& Param
 
 	TestEqual(TEXT("HUD card type is copied from the card definition"), Fixture.ViewModel->HandCards[0].CardType, ECardType::Skill);
 	TestEqual(TEXT("HUD card description is copied from the card definition"), Fixture.ViewModel->HandCards[0].Description.ToString(), FString(TEXT("Draw 1 card.")));
+	TestTrue(TEXT("HUD card art is copied from the card definition"), Fixture.ViewModel->HandCards[0].CardArt == TestCardArt);
 	return true;
 }
 
