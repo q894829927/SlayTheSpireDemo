@@ -106,6 +106,6 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 20 -ReportName "Phase6UIA0"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA1" -ExpectedCount 10 -ReportName "Phase6UIA1"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA1" -ExpectedCount 11 -ReportName "Phase6UIA1"
 
-          Write-Host "All existing regressions, UI-A0 invariants and current UI-A1 ViewModel invariants passed. Current discovered total: 83 tests."
+          Write-Host "All existing regressions, UI-A0 invariants and current UI-A1 ViewModel invariants passed. Current discovered total: 84 tests."
