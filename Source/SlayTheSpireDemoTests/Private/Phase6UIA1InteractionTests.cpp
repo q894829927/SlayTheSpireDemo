@@ -60,6 +60,40 @@ bool FNoTargetConfirmationLocksUntilReadyTest::RunTest(const FString& Parameters
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSelfTargetRequiresConfirmAndSubmitsPlayerTest,
+	"SlayTheSpireDemo.Phase6UIA1.ViewModel.SelfTargetRequiresConfirmAndSubmitsPlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Parameters)
+{
+	FHUDTestFixture Fixture(ECardTargetType::Self, 1, 5, 5);
+	Fixture.DrainInitialReady();
+	Fixture.InitializeViewModel();
+	if (!RequireFixture(*this, Fixture)) return false;
+
+	const int32 RuntimeId = Fixture.FirstRuntimeId();
+	TestTrue(TEXT("Self-target card can be selected"), Fixture.ViewModel->SelectCardByRuntimeId(RuntimeId));
+	TestTrue(TEXT("Self-target selection keeps runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId != INDEX_NONE);
+	TestEqual(TEXT("Self-target card waits for explicit confirmation"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::ReadyToConfirm);
+	TestEqual(TEXT("Self-target confirmation candidate is not exposed as a public legal-target button"), Fixture.ViewModel->LegalTargets.Num(), 0);
+
+	TestTrue(TEXT("Self-target confirm submits the gameplay-derived Player candidate"), Fixture.ViewModel->ConfirmSelectedCard());
+	TestEqual(TEXT("Accepted self-target request enters Resolving"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
+	TestTrue(TEXT("Accepted self-target request locks input before Ready"), Fixture.ViewModel->bInputLocked);
+
+	Fixture.FlushReady();
+	TestEqual(TEXT("Ready refresh returns self-target flow to Idle"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Idle);
+	TestEqual(TEXT("Self-target Defend path grants Block"), Fixture.ViewModel->Player.Block, 5);
+	TestEqual(TEXT("Self-target Defend path spends Energy"), Fixture.ViewModel->Energy, 2);
+	TestEqual(TEXT("Self-target card leaves Hand"), Fixture.ViewModel->HandCards.Num(), 0);
+	TestEqual(TEXT("Self-target card reaches Discard"), Fixture.ViewModel->DiscardCount, 1);
+	TestEqual(TEXT("Ready refresh clears selected runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId, INDEX_NONE);
+	TestEqual(TEXT("Ready refresh keeps public legal targets empty"), Fixture.ViewModel->LegalTargets.Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FTargetRequestLocksUntilReadyTest,
 	"SlayTheSpireDemo.Phase6UIA1.ViewModel.TargetRequestLocksUntilReady",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
