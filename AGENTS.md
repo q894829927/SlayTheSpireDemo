@@ -3065,7 +3065,7 @@ Presentation backlog must remain bounded by UX policy. High-volume/low-importanc
 
 ### 15.11 Phase 6UI-A interaction policy
 
-Phase 6UI-A intentionally uses a simple explicit two-stage card interaction to validate selection, cancellation, legal target highlighting, Request submission and Resolving lock.
+Phase 6UI-A intentionally uses a simple explicit two-stage card interaction to validate selection, cancellation, legal target handling, Request submission and Resolving lock.
 
 Conceptual UI state:
 
@@ -3088,19 +3088,32 @@ Initial examples:
 ```text
 Enemy-target card
 select card
-→ select legal enemy
-→ RequestPlayCard
+→ query gameplay legal targets
+→ expose/select a legal enemy candidate
+→ RequestPlayCard(Card, selected enemy)
+→ submission-time authoritative revalidation
 
 Self-target card
 select card
-→ select self
-→ RequestPlayCard
+→ query gameplay legal targets
+→ require the advisory candidate set to identify the unique Player target
+→ cache that candidate privately for confirmation
+→ ReadyToConfirm
+→ confirm
+→ RequestPlayCard(Card, cached Player candidate)
+→ submission-time authoritative revalidation
 
 No-target card
 select card
-→ clear explicit confirmation affordance
-→ RequestPlayCard
+→ ReadyToConfirm
+→ confirm
+→ RequestPlayCard(Card, nullptr)
+→ submission-time authoritative revalidation
 ```
+
+`PendingConfirmationTarget` is a selection-time advisory candidate snapshot obtained from the gameplay legal-target query. It is not a capability token or permanent authorization: state may change between selection and confirmation, and `RequestPlayCard` must always re-run the authoritative gameplay validator at submission time.
+
+Self-target candidates stay private to the ViewModel and must not be exposed as public `LegalTargets` buttons. Public `LegalTargets` are for targets the player actually chooses, currently the Enemy-target path. Widget code must not hard-code Player/Enemy target legality.
 
 Cancellation must be explicit and discoverable. Exact controls may vary by input device, but the player should have a clear cancel path such as reselecting the card, right click, Escape/equivalent focus action or a visible cancel affordance.
 
