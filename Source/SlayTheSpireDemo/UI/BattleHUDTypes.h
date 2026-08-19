@@ -40,7 +40,25 @@ struct SLAYTHESPIREDEMO_API FBattleHUDStatusView
 	FName StatusId = NAME_None;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	int32 Amount = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	bool bUseAtlasIcon = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FVector2D UVOffset = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FVector2D UVScale = FVector2D::UnitVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FVector2D TrimOffset = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FVector2D TrimScale = FVector2D::UnitVector;
 };
 
 USTRUCT(BlueprintType)
