@@ -424,6 +424,7 @@ void UBattleHUDViewModel::RebuildHandViews(const FBattleReadSnapshot& Snapshot)
 			{
 				View.CardType = Definition->CardType;
 				View.Description = Definition->Description;
+				View.CardArt = Definition->CardArt;
 				View.DisplayName = Definition->DisplayName.IsEmpty()
 					? FText::FromString(Source.CardId.ToString())
 					: Definition->DisplayName;
