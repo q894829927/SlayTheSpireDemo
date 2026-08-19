@@ -18,6 +18,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
 	FText DisplayName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
+	FText Description;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Rules")
 	ECardType CardType = ECardType::Attack;
 
