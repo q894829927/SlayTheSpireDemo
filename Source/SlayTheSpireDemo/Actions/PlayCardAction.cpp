@@ -145,6 +145,7 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	FCardPlayContext Context;
+	Context.Battle = Battle.Get();
 	Context.Card = Card.Get();
 	Context.Source = Source.Get();
 	Context.Target = ResolvedTarget;
