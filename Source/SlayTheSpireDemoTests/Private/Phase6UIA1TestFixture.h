@@ -8,6 +8,7 @@
 #include "Battle/BattleManager.h"
 #include "Cards/CardData.h"
 #include "Cards/CardInstance.h"
+#include "Cards/Effects/GainBlockCardEffect.h"
 #include "Combat/Combatant.h"
 #include "Deck/DeckRuntime.h"
 #include "Engine/World.h"
@@ -15,7 +16,13 @@
 
 namespace Phase6UIA1Test
 {
-	inline UCardData* CreateCard(UObject* Outer, const TCHAR* CardId, ECardTargetType TargetType, int32 Cost)
+	inline UCardData* CreateCard(
+		UObject* Outer,
+		const TCHAR* CardId,
+		ECardTargetType TargetType,
+		int32 Cost,
+		int32 GainBlockAmount = 0
+	)
 	{
 		UCardData* Card = NewObject<UCardData>(Outer);
 		Card->CardId = FName(CardId);
@@ -23,6 +30,14 @@ namespace Phase6UIA1Test
 		Card->TargetType = TargetType;
 		Card->BaseCost = Cost;
 		Card->DefaultDestination = ECardDestination::Discard;
+
+		if (GainBlockAmount > 0)
+		{
+			UGainBlockCardEffect* BlockEffect = NewObject<UGainBlockCardEffect>(Card);
+			BlockEffect->BaseAmount = GainBlockAmount;
+			Card->Effects.Add(BlockEffect);
+		}
+
 		return Card;
 	}
 
@@ -34,7 +49,12 @@ namespace Phase6UIA1Test
 		ABattleManager* Battle = nullptr;
 		UBattleHUDViewModel* ViewModel = nullptr;
 
-		FHUDTestFixture(ECardTargetType TargetType = ECardTargetType::Enemy, int32 Cost = 0, int32 EnemyDamage = 5)
+		FHUDTestFixture(
+			ECardTargetType TargetType = ECardTargetType::Enemy,
+			int32 Cost = 0,
+			int32 EnemyDamage = 5,
+			int32 GainBlockAmount = 0
+		)
 		{
 			World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, false);
 			if (!IsValid(World)) return;
@@ -54,7 +74,7 @@ namespace Phase6UIA1Test
 			Battle->PlayerTurnDrawCount = 0;
 			Battle->EnemyTestAttackDamage = EnemyDamage;
 			Battle->DeckDebugSeed = 1337;
-			Battle->DebugStartingDeck.Add(CreateCard(World, TEXT("HUDCard"), TargetType, Cost));
+			Battle->DebugStartingDeck.Add(CreateCard(World, TEXT("HUDCard"), TargetType, Cost, GainBlockAmount));
 			Battle->StartBattle();
 		}
 
