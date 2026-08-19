@@ -96,6 +96,7 @@ void UBattleHUDViewModel::Shutdown()
 	}
 
 	BattleManager.Reset();
+	PendingConfirmationTarget.Reset();
 	LegalTargetObjects.Reset();
 	CachedHandObjects.Reset();
 	HandCards.Reset();
@@ -145,16 +146,37 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	SelectedCardRuntimeId = RuntimeId;
 	RebuildLegalTargets(Card);
 
-	if (Card->GetTargetType() == ECardTargetType::None)
+	switch (Card->GetTargetType())
 	{
+	case ECardTargetType::None:
 		InteractionState = EBattleHUDInteractionState::ReadyToConfirm;
-	}
-	else if (LegalTargetObjects.Num() > 0)
-	{
-		InteractionState = EBattleHUDInteractionState::ChoosingTarget;
-	}
-	else
-	{
+		break;
+
+	case ECardTargetType::Self:
+		if (IsValid(PendingConfirmationTarget.Get()))
+		{
+			InteractionState = EBattleHUDInteractionState::ReadyToConfirm;
+			break;
+		}
+
+		ClearSelectionInternal();
+		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
+		BroadcastChanged();
+		return false;
+
+	case ECardTargetType::Enemy:
+		if (LegalTargetObjects.Num() > 0)
+		{
+			InteractionState = EBattleHUDInteractionState::ChoosingTarget;
+			break;
+		}
+
+		ClearSelectionInternal();
+		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
+		BroadcastChanged();
+		return false;
+
+	default:
 		ClearSelectionInternal();
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
 		BroadcastChanged();
@@ -215,7 +237,33 @@ bool UBattleHUDViewModel::ConfirmSelectedCard()
 		return false;
 	}
 
-	return SubmitSelectedCard(nullptr);
+	UCardInstance* Card = FindHandCardByRuntimeId(SelectedCardRuntimeId);
+	if (!IsValid(Card))
+	{
+		SetFeedback(EGameplayRequestFailureReason::InvalidCard);
+		BroadcastChanged();
+		return false;
+	}
+
+	switch (Card->GetTargetType())
+	{
+	case ECardTargetType::None:
+		return SubmitSelectedCard(nullptr);
+
+	case ECardTargetType::Self:
+		if (ACombatant* Target = PendingConfirmationTarget.Get())
+		{
+			return SubmitSelectedCard(Target);
+		}
+		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
+		BroadcastChanged();
+		return false;
+
+	default:
+		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
+		BroadcastChanged();
+		return false;
+	}
 }
 
 bool UBattleHUDViewModel::RequestEndTurn()
@@ -405,6 +453,7 @@ void UBattleHUDViewModel::RebuildLegalTargets(UCardInstance* Card)
 {
 	LegalTargets.Reset();
 	LegalTargetObjects.Reset();
+	PendingConfirmationTarget.Reset();
 
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle) || !IsValid(Card))
@@ -414,6 +463,30 @@ void UBattleHUDViewModel::RebuildLegalTargets(UCardInstance* Card)
 
 	TArray<ACombatant*> Targets;
 	Battle->GetLegalTargetsForCard(Card, Targets);
+
+	switch (Card->GetTargetType())
+	{
+	case ECardTargetType::None:
+		return;
+
+	case ECardTargetType::Self:
+		if (Targets.Num() == 1 &&
+			IsValid(Targets[0]) &&
+			Targets[0] == Battle->Player.Get())
+		{
+			// Selection-time advisory candidate only. RequestPlayCard revalidates
+			// the target against authoritative gameplay state at confirmation time.
+			PendingConfirmationTarget = Targets[0];
+		}
+		return;
+
+	case ECardTargetType::Enemy:
+		break;
+
+	default:
+		return;
+	}
+
 	for (ACombatant* Target : Targets)
 	{
 		if (!IsValid(Target))
@@ -475,6 +548,7 @@ void UBattleHUDViewModel::ClearSelectionInternal()
 	SelectedCardRuntimeId = INDEX_NONE;
 	LegalTargets.Reset();
 	LegalTargetObjects.Reset();
+	PendingConfirmationTarget.Reset();
 }
 
 void UBattleHUDViewModel::SetFeedback(EGameplayRequestFailureReason Reason)
