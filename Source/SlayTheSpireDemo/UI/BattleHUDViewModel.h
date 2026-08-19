@@ -117,6 +117,7 @@ private:
 	ACombatant* FindLegalTargetById(int32 TargetId) const;
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
+	TWeakObjectPtr<ACombatant> PendingConfirmationTarget;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
 	TArray<TWeakObjectPtr<UCardInstance>> CachedHandObjects;
 };
