@@ -78,6 +78,7 @@ namespace
 				}
 
 				FStatusReadView StatusView;
+				StatusView.Definition = Status->GetDefinition();
 				StatusView.StatusId = Status->GetStatusId();
 				StatusView.Amount = Status->GetAmount();
 				StatusView.RuntimeSequence = Status->GetRuntimeSequence();
