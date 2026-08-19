@@ -2,6 +2,9 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Status/StatusContainer.h"
+#include "Status/StatusData.h"
+
 using namespace Phase6UIA1Test;
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -13,6 +16,34 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 {
 	FHUDTestFixture Fixture;
+
+	UStatusData* StatusDefinition = IsValid(Fixture.World)
+		? NewObject<UStatusData>(Fixture.World)
+		: nullptr;
+	UStatusContainer* StatusContainer = IsValid(Fixture.Player)
+		? Fixture.Player->GetStatusContainer()
+		: nullptr;
+	if (!IsValid(StatusDefinition) || !IsValid(StatusContainer))
+	{
+		AddError(TEXT("Expected a valid status definition and player StatusContainer."));
+		return false;
+	}
+
+	StatusDefinition->StatusId = TEXT("AtlasStatus");
+	StatusDefinition->DisplayName = FText::FromString(TEXT("Atlas Status"));
+	StatusDefinition->IconRegion.bUseAtlasIcon = true;
+	StatusDefinition->IconRegion.UVOffset = FVector2D(0.25, 0.65);
+	StatusDefinition->IconRegion.UVScale = FVector2D(0.02, 0.03);
+	StatusDefinition->IconRegion.TrimOffset = FVector2D(0.06, 0.27);
+	StatusDefinition->IconRegion.TrimScale = FVector2D(0.88, 0.54);
+
+	bool bCreated = false;
+	TestNotNull(
+		TEXT("Test status is applied before the ViewModel initial pull"),
+		StatusContainer->ApplyStatus(StatusDefinition, 2, 777, bCreated)
+	);
+	TestTrue(TEXT("Test status creates a new runtime instance"), bCreated);
+
 	Fixture.DrainInitialReady();
 	TestTrue(TEXT("ViewModel initializes after the initial Ready edge already fired"), Fixture.InitializeViewModel());
 	if (!RequireFixture(*this, Fixture)) return false;
@@ -22,6 +53,20 @@ bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("HUD shows authoritative Energy"), Fixture.ViewModel->Energy, 3);
 	TestFalse(TEXT("Input is released in stable PlayerTurn"), Fixture.ViewModel->bInputLocked);
 	TestEqual(TEXT("Interaction starts Idle"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Idle);
+
+	TestEqual(TEXT("HUD receives the current player status"), Fixture.ViewModel->Player.Statuses.Num(), 1);
+	if (Fixture.ViewModel->Player.Statuses.Num() == 1)
+	{
+		const FBattleHUDStatusView& StatusView = Fixture.ViewModel->Player.Statuses[0];
+		TestEqual(TEXT("HUD status id is preserved"), StatusView.StatusId, FName(TEXT("AtlasStatus")));
+		TestEqual(TEXT("HUD status display name comes from StatusData"), StatusView.DisplayName.ToString(), FString(TEXT("Atlas Status")));
+		TestEqual(TEXT("HUD status amount is preserved"), StatusView.Amount, 2);
+		TestTrue(TEXT("HUD atlas icon flag comes from StatusData"), StatusView.bUseAtlasIcon);
+		TestTrue(TEXT("HUD UVOffset comes from StatusData"), StatusView.UVOffset.Equals(FVector2D(0.25, 0.65)));
+		TestTrue(TEXT("HUD UVScale comes from StatusData"), StatusView.UVScale.Equals(FVector2D(0.02, 0.03)));
+		TestTrue(TEXT("HUD TrimOffset comes from StatusData"), StatusView.TrimOffset.Equals(FVector2D(0.06, 0.27)));
+		TestTrue(TEXT("HUD TrimScale comes from StatusData"), StatusView.TrimScale.Equals(FVector2D(0.88, 0.54)));
+	}
 	return true;
 }
 
