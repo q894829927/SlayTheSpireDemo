@@ -1,10 +1,10 @@
 # Phase 6UI-A1 — Operable Battle HUD
 
-Status: **SOURCE GATE PASSED / UMG ASSET + PIE VALIDATION PENDING**.
+Status: **SOURCE CHANGED / UE5.8 REVALIDATION + UMG ASSET + PIE VALIDATION PENDING**.
 
 UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions.
 
-The owner-confirmed UE5.8 source gate passed after the final literal fault-log expectation fix:
+The owner-confirmed UE5.8 source gate previously passed before the later CardType/Description presentation extension:
 
 ```text
 SlayTheSpireDemoEditor build  PASS
@@ -14,10 +14,10 @@ Phase6B      12/12 PASS
 Phase6C       5/5  PASS
 Phase6UIA0   20/20 PASS
 Phase6UIA1    9/9  PASS
-Current run  82/82 PASS
+Previous run 82/82 PASS
 ```
 
-The exact total is run evidence, not a permanent architecture acceptance constant.
+That run remains historical evidence only. The new card presentation fields and their regression require a fresh UE5.8 workflow run. The exact total is run evidence, not a permanent architecture acceptance constant.
 
 ## Responsibility split
 
@@ -75,7 +75,7 @@ BattleId / StateRevision
 Player HP / MaxHP / Block / Status
 Enemy HP / MaxHP / Block / Status
 Energy / MaxEnergy
-Hand card views
+Hand card views, including DisplayName / Cost / CardType / Description
 Draw / Discard / Exhaust counts
 committed Enemy Intent presentation
 CurrentResolvedDamageAmount
@@ -85,6 +85,22 @@ Victory / Defeat / ResolutionFaulted outcome
 ```
 
 Card presentation retains `RuntimeId` as the stable UI identity for the current battle. The ViewModel internally keeps weak runtime card references only to forward a later formal Request; Request revalidation remains authoritative.
+
+Card-facing presentation fields come from the card definition rather than Widget-side effect parsing:
+
+```text
+UCardData.DisplayName
+UCardData.CardType
+UCardData.Description
+        ↓
+UBattleHUDViewModel::RebuildHandViews
+        ↓
+FBattleHUDCardView
+        ↓
+WBP_BattleCard
+```
+
+`Description` is explicit presentation data. UI-A1 does not derive player-facing rules text by reinterpreting `CardEffect` objects in UMG.
 
 ## Interaction state
 
@@ -172,7 +188,7 @@ Source/SlayTheSpireDemo/UI/BattleHUDPresenter.h/.cpp
 
 The Runtime module depends on `UMG` because `UBattleHUDWidgetBase` is a public Runtime type. The project still does not enable the Unreal MVVM plugin; the architecture uses MVVM-style responsibility boundaries without adding a plugin dependency.
 
-## Automation source gate — PASSED
+## Automation source gate — REVALIDATION PENDING
 
 Editor-only UI-A1 tests live under:
 
@@ -183,10 +199,11 @@ Source/SlayTheSpireDemoTests/Private/Phase6UIA1InteractionTests.cpp
 Source/SlayTheSpireDemoTests/Private/Phase6UIA1TerminalTests.cpp
 ```
 
-Validated named invariants:
+Current named invariants include:
 
 ```text
 ViewModel.SubscribeThenPullBuildsHUD
+ViewModel.CardPresentationFieldsComeFromDefinition
 ViewModel.SelectionUsesLegalTargetsAndCancelIsPresentationOnly
 ViewModel.NoTargetRequiresConfirmAndLocksUntilReady
 ViewModel.TargetRequestLocksUntilReady
@@ -203,7 +220,7 @@ The owner-only workflow is:
 .github/workflows/ue-phase6uia1-tests.yml
 ```
 
-The workflow uses exact discovered counts as an operational missing-test guard. The durable acceptance rule is not a permanent numeric total:
+The workflow currently expects 10 Phase6UIA1 tests and 83 discovered tests across the gated prefixes. These exact discovered counts are an operational missing-test guard; the durable acceptance rule is not a permanent numeric total:
 
 ```text
 UE5.8 Editor build passes
@@ -215,7 +232,7 @@ all currently named UI-A1 ViewModel invariants pass
 concrete WBP_BattleHUD can be assembled and PIE-validates one normal playable battle loop
 ```
 
-The first three requirements are now satisfied. UI-A1 remains incomplete until the concrete UMG/PIE requirement passes.
+After the CardType/Description extension, the first three source requirements require a fresh owner-run workflow before they can be claimed again. UI-A1 also remains incomplete until the concrete UMG/PIE requirement passes.
 
 ## User asset work — CURRENT NEXT STEP
 
@@ -224,12 +241,15 @@ User action is required in UE Editor:
 ```text
 create WBP_BattleHUD derived from UBattleHUDWidgetBase
 build minimum HP / Block / Energy / Status / Hand / pile / Intent / End Turn surface
+build WBP_BattleCard and bind DisplayName / Cost / CardType / Description from FBattleHUDCardView
 wire card selection / cancel / target / confirm / End Turn through base-widget methods
 place ABattleHUDPresenter in L_BattleTest
 assign the existing BattleManager instance
 assign WBP_BattleHUD as WidgetClass
 PIE one player → enemy → player cycle without gameplay-driving debug keys
 ```
+
+Existing binary CardData assets must have their new `Description` field authored in UE Editor; text tooling does not rewrite `.uasset` contents.
 
 ## Not in UI-A1
 
