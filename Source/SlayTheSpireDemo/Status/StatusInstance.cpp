@@ -33,7 +33,7 @@ bool UStatusInstance::ReduceAmount(int32 AmountToRemove)
 	return true;
 }
 
-const UStatusData* UStatusInstance::GetDefinition() const
+UStatusData* UStatusInstance::GetDefinition() const
 {
 	return Definition.Get();
 }
