@@ -7,6 +7,7 @@
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Enemy/EnemyIntent.h"
+#include "../Status/StatusData.h"
 
 namespace
 {
@@ -55,6 +56,23 @@ namespace
 			FBattleHUDStatusView StatusView;
 			StatusView.StatusId = Status.StatusId;
 			StatusView.Amount = Status.Amount;
+
+			if (const UStatusData* Definition = Status.Definition.Get())
+			{
+				StatusView.DisplayName = Definition->DisplayName.IsEmpty()
+					? FText::FromString(Status.StatusId.ToString())
+					: Definition->DisplayName;
+				StatusView.bUseAtlasIcon = Definition->IconRegion.bUseAtlasIcon;
+				StatusView.UVOffset = Definition->IconRegion.UVOffset;
+				StatusView.UVScale = Definition->IconRegion.UVScale;
+				StatusView.TrimOffset = Definition->IconRegion.TrimOffset;
+				StatusView.TrimScale = Definition->IconRegion.TrimScale;
+			}
+			else
+			{
+				StatusView.DisplayName = FText::FromString(Status.StatusId.ToString());
+			}
+
 			Result.Statuses.Add(StatusView);
 		}
 		return Result;
