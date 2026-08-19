@@ -14,7 +14,7 @@ class SLAYTHESPIREDEMO_API UStatusInstance : public UObject
 	GENERATED_BODY()
 
 public:
-	const UStatusData* GetDefinition() const;
+	UStatusData* GetDefinition() const;
 	FName GetStatusId() const;
 	int32 GetAmount() const;
 	uint64 GetRuntimeSequence() const;
