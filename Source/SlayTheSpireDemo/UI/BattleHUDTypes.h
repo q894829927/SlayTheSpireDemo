@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Texture2D.h"
 #include "../Cards/CardTypes.h"
 #include "BattleHUDTypes.generated.h"
 
@@ -91,6 +92,9 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCardView
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText Description;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	TObjectPtr<UTexture2D> CardArt = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	bool bGameplayPlayable = false;
