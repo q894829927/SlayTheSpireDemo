@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Engine/Texture2D.h"
 #include "CardTypes.h"
 #include "Effects/CardEffect.h"
 #include "CardData.generated.h"
@@ -20,6 +21,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
 	FText Description;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
+	TObjectPtr<UTexture2D> CardArt = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Rules")
 	ECardType CardType = ECardType::Attack;
