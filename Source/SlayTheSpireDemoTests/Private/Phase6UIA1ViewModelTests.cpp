@@ -26,6 +26,35 @@ bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCardPresentationFieldsComeFromDefinitionTest,
+	"SlayTheSpireDemo.Phase6UIA1.ViewModel.CardPresentationFieldsComeFromDefinition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FCardPresentationFieldsComeFromDefinitionTest::RunTest(const FString& Parameters)
+{
+	FHUDTestFixture Fixture;
+	UCardInstance* Card = Fixture.FirstAuthoritativeHandCard();
+	UCardData* Definition = IsValid(Card) ? const_cast<UCardData*>(Card->GetDefinition()) : nullptr;
+	if (!IsValid(Definition))
+	{
+		AddError(TEXT("Expected authoritative opening-hand card definition."));
+		return false;
+	}
+
+	Definition->CardType = ECardType::Skill;
+	Definition->Description = FText::FromString(TEXT("Draw 1 card."));
+
+	Fixture.DrainInitialReady();
+	Fixture.InitializeViewModel();
+	if (!RequireFixture(*this, Fixture)) return false;
+
+	TestEqual(TEXT("HUD card type is copied from the card definition"), Fixture.ViewModel->HandCards[0].CardType, ECardType::Skill);
+	TestEqual(TEXT("HUD card description is copied from the card definition"), Fixture.ViewModel->HandCards[0].Description.ToString(), FString(TEXT("Draw 1 card.")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FUnplayableEnergyFeedbackTest,
 	"SlayTheSpireDemo.Phase6UIA1.ViewModel.UnplayableCardSurfacesGameplayReason",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
