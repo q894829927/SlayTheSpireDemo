@@ -19,7 +19,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
 	FText DisplayName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation", meta = (MultiLine = "true"))
 	FText Description;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
