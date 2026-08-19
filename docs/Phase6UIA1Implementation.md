@@ -4,7 +4,7 @@ Status: **SOURCE CHANGED / UE5.8 REVALIDATION + UMG ASSET + PIE VALIDATION PENDI
 
 UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions.
 
-The owner-confirmed UE5.8 source gate previously passed before the later CardType/Description presentation extension:
+The owner-confirmed UE5.8 source gate previously passed before the later CardType/Description presentation extension and the Self-target interaction-policy revision:
 
 ```text
 SlayTheSpireDemoEditor build  PASS
@@ -17,7 +17,7 @@ Phase6UIA1    9/9  PASS
 Previous run 82/82 PASS
 ```
 
-That run remains historical evidence only. The new card presentation fields and their regression require a fresh UE5.8 workflow run. The exact total is run evidence, not a permanent architecture acceptance constant.
+That run remains historical evidence only. The later card-presentation fields and Self-target interaction-policy changes require a fresh UE5.8 workflow run. The exact total is run evidence, not a permanent architecture acceptance constant.
 
 ## Responsibility split
 
@@ -121,9 +121,37 @@ Idle / Terminal
 
 Reselecting the same card may cancel selection through the ViewModel, and `CancelSelection()` is also exposed explicitly.
 
-Enemy/Self target selection uses `ABattleManager::GetLegalTargetsForCard(...)`; Widget code receives presentation target IDs and never hard-codes `BattleManager.Enemy` as its interaction rule.
+Target interaction is determined by `ECardTargetType`, not by `ECardType`:
 
-No-target cards require `ConfirmSelectedCard()` in this first UI slice. This is presentation policy only and does not alter card gameplay APIs.
+```text
+Enemy
+→ GetLegalTargetsForCard at selection time
+→ expose presentation LegalTargets
+→ ChoosingTarget
+→ player chooses one candidate
+→ RequestPlayCard revalidates authoritatively at submission time
+
+Self
+→ GetLegalTargetsForCard at selection time
+→ require the advisory candidate set to identify the unique Player target
+→ cache that candidate privately as PendingConfirmationTarget
+→ do not expose it as a public LegalTargets button
+→ ReadyToConfirm
+→ ConfirmSelectedCard submits the cached Player candidate
+→ RequestPlayCard revalidates authoritatively at submission time
+
+None
+→ no target candidate
+→ ReadyToConfirm
+→ ConfirmSelectedCard submits nullptr
+→ RequestPlayCard revalidates authoritatively at submission time
+```
+
+`PendingConfirmationTarget` is a selection-time advisory candidate snapshot from the gameplay legal-target query. It is not a capability token or permanent authorization. State may change between selection and confirmation; the final `RequestPlayCard` always re-runs gameplay-owned validation against current authoritative state.
+
+Public `LegalTargets` are therefore reserved for targets the View must actually present for player choice. Self-target confirmation does not leak a Player button into the enemy-target selection surface.
+
+No-target and Self-target cards require `ConfirmSelectedCard()` in this first UI slice. This is presentation policy only and does not alter card gameplay APIs.
 
 ## Resolving lock
 
@@ -206,6 +234,7 @@ ViewModel.SubscribeThenPullBuildsHUD
 ViewModel.CardPresentationFieldsComeFromDefinition
 ViewModel.SelectionUsesLegalTargetsAndCancelIsPresentationOnly
 ViewModel.NoTargetRequiresConfirmAndLocksUntilReady
+ViewModel.SelfTargetRequiresConfirmAndSubmitsPlayer
 ViewModel.TargetRequestLocksUntilReady
 ViewModel.EndTurnLocksUntilReady
 ViewModel.UnplayableCardSurfacesGameplayReason
@@ -214,13 +243,28 @@ ViewModel.IntentUsesGameplayDerivedCurrentValue
 ViewModel.ResolutionFaultIsVisibleTerminalState
 ```
 
+The Self-target regression uses a real `UGainBlockCardEffect` configured before `StartBattle()` so the shared `UCardData` definition is not mutated after runtime initialization. It validates the complete Defend-style path:
+
+```text
+Self card selected
+→ SelectedCardRuntimeId remains selected
+→ public LegalTargets stays empty
+→ explicit confirmation
+→ gameplay Request receives the selection-time Player candidate
+→ authoritative Request revalidation
+→ GainBlockAction resolves
+→ Energy is spent
+→ card leaves Hand and reaches Discard
+→ stable Ready clears selection/public target state
+```
+
 The owner-only workflow is:
 
 ```text
 .github/workflows/ue-phase6uia1-tests.yml
 ```
 
-The workflow currently expects 10 Phase6UIA1 tests and 83 discovered tests across the gated prefixes. These exact discovered counts are an operational missing-test guard; the durable acceptance rule is not a permanent numeric total:
+The workflow currently expects 11 Phase6UIA1 tests and 84 discovered tests across the gated prefixes. These exact discovered counts are an operational missing-test guard; the durable acceptance rule is not a permanent numeric total:
 
 ```text
 UE5.8 Editor build passes
@@ -232,7 +276,7 @@ all currently named UI-A1 ViewModel invariants pass
 concrete WBP_BattleHUD can be assembled and PIE-validates one normal playable battle loop
 ```
 
-After the CardType/Description extension, the first three source requirements require a fresh owner-run workflow before they can be claimed again. UI-A1 also remains incomplete until the concrete UMG/PIE requirement passes.
+After the CardType/Description extension and Self-target interaction-policy revision, the first three source requirements require a fresh owner-run workflow before they can be claimed again. UI-A1 also remains incomplete until the concrete UMG/PIE requirement passes.
 
 ## User asset work — CURRENT NEXT STEP
 
@@ -247,6 +291,29 @@ place ABattleHUDPresenter in L_BattleTest
 assign the existing BattleManager instance
 assign WBP_BattleHUD as WidgetClass
 PIE one player → enemy → player cycle without gameplay-driving debug keys
+```
+
+The current Self-target PIE acceptance case is explicit:
+
+```text
+Defend
+→ select card
+→ ReadyToConfirm
+→ no Player target button is exposed
+→ Confirm
+→ Player gains the configured Block
+→ Energy is spent
+→ card reaches its resolved destination
+```
+
+Enemy-target PIE remains:
+
+```text
+Strike / Pommel Strike
+→ select card
+→ ChoosingTarget
+→ choose gameplay-provided Enemy target
+→ damage resolves
 ```
 
 Existing binary CardData assets must have their new `Description` field authored in UE Editor; text tooling does not rewrite `.uasset` contents.
