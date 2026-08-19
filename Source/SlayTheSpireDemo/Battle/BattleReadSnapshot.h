@@ -6,10 +6,12 @@
 #include "../Combat/Combatant.h"
 #include "../Enemy/EnemyIntent.h"
 
+class UStatusData;
 enum class EBattleState : uint8;
 
 struct SLAYTHESPIREDEMO_API FStatusReadView
 {
+	TWeakObjectPtr<UStatusData> Definition;
 	FName StatusId = NAME_None;
 	int32 Amount = 0;
 	uint64 RuntimeSequence = 0;
