@@ -84,7 +84,13 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCardView
 	int32 Cost = 0;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	ECardType CardType = ECardType::Attack;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	ECardTargetType TargetType = ECardTargetType::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FText Description;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	bool bGameplayPlayable = false;
