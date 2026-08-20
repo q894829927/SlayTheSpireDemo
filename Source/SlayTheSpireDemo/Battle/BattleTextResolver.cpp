@@ -12,7 +12,7 @@
 
 namespace
 {
-	void ExtractNamedArguments(const FText& Format, TSet<FName>& OutNames)
+	void ExtractNamedArgumentStrings(const FText& Format, TArray<FString>& OutNames)
 	{
 		OutNames.Reset();
 		const FString Pattern = Format.ToString();
@@ -45,9 +45,29 @@ namespace
 
 			if (!NameString.IsEmpty())
 			{
-				OutNames.Add(FName(*NameString));
+				const bool bAlreadyPresent = OutNames.ContainsByPredicate(
+					[&NameString](const FString& ExistingName)
+					{
+						return ExistingName.Equals(NameString, ESearchCase::CaseSensitive);
+					}
+				);
+				if (!bAlreadyPresent)
+				{
+					OutNames.Add(MoveTemp(NameString));
+				}
 			}
 			Index = CloseIndex;
+		}
+	}
+
+	void ExtractNamedArguments(const FText& Format, TSet<FName>& OutNames)
+	{
+		OutNames.Reset();
+		TArray<FString> ExactNames;
+		ExtractNamedArgumentStrings(Format, ExactNames);
+		for (const FString& ExactName : ExactNames)
+		{
+			OutNames.Add(FName(*ExactName));
 		}
 	}
 
@@ -62,16 +82,25 @@ namespace
 			return FText::GetEmpty();
 		}
 
-		TSet<FName> RequiredNames;
-		ExtractNamedArguments(Format, RequiredNames);
-		for (const FName Name : RequiredNames)
+		TArray<FString> RequiredKeys;
+		ExtractNamedArgumentStrings(Format, RequiredKeys);
+		FFormatNamedArguments ExactArguments;
+		for (const FString& RequiredKey : RequiredKeys)
 		{
-			if (!Builder.Contains(Name))
+			const FName SemanticName(*RequiredKey);
+			if (!Builder.Contains(SemanticName))
 			{
 				Builder.AddUnknown(
-					Name,
-					FString::Printf(TEXT("%s description references unknown argument '%s'."), *DebugOwner, *Name.ToString())
+					SemanticName,
+					FString::Printf(TEXT("%s description references unknown argument '%s'."), *DebugOwner, *RequiredKey)
 				);
+			}
+
+			if (const FFormatArgumentValue* Value = Builder.FindValue(SemanticName))
+			{
+				// Preserve the exact spelling from the active (possibly localized)
+				// format pattern. FText named argument lookup is case-sensitive.
+				ExactArguments.Add(RequiredKey, *Value);
 			}
 		}
 
@@ -80,7 +109,7 @@ namespace
 			UE_LOG(LogTemp, Error, TEXT("[BattleText] %s"), *Error);
 		}
 
-		return FText::Format(Format, Builder.GetArguments());
+		return FText::Format(Format, ExactArguments);
 	}
 
 	void AddValidationError(TArray<FText>& OutErrors, const FString& Error)

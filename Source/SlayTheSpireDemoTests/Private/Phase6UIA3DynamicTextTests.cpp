@@ -157,8 +157,14 @@ bool FCardBlockPipelineTest::RunTest(const FString& Parameters)
 	Definition->Description = FText::FromString(TEXT("Gain {Block} Block."));
 	UGainBlockCardEffect* Effect = NewObject<UGainBlockCardEffect>(Definition);
 	Effect->BaseAmount = 5;
+	// Simulate a packaged build where FName may expose the comparison casing
+	// rather than the editor-authored casing. The template key must still use
+	// its own exact spelling for FText::Format.
+	Effect->DescriptionArgumentName = TEXT("block");
 	Definition->Effects.Add(Effect);
 	UCardInstance* Card = Fixture.MakeCard(Definition);
+	TArray<FText> ValidationErrors;
+	TestTrue(TEXT("Argument identity remains valid across casing variants"), FBattleTextResolver::ValidateCardDefinition(Definition, ValidationErrors));
 
 	UStatusData* Dexterity = NewObject<UStatusData>(Fixture.World);
 	Dexterity->StatusId = TEXT("Dexterity");

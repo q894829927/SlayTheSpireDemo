@@ -45,9 +45,7 @@ void FPreviewTextArgumentBuilder::AddUnknown(FName Name, const FString& Error)
 		return;
 	}
 
-	const FString Key = Name.ToString();
-	ArgumentNames.Add(Name);
-	Arguments.Add(Key, FFormatArgumentValue(FText::FromString(TEXT("?"))));
+	ArgumentValues.Add(Name, FFormatArgumentValue(FText::FromString(TEXT("?"))));
 }
 
 void FPreviewTextArgumentBuilder::AddError(const FString& Error)
@@ -57,7 +55,12 @@ void FPreviewTextArgumentBuilder::AddError(const FString& Error)
 
 bool FPreviewTextArgumentBuilder::Contains(FName Name) const
 {
-	return !Name.IsNone() && ArgumentNames.Contains(Name);
+	return !Name.IsNone() && ArgumentValues.Contains(Name);
+}
+
+const FFormatArgumentValue* FPreviewTextArgumentBuilder::FindValue(FName Name) const
+{
+	return Name.IsNone() ? nullptr : ArgumentValues.Find(Name);
 }
 
 bool FPreviewTextArgumentBuilder::HasErrors() const
@@ -70,11 +73,6 @@ const TArray<FString>& FPreviewTextArgumentBuilder::GetErrors() const
 	return Errors;
 }
 
-const FFormatNamedArguments& FPreviewTextArgumentBuilder::GetArguments() const
-{
-	return Arguments;
-}
-
 bool FPreviewTextArgumentBuilder::AddValue(FName Name, const FFormatArgumentValue& Value)
 {
 	if (Name.IsNone())
@@ -83,7 +81,7 @@ bool FPreviewTextArgumentBuilder::AddValue(FName Name, const FFormatArgumentValu
 		return false;
 	}
 
-	if (ArgumentNames.Contains(Name))
+	if (ArgumentValues.Contains(Name))
 	{
 		AddUnknown(
 			Name,
@@ -92,7 +90,6 @@ bool FPreviewTextArgumentBuilder::AddValue(FName Name, const FFormatArgumentValu
 		return false;
 	}
 
-	ArgumentNames.Add(Name);
-	Arguments.Add(Name.ToString(), Value);
+	ArgumentValues.Add(Name, Value);
 	return true;
 }

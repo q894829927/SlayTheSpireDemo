@@ -30,14 +30,16 @@ public:
 	void AddError(const FString& Error);
 
 	bool Contains(FName Name) const;
+	const FFormatArgumentValue* FindValue(FName Name) const;
 	bool HasErrors() const;
 	const TArray<FString>& GetErrors() const;
-	const FFormatNamedArguments& GetArguments() const;
 
 private:
 	bool AddValue(FName Name, const FFormatArgumentValue& Value);
 
-	FFormatNamedArguments Arguments;
-	TSet<FName> ArgumentNames;
+	// FName is the case-insensitive semantic identity of a gameplay value.
+	// Never turn it directly into an FText::Format key: packaged builds do not
+	// preserve FName casing, while named FText arguments are case-sensitive.
+	TMap<FName, FFormatArgumentValue> ArgumentValues;
 	TArray<FString> Errors;
 };
