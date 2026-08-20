@@ -2,6 +2,7 @@
 
 #include "BlockSpec.h"
 #include "../../Status/StatusInstance.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UBlockFlatAddModifier::Apply(const UStatusInstance* StatusInstance, FBlockSpec& Spec) const
 {
@@ -36,4 +37,36 @@ void UBlockFlatAddModifier::Apply(const UStatusInstance* StatusInstance, FBlockS
 		StatusInstance->GetAmount(),
 		AmountMode == EModifierAmountMode::ScaleWithAmount ? TEXT("ScaleWithAmount") : TEXT("PresenceOnly")
 	);
+}
+
+void UBlockFlatAddModifier::GetDescriptionArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UBlockFlatAddModifier::BuildDescriptionArguments(
+	const UStatusInstance* StatusInstance,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	if (!IsValid(StatusInstance) || StatusInstance->GetAmount() <= 0)
+	{
+		OutArguments.AddUnknown(DescriptionArgumentName, TEXT("Block FlatAdd description has no active StatusInstance."));
+		return;
+	}
+
+	int64 Delta = static_cast<int64>(Value);
+	if (AmountMode == EModifierAmountMode::ScaleWithAmount)
+	{
+		Delta *= static_cast<int64>(StatusInstance->GetAmount());
+	}
+	OutArguments.AddInteger(DescriptionArgumentName, Delta);
+}
+
+void UBlockFlatAddModifier::ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("BlockFlatAddModifier requires a DescriptionArgumentName.")));
+	}
 }

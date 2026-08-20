@@ -7,19 +7,26 @@
 #include "../Enemy/EnemyIntent.h"
 
 class UStatusData;
+class UStatusInstance;
 enum class EBattleState : uint8;
 
 struct SLAYTHESPIREDEMO_API FStatusReadView
 {
+	TWeakObjectPtr<UStatusInstance> Status;
 	TWeakObjectPtr<UStatusData> Definition;
 	FName StatusId = NAME_None;
 	int32 Amount = 0;
 	uint64 RuntimeSequence = 0;
+
+	// Populated by TryBuildPlayerFacingReadSnapshot for this exact revision.
+	FText CurrentDescription;
 };
 
 struct SLAYTHESPIREDEMO_API FCombatantReadView
 {
 	TWeakObjectPtr<ACombatant> Combatant;
+	FName PresentationId = NAME_None;
+	FText DisplayName;
 	int32 HP = 0;
 	int32 MaxHP = 0;
 	int32 Block = 0;
@@ -34,6 +41,10 @@ struct SLAYTHESPIREDEMO_API FCardReadView
 	int32 RuntimeId = INDEX_NONE;
 	int32 CurrentCost = 0;
 	ECardTargetType TargetType = ECardTargetType::None;
+
+	// Source-side deterministic baseline populated by the player-facing read
+	// snapshot. Enemy target modifiers are intentionally excluded.
+	FText CurrentDescription;
 };
 
 // Gameplay-derived player-facing data for the committed Enemy Intent at the

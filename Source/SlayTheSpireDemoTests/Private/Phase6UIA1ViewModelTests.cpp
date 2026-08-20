@@ -51,6 +51,10 @@ bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("Late subscriber immediately pulls the opening Hand"), Fixture.ViewModel->HandCards.Num(), 1);
 	TestEqual(TEXT("HUD shows authoritative player HP"), Fixture.ViewModel->Player.HP, 100);
+	TestEqual(TEXT("HUD player presentation identity comes from Combatant"), Fixture.ViewModel->Player.PresentationId, FName(TEXT("PlayerHero")));
+	TestEqual(TEXT("HUD player display name comes from Combatant"), Fixture.ViewModel->Player.DisplayName.ToString(), FString(TEXT("Ironclad")));
+	TestEqual(TEXT("HUD enemy presentation identity comes from Combatant"), Fixture.ViewModel->Enemy.PresentationId, FName(TEXT("EnemyPrimary")));
+	TestEqual(TEXT("HUD enemy display name comes from Combatant"), Fixture.ViewModel->Enemy.DisplayName.ToString(), FString(TEXT("Cultist")));
 	TestEqual(TEXT("HUD shows authoritative Energy"), Fixture.ViewModel->Energy, 3);
 	TestFalse(TEXT("Input is released in stable PlayerTurn"), Fixture.ViewModel->bInputLocked);
 	TestEqual(TEXT("Interaction starts Idle"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Idle);
@@ -99,7 +103,7 @@ bool FCardPresentationFieldsComeFromDefinitionTest::RunTest(const FString& Param
 	if (!RequireFixture(*this, Fixture)) return false;
 
 	TestEqual(TEXT("HUD card type is copied from the card definition"), Fixture.ViewModel->HandCards[0].CardType, ECardType::Skill);
-	TestEqual(TEXT("HUD card description is copied from the card definition"), Fixture.ViewModel->HandCards[0].Description.ToString(), FString(TEXT("Draw 1 card.")));
+	TestEqual(TEXT("HUD card description receives the player-facing snapshot text"), Fixture.ViewModel->HandCards[0].Description.ToString(), FString(TEXT("Draw 1 card.")));
 	TestTrue(TEXT("HUD card art is copied from the card definition"), Fixture.ViewModel->HandCards[0].CardArt == TestCardArt);
 	return true;
 }

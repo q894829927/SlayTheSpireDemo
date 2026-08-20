@@ -5,7 +5,27 @@
 #include "../Combat/Combatant.h"
 #include "../Modifiers/Damage/DamageModifierPipeline.h"
 #include "../Modifiers/Damage/DamageSpec.h"
+#include "BattleTextResolver.h"
 #include "Containers/Ticker.h"
+
+namespace
+{
+	void ResolveCombatantStatusDescriptions(FCombatantReadView& CombatantView)
+	{
+		for (FStatusReadView& StatusView : CombatantView.Statuses)
+		{
+			StatusView.CurrentDescription = FBattleTextResolver::ResolveStatusDescription(StatusView.Status.Get());
+		}
+	}
+
+	void ResolveCardDescriptions(TArray<FCardReadView>& CardViews, ACombatant* Source)
+	{
+		for (FCardReadView& CardView : CardViews)
+		{
+			CardView.CurrentDescription = FBattleTextResolver::ResolveCardDescription(CardView.Card.Get(), Source);
+		}
+	}
+}
 
 bool ABattleManager::TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const
 {
@@ -15,6 +35,11 @@ bool ABattleManager::TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSn
 	}
 
 	OutSnapshot.EnemyIntentPlayerFacing = FEnemyIntentPlayerFacingReadView{};
+	ResolveCombatantStatusDescriptions(OutSnapshot.Player);
+	ResolveCombatantStatusDescriptions(OutSnapshot.Enemy);
+	ResolveCardDescriptions(OutSnapshot.HandCards, Player.Get());
+	ResolveCardDescriptions(OutSnapshot.DiscardCards, Player.Get());
+	ResolveCardDescriptions(OutSnapshot.ExhaustCards, Player.Get());
 
 	if (OutSnapshot.EnemyIntent.Type != EEnemyIntentType::Attack ||
 		!IsValid(Enemy.Get()) || !IsValid(Player.Get()))

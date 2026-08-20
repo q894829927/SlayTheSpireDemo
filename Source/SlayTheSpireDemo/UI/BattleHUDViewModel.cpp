@@ -11,6 +11,28 @@
 
 namespace
 {
+	FName FallbackCombatantPresentationId(bool bPlayer)
+	{
+		return bPlayer ? FName(TEXT("Player")) : FName(TEXT("Enemy"));
+	}
+
+	FName ResolveCombatantPresentationId(const ACombatant* Combatant, bool bPlayer)
+	{
+		return IsValid(Combatant) && !Combatant->PresentationId.IsNone()
+			? Combatant->PresentationId
+			: FallbackCombatantPresentationId(bPlayer);
+	}
+
+	FText ResolveCombatantDisplayName(const ACombatant* Combatant, bool bPlayer)
+	{
+		if (IsValid(Combatant) && !Combatant->DisplayName.IsEmpty())
+		{
+			return Combatant->DisplayName;
+		}
+
+		return FText::FromName(ResolveCombatantPresentationId(Combatant, bPlayer));
+	}
+
 	FText FailureReasonToText(EGameplayRequestFailureReason Reason)
 	{
 		switch (Reason)
@@ -42,10 +64,16 @@ namespace
 		}
 	}
 
-	FBattleHUDCombatantView MakeCombatantView(const FCombatantReadView& Source, const FText& DisplayName)
+	FBattleHUDCombatantView MakeCombatantView(const FCombatantReadView& Source, bool bPlayer)
 	{
 		FBattleHUDCombatantView Result;
-		Result.DisplayName = DisplayName;
+		Result.PresentationId = Source.PresentationId.IsNone()
+			? FallbackCombatantPresentationId(bPlayer)
+			: Source.PresentationId;
+		Result.bPlayer = bPlayer;
+		Result.DisplayName = Source.DisplayName.IsEmpty()
+			? FText::FromName(Result.PresentationId)
+			: Source.DisplayName;
 		Result.HP = Source.HP;
 		Result.MaxHP = Source.MaxHP;
 		Result.Block = Source.Block;
@@ -62,7 +90,6 @@ namespace
 				StatusView.DisplayName = Definition->DisplayName.IsEmpty()
 					? FText::FromString(Status.StatusId.ToString())
 					: Definition->DisplayName;
-				StatusView.Description = Definition->Description;
 				StatusView.bUseAtlasIcon = Definition->IconRegion.bUseAtlasIcon;
 				StatusView.UVOffset = Definition->IconRegion.UVOffset;
 				StatusView.UVScale = Definition->IconRegion.UVScale;
@@ -73,6 +100,7 @@ namespace
 			{
 				StatusView.DisplayName = FText::FromString(Status.StatusId.ToString());
 			}
+			StatusView.Description = Status.CurrentDescription;
 
 			Result.Statuses.Add(StatusView);
 		}
@@ -359,8 +387,8 @@ void UBattleHUDViewModel::ApplySnapshot(const FBattleReadSnapshot& Snapshot, boo
 	DrawCount = Snapshot.DrawCount;
 	DiscardCount = Snapshot.DiscardCount;
 	ExhaustCount = Snapshot.ExhaustCount;
-	Player = MakeCombatantView(Snapshot.Player, FText::FromString(TEXT("Player")));
-	Enemy = MakeCombatantView(Snapshot.Enemy, FText::FromString(TEXT("Enemy")));
+	Player = MakeCombatantView(Snapshot.Player, true);
+	Enemy = MakeCombatantView(Snapshot.Enemy, false);
 
 	EnemyIntent = FBattleHUDIntentView{};
 	EnemyIntent.BaseAmount = Snapshot.EnemyIntent.BaseAmount;
@@ -437,12 +465,12 @@ void UBattleHUDViewModel::RebuildHandViews(const FBattleReadSnapshot& Snapshot)
 		View.CardId = Source.CardId;
 		View.Cost = Source.CurrentCost;
 		View.TargetType = Source.TargetType;
+		View.Description = Source.CurrentDescription;
 		if (IsValid(Card))
 		{
 			if (const UCardData* Definition = Card->GetDefinition())
 			{
 				View.CardType = Definition->CardType;
-				View.Description = Definition->Description;
 				View.CardArt = Definition->CardArt;
 				View.DisplayName = Definition->DisplayName.IsEmpty()
 					? FText::FromString(Source.CardId.ToString())
@@ -518,7 +546,8 @@ void UBattleHUDViewModel::RebuildLegalTargets(UCardInstance* Card)
 		FBattleHUDTargetView View;
 		View.TargetId = LegalTargetObjects.Num();
 		View.bPlayer = Target == Battle->Player.Get();
-		View.DisplayName = FText::FromString(View.bPlayer ? TEXT("Player") : TEXT("Enemy"));
+		View.PresentationId = ResolveCombatantPresentationId(Target, View.bPlayer);
+		View.DisplayName = ResolveCombatantDisplayName(Target, View.bPlayer);
 		LegalTargets.Add(View);
 	}
 }

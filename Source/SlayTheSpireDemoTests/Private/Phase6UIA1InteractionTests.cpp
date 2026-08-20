@@ -22,6 +22,8 @@ bool FSelectionUsesLegalTargetsAndCancelTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Selection enters ChoosingTarget"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::ChoosingTarget);
 	TestEqual(TEXT("Legal target set comes from gameplay"), Fixture.ViewModel->LegalTargets.Num(), 1);
 	TestFalse(TEXT("Enemy target is not mislabeled as player"), Fixture.ViewModel->LegalTargets[0].bPlayer);
+	TestEqual(TEXT("Legal target maps to the enemy presentation identity"), Fixture.ViewModel->LegalTargets[0].PresentationId, FName(TEXT("EnemyPrimary")));
+	TestEqual(TEXT("Legal target uses the combatant display name"), Fixture.ViewModel->LegalTargets[0].DisplayName.ToString(), FString(TEXT("Cultist")));
 
 	Fixture.ViewModel->CancelSelection();
 	TestEqual(TEXT("Cancel returns to Idle"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Idle);

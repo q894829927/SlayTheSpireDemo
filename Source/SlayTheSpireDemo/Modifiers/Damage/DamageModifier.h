@@ -7,6 +7,7 @@
 
 struct FDamageSpec;
 class UStatusInstance;
+class FPreviewTextArgumentBuilder;
 
 UCLASS(Abstract, EditInlineNew, DefaultToInstanced)
 class SLAYTHESPIREDEMO_API UDamageModifier : public UObject
@@ -26,4 +27,12 @@ public:
 	bool IsApplicable(EDamageKind DamageKind, EModifierScope ContributionScope) const;
 	virtual EDamageModifierPhase GetPhase() const PURE_VIRTUAL(UDamageModifier::GetPhase, return EDamageModifierPhase::FlatAdd;);
 	virtual void Apply(const UStatusInstance* StatusInstance, FDamageSpec& Spec) const PURE_VIRTUAL(UDamageModifier::Apply, );
+	virtual void GetDescriptionArgumentNames(TArray<FName>& OutNames) const
+		PURE_VIRTUAL(UDamageModifier::GetDescriptionArgumentNames, );
+	virtual void BuildDescriptionArguments(
+		const UStatusInstance* StatusInstance,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const PURE_VIRTUAL(UDamageModifier::BuildDescriptionArguments, );
+	virtual void ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const
+		PURE_VIRTUAL(UDamageModifier::ValidateDescriptionConfiguration, );
 };

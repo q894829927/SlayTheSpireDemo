@@ -2,6 +2,7 @@
 
 #include "DamageSpec.h"
 #include "../../Status/StatusInstance.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UDamageRatioModifier::Apply(const UStatusInstance* StatusInstance, FDamageSpec& Spec) const
 {
@@ -69,4 +70,38 @@ void UDamageRatioModifier::Apply(const UStatusInstance* StatusInstance, FDamageS
 		AmountMode == EModifierAmountMode::ScaleWithAmount ? TEXT("ScaleWithAmount") : TEXT("PresenceOnly"),
 		ApplicationCount
 	);
+}
+
+void UDamageRatioModifier::GetDescriptionArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UDamageRatioModifier::BuildDescriptionArguments(
+	const UStatusInstance* StatusInstance,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	if (!IsValid(StatusInstance) || StatusInstance->GetAmount() <= 0)
+	{
+		OutArguments.AddUnknown(DescriptionArgumentName, TEXT("Damage Ratio description has no active StatusInstance."));
+		return;
+	}
+
+	// This is the configured per-application ratio. ScaleWithAmount remains
+	// represented by this percentage plus the reserved {Amount}; it must not
+	// claim an exact cumulative percentage because gameplay floors each step.
+	OutArguments.AddPercentMagnitude(DescriptionArgumentName, Numerator, Denominator);
+}
+
+void UDamageRatioModifier::ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageRatioModifier requires a DescriptionArgumentName.")));
+	}
+	if (Numerator < 0 || Denominator <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageRatioModifier requires Numerator >= 0 and Denominator > 0.")));
+	}
 }

@@ -2,6 +2,7 @@
 
 #include "DamageSpec.h"
 #include "../../Status/StatusInstance.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UDamageFlatAddModifier::Apply(const UStatusInstance* StatusInstance, FDamageSpec& Spec) const
 {
@@ -36,4 +37,36 @@ void UDamageFlatAddModifier::Apply(const UStatusInstance* StatusInstance, FDamag
 		StatusInstance->GetAmount(),
 		AmountMode == EModifierAmountMode::ScaleWithAmount ? TEXT("ScaleWithAmount") : TEXT("PresenceOnly")
 	);
+}
+
+void UDamageFlatAddModifier::GetDescriptionArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UDamageFlatAddModifier::BuildDescriptionArguments(
+	const UStatusInstance* StatusInstance,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	if (!IsValid(StatusInstance) || StatusInstance->GetAmount() <= 0)
+	{
+		OutArguments.AddUnknown(DescriptionArgumentName, TEXT("Damage FlatAdd description has no active StatusInstance."));
+		return;
+	}
+
+	int64 Delta = static_cast<int64>(Value);
+	if (AmountMode == EModifierAmountMode::ScaleWithAmount)
+	{
+		Delta *= static_cast<int64>(StatusInstance->GetAmount());
+	}
+	OutArguments.AddInteger(DescriptionArgumentName, Delta);
+}
+
+void UDamageFlatAddModifier::ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageFlatAddModifier requires a DescriptionArgumentName.")));
+	}
 }

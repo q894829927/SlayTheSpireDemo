@@ -19,7 +19,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
 	FText DisplayName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation", meta = (MultiLine = "true"))
+	// Serialized name intentionally remains Description for existing .uasset
+	// compatibility. The authored value is an FText::Format pattern.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation", meta = (MultiLine = "true", DisplayName = "Description Format"))
 	FText Description;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
@@ -39,4 +41,8 @@ public:
 
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Card|Effects")
 	TArray<TObjectPtr<UCardEffect>> Effects;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
+#endif
 };

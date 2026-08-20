@@ -63,6 +63,8 @@ namespace
 		}
 
 		View.Combatant = Combatant;
+		View.PresentationId = Combatant->PresentationId;
+		View.DisplayName = Combatant->DisplayName;
 		View.HP = Combatant->HP;
 		View.MaxHP = Combatant->MaxHP;
 		View.Block = Combatant->Block;
@@ -78,6 +80,7 @@ namespace
 				}
 
 				FStatusReadView StatusView;
+				StatusView.Status = Status.Get();
 				StatusView.Definition = Status->GetDefinition();
 				StatusView.StatusId = Status->GetStatusId();
 				StatusView.Amount = Status->GetAmount();

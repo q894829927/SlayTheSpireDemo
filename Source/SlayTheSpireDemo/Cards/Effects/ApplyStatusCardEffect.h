@@ -12,6 +12,10 @@ class SLAYTHESPIREDEMO_API UApplyStatusCardEffect : public UCardEffect
 	GENERATED_BODY()
 
 public:
+	// Must be unique within the owning card, e.g. Weak / Vulnerable.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
+	FName DescriptionArgumentName = FName(TEXT("StatusAmount"));
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
 	TObjectPtr<UStatusData> StatusDefinition = nullptr;
 
@@ -22,4 +26,10 @@ public:
 		const FCardPlayContext& Context,
 		TArray<UBattleAction*>& OutActions
 	) const override;
+	virtual void GetPreviewArgumentNames(TArray<FName>& OutNames) const override;
+	virtual void BuildPreviewArguments(
+		const FCardEffectPreviewContext& Context,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const override;
+	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const override;
 };

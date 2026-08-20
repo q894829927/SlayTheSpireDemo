@@ -68,6 +68,10 @@ namespace Phase6UIA1Test
 
 			Player->MaxHP = 100;
 			Enemy->MaxHP = 100;
+			Player->PresentationId = TEXT("PlayerHero");
+			Player->DisplayName = FText::FromString(TEXT("Ironclad"));
+			Enemy->PresentationId = TEXT("EnemyPrimary");
+			Enemy->DisplayName = FText::FromString(TEXT("Cultist"));
 			Battle->Player = Player;
 			Battle->Enemy = Enemy;
 			Battle->OpeningHandDrawCount = 1;

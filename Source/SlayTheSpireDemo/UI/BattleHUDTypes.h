@@ -69,6 +69,14 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCombatantView
 {
 	GENERATED_BODY()
 
+	// Presentation-only stable key used to match combatant widgets with the
+	// gameplay-provided legal-target set. It is never a gameplay ordering key.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FName PresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	bool bPlayer = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText DisplayName;
 
@@ -131,6 +139,11 @@ struct SLAYTHESPIREDEMO_API FBattleHUDTargetView
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	int32 TargetId = INDEX_NONE;
+
+	// Matches FBattleHUDCombatantView.PresentationId so the View can place this
+	// legal target affordance over the correct combatant presentation.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FName PresentationId = NAME_None;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText DisplayName;

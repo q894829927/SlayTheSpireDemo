@@ -4,6 +4,11 @@ Status: **SOURCE CHANGED / UE5.8 REVALIDATION + UMG ASSET + PIE VALIDATION PENDI
 
 UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions.
 
+The combatant inspection/character-bound target extension additionally provides
+`UBattleHUDCombatantPresentationWidgetBase`, stable presentation-only combatant
+IDs and data-authored combatant display names. Exact UMG assembly steps live in
+`docs/Phase6UIA1CombatantInspectionSetup.md`.
+
 The owner-confirmed UE5.8 source gate previously passed before the later CardType/Description presentation extension and the Self-target interaction-policy revision:
 
 ```text
@@ -74,6 +79,7 @@ Current Blueprint-facing data includes:
 BattleId / StateRevision
 Player HP / MaxHP / Block / Status
 Enemy HP / MaxHP / Block / Status
+Combatant PresentationId / data-authored DisplayName
 Energy / MaxEnergy
 Hand card views, including DisplayName / Cost / CardType / Description
 Draw / Discard / Exhaust counts
@@ -86,12 +92,15 @@ Victory / Defeat / ResolutionFaulted outcome
 
 Card presentation retains `RuntimeId` as the stable UI identity for the current battle. The ViewModel internally keeps weak runtime card references only to forward a later formal Request; Request revalidation remains authoritative.
 
-Card-facing presentation fields come from the card definition rather than Widget-side effect parsing:
+Card identity/art fields come from the card definition. Description now arrives as
+a gameplay-derived, player-facing snapshot value rather than Widget-side parsing:
 
 ```text
-UCardData.DisplayName
-UCardData.CardType
-UCardData.Description
+UCardData.Description format
++ CardEffect named preview values
++ read-only Modifier Pipeline
+        ↓ TryBuildPlayerFacingReadSnapshot
+FCardReadView.CurrentDescription
         ↓
 UBattleHUDViewModel::RebuildHandViews
         ↓
@@ -100,7 +109,8 @@ FBattleHUDCardView
 WBP_BattleCard
 ```
 
-`Description` is explicit presentation data. UI-A1 does not derive player-facing rules text by reinterpreting `CardEffect` objects in UMG.
+UMG does not derive player-facing rules text or inspect `CardEffect` objects. The
+minimal resolver added for UI-A3 produces final FText before the ViewModel boundary.
 
 ## Interaction state
 
@@ -264,7 +274,10 @@ The owner-only workflow is:
 .github/workflows/ue-phase6uia1-tests.yml
 ```
 
-The workflow currently expects 11 Phase6UIA1 tests and 84 discovered tests across the gated prefixes. These exact discovered counts are an operational missing-test guard; the durable acceptance rule is not a permanent numeric total:
+The workflow continues to expect 11 Phase6UIA1 tests and now additionally expects
+8 Phase6UIA3 dynamic-text tests, for 92 discovered tests across the gated prefixes.
+These exact discovered counts are an operational missing-test guard; the durable
+acceptance rule is not a permanent numeric total:
 
 ```text
 UE5.8 Editor build passes
@@ -284,6 +297,9 @@ User action is required in UE Editor:
 
 ```text
 create WBP_BattleHUD derived from UBattleHUDWidgetBase
+create WBP_CombatantPresentation derived from UBattleHUDCombatantPresentationWidgetBase
+map public LegalTargets to combatant presentations by PresentationId
+use transient hover/focus combatant inspection; normal click never pins it
 build minimum HP / Block / Energy / Status / Hand / pile / Intent / End Turn surface
 build WBP_BattleCard and bind DisplayName / Cost / CardType / Description from FBattleHUDCardView
 wire card selection / cancel / target / confirm / End Turn through base-widget methods

@@ -14,6 +14,14 @@ class SLAYTHESPIREDEMO_API ACombatant : public AActor
 public:
 	ACombatant();
 
+	// Stable presentation identity for UI inspection/target mapping. It is not a
+	// gameplay ordering key and must not be used to determine combat resolution.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Presentation")
+	FName PresentationId = NAME_None;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Presentation")
+	FText DisplayName;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat|Vitals", meta = (ClampMin = "1"))
 	int32 MaxHP = 50;
 

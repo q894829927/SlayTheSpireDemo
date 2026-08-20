@@ -144,9 +144,10 @@ public:
 	bool TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 
 	// Formal UI/ViewModel snapshot boundary. It starts from the same coherent
-	// gameplay snapshot and enriches the committed Intent with a gameplay-derived
-	// current-state value by reusing the Damage Modifier Pipeline. The value is not
-	// a guarantee of damage at a future EnemyTurn after intervening reactions.
+	// gameplay snapshot and enriches Card/Status descriptions plus the committed
+	// Intent with gameplay-derived current-state values. Damage/Block text reuses
+	// the authoritative Modifier Pipelines without Commit. Intent remains not a
+	// guarantee of damage at a future EnemyTurn after intervening reactions.
 	// This is also the required initial pull for a newly attached read consumer:
 	// subscribe to OnReadStateReady first, then call this once immediately.
 	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;

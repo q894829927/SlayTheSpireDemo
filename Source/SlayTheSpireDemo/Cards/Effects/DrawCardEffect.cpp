@@ -2,6 +2,9 @@
 
 #include "../CardPlayContext.h"
 #include "../../Actions/DrawCardAction.h"
+#include "../../Deck/DeckRuntime.h"
+#include "../../Events/BattleEventDispatcher.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UDrawCardEffect::BuildActions(
 	const FCardPlayContext& Context,
@@ -31,5 +34,30 @@ void UDrawCardEffect::BuildActions(
 			Action->Initialize(Context.Deck);
 		}
 		OutActions.Add(Action);
+	}
+}
+
+void UDrawCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UDrawCardEffect::BuildPreviewArguments(
+	const FCardEffectPreviewContext& /*Context*/,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	OutArguments.AddInteger(DescriptionArgumentName, DrawCount);
+}
+
+void UDrawCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("DrawCardEffect requires a DescriptionArgumentName.")));
+	}
+	if (DrawCount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DrawCardEffect DrawCount cannot be negative.")));
 	}
 }

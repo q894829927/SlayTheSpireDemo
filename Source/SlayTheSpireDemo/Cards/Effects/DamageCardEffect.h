@@ -11,6 +11,9 @@ class SLAYTHESPIREDEMO_API UDamageCardEffect : public UCardEffect
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
+	FName DescriptionArgumentName = FName(TEXT("Damage"));
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "0"))
 	int32 BaseAmount = 6;
 
@@ -21,4 +24,10 @@ public:
 		const FCardPlayContext& Context,
 		TArray<UBattleAction*>& OutActions
 	) const override;
+	virtual void GetPreviewArgumentNames(TArray<FName>& OutNames) const override;
+	virtual void BuildPreviewArguments(
+		const FCardEffectPreviewContext& Context,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const override;
+	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const override;
 };

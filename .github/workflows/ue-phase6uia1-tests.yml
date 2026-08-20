@@ -96,7 +96,7 @@ jobs:
               if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) { throw "Automation gate failed for $Prefix." }
           }
 
-          "## UE Phase 6UI-A1 Automation" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "## UE Phase 6UI-A1 + UI-A3 Dynamic Text Automation" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
@@ -107,5 +107,6 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA0" -ExpectedCount 20 -ReportName "Phase6UIA0"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA1" -ExpectedCount 11 -ReportName "Phase6UIA1"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA3" -ExpectedCount 8 -ReportName "Phase6UIA3"
 
-          Write-Host "All existing regressions, UI-A0 invariants and current UI-A1 ViewModel invariants passed. Current discovered total: 84 tests."
+          Write-Host "All existing regressions, UI-A0/UI-A1 invariants and current UI-A3 dynamic-text invariants passed. Current discovered total: 92 tests."

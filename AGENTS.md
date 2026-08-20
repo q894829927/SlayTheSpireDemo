@@ -58,7 +58,7 @@ BattleActionQueue
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
   - [ ] UI-A1 Operable Battle HUD — NEXT.
   - [ ] UI-A2 Basic Committed Presentation.
-  - [ ] UI-A3 Deterministic Immediate Preview.
+  - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text source implemented; UE5.8 revalidation and DataAsset authoring pending; remaining target-specific/energy-result preview still planned.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
 - [ ] Phase 6UI-B advanced UX / preview / developer tooling — PLANNED AFTER Phase 8.
@@ -1978,29 +1978,32 @@ Do not make localized card rules authoritative by storing already-colored final 
 "Deal 8 damage. Apply <red>2 Vulnerable</red>."
 ```
 
-Future card descriptions should prefer semantic templates/tokens, conceptually:
+Card descriptions use semantic named templates for deterministic numeric values:
 
 ```text
 Deal {Damage} damage.
 Apply {VulnerableAmount} [Keyword:Vulnerable].
 ```
 
-A future `CardTextTemplate` / `CardTextFormatter` / keyword presentation layer may resolve:
+The current minimal `BattleTextResolver` resolves numeric placeholders. A future
+Keyword/RichText presentation layer may additionally resolve:
 
 ```text
-numeric placeholders
 KeywordId → localized display name
 KeywordId → tooltip description
 KeywordId → presentation style
 ```
 
-The exact parser/storage representation is deferred until card UI work begins.
+Keyword parsing/storage remains deferred; it is not part of the minimal numeric
+FText::Format implementation.
 
 #### Dynamic card-value preview
 
-If card UI later shows current resolved values, UI must not reimplement combat formulas such as Strength/Weak/Vulnerable checks.
+Card and Status `Description` properties retain their serialized names for existing
+`.uasset` compatibility, but their authored values are FText::Format patterns.
+Normal UI must not reimplement combat formulas such as Strength/Weak/Vulnerable checks.
 
-Preferred future model:
+Current model:
 
 ```text
 Gameplay:
@@ -2011,14 +2014,43 @@ DamageAction / GainBlockAction
 → Commit
 
 UI Preview:
-CardTextResolver
+BattleTextResolver
 → preview typed Spec
 → same read-only typed ModifierPipeline rules
 → ResolvedAmount
 → no Commit / no state mutation
 ```
 
-Preview and gameplay should share rule resolution wherever practical so the number shown on the card matches the number the operation would resolve from the same state. Preview evaluation must be explicitly read-only and must not consume RNG, enqueue Actions, mutate status state or emit gameplay events.
+Every concrete CardEffect must expose stable named deterministic preview values.
+Every concrete Damage/Block Modifier must expose stable named Status-description
+values. Future Effect/Modifier subclasses must implement these read-only contracts;
+do not silently preserve numeric gameplay fields as stale hand-authored text.
+
+Current card-face targeting policy is deliberately source-baseline:
+
+```text
+Enemy-target card → Source = Player, Target = null
+Self-target card  → Source = Player, Target = Player
+```
+
+Therefore Strength/Weak affect an Attack card face while a particular Enemy's
+Vulnerable does not. Target-specific exact previews remain a separate future UI
+surface. Self Block previews include Dexterity/Frailty through the normal Block
+pipeline.
+
+Status descriptions resolve from the exact `UStatusInstance` and its immutable
+Modifier definitions. `{Amount}` is reserved for runtime Amount. FlatAdd values
+respect AmountMode. Ratio descriptions expose the configured per-application
+percentage; ScaleWithAmount must use percentage plus Amount rather than claiming
+an exact cumulative percentage that ignores gameplay's per-step integer flooring.
+
+`TryBuildPlayerFacingReadSnapshot()` resolves final Card/Status descriptions for
+the same `(BattleId, StateRevision)`. ViewModels copy that FText and Widgets only
+render it. Preview evaluation must be explicitly read-only and must not consume
+RNG, enqueue Actions, mutate status state or emit gameplay events.
+
+Missing, duplicate or invalid arguments render `?` and log a development error.
+CardData/StatusData validation treats those configurations as invalid.
 
 Text/source agents must never claim to create/edit `.uasset` or `.umap` assets without UE Editor access.
 
@@ -2051,7 +2083,7 @@ Saved/
 11. Do not implement future mechanisms merely because they are documented.
 12. Do not introduce `FInstancedStruct`, StructUtils or another representation dependency without a concrete requirement.
 13. Do not introduce a universal modifier context or GameplayTag-based damage taxonomy without a concrete implemented need.
-14. Do not implement KeywordLibrary, CardTextFormatter, RichText parsing, keyword tooltips/styles or dynamic card-value preview merely because status mechanics have player-facing keyword names.
+14. Do not implement KeywordLibrary, rich-text parsing or keyword tooltips/styles merely because status mechanics have player-facing keyword names. The explicitly approved UI-A3 numeric `BattleTextResolver` remains separate from future Keyword presentation.
 15. Never model `Keyword = StatusData`; keyword presentation metadata must remain separate from the Status/Action/Modifier/Trigger/DeckRule that implements the gameplay mechanic.
 16. Do not introduce a generic modifier-contributor framework while Status is the only real modifier source; introduce the smallest collector boundary when a concrete non-Status source such as a Relic actually arrives.
 17. Never implement a Relic or another unrelated modifier source as a fake Status merely to reuse StatusContainer collection.
@@ -2268,6 +2300,16 @@ Source/SlayTheSpireDemoTests/Private/Phase6UIA0ReviewRegressionTests.cpp
 Source/SlayTheSpireDemoTests/Private/Phase6UIA0TestTypes.h/.cpp
 .github/workflows/ue-phase6uia0-tests.yml
 docs/Phase6UIA0Implementation.md
+
+Phase 6UI-A1 source boundary
+UI/BattleHUDTypes.h
+UI/BattleHUDViewModel.h/.cpp
+UI/BattleHUDWidgetBase.h/.cpp
+UI/BattleHUDCombatantPresentationWidgetBase.h/.cpp
+UI/BattleHUDPresenter.h/.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA1*.cpp/.h
+docs/Phase6UIA1Implementation.md
+docs/Phase6UIA1CombatantInspectionSetup.md
 ```
 
 `ABattleManager` currently owns the battle-scoped ActionQueue, EventDispatcher, DeckRuntime and temporary RuntimeSequence allocator. Each `ACombatant` owns its StatusContainer. BattleManager debug entry points are temporary validation infrastructure, not the intended long-term formal input API.
@@ -2294,7 +2336,7 @@ docs/Phase6UIA0Implementation.md
 - Phase 6UI-A0 — PASSED: authoritative turn/Hand lifecycle, deterministic initial battle shuffle, formal Query/Request APIs with shared revalidation, committed Enemy Intent, current-state gameplay-derived Intent display value, coherent `(BattleId, StateRevision)` snapshots and non-reentrant battle-level `OnReadStateReady`; owner-only UE5.8 workflow passed UI-A0 20/20 with current total 73/73.
 - Phase 6UI-A1 — NEXT: first operable Battle HUD without gameplay-driving debug keyboard commands.
 - Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.
-- Phase 6UI-A3 — PLANNED: deterministic immediate Damage / Block / Energy preview only.
+- Phase 6UI-A3 — SOURCE CHANGED: dynamic Damage/Block card text and runtime Status descriptions implemented in source; UE5.8 revalidation, DataAsset authoring and remaining Energy/target-specific preview are pending.
 - Phase 6UI-A — PASSED only when the normal player battle loop is operable through UI without `TestDrawCard`, `TestPlayFirstCard` or equivalent gameplay-driving debug commands.
 - Phase 7 — PLANNED AFTER Phase 6UI-A: Relic runtime, Sundial first validation and Relic presentation.
 - Phase 8 — PLANNED AFTER Phase 7: Pommel Strike+ / Sundial generic gameplay and presentation-legibility validation.
@@ -3180,6 +3222,12 @@ Status presentation should be able to communicate through a combination of icon 
 
 Any information available through mouse Hover must also have a path for keyboard focus, gamepad focus or touch selection. Prefer one logical focused/inspected element model rather than mouse-specific information access.
 
+Combatant `PresentationId` is a presentation-mapping key used to associate a
+visible combatant presentation with a gameplay-provided legal-target view. It is
+not authoritative gameplay identity, a legal-target capability token or an
+ordering key. The View must still submit the current gameplay-provided `TargetId`,
+and the formal Request must revalidate it.
+
 Phase 6UI-A may initially contain one Enemy, but UI architecture must not permanently assume a single fixed Enemy slot. Conceptually prefer:
 
 ```text
@@ -3397,6 +3445,20 @@ immediate Damage
 immediate Block
 Energy cost / immediate Energy result
 ```
+
+The first dynamic-text source slice is implemented in source:
+
+```text
+Card/Status Description format
+→ Effect/Modifier named read values
+→ read-only Damage/Block pipeline where applicable
+→ player-facing snapshot at one StateRevision
+→ ViewModel/UMG final FText
+```
+
+It remains `SOURCE CHANGED / UE5.8 REVALIDATION + DATAASSET AUTHORING PENDING`.
+Do not mark UI-A3 complete from source review alone. Enemy-target card faces show
+the source-side baseline; target-specific exact results are not part of this slice.
 
 Do not block Phase 6UI-A completion on advanced conditional/random prediction.
 

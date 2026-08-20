@@ -2,6 +2,7 @@
 
 #include "BlockSpec.h"
 #include "../../Status/StatusInstance.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UBlockRatioModifier::Apply(const UStatusInstance* StatusInstance, FBlockSpec& Spec) const
 {
@@ -56,4 +57,35 @@ void UBlockRatioModifier::Apply(const UStatusInstance* StatusInstance, FBlockSpe
 		AmountMode == EModifierAmountMode::ScaleWithAmount ? TEXT("ScaleWithAmount") : TEXT("PresenceOnly"),
 		ApplicationCount
 	);
+}
+
+void UBlockRatioModifier::GetDescriptionArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UBlockRatioModifier::BuildDescriptionArguments(
+	const UStatusInstance* StatusInstance,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	if (!IsValid(StatusInstance) || StatusInstance->GetAmount() <= 0)
+	{
+		OutArguments.AddUnknown(DescriptionArgumentName, TEXT("Block Ratio description has no active StatusInstance."));
+		return;
+	}
+
+	OutArguments.AddPercentMagnitude(DescriptionArgumentName, Numerator, Denominator);
+}
+
+void UBlockRatioModifier::ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("BlockRatioModifier requires a DescriptionArgumentName.")));
+	}
+	if (Numerator < 0 || Denominator <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("BlockRatioModifier requires Numerator >= 0 and Denominator > 0.")));
+	}
 }

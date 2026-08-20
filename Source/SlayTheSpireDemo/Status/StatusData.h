@@ -45,7 +45,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Identity")
 	FText DisplayName;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Presentation", meta = (MultiLine = "true"))
+	// Serialized name intentionally remains Description for existing .uasset
+	// compatibility. The authored value is an FText::Format pattern.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Presentation", meta = (MultiLine = "true", DisplayName = "Description Format"))
 	FText Description;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Presentation")
@@ -59,4 +61,8 @@ public:
 
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Status|Triggers")
 	TArray<TObjectPtr<UBattleTrigger>> Triggers;
+
+#if WITH_EDITOR
+	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
+#endif
 };

@@ -5,6 +5,7 @@
 #include "../../Battle/BattleManager.h"
 #include "../../Combat/Combatant.h"
 #include "../../Status/StatusData.h"
+#include "../../Battle/BattleTextTypes.h"
 
 void UApplyStatusCardEffect::BuildActions(
 	const FCardPlayContext& Context,
@@ -36,4 +37,33 @@ void UApplyStatusCardEffect::BuildActions(
 		Amount
 	);
 	OutActions.Add(Action);
+}
+
+void UApplyStatusCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Add(DescriptionArgumentName);
+}
+
+void UApplyStatusCardEffect::BuildPreviewArguments(
+	const FCardEffectPreviewContext& /*Context*/,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	OutArguments.AddInteger(DescriptionArgumentName, Amount);
+}
+
+void UApplyStatusCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		OutErrors.Add(FText::FromString(TEXT("ApplyStatusCardEffect requires a DescriptionArgumentName.")));
+	}
+	if (!IsValid(StatusDefinition))
+	{
+		OutErrors.Add(FText::FromString(TEXT("ApplyStatusCardEffect requires a StatusDefinition.")));
+	}
+	if (Amount <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("ApplyStatusCardEffect Amount must be positive.")));
+	}
 }

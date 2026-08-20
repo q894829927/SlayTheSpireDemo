@@ -10,6 +10,9 @@ class SLAYTHESPIREDEMO_API UBlockRatioModifier : public UBlockModifier
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier|Block|Description")
+	FName DescriptionArgumentName = FName(TEXT("BlockPercent"));
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Modifier|Block|Ratio", meta = (ClampMin = "0"))
 	int32 Numerator = 1;
 
@@ -25,4 +28,10 @@ public:
 	}
 
 	virtual void Apply(const UStatusInstance* StatusInstance, FBlockSpec& Spec) const override;
+	virtual void GetDescriptionArgumentNames(TArray<FName>& OutNames) const override;
+	virtual void BuildDescriptionArguments(
+		const UStatusInstance* StatusInstance,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const override;
+	virtual void ValidateDescriptionConfiguration(TArray<FText>& OutErrors) const override;
 };
