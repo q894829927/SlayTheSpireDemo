@@ -62,6 +62,7 @@ namespace
 				StatusView.DisplayName = Definition->DisplayName.IsEmpty()
 					? FText::FromString(Status.StatusId.ToString())
 					: Definition->DisplayName;
+				StatusView.Description = Definition->Description;
 				StatusView.bUseAtlasIcon = Definition->IconRegion.bUseAtlasIcon;
 				StatusView.UVOffset = Definition->IconRegion.UVOffset;
 				StatusView.UVScale = Definition->IconRegion.UVScale;
