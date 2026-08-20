@@ -5,7 +5,7 @@ Status:
 ```text
 SOURCE CHANGED
 UE5.8 BUILD / AUTOMATION REVALIDATION PENDING
-UMG ASSET AUTHORING REQUIRED
+UMG SAVED WIRING STRUCTURE REVIEWED
 PIE REVALIDATION REQUIRED
 ```
 
@@ -204,53 +204,74 @@ the synchronous target request is broadcast. Its resulting StateRevision refresh
 must not reopen inspection while the pointer remains stationary. Inspection may
 open again only after pointer/focus leaves and becomes active again.
 
-On every `Battle HUD View Model Changed`, configure the Player presentation:
+The ViewModel exposes a presentation-only lookup over its current public legal set:
 
 ```text
+TryGetLegalTargetByPresentationId(CombatantView.PresentationId)
+→ Found
+→ TargetView
+```
+
+This lookup does not grant gameplay permission. It only removes target-array
+iteration from Blueprint; the formal Request still revalidates authoritatively.
+
+Create one Blueprint helper function:
+
+```text
+RefreshOneCombatantPresentation(PresentationWidget, CombatantView)
+
+CombatantView.PresentationId
+→ ViewModel.TryGetLegalTargetByPresentationId
+→ Found / TargetView.TargetId
+
+ViewModel.InteractionState == ChoosingTarget
+→ bChoosingTarget
+
 SetPresentationData(
-    CombatantView          = ViewModel.Player,
-    TargetSelectionActive  = ViewModel.InteractionState == ChoosingTarget,
-    LegalTarget            = false,
-    TargetId               = -1,
-    TargetHighlighted      =
-        ViewModel.InteractionState == ReadyToConfirm
-        && ViewModel.PendingConfirmationTargetPresentationId
-           == ViewModel.Player.PresentationId
+    Target                 = PresentationWidget,
+    CombatantView          = CombatantView,
+    TargetSelectionActive  = bChoosingTarget,
+    LegalTarget            = Found,
+    TargetId               = Found ? TargetView.TargetId : -1,
+    TargetHighlighted      = bChoosingTarget && Found
 )
 ```
 
-Self-target cards remain confirmation-based and do not expose Player as a public
-target button. The Player receives the same four-corner visual affordance, but
-clicking the Player remains a no-op; the existing Confirm control submits the
-gameplay-validated private target.
+Self-target cards use the same character-bound target path as Enemy-target cards.
+The public target still originates from Gameplay; clicking the Player emits its
+gameplay-provided TargetId and the formal Request revalidates it.
 
-For each Enemy presentation, derive legal-target data from the current public
-legal set:
+The owning HUD refresh becomes two calls rather than two target-mapping graphs:
 
 ```text
-bEnemyLegal = false
-EnemyTargetId = -1
-
-ForEach ViewModel.LegalTargets
-    if LegalTarget.PresentationId == EnemyView.PresentationId
-        bEnemyLegal = true
-        EnemyTargetId = LegalTarget.TargetId
-
-SetPresentationData(
-    CombatantView          = EnemyView,
-    TargetSelectionActive  = ViewModel.InteractionState == ChoosingTarget,
-    LegalTarget            = bEnemyLegal,
-    TargetId               = EnemyTargetId,
-    TargetHighlighted      = bEnemyLegal
-)
+RefreshOneCombatantPresentation(Combatant_PlayerPresentation, ViewModel.Player)
+→ RefreshOneCombatantPresentation(Combatant_EnemyPresentation, ViewModel.Enemy)
 ```
 
 Never use a fixed `SelectTarget(1)` or assume the first legal target is the visible
 Enemy. Future `EnemyPresentation[]` instances use the same ID match.
 
-The old separate `VB_LegalTargets` can remain temporarily while wiring is checked,
-but should be removed/collapsed after character-bound target selection passes PIE
-so two target affordances are not shown simultaneously.
+The old separate `VB_LegalTargets` has been removed from the saved HUD Designer.
+Its former Sequence `Then 12` entry is disconnected. Historical target-button
+nodes remain as unreachable graph nodes only; do not reconnect them. They may be
+deleted later as graph cleanup after the character-bound path passes PIE.
+
+Saved UMG structural review on 2026-08-21 confirmed:
+
+```text
+Sequence Then 14
+→ RefreshCombatantPresentations
+→ RefreshOneCombatantPresentation(PlayerPresentation, ViewModel.Player)
+→ RefreshOneCombatantPresentation(EnemyPresentation, ViewModel.Enemy)
+
+PlayerPresentation.OnTargetRequested(TargetId)
+→ SelectTarget(TargetId)
+
+EnemyPresentation.OnTargetRequested(TargetId)
+→ SelectTarget(TargetId)
+```
+
+This is a read-only graph review, not a Blueprint compile or PIE pass.
 
 ## PIE acceptance
 
@@ -263,8 +284,8 @@ normal click outside target selection → no-op; never pins inspection
 card selected → hover/focus may show the combatant name, but Status details stay collapsed
 select Strike → only legal Enemy presentation highlights
 click legal Enemy → inspection clears, then formal SelectTarget(TargetId) resolves the card
-select Defend / another Self-target card → only Player presentation highlights;
-    clicking Player is a no-op and explicit Confirm remains required
+select Defend / another Self-target card → only Player presentation highlights
+click legal Player → formal SelectTarget(TargetId) resolves the card
 status changes while pointer remains still → open inspector refreshes
 terminal/resolving state → no stale legal target remains active
 ```

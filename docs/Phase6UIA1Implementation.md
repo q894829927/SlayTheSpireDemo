@@ -143,11 +143,10 @@ Enemy
 
 Self
 → GetLegalTargetsForCard at selection time
-→ require the advisory candidate set to identify the unique Player target
-→ cache that candidate privately as PendingConfirmationTarget
-→ do not expose it as a public LegalTargets button
-→ ReadyToConfirm
-→ ConfirmSelectedCard submits the cached Player candidate
+→ expose the gameplay-provided Player through public LegalTargets
+→ ChoosingTarget
+→ player selects the Player presentation
+→ SelectTargetById submits the selected Player candidate
 → RequestPlayCard revalidates authoritatively at submission time
 
 None
@@ -157,11 +156,7 @@ None
 → RequestPlayCard revalidates authoritatively at submission time
 ```
 
-`PendingConfirmationTarget` is a selection-time advisory candidate snapshot from the gameplay legal-target query. It is not a capability token or permanent authorization. State may change between selection and confirmation; the final `RequestPlayCard` always re-runs gameplay-owned validation against current authoritative state.
-
-Public `LegalTargets` are therefore reserved for targets the View must actually present for player choice. Self-target confirmation does not leak a Player button into the enemy-target selection surface.
-
-No-target and Self-target cards require `ConfirmSelectedCard()` in this first UI slice. This is presentation policy only and does not alter card gameplay APIs.
+Public `LegalTargets` are advisory presentation candidates, not capability tokens. They include the Player for Self-target cards and enemies for Enemy-target cards. The final `RequestPlayCard` always re-runs gameplay-owned validation against current authoritative state. Only no-target cards use `ConfirmSelectedCard()`.
 
 ## Resolving lock
 
@@ -244,7 +239,7 @@ ViewModel.SubscribeThenPullBuildsHUD
 ViewModel.CardPresentationFieldsComeFromDefinition
 ViewModel.SelectionUsesLegalTargetsAndCancelIsPresentationOnly
 ViewModel.NoTargetRequiresConfirmAndLocksUntilReady
-ViewModel.SelfTargetRequiresConfirmAndSubmitsPlayer
+ViewModel.SelfTargetUsesLegalPlayerSelection
 ViewModel.TargetRequestLocksUntilReady
 ViewModel.EndTurnLocksUntilReady
 ViewModel.UnplayableCardSurfacesGameplayReason
@@ -258,9 +253,10 @@ The Self-target regression uses a real `UGainBlockCardEffect` configured before 
 ```text
 Self card selected
 → SelectedCardRuntimeId remains selected
-→ public LegalTargets stays empty
-→ explicit confirmation
-→ gameplay Request receives the selection-time Player candidate
+→ public LegalTargets contains the gameplay-provided Player
+→ ChoosingTarget
+→ SelectTargetById receives the Player target ID
+→ gameplay Request receives the selected Player candidate
 → authoritative Request revalidation
 → GainBlockAction resolves
 → Energy is spent
@@ -314,9 +310,9 @@ The current Self-target PIE acceptance case is explicit:
 ```text
 Defend
 → select card
-→ ReadyToConfirm
-→ no Player target button is exposed
-→ Confirm
+→ ChoosingTarget
+→ Player presentation receives the legal target ID and four-corner highlight
+→ click Player
 → Player gains the configured Block
 → Energy is spent
 → card reaches its resolved destination

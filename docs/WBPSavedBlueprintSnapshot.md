@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-08-20
+快照日期：2026-08-21
 
 ## 1. 用途与边界
 
@@ -24,13 +24,13 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-20 16:48:32 | 69 | `EventGraph` 190 nodes |
+| `WBP_BattleHUD` | 2026-08-21 02:27:15 | 73 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`EventGraph` 232 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
-| `WBP_BattleStatus` | 2026-08-20 10:40:50 | 4 | `EventGraph` 3 nodes |
+| `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
-| `WBP_CombatantPresentation` | 2026-08-20 16:01:48 | 5 | `EventGraph` 23 nodes |
+| `WBP_CombatantPresentation` | 2026-08-21 00:55:38 | 10 | `EventGraph` 25 nodes |
 | `WBP_CombatantTooltip` | 2026-08-20 16:48:35 | 6 | `EventGraph` 3 nodes |
-| `WBP_StatusTooltip` | 2026-08-20 14:53:15 | 2 | `RebuildTooltip` 10 nodes；`EventGraph` 3 nodes |
+| `WBP_StatusTooltip` | 2026-08-20 21:25:07 | 2 | `RebuildTooltip` 10 nodes；`EventGraph` 3 nodes |
 | `WBP_StatusTooltipEntry` | 2026-08-20 16:37:42 | 8 | `SetStatusView` 22 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 
 ## 3. WBP_BattleHUD — CURRENT SAVED
@@ -41,10 +41,12 @@ PLANNED / NOT WIRED
 
 | 控件 | Anchor | Alignment | Size | Auto Size | ZOrder | 初始 Visibility |
 |---|---|---|---|---:|---:|---|
-| `Img_PlayerCharacter` | `(0.23, 0.69)` | `(0.5, 1.0)` | `420 × 350` | false | 0 | Hit Test Invisible |
-| `Img_EnemyCharacter` | `(0.73, 0.65)` | `(0.5, 1.0)` | `600 × 350` | false | 0 | Visible |
-| `PlayerPanel` | `(0.25, 0.72)` | `(0.5, 0.5)` | `280 × 80` | true | 5 | Self Hit Test Invisible |
-| `EnemyPanel` | `(0.72, 0.70)` | `(0.5, 0.5)` | `280 × 80` | true | 0 | Self Hit Test Invisible |
+| `Img_PlayerCharacter`（旧） | `(0.23, 0.69)` | `(0.5, 1.0)` | `420 × 350` | false | 0 | Collapsed |
+| `Img_EnemyCharacter`（旧） | `(0.73, 0.65)` | `(0.5, 1.0)` | `600 × 350` | false | 0 | Collapsed |
+| `Combatant_PlayerPresentation` | `(0.23, 0.69)` | `(0.5, 1.0)` | `420 × 365` | false | 1 | Self Hit Test Invisible |
+| `Combatant_EnemyPresentation` | `(0.73, 0.65)` | `(0.5, 1.0)` | `650 × 350` | false | 1 | Self Hit Test Invisible |
+| `PlayerPanel` | `(0.25, 0.72)` | `(0.5, 0.5)` | `280 × 80` | false | 5 | Self Hit Test Invisible |
+| `EnemyPanel` | `(0.72, 0.70)` | `(0.5, 0.5)` | `280 × 80` | false | 5 | Self Hit Test Invisible |
 | `EnemyIntentPanel` | `(0.74, 0.27)` | `(0.5, 0.5)` | `70 × 80` | false | 0 | Self Hit Test Invisible |
 | `EnergyPanel` | `(0.075, 0.82)` | `(0.5, 0.5)` | `250 × 250` | false | 0 | Self Hit Test Invisible |
 | `HB_Hand` | `(0.5, 1.0)` | `(0.5, 1.0)` | `760 × 210` | false | 10 | Self Hit Test Invisible |
@@ -55,8 +57,8 @@ PLANNED / NOT WIRED
 | `Btn_Confirm` | `(0.46, 0.72)` | `(0.5, 0.5)` | `130 × 45` | false | 0 | Collapsed |
 | `Btn_Cancel` | `(0.54, 0.72)` | `(0.5, 0.5)` | `130 × 45` | false | 0 | Collapsed |
 | `Txt_Feedback` | `(0.5, 0.53)` | `(0.5, 0.5)` | `400 × 50` | false | 20 | Visible |
-| `VB_LegalTargets` | `(0.73, 0.48)` | `(0.5, 0.5)` | `350 × 350` | false | 0 | Collapsed |
-| `StatusTooltip` | top-left `(0, 0)` | `(0, 0)` | `100 × 30` | false | 200 | Collapsed |
+| `StatusTooltip_Player` | `(0.3396, 0.5)` | `(0.0, 1.0)` | Auto Size | true | 200 | Collapsed |
+| `StatusTooltip_Enemy` | `(0.56, 0.48)` | `(1.0, 0.5)` | Auto Size | true | 200 | Collapsed |
 | `Overlay_Terminal` | stretch `(0,0) → (1,1)` | `(0,0)` | fill | false | 100 | Collapsed |
 
 所有表中 Position Offset 当前均为 `(0, 0)`。
@@ -95,11 +97,12 @@ EnemyPanel : VerticalBox
 
 当前状态：
 
-- `Txt_PlayerName`、`Txt_EnemyName`、`WB_PlayerStatuses`、`WB_EnemyStatuses` 已存在于 Designer。
-- `Event Battle HUD View Model Changed` 尚未连接这些四个控件，因此它们目前不会随 ViewModel 刷新。
-- `WBP_CombatantPresentation` 当前没有作为 Player/Enemy 子控件放入 HUD。
-- `WBP_CombatantTooltip` 当前也没有放入 HUD。
-- 现有独立 `Img_PlayerCharacter` 和 `Img_EnemyCharacter` 仍然是 HUD 中实际显示的角色图像。
+- `Combatant_PlayerPresentation`、`Combatant_EnemyPresentation` 已作为 HUD 的正式角色呈现实例放入根 Canvas。
+- 旧 `Img_PlayerCharacter`、`Img_EnemyCharacter` 仍保留在 Designer，但均为 `Collapsed`，不会形成第二套角色图像或命中层。
+- `Txt_PlayerName`、`Txt_EnemyName` 默认 `Hidden`；角色 Hover 的 `OnInspectRequested` 会写入当前 `CombatantView.DisplayName` 并显示，`OnInspectCleared` 会隐藏。
+- `WB_PlayerStatuses`、`WB_EnemyStatuses` 由 `RefreshCombatantPresentations` 末尾的两次 `RebuildStatusIcons` 刷新。
+- `StatusTooltip_Player`、`StatusTooltip_Enemy` 默认 `Collapsed`；Hover 检查时按当前状态数组重建并显示，离开时隐藏。
+- `WBP_CombatantTooltip` 仍未实例化进 HUD；当前名称与状态详情使用角色附近的独立控件。
 
 ### 3.3 当前 EventGraph 主流程
 
@@ -107,7 +110,7 @@ EnemyPanel : VerticalBox
 Event Battle HUD View Model Changed
 → IsValid(ViewModel)
 → 重建 Hand
-→ Sequence（当前已有 Then 0 ～ Then 13）
+→ Sequence（当前已有 Then 0 ～ Then 14）
    ├── Draw / Discard / Exhaust 数量
    ├── Energy
    ├── Player HP / HP Percent / Block
@@ -115,8 +118,8 @@ Event Battle HUD View Model Changed
    ├── Enemy Intent
    ├── Feedback
    ├── Confirm / Cancel / End Turn 可见性和可用状态
-   ├── VB_LegalTargets 重建
-   └── Victory / Defeat / ResolutionFaulted 终局显示
+   ├── Victory / Defeat / ResolutionFaulted 终局显示
+   └── Then 14 → RefreshCombatantPresentations
 ```
 
 卡牌重建仍使用：
@@ -129,36 +132,63 @@ HB_Hand.ClearChildren
 → AddChildToHorizontalBox
 ```
 
-目标重建仍使用：
+正式角色目标刷新使用：
 
 ```text
-VB_LegalTargets.ClearChildren
-→ ForEach ViewModel.LegalTargets
-→ Create WBP_BattleTargetButton
-→ 写入 TargetView / OwnerHUD
-→ AddChildToVerticalBox
+RefreshCombatantPresentations
+→ RefreshOneCombatantPresentation(PlayerPresentation, ViewModel.Player)
+→ RefreshOneCombatantPresentation(EnemyPresentation, ViewModel.Enemy)
+→ RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
+→ RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)
 ```
 
-因此当前正式可用的敌方目标入口仍是 `VB_LegalTargets`，尚未切换成点击敌人角色本体。
+`VB_LegalTargets` 已从 Designer 删除，Sequence `Then 12` 当前没有连接。正式目标入口已切换为点击 Player / Enemy 的 `WBP_CombatantPresentation`。
 
-### 3.4 下一步已定但尚未连接
+### 3.4 RefreshOneCombatantPresentation — CURRENT SAVED
 
 ```text
-PLANNED / NOT WIRED
+Input:
+    PresentationWidget
+    CombatantView
 
-Sequence 增加 Then 14
-→ RefreshCombatantPresentations
-→ 用 Player / Enemy 的 FBattleHUDCombatantView 更新角色呈现
-→ LegalTargets.PresentationId 匹配 Enemy PresentationId
-→ 把 gameplay 给出的 TargetId 传给角色呈现
+IsValid(ViewModel)
+→ IsValid(PresentationWidget)
+→ CombatantView.PresentationId
+→ ViewModel.TryGetLegalTargetByPresentationId(PresentationId)
+   ├── Found
+   └── OutTarget.TargetId
+
+ViewModel.InteractionState == ChoosingTarget
+→ bChoosingTarget
+
+SetPresentationData(
+    Target                   = PresentationWidget,
+    InCombatantView          = CombatantView,
+    bInTargetSelectionActive = bChoosingTarget,
+    bInLegalTarget           = Found,
+    InTargetId               = OutTarget.TargetId,
+    bInTargetHighlighted     = bChoosingTarget AND Found
+)
 ```
 
-预定的玩家可见布局是：
+该函数只按 `PresentationId` 把 Gameplay 已发布的 `TargetId` 映射到对应角色，不自行决定合法性。`SelectTarget` 仍会在正式 Request 路径中做权威复验。
 
-- 名称显示在各自 HP 条下方，只在角色被检查时显示。
-- Enemy 状态说明显示在敌人左侧；Player 状态说明显示在玩家右侧。
-- 不使用屏幕顶部中央的通用战斗者 Tooltip。
-- 角色绑定目标选择通过 PIE 后，再折叠或移除旧 `VB_LegalTargets`，避免出现两套目标入口。
+两个角色的目标请求连接均已保存：
+
+```text
+Combatant_PlayerPresentation.OnTargetRequested(TargetId)
+→ WBP_BattleHUD.SelectTarget(TargetId)
+
+Combatant_EnemyPresentation.OnTargetRequested(TargetId)
+→ WBP_BattleHUD.SelectTarget(TargetId)
+```
+
+当前图中还有两组断开的历史节点：
+
+1. `EventGraph` 中旧 `ClearChildren → ForEach LegalTargets → Create WBP_BattleTargetButton`，其入口 `ClearChildren.execute` 未连接。
+2. `RefreshCombatantPresentations` 中旧的 Player/Enemy 手动遍历与临时变量映射，Function Entry 已改接新 helper，因此旧组没有执行入口。
+
+它们不会运行，也不会影响当前目标选择。后续可在蓝图编辑器中框选删除以降低维护噪音；不要把 Sequence `Then 12` 重新接回旧路径。
 
 ## 4. WBP_BattleCard — CURRENT SAVED
 
@@ -223,7 +253,7 @@ SB_Status
     └── Txt_StatusAmount
 ```
 
-`EventGraph` 当前只有空的 `PreConstruct`、`Construct`、`Tick`，没有状态数据输入和刷新连线。因此它目前只是一个视觉壳，尚未成为 HUD 状态图标的正式生成控件。
+`SetStatusView` 已连接 `Amount` 文本和 Atlas 图标参数；HUD 的 `RebuildStatusIcons` 会为 Player / Enemy 当前状态创建该控件。它已是 HUD 状态小图标的正式生成控件。
 
 ## 6. WBP_BattleTargetButton — CURRENT SAVED
 
@@ -253,7 +283,7 @@ Btn_Target.OnClicked
 → OwnerHUD.SelectTarget(TargetView.TargetId)
 ```
 
-这是 HUD 当前实际使用的目标按钮路径。
+该资产仍保留，但 HUD 当前不再实例化它。它是旧 `VB_LegalTargets` 路径的遗留资产，不是当前正式目标入口。
 
 ## 7. WBP_CombatantPresentation — CURRENT SAVED
 
@@ -273,6 +303,11 @@ SizeBox_Root                    Self Hit Test Invisible
     ├── Img_Character          Hit Test Invisible，Fill
     ├── Btn_Interaction        Visible，Fill，Focusable interaction layer
     └── Border_TargetHighlight Collapsed，顶层视觉高亮
+        └── Canvas_TargetCorners
+            ├── Corner_TL      44 × 44
+            ├── Corner_TR      44 × 44
+            ├── Corner_BL      44 × 44
+            └── Corner_BR      44 × 44
 ```
 
 `Border_TargetHighlight` 的正确输入规则是：
@@ -306,16 +341,18 @@ Btn_Interaction.OnUnhovered
 → SetPointerInspectionActive(false)
 
 Btn_Interaction.OnClicked
-→ RequestPrimaryInteraction()
+→ bTargetSelectionActive AND bLegalTarget
+→ true: RequestPrimaryInteraction()
+→ false: no-op
 
 Event Combatant Presentation Changed
-→ bTargetSelectionActive AND bLegalTarget
+→ bTargetHighlighted
 → Branch
    ├── true  → Border_TargetHighlight = Hit Test Invisible
    └── false → Border_TargetHighlight = Collapsed
 ```
 
-`CombatantView` 当前虽然已经被 Break，但 `DisplayName`、HP、Block、Statuses 输出尚未连接到任何视觉控件。该 WBP 当前只完成角色图片、交互层和合法目标高亮。
+角色名称、HP、Block 与状态列表仍由 `WBP_BattleHUD` 周边控件显示；该 WBP 负责角色图片、Hover/Focus 检查、目标点击和四角高亮。
 
 ## 8. WBP_CombatantTooltip — CURRENT SAVED BUT UNUSED
 
@@ -431,14 +468,20 @@ Input ParameterName + Vector2D Value
 ```text
 Enemy-target card
 → 选牌
-→ HUD 重建 VB_LegalTargets
-→ 点击 WBP_BattleTargetButton
-→ OwnerHUD.SelectTarget(TargetId)
+→ ViewModel 进入 ChoosingTarget，并发布 Enemy legal target
+→ RefreshOneCombatantPresentation 按 PresentationId 匹配 Enemy
+→ Enemy 显示四角高亮
+→ 点击 Enemy
+→ Combatant_EnemyPresentation.OnTargetRequested(TargetId)
+→ HUD.SelectTarget(TargetId)
 
 Self-target card
-→ ReadyToConfirm
-→ HUD Confirm
-→ 使用 ViewModel 私有的 gameplay-validated Player target
+→ ViewModel 进入 ChoosingTarget，并发布 Player legal target
+→ RefreshOneCombatantPresentation 按 PresentationId 匹配 Player
+→ Player 显示四角高亮
+→ 点击 Player
+→ Combatant_PlayerPresentation.OnTargetRequested(TargetId)
+→ HUD.SelectTarget(TargetId)
 
 No-target card
 → ReadyToConfirm
@@ -446,7 +489,9 @@ No-target card
 → RequestPlayCard(Card, nullptr)
 ```
 
-`WBP_CombatantPresentation` 的角色本体点击目标路径已经在独立控件中准备好，但由于 HUD 尚未实例化/刷新/绑定它，当前玩家还不会通过角色图片完成选敌。
+`None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
+
+本次只读结构检查确认保存资产上的执行线和数据线完整，但按用户约束没有编译 Blueprint、运行 PIE 或自动化。因此本文记录为“连线结构正确”，不替代运行时 PIE 验证。
 
 ## 12. 后续修改时的同步清单
 
@@ -457,7 +502,7 @@ No-target card
 3. 新增、删除或改名的 `Is Variable` 控件。
 4. EventGraph 的入口、Sequence 分支和 ViewModel 字段映射。
 5. 哪些资产已经实例化进 HUD，哪些仍为独立壳。
-6. 旧 `VB_LegalTargets` 是否仍是正式目标入口。
+6. 旧 `VB_LegalTargets` 是否仍是正式目标入口（当前：否；Designer 已删除，旧节点入口已断开）。
 7. Player/Enemy 名称和状态说明是否已经接入实际 ViewModel 数据。
 
 下一步具体接线方案见 [Phase6UIA1CombatantInspectionSetup.md](Phase6UIA1CombatantInspectionSetup.md)。该文件描述目标方案；本文描述当前已保存状态，二者不可混用。

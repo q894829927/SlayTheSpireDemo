@@ -56,7 +56,7 @@ BattleActionQueue
   - [x] Phase 6R Regression Gate + test-module extraction — COMPLETE; UE5.8 full 53/53 regression gate and Shipping exclusion validation passed.
 - [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
-  - [x] UI-A1 Operable Battle HUD — COMPLETE; concrete UMG/PIE battle loop validated and latest UE5.8 owner gate passed with UI-A1 11/11.
+  - [ ] UI-A1 Operable Battle HUD — SOURCE CHANGED; Self-target cards now use character-bound Player selection, so the previous UI-A1 11/11 + PIE evidence is historical and UE5.8/PIE revalidation is pending.
   - [ ] UI-A2 Basic Committed Presentation — NEXT.
   - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text slice implemented, DataAsset-authored and UE5.8/PIE/package revalidated with UI-A3 8/8; remaining target-specific/energy-result preview still planned.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
@@ -199,10 +199,10 @@ Phase 6UI-A0 validated:
 - faulted resolutions publish a readable `ResolutionFaulted` snapshot through the battle-level Ready path rather than masquerading as healthy idle;
 - the owner-only `.github/workflows/ue-phase6uia0-tests.yml` built `SlayTheSpireDemoEditor` and passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 = 73/73 for the completed run.
 
-Phase 6UI-A1 validated:
+Phase 6UI-A1 previously validated before the current Self-target interaction-policy change:
 
 - the concrete Battle HUD is operable through normal UI controls without gameplay-driving debug keyboard commands;
-- Enemy-target cards use gameplay-provided legal targets and formal Request revalidation; Self-target Defend uses explicit confirmation without exposing a Player target button;
+- Enemy-target cards used gameplay-provided legal targets and formal Request revalidation; the current source now applies the same public legal-target selection path to Self-target cards and requires fresh UE5.8/PIE validation;
 - HP, Block, Energy, Hand/pile counts, Status inspection, committed Enemy Intent, card selection/cancel, target selection, End Turn, Resolving lock and terminal feedback are wired through the ViewModel/base-widget boundary;
 - one full player → enemy → player PIE cycle passes through the normal UI path;
 - the packaged Defend card now resolves its dynamic `{Block}` description instead of displaying the literal placeholder;
@@ -306,7 +306,7 @@ Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
 
 Phase 6C, Phase 6R and Phase 6UI-A0 require no new `.uasset` / `.umap` configuration.
 
-Phase 6UI-A1 / current UI-A3 authored asset work is now validated in UE Editor. The concrete Battle HUD/card/combatant presentation assets and the Card/Status dynamic-description fields must remain wired to the ViewModel/player-facing snapshot path; do not replace them with Widget-side gameplay calculations.
+The previous Phase 6UI-A1 / current UI-A3 authored asset work was validated in UE Editor. The current Self-target Player-selection source change still requires revalidation. The concrete Battle HUD/card/combatant presentation assets and the Card/Status dynamic-description fields must remain wired to the ViewModel/player-facing snapshot path; do not replace them with Widget-side gameplay calculations.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -2199,11 +2199,11 @@ Manual PIE normal UI player → enemy → player loop  PASS
 Packaged Defend dynamic {Block} description         PASS
 ```
 
-The exact `92/92` total is evidence for the current completed run, not a permanent architecture acceptance constant. The durable UI-A1 gate remains: Editor build passes + existing regressions pass + current UI-A1 invariants pass + the concrete Battle HUD operates one normal battle loop through UI. UI-A3 is not complete as a whole; only the currently implemented dynamic-text slice is validated.
+The exact `92/92` total is historical evidence from before the Self-target Player-selection change, not a permanent architecture acceptance constant. The durable UI-A1 gate remains: Editor build passes + existing regressions pass + current UI-A1 invariants pass + the concrete Battle HUD operates one normal battle loop through UI. UI-A3 is not complete as a whole; only the currently implemented dynamic-text slice is validated.
 
 The self-hosted workflows remain manual, owner-only and restricted to trusted `main`.
 
-Phase 6 is complete. Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. The next implementation slice is `Phase 6UI-A2 — Basic Committed Presentation`.
+Phase 6 and Phase 6UI-A0 are complete. UI-A1 has a source/UMG interaction-policy change pending UE5.8/PIE revalidation. The current UI-A3 dynamic-text slice was validated before that interaction change. Do not begin UI-A2 until the current UI-A1 path is revalidated.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2372,7 +2372,7 @@ docs/Phase6UIA1CombatantInspectionSetup.md
 - Phase 6R — PASSED: Automation-only tests/reflected helpers extracted into Editor-only `SlayTheSpireDemoTests`; Editor build + full 53/53 regression + Shipping build/exclusion gate passed.
 - Phase 6 — PASSED: Battle Event/Trigger scope and the Phase 6R regression/test-module isolation gate are complete.
 - Phase 6UI-A0 — PASSED: authoritative turn/Hand lifecycle, deterministic initial battle shuffle, formal Query/Request APIs with shared revalidation, committed Enemy Intent, current-state gameplay-derived Intent display value, coherent `(BattleId, StateRevision)` snapshots and non-reentrant battle-level `OnReadStateReady`; owner-only UE5.8 workflow passed UI-A0 20/20 with current total 73/73.
-- Phase 6UI-A1 — PASSED: concrete operable Battle HUD, legal-target/Self-confirm interaction, combatant inspection, Resolving lock and one normal UI player → enemy → player PIE loop validated; latest owner gate passed UI-A1 11/11 with the current combined 92/92 run.
+- Phase 6UI-A1 — SOURCE CHANGED / REVALIDATION PENDING: the previously validated HUD now routes Self-target cards through public Player target selection instead of Self confirmation; the earlier UI-A1 11/11 and combined 92/92 run remain historical evidence.
 - Phase 6UI-A2 — NEXT: committed Presentation Records and playback separated from `BattleActionQueue`.
 - Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED: dynamic Damage/Block card text and runtime Status descriptions are implemented, DataAsset-authored and UE5.8/PIE/package revalidated; UI-A3 8/8 passes, while remaining Energy-result and target-specific exact preview are still planned.
 - Phase 6UI-A — IN PROGRESS: the operable-loop acceptance is satisfied by UI-A1, but UI-A2 and the remaining UI-A3 scope are still planned before closing the phase.
@@ -2415,7 +2415,7 @@ When completing a meaningful phase:
 
 This section is the detailed long-term specification for work after the now-complete Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
 
-Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. Phase 6UI-A2 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
+Phase 6UI-A0 is complete. UI-A1 has a Self-target Player-selection source/UMG change pending UE5.8/PIE revalidation. Resume Phase 6UI-A2 only after that gate is restored. Do not skip to Phase 7 unless the user explicitly changes the development order.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -3176,11 +3176,10 @@ select card
 Self-target card
 select card
 → query gameplay legal targets
-→ require the advisory candidate set to identify the unique Player target
-→ cache that candidate privately for confirmation
-→ ReadyToConfirm
-→ confirm
-→ RequestPlayCard(Card, cached Player candidate)
+→ expose the gameplay-provided Player candidate through public `LegalTargets`
+→ ChoosingTarget
+→ select the Player presentation
+→ RequestPlayCard(Card, selected Player)
 → submission-time authoritative revalidation
 
 No-target card
@@ -3191,9 +3190,7 @@ select card
 → submission-time authoritative revalidation
 ```
 
-`PendingConfirmationTarget` is a selection-time advisory candidate snapshot obtained from the gameplay legal-target query. It is not a capability token or permanent authorization: state may change between selection and confirmation, and `RequestPlayCard` must always re-run the authoritative gameplay validator at submission time.
-
-Self-target candidates stay private to the ViewModel and must not be exposed as public `LegalTargets` buttons. Public `LegalTargets` are for targets the player actually chooses, currently the Enemy-target path. Widget code must not hard-code Player/Enemy target legality.
+Public `LegalTargets` contain gameplay-provided candidates the player actually chooses, including the Player for a Self-target card and enemies for an Enemy-target card. Widget code must match candidates by presentation identity and must not hard-code Player/Enemy target legality. A public target entry remains advisory presentation state rather than permanent authorization: `RequestPlayCard` always re-runs the authoritative gameplay validator at submission time.
 
 Cancellation must be explicit and discoverable. Exact controls may vary by input device, but the player should have a clear cancel path such as reselecting the card, right click, Escape/equivalent focus action or a visible cancel affordance.
 
@@ -3437,7 +3434,7 @@ current run  73/73
 
 The numeric total is run evidence, not the permanent acceptance definition.
 
-#### UI-A1 — Operable Battle HUD — COMPLETE
+#### UI-A1 — Operable Battle HUD — SOURCE CHANGED / REVALIDATION PENDING
 
 UI-A1 is validated against the UI-A0 gameplay/read boundary.
 
@@ -3455,7 +3452,7 @@ Victory / Defeat / ResolutionFaulted
 combatant inspection / PresentationId target mapping
 ```
 
-Acceptance is satisfied: a normal battle turn is operable without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands. Enemy-target and Self-target interaction paths were exercised, a full player → enemy → player PIE cycle passed, and the packaged Defend dynamic `{Block}` description was revalidated. Until UI-A2, committed state changes still appear immediately after coherent snapshot refresh rather than through historical animation playback.
+The previous acceptance run proved the normal battle loop without gameplay-driving debug keys, but it predates the current Self-target Player-selection policy. Re-run the UI-A1 source gate and PIE-select Defend by clicking the highlighted Player before treating the current source as validated. Until UI-A2, committed state changes still appear immediately after coherent snapshot refresh rather than through historical animation playback.
 
 Latest combined validation evidence:
 

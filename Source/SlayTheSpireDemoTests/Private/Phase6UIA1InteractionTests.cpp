@@ -24,6 +24,12 @@ bool FSelectionUsesLegalTargetsAndCancelTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Enemy target is not mislabeled as player"), Fixture.ViewModel->LegalTargets[0].bPlayer);
 	TestEqual(TEXT("Legal target maps to the enemy presentation identity"), Fixture.ViewModel->LegalTargets[0].PresentationId, FName(TEXT("EnemyPrimary")));
 	TestEqual(TEXT("Legal target uses the combatant display name"), Fixture.ViewModel->LegalTargets[0].DisplayName.ToString(), FString(TEXT("Cultist")));
+	FBattleHUDTargetView EnemyTargetByPresentation;
+	TestTrue(
+		TEXT("Enemy legal target can be resolved by presentation identity"),
+		Fixture.ViewModel->TryGetLegalTargetByPresentationId(Fixture.ViewModel->Enemy.PresentationId, EnemyTargetByPresentation)
+	);
+	TestEqual(TEXT("Presentation lookup preserves the Enemy target id"), EnemyTargetByPresentation.TargetId, Fixture.ViewModel->LegalTargets[0].TargetId);
 
 	Fixture.ViewModel->CancelSelection();
 	TestEqual(TEXT("Cancel returns to Idle"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Idle);
@@ -62,12 +68,12 @@ bool FNoTargetConfirmationLocksUntilReadyTest::RunTest(const FString& Parameters
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FSelfTargetRequiresConfirmAndSubmitsPlayerTest,
-	"SlayTheSpireDemo.Phase6UIA1.ViewModel.SelfTargetRequiresConfirmAndSubmitsPlayer",
+	FSelfTargetUsesLegalPlayerSelectionTest,
+	"SlayTheSpireDemo.Phase6UIA1.ViewModel.SelfTargetUsesLegalPlayerSelection",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
 )
 
-bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Parameters)
+bool FSelfTargetUsesLegalPlayerSelectionTest::RunTest(const FString& Parameters)
 {
 	FHUDTestFixture Fixture(ECardTargetType::Self, 1, 5, 5);
 	Fixture.DrainInitialReady();
@@ -77,15 +83,22 @@ bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Para
 	const int32 RuntimeId = Fixture.FirstRuntimeId();
 	TestTrue(TEXT("Self-target card can be selected"), Fixture.ViewModel->SelectCardByRuntimeId(RuntimeId));
 	TestTrue(TEXT("Self-target selection keeps runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId != INDEX_NONE);
-	TestEqual(TEXT("Self-target card waits for explicit confirmation"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::ReadyToConfirm);
-	TestEqual(TEXT("Self-target confirmation candidate is not exposed as a public legal-target button"), Fixture.ViewModel->LegalTargets.Num(), 0);
-	TestEqual(
-		TEXT("Self-target confirmation exposes only the Player presentation highlight identity"),
-		Fixture.ViewModel->PendingConfirmationTargetPresentationId,
-		Fixture.ViewModel->Player.PresentationId
+	TestEqual(TEXT("Self-target card enters target selection"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::ChoosingTarget);
+	TestEqual(TEXT("Self-target card exposes one gameplay-provided target"), Fixture.ViewModel->LegalTargets.Num(), 1);
+	if (Fixture.ViewModel->LegalTargets.Num() != 1)
+	{
+		return false;
+	}
+	TestTrue(TEXT("Self-target legal target is identified as Player"), Fixture.ViewModel->LegalTargets[0].bPlayer);
+	TestEqual(TEXT("Self-target maps to the Player presentation"), Fixture.ViewModel->LegalTargets[0].PresentationId, Fixture.ViewModel->Player.PresentationId);
+	FBattleHUDTargetView PlayerTargetByPresentation;
+	TestTrue(
+		TEXT("Player legal target can be resolved by presentation identity"),
+		Fixture.ViewModel->TryGetLegalTargetByPresentationId(Fixture.ViewModel->Player.PresentationId, PlayerTargetByPresentation)
 	);
+	TestEqual(TEXT("Presentation lookup preserves the Player target id"), PlayerTargetByPresentation.TargetId, Fixture.ViewModel->LegalTargets[0].TargetId);
 
-	TestTrue(TEXT("Self-target confirm submits the gameplay-derived Player candidate"), Fixture.ViewModel->ConfirmSelectedCard());
+	TestTrue(TEXT("Selecting the gameplay-provided Player target submits the card"), Fixture.ViewModel->SelectTargetById(PlayerTargetByPresentation.TargetId));
 	TestEqual(TEXT("Accepted self-target request enters Resolving"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
 	TestTrue(TEXT("Accepted self-target request locks input before Ready"), Fixture.ViewModel->bInputLocked);
 
@@ -96,8 +109,7 @@ bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Para
 	TestEqual(TEXT("Self-target card leaves Hand"), Fixture.ViewModel->HandCards.Num(), 0);
 	TestEqual(TEXT("Self-target card reaches Discard"), Fixture.ViewModel->DiscardCount, 1);
 	TestEqual(TEXT("Ready refresh clears selected runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId, INDEX_NONE);
-	TestEqual(TEXT("Ready refresh keeps public legal targets empty"), Fixture.ViewModel->LegalTargets.Num(), 0);
-	TestTrue(TEXT("Ready refresh clears the confirmation highlight identity"), Fixture.ViewModel->PendingConfirmationTargetPresentationId.IsNone());
+	TestEqual(TEXT("Ready refresh clears public legal targets"), Fixture.ViewModel->LegalTargets.Num(), 0);
 	return true;
 }
 

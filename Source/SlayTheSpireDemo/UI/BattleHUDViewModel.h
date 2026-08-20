@@ -40,6 +40,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
 
+	// Presentation-only lookup over the current gameplay-provided legal-target
+	// snapshot. This does not grant permission or replace Request revalidation.
+	UFUNCTION(BlueprintPure, Category = "Battle HUD|Selection")
+	bool TryGetLegalTargetByPresentationId(
+		FName PresentationId,
+		FBattleHUDTargetView& OutTarget
+	) const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
 
@@ -97,13 +105,6 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Selection")
 	TArray<FBattleHUDTargetView> LegalTargets;
 
-	// Presentation-only identity for a gameplay-validated target that is
-	// submitted through explicit confirmation rather than target selection.
-	// Self-target cards use this to highlight the Player without exposing a
-	// clickable public target or changing the RequestPlayCard contract.
-	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Selection")
-	FName PendingConfirmationTargetPresentationId = NAME_None;
-
 protected:
 	virtual void BeginDestroy() override;
 
@@ -124,7 +125,6 @@ private:
 	ACombatant* FindLegalTargetById(int32 TargetId) const;
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
-	TWeakObjectPtr<ACombatant> PendingConfirmationTarget;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
 	TArray<TWeakObjectPtr<UCardInstance>> CachedHandObjects;
 };

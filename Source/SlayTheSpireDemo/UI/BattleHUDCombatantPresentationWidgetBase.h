@@ -67,9 +67,8 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Combatant Presentation")
 	bool bLegalTarget = false;
 
-	// Visual selection affordance only. This is intentionally independent from
-	// bLegalTarget so a confirmation-based Self target may be highlighted while
-	// primary click remains a no-op.
+	// Visual selection affordance only. This remains independent from
+	// bLegalTarget so later non-interactive emphasis never becomes target authority.
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Combatant Presentation")
 	bool bTargetHighlighted = false;
 
