@@ -148,6 +148,7 @@ void UBattleHUDViewModel::Shutdown()
 	CachedHandObjects.Reset();
 	HandCards.Reset();
 	LegalTargets.Reset();
+	PendingConfirmationTargetPresentationId = NAME_None;
 	SelectedCardRuntimeId = INDEX_NONE;
 	BattleId = 0;
 	StateRevision = 0;
@@ -502,6 +503,7 @@ void UBattleHUDViewModel::RebuildLegalTargets(UCardInstance* Card)
 	LegalTargets.Reset();
 	LegalTargetObjects.Reset();
 	PendingConfirmationTarget.Reset();
+	PendingConfirmationTargetPresentationId = NAME_None;
 
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle) || !IsValid(Card))
@@ -525,6 +527,7 @@ void UBattleHUDViewModel::RebuildLegalTargets(UCardInstance* Card)
 			// Selection-time advisory candidate only. RequestPlayCard revalidates
 			// the target against authoritative gameplay state at confirmation time.
 			PendingConfirmationTarget = Targets[0];
+			PendingConfirmationTargetPresentationId = ResolveCombatantPresentationId(Targets[0], true);
 		}
 		return;
 
@@ -598,6 +601,7 @@ void UBattleHUDViewModel::ClearSelectionInternal()
 	LegalTargets.Reset();
 	LegalTargetObjects.Reset();
 	PendingConfirmationTarget.Reset();
+	PendingConfirmationTargetPresentationId = NAME_None;
 }
 
 void UBattleHUDViewModel::SetFeedback(EGameplayRequestFailureReason Reason)

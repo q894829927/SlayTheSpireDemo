@@ -79,6 +79,11 @@ bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Para
 	TestTrue(TEXT("Self-target selection keeps runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId != INDEX_NONE);
 	TestEqual(TEXT("Self-target card waits for explicit confirmation"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::ReadyToConfirm);
 	TestEqual(TEXT("Self-target confirmation candidate is not exposed as a public legal-target button"), Fixture.ViewModel->LegalTargets.Num(), 0);
+	TestEqual(
+		TEXT("Self-target confirmation exposes only the Player presentation highlight identity"),
+		Fixture.ViewModel->PendingConfirmationTargetPresentationId,
+		Fixture.ViewModel->Player.PresentationId
+	);
 
 	TestTrue(TEXT("Self-target confirm submits the gameplay-derived Player candidate"), Fixture.ViewModel->ConfirmSelectedCard());
 	TestEqual(TEXT("Accepted self-target request enters Resolving"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
@@ -92,6 +97,7 @@ bool FSelfTargetRequiresConfirmAndSubmitsPlayerTest::RunTest(const FString& Para
 	TestEqual(TEXT("Self-target card reaches Discard"), Fixture.ViewModel->DiscardCount, 1);
 	TestEqual(TEXT("Ready refresh clears selected runtime identity"), Fixture.ViewModel->SelectedCardRuntimeId, INDEX_NONE);
 	TestEqual(TEXT("Ready refresh keeps public legal targets empty"), Fixture.ViewModel->LegalTargets.Num(), 0);
+	TestTrue(TEXT("Ready refresh clears the confirmation highlight identity"), Fixture.ViewModel->PendingConfirmationTargetPresentationId.IsNone());
 	return true;
 }
 

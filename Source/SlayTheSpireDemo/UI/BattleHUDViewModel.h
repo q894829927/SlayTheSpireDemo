@@ -97,6 +97,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Selection")
 	TArray<FBattleHUDTargetView> LegalTargets;
 
+	// Presentation-only identity for a gameplay-validated target that is
+	// submitted through explicit confirmation rather than target selection.
+	// Self-target cards use this to highlight the Player without exposing a
+	// clickable public target or changing the RequestPlayCard contract.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Selection")
+	FName PendingConfirmationTargetPresentationId = NAME_None;
+
 protected:
 	virtual void BeginDestroy() override;
 

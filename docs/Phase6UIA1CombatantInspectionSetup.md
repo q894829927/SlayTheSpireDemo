@@ -42,7 +42,9 @@ primary click never requests pinned inspection.
 
 It never queries target legality and never calls a gameplay Request. The owning
 Battle HUD supplies `bTargetSelectionActive`, `bLegalTarget` and the matching
-gameplay-provided `TargetId` on every ViewModel refresh.
+gameplay-provided `TargetId` on every ViewModel refresh. Visual highlighting is
+supplied separately through `bTargetHighlighted`; highlighting alone never makes
+a combatant clickable.
 
 While pointer/focus inspection remains active, `SetPresentationData` republishes
 the latest view. A stationary pointer therefore cannot leave an open inspector
@@ -119,7 +121,7 @@ CombatantView
 → Break Battle HUD Combatant View
 → update DisplayName / HP / MaxHP / Block / Statuses
 
-bTargetSelectionActive && bLegalTarget
+bTargetHighlighted
 → Border_TargetHighlight.Visibility
 ```
 
@@ -209,12 +211,18 @@ SetPresentationData(
     CombatantView          = ViewModel.Player,
     TargetSelectionActive  = ViewModel.InteractionState == ChoosingTarget,
     LegalTarget            = false,
-    TargetId               = -1
+    TargetId               = -1,
+    TargetHighlighted      =
+        ViewModel.InteractionState == ReadyToConfirm
+        && ViewModel.PendingConfirmationTargetPresentationId
+           == ViewModel.Player.PresentationId
 )
 ```
 
 Self-target cards remain confirmation-based and do not expose Player as a public
-target button.
+target button. The Player receives the same four-corner visual affordance, but
+clicking the Player remains a no-op; the existing Confirm control submits the
+gameplay-validated private target.
 
 For each Enemy presentation, derive legal-target data from the current public
 legal set:
@@ -232,7 +240,8 @@ SetPresentationData(
     CombatantView          = EnemyView,
     TargetSelectionActive  = ViewModel.InteractionState == ChoosingTarget,
     LegalTarget            = bEnemyLegal,
-    TargetId               = EnemyTargetId
+    TargetId               = EnemyTargetId,
+    TargetHighlighted      = bEnemyLegal
 )
 ```
 
@@ -254,7 +263,8 @@ normal click outside target selection → no-op; never pins inspection
 card selected → hover/focus may show the combatant name, but Status details stay collapsed
 select Strike → only legal Enemy presentation highlights
 click legal Enemy → inspection clears, then formal SelectTarget(TargetId) resolves the card
-select Defend → no Player target highlight; explicit Confirm remains required
+select Defend / another Self-target card → only Player presentation highlights;
+    clicking Player is a no-op and explicit Confirm remains required
 status changes while pointer remains still → open inspector refreshes
 terminal/resolving state → no stale legal target remains active
 ```

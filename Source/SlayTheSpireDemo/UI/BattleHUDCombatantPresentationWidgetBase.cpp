@@ -4,13 +4,15 @@ void UBattleHUDCombatantPresentationWidgetBase::SetPresentationData(
 	const FBattleHUDCombatantView& InCombatantView,
 	bool bInTargetSelectionActive,
 	bool bInLegalTarget,
-	int32 InTargetId
+	int32 InTargetId,
+	bool bInTargetHighlighted
 )
 {
 	CombatantView = InCombatantView;
 	bTargetSelectionActive = bInTargetSelectionActive;
 	bLegalTarget = bInTargetSelectionActive && bInLegalTarget && InTargetId != INDEX_NONE;
 	TargetId = bLegalTarget ? InTargetId : INDEX_NONE;
+	bTargetHighlighted = bLegalTarget || bInTargetHighlighted;
 
 	BP_OnPresentationChanged();
 

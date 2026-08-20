@@ -35,7 +35,8 @@ public:
 		const FBattleHUDCombatantView& InCombatantView,
 		bool bInTargetSelectionActive,
 		bool bInLegalTarget,
-		int32 InTargetId
+		int32 InTargetId,
+		bool bInTargetHighlighted = false
 	);
 
 	// Wire the character hit-area Button's OnHovered / OnUnhovered events here.
@@ -65,6 +66,12 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Combatant Presentation")
 	bool bLegalTarget = false;
+
+	// Visual selection affordance only. This is intentionally independent from
+	// bLegalTarget so a confirmation-based Self target may be highlighted while
+	// primary click remains a no-op.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Combatant Presentation")
+	bool bTargetHighlighted = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Combatant Presentation")
 	int32 TargetId = INDEX_NONE;
