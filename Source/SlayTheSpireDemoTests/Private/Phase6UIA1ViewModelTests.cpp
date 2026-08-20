@@ -31,6 +31,7 @@ bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 
 	StatusDefinition->StatusId = TEXT("AtlasStatus");
 	StatusDefinition->DisplayName = FText::FromString(TEXT("Atlas Status"));
+	StatusDefinition->Description = FText::FromString(TEXT("A status description for the HUD tooltip."));
 	StatusDefinition->IconRegion.bUseAtlasIcon = true;
 	StatusDefinition->IconRegion.UVOffset = FVector2D(0.25, 0.65);
 	StatusDefinition->IconRegion.UVScale = FVector2D(0.02, 0.03);
@@ -60,6 +61,7 @@ bool FLateSubscriberPullBuildsHUDTest::RunTest(const FString& Parameters)
 		const FBattleHUDStatusView& StatusView = Fixture.ViewModel->Player.Statuses[0];
 		TestEqual(TEXT("HUD status id is preserved"), StatusView.StatusId, FName(TEXT("AtlasStatus")));
 		TestEqual(TEXT("HUD status display name comes from StatusData"), StatusView.DisplayName.ToString(), FString(TEXT("Atlas Status")));
+		TestEqual(TEXT("HUD status description comes from StatusData"), StatusView.Description.ToString(), FString(TEXT("A status description for the HUD tooltip.")));
 		TestEqual(TEXT("HUD status amount is preserved"), StatusView.Amount, 2);
 		TestTrue(TEXT("HUD atlas icon flag comes from StatusData"), StatusView.bUseAtlasIcon);
 		TestTrue(TEXT("HUD UVOffset comes from StatusData"), StatusView.UVOffset.Equals(FVector2D(0.25, 0.65)));
