@@ -45,6 +45,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Identity")
 	FText DisplayName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Presentation", meta = (MultiLine = "true"))
+	FText Description;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status|Presentation")
 	FStatusAtlasRegion IconRegion;
 
