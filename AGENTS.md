@@ -56,9 +56,9 @@ BattleActionQueue
   - [x] Phase 6R Regression Gate + test-module extraction — COMPLETE; UE5.8 full 53/53 regression gate and Shipping exclusion validation passed.
 - [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
-  - [ ] UI-A1 Operable Battle HUD — NEXT.
-  - [ ] UI-A2 Basic Committed Presentation.
-  - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text source implemented; UE5.8 revalidation and DataAsset authoring pending; remaining target-specific/energy-result preview still planned.
+  - [x] UI-A1 Operable Battle HUD — COMPLETE; concrete UMG/PIE battle loop validated and latest UE5.8 owner gate passed with UI-A1 11/11.
+  - [ ] UI-A2 Basic Committed Presentation — NEXT.
+  - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text slice implemented, DataAsset-authored and UE5.8/PIE/package revalidated with UI-A3 8/8; remaining target-specific/energy-result preview still planned.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
 - [ ] Phase 6UI-B advanced UX / preview / developer tooling — PLANNED AFTER Phase 8.
@@ -199,6 +199,23 @@ Phase 6UI-A0 validated:
 - faulted resolutions publish a readable `ResolutionFaulted` snapshot through the battle-level Ready path rather than masquerading as healthy idle;
 - the owner-only `.github/workflows/ue-phase6uia0-tests.yml` built `SlayTheSpireDemoEditor` and passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 = 73/73 for the completed run.
 
+Phase 6UI-A1 validated:
+
+- the concrete Battle HUD is operable through normal UI controls without gameplay-driving debug keyboard commands;
+- Enemy-target cards use gameplay-provided legal targets and formal Request revalidation; Self-target Defend uses explicit confirmation without exposing a Player target button;
+- HP, Block, Energy, Hand/pile counts, Status inspection, committed Enemy Intent, card selection/cancel, target selection, End Turn, Resolving lock and terminal feedback are wired through the ViewModel/base-widget boundary;
+- one full player → enemy → player PIE cycle passes through the normal UI path;
+- the packaged Defend card now resolves its dynamic `{Block}` description instead of displaying the literal placeholder;
+- the latest UE5.8 owner gate passes Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 + Phase6UIA1 11/11 + Phase6UIA3 8/8 = 92/92.
+
+Phase 6UI-A3 dynamic-text slice validated:
+
+- `BattleTextResolver` produces player-facing Card/Status description values from stable named Effect/Modifier arguments and the existing read-only Damage/Block pipelines;
+- required Card/Status DataAsset description formats and argument names are authored in UE Editor and validated;
+- preview resolution remains read-only and does not Commit, enqueue Actions, emit Events, consume RNG or mutate runtime state;
+- UE5.8 Automation passes the current UI-A3 8/8 suite, and PIE/package validation confirms the authored descriptions resolve in runtime builds;
+- target-specific exact preview and immediate Energy-result preview remain future UI-A3 work.
+
 ### Manual UE assets/configuration
 
 Phase 4:
@@ -288,6 +305,8 @@ DA_Status_Frailty
 Do not add turn-end decay to `DA_Status_Strength` or `DA_Status_Dexterity`.
 
 Phase 6C, Phase 6R and Phase 6UI-A0 require no new `.uasset` / `.umap` configuration.
+
+Phase 6UI-A1 / current UI-A3 authored asset work is now validated in UE Editor. The concrete Battle HUD/card/combatant presentation assets and the Card/Status dynamic-description fields must remain wired to the ViewModel/player-facing snapshot path; do not replace them with Widget-side gameplay calculations.
 
 Current temporary `L_BattleTest` wiring includes:
 
@@ -1520,14 +1539,14 @@ Implementation order inside this phase:
 ```text
 UI-A0 Playable Gameplay Boundary   COMPLETE / UE5.8 UI-A0 20/20, CURRENT TOTAL 73/73 PASSED
 ↓
-UI-A1 Operable Battle HUD          NEXT
+UI-A1 Operable Battle HUD          COMPLETE / UE5.8 UI-A1 11/11 + PIE/PACKAGE VALIDATED
 ↓
-UI-A2 Basic Committed Presentation
+UI-A2 Basic Committed Presentation NEXT
 ↓
-UI-A3 Deterministic Immediate Preview
+UI-A3 Deterministic Immediate Preview — DYNAMIC TEXT SLICE VALIDATED / UE5.8 UI-A3 8/8; REMAINING TARGET/ENERGY PREVIEW PLANNED
 ```
 
-UI-A0 is complete. It established authoritative Hand/turn lifecycle, formal Query/Request boundaries, deterministic initial battle shuffle, committed Enemy Intent, coherent player-facing snapshots, and deferred battle-level `OnReadStateReady` semantics. Detailed evidence lives in `docs/Phase6UIA0Implementation.md`.
+UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is also validated; UI-A2 is the next implementation slice. Detailed evidence lives in `docs/Phase6UIA0Implementation.md`, `docs/Phase6UIA1Implementation.md` and `docs/Phase6UIA3DynamicTextImplementation.md`.
 
 The durable UI/MVVM/Presentation architecture and acceptance criteria are defined in Section 15. Do not begin Phase 7 until Phase 6UI-A is playable unless the user explicitly changes the order.
 
@@ -2163,9 +2182,28 @@ Current run   73/73 PASS
 
 The exact `73/73` total is evidence for that completed run, not a permanent architecture acceptance constant. The durable UI-A0 gate is: Editor build passes + all existing Phase5/6 regressions pass + all currently named UI-A0 invariants pass.
 
+Latest Phase 6UI-A1 plus current UI-A3 dynamic-text validation is owner-confirmed:
+
+```text
+SlayTheSpireDemoEditor build  PASS
+Phase 5       13/13 PASS
+Phase 6A      23/23 PASS
+Phase 6B      12/12 PASS
+Phase 6C       5/5  PASS
+Phase 6UI-A0  20/20 PASS
+Phase 6UI-A1  11/11 PASS
+Phase 6UI-A3   8/8  PASS
+Current run   92/92 PASS
+
+Manual PIE normal UI player → enemy → player loop  PASS
+Packaged Defend dynamic {Block} description         PASS
+```
+
+The exact `92/92` total is evidence for the current completed run, not a permanent architecture acceptance constant. The durable UI-A1 gate remains: Editor build passes + existing regressions pass + current UI-A1 invariants pass + the concrete Battle HUD operates one normal battle loop through UI. UI-A3 is not complete as a whole; only the currently implemented dynamic-text slice is validated.
+
 The self-hosted workflows remain manual, owner-only and restricted to trusted `main`.
 
-Phase 6 is complete. Phase 6UI-A0 is complete. The next implementation slice is `Phase 6UI-A1 — Operable Battle HUD`.
+Phase 6 is complete. Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. The next implementation slice is `Phase 6UI-A2 — Basic Committed Presentation`.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -2334,10 +2372,10 @@ docs/Phase6UIA1CombatantInspectionSetup.md
 - Phase 6R — PASSED: Automation-only tests/reflected helpers extracted into Editor-only `SlayTheSpireDemoTests`; Editor build + full 53/53 regression + Shipping build/exclusion gate passed.
 - Phase 6 — PASSED: Battle Event/Trigger scope and the Phase 6R regression/test-module isolation gate are complete.
 - Phase 6UI-A0 — PASSED: authoritative turn/Hand lifecycle, deterministic initial battle shuffle, formal Query/Request APIs with shared revalidation, committed Enemy Intent, current-state gameplay-derived Intent display value, coherent `(BattleId, StateRevision)` snapshots and non-reentrant battle-level `OnReadStateReady`; owner-only UE5.8 workflow passed UI-A0 20/20 with current total 73/73.
-- Phase 6UI-A1 — NEXT: first operable Battle HUD without gameplay-driving debug keyboard commands.
-- Phase 6UI-A2 — PLANNED: committed Presentation Records and playback separated from `BattleActionQueue`.
-- Phase 6UI-A3 — SOURCE CHANGED: dynamic Damage/Block card text and runtime Status descriptions implemented in source; UE5.8 revalidation, DataAsset authoring and remaining Energy/target-specific preview are pending.
-- Phase 6UI-A — PASSED only when the normal player battle loop is operable through UI without `TestDrawCard`, `TestPlayFirstCard` or equivalent gameplay-driving debug commands.
+- Phase 6UI-A1 — PASSED: concrete operable Battle HUD, legal-target/Self-confirm interaction, combatant inspection, Resolving lock and one normal UI player → enemy → player PIE loop validated; latest owner gate passed UI-A1 11/11 with the current combined 92/92 run.
+- Phase 6UI-A2 — NEXT: committed Presentation Records and playback separated from `BattleActionQueue`.
+- Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED: dynamic Damage/Block card text and runtime Status descriptions are implemented, DataAsset-authored and UE5.8/PIE/package revalidated; UI-A3 8/8 passes, while remaining Energy-result and target-specific exact preview are still planned.
+- Phase 6UI-A — IN PROGRESS: the operable-loop acceptance is satisfied by UI-A1, but UI-A2 and the remaining UI-A3 scope are still planned before closing the phase.
 - Phase 7 — PLANNED AFTER Phase 6UI-A: Relic runtime, Sundial first validation and Relic presentation.
 - Phase 8 — PLANNED AFTER Phase 7: Pommel Strike+ / Sundial generic gameplay and presentation-legibility validation.
 - Phase 6UI-B — PLANNED AFTER Phase 8: advanced Outcome Preview, Keyword/CardText presentation, developer tooling, accessibility/input expansion and responsive layout.
@@ -2377,7 +2415,7 @@ When completing a meaningful phase:
 
 This section is the detailed long-term specification for work after the now-complete Phase 6R. Its order must remain synchronized with Sections 2, 3 and 12; it must not be used to override stale contradictory progress text elsewhere in this file.
 
-Phase 6UI-A0 is complete. Phase 6UI-A1 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
+Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. Phase 6UI-A2 is now the next implementation slice. Do not skip to Phase 7 unless the user explicitly changes the development order.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -2389,9 +2427,9 @@ Phase 6R                              COMPLETE
 ↓
 Phase 6UI-A                           IN PROGRESS
     UI-A0 playable gameplay boundary COMPLETE
-    UI-A1 operable Battle HUD        NEXT
-    UI-A2 basic committed presentation
-    UI-A3 deterministic immediate preview
+    UI-A1 operable Battle HUD        COMPLETE
+    UI-A2 basic committed presentation NEXT
+    UI-A3 deterministic immediate preview — dynamic-text slice validated; remaining target/energy preview planned
 ↓
 Phase 7
     Relics
@@ -3201,7 +3239,7 @@ Do not build a full future-turn battle simulator merely to support first-pass ca
 
 ### 15.13 Operable HUD and scalability guardrails
 
-Phase 6UI-A1 should cover the minimum coherent playable surface:
+Phase 6UI-A1 covers the minimum coherent playable surface:
 
 ```text
 Player HP / Block / Energy / Status
@@ -3399,11 +3437,11 @@ current run  73/73
 
 The numeric total is run evidence, not the permanent acceptance definition.
 
-#### UI-A1 — Operable Battle HUD — NEXT
+#### UI-A1 — Operable Battle HUD — COMPLETE
 
-Begin from the now-validated UI-A0 gameplay/read boundary.
+UI-A1 is validated against the UI-A0 gameplay/read boundary.
 
-Scope:
+Validated scope:
 
 ```text
 HP / Block / Energy / Status
@@ -3414,11 +3452,28 @@ card selection / cancel / target selection
 playability / rejection feedback
 Resolving lock
 Victory / Defeat / ResolutionFaulted
+combatant inspection / PresentationId target mapping
 ```
 
-Acceptance: a normal battle turn can be operated without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands. Until UI-A2, committed state changes may appear immediately after coherent snapshot refresh rather than through historical animation playback.
+Acceptance is satisfied: a normal battle turn is operable without `TestDrawCard`, `TestPlayFirstCard` or other gameplay-driving debug keyboard commands. Enemy-target and Self-target interaction paths were exercised, a full player → enemy → player PIE cycle passed, and the packaged Defend dynamic `{Block}` description was revalidated. Until UI-A2, committed state changes still appear immediately after coherent snapshot refresh rather than through historical animation playback.
 
-#### UI-A2 — Basic Committed Presentation
+Latest combined validation evidence:
+
+```text
+SlayTheSpireDemoEditor build  PASS
+Phase5       13/13
+Phase6A      23/23
+Phase6B      12/12
+Phase6C       5/5
+Phase6UIA0   20/20
+Phase6UIA1   11/11
+Phase6UIA3    8/8
+current run  92/92
+PIE normal UI loop PASS
+packaged Defend dynamic Block text PASS
+```
+
+#### UI-A2 — Basic Committed Presentation — NEXT
 
 Introduce the first Presentation Record playback surface with deliberately small scope:
 
@@ -3446,7 +3501,7 @@ immediate Block
 Energy cost / immediate Energy result
 ```
 
-The first dynamic-text source slice is implemented in source:
+The first dynamic-text source slice is implemented and validated:
 
 ```text
 Card/Status Description format
@@ -3456,9 +3511,8 @@ Card/Status Description format
 → ViewModel/UMG final FText
 ```
 
-It remains `SOURCE CHANGED / UE5.8 REVALIDATION + DATAASSET AUTHORING PENDING`.
-Do not mark UI-A3 complete from source review alone. Enemy-target card faces show
-the source-side baseline; target-specific exact results are not part of this slice.
+Current dynamic-text slice status is `VALIDATED / UE5.8 UI-A3 8/8 + DATAASSET + PIE/PACKAGE REVALIDATED`.
+Do not mark UI-A3 complete as a whole yet. Enemy-target card faces still show the source-side baseline; target-specific exact results and immediate Energy-result preview remain future UI-A3 work.
 
 Do not block Phase 6UI-A completion on advanced conditional/random prediction.
 
