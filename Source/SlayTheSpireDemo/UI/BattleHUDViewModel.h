@@ -44,8 +44,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
 
-	// Presentation-only lookup over the current gameplay-provided legal-target
-	// bindings. This does not grant permission or replace Request revalidation.
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Selection")
 	bool TryGetLegalTargetByPresentationId(
 		FName PresentationId,
@@ -148,7 +146,7 @@ private:
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
 	int64 LiveBindingBattleId = 0;
 	int64 LiveBindingStateRevision = 0;
-	EBattleState DisplayedBattleState;
+	EBattleState DisplayedBattleState = static_cast<EBattleState>(0);
 	bool bDisplayedSnapshotCanEndTurn = false;
 	bool bPresentationDisplayOwned = false;
 };
