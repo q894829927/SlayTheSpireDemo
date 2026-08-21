@@ -492,9 +492,13 @@ void ABattleManager::MarkPresentationUnavailable(const FString& Reason)
 	);
 	PendingPublicDeliveryQueue.Reset();
 
+	// PresentationUnavailable is an explicit, expected fail-safe state rather
+	// than a Gameplay framework fault. Keep the diagnostic visible without
+	// turning intentional Automation coverage of that state into an unexpected
+	// Error-log failure.
 	UE_LOG(
 		LogTemp,
-		Error,
+		Warning,
 		TEXT("[Presentation] Unavailable for BattleId=%llu: %s"),
 		BattleId,
 		*PresentationUnavailableReason.ToString()
@@ -541,6 +545,15 @@ void ABattleManager::DrainPendingPublicPresentationDeliveries()
 
 	for (const FPresentationResolutionEnvelope& Envelope : Deliveries)
 	{
+		// A public Envelope observer may synchronously start another formal/System
+		// operation. If that operation disables Presentation, stop delivering the
+		// remainder of this moved local batch instead of leaking stale playback
+		// after the fail-safe transition.
+		if (!bPresentationAvailable || !bEnableCommittedPresentationRecording)
+		{
+			break;
+		}
+
 		if (Envelope.BattleId != static_cast<int64>(BattleId)
 			|| Envelope.ResolutionId <= 0
 			|| static_cast<uint64>(Envelope.ResolutionId) <= LastDeliveredPresentationResolutionId)
