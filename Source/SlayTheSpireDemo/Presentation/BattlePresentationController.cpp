@@ -4,6 +4,58 @@
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
 
+namespace
+{
+	FBattleHUDCombatantView* FindCombatantView(
+		FPresentationStateSnapshot& Snapshot,
+		FName PresentationId
+	)
+	{
+		if (PresentationId.IsNone())
+		{
+			return nullptr;
+		}
+		if (Snapshot.Player.PresentationId == PresentationId)
+		{
+			return &Snapshot.Player;
+		}
+		if (Snapshot.Enemy.PresentationId == PresentationId)
+		{
+			return &Snapshot.Enemy;
+		}
+		return nullptr;
+	}
+
+	int32 FindHandCardIndexByRuntimeId(
+		const TArray<FBattleHUDCardView>& HandCards,
+		int32 RuntimeId
+	)
+	{
+		return HandCards.IndexOfByPredicate(
+			[RuntimeId](const FBattleHUDCardView& Card)
+			{
+				return Card.RuntimeId == RuntimeId;
+			}
+		);
+	}
+
+	FBattleHUDCardView MakeHUDCardView(const FPresentationCardSnapshot& Card)
+	{
+		FBattleHUDCardView View;
+		View.RuntimeId = Card.RuntimeId;
+		View.CardId = Card.CardId;
+		View.DisplayName = Card.DisplayName;
+		View.Cost = Card.Cost;
+		View.CardType = Card.CardType;
+		View.TargetType = Card.TargetType;
+		View.Description = Card.Description;
+		View.CardArt = Card.CardArt;
+		View.bGameplayPlayable = false;
+		View.UnplayableReason = FText::GetEmpty();
+		return View;
+	}
+}
+
 bool UBattlePresentationController::Initialize(
 	ABattleManager* InBattleManager,
 	UBattleHUDViewModel* InViewModel,
@@ -32,8 +84,7 @@ bool UBattlePresentationController::Initialize(
 	if (InBattleManager->TryGetLatestFrozenPresentationBaseline(Baseline))
 	{
 		CurrentBattleId = Baseline.BattleId;
-
-		ViewModel->ApplyPresentationSnapshot(Baseline, true);
+		ApplyDisplayedSnapshot(Baseline, false);
 
 		const int64 BaselineResolutionWatermark = static_cast<int64>(
 			InBattleManager->GetLatestFrozenPresentationBaselineResolutionId()
@@ -70,7 +121,11 @@ void UBattlePresentationController::Shutdown()
 	ViewModel = nullptr;
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	DisplayedPresentationSnapshot = FPresentationStateSnapshot{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
+	bHasDisplayedPresentationSnapshot = false;
+	bHasWorkingPresentationSnapshot = false;
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 	CurrentBattleId = 0;
@@ -138,15 +193,17 @@ void UBattlePresentationController::SkipPresentation()
 		Newest = &PlaybackQueue.Last();
 	}
 
-	if (Newest && IsValid(ViewModel))
+	if (Newest)
 	{
-		ViewModel->ApplyPresentationSnapshot(Newest->FinalSnapshot, true);
+		ApplyDisplayedSnapshot(Newest->FinalSnapshot, false);
 		LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Newest->ResolutionId);
 	}
 
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
+	bHasWorkingPresentationSnapshot = false;
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 	ActivePlaybackToken = FPresentationPlaybackToken{};
@@ -213,6 +270,7 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 		LastQueuedResolutionId = 0;
 		LastCompletedResolutionId = 0;
 		CurrentBattleId = LatestBaseline.BattleId;
+		ApplyDisplayedSnapshot(LatestBaseline, false);
 	}
 
 	if (IsValid(ViewModel) && !ViewModel->IsPresentationDisplayOwned())
@@ -279,6 +337,17 @@ void UBattlePresentationController::StartNextEnvelope()
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 
+	if (!bHasDisplayedPresentationSnapshot
+		|| DisplayedPresentationSnapshot.BattleId != ActiveEnvelope.BattleId)
+	{
+		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+		CollapseToEnvelope(FallbackEnvelope);
+		return;
+	}
+
+	WorkingPresentationSnapshot = DisplayedPresentationSnapshot;
+	bHasWorkingPresentationSnapshot = true;
+
 	if (ActiveEnvelope.Records.Num() == 0)
 	{
 		CompleteActiveEnvelope();
@@ -302,18 +371,21 @@ void UBattlePresentationController::StartNextRecord()
 		|| Record.ResolutionId != ActiveEnvelope.ResolutionId
 		|| Record.PresentationSequence <= 0)
 	{
-		CompleteActiveEnvelope();
+		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+		CollapseToEnvelope(FallbackEnvelope);
 		return;
 	}
 
 	const bool bRecordSupportsVisiblePlayback =
 		Record.Type == EBattlePresentationRecordType::ResolutionFault
 		|| Record.Type == EBattlePresentationRecordType::Damage
-		|| Record.Type == EBattlePresentationRecordType::BlockChanged;
+		|| Record.Type == EBattlePresentationRecordType::BlockChanged
+		|| Record.Type == EBattlePresentationRecordType::CardPlayed
+		|| Record.Type == EBattlePresentationRecordType::EnergyChanged
+		|| Record.Type == EBattlePresentationRecordType::CardZoneChanged
+		|| Record.Type == EBattlePresentationRecordType::DeckShuffled;
 	if (!bRecordSupportsVisiblePlayback)
 	{
-		// Victory/Defeat are ordered historical facts in A2B but retain immediate
-		// fallback until their formal visible treatment is added in UI-A2D.
 		CompleteActiveRecord();
 		return;
 	}
@@ -339,13 +411,27 @@ void UBattlePresentationController::StartNextRecord()
 void UBattlePresentationController::CompleteActiveRecord()
 {
 	CancelActiveTimeout();
-	if (!bHasActiveEnvelope)
+	if (!bHasActiveEnvelope || !ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex))
 	{
 		return;
 	}
 
 	bWaitingForCompletion = false;
 	ActivePlaybackToken = FPresentationPlaybackToken{};
+
+	const FPresentationRecord& CompletedRecord = ActiveEnvelope.Records[ActiveRecordIndex];
+	if (!ApplyRecordToWorkingSnapshot(CompletedRecord))
+	{
+		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+		CollapseToEnvelope(FallbackEnvelope);
+		return;
+	}
+
+	if (IsValid(ViewModel) && bHasWorkingPresentationSnapshot)
+	{
+		ViewModel->ApplyPresentationSnapshot(WorkingPresentationSnapshot, true);
+	}
+
 	++ActiveRecordIndex;
 	if (ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex))
 	{
@@ -377,14 +463,13 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 	}
 
 	const int64 CompletedResolutionId = ActiveEnvelope.ResolutionId;
-	if (IsValid(ViewModel))
-	{
-		ViewModel->ApplyPresentationSnapshot(ActiveEnvelope.FinalSnapshot, true);
-	}
+	ApplyDisplayedSnapshot(ActiveEnvelope.FinalSnapshot, false);
 
 	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, CompletedResolutionId);
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
+	bHasWorkingPresentationSnapshot = false;
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 	ActivePlaybackToken = FPresentationPlaybackToken{};
@@ -417,14 +502,11 @@ void UBattlePresentationController::CollapseToEnvelope(
 		return;
 	}
 
+	const FPresentationStateSnapshot FinalSnapshot = Envelope.FinalSnapshot;
+	const int64 ResolutionId = Envelope.ResolutionId;
 	ResetPlaybackState(true);
-
-	if (IsValid(ViewModel))
-	{
-		ViewModel->ApplyPresentationSnapshot(Envelope.FinalSnapshot, true);
-		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
-	}
-	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Envelope.ResolutionId);
+	ApplyDisplayedSnapshot(FinalSnapshot, true);
+	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, ResolutionId);
 }
 
 void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
@@ -436,7 +518,9 @@ void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 	}
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
+	bHasWorkingPresentationSnapshot = false;
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 	ActivePlaybackToken = FPresentationPlaybackToken{};
@@ -456,10 +540,7 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 		);
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
-		if (IsValid(ViewModel))
-		{
-			ViewModel->ApplyPresentationSnapshot(LatestBaseline, true);
-		}
+		ApplyDisplayedSnapshot(LatestBaseline, false);
 	}
 
 	if (IsValid(ViewModel))
@@ -493,8 +574,180 @@ void UBattlePresentationController::EnterDirectBaselineMode()
 		);
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
-		ViewModel->ApplyPresentationSnapshot(LatestBaseline, true);
-		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+		ApplyDisplayedSnapshot(LatestBaseline, true);
+	}
+}
+
+bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record)
+{
+	if (!bHasWorkingPresentationSnapshot)
+	{
+		return false;
+	}
+
+	switch (Record.Type)
+	{
+	case EBattlePresentationRecordType::Damage:
+	{
+		FBattleHUDCombatantView* Target = FindCombatantView(
+			WorkingPresentationSnapshot,
+			Record.Damage.TargetPresentationId
+		);
+		if (Target == nullptr)
+		{
+			return false;
+		}
+		Target->HP = Record.Damage.HPAfter;
+		Target->Block = Record.Damage.BlockAfter;
+		Target->bDead = Target->HP <= 0;
+		return true;
+	}
+
+	case EBattlePresentationRecordType::BlockChanged:
+	{
+		FBattleHUDCombatantView* Target = FindCombatantView(
+			WorkingPresentationSnapshot,
+			Record.BlockChanged.TargetPresentationId
+		);
+		if (Target == nullptr)
+		{
+			return false;
+		}
+		Target->Block = Record.BlockChanged.BlockAfter;
+		return true;
+	}
+
+	case EBattlePresentationRecordType::CardPlayed:
+	{
+		const FPresentationCardSnapshot& Card = Record.CardPlayed.Card;
+		if (Card.RuntimeId == INDEX_NONE || Card.CardId.IsNone()
+			|| WorkingPresentationSnapshot.Energy != Record.CardPlayed.EnergyBefore)
+		{
+			return false;
+		}
+		const int32 HandIndex = FindHandCardIndexByRuntimeId(
+			WorkingPresentationSnapshot.HandCards,
+			Card.RuntimeId
+		);
+		if (HandIndex == INDEX_NONE
+			|| HandIndex != Record.CardPlayed.HandIndexBefore
+			|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
+		{
+			return false;
+		}
+		WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
+		WorkingPresentationSnapshot.Energy = Record.CardPlayed.EnergyAfter;
+		return true;
+	}
+
+	case EBattlePresentationRecordType::EnergyChanged:
+		if (WorkingPresentationSnapshot.Energy != Record.EnergyChanged.EnergyBefore)
+		{
+			return false;
+		}
+		WorkingPresentationSnapshot.Energy = Record.EnergyChanged.EnergyAfter;
+		return true;
+
+	case EBattlePresentationRecordType::CardZoneChanged:
+	{
+		const FPresentationCardSnapshot& Card = Record.CardZoneChanged.Card;
+		if (Card.RuntimeId == INDEX_NONE || Card.CardId.IsNone())
+		{
+			return false;
+		}
+
+		if (Record.CardZoneChanged.FromZone == ECardZone::DrawPile
+			&& Record.CardZoneChanged.ToZone == ECardZone::Hand)
+		{
+			if (WorkingPresentationSnapshot.DrawCount <= 0
+				|| FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId) != INDEX_NONE
+				|| Record.CardZoneChanged.ToIndex < 0
+				|| Record.CardZoneChanged.ToIndex > WorkingPresentationSnapshot.HandCards.Num())
+			{
+				return false;
+			}
+			--WorkingPresentationSnapshot.DrawCount;
+			WorkingPresentationSnapshot.HandCards.Insert(
+				MakeHUDCardView(Card),
+				Record.CardZoneChanged.ToIndex
+			);
+			return true;
+		}
+
+		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
+			&& Record.CardZoneChanged.ToZone == ECardZone::DiscardPile)
+		{
+			const int32 HandIndex = FindHandCardIndexByRuntimeId(
+				WorkingPresentationSnapshot.HandCards,
+				Card.RuntimeId
+			);
+			if (HandIndex == INDEX_NONE
+				|| HandIndex != Record.CardZoneChanged.FromIndex
+				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
+			{
+				return false;
+			}
+			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
+			++WorkingPresentationSnapshot.DiscardCount;
+			return true;
+		}
+
+		if (Record.CardZoneChanged.FromZone == ECardZone::PlayArea)
+		{
+			switch (Record.CardZoneChanged.ToZone)
+			{
+			case ECardZone::DiscardPile:
+				++WorkingPresentationSnapshot.DiscardCount;
+				return true;
+			case ECardZone::ExhaustPile:
+				++WorkingPresentationSnapshot.ExhaustCount;
+				return true;
+			case ECardZone::RemovedPile:
+				return true;
+			default:
+				return false;
+			}
+		}
+		return false;
+	}
+
+	case EBattlePresentationRecordType::DeckShuffled:
+		if (WorkingPresentationSnapshot.DrawCount != Record.DeckShuffled.DrawCountBefore
+			|| WorkingPresentationSnapshot.DiscardCount != Record.DeckShuffled.DiscardCountBefore)
+		{
+			return false;
+		}
+		WorkingPresentationSnapshot.DrawCount = Record.DeckShuffled.DrawCountAfter;
+		WorkingPresentationSnapshot.DiscardCount = Record.DeckShuffled.DiscardCountAfter;
+		return true;
+
+	case EBattlePresentationRecordType::None:
+		return false;
+
+	case EBattlePresentationRecordType::ResolutionFault:
+	case EBattlePresentationRecordType::Victory:
+	case EBattlePresentationRecordType::Defeat:
+	default:
+		return true;
+	}
+}
+
+void UBattlePresentationController::ApplyDisplayedSnapshot(
+	const FPresentationStateSnapshot& Snapshot,
+	bool bRefreshBindings
+)
+{
+	DisplayedPresentationSnapshot = Snapshot;
+	WorkingPresentationSnapshot = Snapshot;
+	bHasDisplayedPresentationSnapshot = Snapshot.BattleId > 0;
+	bHasWorkingPresentationSnapshot = bHasDisplayedPresentationSnapshot;
+	if (IsValid(ViewModel))
+	{
+		ViewModel->ApplyPresentationSnapshot(Snapshot, true);
+		if (bRefreshBindings)
+		{
+			ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+		}
 	}
 }
 
