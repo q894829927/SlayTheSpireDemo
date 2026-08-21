@@ -61,7 +61,7 @@ jobs:
           $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
           $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
           $Prefix = "SlayTheSpireDemo.Phase7A"
-          $ExpectedCount = 3
+          $ExpectedCount = 4
           $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\Phase7A"
           $IndexJson = "$Report\index.json"
 
@@ -106,4 +106,4 @@ jobs:
               throw "Automation gate failed for $Prefix."
           }
 
-          Write-Host "Phase 7A focused gate passed. Expected total: 3 tests."
+          Write-Host "Phase 7A focused gate passed. Expected total: 4 tests."
