@@ -580,3 +580,148 @@ no Gameplay result depends on Presentation availability/speed/callbacks
 ```
 
 No A2C Hand/Energy/card-zone workaround may be introduced in A2B.
+
+## 15. Implementation lock — CommitResult placement and Blueprint exposure
+
+`FDamageCommitResult` and `FBlockCommitResult` must live in a gameplay-only header such as:
+
+```text
+Source/SlayTheSpireDemo/Combat/CombatantMutationTypes.h
+```
+
+Both result types should be `USTRUCT(BlueprintType)` so the existing Combatant mutation functions may remain Blueprint-callable without introducing Presentation dependencies into Combatant.
+
+Required dependency direction:
+
+```text
+Combatant
+→ CombatantMutationTypes
+
+Combatant
+X PresentationTypes
+Combatant
+X BattlePresentationRecorder
+```
+
+`TakeCombatDamage()`, `GainBlock()` and `ClearBlock()` return typed Gameplay facts only. Action/BattleManager layers remain solely responsible for adding PresentationId, reason and current Resolution context.
+
+## 16. Implementation lock — one terminal-record policy in Recorder
+
+Do not implement separate ad-hoc append rules for `ResolutionFault`, `Victory` and `Defeat`.
+
+Recorder should use one shared predicate/concept, for example:
+
+```cpp
+static bool IsTerminalRecordType(EBattlePresentationRecordType Type);
+```
+
+with exactly:
+
+```text
+ResolutionFault
+Victory
+Defeat
+```
+
+as terminal record types for A2B.
+
+The active builder needs only one terminal-state fact: whether a terminal record has already been accepted. Once any terminal record is accepted:
+
+```text
+ordinary later Append
+→ invalidate unpublished batch
+
+second terminal Append
+→ invalidate unpublished batch
+
+Victory then Defeat / Defeat then Victory
+→ invalidate unpublished batch
+
+ResolutionFault plus Victory/Defeat in either order
+→ invalidate unpublished batch
+```
+
+This policy is structural and must be shared by all current terminal record types rather than preserving `ResolutionFault` as a special-case implementation.
+
+## 17. Implementation lock — C++ and Automation before Blueprint asset work
+
+A2B implementation proceeds in two validation layers.
+
+First complete the code-only correctness loop:
+
+```text
+Gameplay CommitResult
+→ Damage / Block records
+→ terminal/producer/failure invariants
+→ Controller offers Damage/Block through existing PlayPresentationRecord
+→ C++ Automation playback Widget exercises true/false completion ownership
+→ focused A2B Automation passes
+→ affected prior regressions pass
+```
+
+During this first layer, do **not** require or modify `WBP_BattleHUD.uasset` for A2B correctness. The base Widget's `PlayPresentationRecord` false-return immediate fallback remains a valid presentation path.
+
+Only after the C++/Automation contract is green should the Editor/Blueprint layer add the smallest visible Damage/Block implementation to the existing generic callback.
+
+This separation is intentional:
+
+```text
+C++/Automation failure
+→ committed-history or controller correctness problem
+
+Blueprint-only failure after C++ gate is green
+→ asset/playback implementation problem
+```
+
+Blueprint animation must never become a prerequisite for authoritative Gameplay or for the focused A2B Automation gate.
+
+## 18. Implementation lock — CI workflow structure
+
+A2B should have a focused workflow entry for fast development validation:
+
+```text
+UE Phase 6UI-A2B Automation
+→ UE5.8 Editor build
+→ SlayTheSpireDemo.Phase6UIA2B
+→ exactly 8/8
+```
+
+The existing aggregate regression workflow should then include the A2B prefix as well:
+
+```text
+Phase5        13
+Phase6A       23
+Phase6B       12
+Phase6C        5
+Phase6UIA2A    8
+Phase6UIA2B    8
+----------------
+Focused total 69
+```
+
+A2B final acceptance also requires a broader affected UI owner regression that includes UI-A0, UI-A1 and UI-A3 on the same source revision.
+
+The broader aggregate discovery total must be computed from the current source when the workflow is updated. Do not treat a historical UI-A3 count or a previously discussed overall total as a permanent constant, because the current codebase already added a dedicated multi-hit UI-A3 test.
+
+## 19. Locked implementation order
+
+With Sections 15–18 fixed, the implementation order is:
+
+```text
+CombatantMutationTypes
+→ TakeCombatDamage / GainBlock / ClearBlock CommitResult APIs
+→ typed Presentation payloads and Record types
+→ shared Recorder terminal-record policy
+→ Writer InvalidateCurrentResolution
+→ PresentationId producer matrix
+→ DamageAction / GainBlockAction conversion
+→ TurnStartClear records
+→ irreversible CheckBattleResult + terminal records
+→ Controller Damage/Block playback eligibility
+→ 8 focused A2B Automation tests
+→ focused A2B CI + 69 aggregate gate
+→ broader affected UI regression
+→ only then minimal Blueprint Damage/Block playback
+```
+
+These implementation locks do not reopen or alter the completed UI-A2A transport/lifecycle architecture.
