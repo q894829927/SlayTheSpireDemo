@@ -7,18 +7,35 @@
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEventDispatcher.h"
+#include "../Presentation/PresentationCardSnapshotBuilder.h"
 
 void UDrawCardAction::Initialize(UDeckRuntime* InDeck)
+{
+	Initialize(InDeck, nullptr);
+}
+
+void UDrawCardAction::Initialize(UDeckRuntime* InDeck, ACombatant* InPresentationCardSource)
 {
 	Deck = InDeck;
 	EventDispatcher = nullptr;
 	EventCombatants.Reset();
+	PresentationCardSource = InPresentationCardSource;
 }
 
 void UDrawCardAction::Initialize(
 	UDeckRuntime* InDeck,
 	UBattleEventDispatcher* InEventDispatcher,
 	const TArray<ACombatant*>& InEventCombatants
+)
+{
+	Initialize(InDeck, InEventDispatcher, InEventCombatants, nullptr);
+}
+
+void UDrawCardAction::Initialize(
+	UDeckRuntime* InDeck,
+	UBattleEventDispatcher* InEventDispatcher,
+	const TArray<ACombatant*>& InEventCombatants,
+	ACombatant* InPresentationCardSource
 )
 {
 	Deck = InDeck;
@@ -28,6 +45,7 @@ void UDrawCardAction::Initialize(
 	{
 		EventCombatants.Add(Combatant);
 	}
+	PresentationCardSource = InPresentationCardSource;
 }
 
 void UDrawCardAction::Execute(UBattleActionQueue* Queue)
@@ -49,9 +67,36 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 	if (Deck->HasCardsInDrawPile())
 	{
 		UCardInstance* DrawnCard = nullptr;
-		if (!Deck->TryDrawTopCard(DrawnCard))
+		const FCardZoneMutationResult CommitResult = Deck->TryDrawTopCardCommit(DrawnCard);
+		if (!CommitResult.bCommitted)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction failed to draw despite a non-empty DrawPile."));
+			Finish();
+			return;
+		}
+
+		const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+		if (Writer.IsAvailable())
+		{
+			FPresentationCardSnapshot CardSnapshot;
+			if (!PresentationCardSnapshot::TryBuild(DrawnCard, PresentationCardSource.Get(), CardSnapshot)
+				|| CardSnapshot.RuntimeId != CommitResult.CardRuntimeId
+				|| CardSnapshot.CardId != CommitResult.CardId)
+			{
+				Writer.InvalidateCurrentResolution();
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Draw commit could not freeze a trustworthy card payload."));
+			}
+			else
+			{
+				FPresentationRecord Record;
+				Record.Type = EBattlePresentationRecordType::CardZoneChanged;
+				Record.CardZoneChanged.Card = MoveTemp(CardSnapshot);
+				Record.CardZoneChanged.FromZone = CommitResult.FromZone;
+				Record.CardZoneChanged.ToZone = CommitResult.ToZone;
+				Record.CardZoneChanged.FromIndex = CommitResult.FromIndex;
+				Record.CardZoneChanged.ToIndex = CommitResult.ToIndex;
+				Writer.Append(MoveTemp(Record));
+			}
 		}
 
 		Finish();
@@ -79,11 +124,6 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 		}
 		else
 		{
-			// Direct BattleManager debug draws still use the original Initialize(Deck)
-			// entry point. Resolve the same narrow battle-scoped dependencies from the
-			// Queue's authoritative owner without searching the world. Presentation
-			// recording is deliberately not inferred from the Queue Outer; it is carried
-			// independently by this Action's explicit writer value.
 			ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
 			if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
 			{
@@ -98,7 +138,12 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 		ShuffleAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 
 		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
-		RetryDrawAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
+		RetryDrawAction->Initialize(
+			Deck.Get(),
+			ResolvedEventDispatcher,
+			RawCombatants,
+			PresentationCardSource.Get()
+		);
 		RetryDrawAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 
 		TArray<UBattleAction*> ContinuationBatch;
