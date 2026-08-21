@@ -24,14 +24,16 @@ void UDrawCardEffect::BuildActions(
 		UDrawCardAction* Action = NewObject<UDrawCardAction>(Context.ActionOuter);
 		if (bHasEventContext)
 		{
-			Action->Initialize(Context.Deck, Context.EventDispatcher, Context.EventCombatants);
+			Action->Initialize(
+				Context.Deck,
+				Context.EventDispatcher,
+				Context.EventCombatants,
+				Context.Source
+			);
 		}
 		else
 		{
-			// Preserve the pre-6C construction contract for isolated card-effect tests
-			// and non-shuffle draws. If this action later needs to shuffle, it must
-			// resolve valid battle-scoped event wiring before committing that shuffle.
-			Action->Initialize(Context.Deck);
+			Action->Initialize(Context.Deck, Context.Source);
 		}
 		OutActions.Add(Action);
 	}
