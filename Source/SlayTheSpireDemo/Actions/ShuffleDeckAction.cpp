@@ -38,12 +38,9 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	// Expected Deck-level no-ops do not need event wiring because there will be
-	// no committed DeckShuffled fact to publish. Delegate the no-op itself to
-	// DeckRuntime so its authoritative validation/logging remains unchanged.
 	if (!Deck->HasCardsInDiscardPile() || Deck->HasCardsInDrawPile())
 	{
-		Deck->ShuffleDiscardIntoDrawPile();
+		Deck->ShuffleDiscardIntoDrawPileCommit();
 		Finish();
 		return;
 	}
@@ -77,15 +74,29 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("[Action] ShuffleDeckAction executing."));
-	if (!Deck->ShuffleDiscardIntoDrawPile())
+	const FDeckShuffleCommitResult CommitResult = Deck->ShuffleDiscardIntoDrawPileCommit();
+	if (!CommitResult.bCommitted)
 	{
-		// A preflight-valid shuffle can still fail soft if DeckRuntime rejects it.
-		// No commit means no FDeckShuffledEvent.
 		Finish();
 		return;
 	}
 
 	const FPresentationRecordWriter& PresentationWriter = GetPresentationRecordWriter();
+	if (PresentationWriter.IsAvailable())
+	{
+		FPresentationRecord Record;
+		Record.Type = EBattlePresentationRecordType::DeckShuffled;
+		Record.DeckShuffled.MovedCardCount = CommitResult.MovedCardCount;
+		Record.DeckShuffled.DrawCountBefore = CommitResult.DrawCountBefore;
+		Record.DeckShuffled.DrawCountAfter = CommitResult.DrawCountAfter;
+		Record.DeckShuffled.DiscardCountBefore = CommitResult.DiscardCountBefore;
+		Record.DeckShuffled.DiscardCountAfter = CommitResult.DiscardCountAfter;
+		if (!PresentationWriter.Append(MoveTemp(Record)))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Presentation] DeckShuffled record append failed; Gameplay shuffle remains authoritative."));
+		}
+	}
+
 	if (!ResolvedEventDispatcher->Dispatch(
 		FBattleEvent::MakeDeckShuffled(Deck.Get()),
 		Queue,
