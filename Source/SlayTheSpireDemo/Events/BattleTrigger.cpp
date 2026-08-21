@@ -2,10 +2,15 @@
 
 #include "../Status/StatusInstance.h"
 
-FTriggerContext::FTriggerContext(UStatusInstance* InRuntimeSource, UObject* InActionOuter)
+FTriggerContext::FTriggerContext(
+	UStatusInstance* InRuntimeSource,
+	UObject* InActionOuter,
+	const FPresentationRecordWriter& InPresentationRecordWriter
+)
 	: RuntimeSource(InRuntimeSource)
 	, Owner(IsValid(InRuntimeSource) ? InRuntimeSource->GetOwner() : nullptr)
 	, ActionOuter(InActionOuter)
+	, PresentationRecordWriter(InPresentationRecordWriter)
 {
 }
 
@@ -22,6 +27,11 @@ ACombatant* FTriggerContext::GetOwner() const
 UObject* FTriggerContext::GetActionOuter() const
 {
 	return ActionOuter;
+}
+
+const FPresentationRecordWriter& FTriggerContext::GetPresentationRecordWriter() const
+{
+	return PresentationRecordWriter;
 }
 
 bool UBattleTrigger::CanReact(const FBattleEvent& /*Event*/, const FTriggerContext& /*Context*/) const
