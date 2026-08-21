@@ -12,7 +12,8 @@ enum class EBattleHUDInteractionState : uint8
 	ChoosingTarget UMETA(DisplayName = "Choosing Target"),
 	ReadyToConfirm UMETA(DisplayName = "Ready To Confirm"),
 	Resolving UMETA(DisplayName = "Resolving"),
-	Terminal UMETA(DisplayName = "Terminal")
+	Terminal UMETA(DisplayName = "Terminal"),
+	PresentationUnavailable UMETA(DisplayName = "Presentation Unavailable")
 };
 
 UENUM(BlueprintType)
