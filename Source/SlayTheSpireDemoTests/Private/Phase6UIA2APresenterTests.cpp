@@ -42,6 +42,14 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 	Battle->Enemy = Enemy;
 	Battle->OpeningHandDrawCount = 0;
 	Battle->PlayerTurnDrawCount = 0;
+	// Duplicate resolved IDs intentionally exercise the PresentationUnavailable
+	// bootstrap path. Reset validation reports the configuration failure once and
+	// the later frozen-snapshot attempt reports the unavailable freeze once more.
+	AddExpectedErrorPlain(
+		TEXT("[Presentation] Unavailable for BattleId="),
+		EAutomationExpectedErrorFlags::Contains,
+		2
+	);
 	Battle->StartBattle();
 
 	TestFalse(TEXT("Duplicate resolved PresentationId disables presentation only"), Battle->IsPresentationAvailable());
