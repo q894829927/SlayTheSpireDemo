@@ -16,6 +16,13 @@ bool FPresentationRecordWriter::Append(FPresentationRecord Record) const
 		&& ResolvedRecorder->AppendRecord(BattleId, ResolutionId, MoveTemp(Record));
 }
 
+bool FPresentationRecordWriter::InvalidateCurrentResolution() const
+{
+	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
+	return IsAvailable()
+		&& ResolvedRecorder->InvalidateWriterResolution(BattleId, ResolutionId);
+}
+
 void UBattlePresentationRecorder::ResetForBattle(uint64 InBattleId)
 {
 	BattleId = InBattleId;
@@ -40,9 +47,6 @@ bool UBattlePresentationRecorder::BeginResolution(
 		return false;
 	}
 
-	// A second Begin must never overwrite or inherit a previous builder. Clear the
-	// stale presentation-only builder, report failure to the battle layer, and let
-	// that layer degrade Presentation without affecting Gameplay.
 	if (ActiveBuilder.bActive)
 	{
 		ClearActiveBuilder();
@@ -135,17 +139,11 @@ bool UBattlePresentationRecorder::AppendRecord(
 		return false;
 	}
 
-	// ResolutionFault is an infrastructure terminal record. Once it has been
-	// appended nothing else may follow in the same Resolution; violating that
-	// invariant invalidates the unpublished batch rather than publishing a
-	// misleading history.
-	const bool bAlreadyHasFault = ActiveBuilder.Records.ContainsByPredicate(
-		[](const FPresentationRecord& Existing)
-		{
-			return Existing.Type == EBattlePresentationRecordType::ResolutionFault;
-		}
-	);
-	if (bAlreadyHasFault)
+	// ResolutionFault, Victory and Defeat are all terminal presentation facts.
+	// Once any terminal record is accepted, no later record may follow. A repeated
+	// terminal or any ordinary append after terminal invalidates the whole
+	// unpublished batch instead of allowing an ambiguous history to seal.
+	if (ActiveBuilder.bTerminalRecordAppended)
 	{
 		InvalidateActiveBuilder();
 		return false;
@@ -154,6 +152,7 @@ bool UBattlePresentationRecorder::AppendRecord(
 	Record.BattleId = static_cast<int64>(ActiveBuilder.BattleId);
 	Record.ResolutionId = static_cast<int64>(ActiveBuilder.ResolutionId);
 	Record.PresentationSequence = static_cast<int64>(NextPresentationSequence++);
+	ActiveBuilder.bTerminalRecordAppended = IsTerminalRecordType(Record.Type);
 	ActiveBuilder.Records.Add(MoveTemp(Record));
 	return true;
 }
@@ -214,6 +213,13 @@ int32 UBattlePresentationRecorder::GetActiveRecordCountForTesting() const
 }
 #endif
 
+bool UBattlePresentationRecorder::IsTerminalRecordType(EBattlePresentationRecordType Type)
+{
+	return Type == EBattlePresentationRecordType::ResolutionFault
+		|| Type == EBattlePresentationRecordType::Victory
+		|| Type == EBattlePresentationRecordType::Defeat;
+}
+
 bool UBattlePresentationRecorder::IsWriterCurrentAndValid(
 	uint64 WriterBattleId,
 	uint64 WriterResolutionId
@@ -225,6 +231,20 @@ bool UBattlePresentationRecorder::IsWriterCurrentAndValid(
 		&& WriterResolutionId != 0
 		&& WriterBattleId == ActiveBuilder.BattleId
 		&& WriterResolutionId == ActiveBuilder.ResolutionId;
+}
+
+bool UBattlePresentationRecorder::InvalidateWriterResolution(
+	uint64 WriterBattleId,
+	uint64 WriterResolutionId
+)
+{
+	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId))
+	{
+		return false;
+	}
+
+	InvalidateActiveBuilder();
+	return true;
 }
 
 void UBattlePresentationRecorder::ClearActiveBuilder()
