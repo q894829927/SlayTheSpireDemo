@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../Presentation/BattlePresentationRecorder.h"
 
 class ABattleManager;
 class ACombatant;
@@ -19,4 +20,5 @@ struct FCardPlayContext
 	UBattleEventDispatcher* EventDispatcher = nullptr;
 	TArray<ACombatant*> EventCombatants;
 	UObject* ActionOuter = nullptr;
+	FPresentationRecordWriter PresentationRecordWriter;
 };
