@@ -41,6 +41,7 @@ public:
 	bool IsWaitingForCompletionForTesting() const;
 	FPresentationPlaybackToken GetActivePlaybackTokenForTesting() const;
 	int64 GetLastCompletedResolutionIdForTesting() const;
+	void ExpireActivePlaybackForTesting();
 #endif
 
 protected:
