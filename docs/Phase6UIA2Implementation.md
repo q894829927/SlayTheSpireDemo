@@ -1,10 +1,28 @@
 # Phase 6UI-A2 — Basic Committed Presentation
 
-Status: **DESIGN LOCKED / UI-A2A IMPLEMENTATION NEXT**.
+Status: **UI-A2A SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING**.
 
 UI-A2 replaces the UI-A0/UI-A1 immediate/no-op presentation catch-up boundary with deterministic playback of already-committed gameplay facts. It does not make `BattleActionQueue`, `BattleState` or authoritative gameplay wait for animation.
 
 This document is the detailed implementation contract. UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure before any real Damage/Block animation is added.
+
+### UI-A2A implementation / validation status
+
+The UI-A2A C++ infrastructure and focused Editor-only Automation tests are now authored in source. The source change has **not** been UE5.8-compiled or Automation-executed in this implementation pass because those actions require explicit user permission.
+
+Current evidence boundary:
+
+```text
+C++ source                         IMPLEMENTED
+Editor-only UI-A2A tests           AUTHORED / NOT RUN
+UE5.8 Editor build                 PENDING USER PERMISSION
+UI-A2A Automation validation       PENDING USER PERMISSION
+PIE / Blueprint animation work     NOT REQUIRED FOR THIS A2A SOURCE SLICE
+.uasset / .umap changes            NONE
+UI-A2B Damage/Block implementation NOT STARTED
+```
+
+Do not convert the historical 92/92 validated owner gate into a larger "passed" number until the new A2A tests have actually run. UI-A2A is not `COMPLETE` yet, and UI-A2B must not begin until the user-authorized Editor build and focused A2A Automation gate are green.
 
 ---
 
@@ -312,7 +330,7 @@ only then may BeginResolution(N+1) succeed
 
 The deferred public delivery of Envelope N does not keep Resolution N active. Sealed-but-not-yet-delivered Envelopes are immutable entries in the bounded pending-public-delivery FIFO, not active Recorder builders.
 
-If a caller attempts to begin another Resolution while a builder is still legitimately active, the call must not silently overwrite that builder.
+If a caller attempts to begin another Resolution while a builder is still legitimately active, the call must not silently overwrite that builder. The implemented A2A fail-safe rejects the second Begin, clears the stale presentation-only builder, and degrades Presentation for that battle rather than carrying the stale builder into a later Resolution. Gameplay remains unchanged.
 
 The pending-public-delivery FIFO is not a Recorder history database and is separate from the Controller backlog. Its only responsibility is reliable ordered handoff from internal Seal to deferred public broadcast.
 
@@ -329,6 +347,8 @@ already committed Records remain
 → Seal once at the internal stable boundary
 → release builder
 ```
+
+Once `ResolutionFault` has been appended, any later append attempt invalidates the whole unpublished batch. This enforces the append-last invariant instead of publishing a history in which a terminal framework fault is followed by ordinary records.
 
 UI-A2A must implement and test this lifecycle even though the polished/normal visible fault presentation belongs to UI-A2D.
 
@@ -744,7 +764,7 @@ resolved IDs battle-scoped unique
 
 Snapshot, LegalTargets and Presentation Records use the same resolved value. ViewModel fallback logic is removed once Battle-level resolution owns the semantic.
 
-PresentationId is treated as immutable for the battle lifetime.
+PresentationId is immutable for the battle lifetime. The implemented resolver locks each participant to the resolved IDs captured by the first exact frozen baseline, so later mutation of the authored `ACombatant::PresentationId` field cannot silently reroute later Snapshots, LegalTargets or Records within the same battle.
 
 ---
 
@@ -844,8 +864,10 @@ ignore duplicate completion
 ignore stale Resolution/Sequence callback
 ignore previous-Battle callback
 ignore callback from before Skip/generation reset
+ignore timeout callbacks whose scheduled token no longer matches the active token
 support Skip / fast-forward
 catch up when Widget is destroyed
+ignore stale destruction from an already-replaced Widget
 use timeout/immediate fallback when Blueprint never completes
 apply FinalSnapshot when Presentation is disabled
 ```
@@ -856,9 +878,9 @@ Timeout/Skip/fallback advances or collapses Presentation only. It never advances
 
 ## 12. Slice ownership — no cross-phase ambiguity
 
-### UI-A2A — infrastructure
+### UI-A2A — infrastructure — SOURCE IMPLEMENTED / REVALIDATION PENDING
 
-Must implement and test:
+Implemented source scope:
 
 ```text
 generic Record/Envelope transport
@@ -882,7 +904,7 @@ Skip / missing callback / stale callback / timeout / Widget-loss fail-safe
 latest-only runtime input binding refresh
 ```
 
-A2A does **not** require real Damage/Block animation.
+A2A does **not** implement real Damage/Block business records or animation. Source implementation is awaiting user-authorized UE5.8 build and focused Automation validation before it may be marked `COMPLETE`.
 
 ### UI-A2B — Damage + Block vertical slice
 
@@ -1059,7 +1081,18 @@ InvalidResolvedPresentationIdShowsPresentationUnavailable
 PresentationUnavailableStillCreatesErrorCapableHUD
 ```
 
-Only after this gate is green should UI-A2B begin real Damage/Block presentation.
+These semantics are authored across:
+
+```text
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2AInfrastructureTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2APresenterTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2AHardeningTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2ATestTypes.h/.cpp
+```
+
+The hardening suite additionally covers overlapping-Begin builder cleanup, terminal fault append rejection, battle-lifetime resolved PresentationId stability, stale old-battle Envelope rejection, stale old-Widget loss isolation and direct frozen-baseline HUD operation when committed recording is disabled.
+
+**Tests are authored but have not been run.** Only after the user-authorized UE5.8 Editor build and this infrastructure gate are green should UI-A2B begin real Damage/Block presentation.
 
 ---
 
@@ -1097,4 +1130,4 @@ Current input identity
 = refreshed only after display catches up to newest matching BattleId/Revision
 ```
 
-No Damage animation should be implemented until UI-A2A satisfies these infrastructure contracts.
+No Damage animation should be implemented until UI-A2A satisfies these infrastructure contracts through the pending UE5.8 build + focused Automation validation.
