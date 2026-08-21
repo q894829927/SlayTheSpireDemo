@@ -69,6 +69,7 @@ namespace
 
 	bool ValidateMutationIdentity(
 		ACombatant* Target,
+		const UStatusInstance* ExpectedPreMutationInstance,
 		const FStatusMutationResult& Mutation
 	)
 	{
@@ -78,7 +79,7 @@ namespace
 			|| Mutation.RuntimeSequence > static_cast<uint64>(MAX_int64)
 			|| !IsValid(Mutation.EffectiveInstance)
 			|| !IsValid(Mutation.EffectiveDefinition)
-			|| Mutation.bCreated && Mutation.bRemoved)
+			|| (Mutation.bCreated && Mutation.bRemoved))
 		{
 			return false;
 		}
@@ -94,7 +95,20 @@ namespace
 
 		if (Mutation.bCreated)
 		{
-			return Mutation.AmountBefore == 0 && Mutation.AmountAfter > 0;
+			return ExpectedPreMutationInstance == nullptr
+				&& Mutation.AmountBefore == 0
+				&& Mutation.AmountAfter > 0
+				&& Mutation.EffectiveInstance->GetAmount() == Mutation.AmountAfter;
+		}
+
+		if (!IsValid(ExpectedPreMutationInstance)
+			|| Mutation.EffectiveInstance != ExpectedPreMutationInstance
+			|| ExpectedPreMutationInstance->GetOwner() != Target
+			|| ExpectedPreMutationInstance->GetStatusId() != Mutation.StatusId
+			|| ExpectedPreMutationInstance->GetRuntimeSequence() != Mutation.RuntimeSequence
+			|| ExpectedPreMutationInstance->GetDefinition() != Mutation.EffectiveDefinition)
+		{
+			return false;
 		}
 
 		if (Mutation.bRemoved)
@@ -121,6 +135,7 @@ bool StatusPresentation::AppendCommittedChange(
 	ABattleManager* Battle,
 	ACombatant* Source,
 	ACombatant* Target,
+	const UStatusInstance* ExpectedPreMutationInstance,
 	const FStatusMutationResult& Mutation,
 	EStatusChangeReason Reason,
 	const FText& DescriptionBefore,
@@ -135,7 +150,7 @@ bool StatusPresentation::AppendCommittedChange(
 	FName SourcePresentationId = NAME_None;
 	FName TargetPresentationId = NAME_None;
 	if (!ResolveParticipantIds(Battle, Source, Target, SourcePresentationId, TargetPresentationId)
-		|| !ValidateMutationIdentity(Target, Mutation)
+		|| !ValidateMutationIdentity(Target, ExpectedPreMutationInstance, Mutation)
 		|| !ValidateReason(Mutation, Reason))
 	{
 		Writer.InvalidateCurrentResolution();
@@ -147,6 +162,7 @@ bool StatusPresentation::AppendCommittedChange(
 	}
 
 	if ((Mutation.bCreated && !DescriptionBefore.IsEmpty())
+		|| (!Mutation.bCreated && DescriptionBefore.IsEmpty())
 		|| (Mutation.bRemoved && !DescriptionAfter.IsEmpty()))
 	{
 		Writer.InvalidateCurrentResolution();
