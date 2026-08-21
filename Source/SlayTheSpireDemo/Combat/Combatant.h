@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "CombatantMutationTypes.h"
 #include "Combatant.generated.h"
 
 class UStatusContainer;
@@ -35,13 +36,13 @@ public:
 	void InitializeCombatant();
 
 	UFUNCTION(BlueprintCallable, Category = "Combat")
-	void TakeCombatDamage(int32 Amount);
+	FDamageCommitResult TakeCombatDamage(int32 Amount);
 
 	UFUNCTION(BlueprintCallable, Category = "Combat")
-	void GainBlock(int32 Amount);
+	FBlockCommitResult GainBlock(int32 Amount);
 
 	UFUNCTION(BlueprintCallable, Category = "Combat")
-	void ClearBlock();
+	FBlockCommitResult ClearBlock();
 
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool IsDead() const;
