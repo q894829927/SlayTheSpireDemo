@@ -3,10 +3,10 @@
 Status:
 
 ```text
-SOURCE CHANGED
-UE5.8 BUILD / AUTOMATION REVALIDATION PENDING
+COMPLETE
+UE5.8 BUILD / AUTOMATION REVALIDATED
 UMG SAVED WIRING STRUCTURE REVIEWED
-PIE REVALIDATION REQUIRED
+PIE REVALIDATED
 ```
 
 ## Runtime boundary
@@ -50,39 +50,34 @@ While pointer/focus inspection remains active, `SetPresentationData` republishes
 the latest view. A stationary pointer therefore cannot leave an open inspector
 showing an older gameplay revision.
 
-## USER ACTION REQUIRED — level combatant metadata
+## Validated level combatant metadata
 
-After compiling the new source, open:
-
-```text
-Content/SlayTheSpireDemo/Maps/L_BattleTest
-```
-
-Select the Player and Enemy `ACombatant` instances and configure unique values:
+Current `L_BattleTest` combatant presentation metadata is authored with unique
+presentation IDs and player-facing display names. The durable rule is:
 
 ```text
 Player
-Combat | Presentation | Presentation Id = PlayerHero
-Combat | Presentation | Display Name    = 铁甲战士
+Combat | Presentation | Presentation Id = unique stable ID
+Combat | Presentation | Display Name    = localized player-facing name
 
 Enemy
-Combat | Presentation | Presentation Id = EnemyCultist01
-Combat | Presentation | Display Name    = 邪教徒
+Combat | Presentation | Presentation Id = unique stable ID
+Combat | Presentation | Display Name    = localized player-facing name
 ```
 
 IDs must be unique inside the battle. Player-facing localized text belongs in
 `DisplayName`; do not use localized display text as `PresentationId`.
 
-## USER ACTION REQUIRED — WBP_CombatantPresentation
+## Validated WBP_CombatantPresentation structure
 
-Create:
+Current asset:
 
 ```text
 Content/SlayTheSpireDemo/UI/Widgets/WBP_CombatantPresentation
 Parent class = BattleHUDCombatantPresentationWidgetBase
 ```
 
-Suggested hierarchy:
+Recommended/validated hierarchy concept:
 
 ```text
 Overlay_Root
@@ -95,7 +90,7 @@ Keep `Btn_Interaction` as a sibling hit layer rather than making the character
 Image the Button child. This separates visual sizing/padding from interaction.
 Do not disable the Button for an illegal target: it must remain inspectable.
 
-Wire Button events:
+Button event contract:
 
 ```text
 Btn_Interaction.OnHovered
@@ -114,7 +109,7 @@ Btn_Interaction.OnClicked
 Keyboard/gamepad focus is observed automatically when the focusable Button enters
 or leaves this UserWidget's focus path.
 
-Implement `Event Combatant Presentation Changed`:
+`Event Combatant Presentation Changed` updates:
 
 ```text
 CombatantView
@@ -128,11 +123,11 @@ bTargetHighlighted
 The character portrait may remain a Blueprint instance-editable texture because
 it is presentation content and is not part of target legality.
 
-## USER ACTION REQUIRED — Combatant inspector
+## Validated combatant inspector
 
-Keep `WBP_StatusTooltip` as the reusable list that owns the individual
-status/rules explanation entries. Do not repurpose it as the whole combatant
-inspector. Its narrow function remains conceptually:
+`WBP_StatusTooltip` remains the reusable list that owns the individual
+status/rules explanation entries. It is not the whole combatant inspector. Its
+narrow function remains conceptually:
 
 ```text
 RebuildStatuses
@@ -141,7 +136,7 @@ Input: Statuses (Battle HUD Status View Array)
 → create WBP_StatusTooltipEntry for each item
 ```
 
-Create a separate `WBP_CombatantTooltip` that composes the list:
+`WBP_CombatantTooltip` composes the list:
 
 ```text
 WBP_CombatantTooltip
@@ -151,14 +146,7 @@ WBP_CombatantTooltip
     └── StatusTooltipList : WBP_StatusTooltip
 ```
 
-Add this function to `WBP_CombatantTooltip`:
-
-```text
-SetCombatantView
-Input: CombatantView (Battle HUD Combatant View)
-```
-
-Inside the function:
+Its `SetCombatantView` path follows:
 
 ```text
 Break CombatantView
@@ -173,11 +161,12 @@ The panel starts `Collapsed`. When visible but not interactive, use
 `Not Hit-Testable (Self & All Children)` so it cannot steal hover from the
 combatant hit area.
 
-## USER ACTION REQUIRED — WBP_BattleHUD ownership
+## Validated WBP_BattleHUD ownership
 
-Add Player and Enemy instances of `WBP_CombatantPresentation`. Bind each
-presentation instance's transient inspect/clear and target-request dispatchers.
-Do not bind `OnInspectPinRequested` for the current hover-only mouse policy.
+Player and Enemy instances of `WBP_CombatantPresentation` are owned by the Battle
+HUD and bind each presentation instance's transient inspect/clear and
+target-request dispatchers. `OnInspectPinRequested` remains unbound for the
+current hover-only mouse policy.
 
 Inspection handlers:
 
@@ -215,7 +204,7 @@ TryGetLegalTargetByPresentationId(CombatantView.PresentationId)
 This lookup does not grant gameplay permission. It only removes target-array
 iteration from Blueprint; the formal Request still revalidates authoritatively.
 
-Create one Blueprint helper function:
+Validated Blueprint helper concept:
 
 ```text
 RefreshOneCombatantPresentation(PresentationWidget, CombatantView)
@@ -241,7 +230,7 @@ Self-target cards use the same character-bound target path as Enemy-target cards
 The public target still originates from Gameplay; clicking the Player emits its
 gameplay-provided TargetId and the formal Request revalidates it.
 
-The owning HUD refresh becomes two calls rather than two target-mapping graphs:
+The owning HUD refresh is:
 
 ```text
 RefreshOneCombatantPresentation(Combatant_PlayerPresentation, ViewModel.Player)
@@ -254,7 +243,7 @@ Enemy. Future `EnemyPresentation[]` instances use the same ID match.
 The old separate `VB_LegalTargets` has been removed from the saved HUD Designer.
 Its former Sequence `Then 12` entry is disconnected. Historical target-button
 nodes remain as unreachable graph nodes only; do not reconnect them. They may be
-deleted later as graph cleanup after the character-bound path passes PIE.
+deleted later as graph cleanup.
 
 Saved UMG structural review on 2026-08-21 confirmed:
 
@@ -271,11 +260,11 @@ EnemyPresentation.OnTargetRequested(TargetId)
 → SelectTarget(TargetId)
 ```
 
-This is a read-only graph review, not a Blueprint compile or PIE pass.
+The later owner-run UE5.8 Automation and manual PIE revalidation confirmed the current saved wiring after the Self-target interaction-policy change.
 
-## PIE acceptance
+## PIE acceptance — PASSED
 
-Validate without gameplay-driving debug keys:
+Validated without gameplay-driving debug keys:
 
 ```text
 hover Player / Enemy → inspector shows correct name and latest Status descriptions
@@ -290,5 +279,4 @@ status changes while pointer remains still → open inspector refreshes
 terminal/resolving state → no stale legal target remains active
 ```
 
-Do not mark this source addition validated until the owner recompiles and the
-relevant automation/PIE checks pass.
+The source/UMG interaction path is now revalidated. This document no longer blocks UI-A2; the next implementation slice is Basic Committed Presentation.
