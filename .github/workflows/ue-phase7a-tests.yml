@@ -107,3 +107,74 @@ jobs:
           }
 
           Write-Host "Phase 7A focused gate passed. Expected total: 4 tests."
+
+      - name: Run affected Phase 5-6 and UI-A2 regression gate
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+
+          function Run-AutomationGate {
+              param(
+                  [string]$Prefix,
+                  [int]$ExpectedCount,
+                  [string]$ReportName
+              )
+
+              $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\Phase7A-$ReportName"
+              $IndexJson = "$Report\index.json"
+              if (Test-Path $Report) { Remove-Item $Report -Recurse -Force }
+              New-Item -ItemType Directory -Force -Path $Report | Out-Null
+
+              & $EditorCmd `
+                  $Project `
+                  -unattended `
+                  -nop4 `
+                  -NullRHI `
+                  -NoSplash `
+                  -NoSound `
+                  "-ExecCmds=Automation RunTest $Prefix;Quit" `
+                  "-ReportExportPath=$Report" `
+                  -log
+
+              $EditorExitCode = $LASTEXITCODE
+              if (!(Test-Path $IndexJson)) {
+                  throw "Automation report was not generated for $Prefix at $IndexJson"
+              }
+
+              $Result = Get-Content $IndexJson -Raw | ConvertFrom-Json
+              $Tests = @($Result.tests | Where-Object { $_.fullTestPath -like "$Prefix.*" })
+              $NonSuccess = @($Tests | Where-Object { $_.state -ne 'Success' })
+
+              "| $Prefix | $($Tests.Count)/$ExpectedCount | $($Result.failed) | $($Result.notRun) | $EditorExitCode |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+              if ($Tests.Count -ne $ExpectedCount) {
+                  throw "Expected exactly $ExpectedCount tests for $Prefix, but found $($Tests.Count)."
+              }
+              if ($NonSuccess.Count -gt 0) {
+                  Write-Host ($NonSuccess | ConvertTo-Json -Depth 12)
+                  $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
+                  throw "Non-success tests for ${Prefix}: $Names"
+              }
+              if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) {
+                  throw "Automation gate failed for $Prefix."
+              }
+          }
+
+          "## Phase 7A affected regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase5" -ExpectedCount 13 -ReportName "Phase5"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2A" -ExpectedCount 8 -ReportName "Phase6UIA2A"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2B" -ExpectedCount 8 -ReportName "Phase6UIA2B"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2C" -ExpectedCount 8 -ReportName "Phase6UIA2C"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D1" -ExpectedCount 3 -ReportName "Phase6UIA2D1"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D2" -ExpectedCount 4 -ReportName "Phase6UIA2D2"
+
+          Write-Host "Phase 7A affected regression gate configured for the existing 84-test Phase5/6/UI-A2 source baseline."
