@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "../Cards/CardTypes.h"
+#include "DeckMutationTypes.h"
 #include "DeckRuntime.generated.h"
 
 class UCardData;
@@ -22,6 +23,14 @@ public:
 	bool IsCardInHand(const UCardInstance* Card) const;
 	bool IsCardInPlayArea(const UCardInstance* Card) const;
 
+	FCardZoneMutationResult TryDrawTopCardCommit(UCardInstance*& OutCard);
+	FCardZoneMutationResult TryDiscardCardCommit(UCardInstance* Card);
+	FCardZoneMutationResult TryMoveHandCardToPlayAreaCommit(UCardInstance* Card);
+	FCardZoneMutationResult TryReturnPlayAreaCardToHandAtIndexCommit(UCardInstance* Card, int32 HandIndex);
+	FCardZoneMutationResult TryMovePlayAreaCardToDestinationCommit(UCardInstance* Card, ECardDestination Destination);
+	FDeckShuffleCommitResult ShuffleDiscardIntoDrawPileCommit();
+
+	// Backward-compatible Gameplay wrappers retained for existing callers/tests.
 	bool TryDrawTopCard(UCardInstance*& OutCard);
 	UCardInstance* GetFirstHandCard() const;
 	bool TryDiscardCard(UCardInstance* Card);
@@ -30,9 +39,12 @@ public:
 	bool TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDestination Destination);
 	bool ShuffleDiscardIntoDrawPile();
 
+	const TArray<TObjectPtr<UCardInstance>>& GetDrawCards() const;
 	const TArray<TObjectPtr<UCardInstance>>& GetHandCards() const;
 	const TArray<TObjectPtr<UCardInstance>>& GetDiscardCards() const;
 	const TArray<TObjectPtr<UCardInstance>>& GetExhaustCards() const;
+	const TArray<TObjectPtr<UCardInstance>>& GetPlayAreaCards() const;
+	const TArray<TObjectPtr<UCardInstance>>& GetRemovedCards() const;
 
 	int32 GetDrawCount() const;
 	int32 GetHandCount() const;
@@ -46,11 +58,6 @@ public:
 	void LogState(const TCHAR* Context) const;
 
 private:
-	// One Fisher-Yates implementation owns all DrawPile randomization. Both the
-	// initial battle setup and later Discard->Draw reshuffles consume the same
-	// battle-scoped RandomStream. Event semantics remain outside this helper:
-	// initialization never emits DeckShuffled, while ShuffleDeckAction does after
-	// a successful gameplay reshuffle commit.
 	void ShuffleDrawPileWithBattleRng();
 
 	UPROPERTY(Transient)
