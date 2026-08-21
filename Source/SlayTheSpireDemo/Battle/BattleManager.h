@@ -17,6 +17,8 @@ class UBattleActionQueue;
 class UCardData;
 class UCardInstance;
 class UDeckRuntime;
+class URelicContainer;
+class URelicData;
 class UStatusData;
 class UTurnEndedAction;
 struct FBattleReadSnapshot;
@@ -81,6 +83,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5CStatuses;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Relics")
+	TArray<TObjectPtr<URelicData>> DebugStartingRelics;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Presentation")
 	bool bEnableCommittedPresentationRecording = true;
 
@@ -138,6 +143,8 @@ public:
 	bool CanSpendEnergy(int32 Amount) const;
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
+	uint64 GetBattleId() const { return BattleId; }
+	URelicContainer* GetPlayerRelicContainer();
 
 	bool TryResolveCombatantPresentationId(
 		const ACombatant* Combatant,
@@ -277,6 +284,9 @@ private:
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
 
 	UPROPERTY(Transient)
+	TObjectPtr<URelicContainer> PlayerRelicContainer = nullptr;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UBattlePresentationRecorder> PresentationRecorder = nullptr;
 
 	UPROPERTY(Transient)
@@ -292,11 +302,13 @@ private:
 	uint64 BattleId = 0;
 	uint64 StateRevision = 0;
 	uint64 NextRuntimeSequence = 1;
+	uint64 PlayerRelicContainerBattleId = 0;
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
 	uint64 LastSealedPresentationResolutionId = 0;
 	uint64 LastDeliveredPresentationResolutionId = 0;
 	uint64 LatestFrozenPresentationBaselineResolutionId = 0;
+	bool bPlayerRelicContainerInitializedForBattle = false;
 	bool bHasLatestFrozenPresentationBaseline = false;
 	bool bPresentationAvailable = true;
 	bool bCommittedPresentationRecordingEnabledForBattle = true;
