@@ -94,10 +94,11 @@ void UPhase6UIA2AProbeTrigger::Initialize(UPhase6UIA2AProbeState* InState)
 
 bool UPhase6UIA2AProbeTrigger::CanReact(
 	const FBattleEvent& Event,
-	const FTriggerContext& /*Context*/
+	const FTriggerContext& Context
 ) const
 {
-	return Event.TryGet<FTurnEndedEvent>() != nullptr;
+	const FTurnEndedEvent* TurnEnded = Event.TryGet<FTurnEndedEvent>();
+	return TurnEnded != nullptr && TurnEnded->TurnOwner == Context.GetOwner();
 }
 
 void UPhase6UIA2AProbeTrigger::BuildReactions(
