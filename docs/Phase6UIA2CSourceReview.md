@@ -2,7 +2,7 @@
 
 Date: **2026-08-21**
 
-Status: **SOURCE IMPLEMENTED / UE5.8 VALIDATION PENDING**
+Status: **C++ VALIDATED / VISUAL INTEGRATION PENDING**
 
 ## Reviewed revision
 
@@ -20,7 +20,21 @@ The aggregate CI gate was then extended to UI-A2C in:
 ci: add UI-A2C to 77-test regression gate
 ```
 
-The implementation contract status is maintained in `docs/Phase6UIA2CImplementation.md`.
+The reducer-valid A2B playback fixture correction landed in:
+
+```text
+668f22b8a678ce53f136ea100ca027f25d9224c4
+test(ui-a2): make A2B playback records reducer-valid
+```
+
+The successful aggregate rerun was reported on main revision:
+
+```text
+b5b52d14237a92c8ed88f7a5e79fbe720ec78a0a
+test
+```
+
+The detailed validation evidence is recorded in `docs/Phase6UIA2CValidation.md`.
 
 ## Static compile review scope
 
@@ -45,9 +59,7 @@ Phase6UIA2C Automation includes/API usage/top-level discovery definitions
 workflow prefix/count wiring
 ```
 
-No remaining high-confidence C++/UHT compile blocker was identified by static source inspection.
-
-This is deliberately **not** a build-pass claim. UHT, MSVC, linker and Unreal Automation remain authoritative for validation.
+No remaining high-confidence C++/UHT compile blocker was identified by static source inspection before runtime validation.
 
 ## Focused A2C Automation discovery contract
 
@@ -66,7 +78,7 @@ SlayTheSpireDemo.Phase6UIA2C.Failure.PresentationDoesNotAffectGameplay
 
 ## Aggregate CI contract
 
-`.github/workflows/ue-phase6r-tests.yml` now requires:
+`.github/workflows/ue-phase6r-tests.yml` requires:
 
 ```text
 Phase5        13
@@ -80,17 +92,16 @@ Phase6UIA2C    8
 Total         77
 ```
 
-Each prefix must have its exact discovery count, every selected test must be `Success`, report-level failed/notRun counts must be zero, and UnrealEditor-Cmd must exit zero.
+The owner-reported successful rerun closes the C++/Automation validation boundary for this revision.
 
-## Validation still pending
+## Validation result
 
 ```text
-UE5.8 Editor build            PENDING
-Phase6UIA2C 8/8               PENDING
-77-test affected regression   PENDING
-Shipping exclusion job        PENDING on this A2C revision
+UE5.8 Editor build            PASSED
+Phase6UIA2C 8/8               PASSED
+77-test affected regression   PASSED 77/77
 Blueprint visual integration  PENDING
 PIE smoke                     PENDING
 ```
 
-Do not convert UI-A2C to `COMPLETE` until the UE5.8 build and required Automation/regression gates pass on the same source revision.
+UI-A2C C++ validation is complete. Visible Blueprint animation and PIE smoke remain deferred presentation-integration work and are not claimed complete here.
