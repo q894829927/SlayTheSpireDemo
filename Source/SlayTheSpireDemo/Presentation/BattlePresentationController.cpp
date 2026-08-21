@@ -66,8 +66,13 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 		return;
 	}
 
+	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
 	Widget = InWidget;
-	if (!IsValid(Widget) && (bHasActiveEnvelope || PlaybackQueue.Num() > 0))
+
+	// A widget replacement invalidates every callback token issued to the old
+	// widget. Do not attempt to migrate an in-flight animation between widget
+	// instances; deterministically catch up to the newest sealed frozen state.
+	if (bHadInFlightPresentation)
 	{
 		SkipPresentation();
 	}
@@ -125,11 +130,15 @@ void UBattlePresentationController::SkipPresentation()
 
 void UBattlePresentationController::NotifyWidgetLost(UBattleHUDWidgetBase* LostWidget)
 {
-	if (Widget == LostWidget)
+	if (Widget != LostWidget)
 	{
-		Widget = nullptr;
-		SkipPresentation();
+		// A stale widget destruction must not disturb playback already owned by a
+		// replacement widget.
+		return;
 	}
+
+	Widget = nullptr;
+	SkipPresentation();
 }
 
 void UBattlePresentationController::BeginDestroy()
@@ -147,9 +156,23 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 		return;
 	}
 
-	if (CurrentBattleId != 0 && Envelope.BattleId != CurrentBattleId)
+	ABattleManager* Battle = BattleManager.Get();
+	FPresentationStateSnapshot LatestBaseline;
+	if (!IsValid(Battle)
+		|| !Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+		|| Envelope.BattleId != LatestBaseline.BattleId
+		|| Envelope.FinalStateRevision > LatestBaseline.StateRevision)
 	{
-		// A new battle invalidates every old callback/backlog deterministically.
+		// Old-battle or impossible future-revision delivery is Presentation-only
+		// stale data. It must never roll the Controller back to an abandoned battle.
+		return;
+	}
+
+	if (CurrentBattleId != LatestBaseline.BattleId)
+	{
+		// A real BattleManager restart invalidates every callback/backlog from the
+		// prior battle. Only an Envelope matching the manager's current frozen
+		// baseline is allowed to establish the new battle scope.
 		CancelActiveTimeout();
 		AdvancePlaybackGeneration();
 		PlaybackQueue.Reset();
@@ -157,10 +180,11 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 		bHasActiveEnvelope = false;
 		bWaitingForCompletion = false;
 		ActiveRecordIndex = INDEX_NONE;
+		ActivePlaybackToken = FPresentationPlaybackToken{};
 		LastQueuedResolutionId = 0;
 		LastCompletedResolutionId = 0;
+		CurrentBattleId = LatestBaseline.BattleId;
 	}
-	CurrentBattleId = Envelope.BattleId;
 
 	if (!IsEnvelopeForCurrentBattle(Envelope)
 		|| Envelope.ResolutionId <= LastCompletedResolutionId
@@ -170,7 +194,8 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 	}
 
 	LastQueuedResolutionId = Envelope.ResolutionId;
-	if (PlaybackQueue.Num() >= MaxPlaybackEnvelopes)
+	const int32 CurrentBacklogCount = PlaybackQueue.Num() + (bHasActiveEnvelope ? 1 : 0);
+	if (CurrentBacklogCount >= MaxPlaybackEnvelopes)
 	{
 		CollapseToEnvelope(Envelope);
 		return;
