@@ -70,7 +70,19 @@ enum class EStatusChangeReason : uint8
 
 `StatusChanged` must be appended to the end of the existing `EBattlePresentationRecordType` enum. Existing enum entries must not be reordered merely for grouping/readability.
 
-Reason describes **why this mutation occurred**; payload fields describe **what actually happened**.
+`Reason` is the player-facing semantic classification of the committed change; payload fields describe **what actually happened**.
+
+The enum intentionally contains both operation classifications and one currently required causal specialization:
+
+```text
+Applied / Increased / Reduced / Removed
+= classification derived from the committed mutation
+
+TurnEndDecay
+= concrete cause preserved for the ordinary reduction performed by turn-end lifecycle
+```
+
+Therefore callers do not use `Reason` as arbitrary display prose. Amount/membership facts remain authoritative even when a causal specialization is present.
 
 Examples:
 
@@ -254,24 +266,49 @@ DescriptionAfter  = Empty
 
 ### 4.2 Description capture timing
 
-The implementation must not temporarily mutate the Status amount backward to reconstruct historical text.
+The implementation must not temporarily mutate the Status amount backward to reconstruct historical text. Because the current text resolver reads a live `UStatusInstance`, the pre-mutation description must be captured **before** the Container changes that instance.
 
-Capture order is:
+Apply capture order is:
 
 ```text
-resolve true EffectiveInstance / EffectiveDefinition
+read-only lookup of PreExistingInstance by incoming StatusId
 ↓
-mutation 前 ResolveStatusDescription(EffectiveInstance)
-→ DescriptionBefore
+if PreExistingInstance exists
+    capture its RuntimeSequence / EffectiveDefinition
+    ResolveStatusDescription(PreExistingInstance)
+    → DescriptionBefore
+else
+    DescriptionBefore = Empty
 ↓
-Container mutation
+Container Apply mutation decides create / merge / no-op / invalid
 ↓
-if instance still exists
-    ResolveStatusDescription(EffectiveInstance)
+if committed merge
+    Result.EffectiveInstance and RuntimeSequence must match the pre-capture
+if committed create
+    no pre-existing instance may have been captured
+↓
+if committed instance still exists
+    ResolveStatusDescription(Result.EffectiveInstance)
     → DescriptionAfter
 else
     DescriptionAfter = Empty
 ```
+
+The read-only pre-lookup is only a historical text capture. It must not decide create versus merge, allocate identity, or compete with `StatusContainer` mutation authority. The returned `FStatusMutationResult` remains authoritative.
+
+Reduce/remove capture order is:
+
+```text
+validate and capture DescriptionBefore from the exact ExpectedInstance
+↓
+Container exact-instance mutation
+↓
+validate Result identity against the captured instance
+↓
+resolve DescriptionAfter from Result.EffectiveInstance, or Empty when removed
+```
+
+If Gameplay commits but the returned identity contradicts the pre-captured identity while a writer is active, the Action must treat that as invalid Presentation history, invalidate the current record batch and preserve the committed Gameplay result. It must not publish a record assembled from mismatched before/after instances.
 
 For creation there is no pre-existing effective runtime instance, so `DescriptionBefore` is Empty.
 
@@ -350,6 +387,25 @@ struct FStatusMutationResult
 };
 ```
 
+`EffectiveInstance` and `EffectiveDefinition` are synchronous Action/Battle-layer consumption references only. They must never be stored in a Presentation Record, Envelope, Controller backlog or other asynchronous cache. Records freeze value data before the Action finishes.
+
+For exact removal, the caller's exact `ExpectedInstance` reference must remain valid long enough to freeze pre-mutation values. After the mutation, result references are consumed synchronously only; later playback never depends on the removed UObject remaining alive.
+
+Committed result invariants are:
+
+```text
+AmountBefore >= 0
+AmountAfter  >= 0
+
+bCreated == (AmountBefore == 0 AND AmountAfter > 0)
+bRemoved == (AmountBefore > 0 AND AmountAfter == 0)
+bCreated and bRemoved are never both true
+
+otherwise Committed requires AmountBefore != AmountAfter
+```
+
+Any result that violates these invariants is unusable Presentation history. If Gameplay has already committed and a writer is active, invalidate the current record batch without rolling Gameplay back or requesting Gameplay ResolutionFault.
+
 `StatusContainer` owns only Gameplay mutation semantics.
 
 Action / Battle layer owns:
@@ -379,7 +435,7 @@ invalid Owner
 invalid Definition
 StatusId == None
 Amount <= 0
-CandidateRuntimeSequence == 0 where creation needs one
+CandidateRuntimeSequence == 0 for any Apply call that reaches the Container
 failed UObject creation
 structurally invalid expected instance arguments
 ```
@@ -412,6 +468,8 @@ not a Gameplay ResolutionFault
 ```
 
 A stale exact-instance mutation must never silently retarget a replacement instance with the same StatusId.
+
+Every Apply invocation that reaches `StatusContainer` supplies a non-zero `CandidateRuntimeSequence`, including merge and no-op attempts. The candidate is consumed as deterministic allocation input but becomes the runtime identity only when a new instance is created. Merge/no-op results report the existing instance's actual `RuntimeSequence`; they never publish the unused candidate as effective identity. Gaps in the battle-scoped allocator are therefore valid and expected.
 
 Example:
 
@@ -483,6 +541,15 @@ bRemoved = true
 Reason remains the original cause
 ```
 
+`UReduceStatusAction` must validate its requested reason **before** mutation. The first implementation accepts only:
+
+```text
+Reduced
+TurnEndDecay
+```
+
+Any other reason is an invalid Action request: no Gameplay mutation and no Record. Do not commit first and then discover that Presentation reason was invalid.
+
 ### 8.3 Explicit remove path
 
 Only explicit remove semantics use:
@@ -508,16 +575,17 @@ Initialize(
     ABattleManager* Battle,
     ACombatant* Source,
     ACombatant* Target,
-    UStatusInstance* ExpectedInstance,
-    EStatusChangeReason Reason
+    UStatusInstance* ExpectedInstance
 );
 ```
 
-For the normal explicit remove path:
+`URemoveStatusAction` always derives:
 
 ```text
 Reason = Removed
 ```
+
+The caller cannot supply a different reason to the explicit-remove Action.
 
 Container adds:
 
@@ -974,9 +1042,12 @@ Require:
 
 ```text
 Record.Type == Victory
-WinnerPresentationId   == Player.PresentationId
-DefeatedPresentationId == Enemy.PresentationId
-Enemy.bDead == true
+WinnerPresentationId    == WorkingSnapshot.Player.PresentationId
+WinnerPresentationId    == FinalSnapshot.Player.PresentationId
+DefeatedPresentationId  == WorkingSnapshot.Enemy.PresentationId
+DefeatedPresentationId  == FinalSnapshot.Enemy.PresentationId
+WorkingSnapshot.Enemy.bDead == true
+FinalSnapshot.Enemy.bDead   == true
 FinalSnapshot.BattleState == Victory
 FinalSnapshot.Outcome     == Victory
 ```
@@ -989,9 +1060,12 @@ Require:
 
 ```text
 Record.Type == Defeat
-WinnerPresentationId   == Enemy.PresentationId
-DefeatedPresentationId == Player.PresentationId
-Player.bDead == true
+WinnerPresentationId    == WorkingSnapshot.Enemy.PresentationId
+WinnerPresentationId    == FinalSnapshot.Enemy.PresentationId
+DefeatedPresentationId  == WorkingSnapshot.Player.PresentationId
+DefeatedPresentationId  == FinalSnapshot.Player.PresentationId
+WorkingSnapshot.Player.bDead == true
+FinalSnapshot.Player.bDead   == true
 FinalSnapshot.BattleState == Defeat
 FinalSnapshot.Outcome     == Defeat
 ```
@@ -1008,7 +1082,21 @@ FinalSnapshot.Outcome     == ResolutionFaulted
 
 The diagnostic fault payload does not become Gameplay authority; it is frozen history describing the already-authoritative framework failure.
 
-### 20.4 Terminal mismatch
+No defeated participant is required for `ResolutionFault`. The WorkingSnapshot continues to reflect all valid earlier Records; the fault reducer changes only the terminal-owned state described below.
+
+### 20.4 Terminal reducer ownership
+
+After validation, a terminal reducer may change only terminal-owned fields:
+
+```text
+BattleState
+Outcome
+bCanEndTurn
+```
+
+It must not repair or synthesize missing HP, Block, Status, Card, pile or Energy history. Before Victory/Defeat is applied, the relevant WorkingSnapshot defeated/dead state and participant identities must already agree with the FinalSnapshot as a consequence of prior Records. If, for example, a Damage Record is missing and the WorkingSnapshot still shows a living enemy, terminal validation fails and the Controller collapses directly to `Envelope.FinalSnapshot` instead of presenting terminal semantics over an impossible intermediate state.
+
+### 20.5 Terminal mismatch
 
 Any mismatch means:
 
@@ -1030,7 +1118,7 @@ Locked producer responsibilities:
 
 | Producer | Committed Presentation fact |
 |---|---|
-| `UApplyStatusAction` | `StatusChanged(Applied/Increasing derived from result)` |
+| `UApplyStatusAction` | `StatusChanged(Applied/Increased derived from result)` |
 | `UReduceStatusAction` | `StatusChanged(Reduced or TurnEndDecay)` |
 | `URemoveStatusAction` | `StatusChanged(Removed)` |
 | `ABattleManager::CheckBattleResult` victory path | `Victory` terminal payload |

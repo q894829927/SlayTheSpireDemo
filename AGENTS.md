@@ -57,7 +57,7 @@ BattleActionQueue
 - [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
   - [x] UI-A1 Operable Battle HUD — COMPLETE; current Self-target Player-selection path revalidated with UE5.8 UI-A1 11/11 and manual PIE.
-  - [ ] UI-A2 Basic Committed Presentation — UI-A2A SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING; focused A2A Automation is authored but not run. UI-A2B remains blocked until the user-authorized Editor build + A2A gate pass. See `docs/Phase6UIA2Implementation.md` and Section 16.
+  - [ ] UI-A2 Basic Committed Presentation — UI-A2A/A2B/A2C C++ source validated by the UE5.8 affected aggregate gate at 77/77; Blueprint presentation and PIE remain deferred. UI-A2D Status/Terminal contract is design-locked and implementation has not started. See `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md`, `docs/Phase6UIA2DImplementation.md` and Section 16.
   - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text slice implemented, DataAsset-authored and UE5.8/PIE/package revalidated with UI-A3 8/8; remaining target-specific/energy-result preview still planned.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
@@ -82,7 +82,7 @@ Phase 6UI-A0 validated authoritative turn/Hand lifecycle, formal Query/Request A
 
 Phase 6UI-A1 validated the concrete Battle HUD through normal UI controls. Enemy-target and Self-target cards both use gameplay-provided public legal-target selection and formal Request revalidation. Defend resolves by selecting the highlighted Player presentation. The current owner gate passes Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 + Phase6UIA1 11/11 + Phase6UIA3 8/8 = 92/92, with the normal PIE battle loop and packaged Defend `{Block}` text validated.
 
-Phase 6UI-A2A source now contains the committed-presentation transport, frozen display snapshot, Resolution Begin/Abort/internal Seal lifecycle, explicit RecordWriter propagation, deferred Envelope delivery, bounded Controller backlog, PlaybackToken fail-safes, latest-only live input bindings and PresentationUnavailable path. Its focused Automation tests are authored but **not run**; no new pass total is claimed until user-authorized UE5.8 revalidation.
+Phase 6UI-A2A/A2B/A2C C++ now contains committed-presentation transport and safety, Damage/Block history, and Card/Energy/Zone/Shuffle history. The owner-confirmed UE5.8 affected aggregate gate passed A2A 8/8 + A2B 8/8 + A2C 8/8 inside 77/77. This validates C++/Automation only; visible Blueprint playback and PIE are still deferred. UI-A2D Status/Terminal is design-locked but not implemented.
 
 Phase 6UI-A3 dynamic-text slice validates `BattleTextResolver`, read-only Damage/Block preview pipelines and authored Card/Status format arguments. Target-specific exact preview and immediate Energy-result preview remain future UI-A3 work.
 
@@ -92,7 +92,7 @@ Current project-owned content remains under `Content/SlayTheSpireDemo/`. Importa
 
 Current temporary `L_BattleTest` debug bindings remain debug-only and are not the formal card-input architecture.
 
-UI-A2A itself introduces no `.uasset` or `.umap` requirement. A2B visible presentation may later require explicit user-side UMG wiring.
+UI-A2A/A2B/A2C C++ validation introduced no required `.uasset` or `.umap` change. Unified A2B/A2C/A2D visible presentation will later require explicit user-side UMG wiring.
 
 ---
 
@@ -253,14 +253,18 @@ UI-A0 Playable Gameplay Boundary   COMPLETE / 20/20
 ↓
 UI-A1 Operable Battle HUD          COMPLETE / 11/11 + PIE/PACKAGE VALIDATED
 ↓
-UI-A2A Committed Presentation Infrastructure SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING
+UI-A2A Committed Presentation Infrastructure C++ VALIDATED / 8/8
 ↓
-UI-A2B Damage + Block Presentation BLOCKED UNTIL A2A BUILD/AUTOMATION PASS
+UI-A2B Damage + Block Committed Presentation C++ VALIDATED / 8/8
+↓
+UI-A2C Card + Energy + Zone + Shuffle Presentation C++ VALIDATED / 8/8
+↓
+UI-A2D Status + Terminal Presentation DESIGN LOCKED / NOT IMPLEMENTED
 ↓
 UI-A3 Deterministic Immediate Preview — DYNAMIC TEXT SLICE VALIDATED / 8/8; REMAINING TARGET/ENERGY PREVIEW PLANNED
 ```
 
-Detailed UI-A2 implementation contract: `docs/Phase6UIA2Implementation.md` and Section 16.
+Detailed UI-A2 contracts/evidence: `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md`, `docs/Phase6UIA2DImplementation.md` and Section 16.
 
 ### Phase 7 — Relics — PLANNED AFTER PHASE 6UI-A
 
@@ -559,13 +563,17 @@ Phase 6UI-A0  20/20 PASS
 Phase 6UI-A1  11/11 PASS
 Phase 6UI-A3   8/8 PASS
 Current combined owner run 92/92 PASS
+Phase 6UI-A2A  8/8 PASS
+Phase 6UI-A2B  8/8 PASS
+Phase 6UI-A2C  8/8 PASS
+Affected Phase5-Phase6UIA2C aggregate 77/77 PASS
 ```
 
-The exact totals are run evidence, not permanent acceptance constants. UI-A2A tests are newly authored and are **not** part of a passed total yet.
+The exact totals are run evidence, not permanent acceptance constants. The 92/92 owner run and 77/77 A2 affected aggregate cover different configured suites and must not be arithmetically combined.
 
 Manual PIE normal UI player → enemy → player loop passed. Self-target Defend → highlighted Player passed. Packaged Defend dynamic `{Block}` description passed.
 
-The next required step for `Phase 6UI-A2A` is user-authorized UE5.8 Editor compilation plus the focused A2A Automation gate. Do not start UI-A2B Damage/Block implementation before that gate is green.
+The next UI-A2 source step is UI-A2D implementation against the locked Status/Terminal contract. Do not claim A2D build/Automation, Blueprint playback or PIE until those actions are actually performed with user authorization.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -656,8 +664,10 @@ docs/Phase6UIA3DynamicTextImplementation.md
 - Phase 6R — PASSED; Editor test module + Shipping exclusion.
 - Phase 6UI-A0 — PASSED; 20/20.
 - Phase 6UI-A1 — PASSED; 11/11 + Self-target Player selection + normal PIE loop.
-- Phase 6UI-A2A — SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue + PlaybackToken + latest-only input bindings + PresentationUnavailable; focused Automation authored but not run.
-- Phase 6UI-A2B — BLOCKED until A2A Editor build + focused Automation pass.
+- Phase 6UI-A2A — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue + PlaybackToken + latest-only input bindings + PresentationUnavailable.
+- Phase 6UI-A2B — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: committed Damage/Block facts and reducer/fallback safety; visible Blueprint playback remains deferred.
+- Phase 6UI-A2C — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: committed CardPlayed/Energy/zone/shuffle facts and WorkingSnapshot reduction; visible Blueprint playback remains deferred.
+- Phase 6UI-A2D — DESIGN LOCKED / NOT IMPLEMENTED: Status lifecycle + formal terminal/fault treatment + combined acceptance.
 - Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED; dynamic text 8/8, remaining target-specific/Energy preview planned.
 - Phase 6UI-A — IN PROGRESS.
 - Phase 7 — PLANNED AFTER Phase 6UI-A.
@@ -693,7 +703,7 @@ When completing a meaningful phase:
 
 ## 15. Planned Playable UI, MVVM and Presentation Architecture
 
-Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. Phase 6UI-A2A source is implemented and is awaiting user-authorized UE5.8 Editor build + focused Automation revalidation. Section 16 and `docs/Phase6UIA2Implementation.md` are the synchronized UI-A2 contracts.
+Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. UI-A2A/A2B/A2C C++ passed the owner-confirmed affected 77/77 aggregate; Blueprint presentation and PIE remain deferred. UI-A2D is design-locked and not implemented. Section 16 plus `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md` and `docs/Phase6UIA2DImplementation.md` are the synchronized UI-A2 contracts/evidence.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -703,8 +713,10 @@ Phase 6R                              COMPLETE
 Phase 6UI-A                           IN PROGRESS
     UI-A0 playable gameplay boundary COMPLETE
     UI-A1 operable Battle HUD        COMPLETE
-    UI-A2A committed presentation infrastructure SOURCE IMPLEMENTED / REVALIDATION PENDING
-    UI-A2B Damage + Block            BLOCKED UNTIL A2A GATE PASSES
+    UI-A2A committed presentation infrastructure C++ VALIDATED / 8/8
+    UI-A2B Damage + Block             C++ VALIDATED / 8/8
+    UI-A2C Card/Energy/Zone/Shuffle   C++ VALIDATED / 8/8
+    UI-A2D Status/Terminal            DESIGN LOCKED / NOT IMPLEMENTED
     UI-A3 deterministic immediate preview — dynamic-text slice validated; remaining target/energy preview planned
 ↓
 Phase 7 Relics
@@ -893,11 +905,17 @@ Playable Gameplay Boundary
 UI-A1 — COMPLETE
 Operable Battle HUD
 
-UI-A2A — SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING
+UI-A2A — C++ VALIDATED / 8/8
 Committed Presentation Infrastructure
 
-UI-A2B — BLOCKED UNTIL UI-A2A GATE PASSES
+UI-A2B — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED
 Damage + Block Presentation
+
+UI-A2C — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED
+Card + Energy + Zone + Shuffle Presentation
+
+UI-A2D — DESIGN LOCKED / NOT IMPLEMENTED
+Status + Terminal Presentation
 
 UI-A3 — PARTIAL
 Deterministic Immediate Preview
@@ -1034,9 +1052,9 @@ Live input bindings
 
 ## 16. Locked Phase 6UI-A2 Architecture Summary
 
-**Current source status: UI-A2A implemented; UE5.8 Editor build and focused Automation revalidation pending user permission.** The architecture remains locked; source implementation does not authorize UI-A2B until the A2A gate is green.
+**Current source status: UI-A2A/A2B/A2C C++ validated by the owner-confirmed UE5.8 affected aggregate at 77/77; Blueprint playback/PIE deferred. UI-A2D is design-locked and not implemented.** The architecture remains locked; A2D must follow `docs/Phase6UIA2DImplementation.md`.
 
-This section is the compact agent-facing contract. The detailed synchronized design is `docs/Phase6UIA2Implementation.md`.
+This section is the compact agent-facing contract. Detailed synchronized contracts/evidence are `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md` and `docs/Phase6UIA2DImplementation.md`.
 
 ### 16.1 Required closed loop
 
@@ -1365,4 +1383,4 @@ InvalidResolvedPresentationIdShowsPresentationUnavailable
 PresentationUnavailableStillCreatesErrorCapableHUD
 ```
 
-The tests are authored in the Editor-only `SlayTheSpireDemoTests` module, including dedicated A2A infrastructure, presenter and hardening suites. **They have not been run.** Only after the user-authorized UE5.8 Editor build and focused A2A gate are green should UI-A2B begin real Damage/Block presentation.
+The Editor-only `SlayTheSpireDemoTests` module contains the dedicated A2A infrastructure, presenter and hardening suites. The owner-confirmed UE5.8 aggregate passed A2A 8/8 together with A2B 8/8 and A2C 8/8 (affected total 77/77). This evidence does not validate deferred Blueprint playback or PIE.

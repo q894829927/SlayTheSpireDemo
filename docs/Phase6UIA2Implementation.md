@@ -1,28 +1,29 @@
 # Phase 6UI-A2 — Basic Committed Presentation
 
-Status: **UI-A2A SOURCE IMPLEMENTED / UE5.8 REVALIDATION PENDING**.
+Status: **UI-A2A/A2B/A2C C++ VALIDATED / A2D DESIGN LOCKED**.
 
 UI-A2 replaces the UI-A0/UI-A1 immediate/no-op presentation catch-up boundary with deterministic playback of already-committed gameplay facts. It does not make `BattleActionQueue`, `BattleState` or authoritative gameplay wait for animation.
 
-This document is the detailed implementation contract. UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure before any real Damage/Block animation is added.
+This document is the base implementation contract. UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure; A2B/A2C add committed Damage/Block and Card/Energy/Zone/Shuffle facts. The more specific A2D Status/Terminal contract is `docs/Phase6UIA2DImplementation.md`.
 
-### UI-A2A implementation / validation status
+### Current implementation / validation status
 
-The UI-A2A C++ infrastructure and focused Editor-only Automation tests are now authored in source. The source change has **not** been UE5.8-compiled or Automation-executed in this implementation pass because those actions require explicit user permission.
+The repository owner confirmed the UE5.8 affected aggregate run for the current UI-A2A/A2B/A2C C++ source. Exact evidence is recorded in `docs/Phase6UIA2CValidation.md`.
 
 Current evidence boundary:
 
 ```text
-C++ source                         IMPLEMENTED
-Editor-only UI-A2A tests           AUTHORED / NOT RUN
-UE5.8 Editor build                 PENDING USER PERMISSION
-UI-A2A Automation validation       PENDING USER PERMISSION
-PIE / Blueprint animation work     NOT REQUIRED FOR THIS A2A SOURCE SLICE
-.uasset / .umap changes            NONE
-UI-A2B Damage/Block implementation NOT STARTED
+UI-A2A C++ / Automation             PASSED 8/8
+UI-A2B C++ / Automation             PASSED 8/8
+UI-A2C C++ / Automation             PASSED 8/8
+Affected aggregate gate             PASSED 77/77
+Blueprint A2B/A2C playback          DEFERRED
+PIE presentation smoke              DEFERRED
+UI-A2D design contract              LOCKED
+UI-A2D implementation / validation  NOT STARTED
 ```
 
-Do not convert the historical 92/92 validated owner gate into a larger "passed" number until the new A2A tests have actually run. UI-A2A is not `COMPLETE` yet, and UI-A2B must not begin until the user-authorized Editor build and focused A2A Automation gate are green.
+The historical 92/92 owner run and the affected 77/77 A2 aggregate are different configured suites and must not be added together. C++/Automation validation does not claim the deferred Blueprint animation or PIE work.
 
 ---
 
@@ -878,7 +879,7 @@ Timeout/Skip/fallback advances or collapses Presentation only. It never advances
 
 ## 12. Slice ownership — no cross-phase ambiguity
 
-### UI-A2A — infrastructure — SOURCE IMPLEMENTED / REVALIDATION PENDING
+### UI-A2A — infrastructure — C++ VALIDATED / 8/8
 
 Implemented source scope:
 
@@ -904,9 +905,9 @@ Skip / missing callback / stale callback / timeout / Widget-loss fail-safe
 latest-only runtime input binding refresh
 ```
 
-A2A does **not** implement real Damage/Block business records or animation. Source implementation is awaiting user-authorized UE5.8 build and focused Automation validation before it may be marked `COMPLETE`.
+A2A does **not** implement real Damage/Block business records or animation. Its infrastructure is validated; visible presentation remains part of the deferred unified Blueprint integration.
 
-### UI-A2B — Damage + Block vertical slice
+### UI-A2B — Damage + Block vertical slice — C++ VALIDATED / 8/8
 
 Adds:
 
@@ -926,7 +927,7 @@ The generic PlaybackToken/Skip/fail-safe already exists from A2A.
 
 Victory/Defeat ordering is exercised here because lethal Damage is the first concrete terminal-producing presentation path.
 
-### UI-A2C — cards/deck/energy
+### UI-A2C — cards/deck/energy — C++ VALIDATED / 8/8
 
 Adds:
 
@@ -942,7 +943,7 @@ PlayArea → Removed
 Shuffle → reactions → RetryDraw ordering
 ```
 
-### UI-A2D — Status + formal terminal/fault visual presentation
+### UI-A2D — Status + formal terminal/fault visual presentation — DESIGN LOCKED / NOT IMPLEMENTED
 
 Adds:
 
@@ -955,6 +956,8 @@ combined end-to-end presentation acceptance
 ```
 
 `ResolutionFault` lifecycle itself already exists from A2A; A2D adds the normal visible treatment and combined acceptance rather than introducing the record type for the first time.
+
+The complete A2D contract, including exact Status MutationResult/identity, historical descriptions, terminal reducer validation and producer matrix, is `docs/Phase6UIA2DImplementation.md`.
 
 ---
 
@@ -1092,7 +1095,7 @@ Source/SlayTheSpireDemoTests/Private/Phase6UIA2ATestTypes.h/.cpp
 
 The hardening suite additionally covers overlapping-Begin builder cleanup, terminal fault append rejection, battle-lifetime resolved PresentationId stability, stale old-battle Envelope rejection, stale old-Widget loss isolation and direct frozen-baseline HUD operation when committed recording is disabled.
 
-**Tests are authored but have not been run.** Only after the user-authorized UE5.8 Editor build and this infrastructure gate are green should UI-A2B begin real Damage/Block presentation.
+These A2A suites passed 8/8 in the owner-confirmed UE5.8 affected aggregate together with A2B 8/8 and A2C 8/8 (77/77 total). This evidence does not include deferred Blueprint playback or PIE presentation smoke.
 
 ---
 
@@ -1130,4 +1133,4 @@ Current input identity
 = refreshed only after display catches up to newest matching BattleId/Revision
 ```
 
-No Damage animation should be implemented until UI-A2A satisfies these infrastructure contracts through the pending UE5.8 build + focused Automation validation.
+UI-A2A infrastructure and the A2B/A2C committed-fact reducers are C++/Automation validated. Visible Blueprint integration remains intentionally deferred until A2D C++/Automation is closed, after which Damage/Block/Card/Energy/Zone/Status/Terminal playback should be wired and PIE-smoked as one coherent presentation surface.
