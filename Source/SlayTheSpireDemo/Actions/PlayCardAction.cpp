@@ -153,6 +153,7 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	Context.EventDispatcher = ResolvedEventDispatcher;
 	Context.EventCombatants = RawEventCombatants;
 	Context.ActionOuter = Queue;
+	Context.PresentationRecordWriter = GetPresentationRecordWriter();
 
 	TArray<UBattleAction*> FollowUpActions;
 	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
@@ -176,10 +177,13 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 			Finish();
 			return;
 		}
+
+		FollowUpAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	}
 
 	UFinishCardPlayAction* FinishPlayAction = NewObject<UFinishCardPlayAction>(Queue);
 	FinishPlayAction->Initialize(Deck.Get(), Card.Get());
+	FinishPlayAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	FollowUpActions.Add(FinishPlayAction);
 
 	if (!Deck->TryMoveHandCardToPlayArea(Card.Get()))
