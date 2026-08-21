@@ -35,8 +35,13 @@ void ABattleHUDPresenter::BeginPlay()
 		return;
 	}
 
+	const bool bUsePresentationController =
+		bEnableCommittedPresentation
+		&& BattleManager->bEnableCommittedPresentationRecording
+		&& BattleManager->IsPresentationAvailable();
+
 	ViewModel = NewObject<UBattleHUDViewModel>(this);
-	if (!IsValid(ViewModel) || !ViewModel->Initialize(BattleManager.Get(), bEnableCommittedPresentation))
+	if (!IsValid(ViewModel) || !ViewModel->Initialize(BattleManager.Get(), bUsePresentationController))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter failed to initialize the BattleHUD ViewModel."));
 		return;
@@ -54,7 +59,7 @@ void ABattleHUDPresenter::BeginPlay()
 
 	WidgetInstance->SetViewModel(ViewModel.Get());
 
-	if (bEnableCommittedPresentation && BattleManager->IsPresentationAvailable())
+	if (bUsePresentationController)
 	{
 		PresentationController = NewObject<UBattlePresentationController>(this);
 		if (IsValid(PresentationController)
@@ -78,6 +83,9 @@ void ABattleHUDPresenter::BeginPlay()
 	{
 		ViewModel->EnterPresentationUnavailable(BattleManager->GetPresentationUnavailableReason());
 	}
+	// Intentional no-history modes (Presenter disabled or battle recording disabled)
+	// leave the ViewModel as the direct frozen-baseline owner. OnReadStateReady may
+	// then apply the newest frozen baseline without any PresentationController.
 
 	WidgetInstance->AddToViewport(ZOrder);
 
