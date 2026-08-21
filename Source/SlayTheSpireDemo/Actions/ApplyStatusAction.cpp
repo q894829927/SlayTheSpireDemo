@@ -61,7 +61,7 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 
 	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
 	const UStatusInstance* ExistingBefore = Writer.IsAvailable()
-		? Container->FindMutableStatusById(StatusDefinition->StatusId)
+		? Container->FindStatusById(StatusDefinition->StatusId)
 		: nullptr;
 	const FText DescriptionBefore = StatusPresentation::FreezeDescription(ExistingBefore);
 
