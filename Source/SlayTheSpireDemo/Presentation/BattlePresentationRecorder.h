@@ -56,6 +56,7 @@ public:
 		FPresentationRecord Record
 	);
 
+	bool TryGetActiveWriter(FPresentationRecordWriter& OutWriter) const;
 	bool HasActiveResolution() const;
 	bool IsActiveResolutionValid() const;
 	uint64 GetActiveResolutionId() const;
