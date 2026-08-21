@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "../Presentation/BattlePresentationRecorder.h"
 #include "BattleTrigger.generated.h"
 
 class ACombatant;
@@ -12,16 +13,22 @@ struct FBattleEvent;
 struct SLAYTHESPIREDEMO_API FTriggerContext
 {
 public:
-	FTriggerContext(UStatusInstance* InRuntimeSource, UObject* InActionOuter);
+	FTriggerContext(
+		UStatusInstance* InRuntimeSource,
+		UObject* InActionOuter,
+		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
+	);
 
 	UStatusInstance* GetRuntimeSource() const;
 	ACombatant* GetOwner() const;
 	UObject* GetActionOuter() const;
+	const FPresentationRecordWriter& GetPresentationRecordWriter() const;
 
 private:
 	UStatusInstance* RuntimeSource = nullptr;
 	ACombatant* Owner = nullptr;
 	UObject* ActionOuter = nullptr;
+	FPresentationRecordWriter PresentationRecordWriter;
 };
 
 UCLASS(Abstract, EditInlineNew, DefaultToInstanced)
