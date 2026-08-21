@@ -71,6 +71,10 @@ void ABattleManager::HandleActionQueueResolutionIdle()
 		return;
 	}
 
+	// This is the internal Gameplay-stable boundary. Freeze + Seal completes
+	// synchronously here so the active builder is released before another
+	// Resolution may begin. Only public delivery remains deferred.
+	FinalizePresentationResolutionAtStableBoundary();
 	ScheduleReadStateReadyPublish();
 }
 
@@ -116,6 +120,10 @@ void ABattleManager::FlushScheduledReadStateReadyForTesting()
 
 void ABattleManager::TryPublishReadStateReady()
 {
+	// Sealed immutable Envelopes are delivered first and in ResolutionId order.
+	// The current-state read edge remains a separate BattleId/StateRevision edge.
+	DrainPendingPublicPresentationDeliveries();
+
 	FBattleReadSnapshot Snapshot;
 	if (!TryBuildPlayerFacingReadSnapshot(Snapshot))
 	{
