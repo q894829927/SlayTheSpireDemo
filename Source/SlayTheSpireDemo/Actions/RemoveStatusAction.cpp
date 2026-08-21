@@ -44,8 +44,9 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 	}
 
 	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	UStatusInstance* ExactBefore = ExpectedInstance.Get();
 	const FText DescriptionBefore = Writer.IsAvailable()
-		? StatusPresentation::FreezeDescription(ExpectedInstance.Get())
+		? StatusPresentation::FreezeDescription(ExactBefore)
 		: FText::GetEmpty();
 
 	const FString ExpectedLabel = ExpectedInstance->GetDebugLabel();
@@ -54,13 +55,7 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 	switch (Result.Outcome)
 	{
 	case EStatusMutationOutcome::Committed:
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Action] RemoveStatusAction committed for %s Amount %d -> 0."),
-			*ExpectedLabel,
-			Result.AmountBefore
-		);
+		UE_LOG(LogTemp, Log, TEXT("[Action] RemoveStatusAction committed for %s Amount %d -> 0."), *ExpectedLabel, Result.AmountBefore);
 		if (Writer.IsAvailable())
 		{
 			StatusPresentation::AppendCommittedChange(
@@ -68,6 +63,7 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 				Battle.Get(),
 				Source.Get(),
 				Target.Get(),
+				ExactBefore,
 				Result,
 				EStatusChangeReason::Removed,
 				DescriptionBefore,
@@ -77,12 +73,7 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 		break;
 
 	case EStatusMutationOutcome::NoOp:
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Action] RemoveStatusAction no-op: exact runtime instance %s is no longer present."),
-			*ExpectedLabel
-		);
+		UE_LOG(LogTemp, Log, TEXT("[Action] RemoveStatusAction no-op: exact runtime instance %s is no longer present."), *ExpectedLabel);
 		break;
 
 	case EStatusMutationOutcome::Invalid:
