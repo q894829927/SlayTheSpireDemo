@@ -4,7 +4,10 @@
 #include "Containers/Ticker.h"
 #include "GameFramework/Actor.h"
 #include "BattleRequestTypes.h"
+#include "BattleState.h"
 #include "../Enemy/EnemyIntent.h"
+#include "../Presentation/BattlePresentationRecorder.h"
+#include "../Presentation/PresentationTypes.h"
 #include "BattleManager.generated.h"
 
 class ACombatant;
@@ -19,21 +22,11 @@ class UTurnEndedAction;
 struct FBattleReadSnapshot;
 enum class EDamageKind : uint8;
 
-UENUM(BlueprintType)
-enum class EBattleState : uint8
-{
-	BattleStart UMETA(DisplayName = "Battle Start"),
-	PlayerTurnStarting UMETA(DisplayName = "Player Turn Starting"),
-	PlayerTurn UMETA(DisplayName = "Player Turn"),
-	PlayerTurnEnding UMETA(DisplayName = "Player Turn Ending"),
-	EnemyTurn UMETA(DisplayName = "Enemy Turn"),
-	EnemyTurnEnding UMETA(DisplayName = "Enemy Turn Ending"),
-	Victory UMETA(DisplayName = "Victory"),
-	Defeat UMETA(DisplayName = "Defeat"),
-	ResolutionFaulted UMETA(DisplayName = "Resolution Faulted")
-};
-
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBattleReadStateReady, uint64, uint64);
+DECLARE_MULTICAST_DELEGATE_OneParam(
+	FOnPresentationResolutionReady,
+	const FPresentationResolutionEnvelope&
+);
 
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API ABattleManager : public AActor
@@ -89,6 +82,11 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5CStatuses;
+
+	// Presentation recording is optional. Disabling it never changes Gameplay;
+	// stable frozen baselines and ordinary read publication still continue.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Presentation")
+	bool bEnableCommittedPresentationRecording = true;
 
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void StartBattle();
@@ -148,8 +146,6 @@ public:
 	// Intent with gameplay-derived current-state values. Damage/Block text reuses
 	// the authoritative Modifier Pipelines without Commit. Intent remains not a
 	// guarantee of damage at a future EnemyTurn after intervening reactions.
-	// This is also the required initial pull for a newly attached read consumer:
-	// subscribe to OnReadStateReady first, then call this once immediately.
 	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 	const FEnemyIntent& GetCommittedEnemyIntent() const;
 
@@ -157,14 +153,28 @@ public:
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
 
+	// One battle-scoped resolver owns authored/fallback PresentationId semantics.
+	// Historical snapshots, current legal-target views and future presentation
+	// records must all use this same resolver.
+	bool TryResolveCombatantPresentationId(
+		const ACombatant* Combatant,
+		FName& OutPresentationId
+	) const;
+
+	bool TryGetLatestFrozenPresentationBaseline(FPresentationStateSnapshot& OutSnapshot) const;
+	bool IsPresentationAvailable() const;
+	FText GetPresentationUnavailableReason() const;
+
+	// Deferred public immutable Envelope delivery. It never replays to late
+	// subscribers. A subscriber that attaches late bootstraps from the latest
+	// frozen baseline instead of asking for historical records.
+	FOnPresentationResolutionReady OnPresentationResolutionReady;
+
 	// UI/ViewModel-facing stable-read notification. It is battle-scoped and
 	// revision-scoped; Queue-level OnResolutionIdle is intentionally not the public
 	// presentation boundary. Publication is deferred by at least one CoreTicker
 	// turn after Queue settlement so it cannot re-enter a public Request before
-	// that Request has returned AcceptedForResolution to its caller. This delegate
-	// does not replay the latest state to late subscribers. Every consumer must bind
-	// first and then immediately call TryBuildPlayerFacingReadSnapshot before it
-	// begins waiting for future notifications.
+	// that Request has returned to its caller.
 	FOnBattleReadStateReady OnReadStateReady;
 
 	// Narrow runtime dependency bridge used while BattleManager still owns the
@@ -195,6 +205,14 @@ public:
 	void SetCommittedEnemyAttackIntentForTesting(int32 BaseAmount);
 	EBattleState GetStateBeforeLastResolutionFaultForTesting() const;
 	void FlushScheduledReadStateReadyForTesting();
+
+	UBattlePresentationRecorder* GetPresentationRecorderForTesting() const;
+	FPresentationRecordWriter GetActivePresentationRecordWriterForTesting() const;
+	bool BeginSystemPresentationResolutionForTesting();
+	bool SealActivePresentationResolutionForTesting();
+	int32 GetPendingPresentationDeliveryCountForTesting() const;
+	uint64 GetLastSealedPresentationResolutionIdForTesting() const;
+	void SetForcePresentationFreezeFailureForTesting(bool bForce);
 #endif
 
 private:
@@ -210,7 +228,11 @@ private:
 	void HandleActionQueueEmpty();
 	void HandleActionQueueResolutionIdle();
 	void HandleActionQueueResolutionFaulted(const FString& Reason, int32 ExecutedCount, UBattleAction* LastAction);
-	void HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue);
+	void HandleTurnEndedActionExecution(
+		ACombatant* TurnOwner,
+		UBattleActionQueue* Queue,
+		const FPresentationRecordWriter& PresentationRecordWriter
+	);
 	void CheckBattleResult();
 	void ScheduleReadStateReadyPublish();
 	bool HandleScheduledReadStateReady(float DeltaTime);
@@ -236,6 +258,26 @@ private:
 	bool HasValidEventDispatcher() const;
 	bool IsActionQueueBusy() const;
 
+	bool BeginPresentationResolution(EPresentationResolutionOrigin Origin);
+	void AbortPresentationResolution();
+	FPresentationRecordWriter GetActivePresentationRecordWriter() const;
+	void FinalizePresentationResolutionAtStableBoundary();
+	void AppendPresentationResolutionFault(
+		const FString& Reason,
+		int32 ExecutedCount,
+		const UBattleAction* LastAction
+	);
+	bool TryFreezePresentationStateSnapshot(
+		const FBattleReadSnapshot& ReadSnapshot,
+		FPresentationStateSnapshot& OutSnapshot
+	) const;
+	bool ValidateResolvedPresentationIds(FString& OutReason) const;
+	void ResetPresentationForBattle();
+	void MarkPresentationUnavailable(const FString& Reason);
+	void EnqueuePendingPublicPresentation(FPresentationResolutionEnvelope&& Envelope);
+	void DrainPendingPublicPresentationDeliveries();
+	void FreezeLatestPresentationBaselineWithoutResolution();
+
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleActionQueue> ActionQueue = nullptr;
 
@@ -245,18 +287,37 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UBattlePresentationRecorder> PresentationRecorder = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<FPresentationResolutionEnvelope> PendingPublicDeliveryQueue;
+
+	UPROPERTY(Transient)
+	FPresentationStateSnapshot LatestFrozenPresentationBaseline;
+
+	UPROPERTY(Transient)
+	FText PresentationUnavailableReason;
+
 	FEnemyIntent CommittedEnemyIntent;
 	uint64 BattleId = 0;
 	uint64 StateRevision = 0;
 	uint64 NextRuntimeSequence = 1;
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
+	uint64 LastSealedPresentationResolutionId = 0;
+	uint64 LastDeliveredPresentationResolutionId = 0;
+	bool bHasLatestFrozenPresentationBaseline = false;
+	bool bPresentationAvailable = true;
 	bool bReadStateReadyPublishScheduled = false;
 	FTSTicker::FDelegateHandle ReadStateReadyTickerHandle;
+
+	static constexpr int32 MaxPendingPublicPresentationEnvelopes = 8;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bool bForceInvalidPlayerEndBatchForTesting = false;
 	bool bForceInvalidEnemyTurnBatchForTesting = false;
+	bool bForcePresentationFreezeFailureForTesting = false;
 	EBattleState StateBeforeLastResolutionFaultForTesting = EBattleState::BattleStart;
 #endif
 };
