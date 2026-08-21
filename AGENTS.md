@@ -511,10 +511,14 @@ Saved/
 48. Combatant Presentation IDs are resolved by one Battle-layer resolver and the resolved values are non-empty, battle-scoped unique and shared by Snapshot, LegalTargets and Presentation Records.
 49. Presentation RecordWriter/Sink is an optional, explicit, battle-scoped dependency. Actions must not world-search, actor-search, infer it through UObject Outer or use a global Recorder; nested/reaction Actions in one active Resolution receive the same writer through explicit context propagation.
 50. Record append failure is Presentation-only failure: Gameplay Commit remains committed, Action Finish/Queue ordering remains unchanged, and no Gameplay fault is requested.
-51. One active Presentation Resolution seals at most once. Duplicate stable publication must not duplicate an Envelope. Freeze/Seal failure clears the builder, disables/degrades Presentation for the battle, allows ordinary `OnReadStateReady` to continue and never becomes Gameplay ResolutionFault.
+51. One active Presentation Resolution seals at most once. Freeze/Seal failure clears the builder, disables/degrades Presentation for the battle, allows ordinary deferred `OnReadStateReady` to continue and never becomes Gameplay ResolutionFault.
 52. `CardPlayed` history must preserve exact Energy Before/After/CostPaid rather than reading live/final Energy during playback.
 53. `PresentationUnavailable` is a UI-only state. ViewModel initialization remains successful enough for Presenter to create the normal HUD/error surface; player input stays disabled and a clear development-facing error is shown.
 54. Generic `ResolutionFault` Record lifecycle, PlaybackToken and Skip/timeout/stale-callback safety belong to UI-A2A infrastructure. A2D adds formal terminal/fault visual treatment rather than introducing those mechanisms for the first time.
+55. Internal Resolution Seal and public notification are separate lifecycles. Once Gameplay/macro work becomes stable, Freeze/Seal must synchronously release the active builder before any next `BeginResolution`; a sealed Envelope may wait for deferred public delivery.
+56. `OnPresentationResolutionReady` obeys the same accepted-Request non-reentrancy rule as `OnReadStateReady`: neither public callback may fire before the originating accepted Request returns.
+57. Writer absence from the start is valid no-history mode. If an active writer Append fails, invalidate the whole current record batch, discard buffered unpublished Records and never Seal/Publish a partial Envelope; use the final frozen baseline/fail-safe path instead.
+58. Envelope de-duplication identity is `(BattleId, ResolutionId)`. Read-state edge de-duplication identity is `(BattleId, StateRevision)`. Never use the last published read revision as the sole Envelope identity.
 
 Prefer clear architecture over clever abstractions.
 
@@ -633,7 +637,7 @@ docs/Phase6UIA3DynamicTextImplementation.md
 - Phase 6R — PASSED; Editor test module + Shipping exclusion.
 - Phase 6UI-A0 — PASSED; 20/20.
 - Phase 6UI-A1 — PASSED; 11/11 + Self-target Player selection + normal PIE loop.
-- Phase 6UI-A2 — NEXT / DESIGN LOCKED: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/Seal + immutable Resolution Envelope + bounded fail-safe Controller queue; UI-A2A infrastructure precedes visible Damage animation.
+- Phase 6UI-A2 — NEXT / DESIGN LOCKED: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + deferred public delivery + bounded fail-safe Controller queue; UI-A2A infrastructure precedes visible Damage animation.
 - Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED; dynamic text 8/8, remaining target-specific/Energy preview planned.
 - Phase 6UI-A — IN PROGRESS.
 - Phase 7 — PLANNED AFTER Phase 6UI-A.
@@ -697,7 +701,7 @@ Normal UI never constructs/enqueues authoritative BattleActions directly. It use
 
 `AcceptedForResolution` means accepted into the Gameplay resolution system, not completed effects.
 
-`OnReadStateReady` is a non-replaying stable-read edge and must not fire re-entrantly before an accepted public Request returns.
+Internal Gameplay may synchronously settle and Seal a Presentation Resolution during `StartProcessing()`. Public notification remains delayed: neither `OnPresentationResolutionReady` nor `OnReadStateReady` may fire re-entrantly before an accepted public Request returns.
 
 ### 15.3 MVVM-style responsibility split
 
@@ -753,11 +757,11 @@ Gameplay continues independently
 
 Presentation may lock input for readability but never becomes authoritative gameplay state.
 
-### 15.7 Presentation Records and Resolution Envelopes
+### 15.7 Presentation Records, internal Seal and deferred delivery
 
 A Record is an immutable player-facing historical fact with deterministic `BattleId / ResolutionId / PresentationSequence` identity.
 
-At the stable boundary, all Records for one Resolution and the exact frozen final display state are sealed together:
+At the internal Gameplay-stable boundary, all valid Records for one Resolution and the exact frozen final display state are sealed together:
 
 ```text
 FPresentationResolutionEnvelope
@@ -769,22 +773,42 @@ FPresentationResolutionEnvelope
 └── FinalSnapshot : FPresentationStateSnapshot
 ```
 
+Seal releases the active builder immediately. Public delivery of that immutable Envelope happens later at the deferred UI/read notification boundary.
+
+```text
+internal Queue/macro stable
+↓
+Freeze + Seal + release builder
+↓
+next Resolution may Begin
+
+originating public Request returns
+↓
+deferred OnPresentationResolutionReady / OnReadStateReady
+```
+
 Historical playback never queries Recorder/current Gameplay to reconstruct the past.
+
+Envelope identity is `(BattleId, ResolutionId)`. Stable read-edge identity is `(BattleId, StateRevision)`; these de-duplication domains must remain separate.
 
 ### 15.8 Presentation catch-up and input release
 
 Once UI-A2 exists, the display flow is:
 
 ```text
-Player input-ready
+Player submits Request
 ↓
-Request accepted
+final validation / BeginResolution
+↓
+Gameplay may resolve synchronously
+↓
+internal stable boundary freezes + seals Envelope and releases builder
+↓
+public Request returns AcceptedForResolution
 ↓
 UI enters Resolving / input locked
 ↓
-Gameplay resolves deterministically
-↓
-sealed Envelope becomes available
+deferred sealed-Envelope delivery
 ↓
 Controller plays that Envelope's Records
 ↓
@@ -819,6 +843,8 @@ release input when Gameplay is request-eligible
 
 Do not “refresh from latest Gameplay snapshot” for display during catch-up; that would bypass the frozen Envelope pairing.
 
+If Presentation was disabled from Resolution start, no historical Envelope is required; use the final frozen baseline. If an active writer unexpectedly fails, invalidate the whole record batch and do not publish a partial Envelope.
+
 ### 15.9 Interaction policy
 
 Phase 6UI-A keeps the explicit two-stage card interaction. Enemy-target and Self-target cards expose gameplay-provided public LegalTargets. Widget matching uses PresentationId only as a visual mapping key; formal Requests submit the current gameplay TargetId/object and revalidate.
@@ -851,11 +877,15 @@ UI-A2 slice ownership is fixed as:
 UI-A2A
 - generic Record/Envelope transport
 - BattleId / ResolutionId / PresentationSequence
-- Begin / Abort / Seal lifecycle
+- Begin / Abort / internal Seal lifecycle
+- seal-before-next-Begin invariant
+- deferred non-reentrant public Envelope/Ready notification
 - ResolutionFault Record lifecycle and append-last invariant
 - frozen FPresentationStateSnapshot
 - explicit optional battle-scoped RecordWriter propagation
-- Freeze/Seal failure and duplicate-publication de-duplication
+- writer-append failure invalidates the whole current record batch
+- separate Envelope vs read-state de-duplication identities
+- Freeze/Seal failure policy
 - PresentationUnavailable bootstrap state
 - Presenter/Controller as sole HUD display sequencer
 - bounded Envelope backlog
@@ -900,7 +930,7 @@ UI-A2D
  Request ────┘                           │
       │                                  │
       ▼                                  │
-AcceptedForResolution                    │
+Begin Presentation Resolution            │
       │                                  │
       ▼                                  │
 BattleActionQueue                        │
@@ -918,8 +948,16 @@ Presentation Records              Coherent Raw Read Snapshot
       │                                  │
       └──────────────┬───────────────────┘
                      ▼
+        INTERNAL STABLE SEAL BOUNDARY
           Immutable Resolution Envelope
           Records[] + FinalSnapshot
+                     │
+             release active builder
+                     │
+       originating public Request returns
+                     │
+                     ▼
+          DEFERRED PUBLIC DELIVERY
                      │
                      ▼
           Presentation Controller
@@ -990,11 +1028,21 @@ Gameplay continues independently
 ↓
 macro flow fully stabilizes
 ↓
+INTERNAL STABLE BOUNDARY
 Build exact raw read snapshot
 ↓
 Freeze exact FPresentationStateSnapshot
 ↓
 Seal immutable FPresentationResolutionEnvelope exactly once
+↓
+release active builder before any next BeginResolution
+↓
+PUBLIC DEFERRED BOUNDARY
+originating accepted Request has returned
+↓
+OnPresentationResolutionReady(sealed Envelope)
+↓
+OnReadStateReady(BattleId, StateRevision)
 ↓
 Presentation Coordinator / Controller
 ↓
@@ -1010,6 +1058,8 @@ when caught up to newest BattleId/Revision, refresh live input bindings only
 ↓
 unlock input if authoritative Gameplay is request-eligible
 ```
+
+`OnPresentationResolutionReady` and `OnReadStateReady` are public deferred notifications. Seal is not deferred merely to satisfy their non-reentrancy rule.
 
 ### 16.2 Frozen state + latest-only input bindings
 
@@ -1030,13 +1080,23 @@ validation succeeds
 → truly side-effect-free non-framework failure: Abort builder
 ```
 
+There may be only one active builder. It must be sealed/aborted at the internal stable boundary before another Resolution begins. A sealed Envelope pending deferred delivery is not an active builder.
+
 BattleStart begins before fault-capable opening work. Initial Origins are `BattleStart`, `PlayCard`, `EndTurn`, `System`.
 
-### 16.4 Immutable Envelope and stable publication
+### 16.4 Immutable Envelope, Seal and de-duplication identities
 
 A sealed Envelope owns `BattleId`, `ResolutionId`, `Origin`, `FinalStateRevision`, `Records[]` and `FinalSnapshot`.
 
-One active Resolution seals at most once. Duplicate stable `(BattleId, StateRevision)` publication cannot duplicate an Envelope.
+```text
+Envelope identity / Seal+Publish de-dup
+= (BattleId, ResolutionId)
+
+Read-state edge de-dup
+= (BattleId, StateRevision)
+```
+
+One `(BattleId, ResolutionId)` seals/publishes at most one Envelope. A duplicate stable read callback must not re-Seal an Envelope, but `LastPublishedReadStateRevision` must not be used as the Envelope's sole identity.
 
 Freeze/Seal failure:
 
@@ -1045,12 +1105,12 @@ clear/discard current Presentation builder
 ↓
 Presentation unavailable/disabled for this battle
 ↓
-ordinary Gameplay state and OnReadStateReady continue
+ordinary Gameplay state and deferred OnReadStateReady continue
 ↓
 never Gameplay ResolutionFault
 ```
 
-### 16.5 Explicit optional RecordWriter dependency
+### 16.5 Explicit optional RecordWriter dependency and append failure
 
 RecordWriter/Sink is an optional battle-scoped explicit dependency.
 
@@ -1066,7 +1126,23 @@ Gameplay Runtime owner directly depends on Recorder
 
 Nested/reaction Actions in one active Resolution receive the same writer through explicit action-building/dispatch context propagation.
 
-Record append failure only degrades/disables Presentation. Gameplay Commit, Action Finish and Queue ordering remain unchanged.
+If writer/Presentation recording is absent from the start, Gameplay runs in valid no-history mode and only the final frozen baseline is needed.
+
+If an active writer Append fails:
+
+```text
+mark builder invalid
+↓
+discard all buffered unpublished Records for that Resolution
+↓
+do not Seal/Publish a partial historical Envelope
+↓
+Freeze final baseline at stability when possible
+↓
+PresentationUnavailable / fail-safe catch-up
+```
+
+Gameplay Commit, Action Finish and Queue ordering remain unchanged; no Gameplay fault is requested.
 
 ### 16.6 Typed mutation facts
 
@@ -1148,10 +1224,14 @@ BattleStartBeginsBeforeFaultCapableOpeningWork
 SystemResolutionCanBeCreated
 EmptyRecordResolutionSealsSafely
 FaultRetainsCommittedRecordsAndAppendsResolutionFaultLast
+ResolutionSealsBeforeNextRequestCanBegin
+PresentationEnvelopeNotificationDoesNotReenterAcceptedRequest
 OneActiveResolutionSealsAtMostOnce
 DuplicateStablePublishDoesNotDuplicateEnvelope
+EnvelopeDedupUsesBattleIdAndResolutionId
 FreezeFailureDisablesPresentationWithoutGameplayFault
 SealFailureDoesNotLeakBuilderIntoNextResolution
+AppendFailureDoesNotSealPartialEnvelope
 BattleRestartDoesNotLeakBuilderOrRecords
 LateSubscriberDoesNotReplayOldBattle
 NoControllerOrPresentationDisabledLeavesGameplayUnchanged
