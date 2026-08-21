@@ -63,7 +63,6 @@ namespace
 		}
 
 		View.Combatant = Combatant;
-		View.PresentationId = Combatant->PresentationId;
 		View.DisplayName = Combatant->DisplayName;
 		View.HP = Combatant->HP;
 		View.MaxHP = Combatant->MaxHP;
@@ -90,6 +89,25 @@ namespace
 		}
 
 		return View;
+	}
+
+	void ApplyWriterToBatch(
+		const FPresentationRecordWriter& Writer,
+		const TArray<UBattleAction*>& Actions
+	)
+	{
+		if (!Writer.IsAvailable())
+		{
+			return;
+		}
+
+		for (UBattleAction* Action : Actions)
+		{
+			if (IsValid(Action))
+			{
+				Action->SetPresentationRecordWriter(Writer);
+			}
+		}
 	}
 }
 
@@ -161,12 +179,18 @@ void ABattleManager::StartBattle()
 		BattleId = 1;
 	}
 	StateRevision = 1;
+	LastPublishedBattleId = 0;
+	LastPublishedReadStateRevision = 0;
 
 #if WITH_DEV_AUTOMATION_TESTS
 	bForceInvalidPlayerEndBatchForTesting = false;
 	bForceInvalidEnemyTurnBatchForTesting = false;
+	bForcePresentationFreezeFailureForTesting = false;
 	StateBeforeLastResolutionFaultForTesting = EBattleState::BattleStart;
 #endif
+
+	ResetPresentationForBattle();
+	BeginPresentationResolution(EPresentationResolutionOrigin::BattleStart);
 
 	CommitNextEnemyIntent();
 
@@ -217,6 +241,7 @@ void ABattleManager::TestAttack()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	--Energy;
 	UE_LOG(
 		LogTemp,
@@ -251,6 +276,7 @@ void ABattleManager::TestGainBlock()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Player test block queued: BaseAmount=%d"), PlayerTestBlockAmount);
 	QueueGainBlockAction(Player.Get(), Player.Get(), PlayerTestBlockAmount);
 	ActionQueue->StartProcessing();
@@ -282,11 +308,13 @@ void ABattleManager::TestActionQueueOrder()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	QueueDamageAction(Player.Get(), Enemy.Get(), 7, EDamageKind::Attack);
 	QueueDamageAction(Player.Get(), Enemy.Get(), 8, EDamageKind::Attack);
 
 	UDamageAction* FrontAction = NewObject<UDamageAction>(ActionQueue.Get());
 	FrontAction->Initialize(Player.Get(), Enemy.Get(), 6, EDamageKind::Attack);
+	FrontAction->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToFront(FrontAction);
 
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Queue-order test started. Expected BaseAmount order: 6, 7, 8."));
@@ -313,6 +341,7 @@ void ABattleManager::TestDrawCard()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Test draw requested."));
 	QueueDrawCardAction();
 	ActionQueue->StartProcessing();
@@ -345,6 +374,7 @@ void ABattleManager::TestDiscardCard()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Test discard requested for %s."), *CardToDiscard->GetDebugLabel());
 	QueueDiscardCardAction(CardToDiscard);
 	ActionQueue->StartProcessing();
@@ -422,6 +452,7 @@ void ABattleManager::TestApplyPhase5AStatuses()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(
 		LogTemp,
 		Log,
@@ -463,6 +494,7 @@ void ABattleManager::TestApplyPhase5B1Strength()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UStatusData* StrengthDefinition = DebugPhase5AStatuses[0].Get();
 	UE_LOG(
 		LogTemp,
@@ -500,6 +532,7 @@ void ABattleManager::TestPhase5B1EffectDamage()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(LogTemp, Log, TEXT("[Battle] Phase 5B1 Effect-damage test queued: BaseAmount=9."));
 	QueueDamageAction(Player.Get(), Enemy.Get(), 9, EDamageKind::Effect);
 	ActionQueue->StartProcessing();
@@ -542,6 +575,7 @@ void ABattleManager::TestApplyPhase5B2DamageStatuses()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(
 		LogTemp,
 		Log,
@@ -591,6 +625,7 @@ void ABattleManager::TestPhase5CBlockPipeline()
 		return;
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::System);
 	UE_LOG(
 		LogTemp,
 		Log,
@@ -635,15 +670,22 @@ FGameplayRequestResult ABattleManager::RequestPlayCard(UCardInstance* Card, ACom
 		return FGameplayRequestResult::Rejected(Validation.FailureReason);
 	}
 
+	// Presentation Resolution identity exists before any post-validation step that
+	// can request a framework fault. Failure to begin Presentation degrades only
+	// Presentation; Gameplay continues with the already-validated request.
+	BeginPresentationResolution(EPresentationResolutionOrigin::PlayCard);
+
 	UBattleEventDispatcher* Dispatcher = nullptr;
 	TArray<ACombatant*> Combatants;
 	if (!TryBuildEventDispatchContext(Dispatcher, Combatants))
 	{
+		ActionQueue->RequestResolutionFault(TEXT("Formal card-play validation succeeded but event-dispatch context became invalid."));
 		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::InvalidBattle);
 	}
 
 	UPlayCardAction* Action = NewObject<UPlayCardAction>(ActionQueue.Get());
 	Action->Initialize(this, Card, Player.Get(), RequestedTarget, DeckRuntime.Get(), Dispatcher, Combatants);
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 
 	if (!ActionQueue->AddToBack(Action))
 	{
@@ -674,12 +716,16 @@ FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
 		return FGameplayRequestResult::Rejected(Validation.FailureReason);
 	}
 
+	BeginPresentationResolution(EPresentationResolutionOrigin::EndTurn);
+
 	TArray<UBattleAction*> TurnEndBatch;
 	if (!BuildPlayerTurnEndBatch(TurnEndBatch))
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Player turn-ending batch construction failed after authoritative validation."));
 		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::QueueRejected);
 	}
+
+	ApplyWriterToBatch(GetActivePresentationRecordWriter(), TurnEndBatch);
 
 	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnEndBatch))
 	{
@@ -750,6 +796,8 @@ bool ABattleManager::TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) cons
 	OutSnapshot.MaxEnergy = MaxEnergy;
 	OutSnapshot.Player = MakeCombatantReadView(Player.Get());
 	OutSnapshot.Enemy = MakeCombatantReadView(Enemy.Get());
+	TryResolveCombatantPresentationId(Player.Get(), OutSnapshot.Player.PresentationId);
+	TryResolveCombatantPresentationId(Enemy.Get(), OutSnapshot.Enemy.PresentationId);
 	OutSnapshot.EnemyIntent = CommittedEnemyIntent;
 
 	AppendCardReadViews(DeckRuntime->GetHandCards(), OutSnapshot.HandCards);
@@ -849,6 +897,8 @@ void ABattleManager::StartOpeningHand()
 		return;
 	}
 
+	// BattleStart setup draws intentionally receive no RecordWriter. They are
+	// initialization normalization and must seal an empty-record opening Envelope.
 	if (!ActionQueue->AddBatchToBackPreserveOrder(OpeningBatch))
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Opening Hand draw batch insertion failed while BattleStart was authoritative."));
@@ -861,6 +911,8 @@ void ABattleManager::StartOpeningHand()
 	if (OpeningBatch.Num() == 0)
 	{
 		CompletePlayerTurnStart();
+		FinalizePresentationResolutionAtStableBoundary();
+		ScheduleReadStateReadyPublish();
 		return;
 	}
 
@@ -900,6 +952,7 @@ void ABattleManager::StartPlayerTurn()
 		return;
 	}
 
+	ApplyWriterToBatch(GetActivePresentationRecordWriter(), TurnStartBatch);
 	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnStartBatch))
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Player turn-start draw batch insertion failed before PlayerTurnStarting state commit."));
@@ -979,6 +1032,7 @@ void ABattleManager::StartEnemyTurn()
 		return;
 	}
 
+	const FPresentationRecordWriter PresentationWriter = GetActivePresentationRecordWriter();
 	TArray<UBattleAction*> EnemyTurnBatch;
 	switch (CommittedEnemyIntent.Type)
 	{
@@ -986,6 +1040,7 @@ void ABattleManager::StartEnemyTurn()
 	{
 		UDamageAction* DamageAction = NewObject<UDamageAction>(ActionQueue.Get());
 		DamageAction->Initialize(Enemy.Get(), Player.Get(), CommittedEnemyIntent.BaseAmount, EDamageKind::Attack);
+		DamageAction->SetPresentationRecordWriter(PresentationWriter);
 		EnemyTurnBatch.Add(DamageAction);
 		break;
 	}
@@ -1005,6 +1060,7 @@ void ABattleManager::StartEnemyTurn()
 
 	UTurnEndedAction* TurnEndedAction = NewObject<UTurnEndedAction>(TurnEndedOuter);
 	TurnEndedAction->Initialize(this, Enemy.Get());
+	TurnEndedAction->SetPresentationRecordWriter(PresentationWriter);
 	EnemyTurnBatch.Add(TurnEndedAction);
 
 	if (!ActionQueue->AddBatchToBackPreserveOrder(EnemyTurnBatch))
@@ -1149,12 +1205,19 @@ void ABattleManager::HandleActionQueueResolutionFaulted(
 		*GetNameSafe(LastAction)
 	);
 
-	// Fault state is now fully committed at the battle layer. Publish it through
-	// the same deferred UI boundary used by healthy Queue settlement.
+	AppendPresentationResolutionFault(Reason, ExecutedCount, LastAction);
+	FinalizePresentationResolutionAtStableBoundary();
+
+	// Fault state is fully committed and any Presentation builder has already
+	// sealed/aborted synchronously. Public callbacks remain deferred.
 	ScheduleReadStateReadyPublish();
 }
 
-void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBattleActionQueue* Queue)
+void ABattleManager::HandleTurnEndedActionExecution(
+	ACombatant* TurnOwner,
+	UBattleActionQueue* Queue,
+	const FPresentationRecordWriter& PresentationRecordWriter
+)
 {
 	if (!HasValidCombatants() || !HasValidActionQueue() || !HasValidEventDispatcher() ||
 		!IsValid(TurnOwner) || Queue != ActionQueue.Get())
@@ -1200,7 +1263,13 @@ void ABattleManager::HandleTurnEndedActionExecution(ACombatant* TurnOwner, UBatt
 	Combatants.Add(Player.Get());
 	Combatants.Add(Enemy.Get());
 
-	if (!EventDispatcher->Dispatch(FBattleEvent::MakeTurnEnded(TurnOwner), Queue, Combatants))
+	if (!EventDispatcher->Dispatch(
+		FBattleEvent::MakeTurnEnded(TurnOwner),
+		Queue,
+		Combatants,
+		nullptr,
+		&PresentationRecordWriter
+	))
 	{
 		Queue->RequestResolutionFault(TEXT("TurnEnded event dispatch failed during battle turn wiring."));
 		return;
@@ -1420,6 +1489,7 @@ void ABattleManager::QueueDamageAction(
 
 	UDamageAction* Action = NewObject<UDamageAction>(ActionQueue.Get());
 	Action->Initialize(Source, Target, BaseAmount, DamageKind);
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
 
@@ -1432,6 +1502,7 @@ void ABattleManager::QueueGainBlockAction(ACombatant* Source, ACombatant* Target
 
 	UGainBlockAction* Action = NewObject<UGainBlockAction>(ActionQueue.Get());
 	Action->Initialize(Source, Target, BaseAmount);
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
 
@@ -1453,6 +1524,7 @@ void ABattleManager::QueueDrawCardAction()
 	{
 		Action->Initialize(DeckRuntime.Get());
 	}
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
 
@@ -1465,6 +1537,7 @@ void ABattleManager::QueueDiscardCardAction(UCardInstance* Card)
 
 	UDiscardCardAction* Action = NewObject<UDiscardCardAction>(ActionQueue.Get());
 	Action->Initialize(DeckRuntime.Get(), Card);
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
 
@@ -1482,6 +1555,7 @@ void ABattleManager::QueueApplyStatusAction(
 
 	UApplyStatusAction* Action = NewObject<UApplyStatusAction>(ActionQueue.Get());
 	Action->Initialize(this, Source, Target, StatusDefinition, AmountToAdd);
+	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
 
