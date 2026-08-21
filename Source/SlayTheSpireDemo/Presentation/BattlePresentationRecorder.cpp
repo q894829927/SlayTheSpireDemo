@@ -33,8 +33,17 @@ bool UBattlePresentationRecorder::BeginResolution(
 )
 {
 	OutWriter = FPresentationRecordWriter{};
-	if (BattleId == 0 || ActiveBuilder.bActive || NextResolutionId == 0)
+	if (BattleId == 0 || NextResolutionId == 0)
 	{
+		return false;
+	}
+
+	// A second Begin must never overwrite or inherit a previous builder. Clear the
+	// stale presentation-only builder, report failure to the battle layer, and let
+	// that layer degrade Presentation without affecting Gameplay.
+	if (ActiveBuilder.bActive)
+	{
+		ClearActiveBuilder();
 		return false;
 	}
 
@@ -131,19 +140,20 @@ bool UBattlePresentationRecorder::AppendRecord(
 		return false;
 	}
 
-	if (Record.Type == EBattlePresentationRecordType::ResolutionFault)
-	{
-		const bool bAlreadyHasFault = ActiveBuilder.Records.ContainsByPredicate(
-			[](const FPresentationRecord& Existing)
-			{
-				return Existing.Type == EBattlePresentationRecordType::ResolutionFault;
-			}
-		);
-		if (bAlreadyHasFault)
+	// ResolutionFault is an infrastructure terminal record. Once it has been
+	// appended nothing else may follow in the same Resolution; violating that
+	// invariant invalidates the unpublished batch rather than publishing a
+	// misleading history.
+	const bool bAlreadyHasFault = ActiveBuilder.Records.ContainsByPredicate(
+		[](const FPresentationRecord& Existing)
 		{
-			InvalidateActiveBuilder();
-			return false;
+			return Existing.Type == EBattlePresentationRecordType::ResolutionFault;
 		}
+	);
+	if (bAlreadyHasFault)
+	{
+		InvalidateActiveBuilder();
+		return false;
 	}
 
 	Record.BattleId = static_cast<int64>(ActiveBuilder.BattleId);
@@ -156,7 +166,7 @@ bool UBattlePresentationRecorder::AppendRecord(
 bool UBattlePresentationRecorder::TryGetActiveWriter(FPresentationRecordWriter& OutWriter) const
 {
 	OutWriter = FPresentationRecordWriter{};
-	if (!ActiveBuilder.bActive)
+	if (!ActiveBuilder.bActive || !ActiveBuilder.bValid)
 	{
 		return false;
 	}
