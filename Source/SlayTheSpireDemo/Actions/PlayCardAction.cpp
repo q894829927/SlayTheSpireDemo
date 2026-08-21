@@ -3,6 +3,7 @@
 #include "BattleActionQueue.h"
 #include "FinishCardPlayAction.h"
 #include "../Battle/BattleManager.h"
+#include "../Battle/EnergyMutation.h"
 #include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 #include "../Cards/CardPlayContext.h"
@@ -10,6 +11,7 @@
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEventDispatcher.h"
+#include "../Presentation/PresentationCardSnapshotBuilder.h"
 
 void UPlayCardAction::Initialize(
 	ABattleManager* InBattle,
@@ -183,23 +185,77 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	UFinishCardPlayAction* FinishPlayAction = NewObject<UFinishCardPlayAction>(Queue);
-	FinishPlayAction->Initialize(Deck.Get(), Card.Get());
+	FinishPlayAction->Initialize(Deck.Get(), Card.Get(), Source.Get());
 	FinishPlayAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	FollowUpActions.Add(FinishPlayAction);
 
-	if (!Deck->TryMoveHandCardToPlayArea(Card.Get()))
+	const FCardZoneMutationResult ZoneCommit = Deck->TryMoveHandCardToPlayAreaCommit(Card.Get());
+	if (!ZoneCommit.bCommitted)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction aborted: failed to move %s from Hand to PlayArea."), *Card->GetDebugLabel());
 		Finish();
 		return;
 	}
 
-	if (!Battle->TrySpendEnergy(Cost))
+	const FEnergyCommitResult EnergyCommit = BattleEnergyMutation::TrySpend(Battle.Get(), Cost);
+	if (!EnergyCommit.bSucceeded)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[Action] PlayCardAction rollback: energy spend unexpectedly failed for %s."), *Card->GetDebugLabel());
-		Deck->TryReturnPlayAreaCardToHand(Card.Get());
+		const FCardZoneMutationResult Rollback = Deck->TryReturnPlayAreaCardToHandAtIndexCommit(
+			Card.Get(),
+			ZoneCommit.FromIndex
+		);
+		if (!Rollback.bCommitted
+			|| Rollback.FromZone != ECardZone::PlayArea
+			|| Rollback.ToZone != ECardZone::Hand
+			|| Rollback.ToIndex != ZoneCommit.FromIndex)
+		{
+			Queue->RequestResolutionFault(FString::Printf(
+				TEXT("PlayCardAction failed exact Hand-order rollback after energy spend failure for %s."),
+				*Card->GetDebugLabel()
+			));
+		}
 		Finish();
 		return;
+	}
+
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	if (Writer.IsAvailable())
+	{
+		FName SourcePresentationId = NAME_None;
+		FName TargetPresentationId = NAME_None;
+		const bool bSourceValid = Battle->TryResolveCombatantPresentationId(Source.Get(), SourcePresentationId)
+			&& !SourcePresentationId.IsNone();
+		const bool bTargetValid = !IsValid(ResolvedTarget)
+			|| (Battle->TryResolveCombatantPresentationId(ResolvedTarget, TargetPresentationId)
+				&& !TargetPresentationId.IsNone());
+		FPresentationCardSnapshot CardSnapshot;
+		const bool bCardValid = PresentationCardSnapshot::TryBuild(Card.Get(), Source.Get(), CardSnapshot)
+			&& CardSnapshot.RuntimeId == ZoneCommit.CardRuntimeId
+			&& CardSnapshot.CardId == ZoneCommit.CardId;
+
+		if (!bSourceValid || !bTargetValid || !bCardValid)
+		{
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(LogTemp, Warning, TEXT("[Presentation] CardPlayed commit could not build a trustworthy frozen payload."));
+		}
+		else
+		{
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::CardPlayed;
+			Record.CardPlayed.Card = MoveTemp(CardSnapshot);
+			Record.CardPlayed.SourcePresentationId = SourcePresentationId;
+			Record.CardPlayed.TargetPresentationId = TargetPresentationId;
+			Record.CardPlayed.HandIndexBefore = ZoneCommit.FromIndex;
+			Record.CardPlayed.PlayAreaIndexAfter = ZoneCommit.ToIndex;
+			Record.CardPlayed.EnergyBefore = EnergyCommit.EnergyBefore;
+			Record.CardPlayed.EnergyAfter = EnergyCommit.EnergyAfter;
+			Record.CardPlayed.CostPaid = EnergyCommit.EnergyBefore - EnergyCommit.EnergyAfter;
+			if (!Writer.Append(MoveTemp(Record)))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] CardPlayed append failed; Gameplay commits remain authoritative."));
+			}
+		}
 	}
 
 	UE_LOG(
