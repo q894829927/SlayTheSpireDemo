@@ -27,6 +27,29 @@ namespace
 			}
 		);
 	}
+
+	FCardZoneMutationResult MakeZoneResult(
+		UCardInstance* Card,
+		ECardZone FromZone,
+		ECardZone ToZone,
+		int32 FromIndex,
+		int32 ToIndex
+	)
+	{
+		FCardZoneMutationResult Result;
+		if (!IsValid(Card))
+		{
+			return Result;
+		}
+		Result.bCommitted = true;
+		Result.CardRuntimeId = Card->GetRuntimeId();
+		Result.CardId = Card->GetCardId();
+		Result.FromZone = FromZone;
+		Result.ToZone = ToZone;
+		Result.FromIndex = FromIndex;
+		Result.ToIndex = ToIndex;
+		return Result;
+	}
 }
 
 void UDeckRuntime::InitializeFromDefinitions(const TArray<TObjectPtr<UCardData>>& Definitions, int32 Seed)
@@ -64,9 +87,6 @@ void UDeckRuntime::InitializeFromDefinitions(const TArray<TObjectPtr<UCardData>>
 		);
 	}
 
-	// Battle setup randomization is deterministic and consumes the same
-	// battle-scoped RNG stream used by future gameplay reshuffles. This is setup,
-	// not a ShuffleDeckAction commit, so it intentionally emits no DeckShuffled.
 	ShuffleDrawPileWithBattleRng();
 
 	UE_LOG(
@@ -104,137 +124,150 @@ bool UDeckRuntime::IsCardInPlayArea(const UCardInstance* Card) const
 	return IsValid(Card) && FindCardIndex(PlayArea, Card) != INDEX_NONE;
 }
 
-bool UDeckRuntime::TryDrawTopCard(UCardInstance*& OutCard)
+FCardZoneMutationResult UDeckRuntime::TryDrawTopCardCommit(UCardInstance*& OutCard)
 {
 	OutCard = nullptr;
+	FCardZoneMutationResult Result;
 
 	if (!HasCardsInDrawPile() || IsHandFull())
 	{
-		return false;
+		return Result;
 	}
 
-	TObjectPtr<UCardInstance> CardPtr = DrawPile.Pop();
-	UCardInstance* Card = CardPtr.Get();
+	const int32 FromIndex = DrawPile.Num() - 1;
+	UCardInstance* Card = DrawPile[FromIndex].Get();
 	if (!IsValid(Card))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deck] Draw failed: top DrawPile card is invalid."));
-		return false;
+		UE_LOG(LogTemp, Warning, TEXT("[Deck] Draw failed: top DrawPile card is invalid; deck state was not mutated."));
+		return Result;
 	}
 
+	const int32 ToIndex = Hand.Num();
+	DrawPile.RemoveAt(FromIndex);
 	Hand.Add(Card);
 	OutCard = Card;
+	Result = MakeZoneResult(Card, ECardZone::DrawPile, ECardZone::Hand, FromIndex, ToIndex);
 
 	UE_LOG(LogTemp, Log, TEXT("[Deck] Drew %s from DrawPile to Hand."), *Card->GetDebugLabel());
 	LogState(TEXT("AfterDraw"));
-	return true;
+	return Result;
 }
 
-UCardInstance* UDeckRuntime::GetFirstHandCard() const
+FCardZoneMutationResult UDeckRuntime::TryDiscardCardCommit(UCardInstance* Card)
 {
-	return Hand.Num() > 0 ? Hand[0].Get() : nullptr;
-}
-
-bool UDeckRuntime::TryDiscardCard(UCardInstance* Card)
-{
+	FCardZoneMutationResult Result;
 	if (!IsValid(Card))
 	{
-		return false;
+		return Result;
 	}
 
-	const int32 HandIndex = FindCardIndex(Hand, Card);
-	if (HandIndex == INDEX_NONE)
+	const int32 FromIndex = FindCardIndex(Hand, Card);
+	if (FromIndex == INDEX_NONE)
 	{
-		return false;
+		return Result;
 	}
 
-	Hand.RemoveAt(HandIndex);
+	const int32 ToIndex = DiscardPile.Num();
+	Hand.RemoveAt(FromIndex);
 	DiscardPile.Add(Card);
+	Result = MakeZoneResult(Card, ECardZone::Hand, ECardZone::DiscardPile, FromIndex, ToIndex);
 
 	UE_LOG(LogTemp, Log, TEXT("[Deck] Discarded %s from Hand to DiscardPile."), *Card->GetDebugLabel());
 	LogState(TEXT("AfterDiscard"));
-	return true;
+	return Result;
 }
 
-bool UDeckRuntime::TryMoveHandCardToPlayArea(UCardInstance* Card)
+FCardZoneMutationResult UDeckRuntime::TryMoveHandCardToPlayAreaCommit(UCardInstance* Card)
 {
+	FCardZoneMutationResult Result;
 	if (!IsValid(Card))
 	{
-		return false;
+		return Result;
 	}
 
-	const int32 HandIndex = FindCardIndex(Hand, Card);
-	if (HandIndex == INDEX_NONE)
+	const int32 FromIndex = FindCardIndex(Hand, Card);
+	if (FromIndex == INDEX_NONE)
 	{
-		return false;
+		return Result;
 	}
 
-	Hand.RemoveAt(HandIndex);
+	const int32 ToIndex = PlayArea.Num();
+	Hand.RemoveAt(FromIndex);
 	PlayArea.Add(Card);
+	Result = MakeZoneResult(Card, ECardZone::Hand, ECardZone::PlayArea, FromIndex, ToIndex);
 
 	UE_LOG(LogTemp, Log, TEXT("[Deck] Moved %s from Hand to PlayArea."), *Card->GetDebugLabel());
 	LogState(TEXT("AfterBeginPlay"));
-	return true;
+	return Result;
 }
 
-bool UDeckRuntime::TryReturnPlayAreaCardToHand(UCardInstance* Card)
+FCardZoneMutationResult UDeckRuntime::TryReturnPlayAreaCardToHandAtIndexCommit(UCardInstance* Card, int32 HandIndex)
 {
+	FCardZoneMutationResult Result;
 	if (!IsValid(Card) || IsHandFull())
 	{
-		return false;
+		return Result;
 	}
 
-	const int32 PlayIndex = FindCardIndex(PlayArea, Card);
-	if (PlayIndex == INDEX_NONE)
+	const int32 FromIndex = FindCardIndex(PlayArea, Card);
+	if (FromIndex == INDEX_NONE || HandIndex < 0 || HandIndex > Hand.Num())
 	{
-		return false;
+		return Result;
 	}
 
-	PlayArea.RemoveAt(PlayIndex);
-	Hand.Add(Card);
+	PlayArea.RemoveAt(FromIndex);
+	Hand.Insert(Card, HandIndex);
+	Result = MakeZoneResult(Card, ECardZone::PlayArea, ECardZone::Hand, FromIndex, HandIndex);
 
-	UE_LOG(LogTemp, Warning, TEXT("[Deck] Rolled back %s from PlayArea to Hand."), *Card->GetDebugLabel());
+	UE_LOG(LogTemp, Warning, TEXT("[Deck] Rolled back %s from PlayArea to Hand index %d."), *Card->GetDebugLabel(), HandIndex);
 	LogState(TEXT("AfterPlayRollback"));
-	return true;
+	return Result;
 }
 
-bool UDeckRuntime::TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDestination Destination)
+FCardZoneMutationResult UDeckRuntime::TryMovePlayAreaCardToDestinationCommit(UCardInstance* Card, ECardDestination Destination)
 {
+	FCardZoneMutationResult Result;
 	if (!IsValid(Card))
 	{
-		return false;
+		return Result;
 	}
 
-	const int32 PlayIndex = FindCardIndex(PlayArea, Card);
-	if (PlayIndex == INDEX_NONE)
+	const int32 FromIndex = FindCardIndex(PlayArea, Card);
+	if (FromIndex == INDEX_NONE)
 	{
-		return false;
+		return Result;
 	}
 
-	PlayArea.RemoveAt(PlayIndex);
-
+	TArray<TObjectPtr<UCardInstance>>* DestinationPile = nullptr;
+	ECardZone ToZone = ECardZone::DiscardPile;
 	const TCHAR* DestinationName = TEXT("Unknown");
+
 	switch (Destination)
 	{
 	case ECardDestination::Discard:
-		DiscardPile.Add(Card);
+		DestinationPile = &DiscardPile;
+		ToZone = ECardZone::DiscardPile;
 		DestinationName = TEXT("DiscardPile");
 		break;
-
 	case ECardDestination::Exhaust:
-		ExhaustPile.Add(Card);
+		DestinationPile = &ExhaustPile;
+		ToZone = ECardZone::ExhaustPile;
 		DestinationName = TEXT("ExhaustPile");
 		break;
-
 	case ECardDestination::Removed:
-		RemovedPile.Add(Card);
+		DestinationPile = &RemovedPile;
+		ToZone = ECardZone::RemovedPile;
 		DestinationName = TEXT("RemovedPile");
 		break;
-
 	default:
-		PlayArea.Add(Card);
-		UE_LOG(LogTemp, Warning, TEXT("[Deck] Unsupported destination for %s; card restored to PlayArea."), *Card->GetDebugLabel());
-		return false;
+		UE_LOG(LogTemp, Warning, TEXT("[Deck] Unsupported destination for %s; deck state was not mutated."), *Card->GetDebugLabel());
+		return Result;
 	}
+
+	const int32 ToIndex = DestinationPile->Num();
+	PlayArea.RemoveAt(FromIndex);
+	DestinationPile->Add(Card);
+	Result = MakeZoneResult(Card, ECardZone::PlayArea, ToZone, FromIndex, ToIndex);
 
 	UE_LOG(
 		LogTemp,
@@ -244,30 +277,82 @@ bool UDeckRuntime::TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDe
 		DestinationName
 	);
 	LogState(TEXT("AfterFinishPlay"));
-	return true;
+	return Result;
 }
 
-bool UDeckRuntime::ShuffleDiscardIntoDrawPile()
+FDeckShuffleCommitResult UDeckRuntime::ShuffleDiscardIntoDrawPileCommit()
 {
+	FDeckShuffleCommitResult Result;
+	Result.DrawCountBefore = DrawPile.Num();
+	Result.DiscardCountBefore = DiscardPile.Num();
+
 	if (DiscardPile.Num() == 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Deck] Shuffle skipped: DiscardPile is empty."));
-		return false;
+		Result.DrawCountAfter = DrawPile.Num();
+		Result.DiscardCountAfter = DiscardPile.Num();
+		return Result;
 	}
 
 	if (DrawPile.Num() != 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Deck] Shuffle skipped: DrawPile is not empty (Draw=%d)."), DrawPile.Num());
-		return false;
+		Result.DrawCountAfter = DrawPile.Num();
+		Result.DiscardCountAfter = DiscardPile.Num();
+		return Result;
 	}
 
+	Result.MovedCardCount = DiscardPile.Num();
 	DrawPile.Append(DiscardPile);
 	DiscardPile.Reset();
 	ShuffleDrawPileWithBattleRng();
+	Result.bCommitted = true;
+	Result.DrawCountAfter = DrawPile.Num();
+	Result.DiscardCountAfter = DiscardPile.Num();
 
 	UE_LOG(LogTemp, Log, TEXT("[Deck] Shuffled DiscardPile into DrawPile using the battle RNG stream."));
 	LogState(TEXT("AfterShuffle"));
-	return true;
+	return Result;
+}
+
+bool UDeckRuntime::TryDrawTopCard(UCardInstance*& OutCard)
+{
+	return TryDrawTopCardCommit(OutCard).bCommitted;
+}
+
+UCardInstance* UDeckRuntime::GetFirstHandCard() const
+{
+	return Hand.Num() > 0 ? Hand[0].Get() : nullptr;
+}
+
+bool UDeckRuntime::TryDiscardCard(UCardInstance* Card)
+{
+	return TryDiscardCardCommit(Card).bCommitted;
+}
+
+bool UDeckRuntime::TryMoveHandCardToPlayArea(UCardInstance* Card)
+{
+	return TryMoveHandCardToPlayAreaCommit(Card).bCommitted;
+}
+
+bool UDeckRuntime::TryReturnPlayAreaCardToHand(UCardInstance* Card)
+{
+	return TryReturnPlayAreaCardToHandAtIndexCommit(Card, Hand.Num()).bCommitted;
+}
+
+bool UDeckRuntime::TryMovePlayAreaCardToDestination(UCardInstance* Card, ECardDestination Destination)
+{
+	return TryMovePlayAreaCardToDestinationCommit(Card, Destination).bCommitted;
+}
+
+bool UDeckRuntime::ShuffleDiscardIntoDrawPile()
+{
+	return ShuffleDiscardIntoDrawPileCommit().bCommitted;
+}
+
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetDrawCards() const
+{
+	return DrawPile;
 }
 
 const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetHandCards() const
@@ -283,6 +368,16 @@ const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetDiscardCards() const
 const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetExhaustCards() const
 {
 	return ExhaustPile;
+}
+
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetPlayAreaCards() const
+{
+	return PlayArea;
+}
+
+const TArray<TObjectPtr<UCardInstance>>& UDeckRuntime::GetRemovedCards() const
+{
+	return RemovedPile;
 }
 
 int32 UDeckRuntime::GetDrawCount() const
