@@ -20,6 +20,10 @@ void UGainBlockCardEffect::BuildActions(
 
 	UGainBlockAction* Action = NewObject<UGainBlockAction>(Context.ActionOuter);
 	Action->Initialize(Context.Source, Context.Target, BaseAmount);
+	Action->SetPresentationParticipantIds(
+		Context.SourcePresentationId,
+		Context.TargetPresentationId
+	);
 	OutActions.Add(Action);
 }
 
