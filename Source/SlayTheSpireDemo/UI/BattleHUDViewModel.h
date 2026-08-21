@@ -8,7 +8,8 @@
 class ABattleManager;
 class ACombatant;
 class UCardInstance;
-struct FBattleReadSnapshot;
+struct FPresentationStateSnapshot;
+enum class EBattleState : uint8;
 enum class EGameplayRequestFailureReason : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDViewModelChanged);
@@ -20,7 +21,10 @@ class SLAYTHESPIREDEMO_API UBattleHUDViewModel : public UObject
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD")
-	bool Initialize(ABattleManager* InBattleManager);
+	bool Initialize(
+		ABattleManager* InBattleManager,
+		bool bInPresentationDisplayOwned = false
+	);
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD")
 	void Shutdown();
@@ -41,12 +45,25 @@ public:
 	bool RequestEndTurn();
 
 	// Presentation-only lookup over the current gameplay-provided legal-target
-	// snapshot. This does not grant permission or replace Request revalidation.
+	// bindings. This does not grant permission or replace Request revalidation.
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Selection")
 	bool TryGetLegalTargetByPresentationId(
 		FName PresentationId,
 		FBattleHUDTargetView& OutTarget
 	) const;
+
+	// Historical display boundary. This function performs value copies only; it
+	// does not query BattleManager, CardData/StatusData or mutable runtime objects.
+	void ApplyPresentationSnapshot(
+		const FPresentationStateSnapshot& Snapshot,
+		bool bResetInteraction = true
+	);
+
+	// Only the newest displayed BattleId/Revision may rebuild weak runtime
+	// bindings used to forward a new formal Request.
+	bool RefreshLiveInputBindingsIfCaughtUp();
+	void EnterPresentationUnavailable(const FText& Reason);
+	bool IsPresentationDisplayOwned() const;
 
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
@@ -110,21 +127,28 @@ protected:
 
 private:
 	void HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision);
-	bool PullAndApplySnapshot(bool bResetInteraction);
-	void ApplySnapshot(const FBattleReadSnapshot& Snapshot, bool bResetInteraction);
-	void RebuildHandViews(const FBattleReadSnapshot& Snapshot);
+	bool ApplyLatestFrozenBaselineAndRefresh(bool bResetInteraction);
 	void RebuildLegalTargets(UCardInstance* Card);
 	bool SubmitSelectedCard(ACombatant* Target);
 	void SetResolving();
 	void ClearSelectionInternal();
+	void ClearLiveInputBindings();
 	void SetFeedback(EGameplayRequestFailureReason Reason);
 	void ClearFeedback();
 	void BroadcastChanged();
 	bool CanAcceptSelectionInput() const;
+	bool IsLiveBindingCurrent() const;
+	const FBattleHUDCardView* FindDisplayedCardByRuntimeId(int32 RuntimeId) const;
 	UCardInstance* FindHandCardByRuntimeId(int32 RuntimeId) const;
 	ACombatant* FindLegalTargetById(int32 TargetId) const;
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
+	TMap<int32, TWeakObjectPtr<UCardInstance>> LiveCardBindings;
+	TMap<FName, TWeakObjectPtr<ACombatant>> LiveCombatantBindings;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
-	TArray<TWeakObjectPtr<UCardInstance>> CachedHandObjects;
+	int64 LiveBindingBattleId = 0;
+	int64 LiveBindingStateRevision = 0;
+	EBattleState DisplayedBattleState;
+	bool bDisplayedSnapshotCanEndTurn = false;
+	bool bPresentationDisplayOwned = false;
 };
