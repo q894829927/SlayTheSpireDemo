@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **7A-1 / 7A-2 / 7A-3 SOURCE IMPLEMENTED; 7A-4 VALIDATION NOT RUN**
+Status: **SOURCE IMPLEMENTATION + STATIC REVIEW COMPLETE / UE5.8 VALIDATION NOT RUN**
 
 Branch: `phase7-relic-gameplay`
 
@@ -73,7 +73,7 @@ runtime object creation uses the existing battle-scoped sequence allocator
 
 Implemented without changing the existing `StartBattle()` body.
 
-`ABattleManager` now owns the authoritative player Relic runtime through:
+`ABattleManager` owns the authoritative player Relic runtime through:
 
 ```text
 ABattleManager
@@ -135,7 +135,7 @@ Prefix:
 SlayTheSpireDemo.Phase7A
 ```
 
-Four tests are currently authored:
+Four tests are authored:
 
 ```text
 Runtime.MembershipAndIdentity
@@ -163,30 +163,66 @@ old exact runtime instance isolation after restart
 current-battle membership rebuild
 ```
 
+## Validation gate authored
+
 A dedicated workflow is available at:
 
 ```text
 .github/workflows/ue-phase7a-tests.yml
 ```
 
-The workflow builds `SlayTheSpireDemoEditor` on the UE5.8 self-hosted runner and requires exactly 4 focused Phase7A tests.
+It is configured to run:
+
+```text
+UE5.8 Editor build
+Phase7A focused Automation              4 tests
+existing affected Phase5/6/UI-A2 gate 84 tests
+```
+
+Affected regression prefixes:
+
+```text
+Phase5          13
+Phase6A         23
+Phase6B         12
+Phase6C          5
+Phase6UIA2A      8
+Phase6UIA2B      8
+Phase6UIA2C      8
+Phase6UIA2D1     3
+Phase6UIA2D2     4
+------------------
+Total           84
+```
+
+Static review is recorded in:
+
+```text
+docs/Phase7ASourceReview.md
+```
+
+No high-confidence C++/UHT blocker was identified statically, but this is not a compiler result.
 
 ## Still pending for Phase 7A
 
-### 7A-4 — UE5.8 validation / affected regression
-
-Source tests and the CI gate are authored, but no UE5.8 run is claimed yet.
+Actual UE5.8 execution has not been run/recorded yet.
 
 Required before closing Phase 7A:
 
 ```text
-UE5.8 Editor build PASS
-Phase7A focused Automation 4/4 PASS
-affected Phase5/Phase6 regression PASS
-static source review PASS
+UE5.8 Editor build                     PASS
+Phase7A focused Automation             4/4 PASS
+Affected Phase5/6/UI-A2 regression    84/84 PASS
+Static source review                   COMPLETE
 ```
 
-Do not begin Phase 7B Trigger integration until this validation gate is closed.
+Until those runtime/build results exist, the correct claim is:
+
+```text
+Phase 7A source implementation complete and ready for UE5.8 validation.
+```
+
+Do not begin Phase 7B Trigger integration until the validation gate is closed.
 
 ## Scope guard
 
