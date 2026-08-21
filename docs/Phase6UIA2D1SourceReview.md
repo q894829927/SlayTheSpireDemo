@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D-2**.
 
 Reviewed source base:
 
@@ -13,7 +13,7 @@ feat(ui-a2d): add exact status mutation results
 
 Follow-up hardening in this review also removes the implicit `ActionQueue -> Outer -> ABattleManager` dependency from the turn-end Status trigger path before A2D-2 begins consuming BattleManager PresentationId resolution.
 
-This review covers the A2D-1 Gameplay mutation slice and the explicit trigger Battle-context handoff. It does not claim UnrealHeaderTool, MSVC, Unreal Editor, Automation, Blueprint or PIE execution.
+This review covers the A2D-1 Gameplay mutation slice and the explicit trigger Battle-context handoff.
 
 ## Scope reviewed
 
@@ -110,11 +110,11 @@ UReduceStatusAction::Initialize(Battle, Source, Target, ...)
 
 `BindBattleContext()` is idempotent for the same Battle and rejects rebinding a live dispatcher to a different Battle. Standalone Dispatcher tests that never bind a Battle remain valid for pre-A2D no-history scenarios; A2D-2 Presentation producers can explicitly require a valid context when a writer is active.
 
-The focused lifecycle test now also verifies that `FTriggerContext` preserves an explicit Battle pointer when its `ActionOuter` is a Queue whose own Outer is deliberately **not** the BattleManager.
+The focused lifecycle test also verifies that `FTriggerContext` preserves an explicit Battle pointer when its `ActionOuter` is a Queue whose own Outer is deliberately **not** the BattleManager.
 
-## Focused Automation authored
+## Focused Automation
 
-Exactly three A2D-1 focused top-level tests remain under the separate prefix:
+Exactly three A2D-1 focused top-level tests exist under the separate prefix:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D1.Commit.StatusMutationLifecycle
@@ -143,20 +143,28 @@ explicit Dispatcher Battle bind  covered
 TriggerContext Battle identity   covered with non-Battle ActionOuter
 ```
 
-## Validation status
+## Validation result
+
+Validated source base:
 
 ```text
-A2D-1 mutation source             IMPLEMENTED
-A2D-1 exact Reduce/Remove         IMPLEMENTED
-URemoveStatusAction               IMPLEMENTED
-TurnEndDecay reason context       IMPLEMENTED
-explicit trigger Battle context   IMPLEMENTED
-ActionQueue Outer dependency      REMOVED FROM TURN-END STATUS TRIGGER
-Focused Automation source         AUTHORED: 3 tests
-Static compile/UHT review         COMPLETE
-UE5.8 Editor build                NOT RUN
-Phase6UIA2D1 Automation           NOT RUN
-Affected regression               NOT RUN
+4b1b296a0c27d52d3b817207ca487ad32ef45e20
+refactor(ui-a2d): pass explicit battle context to status triggers
 ```
 
-Do not mark A2D-1 runtime validation PASS until the UE5.8 build and focused Automation execute successfully.
+User-reported UE5.8 validation result:
+
+```text
+A2D-1 mutation source             PASS
+A2D-1 exact Reduce/Remove         PASS
+URemoveStatusAction               PASS
+TurnEndDecay reason context       PASS
+explicit trigger Battle context   PASS
+ActionQueue Outer dependency      REMOVED
+Phase6UIA2D1 focused Automation   3/3 PASS
+Phase6R affected regression       80/80 PASS
+```
+
+A2D-1 is therefore closed at the C++/Automation level and is ready for A2D-2.
+
+See `docs/Phase6UIA2D1Validation.md` for the dedicated validation record.
