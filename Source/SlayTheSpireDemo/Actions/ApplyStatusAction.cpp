@@ -77,29 +77,41 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 		static_cast<unsigned long long>(CandidateSequence)
 	);
 
-	bool bCreated = false;
-	UStatusInstance* AppliedInstance = Container->ApplyStatus(
+	const FStatusMutationResult Result = Container->ApplyStatusCommit(
 		StatusDefinition.Get(),
 		AmountToAdd,
-		CandidateSequence,
-		bCreated
+		CandidateSequence
 	);
 
-	if (!IsValid(AppliedInstance))
+	switch (Result.Outcome)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] ApplyStatusAction failed to apply status."));
-		Finish();
-		return;
-	}
+	case EStatusMutationOutcome::Committed:
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("[Action] ApplyStatusAction committed: %s Amount=%d Created=%s"),
+			IsValid(Result.EffectiveInstance) ? *Result.EffectiveInstance->GetDebugLabel() : TEXT("InvalidStatus"),
+			Result.AmountAfter,
+			Result.bCreated ? TEXT("true") : TEXT("false")
+		);
+		break;
 
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[Action] ApplyStatusAction committed: %s Amount=%d Created=%s"),
-		*AppliedInstance->GetDebugLabel(),
-		AppliedInstance->GetAmount(),
-		bCreated ? TEXT("true") : TEXT("false")
-	);
+	case EStatusMutationOutcome::NoOp:
+		UE_LOG(
+			LogTemp,
+			Log,
+			TEXT("[Action] ApplyStatusAction no-op: Status=%s RuntimeSequence=%llu Amount=%d."),
+			*Result.StatusId.ToString(),
+			static_cast<unsigned long long>(Result.RuntimeSequence),
+			Result.AmountAfter
+		);
+		break;
+
+	case EStatusMutationOutcome::Invalid:
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("[Action] ApplyStatusAction failed to apply status."));
+		break;
+	}
 
 	Finish();
 }

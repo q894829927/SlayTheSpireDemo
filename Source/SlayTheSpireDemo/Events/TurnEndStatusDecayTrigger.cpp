@@ -2,9 +2,11 @@
 
 #include "BattleEvent.h"
 #include "../Actions/ReduceStatusAction.h"
+#include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusInstance.h"
+#include "../Status/StatusMutationTypes.h"
 
 bool UTurnEndStatusDecayTrigger::CanReact(const FBattleEvent& Event, const FTriggerContext& Context) const
 {
@@ -43,6 +45,14 @@ void UTurnEndStatusDecayTrigger::BuildReactions(
 		return;
 	}
 
-	Action->Initialize(Container, RuntimeSource, AmountToRemove);
+	ABattleManager* Battle = Cast<ABattleManager>(ActionOuter->GetOuter());
+	Action->Initialize(
+		Battle,
+		Owner,
+		Owner,
+		RuntimeSource,
+		AmountToRemove,
+		EStatusChangeReason::TurnEndDecay
+	);
 	OutActions.Add(Action);
 }

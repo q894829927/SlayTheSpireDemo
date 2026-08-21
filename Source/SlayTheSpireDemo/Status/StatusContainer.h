@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "StatusMutationTypes.h"
 #include "StatusContainer.generated.h"
 
 class ACombatant;
@@ -16,6 +17,17 @@ class SLAYTHESPIREDEMO_API UStatusContainer : public UObject
 public:
 	void Initialize(ACombatant* InOwner);
 
+	FStatusMutationResult ApplyStatusCommit(
+		UStatusData* Definition,
+		int32 AmountToAdd,
+		uint64 CandidateRuntimeSequence
+	);
+
+	FStatusMutationResult ReduceStatusCommit(UStatusInstance* ExpectedInstance, int32 AmountToRemove);
+	FStatusMutationResult RemoveStatusCommit(UStatusInstance* ExpectedInstance);
+
+	// Compatibility wrappers retained for pre-A2D callers/tests. New Gameplay
+	// producers should consume the explicit mutation result APIs above.
 	UStatusInstance* ApplyStatus(
 		UStatusData* Definition,
 		int32 AmountToAdd,
@@ -35,6 +47,7 @@ public:
 
 private:
 	UStatusInstance* FindMutableStatusById(FName StatusId) const;
+	int32 FindExactStatusIndex(const UStatusInstance* ExpectedInstance) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<ACombatant> Owner = nullptr;

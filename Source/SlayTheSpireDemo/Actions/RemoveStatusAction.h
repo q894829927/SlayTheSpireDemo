@@ -2,16 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "BattleAction.h"
-#include "../Status/StatusMutationTypes.h"
-#include "ReduceStatusAction.generated.h"
+#include "RemoveStatusAction.generated.h"
 
 class ABattleManager;
 class ACombatant;
-class UStatusContainer;
 class UStatusInstance;
 
 UCLASS()
-class SLAYTHESPIREDEMO_API UReduceStatusAction : public UBattleAction
+class SLAYTHESPIREDEMO_API URemoveStatusAction : public UBattleAction
 {
 	GENERATED_BODY()
 
@@ -20,17 +18,7 @@ public:
 		ABattleManager* InBattle,
 		ACombatant* InSource,
 		ACombatant* InTarget,
-		UStatusInstance* InExpectedInstance,
-		int32 InAmountToRemove,
-		EStatusChangeReason InReason
-	);
-
-	// Compatibility overload for pre-A2D direct callers. Formal queued Gameplay
-	// paths should use the context-rich overload above.
-	void Initialize(
-		UStatusContainer* InContainer,
-		UStatusInstance* InExpectedInstance,
-		int32 InAmountToRemove
+		UStatusInstance* InExpectedInstance
 	);
 
 	virtual void Execute(UBattleActionQueue* Queue) override;
@@ -47,7 +35,4 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStatusInstance> ExpectedInstance = nullptr;
-
-	int32 AmountToRemove = 0;
-	EStatusChangeReason Reason = EStatusChangeReason::Reduced;
 };
