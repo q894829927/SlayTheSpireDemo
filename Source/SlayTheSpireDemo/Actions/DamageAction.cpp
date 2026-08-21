@@ -15,6 +15,17 @@ void UDamageAction::Initialize(
 	Target = InTarget;
 	BaseAmount = InBaseAmount;
 	DamageKind = InDamageKind;
+	SourcePresentationId = NAME_None;
+	TargetPresentationId = NAME_None;
+}
+
+void UDamageAction::SetPresentationParticipantIds(
+	FName InSourcePresentationId,
+	FName InTargetPresentationId
+)
+{
+	SourcePresentationId = InSourcePresentationId;
+	TargetPresentationId = InTargetPresentationId;
 }
 
 void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
@@ -52,9 +63,55 @@ void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 		Spec.ResolvedAmount
 	);
 
-	if (Spec.ResolvedAmount > 0)
+	if (Spec.ResolvedAmount <= 0)
 	{
-		Target->TakeCombatDamage(Spec.ResolvedAmount);
+		Finish();
+		return;
+	}
+
+	const FDamageCommitResult CommitResult = Target->TakeCombatDamage(Spec.ResolvedAmount);
+	if (!CommitResult.bCommitted)
+	{
+		Finish();
+		return;
+	}
+
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	if (Writer.IsAvailable())
+	{
+		const bool bSourceContextValid = Source.Get() == nullptr
+			|| (IsValid(Source.Get()) && !SourcePresentationId.IsNone());
+		const bool bTargetContextValid = IsValid(Target.Get()) && !TargetPresentationId.IsNone();
+		if (!bSourceContextValid || !bTargetContextValid)
+		{
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Presentation] Damage commit could not build a trustworthy participant identity payload."));
+		}
+		else
+		{
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::Damage;
+			Record.Damage.SourcePresentationId = SourcePresentationId;
+			Record.Damage.TargetPresentationId = TargetPresentationId;
+			Record.Damage.DamageKind = DamageKind;
+			Record.Damage.IncomingDamage = CommitResult.IncomingDamage;
+			Record.Damage.HPBefore = CommitResult.HPBefore;
+			Record.Damage.HPAfter = CommitResult.HPAfter;
+			Record.Damage.BlockBefore = CommitResult.BlockBefore;
+			Record.Damage.BlockAfter = CommitResult.BlockAfter;
+			Record.Damage.BlockedDamage = CommitResult.BlockedDamage;
+			Record.Damage.HPDamage = CommitResult.HPDamage;
+			if (!Writer.Append(MoveTemp(Record)))
+			{
+				UE_LOG(
+					LogTemp,
+					Warning,
+					TEXT("[Presentation] Damage record append failed; Gameplay commit remains authoritative."));
+			}
+		}
 	}
 
 	Finish();
