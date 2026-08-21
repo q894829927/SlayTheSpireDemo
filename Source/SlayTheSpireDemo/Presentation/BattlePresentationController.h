@@ -82,6 +82,7 @@ private:
 	int64 LastCompletedResolutionId = 0;
 	int64 LocalPlaybackGeneration = 1;
 	FPresentationPlaybackToken ActivePlaybackToken;
+	FPresentationPlaybackToken ScheduledTimeoutToken;
 	FTSTicker::FDelegateHandle PlaybackTimeoutTickerHandle;
 
 	static constexpr int32 MaxPlaybackEnvelopes = 8;
