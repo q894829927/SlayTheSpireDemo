@@ -11,6 +11,7 @@ struct SLAYTHESPIREDEMO_API FPresentationRecordWriter
 {
 	bool IsAvailable() const;
 	bool Append(FPresentationRecord Record) const;
+	bool InvalidateCurrentResolution() const;
 
 	uint64 GetBattleId() const
 	{
@@ -76,13 +77,16 @@ private:
 	{
 		bool bActive = false;
 		bool bValid = true;
+		bool bTerminalRecordAppended = false;
 		uint64 BattleId = 0;
 		uint64 ResolutionId = 0;
 		EPresentationResolutionOrigin Origin = EPresentationResolutionOrigin::System;
 		TArray<FPresentationRecord> Records;
 	};
 
+	static bool IsTerminalRecordType(EBattlePresentationRecordType Type);
 	bool IsWriterCurrentAndValid(uint64 WriterBattleId, uint64 WriterResolutionId) const;
+	bool InvalidateWriterResolution(uint64 WriterBattleId, uint64 WriterResolutionId);
 	void ClearActiveBuilder();
 	void InvalidateActiveBuilder();
 
