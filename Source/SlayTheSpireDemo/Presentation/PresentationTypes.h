@@ -1,7 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Texture2D.h"
 #include "../Battle/BattleState.h"
+#include "../Deck/DeckMutationTypes.h"
 #include "../Modifiers/ModifierTypes.h"
 #include "../UI/BattleHUDTypes.h"
 #include "PresentationTypes.generated.h"
@@ -23,7 +25,11 @@ enum class EBattlePresentationRecordType : uint8
 	Damage UMETA(DisplayName = "Damage"),
 	BlockChanged UMETA(DisplayName = "Block Changed"),
 	Victory UMETA(DisplayName = "Victory"),
-	Defeat UMETA(DisplayName = "Defeat")
+	Defeat UMETA(DisplayName = "Defeat"),
+	CardPlayed UMETA(DisplayName = "Card Played"),
+	EnergyChanged UMETA(DisplayName = "Energy Changed"),
+	CardZoneChanged UMETA(DisplayName = "Card Zone Changed"),
+	DeckShuffled UMETA(DisplayName = "Deck Shuffled")
 };
 
 UENUM(BlueprintType)
@@ -94,6 +100,123 @@ struct SLAYTHESPIREDEMO_API FBlockChangedPresentationPayload
 };
 
 USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FPresentationCardSnapshot
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 RuntimeId = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FName CardId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 Cost = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardType CardType = ECardType::Attack;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardTargetType TargetType = ECardTargetType::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FText Description;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	TObjectPtr<UTexture2D> CardArt = nullptr;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FCardPlayedPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FPresentationCardSnapshot Card;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FName SourcePresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FName TargetPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 HandIndexBefore = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 PlayAreaIndexAfter = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 EnergyBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 EnergyAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 CostPaid = 0;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FEnergyChangedPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 EnergyBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 EnergyAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	int32 Delta = 0;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FCardZoneChangedPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FPresentationCardSnapshot Card;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardZone FromZone = ECardZone::DrawPile;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardZone ToZone = ECardZone::Hand;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 FromIndex = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	int32 ToIndex = INDEX_NONE;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FDeckShuffledPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	int32 MovedCardCount = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	int32 DrawCountBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	int32 DrawCountAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	int32 DiscardCountBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	int32 DiscardCountAfter = 0;
+};
+
+USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationPlaybackToken
 {
 	GENERATED_BODY()
@@ -146,6 +269,18 @@ struct SLAYTHESPIREDEMO_API FPresentationRecord
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
 	FBlockChangedPresentationPayload BlockChanged;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FCardPlayedPresentationPayload CardPlayed;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Energy")
+	FEnergyChangedPresentationPayload EnergyChanged;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FCardZoneChangedPresentationPayload CardZoneChanged;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
+	FDeckShuffledPresentationPayload DeckShuffled;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
 	FString FaultReason;
