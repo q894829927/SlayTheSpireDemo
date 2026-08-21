@@ -30,7 +30,6 @@ public:
 	FCardZoneMutationResult TryMovePlayAreaCardToDestinationCommit(UCardInstance* Card, ECardDestination Destination);
 	FDeckShuffleCommitResult ShuffleDiscardIntoDrawPileCommit();
 
-	// Backward-compatible Gameplay wrappers retained for existing callers/tests.
 	bool TryDrawTopCard(UCardInstance*& OutCard);
 	UCardInstance* GetFirstHandCard() const;
 	bool TryDiscardCard(UCardInstance* Card);
@@ -56,6 +55,10 @@ public:
 
 	FString DescribeState() const;
 	void LogState(const TCHAR* Context) const;
+
+#if WITH_DEV_AUTOMATION_TESTS
+	bool InvalidateDrawPileTopForTesting();
+#endif
 
 private:
 	void ShuffleDrawPileWithBattleRng();
