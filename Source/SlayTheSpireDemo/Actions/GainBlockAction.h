@@ -13,6 +13,7 @@ class SLAYTHESPIREDEMO_API UGainBlockAction : public UBattleAction
 
 public:
 	void Initialize(ACombatant* InSource, ACombatant* InTarget, int32 InBaseAmount);
+	void SetPresentationParticipantIds(FName InSourcePresentationId, FName InTargetPresentationId);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
@@ -23,4 +24,6 @@ private:
 	TObjectPtr<ACombatant> Target = nullptr;
 
 	int32 BaseAmount = 0;
+	FName SourcePresentationId = NAME_None;
+	FName TargetPresentationId = NAME_None;
 };
