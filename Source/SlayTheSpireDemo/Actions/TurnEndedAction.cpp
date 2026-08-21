@@ -23,6 +23,10 @@ void UTurnEndedAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	Battle->HandleTurnEndedActionExecution(TurnOwner.Get(), Queue);
+	Battle->HandleTurnEndedActionExecution(
+		TurnOwner.Get(),
+		Queue,
+		GetPresentationRecordWriter()
+	);
 	Finish();
 }
