@@ -42,6 +42,7 @@ public:
 	FPresentationPlaybackToken GetActivePlaybackTokenForTesting() const;
 	int64 GetLastCompletedResolutionIdForTesting() const;
 	void ExpireActivePlaybackForTesting();
+	bool TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const;
 #endif
 
 protected:
@@ -63,6 +64,8 @@ private:
 	bool HandleActiveTimeout(float DeltaTime);
 	void AdvancePlaybackGeneration();
 	bool IsEnvelopeForCurrentBattle(const FPresentationResolutionEnvelope& Envelope) const;
+	bool ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record);
+	void ApplyDisplayedSnapshot(const FPresentationStateSnapshot& Snapshot, bool bRefreshBindings);
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
 
@@ -78,7 +81,15 @@ private:
 	UPROPERTY(Transient)
 	FPresentationResolutionEnvelope ActiveEnvelope;
 
+	UPROPERTY(Transient)
+	FPresentationStateSnapshot DisplayedPresentationSnapshot;
+
+	UPROPERTY(Transient)
+	FPresentationStateSnapshot WorkingPresentationSnapshot;
+
 	bool bHasActiveEnvelope = false;
+	bool bHasDisplayedPresentationSnapshot = false;
+	bool bHasWorkingPresentationSnapshot = false;
 	bool bWaitingForCompletion = false;
 	int32 ActiveRecordIndex = INDEX_NONE;
 	int64 CurrentBattleId = 0;
