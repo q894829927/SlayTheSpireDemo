@@ -1,6 +1,6 @@
 # Phase 6UI-A1 — Operable Battle HUD
 
-Status: **SOURCE CHANGED / UE5.8 REVALIDATION + UMG ASSET + PIE VALIDATION PENDING**.
+Status: **COMPLETE / UE5.8 AUTOMATION + UMG + PIE REVALIDATED**.
 
 UI-A1 turns the completed UI-A0 gameplay/read boundary into a presentation-facing, operable HUD architecture. Runtime C++ provides a Blueprint-friendly ViewModel, a UMG base widget contract and a presentation-only scene presenter. Text tooling does not create or edit `.uasset` / `.umap`; the concrete Widget Blueprint and level assembly remain explicit user actions.
 
@@ -9,7 +9,7 @@ The combatant inspection/character-bound target extension additionally provides
 IDs and data-authored combatant display names. Exact UMG assembly steps live in
 `docs/Phase6UIA1CombatantInspectionSetup.md`.
 
-The owner-confirmed UE5.8 source gate previously passed before the later CardType/Description presentation extension and the Self-target interaction-policy revision:
+The owner-confirmed UE5.8 gate has now been rerun after the CardType/Description presentation extension and the Self-target interaction-policy revision:
 
 ```text
 SlayTheSpireDemoEditor build  PASS
@@ -18,11 +18,12 @@ Phase6A      23/23 PASS
 Phase6B      12/12 PASS
 Phase6C       5/5  PASS
 Phase6UIA0   20/20 PASS
-Phase6UIA1    9/9  PASS
-Previous run 82/82 PASS
+Phase6UIA1   11/11 PASS
+Phase6UIA3    8/8  PASS
+Current run  92/92 PASS
 ```
 
-That run remains historical evidence only. The later card-presentation fields and Self-target interaction-policy changes require a fresh UE5.8 workflow run. The exact total is run evidence, not a permanent architecture acceptance constant.
+Manual PIE revalidation also passes the current character-bound target flow, including Self-target Defend through the highlighted Player presentation, plus the normal player → enemy → player battle loop. The exact numeric total is run evidence, not a permanent architecture acceptance constant.
 
 ## Responsibility split
 
@@ -221,7 +222,7 @@ Source/SlayTheSpireDemo/UI/BattleHUDPresenter.h/.cpp
 
 The Runtime module depends on `UMG` because `UBattleHUDWidgetBase` is a public Runtime type. The project still does not enable the Unreal MVVM plugin; the architecture uses MVVM-style responsibility boundaries without adding a plugin dependency.
 
-## Automation source gate — REVALIDATION PENDING
+## Automation source gate — VALIDATED
 
 Editor-only UI-A1 tests live under:
 
@@ -270,10 +271,7 @@ The owner-only workflow is:
 .github/workflows/ue-phase6uia1-tests.yml
 ```
 
-The workflow continues to expect 11 Phase6UIA1 tests and now additionally expects
-8 Phase6UIA3 dynamic-text tests, for 92 discovered tests across the gated prefixes.
-These exact discovered counts are an operational missing-test guard; the durable
-acceptance rule is not a permanent numeric total:
+The workflow expects 11 Phase6UIA1 tests and 8 Phase6UIA3 dynamic-text tests, for 92 discovered tests across the gated prefixes. The current rerun passed that gate. These exact discovered counts are an operational missing-test guard; the durable acceptance rule is not a permanent numeric total:
 
 ```text
 UE5.8 Editor build passes
@@ -282,30 +280,28 @@ all existing Phase5 / Phase6 / UI-A0 regressions pass
 +
 all currently named UI-A1 ViewModel invariants pass
 +
-concrete WBP_BattleHUD can be assembled and PIE-validates one normal playable battle loop
+concrete WBP_BattleHUD is assembled and PIE-validates one normal playable battle loop
 ```
 
-After the CardType/Description extension and Self-target interaction-policy revision, the first three source requirements require a fresh owner-run workflow before they can be claimed again. UI-A1 also remains incomplete until the concrete UMG/PIE requirement passes.
+The current Self-target Player-selection source/UMG path is therefore revalidated. UI-A1 is complete and the next implementation slice is UI-A2 Basic Committed Presentation.
 
-## User asset work — CURRENT NEXT STEP
+## User asset / PIE state — VALIDATED
 
-User action is required in UE Editor:
+The required UE Editor assembly is present and validated:
 
 ```text
-create WBP_BattleHUD derived from UBattleHUDWidgetBase
-create WBP_CombatantPresentation derived from UBattleHUDCombatantPresentationWidgetBase
-map public LegalTargets to combatant presentations by PresentationId
-use transient hover/focus combatant inspection; normal click never pins it
-build minimum HP / Block / Energy / Status / Hand / pile / Intent / End Turn surface
-build WBP_BattleCard and bind DisplayName / Cost / CardType / Description from FBattleHUDCardView
-wire card selection / cancel / target / confirm / End Turn through base-widget methods
-place ABattleHUDPresenter in L_BattleTest
-assign the existing BattleManager instance
-assign WBP_BattleHUD as WidgetClass
-PIE one player → enemy → player cycle without gameplay-driving debug keys
+WBP_BattleHUD derived from UBattleHUDWidgetBase
+WBP_CombatantPresentation derived from UBattleHUDCombatantPresentationWidgetBase
+public LegalTargets mapped to combatant presentations by PresentationId
+transient hover/focus combatant inspection; normal click never pins it
+minimum HP / Block / Energy / Status / Hand / pile / Intent / End Turn surface
+WBP_BattleCard bound to DisplayName / Cost / CardType / Description from FBattleHUDCardView
+card selection / cancel / target / confirm / End Turn wired through base-widget methods
+ABattleHUDPresenter placed in L_BattleTest with BattleManager and WBP_BattleHUD configured
+PIE player → enemy → player cycle without gameplay-driving debug keys
 ```
 
-The current Self-target PIE acceptance case is explicit:
+The current Self-target PIE acceptance case passes:
 
 ```text
 Defend
@@ -318,7 +314,7 @@ Defend
 → card reaches its resolved destination
 ```
 
-Enemy-target PIE remains:
+Enemy-target PIE remains validated:
 
 ```text
 Strike / Pommel Strike
@@ -328,7 +324,7 @@ Strike / Pommel Strike
 → damage resolves
 ```
 
-Existing binary CardData assets must have their new `Description` field authored in UE Editor; text tooling does not rewrite `.uasset` contents.
+Existing binary CardData assets have their required `Description` fields authored in UE Editor; text tooling does not rewrite `.uasset` contents.
 
 ## Not in UI-A1
 
