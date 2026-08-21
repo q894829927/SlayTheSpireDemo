@@ -79,10 +79,6 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	}
 	else
 	{
-		// Event wiring is optional at the generic PlayCard layer. Non-draw cards
-		// must not gain a new hard dependency just because Phase 6C added a shuffle
-		// event. Draw actions receive this context when available and only require it
-		// if they later reach the empty-draw -> shuffle path.
 		ResolvedEventDispatcher = nullptr;
 		RawEventCombatants.Reset();
 		Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawEventCombatants);
@@ -154,6 +150,11 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	Context.EventCombatants = RawEventCombatants;
 	Context.ActionOuter = Queue;
 	Context.PresentationRecordWriter = GetPresentationRecordWriter();
+	Battle->TryResolveCombatantPresentationId(Source.Get(), Context.SourcePresentationId);
+	if (IsValid(ResolvedTarget))
+	{
+		Battle->TryResolveCombatantPresentationId(ResolvedTarget, Context.TargetPresentationId);
+	}
 
 	TArray<UBattleAction*> FollowUpActions;
 	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
