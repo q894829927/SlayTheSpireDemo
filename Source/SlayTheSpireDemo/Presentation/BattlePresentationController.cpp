@@ -33,6 +33,12 @@ bool UBattlePresentationController::Initialize(
 	{
 		CurrentBattleId = Baseline.BattleId;
 
+		// Controller bootstrap owns the exact frozen display baseline. Do not rely
+		// on Presenter/ViewModel initialization order: a late Controller may receive
+		// a ViewModel that still displays an older revision while the deferred
+		// Envelope for this baseline is about to be suppressed as historical.
+		ViewModel->ApplyPresentationSnapshot(Baseline, true);
+
 		// A late subscriber starts from the newest frozen baseline. Any Resolution
 		// already reflected by that baseline is historical even if its deferred
 		// public Envelope has not fired yet, so seed the de-duplication watermark

@@ -18,9 +18,18 @@ void UDamageCardEffect::BuildActions(
 		return;
 	}
 
-	UDamageAction* Action = NewObject<UDamageAction>(Context.ActionOuter);
-	Action->Initialize(Context.Source, Context.Target, BaseAmount, DamageKind);
-	OutActions.Add(Action);
+	if (HitCount <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] Damage build skipped: invalid HitCount=%d."), HitCount);
+		return;
+	}
+
+	for (int32 HitIndex = 0; HitIndex < HitCount; ++HitIndex)
+	{
+		UDamageAction* Action = NewObject<UDamageAction>(Context.ActionOuter);
+		Action->Initialize(Context.Source, Context.Target, BaseAmount, DamageKind);
+		OutActions.Add(Action);
+	}
 }
 
 void UDamageCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
@@ -57,5 +66,9 @@ void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) c
 	if (BaseAmount < 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect BaseAmount cannot be negative.")));
+	}
+	if (HitCount <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect HitCount must be greater than zero.")));
 	}
 }

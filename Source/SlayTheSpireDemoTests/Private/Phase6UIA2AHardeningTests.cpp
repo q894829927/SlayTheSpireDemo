@@ -284,17 +284,44 @@ bool FPhase6UIA2AControllerStaleIsolationTest::RunTest(const FString& Parameters
 	{
 		return false;
 	}
-	TestTrue(TEXT("BattleStart Envelope is still pending before late Controller subscribes"), LatePendingFixture.Battle->GetPendingPresentationDeliveryCountForTesting() > 0);
+	LatePendingFixture.Flush();
+
+	// Initialize the ViewModel before the newer baseline exists. Controller
+	// bootstrap must catch it up without relying on ViewModel initialization order.
+	UBattleHUDViewModel* LatePendingVM = NewObject<UBattleHUDViewModel>(LatePendingFixture.World);
+	TestTrue(TEXT("Late Controller-owned ViewModel initializes from the old baseline"), LatePendingVM->Initialize(LatePendingFixture.Battle, true));
+	const int64 OldDisplayedStateRevision = LatePendingVM->StateRevision;
+	TestTrue(
+		TEXT("Gameplay advances and seals before the late Controller exists"),
+		LatePendingFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution()
+	);
+
+	// Seal one meaningful asynchronous record, but leave its public delivery
+	// deferred until after Controller subscription. An empty BattleStart Envelope
+	// would complete immediately and could not prove that historical playback was
+	// actually suppressed.
+	TestTrue(TEXT("Late replay probe Resolution begins"), LatePendingFixture.Battle->BeginSystemPresentationResolutionForTesting());
+	FPresentationRecord PendingFaultRecord;
+	PendingFaultRecord.Type = EBattlePresentationRecordType::ResolutionFault;
+	PendingFaultRecord.FaultReason = TEXT("Late Controller replay suppression probe");
+	TestTrue(
+		TEXT("Late replay probe appends an asynchronous record"),
+		LatePendingFixture.Battle->GetActivePresentationRecordWriterForTesting().Append(PendingFaultRecord)
+	);
+	TestTrue(TEXT("Late replay probe Resolution seals"), LatePendingFixture.Battle->SealActivePresentationResolutionForTesting());
+	TestTrue(TEXT("Meaningful Envelope is pending before late Controller subscribes"), LatePendingFixture.Battle->GetPendingPresentationDeliveryCountForTesting() > 0);
 	FPresentationStateSnapshot LatePendingBaseline;
 	TestTrue(TEXT("Late Controller bootstrap baseline exists"), LatePendingFixture.Battle->TryGetLatestFrozenPresentationBaseline(LatePendingBaseline));
+	TestTrue(TEXT("New frozen baseline is newer than the ViewModel's old display"), LatePendingBaseline.StateRevision > OldDisplayedStateRevision);
 	const int64 LatePendingWatermark = static_cast<int64>(LatePendingFixture.Battle->GetLatestFrozenPresentationBaselineResolutionId());
 	TestTrue(TEXT("Bootstrap baseline carries a sealed Resolution watermark"), LatePendingWatermark > 0);
-	UBattleHUDViewModel* LatePendingVM = NewObject<UBattleHUDViewModel>(LatePendingFixture.World);
-	TestTrue(TEXT("Late Controller-owned ViewModel initializes"), LatePendingVM->Initialize(LatePendingFixture.Battle, true));
+	UPhase6UIA2APlaybackWidget* LatePendingWidget = NewObject<UPhase6UIA2APlaybackWidget>(LatePendingFixture.World);
 	UBattlePresentationController* LatePendingController = NewObject<UBattlePresentationController>(LatePendingFixture.World);
-	TestTrue(TEXT("Late Controller initializes from frozen baseline"), LatePendingController->Initialize(LatePendingFixture.Battle, LatePendingVM, nullptr));
+	TestTrue(TEXT("Late Controller initializes from frozen baseline"), LatePendingController->Initialize(LatePendingFixture.Battle, LatePendingVM, LatePendingWidget));
+	TestEqual(TEXT("Controller bootstrap applies the newest frozen revision"), LatePendingVM->StateRevision, LatePendingBaseline.StateRevision);
 	TestEqual(TEXT("Late Controller seeds completed watermark from baseline"), LatePendingController->GetLastCompletedResolutionIdForTesting(), LatePendingWatermark);
 	LatePendingFixture.Flush();
+	TestEqual(TEXT("Pending historical record is never offered to the playback Widget"), LatePendingWidget->PlayCallCount, 0);
 	TestEqual(TEXT("Pending historical Envelope does not replay after late subscribe"), LatePendingController->GetLastCompletedResolutionIdForTesting(), LatePendingWatermark);
 	TestFalse(TEXT("Late historical delivery cannot enter playback wait"), LatePendingController->IsWaitingForCompletionForTesting());
 

@@ -8,6 +8,7 @@
 #include "Battle/BattleReadSnapshot.h"
 #include "Cards/CardData.h"
 #include "Cards/CardInstance.h"
+#include "Cards/CardPlayContext.h"
 #include "Cards/Effects/ApplyStatusCardEffect.h"
 #include "Cards/Effects/DamageCardEffect.h"
 #include "Cards/Effects/DrawCardEffect.h"
@@ -139,6 +140,68 @@ bool FCardDamageSourceBaselineTest::RunTest(const FString& Parameters)
 	UStatusData* Vulnerable = MakeDamageRatioStatus(Fixture.World, TEXT("Vulnerable"), EModifierScope::Target, EDamageModifierPhase::TargetMultiplier, 3, 2);
 	Fixture.ApplyStatus(Fixture.Enemy, Vulnerable, 1);
 	TestEqual(TEXT("Enemy Vulnerable is excluded from the source-side card baseline"), FBattleTextResolver::ResolveCardDescription(Card, Fixture.Player).ToString(), FString(TEXT("Deal 5 damage.")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FFixedDamageHitCountTest,
+	"SlayTheSpireDemo.Phase6UIA3.DynamicText.FixedDamageHitCountUsesOneArgumentAndIndependentActions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FFixedDamageHitCountTest::RunTest(const FString& Parameters)
+{
+	FTextFixture Fixture;
+	UCardData* Definition = MakeDamageCard(
+		Fixture.World,
+		5,
+		FText::FromString(TEXT("Deal {Damage} damage twice."))
+	);
+	UDamageCardEffect* DamageEffect = Cast<UDamageCardEffect>(Definition->Effects[0].Get());
+	if (!IsValid(DamageEffect))
+	{
+		AddError(TEXT("Failed to create the fixed multi-hit DamageCardEffect."));
+		return false;
+	}
+	TArray<FText> ValidationErrors;
+	DamageEffect->HitCount = 0;
+	TestFalse(
+		TEXT("A non-positive fixed hit count invalidates the CardData"),
+		FBattleTextResolver::ValidateCardDefinition(Definition, ValidationErrors)
+	);
+
+	DamageEffect->HitCount = 2;
+	ValidationErrors.Reset();
+	TestTrue(
+		TEXT("One Damage argument remains valid for a fixed multi-hit effect"),
+		FBattleTextResolver::ValidateCardDefinition(Definition, ValidationErrors)
+	);
+	TestEqual(
+		TEXT("Card text exposes the per-hit amount once"),
+		FBattleTextResolver::ResolveCardDescription(Fixture.MakeCard(Definition), Fixture.Player).ToString(),
+		FString(TEXT("Deal 5 damage twice."))
+	);
+
+	UStatusData* Strength = MakeDamageFlatStatus(Fixture.World, TEXT("Strength"), 1);
+	Fixture.ApplyStatus(Fixture.Player, Strength, 2);
+	TestEqual(
+		TEXT("Per-hit preview resolves through the source modifier pipeline"),
+		FBattleTextResolver::ResolveCardDescription(Fixture.MakeCard(Definition, 2), Fixture.Player).ToString(),
+		FString(TEXT("Deal 7 damage twice."))
+	);
+
+	UBattleActionQueue* Queue = NewObject<UBattleActionQueue>(Fixture.World);
+	FCardPlayContext Context;
+	Context.Source = Fixture.Player;
+	Context.Target = Fixture.Enemy;
+	Context.ActionOuter = Queue;
+	TArray<UBattleAction*> Actions;
+	DamageEffect->BuildActions(Context, Actions);
+	TestEqual(TEXT("HitCount two builds two Actions"), Actions.Num(), 2);
+	TestTrue(TEXT("Both hit Actions enter the Queue atomically"), Queue->AddBatchToBackPreserveOrder(Actions));
+	TestTrue(TEXT("Both hit Actions resolve"), Queue->StartProcessing());
+	TestEqual(TEXT("Queue executed two independent hit Actions"), Queue->GetExecutedCountInResolution(), 2);
+	TestEqual(TEXT("Strength modifies each Base 5 hit independently"), Fixture.Enemy->HP, 36);
 	return true;
 }
 

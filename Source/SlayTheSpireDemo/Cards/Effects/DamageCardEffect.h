@@ -17,6 +17,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "0"))
 	int32 BaseAmount = 6;
 
+	// Number of independent DamageActions built from this immutable effect
+	// definition. Each hit resolves the current modifier pipeline separately.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "1"))
+	int32 HitCount = 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
 	EDamageKind DamageKind = EDamageKind::Attack;
 
