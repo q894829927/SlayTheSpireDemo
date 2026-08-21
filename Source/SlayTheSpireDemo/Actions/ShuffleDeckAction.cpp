@@ -85,7 +85,14 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!ResolvedEventDispatcher->Dispatch(FBattleEvent::MakeDeckShuffled(Deck.Get()), Queue, RawCombatants))
+	const FPresentationRecordWriter& PresentationWriter = GetPresentationRecordWriter();
+	if (!ResolvedEventDispatcher->Dispatch(
+		FBattleEvent::MakeDeckShuffled(Deck.Get()),
+		Queue,
+		RawCombatants,
+		nullptr,
+		&PresentationWriter
+	))
 	{
 		Queue->RequestResolutionFault(TEXT("DeckShuffled event dispatch failed after a successful shuffle commit."));
 		Finish();
