@@ -60,6 +60,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
 	int32 PlayerTestAttackDamage = 6;
 
+	// Temporary fixed-enemy intent generator input. Once an Intent is committed,
+	// EnemyTurn executes the committed Intent rather than reading this value again.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug", meta = (ClampMin = "0"))
 	int32 EnemyTestAttackDamage = 5;
 
@@ -81,6 +83,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5CStatuses;
 
+	// Configuration is sampled once by StartBattle and remains immutable for that
+	// BattleId. Runtime edits affect only the next StartBattle; they never tear down
+	// an already-wired PresentationController in the middle of a resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Presentation")
 	bool bEnableCommittedPresentationRecording = true;
 
@@ -120,6 +125,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Block")
 	void TestPhase5CBlockPipeline();
 
+	// Legacy Blueprint/debug wrapper. Formal UI should call RequestEndPlayerTurn.
 	UFUNCTION(BlueprintCallable, Category = "Battle")
 	void EndPlayerTurn();
 
@@ -131,7 +137,16 @@ public:
 	FGameplayRequestResult RequestEndPlayerTurn();
 
 	void GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const;
+
+	// Raw coherent gameplay snapshot used by existing runtime/tests. It preserves
+	// the committed Intent plan but does not derive player-facing damage display.
 	bool TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
+
+	// Formal UI/ViewModel snapshot boundary. It starts from the same coherent
+	// gameplay snapshot and enriches Card/Status descriptions plus the committed
+	// Intent with gameplay-derived current-state values. Damage/Block text reuses
+	// the authoritative Modifier Pipelines without Commit. Intent remains not a
+	// guarantee of damage at a future EnemyTurn after intervening reactions.
 	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 	const FEnemyIntent& GetCommittedEnemyIntent() const;
 
@@ -139,6 +154,9 @@ public:
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
 
+	// One battle-scoped resolver owns authored/fallback PresentationId semantics.
+	// Historical snapshots, current legal-target views and future presentation
+	// records must all use this same resolver.
 	bool TryResolveCombatantPresentationId(
 		const ACombatant* Combatant,
 		FName& OutPresentationId
@@ -147,12 +165,33 @@ public:
 	bool TryGetLatestFrozenPresentationBaseline(FPresentationStateSnapshot& OutSnapshot) const;
 	bool IsPresentationAvailable() const;
 	FText GetPresentationUnavailableReason() const;
+
+	// Recording enablement is latched for the current BattleId at StartBattle.
+	// This is the value Presenter/Controller/runtime resolution code must use;
+	// bEnableCommittedPresentationRecording is configuration for the next battle.
 	bool IsCommittedPresentationRecordingEnabledForBattle() const;
+
+	// Highest sealed Resolution already reflected by the latest frozen baseline.
+	// A Controller that subscribes after this baseline exists uses the watermark
+	// to avoid replaying sealed-but-not-yet-publicly-delivered historical work.
 	uint64 GetLatestFrozenPresentationBaselineResolutionId() const;
 
+	// Deferred public immutable Envelope delivery. It never replays to late
+	// subscribers. A subscriber that attaches late bootstraps from the latest
+	// frozen baseline instead of asking for historical records.
 	FOnPresentationResolutionReady OnPresentationResolutionReady;
+
+	// UI/ViewModel-facing stable-read notification. It is battle-scoped and
+	// revision-scoped; Queue-level OnResolutionIdle is intentionally not the public
+	// presentation boundary. Publication is deferred by at least one CoreTicker
+	// turn after Queue settlement so it cannot re-enter a public Request before
+	// that Request has returned to its caller.
 	FOnBattleReadStateReady OnReadStateReady;
 
+	// Narrow runtime dependency bridge used while BattleManager still owns the
+	// battle-scoped dispatcher and authoritative combatant references. Action and
+	// card-effect code receives the returned references explicitly; it does not
+	// search the world or own trigger-source membership.
 	bool TryBuildEventDispatchContext(
 		UBattleEventDispatcher*& OutDispatcher,
 		TArray<ACombatant*>& OutCombatants
