@@ -106,7 +106,7 @@ jobs:
               throw "UE Editor build failed with exit code $LASTEXITCODE"
           }
 
-      - name: Run complete Phase 5 and Phase 6 regression gate
+      - name: Run Phase 5, Phase 6, and UI-A2A regression gate
         shell: powershell
         run: |
           $UE = "E:\Unreal engine\UE_5.8"
@@ -164,7 +164,7 @@ jobs:
               }
           }
 
-          "## UE Phase 6R Regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "## UE Phase 6R + UI-A2A Regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
@@ -173,8 +173,9 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6A" -ExpectedCount 23 -ReportName "Phase6A"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6B" -ExpectedCount 12 -ReportName "Phase6B"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6C" -ExpectedCount 5 -ReportName "Phase6C"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2A" -ExpectedCount 8 -ReportName "Phase6UIA2A"
 
-          Write-Host "Phase 5 + Phase 6 regression gate passed. Expected total: 53 tests."
+          Write-Host "Phase 5 + Phase 6 + Phase 6UI-A2A regression gate passed. Expected total: 61 tests."
 
   shipping-exclusion:
     needs: phase6r-regression
