@@ -153,6 +153,20 @@ bool UBattlePresentationRecorder::AppendRecord(
 	return true;
 }
 
+bool UBattlePresentationRecorder::TryGetActiveWriter(FPresentationRecordWriter& OutWriter) const
+{
+	OutWriter = FPresentationRecordWriter{};
+	if (!ActiveBuilder.bActive)
+	{
+		return false;
+	}
+
+	OutWriter.Recorder = const_cast<UBattlePresentationRecorder*>(this);
+	OutWriter.BattleId = ActiveBuilder.BattleId;
+	OutWriter.ResolutionId = ActiveBuilder.ResolutionId;
+	return OutWriter.IsAvailable();
+}
+
 bool UBattlePresentationRecorder::HasActiveResolution() const
 {
 	return ActiveBuilder.bActive;
