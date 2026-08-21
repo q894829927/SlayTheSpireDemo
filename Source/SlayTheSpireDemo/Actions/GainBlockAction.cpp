@@ -9,6 +9,17 @@ void UGainBlockAction::Initialize(ACombatant* InSource, ACombatant* InTarget, in
 	Source = InSource;
 	Target = InTarget;
 	BaseAmount = InBaseAmount;
+	SourcePresentationId = NAME_None;
+	TargetPresentationId = NAME_None;
+}
+
+void UGainBlockAction::SetPresentationParticipantIds(
+	FName InSourcePresentationId,
+	FName InTargetPresentationId
+)
+{
+	SourcePresentationId = InSourcePresentationId;
+	TargetPresentationId = InTargetPresentationId;
 }
 
 void UGainBlockAction::Execute(UBattleActionQueue* /*Queue*/)
@@ -44,9 +55,51 @@ void UGainBlockAction::Execute(UBattleActionQueue* /*Queue*/)
 		Spec.ResolvedAmount
 	);
 
-	if (Spec.ResolvedAmount > 0)
+	if (Spec.ResolvedAmount <= 0)
 	{
-		Target->GainBlock(Spec.ResolvedAmount);
+		Finish();
+		return;
+	}
+
+	const FBlockCommitResult CommitResult = Target->GainBlock(Spec.ResolvedAmount);
+	if (!CommitResult.bCommitted)
+	{
+		Finish();
+		return;
+	}
+
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	if (Writer.IsAvailable())
+	{
+		const bool bSourceContextValid = Source.Get() == nullptr
+			|| (IsValid(Source.Get()) && !SourcePresentationId.IsNone());
+		const bool bTargetContextValid = IsValid(Target.Get()) && !TargetPresentationId.IsNone();
+		if (!bSourceContextValid || !bTargetContextValid)
+		{
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Presentation] Block commit could not build a trustworthy participant identity payload."));
+		}
+		else
+		{
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::BlockChanged;
+			Record.BlockChanged.SourcePresentationId = SourcePresentationId;
+			Record.BlockChanged.TargetPresentationId = TargetPresentationId;
+			Record.BlockChanged.Reason = EBlockPresentationReason::Gain;
+			Record.BlockChanged.BlockBefore = CommitResult.BlockBefore;
+			Record.BlockChanged.BlockAfter = CommitResult.BlockAfter;
+			Record.BlockChanged.BlockDelta = CommitResult.BlockDelta;
+			if (!Writer.Append(MoveTemp(Record)))
+			{
+				UE_LOG(
+					LogTemp,
+					Warning,
+					TEXT("[Presentation] Block record append failed; Gameplay commit remains authoritative."));
+			}
+		}
 	}
 
 	Finish();
