@@ -1,6 +1,7 @@
 #include "BattleHUDWidgetBase.h"
 
 #include "BattleHUDViewModel.h"
+#include "../Presentation/BattlePresentationController.h"
 
 void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 {
@@ -22,6 +23,13 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 	}
 
 	HandleViewModelChanged();
+}
+
+void UBattleHUDWidgetBase::SetPresentationController(
+	UBattlePresentationController* InController
+)
+{
+	PresentationController = InController;
 }
 
 bool UBattleHUDWidgetBase::SelectCard(int32 RuntimeId)
@@ -52,8 +60,40 @@ bool UBattleHUDWidgetBase::EndTurn()
 	return IsValid(ViewModel) && ViewModel->RequestEndTurn();
 }
 
+bool UBattleHUDWidgetBase::PlayPresentationRecord_Implementation(
+	const FPresentationRecord& /*Record*/,
+	const FPresentationPlaybackToken& /*Token*/
+)
+{
+	return false;
+}
+
+void UBattleHUDWidgetBase::NotifyPresentationFinished(
+	const FPresentationPlaybackToken& Token
+)
+{
+	if (IsValid(PresentationController))
+	{
+		PresentationController->NotifyPresentationFinished(Token);
+	}
+}
+
+void UBattleHUDWidgetBase::SkipPresentation()
+{
+	if (IsValid(PresentationController))
+	{
+		PresentationController->SkipPresentation();
+	}
+}
+
 void UBattleHUDWidgetBase::NativeDestruct()
 {
+	if (IsValid(PresentationController))
+	{
+		PresentationController->NotifyWidgetLost(this);
+	}
+	PresentationController = nullptr;
+
 	if (IsValid(ViewModel))
 	{
 		ViewModel->OnChanged.RemoveDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
