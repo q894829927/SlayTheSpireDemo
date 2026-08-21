@@ -74,8 +74,9 @@ void UReduceStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 	}
 
 	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	UStatusInstance* ExactBefore = ExpectedInstance.Get();
 	const FText DescriptionBefore = Writer.IsAvailable()
-		? StatusPresentation::FreezeDescription(ExpectedInstance.Get())
+		? StatusPresentation::FreezeDescription(ExactBefore)
 		: FText::GetEmpty();
 
 	const FString ExpectedLabel = ExpectedInstance->GetDebugLabel();
@@ -85,44 +86,17 @@ void UReduceStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 	{
 	case EStatusMutationOutcome::Committed:
 	{
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Action] ReduceStatusAction committed for %s Amount %d -> %d Reason=%d."),
-			*ExpectedLabel,
-			Result.AmountBefore,
-			Result.AmountAfter,
-			static_cast<int32>(Reason)
-		);
-
+		UE_LOG(LogTemp, Log, TEXT("[Action] ReduceStatusAction committed for %s Amount %d -> %d Reason=%d."), *ExpectedLabel, Result.AmountBefore, Result.AmountAfter, static_cast<int32>(Reason));
 		if (Writer.IsAvailable())
 		{
-			const FText DescriptionAfter = Result.bRemoved
-				? FText::GetEmpty()
-				: StatusPresentation::FreezeDescription(Result.EffectiveInstance);
-			StatusPresentation::AppendCommittedChange(
-				Writer,
-				Battle.Get(),
-				Source.Get(),
-				Target.Get(),
-				Result,
-				Reason,
-				DescriptionBefore,
-				DescriptionAfter
-			);
+			const FText DescriptionAfter = Result.bRemoved ? FText::GetEmpty() : StatusPresentation::FreezeDescription(Result.EffectiveInstance);
+			StatusPresentation::AppendCommittedChange(Writer, Battle.Get(), Source.Get(), Target.Get(), ExactBefore, Result, Reason, DescriptionBefore, DescriptionAfter);
 		}
 		break;
 	}
-
 	case EStatusMutationOutcome::NoOp:
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Action] ReduceStatusAction no-op: exact runtime instance %s is no longer reducible in the expected container."),
-			*ExpectedLabel
-		);
+		UE_LOG(LogTemp, Log, TEXT("[Action] ReduceStatusAction no-op: exact runtime instance %s is no longer reducible in the expected container."), *ExpectedLabel);
 		break;
-
 	case EStatusMutationOutcome::Invalid:
 	default:
 		UE_LOG(LogTemp, Warning, TEXT("[Action] ReduceStatusAction failed for exact runtime instance %s."), *ExpectedLabel);
