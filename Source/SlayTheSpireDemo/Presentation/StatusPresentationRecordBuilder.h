@@ -17,6 +17,7 @@ namespace StatusPresentation
 		ABattleManager* Battle,
 		ACombatant* Source,
 		ACombatant* Target,
+		const UStatusInstance* ExpectedPreMutationInstance,
 		const FStatusMutationResult& Mutation,
 		EStatusChangeReason Reason,
 		const FText& DescriptionBefore,
