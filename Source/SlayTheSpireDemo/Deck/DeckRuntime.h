@@ -57,7 +57,15 @@ public:
 	void LogState(const TCHAR* Context) const;
 
 #if WITH_DEV_AUTOMATION_TESTS
-	bool InvalidateDrawPileTopForTesting();
+	bool InvalidateDrawPileTopForTesting()
+	{
+		if (DrawPile.Num() == 0)
+		{
+			return false;
+		}
+		DrawPile.Last() = nullptr;
+		return true;
+	}
 #endif
 
 private:
