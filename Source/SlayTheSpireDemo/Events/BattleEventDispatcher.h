@@ -7,6 +7,7 @@
 class ACombatant;
 class UBattleActionQueue;
 struct FBattleEvent;
+struct FPresentationRecordWriter;
 
 // Records the deterministic order of triggers that passed CanReact. This is an
 // eligibility/candidate trace only; it does not claim that reaction Actions were
@@ -33,7 +34,8 @@ public:
 		const FBattleEvent& Event,
 		UBattleActionQueue* Queue,
 		const TArray<ACombatant*>& Combatants,
-		TArray<FTriggerEligibilityRecord>* OutEligibilityTrace = nullptr
+		TArray<FTriggerEligibilityRecord>* OutEligibilityTrace = nullptr,
+		const FPresentationRecordWriter* PresentationRecordWriter = nullptr
 	) const;
 
 #if WITH_DEV_AUTOMATION_TESTS
