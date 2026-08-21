@@ -131,6 +131,15 @@ namespace Phase6UIA2ATest
 		Test.AddExpectedErrorPlain(TEXT("[Battle] Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
 	}
 
+	void ExpectPresentationUnavailableLogs(FAutomationTestBase& Test, int32 Count = 1)
+	{
+		Test.AddExpectedErrorPlain(
+			TEXT("[Presentation] Unavailable for BattleId="),
+			EAutomationExpectedErrorFlags::Contains,
+			Count
+		);
+	}
+
 	FPresentationResolutionEnvelope MakeFaultEnvelope(
 		const FPresentationStateSnapshot& Snapshot,
 		int64 ResolutionId,
@@ -264,6 +273,11 @@ bool FPhase6UIA2AResolutionLifecycleTest::RunTest(const FString& Parameters)
 		}
 	);
 	PostValidationFixture.Battle->SetForceInvalidPlayerEndBatchForTesting(true);
+	AddExpectedErrorPlain(
+		TEXT("[Battle] EndPlayerTurn failed to enqueue the atomic HandCleanup + TurnEndedAction batch."),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
 	ExpectFrameworkFaultLogs(*this);
 	const FGameplayRequestResult FaultedRequest = PostValidationFixture.Battle->RequestEndPlayerTurn();
 	TestFalse(TEXT("Post-validation framework failure does not report accepted gameplay request"), FaultedRequest.IsAcceptedForResolution());
@@ -354,6 +368,7 @@ bool FPhase6UIA2ADeliveryAndFailureTest::RunTest(const FString& Parameters)
 	FreezeFixture.FlushPublicDelivery();
 	FreezeFixture.Battle->SetForcePresentationFreezeFailureForTesting(true);
 	TestTrue(TEXT("Freeze failure test Resolution begins"), FreezeFixture.Battle->BeginSystemPresentationResolutionForTesting());
+	ExpectPresentationUnavailableLogs(*this);
 	TestFalse(TEXT("Forced freeze prevents seal"), FreezeFixture.Battle->SealActivePresentationResolutionForTesting());
 	TestFalse(TEXT("Freeze failure disables Presentation"), FreezeFixture.Battle->IsPresentationAvailable());
 	TestEqual(TEXT("Freeze failure leaves Gameplay healthy"), FreezeFixture.Battle->BattleState, EBattleState::PlayerTurn);
@@ -365,6 +380,7 @@ bool FPhase6UIA2ADeliveryAndFailureTest::RunTest(const FString& Parameters)
 	SealFixture.FlushPublicDelivery();
 	TestTrue(TEXT("Seal failure test Resolution begins"), SealFixture.Battle->BeginSystemPresentationResolutionForTesting());
 	SealFixture.Battle->GetPresentationRecorderForTesting()->SetForceNextSealFailureForTesting(true);
+	ExpectPresentationUnavailableLogs(*this);
 	TestFalse(TEXT("Forced seal fails"), SealFixture.Battle->SealActivePresentationResolutionForTesting());
 	TestFalse(TEXT("Failed seal releases builder"), SealFixture.Battle->GetPresentationRecorderForTesting()->HasActiveResolution());
 	TestEqual(TEXT("Seal failure never faults Gameplay"), SealFixture.Battle->BattleState, EBattleState::PlayerTurn);
@@ -382,6 +398,7 @@ bool FPhase6UIA2ADeliveryAndFailureTest::RunTest(const FString& Parameters)
 	Second.Type = EBattlePresentationRecordType::None;
 	TestFalse(TEXT("Forced second append fails"), AppendFixture.Battle->GetActivePresentationRecordWriterForTesting().Append(Second));
 	TestEqual(TEXT("Append failure discards whole unpublished record batch"), AppendFixture.Battle->GetPresentationRecorderForTesting()->GetActiveRecordCountForTesting(), 0);
+	ExpectPresentationUnavailableLogs(*this);
 	TestFalse(TEXT("Invalidated builder does not seal partial Envelope"), AppendFixture.Battle->SealActivePresentationResolutionForTesting());
 	TestEqual(TEXT("Append failure leaves Gameplay state unchanged"), AppendFixture.Battle->BattleState, EBattleState::PlayerTurn);
 	TestFalse(TEXT("Append failure does not fault ActionQueue"), AppendFixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
@@ -568,6 +585,7 @@ bool FPhase6UIA2AFrozenStateAndInputTest::RunTest(const FString& Parameters)
 	FFixture InvalidFixture(false);
 	InvalidFixture.Player->PresentationId = TEXT("DuplicateId");
 	InvalidFixture.Enemy->PresentationId = TEXT("DuplicateId");
+	ExpectPresentationUnavailableLogs(*this, 2);
 	InvalidFixture.Battle->StartBattle();
 	TestEqual(TEXT("Invalid presentation identity does not fault headless Gameplay"), InvalidFixture.Battle->BattleState, EBattleState::PlayerTurn);
 	TestFalse(TEXT("Duplicate resolved PresentationId marks presentation unavailable"), InvalidFixture.Battle->IsPresentationAvailable());
@@ -626,6 +644,7 @@ bool FPhase6UIA2AWriterAndControllerTest::RunTest(const FString& Parameters)
 	Action->Initialize(ActionProbe, true);
 	Action->SetPresentationRecordWriter(ActionFixture.Battle->GetActivePresentationRecordWriterForTesting());
 	TestTrue(TEXT("Probe Action enqueued"), ActionFixture.Battle->GetActionQueueForTesting()->AddToBack(Action));
+	ExpectPresentationUnavailableLogs(*this);
 	TestTrue(TEXT("Probe Action processing starts"), ActionFixture.Battle->GetActionQueueForTesting()->StartProcessing());
 	TestTrue(TEXT("Probe Action still finishes after presentation append failure"), Action->IsFinished());
 	TestFalse(TEXT("Presentation append failure does not fault gameplay queue"), ActionFixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());

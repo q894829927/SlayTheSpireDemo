@@ -156,6 +156,8 @@ jobs:
                   throw "Expected exactly $ExpectedCount tests for $Prefix, but found $($Tests.Count)."
               }
               if ($NonSuccess.Count -gt 0) {
+                  Write-Host "Non-success automation details for ${Prefix}:"
+                  Write-Host ($NonSuccess | ConvertTo-Json -Depth 12)
                   $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
                   throw "Non-success tests for ${Prefix}: $Names"
               }
