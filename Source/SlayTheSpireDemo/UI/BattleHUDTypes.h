@@ -41,6 +41,9 @@ struct SLAYTHESPIREDEMO_API FBattleHUDStatusView
 	FName StatusId = NAME_None;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	int64 RuntimeSequence = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText DisplayName;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
