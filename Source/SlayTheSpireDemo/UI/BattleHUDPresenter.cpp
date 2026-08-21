@@ -3,6 +3,7 @@
 #include "BattleHUDViewModel.h"
 #include "BattleHUDWidgetBase.h"
 #include "../Battle/BattleManager.h"
+#include "../Presentation/BattlePresentationController.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "GameFramework/PlayerController.h"
 
@@ -35,12 +36,15 @@ void ABattleHUDPresenter::BeginPlay()
 	}
 
 	ViewModel = NewObject<UBattleHUDViewModel>(this);
-	if (!IsValid(ViewModel) || !ViewModel->Initialize(BattleManager.Get()))
+	if (!IsValid(ViewModel) || !ViewModel->Initialize(BattleManager.Get(), bEnableCommittedPresentation))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter failed to initialize the BattleHUD ViewModel."));
 		return;
 	}
 
+	// Widget creation is intentionally independent from Presentation availability.
+	// PresentationUnavailable is a HUD-visible development error state rather than
+	// a reason to suppress the normal error-capable HUD surface.
 	WidgetInstance = CreateWidget<UBattleHUDWidgetBase>(PlayerController, WidgetClass);
 	if (!IsValid(WidgetInstance))
 	{
@@ -49,6 +53,32 @@ void ABattleHUDPresenter::BeginPlay()
 	}
 
 	WidgetInstance->SetViewModel(ViewModel.Get());
+
+	if (bEnableCommittedPresentation && BattleManager->IsPresentationAvailable())
+	{
+		PresentationController = NewObject<UBattlePresentationController>(this);
+		if (IsValid(PresentationController)
+			&& PresentationController->Initialize(BattleManager.Get(), ViewModel.Get(), WidgetInstance.Get()))
+		{
+			WidgetInstance->SetPresentationController(PresentationController.Get());
+		}
+		else
+		{
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("[BattleHUD] PresentationController initialization failed. Falling back to frozen latest-state HUD delivery.")
+			);
+			PresentationController = nullptr;
+			ViewModel->SetPresentationDisplayOwned(false);
+			ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+		}
+	}
+	else if (bEnableCommittedPresentation && !BattleManager->IsPresentationAvailable())
+	{
+		ViewModel->EnterPresentationUnavailable(BattleManager->GetPresentationUnavailableReason());
+	}
+
 	WidgetInstance->AddToViewport(ZOrder);
 
 	if (bConfigureGameAndUIInput)
@@ -62,6 +92,17 @@ void ABattleHUDPresenter::BeginPlay()
 
 void ABattleHUDPresenter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (IsValid(WidgetInstance))
+	{
+		WidgetInstance->SetPresentationController(nullptr);
+	}
+
+	if (IsValid(PresentationController))
+	{
+		PresentationController->Shutdown();
+		PresentationController = nullptr;
+	}
+
 	if (IsValid(WidgetInstance))
 	{
 		WidgetInstance->RemoveFromParent();
