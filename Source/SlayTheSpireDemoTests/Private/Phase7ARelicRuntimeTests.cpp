@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Battle/BattleManager.h"
+#include "Combat/Combatant.h"
 #include "Engine/World.h"
 #include "Relics/RelicContainer.h"
 #include "Relics/RelicData.h"
@@ -33,11 +34,7 @@ namespace Phase7ARelicRuntimeTest
 				return;
 			}
 
-			Container = NewObject<URelicContainer>(Battle);
-			if (IsValid(Container))
-			{
-				Container->Initialize(Battle);
-			}
+			Container = Battle->GetPlayerRelicContainer();
 		}
 
 		~FFixture()
@@ -64,6 +61,23 @@ namespace Phase7ARelicRuntimeTest
 			Definition->Description = FText::FromString(FString::Printf(TEXT("%s description"), RelicId));
 		}
 		return Definition;
+	}
+
+	ACombatant* SpawnCombatant(UWorld* World)
+	{
+		if (!IsValid(World))
+		{
+			return nullptr;
+		}
+
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACombatant* Combatant = World->SpawnActor<ACombatant>(ACombatant::StaticClass(), FTransform::Identity, SpawnParameters);
+		if (IsValid(Combatant))
+		{
+			Combatant->MaxHP = 100;
+		}
+		return Combatant;
 	}
 
 	bool RequireReady(FAutomationTestBase& Test, const FFixture& Fixture)
@@ -110,6 +124,7 @@ bool FPhase7ARelicRuntimeMembershipTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	TestTrue(TEXT("BattleManager owns the authoritative player RelicContainer"), Fixture.Container->GetOuter() == Fixture.Battle);
 	TestTrue(TEXT("Runtime instance freezes exact definition reference"), SundialInstance->GetDefinition() == Sundial);
 	TestEqual(TEXT("Runtime instance exposes RelicId"), SundialInstance->GetRelicId(), FName(TEXT("Sundial")));
 	TestTrue(TEXT("RuntimeSequence is non-zero"), SundialInstance->GetRuntimeSequence() > 0);
@@ -182,7 +197,7 @@ bool FPhase7ARelicRuntimeInvalidAndResetTest::RunTest(const FString& Parameters)
 	const FRelicAddResult SecondAdd = Fixture.Container->AddRelic(Sundial);
 	TestTrue(TEXT("Reinitialized container accepts same logical Relic"), SecondAdd.Outcome == ERelicAddOutcome::Added);
 	TestTrue(TEXT("Reinitialized runtime instance differs from old exact instance"), SecondAdd.Instance != OldInstance);
-	TestTrue(TEXT("Reinitialized runtime identity is newer"), SecondAdd.Instance != nullptr && SecondAdd.Instance->GetRuntimeSequence() > OldInstance->GetRuntimeSequence());
+	TestTrue(TEXT("Reinitialized runtime identity is newer in the same battle allocator session"), SecondAdd.Instance != nullptr && SecondAdd.Instance->GetRuntimeSequence() > OldInstance->GetRuntimeSequence());
 	return true;
 }
 
@@ -220,6 +235,75 @@ bool FPhase7ARelicRuntimeDefinitionIsolationTest::RunTest(const FString& Paramet
 	TestTrue(TEXT("Containers create distinct runtime objects from one immutable definition"), First.Instance != Second.Instance);
 	TestTrue(TEXT("Both runtime objects reference the same immutable definition"), First.Instance->GetDefinition() == Sundial && Second.Instance->GetDefinition() == Sundial);
 	TestTrue(TEXT("Distinct runtime objects receive distinct battle-scoped identities"), First.Instance->GetRuntimeSequence() != Second.Instance->GetRuntimeSequence());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FPhase7ARelicRuntimeBattleRestartTest,
+	"SlayTheSpireDemo.Phase7A.Runtime.BattleRestartLifecycle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FPhase7ARelicRuntimeBattleRestartTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, false);
+	if (!TestNotNull(TEXT("Restart test world"), World))
+	{
+		return false;
+	}
+
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ABattleManager* Battle = World->SpawnActor<ABattleManager>(ABattleManager::StaticClass(), FTransform::Identity, SpawnParameters);
+	ACombatant* Player = SpawnCombatant(World);
+	ACombatant* Enemy = SpawnCombatant(World);
+	URelicData* Sundial = CreateRelic(World, TEXT("Sundial"));
+	if (!TestNotNull(TEXT("Restart BattleManager"), Battle)
+		|| !TestNotNull(TEXT("Restart Player"), Player)
+		|| !TestNotNull(TEXT("Restart Enemy"), Enemy)
+		|| !TestNotNull(TEXT("Restart Sundial definition"), Sundial))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	Battle->Player = Player;
+	Battle->Enemy = Enemy;
+	Battle->OpeningHandDrawCount = 0;
+	Battle->PlayerTurnDrawCount = 0;
+	Battle->DebugStartingRelics.Add(Sundial);
+
+	Battle->StartBattle();
+	const uint64 FirstBattleId = Battle->GetBattleId();
+	URelicContainer* FirstContainer = Battle->GetPlayerRelicContainer();
+	const URelicInstance* FirstSundial = IsValid(FirstContainer)
+		? FirstContainer->FindRelicById(TEXT("Sundial"))
+		: nullptr;
+	if (!TestNotNull(TEXT("First battle RelicContainer"), FirstContainer)
+		|| !TestNotNull(TEXT("First battle Sundial runtime"), FirstSundial))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	const uint64 FirstRuntimeSequence = FirstSundial->GetRuntimeSequence();
+
+	Battle->StartBattle();
+	const uint64 SecondBattleId = Battle->GetBattleId();
+	URelicContainer* SecondContainer = Battle->GetPlayerRelicContainer();
+	const URelicInstance* SecondSundial = IsValid(SecondContainer)
+		? SecondContainer->FindRelicById(TEXT("Sundial"))
+		: nullptr;
+
+	TestTrue(TEXT("BattleId advances across restart"), SecondBattleId > FirstBattleId);
+	TestTrue(TEXT("BattleManager retains one owned Container object"), SecondContainer == FirstContainer);
+	TestNotNull(TEXT("Second battle Sundial runtime"), SecondSundial);
+	TestTrue(TEXT("Old exact runtime instance is no longer current membership"), !SecondContainer->ContainsRelicInstance(FirstSundial));
+	TestTrue(TEXT("New battle creates a different exact runtime object"), SecondSundial != nullptr && SecondSundial != FirstSundial);
+	TestTrue(TEXT("New battle runtime sequence remains valid"), SecondSundial != nullptr && SecondSundial->GetRuntimeSequence() > 0);
+	TestTrue(TEXT("RuntimeSequence may restart per battle; BattleId separates battle identity"), SecondSundial != nullptr && FirstRuntimeSequence > 0);
+	TestEqual(TEXT("Restart rebuilds exactly one configured relic"), SecondContainer->GetRelics().Num(), 1);
+
+	World->DestroyWorld(false);
 	return true;
 }
 
