@@ -162,7 +162,6 @@ bool StatusPresentation::AppendCommittedChange(
 	}
 
 	if ((Mutation.bCreated && !DescriptionBefore.IsEmpty())
-		|| (!Mutation.bCreated && DescriptionBefore.IsEmpty())
 		|| (Mutation.bRemoved && !DescriptionAfter.IsEmpty()))
 	{
 		Writer.InvalidateCurrentResolution();
