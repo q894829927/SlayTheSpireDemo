@@ -378,6 +378,8 @@ A public Ready publication must not fire before an accepted public Request retur
 
 Initial deterministic shuffle consumes the battle RNG but emits no DeckShuffled event or Presentation shuffle record.
 
+Opening-Hand draws performed as part of `BattleStart` setup likewise emit no card-draw Presentation Records. The normal BattleStart Envelope is therefore allowed to contain zero Records and applies its frozen final snapshot directly. A future opening-hand animation requires an explicit visible-opening policy; it must not be obtained by accidentally recording ordinary setup draws.
+
 ---
 
 ## 5. Modifier-Based Framework Architecture
@@ -519,6 +521,9 @@ Saved/
 56. `OnPresentationResolutionReady` obeys the same accepted-Request non-reentrancy rule as `OnReadStateReady`: neither public callback may fire before the originating accepted Request returns.
 57. Writer absence from the start is valid no-history mode. If an active writer Append fails, invalidate the whole current record batch, discard buffered unpublished Records and never Seal/Publish a partial Envelope; use the final frozen baseline/fail-safe path instead.
 58. Envelope de-duplication identity is `(BattleId, ResolutionId)`. Read-state edge de-duplication identity is `(BattleId, StateRevision)`. Never use the last published read revision as the sole Envelope identity.
+59. Sealed Envelopes awaiting deferred public delivery are stored in a battle-scoped bounded FIFO, never one overwriteable `PendingEnvelope`. Preserve `(BattleId, ResolutionId)` order, clear the FIFO on battle restart, reject old-Battle entries and degrade/collapse Presentation safely on overflow without requesting Gameplay ResolutionFault.
+60. Initial BattleStart shuffle and opening-Hand draws are setup normalization and emit no Presentation Records. The ordinary empty-record BattleStart Envelope applies its frozen final snapshot directly; visible opening-hand animation requires a future explicit policy switch.
+61. UI-A2 bounded queues use the smallest sufficient policy: fixed bound + FIFO + collapse/skip to the newest frozen `FinalSnapshot`. Do not build ACK, persistence, priority scheduling, per-Origin policies, backpressure or a general presentation scheduler before a real source requires them.
 
 Prefer clear architecture over clever abstractions.
 
@@ -637,7 +642,7 @@ docs/Phase6UIA3DynamicTextImplementation.md
 - Phase 6R — PASSED; Editor test module + Shipping exclusion.
 - Phase 6UI-A0 — PASSED; 20/20.
 - Phase 6UI-A1 — PASSED; 11/11 + Self-target Player selection + normal PIE loop.
-- Phase 6UI-A2 — NEXT / DESIGN LOCKED: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + deferred public delivery + bounded fail-safe Controller queue; UI-A2A infrastructure precedes visible Damage animation.
+- Phase 6UI-A2 — NEXT / DESIGN LOCKED: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue; BattleStart setup shuffle/opening draws produce no Records, and UI-A2A infrastructure precedes visible Damage animation.
 - Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED; dynamic text 8/8, remaining target-specific/Energy preview planned.
 - Phase 6UI-A — IN PROGRESS.
 - Phase 7 — PLANNED AFTER Phase 6UI-A.
@@ -727,6 +732,8 @@ The ViewModel is not a second Gameplay authority.
 
 `FPresentationStateSnapshot` is the one frozen player-facing display model. It contains all display values needed to apply one exact revision without mutable Gameplay lookups.
 
+Its required first-implementation field contract is enumerated in Section 16.2; implementations may not treat that list as an optional example.
+
 The HUD ViewModel applies/copies frozen presentation state. Historical rendering never re-reads `UCardInstance`, `UStatusInstance`, `ACombatant` or current Battle state.
 
 ### 15.5 Authoritative Enemy Intent
@@ -773,23 +780,29 @@ FPresentationResolutionEnvelope
 └── FinalSnapshot : FPresentationStateSnapshot
 ```
 
-Seal releases the active builder immediately. Public delivery of that immutable Envelope happens later at the deferred UI/read notification boundary.
+Seal releases the active builder immediately. Each immutable Envelope is then appended to a battle-scoped bounded pending-public-delivery FIFO. Public delivery happens later at the deferred UI/read notification boundary.
 
 ```text
 internal Queue/macro stable
 ↓
 Freeze + Seal + release builder
 ↓
+enqueue immutable Envelope in pending-public-delivery FIFO
+↓
 next Resolution may Begin
 
 originating public Request returns
 ↓
-deferred OnPresentationResolutionReady / OnReadStateReady
+deferred FIFO drain in ResolutionId order
+↓
+OnPresentationResolutionReady / OnReadStateReady
 ```
 
 Historical playback never queries Recorder/current Gameplay to reconstruct the past.
 
 Envelope identity is `(BattleId, ResolutionId)`. Stable read-edge identity is `(BattleId, StateRevision)`; these de-duplication domains must remain separate.
+
+The pending-public-delivery FIFO is only the short handoff between internal Seal and public broadcast. It is not Recorder history and it is distinct from the Controller's post-delivery playback backlog. It must never overwrite an older undelivered Envelope. `OnReadStateReady` may expose only the latest current read edge, but Presentation Envelopes must be delivered without revision-based coalescing.
 
 ### 15.8 Presentation catch-up and input release
 
@@ -897,6 +910,7 @@ UI-A2A
 UI-A2B
 - Damage / Block CommitResults + Records
 - fully blocked damage
+- Damage-consumed Block is carried only by Damage Record; no duplicate BlockChanged Record
 - TurnStartClear Block history
 - lethal Damage → Victory/Defeat Record ordering
 - simple Damage/Block playback
@@ -1037,10 +1051,14 @@ Seal immutable FPresentationResolutionEnvelope exactly once
 ↓
 release active builder before any next BeginResolution
 ↓
+enqueue Envelope in battle-scoped bounded pending-public-delivery FIFO
+↓
 PUBLIC DEFERRED BOUNDARY
 originating accepted Request has returned
 ↓
-OnPresentationResolutionReady(sealed Envelope)
+drain pending-public-delivery FIFO in ResolutionId order
+↓
+OnPresentationResolutionReady(each sealed Envelope)
 ↓
 OnReadStateReady(BattleId, StateRevision)
 ↓
@@ -1065,6 +1083,58 @@ unlock input if authoritative Gameplay is request-eligible
 
 Historical display uses only `FPresentationStateSnapshot`. It contains no mutable Gameplay runtime dependency.
 
+The first A2A implementation must freeze the complete current HUD display contract, not an open-ended subset:
+
+```text
+FPresentationStateSnapshot
+├── BattleId
+├── StateRevision
+├── BattleState
+├── Outcome
+├── Energy / MaxEnergy
+├── bCanEndTurn                         advisory display value for this revision
+├── Player : FPresentationCombatantState
+├── Enemy  : FPresentationCombatantState
+├── HandCards[] : FPresentationCardState
+├── DrawCount / DiscardCount / ExhaustCount
+└── EnemyIntent : FPresentationIntentState
+
+FPresentationCombatantState
+├── resolved PresentationId
+├── bPlayer
+├── DisplayName
+├── HP / MaxHP / Block / bDead
+└── Statuses[] : FPresentationStatusState
+
+FPresentationStatusState
+├── StatusId / Amount
+├── DisplayName
+├── resolved dynamic Description
+└── icon presentation metadata
+    ├── bUseAtlasIcon
+    ├── UVOffset / UVScale
+    └── TrimOffset / TrimScale
+
+FPresentationCardState
+├── RuntimeId / CardId
+├── DisplayName
+├── Cost
+├── CardType / TargetType
+├── resolved dynamic Description
+├── immutable CardArt reference
+└── bGameplayPlayable / UnplayableReason
+
+FPresentationIntentState
+├── Type / DisplayName
+├── committed BaseAmount
+├── bHasCurrentResolvedDamageAmount
+└── CurrentResolvedDamageAmount
+```
+
+These values are produced once for the exact revision. Applying the frozen state must not read `UCardInstance`, `UCardData`, `UStatusInstance`, `UStatusData`, `ACombatant`, BattleManager Query APIs or current Enemy Intent again. Existing HUD value structs may be reused/moved where they are already self-contained; do not create a redundant third DTO hierarchy.
+
+Selection, hover, `LastFeedback`, current legal-target objects and `PlaybackToken` are transient presentation/input state rather than historical battle display state and do not belong in `FPresentationStateSnapshot`.
+
 The separate live input cache maps RuntimeId/TargetId to weak runtime objects only for the newest caught-up revision. Historical Envelopes never use it.
 
 ### 16.3 Resolution lifecycle and fault exception
@@ -1080,7 +1150,7 @@ validation succeeds
 → truly side-effect-free non-framework failure: Abort builder
 ```
 
-There may be only one active builder. It must be sealed/aborted at the internal stable boundary before another Resolution begins. A sealed Envelope pending deferred delivery is not an active builder.
+There may be only one active builder. It must be sealed/aborted at the internal stable boundary before another Resolution begins. Any number of sealed Envelopes may be awaiting deferred delivery within the configured FIFO bound; none of them is an active builder.
 
 BattleStart begins before fault-capable opening work. Initial Origins are `BattleStart`, `PlayCard`, `EndTurn`, `System`.
 
@@ -1097,6 +1167,8 @@ Read-state edge de-dup
 ```
 
 One `(BattleId, ResolutionId)` seals/publishes at most one Envelope. A duplicate stable read callback must not re-Seal an Envelope, but `LastPublishedReadStateRevision` must not be used as the Envelope's sole identity.
+
+The pending-public-delivery FIFO preserves sealed Envelope order independently of read-edge coalescing. Battle restart clears it. Old-Battle entries are never delivered. If its bound is exceeded, Presentation may collapse/skip toward the newest frozen `FinalSnapshot` or disable itself for that battle, but Gameplay continues unchanged and no Gameplay ResolutionFault is requested.
 
 Freeze/Seal failure:
 
@@ -1164,9 +1236,16 @@ Damage/Block use Before/After commit results. Status Apply/Reduce/Remove use one
 
 ```text
 Damage commit → Damage Record
+Damage Record owns HPBefore/After and BlockBefore/After
+Damage-consumed Block → no additional BlockChanged Record
 GainBlock commit → BlockChanged Record
 Turn-start ClearBlock commit → BlockChanged(TurnStartClear)
 Opening normalization ClearBlock → no visible Record
+
+Initial BattleStart shuffle → no Shuffle Record
+BattleStart opening-Hand draws → no CardDrawn Records
+Normal empty-record BattleStart Envelope → apply FinalSnapshot directly
+Future visible opening-hand animation → explicit policy switch, not implicit setup recording
 
 Hand → PlayArea + Energy spend commit
 → CardPlayed with Energy history
@@ -1198,7 +1277,11 @@ ViewModel initialization succeeds into PresentationUnavailable
 
 ### 16.9 Controller fail-safe playback
 
-Controller owns bounded Envelope backlog. Each Envelope applies its own FinalSnapshot.
+Before public delivery, the Battle-side pending-public-delivery FIFO owns sealed Envelopes that are waiting for the deferred notification boundary. After delivery, Controller owns its separate bounded playback backlog. Each Envelope applies its own FinalSnapshot.
+
+Neither queue is Recorder history. The delivery FIFO must preserve every sealed Resolution in order until delivered or an explicit fail-safe collapse occurs; it must never use a single overwriteable pending slot. Controller backlog policy begins only after public delivery.
+
+The first implementation remains deliberately small. Normal player input locking means the ordinary playable flow normally has at most one player-origin Envelope awaiting visible completion; multiple queued Envelopes mainly protect Debug/API/System/future autonomous flows. Implement only a fixed-size FIFO and one deterministic overflow rule: discard/collapse obsolete playback and apply the newest retained frozen `FinalSnapshot`. Do not add acknowledgements, persistence, priorities, origin-specific routing, producer backpressure or a generic scheduling subsystem.
 
 Generic PlaybackToken/Skip safety belongs to A2A:
 
@@ -1221,6 +1304,7 @@ AcceptedRequestEstablishesResolutionBeforeExecution
 OrdinaryValidationRejectionCreatesNoResolution
 PostValidationFrameworkFaultSealsFaultResolution
 BattleStartBeginsBeforeFaultCapableOpeningWork
+BattleStartOpeningDrawCreatesNoPresentationRecords
 SystemResolutionCanBeCreated
 EmptyRecordResolutionSealsSafely
 FaultRetainsCommittedRecordsAndAppendsResolutionFaultLast
@@ -1229,6 +1313,9 @@ PresentationEnvelopeNotificationDoesNotReenterAcceptedRequest
 OneActiveResolutionSealsAtMostOnce
 DuplicateStablePublishDoesNotDuplicateEnvelope
 EnvelopeDedupUsesBattleIdAndResolutionId
+MultipleSealedBeforeDeferredDeliveryPreserveResolutionOrder
+BattleRestartClearsPendingPublicDeliveryQueue
+PendingDeliveryOverflowFallsBackWithoutGameplayFault
 FreezeFailureDisablesPresentationWithoutGameplayFault
 SealFailureDoesNotLeakBuilderIntoNextResolution
 AppendFailureDoesNotSealPartialEnvelope
@@ -1236,6 +1323,7 @@ BattleRestartDoesNotLeakBuilderOrRecords
 LateSubscriberDoesNotReplayOldBattle
 NoControllerOrPresentationDisabledLeavesGameplayUnchanged
 HistoricalFrozenSnapshotAppliesWithoutMutableRuntimeReads
+FrozenSnapshotContainsCompleteCurrentHUDDisplayValues
 HistoricalEnvelopeCannotUseLiveInputBindings
 InputBindingsRefreshOnlyAtNewestMatchingBattleRevision
 OnReadStateReadyCannotBypassActivePresentationSequencing
