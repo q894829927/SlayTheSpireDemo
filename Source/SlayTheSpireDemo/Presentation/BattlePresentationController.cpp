@@ -33,16 +33,8 @@ bool UBattlePresentationController::Initialize(
 	{
 		CurrentBattleId = Baseline.BattleId;
 
-		// Controller bootstrap owns the exact frozen display baseline. Do not rely
-		// on Presenter/ViewModel initialization order: a late Controller may receive
-		// a ViewModel that still displays an older revision while the deferred
-		// Envelope for this baseline is about to be suppressed as historical.
 		ViewModel->ApplyPresentationSnapshot(Baseline, true);
 
-		// A late subscriber starts from the newest frozen baseline. Any Resolution
-		// already reflected by that baseline is historical even if its deferred
-		// public Envelope has not fired yet, so seed the de-duplication watermark
-		// before the subscription can receive that pending delivery.
 		const int64 BaselineResolutionWatermark = static_cast<int64>(
 			InBattleManager->GetLatestFrozenPresentationBaselineResolutionId()
 		);
@@ -97,9 +89,6 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
 	Widget = InWidget;
 
-	// A widget replacement invalidates every callback token issued to the old
-	// widget. Do not attempt to migrate an in-flight animation between widget
-	// instances; deterministically catch up to the newest sealed frozen state.
 	if (bHadInFlightPresentation)
 	{
 		SkipPresentation();
@@ -172,8 +161,6 @@ void UBattlePresentationController::NotifyWidgetLost(UBattleHUDWidgetBase* LostW
 {
 	if (Widget != LostWidget)
 	{
-		// A stale widget destruction must not disturb playback already owned by a
-		// replacement widget.
 		return;
 	}
 
@@ -217,16 +204,11 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 		|| Envelope.BattleId != LatestBaseline.BattleId
 		|| Envelope.FinalStateRevision > LatestBaseline.StateRevision)
 	{
-		// Old-battle or impossible future-revision delivery is Presentation-only
-		// stale data. It must never roll the Controller back to an abandoned battle.
 		return;
 	}
 
 	if (CurrentBattleId != LatestBaseline.BattleId)
 	{
-		// A real BattleManager restart invalidates every callback/backlog from the
-		// prior battle. Because this Controller was already subscribed across the
-		// restart, new-battle Envelopes are still future work and may play normally.
 		ResetPlaybackState(true);
 		LastQueuedResolutionId = 0;
 		LastCompletedResolutionId = 0;
@@ -280,10 +262,6 @@ void UBattlePresentationController::HandleReadStateReady(
 		return;
 	}
 
-	// The read edge is not a second display owner while committed Presentation is
-	// active. It exists here only to detect Presentation-only fail-safe transitions.
-	// Normal historical/caught-up display still flows exclusively through Envelope
-	// playback and FinalSnapshot application.
 	(void)InBattleId;
 	(void)InStateRevision;
 }
@@ -324,17 +302,18 @@ void UBattlePresentationController::StartNextRecord()
 		|| Record.ResolutionId != ActiveEnvelope.ResolutionId
 		|| Record.PresentationSequence <= 0)
 	{
-		// Invalid presentation data degrades to the envelope's frozen final state;
-		// Gameplay is never involved.
 		CompleteActiveEnvelope();
 		return;
 	}
 
-	// A2A only transports ResolutionFault as a meaningful record. Unknown/None
-	// records use immediate fallback until their owning later slice implements
-	// visible playback.
-	if (Record.Type != EBattlePresentationRecordType::ResolutionFault)
+	const bool bRecordSupportsVisiblePlayback =
+		Record.Type == EBattlePresentationRecordType::ResolutionFault
+		|| Record.Type == EBattlePresentationRecordType::Damage
+		|| Record.Type == EBattlePresentationRecordType::BlockChanged;
+	if (!bRecordSupportsVisiblePlayback)
 	{
+		// Victory/Defeat are ordered historical facts in A2B but retain immediate
+		// fallback until their formal visible treatment is added in UI-A2D.
 		CompleteActiveRecord();
 		return;
 	}
@@ -479,8 +458,6 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 		LastCompletedResolutionId = BaselineResolutionWatermark;
 		if (IsValid(ViewModel))
 		{
-			// Catch up to the exact frozen Gameplay result first, then surface the
-			// Presentation-only failure and keep input locked.
 			ViewModel->ApplyPresentationSnapshot(LatestBaseline, true);
 		}
 	}
