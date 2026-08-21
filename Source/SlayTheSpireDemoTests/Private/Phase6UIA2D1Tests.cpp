@@ -8,6 +8,8 @@
 #include "Battle/BattleManager.h"
 #include "Combat/Combatant.h"
 #include "Engine/World.h"
+#include "Events/BattleEventDispatcher.h"
+#include "Events/BattleTrigger.h"
 #include "Status/StatusContainer.h"
 #include "Status/StatusData.h"
 #include "Status/StatusInstance.h"
@@ -120,6 +122,25 @@ bool FPhase6UIA2D1StatusMutationLifecycleTest::RunTest(const FString& Parameters
 	{
 		return false;
 	}
+
+	UBattleEventDispatcher* Dispatcher = NewObject<UBattleEventDispatcher>(Fixture.World);
+	if (!TestNotNull(TEXT("Explicit-context dispatcher"), Dispatcher))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Dispatcher binds authoritative Battle explicitly"), Dispatcher->BindBattleContext(Fixture.Battle));
+	TestTrue(TEXT("Dispatcher exposes the explicitly bound Battle"), Dispatcher->GetBattleContext() == Fixture.Battle);
+	TestTrue(TEXT("Rebinding the same Battle is idempotent"), Dispatcher->BindBattleContext(Fixture.Battle));
+
+	UBattleActionQueue* NonBattleOuterQueue = NewObject<UBattleActionQueue>(Fixture.World);
+	if (!TestNotNull(TEXT("Queue with non-Battle Outer"), NonBattleOuterQueue))
+	{
+		return false;
+	}
+	FTriggerContext ExplicitContext(Weak10, NonBattleOuterQueue, Fixture.Battle);
+	TestTrue(TEXT("TriggerContext preserves explicit Battle independent of ActionOuter"), ExplicitContext.GetBattle() == Fixture.Battle);
+	TestTrue(TEXT("TriggerContext still preserves Action allocation Outer"), ExplicitContext.GetActionOuter() == NonBattleOuterQueue);
+	TestTrue(TEXT("Queue Outer is deliberately not BattleManager"), NonBattleOuterQueue->GetOuter() != Fixture.Battle);
 
 	const FStatusMutationResult Merge = Container->ApplyStatusCommit(AlternateWeakDefinition, 3, 11);
 	TestTrue(TEXT("Merge commits"), Merge.Outcome == EStatusMutationOutcome::Committed);

@@ -45,7 +45,11 @@ void UTurnEndStatusDecayTrigger::BuildReactions(
 		return;
 	}
 
-	ABattleManager* Battle = Cast<ABattleManager>(ActionOuter->GetOuter());
+	// Battle ownership is supplied explicitly by FTriggerContext. Do not recover
+	// it from ActionOuter/ActionQueue UObject Outer chains: A2D presentation needs
+	// an authoritative resolver source even when the Action's allocation outer is
+	// changed for testing or future queue ownership refactors.
+	ABattleManager* Battle = Context.GetBattle();
 	Action->Initialize(
 		Battle,
 		Owner,

@@ -6,6 +6,7 @@
 #include "BattleRequestTypes.h"
 #include "BattleState.h"
 #include "../Enemy/EnemyIntent.h"
+#include "../Events/BattleEventDispatcher.h"
 #include "../Presentation/BattlePresentationRecorder.h"
 #include "../Presentation/PresentationTypes.h"
 #include "BattleManager.generated.h"
@@ -13,7 +14,6 @@
 class ACombatant;
 class UBattleAction;
 class UBattleActionQueue;
-class UBattleEventDispatcher;
 class UCardData;
 class UCardInstance;
 class UDeckRuntime;
@@ -156,11 +156,15 @@ public:
 	bool TryBuildEventDispatchContext(
 		UBattleEventDispatcher*& OutDispatcher,
 		TArray<ACombatant*>& OutCombatants
-	) const
+	)
 	{
 		OutDispatcher = EventDispatcher.Get();
 		OutCombatants.Reset();
 		if (OutDispatcher == nullptr || Player.Get() == nullptr || Enemy.Get() == nullptr)
+		{
+			return false;
+		}
+		if (!OutDispatcher->BindBattleContext(this))
 		{
 			return false;
 		}

@@ -7,9 +7,25 @@ FTriggerContext::FTriggerContext(
 	UObject* InActionOuter,
 	const FPresentationRecordWriter& InPresentationRecordWriter
 )
+	: FTriggerContext(
+		InRuntimeSource,
+		InActionOuter,
+		nullptr,
+		InPresentationRecordWriter
+	)
+{
+}
+
+FTriggerContext::FTriggerContext(
+	UStatusInstance* InRuntimeSource,
+	UObject* InActionOuter,
+	ABattleManager* InBattle,
+	const FPresentationRecordWriter& InPresentationRecordWriter
+)
 	: RuntimeSource(InRuntimeSource)
 	, Owner(IsValid(InRuntimeSource) ? InRuntimeSource->GetOwner() : nullptr)
 	, ActionOuter(InActionOuter)
+	, Battle(InBattle)
 	, PresentationRecordWriter(InPresentationRecordWriter)
 {
 }
@@ -27,6 +43,11 @@ ACombatant* FTriggerContext::GetOwner() const
 UObject* FTriggerContext::GetActionOuter() const
 {
 	return ActionOuter;
+}
+
+ABattleManager* FTriggerContext::GetBattle() const
+{
+	return Battle;
 }
 
 const FPresentationRecordWriter& FTriggerContext::GetPresentationRecordWriter() const

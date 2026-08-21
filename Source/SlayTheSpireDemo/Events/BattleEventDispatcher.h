@@ -4,6 +4,7 @@
 #include "UObject/Object.h"
 #include "BattleEventDispatcher.generated.h"
 
+class ABattleManager;
 class ACombatant;
 class UBattleActionQueue;
 struct FBattleEvent;
@@ -30,6 +31,13 @@ class SLAYTHESPIREDEMO_API UBattleEventDispatcher : public UObject
 	GENERATED_BODY()
 
 public:
+	// Explicitly binds this dispatcher to the authoritative battle that owns the
+	// event/reaction resolution. Binding is idempotent for the same battle and
+	// rejects rebinding to a different valid battle. Trigger code must consume
+	// this context instead of recovering BattleManager through UObject Outer chains.
+	bool BindBattleContext(ABattleManager* InBattle);
+	ABattleManager* GetBattleContext() const;
+
 	bool Dispatch(
 		const FBattleEvent& Event,
 		UBattleActionQueue* Queue,
@@ -43,4 +51,8 @@ public:
 	// a gameplay event. It does not participate in reaction ordering or mutation.
 	static FOnBattleEventDispatchedForTesting OnEventDispatchedForTesting;
 #endif
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<ABattleManager> BattleContext = nullptr;
 };

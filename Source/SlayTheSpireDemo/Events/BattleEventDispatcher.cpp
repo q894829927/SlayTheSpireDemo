@@ -4,6 +4,7 @@
 #include "BattleTrigger.h"
 #include "../Actions/BattleAction.h"
 #include "../Actions/BattleActionQueue.h"
+#include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
 #include "../Presentation/BattlePresentationRecorder.h"
 #include "../Status/StatusContainer.h"
@@ -63,6 +64,35 @@ namespace
 
 		return true;
 	}
+}
+
+bool UBattleEventDispatcher::BindBattleContext(ABattleManager* InBattle)
+{
+	if (!IsValid(InBattle))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Event] Dispatcher rejected invalid Battle context."));
+		return false;
+	}
+
+	if (IsValid(BattleContext.Get()) && BattleContext.Get() != InBattle)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[Event] Dispatcher rejected rebinding from Battle %s to Battle %s."),
+			*GetNameSafe(BattleContext.Get()),
+			*GetNameSafe(InBattle)
+		);
+		return false;
+	}
+
+	BattleContext = InBattle;
+	return true;
+}
+
+ABattleManager* UBattleEventDispatcher::GetBattleContext() const
+{
+	return BattleContext.Get();
 }
 
 bool UBattleEventDispatcher::Dispatch(
@@ -138,7 +168,12 @@ bool UBattleEventDispatcher::Dispatch(
 					continue;
 				}
 
-				FTriggerContext Context(RuntimeSource, Queue, ResolvedPresentationWriter);
+				FTriggerContext Context(
+					RuntimeSource,
+					Queue,
+					BattleContext.Get(),
+					ResolvedPresentationWriter
+				);
 				if (Trigger->CanReact(Event, Context))
 				{
 					FTriggerCandidate Candidate;
@@ -184,7 +219,12 @@ bool UBattleEventDispatcher::Dispatch(
 			OutEligibilityTrace->Add(Record);
 		}
 
-		FTriggerContext Context(Candidate.RuntimeSource, Queue, ResolvedPresentationWriter);
+		FTriggerContext Context(
+			Candidate.RuntimeSource,
+			Queue,
+			BattleContext.Get(),
+			ResolvedPresentationWriter
+		);
 		TArray<UBattleAction*> LocalBatch;
 		Candidate.TriggerDefinition->BuildReactions(Event, Context, LocalBatch);
 

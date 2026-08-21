@@ -5,6 +5,7 @@
 #include "../Presentation/BattlePresentationRecorder.h"
 #include "BattleTrigger.generated.h"
 
+class ABattleManager;
 class ACombatant;
 class UBattleAction;
 class UStatusInstance;
@@ -19,15 +20,24 @@ public:
 		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
 	);
 
+	FTriggerContext(
+		UStatusInstance* InRuntimeSource,
+		UObject* InActionOuter,
+		ABattleManager* InBattle,
+		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
+	);
+
 	UStatusInstance* GetRuntimeSource() const;
 	ACombatant* GetOwner() const;
 	UObject* GetActionOuter() const;
+	ABattleManager* GetBattle() const;
 	const FPresentationRecordWriter& GetPresentationRecordWriter() const;
 
 private:
 	UStatusInstance* RuntimeSource = nullptr;
 	ACombatant* Owner = nullptr;
 	UObject* ActionOuter = nullptr;
+	ABattleManager* Battle = nullptr;
 	FPresentationRecordWriter PresentationRecordWriter;
 };
 
