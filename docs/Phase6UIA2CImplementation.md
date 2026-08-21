@@ -1,39 +1,32 @@
 # Phase 6UI-A2C — Card / Energy / Zone Committed Presentation
 
-Status: **DESIGN LOCKED / IMPLEMENTATION NOT STARTED**.
+Status: **SOURCE IMPLEMENTED / UE5.8 VALIDATION PENDING**.
 
-UI-A2C extends the already-established UI-A2A transport/lifecycle and UI-A2B committed-record model. It must not redesign Resolution, Envelope, RecordWriter, Controller backlog, PlaybackToken, PresentationUnavailable, latest-only input binding, or the fail-soft no-partial-history rules.
+UI-A2C extends the established UI-A2A transport/lifecycle and UI-A2B committed-record model. It does not redesign Resolution, Envelope, RecordWriter, Controller backlog, PlaybackToken, PresentationUnavailable, latest-only input binding, or fail-soft no-partial-history behavior.
 
-A2B visual Blueprint Damage/Block playback and PIE smoke may remain pending while A2C C++ work proceeds. A2C must not use card/energy records as a workaround for missing A2B visual polish.
+Current source state was statically reviewed after the A2C implementation and focused Automation source were added. The repository is configured to run a 77-test Phase5–Phase6UIA2C aggregate gate. This status does **not** claim an Unreal Engine build or A2C Automation pass yet.
 
-## 1. Scope
+A2B Blueprint Damage/Block playback and PIE smoke remain a separate visual-integration item; A2C C++ correctness does not depend on them.
 
-UI-A2C adds committed presentation for:
+## 1. A2C scope
+
+A2C owns exactly these committed presentation facts:
 
 ```text
 CardPlayed
 EnergyChanged
 CardZoneChanged
 DeckShuffled
-Controller intermediate WorkingPresentationSnapshot reduction
+Controller WorkingPresentationSnapshot reduction
 ```
 
-It does not add separate semantic records for:
+A2C does **not** add separate `CardDrawn`, `CardDiscarded`, `CardExhausted`, or `CardRemoved` records. Those are zone transitions.
 
-```text
-CardDrawn
-CardDiscarded
-CardExhausted
-CardRemoved
-```
+A2C also does not add Status/Relic presentation, terminal/fault polish, or Blueprint-owned state mutation.
 
-Those are expressed by `CardZoneChanged`.
+## 2. Record taxonomy
 
-UI-A2C also does not add Status presentation, Relic presentation, terminal/fault polish, or a second display-state owner.
-
-## 2. Final Record taxonomy
-
-A2C adds exactly four business record types:
+The four A2C business record types are:
 
 ```text
 CardPlayed
@@ -42,9 +35,7 @@ CardZoneChanged
 DeckShuffled
 ```
 
-Do not add `CardDrawn`, `CardDiscarded`, `CardExhausted`, or `CardRemoved`.
-
-Zone semantics are:
+Zone semantics:
 
 ```text
 DrawPile → Hand        = Draw
@@ -54,19 +45,19 @@ PlayArea → ExhaustPile = Exhaust
 PlayArea → RemovedPile = Removed
 ```
 
-`DeckShuffled` is one batch semantic fact. Do not emit one `CardZoneChanged` per card moved by a shuffle.
+`DeckShuffled` is one batch semantic fact. Shuffle never emits one zone record per moved card.
 
-## 3. Card identity and frozen card value
+## 3. Card identity and frozen card snapshot
 
-Historical concrete-card identity is:
+Concrete historical card identity is:
 
 ```text
 (BattleId, CardRuntimeId)
 ```
 
-`CardId` remains the immutable card-definition identity already used by the project. Do not introduce a redundant `CardDefinitionId`.
+`CardId` remains definition identity. Do not add a duplicate `CardDefinitionId`.
 
-A2C Records that identify a concrete card must carry a frozen, presentation-only value snapshot:
+Every concrete-card A2C record carries a frozen presentation value:
 
 ```cpp
 FPresentationCardSnapshot
@@ -82,31 +73,13 @@ FPresentationCardSnapshot
 };
 ```
 
-Do not store:
+It must not contain live `UCardInstance*`, `UCardData*`, `bGameplayPlayable`, or `UnplayableReason`.
 
-```text
-UCardInstance*
-UCardData*
-bGameplayPlayable
-UnplayableReason
-```
-
-`bGameplayPlayable` and the unplayable reason belong to a complete stable/current snapshot query, not to a historical movement record.
-
-The frozen card value is required on both:
-
-```text
-CardPlayed
-CardZoneChanged
-```
-
-Reason: a card may enter and leave Hand in one Resolution, and the Envelope final snapshot may no longer contain that concrete card. Historical playback must not query live CardInstance/DataAsset state to reconstruct it.
-
-An immutable `UTexture2D` asset reference is allowed as presentation value data; runtime card objects are not.
+The frozen card snapshot is required on both `CardPlayed` and `CardZoneChanged`. Historical playback must remain possible even when the concrete card is absent from the Envelope final Hand snapshot.
 
 ## 4. Energy CommitResult
 
-A2C introduces an exact Gameplay energy mutation result:
+Gameplay mutation truth is:
 
 ```cpp
 FEnergyCommitResult
@@ -119,24 +92,16 @@ FEnergyCommitResult
 };
 ```
 
-Invariant:
+Locked invariants:
 
 ```text
 Delta = EnergyAfter - EnergyBefore
 bCommitted = EnergyBefore != EnergyAfter
 ```
 
-The two booleans have different meanings:
+`bSucceeded` means the requested energy operation was legal and completed. `bCommitted` means the numeric Energy value actually changed.
 
-```text
-bSucceeded
-= the requested energy operation was legal and completed
-
-bCommitted
-= the Energy value actually changed
-```
-
-Therefore a legal zero-cost spend is:
+Therefore zero-cost spend is valid:
 
 ```text
 bSucceeded = true
@@ -145,53 +110,43 @@ EnergyBefore == EnergyAfter
 Delta = 0
 ```
 
-A zero-cost card still produces `CardPlayed` with `CostPaid = 0`.
+A zero-cost card still emits `CardPlayed` with `CostPaid = 0`.
 
-### 4.1 Card-play energy
+### 4.1 Card-play spend
 
-Card-play cost must not generate both `CardPlayed` and `EnergyChanged`.
-
-Lock:
+Card-play cost is represented only inside `CardPlayed`:
 
 ```text
-card-play spend
-→ represented only inside CardPlayed
-→ CardPlayed stores exact EnergyBefore / EnergyAfter / CostPaid
+CardPlayed.EnergyBefore
+CardPlayed.EnergyAfter
+CardPlayed.CostPaid
 ```
+
+Do not emit a duplicate `EnergyChanged` for the same card cost.
 
 ### 4.2 Independent energy changes
 
-`EnergyChanged` is reserved for non-card-play energy mutations.
-
-Current A2C producer scope:
+`EnergyChanged` is for non-card-play energy mutations. Current producers are:
 
 ```text
-RequestEndPlayerTurn
-→ player-turn-end Energy -> 0 when value changes
-
-StartPlayerTurn
-→ Energy -> MaxEnergy when value changes
+RequestEndPlayerTurn → Energy current → 0, only when changed
+StartPlayerTurn      → Energy current → MaxEnergy, only when changed
 ```
 
-BattleStart initialization and terminal/fault normalization do not produce separate `EnergyChanged` in A2C; final/stable snapshots own those states.
+BattleStart initialization and terminal/fault normalization do not emit separate A2C energy records; stable/final snapshots express them.
 
-Future energy gains such as Sundial use `EnergyChanged`.
+## 5. Deck mutation results
 
-## 5. Generic card-zone mutation result
-
-DeckRuntime returns Gameplay-only mutation truth:
+Gameplay-only zone mutation truth is:
 
 ```cpp
 FCardZoneMutationResult
 {
     bool bCommitted;
-
     int32 CardRuntimeId;
     FName CardId;
-
     ECardZone FromZone;
     ECardZone ToZone;
-
     int32 FromIndex;
     int32 ToIndex;
 };
@@ -208,183 +163,113 @@ ExhaustPile
 RemovedPile
 ```
 
-Identity rule:
+Identity/index rules:
 
 ```text
-RuntimeId = authoritative card identity
+RuntimeId = authoritative concrete-card identity
 Index     = ordering and consistency data
-```
-
-Controller must never use only an index to guess which card moved.
-
-Index semantics are zero-based authoritative array positions before/after mutation.
-
-For DrawPile:
-
-```text
 DrawPile top = DrawPile.Num() - 1
 ```
 
-All failed/no-op zone operations must obey:
+Every failed/no-op operation obeys:
 
 ```text
 bCommitted = false
 ⇒ every authoritative zone remains unchanged
 ```
 
-## 6. Fix existing draw fail-after-mutation behavior
+## 6. Draw failure is mutation-free
 
-Current `TryDrawTopCard()` pops first and validates the popped card afterward. A2C must remove this failure-after-mutation path.
-
-Required order:
+`TryDrawTopCardCommit()` must validate before removal:
 
 ```text
-validate DrawPile non-empty
-validate Hand capacity
-inspect and validate top card without removing it
+DrawPile non-empty
+Hand has capacity
+Top entry is valid
 ↓
-only then mutate DrawPile and Hand
+remove from DrawPile
+add to Hand
 ↓
-return committed mutation result
+return committed result
 ```
 
-An invalid top entry must return no commit while leaving DrawPile and Hand exactly unchanged.
+An invalid top entry cannot be popped as part of a failed draw. This is Gameplay correctness, not a Presentation workaround.
 
-This is a Gameplay correctness fix required by the A2C CommitResult contract, not a Presentation-only workaround.
+## 7. CardPlayed is one composite fact
 
-## 7. CardPlayed is one composite committed fact
-
-`CardPlayed` absorbs the two commits that together define accepted play:
+Accepted play is represented by one composite record:
 
 ```text
-Hand → PlayArea
-+ card-play Energy spend
+Hand → PlayArea commit
++
+card-play Energy spend result
+=
+CardPlayed
 ```
 
-Do not emit separate:
+Do not additionally emit `CardZoneChanged(Hand→PlayArea)` or card-cost `EnergyChanged`.
 
-```text
-CardZoneChanged(Hand → PlayArea)
-EnergyChanged(card cost)
-```
-
-for the same play.
-
-Suggested payload:
+Payload:
 
 ```cpp
 FCardPlayedPresentationPayload
 {
     FPresentationCardSnapshot Card;
-
     FName SourcePresentationId;
     FName TargetPresentationId;
-
     int32 HandIndexBefore;
     int32 PlayAreaIndexAfter;
-
     int32 EnergyBefore;
     int32 EnergyAfter;
     int32 CostPaid;
 };
 ```
 
-`TargetPresentationId = None` is valid for targetless cards.
+`TargetPresentationId = None` is valid for targetless cards. A player/source combatant must resolve a trustworthy SourcePresentationId when an active writer requires history.
 
-`SourcePresentationId` must resolve for the player/source combatant when an active writer requires a historical Record.
-
-## 8. Formal PlayCard commit order
-
-Current authoritative order is preserved:
-
-```text
-TryMoveHandCardToPlayArea()
-↓
-TrySpendEnergy()
-↓
-enqueue effect Actions + FinishCardPlayAction
-```
-
-A2C turns the first two successful internal commits into one historical `CardPlayed` fact.
-
-Required sequence:
+Formal order remains authoritative:
 
 ```text
 Hand → PlayArea CommitResult
 ↓
 Energy spend CommitResult
 ↓
-if both operations succeed
-    append CardPlayed
-↓
-card effect Records
-↓
-CardZoneChanged(PlayArea → resolved destination)
-```
-
-Example Strike:
-
-```text
-CardPlayed
-  Card: Strike#N
-  HandIndexBefore = X
-  PlayAreaIndexAfter = Y
-  Energy 3 → 2
-  CostPaid = 1
-↓
-Damage
-↓
-CardZoneChanged PlayArea → DiscardPile
-```
-
-Example Pommel Strike:
-
-```text
 CardPlayed
 ↓
-Damage
+effect Records
 ↓
-CardZoneChanged DrawPile → Hand
-↓
-CardZoneChanged PlayArea → DiscardPile
+CardZoneChanged PlayArea → resolved destination
 ```
 
-This is not Presentation reordering. `CardPlayed` is a composite fact emitted only after both authoritative internal commits have succeeded.
-
-## 9. PlayCard rollback invariant
-
-If:
+Examples:
 
 ```text
-Hand → PlayArea succeeds
-Energy spend fails
+Strike:
+CardPlayed → Damage → PlayArea→Discard
+
+Pommel Strike:
+CardPlayed → Damage → DrawPile→Hand → PlayArea→Discard
 ```
 
-Gameplay must rollback PlayArea → Hand before the Action finishes.
+## 8. Exact rollback contract
 
-Rollback must restore the card to the exact original `HandIndexBefore`.
-
-The existing behavior of merely `Hand.Add(Card)` is insufficient because it may change visible Hand order.
-
-Required rollback result:
+If Hand→PlayArea commits but the Execute-time energy spend fails:
 
 ```text
-card object restored
-same RuntimeId
-same original Hand index
-PlayArea restored
+restore the same card to exact original HandIndexBefore
 Energy unchanged
-no CardPlayed Record
-no CardZoneChanged rollback Record
+PlayArea restored
+no CardPlayed
+no rollback CardZoneChanged
 ```
 
-Rollback is an internal transactional repair, not historical gameplay that should animate.
+Appending to the end of Hand is not an exact rollback.
 
-If exact rollback fails after the first mutation committed, this is Gameplay state corruption and must request a Gameplay `ResolutionFault`; do not continue as if the play never happened.
+If exact rollback itself fails after the first Gameplay mutation committed, the queue must enter Gameplay `ResolutionFault`; the engine must not continue as though no play occurred.
 
-## 10. CardZoneChanged payload
+## 9. CardZoneChanged producers
 
-All other concrete-card zone mutations use:
+All non-CardPlayed single-card zone mutations use:
 
 ```cpp
 FCardZoneChangedPresentationPayload
@@ -397,30 +282,34 @@ FCardZoneChangedPresentationPayload
 };
 ```
 
-Required A2C mappings:
+Current mappings:
 
 ```text
-UDrawCardAction
-→ DrawPile → Hand
-
-UDiscardCardAction
-→ Hand → DiscardPile
-
-UFinishCardPlayAction
-→ PlayArea → DiscardPile / ExhaustPile / RemovedPile
+UDrawCardAction       → DrawPile → Hand
+UDiscardCardAction    → Hand → DiscardPile
+UFinishCardPlayAction → PlayArea → Discard/Exhaust/Removed
 ```
 
-No-op/failed mutation means no Record.
+No committed mutation means no record.
 
-A writer absent from the start remains legal no-history mode.
+Writer absent from the start is legal no-history mode. If a current valid writer exists and Gameplay committed but the frozen payload cannot be trusted, the current unpublished Presentation Resolution is invalidated; Gameplay is not rolled back for Presentation failure.
 
-A current valid writer plus a committed zone mutation that cannot produce a trustworthy frozen card/identity/payload invalidates the unpublished Presentation Resolution only; Gameplay is not rolled back because of Presentation failure.
+## 10. DeckShuffled ordering
 
-## 11. DeckShuffled payload and ordering
+Shuffle payload contains:
 
-`DeckShuffled` is appended after the successful authoritative shuffle commit and before `FDeckShuffledEvent` dispatch.
+```cpp
+FDeckShuffledPresentationPayload
+{
+    int32 MovedCardCount;
+    int32 DrawCountBefore;
+    int32 DrawCountAfter;
+    int32 DiscardCountBefore;
+    int32 DiscardCountAfter;
+};
+```
 
-Required order:
+Ordering is locked:
 
 ```text
 ShuffleDiscardIntoDrawPile commit
@@ -436,49 +325,21 @@ RetryDraw
 CardZoneChanged DrawPile → Hand
 ```
 
-Because trigger reactions are inserted at the front, actual historical Records may be:
+Because reactions are inserted to the front, actual record history may be:
 
 ```text
 DeckShuffled
-↓
 Reaction Records
-↓
 CardZoneChanged DrawPile → Hand
 ```
 
-The initial DrawAction that merely discovers an empty DrawPile has no commit and emits no Record.
+The original empty-draw attempt emits no record. RetryDraw emits one draw zone record only if it actually commits.
 
-`RetryDraw` emits exactly one DrawPile → Hand Record only if the draw actually commits.
+Initial battle shuffle and opening-hand draws remain initialization normalization and emit no A2C records.
 
-Initial battle setup remains:
+## 11. EndTurn energy ordering
 
-```text
-initial deterministic shuffle → no DeckShuffled Record
-opening-hand draws             → no CardZoneChanged Records
-```
-
-Suggested payload:
-
-```cpp
-FDeckShuffledPresentationPayload
-{
-    int32 MovedCardCount;
-
-    int32 DrawCountBefore;
-    int32 DrawCountAfter;
-
-    int32 DiscardCountBefore;
-    int32 DiscardCountAfter;
-};
-```
-
-Do not freeze the entire post-shuffle DrawPile order for A2C because the current HUD does not render that order. Each later actual draw freezes the concrete card it reveals.
-
-## 12. EndTurn EnergyChanged ordering
-
-The entire automatic EndTurn progression remains one Presentation Resolution.
-
-One normal EndTurn Envelope may legitimately contain two independent Energy transitions:
+One successful EndTurn macro Resolution may contain two legitimate energy records:
 
 ```text
 EnergyChanged current → 0
@@ -487,7 +348,7 @@ Hand cleanup CardZoneChanged records
 ↓
 Player TurnEnded reactions
 ↓
-Enemy turn work
+Enemy turn
 ↓
 Enemy TurnEnded reactions
 ↓
@@ -495,93 +356,68 @@ EnergyChanged 0 → MaxEnergy
 ↓
 Player TurnStartClear
 ↓
-normal player-turn Draw records
+player-turn Draw records
 ↓
-stable PlayerTurn FinalSnapshot
+FinalSnapshot(PlayerTurn)
 ```
 
-If the player dies before next PlayerTurn, the recovery record does not exist.
+If the player dies before the next PlayerTurn, no restore record is emitted.
 
-These two records are not duplicates; they represent different authoritative commits inside one macro Resolution.
+## 12. Producer matrix
 
-## 13. Producer matrix
-
-A2C current producer matrix is locked as:
-
-| Producer | Record |
+| Producer | Presentation fact |
 |---|---|
-| `UPlayCardAction` | `CardPlayed` composite Hand→PlayArea + card-play Energy spend |
+| `UPlayCardAction` | `CardPlayed` composite Hand→PlayArea + card-play spend |
 | `UFinishCardPlayAction` | `CardZoneChanged` PlayArea→Discard/Exhaust/Removed |
 | `UDrawCardAction` | `CardZoneChanged` DrawPile→Hand |
 | `UDiscardCardAction` | `CardZoneChanged` Hand→DiscardPile |
-| `UShuffleDeckAction` | `DeckShuffled`, after commit and before Event Dispatch |
-| `ABattleManager::RequestEndPlayerTurn` | `EnergyChanged` when Energy actually changes |
-| `ABattleManager::StartPlayerTurn` | `EnergyChanged` when Energy actually changes |
+| `UShuffleDeckAction` | `DeckShuffled` after commit, before Event Dispatch |
+| `ABattleManager::RequestEndPlayerTurn` | `EnergyChanged` if value changes |
+| `ABattleManager::StartPlayerTurn` | `EnergyChanged` if value changes |
 
-BattleStart opening draw/shuffle normalization intentionally emits no A2C Records.
-
-Every producer follows the same A2A/A2B history rules:
+All producer paths retain the A2A/A2B fail-soft split:
 
 ```text
-no writer from start
-→ legal no-history mode
+writer absent from start
+→ legal no-history
 
-current writer + committed fact + missing/invalid frozen payload or Append failure
-→ invalidate whole unpublished Presentation Resolution
-→ no partial Envelope
-→ Gameplay continues unless the Gameplay mutation itself failed structurally
+current writer + committed fact + invalid payload/append
+→ invalidate unpublished Presentation history
+→ publish no partial Envelope
+→ Gameplay remains authoritative unless the Gameplay operation itself structurally failed
 ```
 
-## 14. Controller WorkingPresentationSnapshot ownership
+## 13. WorkingPresentationSnapshot ownership
 
-A2C must add intermediate display-state reduction. Records alone are insufficient if the ViewModel remains frozen until Envelope completion.
-
-Controller becomes the only owner of historical intermediate display state.
-
-Locked model:
+Controller is the single C++ owner of historical intermediate display state.
 
 ```text
 DisplayedPresentationSnapshot
-= state currently reflected by the HUD
-
-Envelope begins
-↓
+↓ Envelope begins
 WorkingPresentationSnapshot = DisplayedPresentationSnapshot
-
-for each Record
-    Blueprint/C++ playback
-    ↓
-    accepted completion OR immediate fallback
-    ↓
-    ApplyRecordToWorkingSnapshot(Record)
-    ↓
-    ViewModel.ApplyPresentationSnapshot(WorkingPresentationSnapshot)
-    ↓
-    next Record
-
-Envelope completes
 ↓
+play/fallback Record
+↓
+ApplyRecordToWorkingSnapshot
+↓
+ViewModel.ApplyPresentationSnapshot(WorkingPresentationSnapshot)
+↓
+next Record
+↓ Envelope ends
 apply exact Envelope.FinalSnapshot
-↓
 DisplayedPresentationSnapshot = FinalSnapshot
 ```
 
-Do not read mutable Gameplay to advance the WorkingSnapshot.
+The reducer may use only immutable Record data. It must not query mutable Gameplay to reconstruct intermediate state.
 
-The Record `After` values and frozen payload are sufficient.
-
-## 15. Reducer rules
-
-The reducer must cover A2B and A2C records consistently rather than creating two state-ownership models.
+## 14. Reducer rules
 
 ### Damage
-
-After the Damage Record completes/falls back:
 
 ```text
 Target.HP    = HPAfter
 Target.Block = BlockAfter
-Target.bDead follows the represented HP state as appropriate
+Target.bDead follows represented HP
 ```
 
 ### BlockChanged
@@ -593,259 +429,164 @@ Target.Block = BlockAfter
 ### CardPlayed
 
 ```text
-remove the card matching RuntimeId from Hand
-preserve identity checks with HandIndexBefore as consistency data
-set Energy = EnergyAfter
-update any represented Hand count implicitly through HandCards
-```
-
-Blueprint must not directly remove the card or subtract Energy.
-
-### CardZoneChanged DrawPile → Hand
-
-```text
-add Record.Card to Hand at ToIndex
-DrawCount decreases according to the committed transition
-```
-
-### CardZoneChanged Hand → DiscardPile
-
-```text
-remove exact RuntimeId from Hand
-DiscardCount increases
-```
-
-### CardZoneChanged PlayArea → Discard/Exhaust/Removed
-
-The current full presentation snapshot does not expose concrete PlayArea/Removed arrays; reducer updates the represented counts and any visible Hand state required by the record. FinalSnapshot remains the exact end-of-Envelope authority.
-
-### DeckShuffled
-
-```text
-DrawCount    = DrawCountAfter
-DiscardCount = DiscardCountAfter
+find exact RuntimeId in Hand
+validate HandIndexBefore/CardId consistency
+remove it from Hand
+Energy = EnergyAfter
 ```
 
 ### EnergyChanged
 
 ```text
+validate current Energy == EnergyBefore
 Energy = EnergyAfter
 ```
 
-`Victory`, `Defeat`, and `ResolutionFault` may continue to rely on final Envelope catch-up in A2C unless a later slice gives them visible intermediate state.
-
-## 16. Playback completion and fallback
-
-Existing playback-token semantics remain unchanged.
+### CardZoneChanged DrawPile→Hand
 
 ```text
-PlayPresentationRecord returns true
-→ Blueprint accepted responsibility
-→ must eventually NotifyPresentationFinished(Token) exactly once
-
-returns false
-→ immediate fallback
-```
-
-After either normal completion or immediate fallback, Controller applies that Record to WorkingPresentationSnapshot before proceeding.
-
-For timeout/widget loss/skip/backlog collapse:
-
-```text
-Controller must never wait on mutable Gameplay
-Controller may deterministically collapse to the relevant Envelope.FinalSnapshot
-old/stale completion tokens remain ignored
-```
-
-If a Record reducer cannot apply a supposedly valid historical Record consistently, treat that as Presentation history corruption/fail-safe behavior; never mutate Gameplay to repair presentation.
-
-## 17. Snapshot and Record ownership boundary
-
-A2C resolves the temporary A2B visual gap where Damage could play while old Hand/Energy remained displayed.
-
-After `CardPlayed` completion:
-
-```text
-Hand and Energy move to their committed intermediate values before Damage/Block records play
-```
-
-After a Draw record completes:
-
-```text
-new card appears in Hand before later records continue
-```
-
-Blueprint is strictly a rendering layer. It must not own authoritative or historical state transitions such as:
-
-```text
-RemoveCardFromHand
-Energy -= Cost
+insert frozen Card at ToIndex
 DrawCount--
+```
+
+### CardZoneChanged Hand→DiscardPile
+
+```text
+find exact RuntimeId/index/CardId
+remove from Hand
 DiscardCount++
 ```
 
-Those transitions are applied by the Controller reducer from immutable Records.
+### CardZoneChanged PlayArea→Discard/Exhaust/Removed
 
-## 18. Initial implementation order
+Update represented destination counts where the presentation snapshot exposes them. The final Envelope snapshot remains exact authority for fields not represented in intermediate state.
 
-Recommended implementation order:
-
-```text
-ECardZone + mutation result types
-↓
-DeckRuntime exact mutation-result APIs
-↓
-fix draw fail-after-mutation behavior
-↓
-exact rollback-to-original-Hand-index support
-↓
-FEnergyCommitResult and energy mutation APIs
-↓
-A2C typed Record payloads
-↓
-Card snapshot freezer helper
-↓
-UPlayCardAction CardPlayed
-↓
-Draw / Discard / Finish zone Records
-↓
-DeckShuffled before event dispatch
-↓
-EndTurn / StartPlayerTurn EnergyChanged
-↓
-Controller WorkingPresentationSnapshot reducer
-↓
-focused Automation
-↓
-regression gate
-```
-
-Do not modify Blueprint/UMG merely to prove C++ correctness. As in A2B, first close the C++ + Automation path, then wire visible presentation.
-
-## 19. Required Automation coverage
-
-Exact top-level discovery count may be locked when implementation begins, but the semantic gate must cover at least the following concepts.
-
-### Energy commit semantics
+### DeckShuffled
 
 ```text
-positive legal spend
-zero-cost successful no-change
-insufficient-energy failure
-turn-end clear only when changed
-turn-start restore only when changed
-Delta identity
+validate Draw/Discard before counts
+DrawCount = DrawCountAfter
+DiscardCount = DiscardCountAfter
 ```
 
-### Deck mutation semantics
+A2B `Damage` and `BlockChanged` use the same reducer so there is one intermediate-state ownership model.
+
+`Victory`, `Defeat`, and `ResolutionFault` may still rely on final-envelope reconciliation in A2C.
+
+## 15. Playback completion/fallback
+
+Existing token contract is unchanged:
 
 ```text
-DrawPile→Hand exact indices and identity
-Hand→Discard exact indices
-Hand→PlayArea exact indices
-PlayArea→Discard/Exhaust/Removed exact indices
-all no-op/failure paths leave every zone unchanged
-invalid top DrawPile entry does not Pop
+PlayPresentationRecord returns true
+→ Blueprint accepted completion responsibility
+→ eventually NotifyPresentationFinished(Token) exactly once
+
+returns false
+→ Controller immediately falls back
 ```
 
-### PlayCard composite fact
+Normal completion, immediate fallback, and timeout completion apply the current record's reducer before advancing when history remains usable.
+
+Skip, widget loss, invalid reducer history, or backlog collapse may deterministically collapse to the relevant immutable FinalSnapshot. Stale/duplicate tokens cannot reapply a record.
+
+Blueprint must not mutate Hand, Energy, HP, Block, Draw/Discard counts, or any other historical state directly.
+
+## 16. Focused Automation gate
+
+A2C locks exactly **8 top-level tests**:
 
 ```text
-one CardPlayed only
-no duplicate Hand→PlayArea CardZoneChanged
-no duplicate card-cost EnergyChanged
-exact frozen card snapshot
-exact HandIndexBefore / PlayAreaIndexAfter
-exact EnergyBefore / After / CostPaid
-zero-cost card still produces CardPlayed
+SlayTheSpireDemo.Phase6UIA2C.Commit.EnergyResult
+SlayTheSpireDemo.Phase6UIA2C.Commit.DeckMutation
+SlayTheSpireDemo.Phase6UIA2C.Record.CardPlayed
+SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged
+SlayTheSpireDemo.Phase6UIA2C.Record.ShuffleOrdering
+SlayTheSpireDemo.Phase6UIA2C.Record.EndTurnEnergy
+SlayTheSpireDemo.Phase6UIA2C.Playback.WorkingSnapshot
+SlayTheSpireDemo.Phase6UIA2C.Failure.PresentationDoesNotAffectGameplay
 ```
 
-### Rollback
+Required semantic coverage includes:
+
+- positive, zero-cost, insufficient, clear/restore Energy results and Delta identity;
+- exact zone identities/indices, mutation-free no-ops, invalid DrawPile top not popped;
+- one composite CardPlayed with no duplicate Hand→PlayArea/Energy records;
+- exact rollback to original Hand order on Execute-time spend failure;
+- Draw/Discard/Discard-finish/Exhaust/Removed records with frozen card payloads;
+- DeckShuffled committed before event dispatch and RetryDraw after reactions;
+- opening setup emits no A2C history;
+- EndTurn clear + restore ordering and lethal no-restore path;
+- CardPlayed updates Hand/Energy before subsequent Damage display;
+- A2B Damage reducer remains functional under the unified WorkingSnapshot model;
+- writer-absent no-history versus current-writer-invalid-history/append-failure isolation.
+
+## 17. CI gate
+
+The aggregate self-hosted regression workflow is configured for:
 
 ```text
-move to PlayArea succeeds
-energy spend fails
-exact original Hand index restored
-no CardPlayed
-no zone Record
-Energy unchanged
-
-rollback failure
-→ Gameplay ResolutionFault
+Phase5        13
+Phase6A       23
+Phase6B       12
+Phase6C        5
+Phase6UIA2A    8
+Phase6UIA2B    8
+Phase6UIA2C    8
+----------------
+Total         77
 ```
 
-### Zone records
+The gate still requires exact discovery counts, zero failed/not-run tests, and zero Editor exit code.
+
+This configuration is **validation pending** until it is run successfully on UE5.8.
+
+## 18. Static source review result
+
+Static review covered the new reflected types/includes, Deck/Energy CommitResult APIs, Action initializer overload compatibility, PlayCard transaction/rollback path, Presentation payload types, frozen-card builder signature, producer wiring, Controller reducer declarations/definitions, test-only hooks, the 8 Automation definitions, and the workflow prefix/count configuration.
+
+No remaining high-confidence C++/UHT compile blocker was identified by source inspection. Static review is not a substitute for UHT/MSVC/Unreal Automation execution.
+
+## 19. Validation status
 
 ```text
-Draw record freezes concrete card
-Discard record
-Finish-to-Discard
-Finish-to-Exhaust
-Finish-to-Removed
-same-resolution draw then leave-Hand remains replayable without live CardInstance
+Design contract                   LOCKED
+A2C C++ source                    IMPLEMENTED
+Static compile review             COMPLETE
+8 top-level Automation tests      AUTHORED
+CI aggregate gate                 CONFIGURED: 77
+UE5.8 Editor build                PENDING
+Phase6UIA2C Automation 8/8        PENDING
+Affected 77-test regression       PENDING
+Blueprint card/energy/zone visual PENDING
+PIE smoke                         PENDING
 ```
 
-### Shuffle
-
-```text
-successful shuffle emits DeckShuffled before FDeckShuffledEvent
-reaction Records execute before RetryDraw record
-original empty-draw attempt emits nothing
-RetryDraw emits exactly one DrawPile→Hand on commit
-initial setup shuffle/opening draws emit nothing
-```
-
-### EndTurn ordering
-
-```text
-Energy current→0 precedes hand cleanup
-next-turn 0→MaxEnergy appears only if next player turn is reached
-turn-start draw follows restore
-lethal enemy flow has no restore record
-```
-
-### WorkingSnapshot reducer
-
-```text
-CardPlayed completion updates Hand + Energy before next Damage/Block record
-Damage reducer updates HP/Block from After values
-Block reducer updates Block
-Draw reducer inserts frozen card
-EnergyChanged reducer updates Energy
-DeckShuffled reducer updates counts
-final Envelope snapshot still wins exact reconciliation
-false-return immediate fallback still applies Record After state
-skip/collapse reaches FinalSnapshot
-stale token cannot apply reducer twice
-```
-
-### Presentation failure isolation
-
-```text
-writer absent from start = valid no-history
-committed card/energy/zone fact + invalid frozen payload/current-writer append failure
-→ no partial Envelope
-→ Gameplay not rolled back because of Presentation
-→ latest frozen baseline remains exact
-```
+Do not mark UI-A2C fully COMPLETE until UE5.8 build + focused A2C 8/8 + affected regression pass on the same source revision.
 
 ## 20. Completion definition
 
-UI-A2C C++ source is complete only when:
+UI-A2C C++ validation closes when all are true:
 
 ```text
 exact Energy CommitResult implemented
 exact Deck mutation CommitResults implemented
 failed/no-op Deck mutations are mutation-free
-PlayCard exact rollback invariant implemented
+exact PlayCard rollback implemented
 CardPlayed composite fact implemented
-CardZoneChanged implemented for Draw/Discard/Finish paths
-DeckShuffled implemented before event dispatch
-independent EnergyChanged implemented for current turn lifecycle
-all concrete-card records freeze self-sufficient presentation card data
-Controller WorkingPresentationSnapshot reducer implemented for A2B + A2C business records
-focused A2C Automation passes
-A2A/A2B and affected Phase5/6/UI regressions pass on the same source revision
+CardZoneChanged Draw/Discard/Finish implemented
+DeckShuffled ordering implemented
+independent turn-lifecycle EnergyChanged implemented
+concrete-card records are self-sufficient frozen values
+Controller reducer owns A2B+A2C intermediate state
+Phase6UIA2C focused Automation = 8/8
+Phase5–Phase6UIA2C aggregate gate = 77/77
 ```
 
-Visible Blueprint card/energy/zone animation and PIE smoke may be validated as a later presentation integration step, but C++ must already preserve the single-owner rule: immutable Record → Controller reducer → ViewModel; Blueprint never becomes a second state authority.
+Visible Blueprint animation/PIE validation may remain a later presentation-integration step, but C++ must preserve the single-owner rule:
+
+```text
+immutable Record → Controller reducer → ViewModel
+```
+
+Blueprint never becomes a second state authority.
