@@ -7,6 +7,7 @@
 class ABattleManager;
 class UBattleHUDViewModel;
 class UBattleHUDWidgetBase;
+class UBattlePresentationController;
 
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API ABattleHUDPresenter : public AActor
@@ -28,8 +29,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Input")
 	bool bConfigureGameAndUIInput = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Presentation")
+	bool bEnableCommittedPresentation = true;
+
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle HUD|Runtime")
 	TObjectPtr<UBattleHUDViewModel> ViewModel = nullptr;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle HUD|Runtime")
+	TObjectPtr<UBattlePresentationController> PresentationController = nullptr;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Battle HUD|Runtime")
 	TObjectPtr<UBattleHUDWidgetBase> WidgetInstance = nullptr;
