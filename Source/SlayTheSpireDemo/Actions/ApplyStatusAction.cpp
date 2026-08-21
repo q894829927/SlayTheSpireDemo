@@ -114,6 +114,7 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 				Battle.Get(),
 				Source.Get(),
 				Target.Get(),
+				ExistingBefore,
 				Result,
 				Reason,
 				DescriptionBefore,
