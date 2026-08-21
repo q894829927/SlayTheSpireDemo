@@ -57,11 +57,10 @@ public:
 		bool bResetInteraction = true
 	);
 
-	// Only the newest displayed BattleId/Revision may rebuild weak runtime
-	// bindings used to forward a new formal Request.
 	bool RefreshLiveInputBindingsIfCaughtUp();
 	void EnterPresentationUnavailable(const FText& Reason);
 	bool IsPresentationDisplayOwned() const;
+	void SetPresentationDisplayOwned(bool bOwned);
 
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
