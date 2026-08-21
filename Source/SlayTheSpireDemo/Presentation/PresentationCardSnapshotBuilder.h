@@ -10,7 +10,7 @@ namespace PresentationCardSnapshot
 {
 	SLAYTHESPIREDEMO_API bool TryBuild(
 		const UCardInstance* Card,
-		const ACombatant* Source,
+		ACombatant* Source,
 		FPresentationCardSnapshot& OutSnapshot
 	);
 }
