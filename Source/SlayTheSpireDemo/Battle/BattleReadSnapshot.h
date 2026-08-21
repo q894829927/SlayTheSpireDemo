@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BattleState.h"
 #include "../Cards/CardInstance.h"
 #include "../Cards/CardTypes.h"
 #include "../Combat/Combatant.h"
@@ -8,7 +9,6 @@
 
 class UStatusData;
 class UStatusInstance;
-enum class EBattleState : uint8;
 
 struct SLAYTHESPIREDEMO_API FStatusReadView
 {
@@ -62,7 +62,7 @@ struct SLAYTHESPIREDEMO_API FBattleReadSnapshot
 {
 	uint64 BattleId = 0;
 	uint64 StateRevision = 0;
-	EBattleState BattleState = static_cast<EBattleState>(0);
+	EBattleState BattleState = EBattleState::BattleStart;
 	int32 Energy = 0;
 	int32 MaxEnergy = 0;
 
