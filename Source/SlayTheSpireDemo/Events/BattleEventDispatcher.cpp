@@ -5,6 +5,7 @@
 #include "../Actions/BattleAction.h"
 #include "../Actions/BattleActionQueue.h"
 #include "../Combat/Combatant.h"
+#include "../Presentation/BattlePresentationRecorder.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
@@ -68,7 +69,8 @@ bool UBattleEventDispatcher::Dispatch(
 	const FBattleEvent& Event,
 	UBattleActionQueue* Queue,
 	const TArray<ACombatant*>& Combatants,
-	TArray<FTriggerEligibilityRecord>* OutEligibilityTrace
+	TArray<FTriggerEligibilityRecord>* OutEligibilityTrace,
+	const FPresentationRecordWriter* PresentationRecordWriter
 ) const
 {
 	if (OutEligibilityTrace)
@@ -85,6 +87,10 @@ bool UBattleEventDispatcher::Dispatch(
 #if WITH_DEV_AUTOMATION_TESTS
 	OnEventDispatchedForTesting.Broadcast(Event);
 #endif
+
+	const FPresentationRecordWriter ResolvedPresentationWriter = PresentationRecordWriter
+		? *PresentationRecordWriter
+		: FPresentationRecordWriter{};
 
 	TArray<FTriggerCandidate> Candidates;
 	TSet<UStatusInstance*> SeenRuntimeSources;
@@ -132,7 +138,7 @@ bool UBattleEventDispatcher::Dispatch(
 					continue;
 				}
 
-				FTriggerContext Context(RuntimeSource, Queue);
+				FTriggerContext Context(RuntimeSource, Queue, ResolvedPresentationWriter);
 				if (Trigger->CanReact(Event, Context))
 				{
 					FTriggerCandidate Candidate;
@@ -178,9 +184,20 @@ bool UBattleEventDispatcher::Dispatch(
 			OutEligibilityTrace->Add(Record);
 		}
 
-		FTriggerContext Context(Candidate.RuntimeSource, Queue);
+		FTriggerContext Context(Candidate.RuntimeSource, Queue, ResolvedPresentationWriter);
 		TArray<UBattleAction*> LocalBatch;
 		Candidate.TriggerDefinition->BuildReactions(Event, Context, LocalBatch);
+
+		if (ResolvedPresentationWriter.IsAvailable())
+		{
+			for (UBattleAction* Action : LocalBatch)
+			{
+				if (IsValid(Action))
+				{
+					Action->SetPresentationRecordWriter(ResolvedPresentationWriter);
+				}
+			}
+		}
 
 		FString LocalFailureReason;
 		if (!ValidateLocalReactionBatch(Queue, LocalBatch, LocalFailureReason))
