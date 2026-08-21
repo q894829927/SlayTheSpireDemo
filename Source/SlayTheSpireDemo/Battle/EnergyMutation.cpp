@@ -10,6 +10,13 @@ FEnergyCommitResult BattleEnergyMutation::TrySpend(ABattleManager* Battle, int32
 		return Result;
 	}
 
+#if WITH_DEV_AUTOMATION_TESTS
+	if (Battle->ConsumeForceNextEnergySpendFailureForTesting())
+	{
+		return Result;
+	}
+#endif
+
 	Result.bSucceeded = true;
 	Result.EnergyBefore = Battle->Energy;
 	Battle->Energy -= Amount;
