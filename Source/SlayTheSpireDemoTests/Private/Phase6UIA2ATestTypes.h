@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Actions/BattleAction.h"
+#include "Cards/Effects/CardEffect.h"
 #include "Events/BattleTrigger.h"
 #include "UI/BattleHUDPresenter.h"
 #include "UI/BattleHUDWidgetBase.h"
@@ -33,6 +34,31 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2AProbeAction : public UBattleAction
 public:
 	void Initialize(UPhase6UIA2AProbeState* InState, bool bInAppendRecord);
 	virtual void Execute(UBattleActionQueue* Queue) override;
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UPhase6UIA2AProbeState> State = nullptr;
+
+	bool bAppendRecord = false;
+};
+
+UCLASS(Transient, EditInlineNew, DefaultToInstanced)
+class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2AProbeCardEffect : public UCardEffect
+{
+	GENERATED_BODY()
+
+public:
+	void Initialize(UPhase6UIA2AProbeState* InState, bool bInAppendRecord = false);
+	virtual void BuildActions(
+		const FCardPlayContext& Context,
+		TArray<UBattleAction*>& OutActions
+	) const override;
+	virtual void GetPreviewArgumentNames(TArray<FName>& OutNames) const override;
+	virtual void BuildPreviewArguments(
+		const FCardEffectPreviewContext& Context,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const override;
+	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const override;
 
 private:
 	UPROPERTY(Transient)
