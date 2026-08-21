@@ -28,6 +28,10 @@ void UDamageCardEffect::BuildActions(
 	{
 		UDamageAction* Action = NewObject<UDamageAction>(Context.ActionOuter);
 		Action->Initialize(Context.Source, Context.Target, BaseAmount, DamageKind);
+		Action->SetPresentationParticipantIds(
+			Context.SourcePresentationId,
+			Context.TargetPresentationId
+		);
 		OutActions.Add(Action);
 	}
 }
