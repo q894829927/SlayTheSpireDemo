@@ -21,4 +21,6 @@ struct FCardPlayContext
 	TArray<ACombatant*> EventCombatants;
 	UObject* ActionOuter = nullptr;
 	FPresentationRecordWriter PresentationRecordWriter;
+	FName SourcePresentationId = NAME_None;
+	FName TargetPresentationId = NAME_None;
 };
