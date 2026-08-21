@@ -1,6 +1,7 @@
 #include "BattleManager.h"
 
 #include "BattleReadSnapshot.h"
+#include "../Actions/BattleAction.h"
 #include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
@@ -55,6 +56,19 @@ bool ABattleManager::TryResolveCombatantPresentationId(
 	if (Combatant != Player.Get() && Combatant != Enemy.Get())
 	{
 		return false;
+	}
+
+	// Once the first exact frozen baseline exists, its resolved participant IDs
+	// become the authoritative presentation identity for the remainder of this
+	// battle. StartBattle runs synchronously through that first stable baseline, so
+	// external callers cannot mutate authored IDs between validation and freezing.
+	if (bHasLatestFrozenPresentationBaseline
+		&& LatestFrozenPresentationBaseline.BattleId == static_cast<int64>(BattleId))
+	{
+		OutPresentationId = Combatant == Player.Get()
+			? LatestFrozenPresentationBaseline.Player.PresentationId
+			: LatestFrozenPresentationBaseline.Enemy.PresentationId;
+		return !OutPresentationId.IsNone();
 	}
 
 	if (!Combatant->PresentationId.IsNone())
@@ -339,7 +353,9 @@ bool ABattleManager::BeginPresentationResolution(EPresentationResolutionOrigin O
 	FPresentationRecordWriter Writer;
 	if (!PresentationRecorder->BeginResolution(Origin, Writer))
 	{
-		MarkPresentationUnavailable(TEXT("Presentation Resolution begin failed or another builder is still active."));
+		// Recorder guarantees a failed overlapping Begin cannot leave the previous
+		// builder active. From here the battle degrades Presentation only.
+		MarkPresentationUnavailable(TEXT("Presentation Resolution begin failed or another builder was still active."));
 		return false;
 	}
 
@@ -383,10 +399,7 @@ void ABattleManager::AppendPresentationResolutionFault(
 	FaultRecord.FaultLastActionName = IsValid(LastAction) ? LastAction->GetFName() : NAME_None;
 	if (!Writer.Append(MoveTemp(FaultRecord)))
 	{
-		bPresentationAvailable = false;
-		PresentationUnavailableReason = FText::FromString(
-			TEXT("Presentation record append failed; historical playback was disabled for this battle.")
-		);
+		MarkPresentationUnavailable(TEXT("Presentation record append failed; historical playback was disabled for this battle."));
 	}
 }
 
@@ -466,6 +479,11 @@ void ABattleManager::FreezeLatestPresentationBaselineWithoutResolution()
 
 void ABattleManager::MarkPresentationUnavailable(const FString& Reason)
 {
+	if (IsValid(PresentationRecorder) && PresentationRecorder->HasActiveResolution())
+	{
+		PresentationRecorder->AbortResolution();
+	}
+
 	bPresentationAvailable = false;
 	PresentationUnavailableReason = FText::FromString(
 		Reason.IsEmpty()
