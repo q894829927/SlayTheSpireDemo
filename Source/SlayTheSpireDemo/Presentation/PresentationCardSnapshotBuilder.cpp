@@ -6,7 +6,7 @@
 
 bool PresentationCardSnapshot::TryBuild(
 	const UCardInstance* Card,
-	const ACombatant* Source,
+	ACombatant* Source,
 	FPresentationCardSnapshot& OutSnapshot
 )
 {
