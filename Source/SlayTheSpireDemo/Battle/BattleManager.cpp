@@ -109,6 +109,98 @@ namespace
 			}
 		}
 	}
+
+	void ConfigureDamageActionPresentationIds(
+		ABattleManager* Battle,
+		UDamageAction* Action,
+		ACombatant* Source,
+		ACombatant* Target
+	)
+	{
+		if (!IsValid(Battle) || !IsValid(Action))
+		{
+			return;
+		}
+
+		FName SourceId = NAME_None;
+		FName TargetId = NAME_None;
+		if (IsValid(Source))
+		{
+			Battle->TryResolveCombatantPresentationId(Source, SourceId);
+		}
+		if (IsValid(Target))
+		{
+			Battle->TryResolveCombatantPresentationId(Target, TargetId);
+		}
+		Action->SetPresentationParticipantIds(SourceId, TargetId);
+	}
+
+	void ConfigureBlockActionPresentationIds(
+		ABattleManager* Battle,
+		UGainBlockAction* Action,
+		ACombatant* Source,
+		ACombatant* Target
+	)
+	{
+		if (!IsValid(Battle) || !IsValid(Action))
+		{
+			return;
+		}
+
+		FName SourceId = NAME_None;
+		FName TargetId = NAME_None;
+		if (IsValid(Source))
+		{
+			Battle->TryResolveCombatantPresentationId(Source, SourceId);
+		}
+		if (IsValid(Target))
+		{
+			Battle->TryResolveCombatantPresentationId(Target, TargetId);
+		}
+		Action->SetPresentationParticipantIds(SourceId, TargetId);
+	}
+
+	void AppendTurnStartClearPresentationRecord(
+		ABattleManager* Battle,
+		ACombatant* Target,
+		const FBlockCommitResult& CommitResult,
+		const FPresentationRecordWriter& Writer
+	)
+	{
+		if (!CommitResult.bCommitted || !Writer.IsAvailable())
+		{
+			return;
+		}
+
+		FName TargetId = NAME_None;
+		if (!IsValid(Battle) || !IsValid(Target)
+			|| !Battle->TryResolveCombatantPresentationId(Target, TargetId)
+			|| TargetId.IsNone())
+		{
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Presentation] Turn-start Block clear committed without a trustworthy TargetPresentationId."));
+			return;
+		}
+
+		FPresentationRecord Record;
+		Record.Type = EBattlePresentationRecordType::BlockChanged;
+		Record.BlockChanged.SourcePresentationId = NAME_None;
+		Record.BlockChanged.TargetPresentationId = TargetId;
+		Record.BlockChanged.Reason = EBlockPresentationReason::TurnStartClear;
+		Record.BlockChanged.BlockBefore = CommitResult.BlockBefore;
+		Record.BlockChanged.BlockAfter = CommitResult.BlockAfter;
+		Record.BlockChanged.BlockDelta = CommitResult.BlockDelta;
+		if (!Writer.Append(MoveTemp(Record)))
+		{
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Presentation] Turn-start Block clear record append failed; Gameplay remains authoritative."));
+		}
+	}
 }
 
 ABattleManager::ABattleManager()
@@ -314,6 +406,7 @@ void ABattleManager::TestActionQueueOrder()
 
 	UDamageAction* FrontAction = NewObject<UDamageAction>(ActionQueue.Get());
 	FrontAction->Initialize(Player.Get(), Enemy.Get(), 6, EDamageKind::Attack);
+	ConfigureDamageActionPresentationIds(this, FrontAction, Player.Get(), Enemy.Get());
 	FrontAction->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToFront(FrontAction);
 
@@ -961,7 +1054,13 @@ void ABattleManager::StartPlayerTurn()
 
 	BattleState = EBattleState::PlayerTurnStarting;
 	Energy = MaxEnergy;
-	Player->ClearBlock();
+	const FBlockCommitResult PlayerBlockClear = Player->ClearBlock();
+	AppendTurnStartClearPresentationRecord(
+		this,
+		Player.Get(),
+		PlayerBlockClear,
+		GetActivePresentationRecordWriter()
+	);
 
 	if (TurnStartBatch.Num() == 0)
 	{
@@ -1040,6 +1139,7 @@ void ABattleManager::StartEnemyTurn()
 	{
 		UDamageAction* DamageAction = NewObject<UDamageAction>(ActionQueue.Get());
 		DamageAction->Initialize(Enemy.Get(), Player.Get(), CommittedEnemyIntent.BaseAmount, EDamageKind::Attack);
+		ConfigureDamageActionPresentationIds(this, DamageAction, Enemy.Get(), Player.Get());
 		DamageAction->SetPresentationRecordWriter(PresentationWriter);
 		EnemyTurnBatch.Add(DamageAction);
 		break;
@@ -1072,7 +1172,13 @@ void ABattleManager::StartEnemyTurn()
 
 	BattleState = EBattleState::EnemyTurn;
 	Energy = 0;
-	Enemy->ClearBlock();
+	const FBlockCommitResult EnemyBlockClear = Enemy->ClearBlock();
+	AppendTurnStartClearPresentationRecord(
+		this,
+		Enemy.Get(),
+		EnemyBlockClear,
+		PresentationWriter
+	);
 
 	UE_LOG(
 		LogTemp,
@@ -1280,7 +1386,10 @@ void ABattleManager::HandleTurnEndedActionExecution(
 
 void ABattleManager::CheckBattleResult()
 {
-	if (BattleState == EBattleState::ResolutionFaulted || !HasValidCombatants())
+	if (BattleState == EBattleState::Victory
+		|| BattleState == EBattleState::Defeat
+		|| BattleState == EBattleState::ResolutionFaulted
+		|| !HasValidCombatants())
 	{
 		return;
 	}
@@ -1289,6 +1398,18 @@ void ABattleManager::CheckBattleResult()
 	{
 		BattleState = EBattleState::Victory;
 		Energy = 0;
+
+		const FPresentationRecordWriter Writer = GetActivePresentationRecordWriter();
+		if (Writer.IsAvailable())
+		{
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::Victory;
+			if (!Writer.Append(MoveTemp(Record)))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Victory record append failed; Gameplay terminal state remains authoritative."));
+			}
+		}
+
 		UE_LOG(LogTemp, Log, TEXT("[Battle] Victory."));
 		return;
 	}
@@ -1297,6 +1418,18 @@ void ABattleManager::CheckBattleResult()
 	{
 		BattleState = EBattleState::Defeat;
 		Energy = 0;
+
+		const FPresentationRecordWriter Writer = GetActivePresentationRecordWriter();
+		if (Writer.IsAvailable())
+		{
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::Defeat;
+			if (!Writer.Append(MoveTemp(Record)))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Defeat record append failed; Gameplay terminal state remains authoritative."));
+			}
+		}
+
 		UE_LOG(LogTemp, Log, TEXT("[Battle] Defeat."));
 	}
 }
@@ -1489,6 +1622,7 @@ void ABattleManager::QueueDamageAction(
 
 	UDamageAction* Action = NewObject<UDamageAction>(ActionQueue.Get());
 	Action->Initialize(Source, Target, BaseAmount, DamageKind);
+	ConfigureDamageActionPresentationIds(this, Action, Source, Target);
 	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
@@ -1502,6 +1636,7 @@ void ABattleManager::QueueGainBlockAction(ACombatant* Source, ACombatant* Target
 
 	UGainBlockAction* Action = NewObject<UGainBlockAction>(ActionQueue.Get());
 	Action->Initialize(Source, Target, BaseAmount);
+	ConfigureBlockActionPresentationIds(this, Action, Source, Target);
 	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
