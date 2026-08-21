@@ -850,6 +850,40 @@ bool FPhase6UIA2BPresentationFailureIsolationTest::RunTest(const FString& Parame
 	TestTrue(TEXT("Invalid payload still freezes newest baseline"), InvalidPayloadFixture.Battle->TryGetLatestFrozenPresentationBaseline(InvalidBaseline));
 	TestEqual(TEXT("Invalid payload baseline reflects committed HP"), InvalidBaseline.Enemy.HP, InvalidPayloadFixture.Enemy->HP);
 
+	FFixture NullSourceDamageFixture;
+	NullSourceDamageFixture.ResetDeliveries();
+	const int32 NullSourceDamageHPBefore = NullSourceDamageFixture.Enemy->HP;
+	TestTrue(TEXT("Null-source Damage Resolution begins"), NullSourceDamageFixture.Battle->BeginSystemPresentationResolutionForTesting());
+	UBattleActionQueue* NullSourceDamageQueue = NullSourceDamageFixture.Battle->GetActionQueueForTesting();
+	UDamageAction* NullSourceDamageAction = NewObject<UDamageAction>(NullSourceDamageQueue);
+	NullSourceDamageAction->Initialize(nullptr, NullSourceDamageFixture.Enemy, 4, EDamageKind::Attack);
+	NullSourceDamageAction->SetPresentationParticipantIds(FName(TEXT("FakeSource")), FName(TEXT("EnemyPrimary")));
+	NullSourceDamageAction->SetPresentationRecordWriter(NullSourceDamageFixture.Battle->GetActivePresentationRecordWriterForTesting());
+	TestTrue(TEXT("Null-source Damage Action inserts"), NullSourceDamageQueue->AddToBack(NullSourceDamageAction));
+	TestTrue(TEXT("Null-source Damage Action executes"), NullSourceDamageQueue->StartProcessing());
+	NullSourceDamageFixture.Flush();
+	TestEqual(TEXT("Invalid null-source Damage history cannot undo committed Gameplay"), NullSourceDamageFixture.Enemy->HP, NullSourceDamageHPBefore - 4);
+	TestFalse(TEXT("Invalid null-source Damage history disables Presentation only"), NullSourceDamageFixture.Battle->IsPresentationAvailable());
+	TestFalse(TEXT("Invalid null-source Damage history does not fault Gameplay"), NullSourceDamageQueue->IsResolutionFaulted());
+	TestEqual(TEXT("Invalid null-source Damage history publishes no Envelope"), NullSourceDamageFixture.Deliveries.Num(), 0);
+
+	FFixture NullSourceBlockFixture;
+	NullSourceBlockFixture.ResetDeliveries();
+	const int32 NullSourceBlockBefore = NullSourceBlockFixture.Player->Block;
+	TestTrue(TEXT("Null-source Block Resolution begins"), NullSourceBlockFixture.Battle->BeginSystemPresentationResolutionForTesting());
+	UBattleActionQueue* NullSourceBlockQueue = NullSourceBlockFixture.Battle->GetActionQueueForTesting();
+	UGainBlockAction* NullSourceBlockAction = NewObject<UGainBlockAction>(NullSourceBlockQueue);
+	NullSourceBlockAction->Initialize(nullptr, NullSourceBlockFixture.Player, 4);
+	NullSourceBlockAction->SetPresentationParticipantIds(FName(TEXT("FakeSource")), FName(TEXT("PlayerHero")));
+	NullSourceBlockAction->SetPresentationRecordWriter(NullSourceBlockFixture.Battle->GetActivePresentationRecordWriterForTesting());
+	TestTrue(TEXT("Null-source Block Action inserts"), NullSourceBlockQueue->AddToBack(NullSourceBlockAction));
+	TestTrue(TEXT("Null-source Block Action executes"), NullSourceBlockQueue->StartProcessing());
+	NullSourceBlockFixture.Flush();
+	TestEqual(TEXT("Invalid null-source Block history cannot undo committed Gameplay"), NullSourceBlockFixture.Player->Block, NullSourceBlockBefore + 4);
+	TestFalse(TEXT("Invalid null-source Block history disables Presentation only"), NullSourceBlockFixture.Battle->IsPresentationAvailable());
+	TestFalse(TEXT("Invalid null-source Block history does not fault Gameplay"), NullSourceBlockQueue->IsResolutionFaulted());
+	TestEqual(TEXT("Invalid null-source Block history publishes no Envelope"), NullSourceBlockFixture.Deliveries.Num(), 0);
+
 	FFixture AppendFailureFixture;
 	AppendFailureFixture.ResetDeliveries();
 	const int32 AppendFailureHPBefore = AppendFailureFixture.Enemy->HP;

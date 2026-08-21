@@ -457,6 +457,11 @@ bool FPhase6UIA2CCardPlayedRecordTest::RunTest(const FString& Parameters)
 	const int32 EnergyBeforeRollback = RollbackFixture.Battle->Energy;
 	RollbackFixture.ResetDeliveries();
 	RollbackFixture.Battle->SetForceNextEnergySpendFailureForTesting(true);
+	AddExpectedError(
+		TEXT("PlayCardAction rollback: energy spend unexpectedly failed"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
 	TestTrue(TEXT("Rollback probe request is accepted before Execute-time spend"), RollbackFixture.Battle->RequestPlayCard(RollCard, nullptr).IsAcceptedForResolution());
 	RollbackFixture.Flush();
 	TestEqual(TEXT("Failed spend keeps energy unchanged"), RollbackFixture.Battle->Energy, EnergyBeforeRollback);

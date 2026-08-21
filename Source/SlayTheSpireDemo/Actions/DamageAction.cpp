@@ -80,7 +80,8 @@ void UDamageAction::Execute(UBattleActionQueue* /*Queue*/)
 	if (Writer.IsAvailable())
 	{
 		const bool bSourceContextValid = Source.Get() == nullptr
-			|| (IsValid(Source.Get()) && !SourcePresentationId.IsNone());
+			? SourcePresentationId.IsNone()
+			: IsValid(Source.Get()) && !SourcePresentationId.IsNone();
 		const bool bTargetContextValid = IsValid(Target.Get()) && !TargetPresentationId.IsNone();
 		if (!bSourceContextValid || !bTargetContextValid)
 		{
