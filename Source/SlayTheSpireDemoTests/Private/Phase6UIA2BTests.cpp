@@ -732,6 +732,7 @@ bool FPhase6UIA2BDamageBlockPlaybackTest::RunTest(const FString& Parameters)
 	Envelope.Origin = EPresentationResolutionOrigin::System;
 	Envelope.FinalStateRevision = Baseline.StateRevision;
 	Envelope.FinalSnapshot = Baseline;
+	Envelope.FinalSnapshot.Player.HP = Baseline.Player.HP - 1;
 	Envelope.FinalSnapshot.Player.Block = 9;
 
 	FPresentationRecord Damage;
@@ -739,12 +740,29 @@ bool FPhase6UIA2BDamageBlockPlaybackTest::RunTest(const FString& Parameters)
 	Damage.ResolutionId = Envelope.ResolutionId;
 	Damage.PresentationSequence = 1001;
 	Damage.Type = EBattlePresentationRecordType::Damage;
+	Damage.Damage.SourcePresentationId = Baseline.Enemy.PresentationId;
+	Damage.Damage.TargetPresentationId = Baseline.Player.PresentationId;
+	Damage.Damage.DamageKind = EDamageKind::Attack;
+	Damage.Damage.IncomingDamage = 1;
+	Damage.Damage.HPBefore = Baseline.Player.HP;
+	Damage.Damage.HPAfter = Baseline.Player.HP - 1;
+	Damage.Damage.BlockBefore = Baseline.Player.Block;
+	Damage.Damage.BlockAfter = Baseline.Player.Block;
+	Damage.Damage.BlockedDamage = 0;
+	Damage.Damage.HPDamage = 1;
 	Envelope.Records.Add(Damage);
+
 	FPresentationRecord Block;
 	Block.BattleId = Envelope.BattleId;
 	Block.ResolutionId = Envelope.ResolutionId;
 	Block.PresentationSequence = 1002;
 	Block.Type = EBattlePresentationRecordType::BlockChanged;
+	Block.BlockChanged.SourcePresentationId = Baseline.Player.PresentationId;
+	Block.BlockChanged.TargetPresentationId = Baseline.Player.PresentationId;
+	Block.BlockChanged.Reason = EBlockPresentationReason::Gain;
+	Block.BlockChanged.BlockBefore = Baseline.Player.Block;
+	Block.BlockChanged.BlockAfter = 9;
+	Block.BlockChanged.BlockDelta = 9 - Baseline.Player.Block;
 	Envelope.Records.Add(Block);
 
 	Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
