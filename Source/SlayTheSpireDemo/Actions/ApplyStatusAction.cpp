@@ -2,6 +2,7 @@
 
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
+#include "../Presentation/StatusPresentationRecordBuilder.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
@@ -58,6 +59,12 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 		return;
 	}
 
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	const UStatusInstance* ExistingBefore = Writer.IsAvailable()
+		? Container->FindMutableStatusById(StatusDefinition->StatusId)
+		: nullptr;
+	const FText DescriptionBefore = StatusPresentation::FreezeDescription(ExistingBefore);
+
 	const uint64 CandidateSequence = Battle->AllocateRuntimeSequence();
 	if (CandidateSequence == 0)
 	{
@@ -86,6 +93,7 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 	switch (Result.Outcome)
 	{
 	case EStatusMutationOutcome::Committed:
+	{
 		UE_LOG(
 			LogTemp,
 			Log,
@@ -94,7 +102,26 @@ void UApplyStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 			Result.AmountAfter,
 			Result.bCreated ? TEXT("true") : TEXT("false")
 		);
+
+		if (Writer.IsAvailable())
+		{
+			const FText DescriptionAfter = StatusPresentation::FreezeDescription(Result.EffectiveInstance);
+			const EStatusChangeReason Reason = Result.bCreated
+				? EStatusChangeReason::Applied
+				: EStatusChangeReason::Increased;
+			StatusPresentation::AppendCommittedChange(
+				Writer,
+				Battle.Get(),
+				Source.Get(),
+				Target.Get(),
+				Result,
+				Reason,
+				DescriptionBefore,
+				DescriptionAfter
+			);
+		}
 		break;
+	}
 
 	case EStatusMutationOutcome::NoOp:
 		UE_LOG(

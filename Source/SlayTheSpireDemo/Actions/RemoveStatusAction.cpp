@@ -2,6 +2,7 @@
 
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
+#include "../Presentation/StatusPresentationRecordBuilder.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusInstance.h"
 
@@ -42,6 +43,11 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 		return;
 	}
 
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	const FText DescriptionBefore = Writer.IsAvailable()
+		? StatusPresentation::FreezeDescription(ExpectedInstance.Get())
+		: FText::GetEmpty();
+
 	const FString ExpectedLabel = ExpectedInstance->GetDebugLabel();
 	const FStatusMutationResult Result = Container->RemoveStatusCommit(ExpectedInstance.Get());
 
@@ -55,6 +61,19 @@ void URemoveStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 			*ExpectedLabel,
 			Result.AmountBefore
 		);
+		if (Writer.IsAvailable())
+		{
+			StatusPresentation::AppendCommittedChange(
+				Writer,
+				Battle.Get(),
+				Source.Get(),
+				Target.Get(),
+				Result,
+				EStatusChangeReason::Removed,
+				DescriptionBefore,
+				FText::GetEmpty()
+			);
+		}
 		break;
 
 	case EStatusMutationOutcome::NoOp:

@@ -2,6 +2,7 @@
 
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
+#include "../Presentation/StatusPresentationRecordBuilder.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusInstance.h"
 
@@ -72,12 +73,18 @@ void UReduceStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 		return;
 	}
 
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	const FText DescriptionBefore = Writer.IsAvailable()
+		? StatusPresentation::FreezeDescription(ExpectedInstance.Get())
+		: FText::GetEmpty();
+
 	const FString ExpectedLabel = ExpectedInstance->GetDebugLabel();
 	const FStatusMutationResult Result = Container->ReduceStatusCommit(ExpectedInstance.Get(), AmountToRemove);
 
 	switch (Result.Outcome)
 	{
 	case EStatusMutationOutcome::Committed:
+	{
 		UE_LOG(
 			LogTemp,
 			Log,
@@ -87,7 +94,25 @@ void UReduceStatusAction::Execute(UBattleActionQueue* /*Queue*/)
 			Result.AmountAfter,
 			static_cast<int32>(Reason)
 		);
+
+		if (Writer.IsAvailable())
+		{
+			const FText DescriptionAfter = Result.bRemoved
+				? FText::GetEmpty()
+				: StatusPresentation::FreezeDescription(Result.EffectiveInstance);
+			StatusPresentation::AppendCommittedChange(
+				Writer,
+				Battle.Get(),
+				Source.Get(),
+				Target.Get(),
+				Result,
+				Reason,
+				DescriptionBefore,
+				DescriptionAfter
+			);
+		}
 		break;
+	}
 
 	case EStatusMutationOutcome::NoOp:
 		UE_LOG(

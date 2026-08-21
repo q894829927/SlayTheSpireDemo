@@ -5,6 +5,7 @@
 #include "../Battle/BattleState.h"
 #include "../Deck/DeckMutationTypes.h"
 #include "../Modifiers/ModifierTypes.h"
+#include "../Status/StatusMutationTypes.h"
 #include "../UI/BattleHUDTypes.h"
 #include "PresentationTypes.generated.h"
 
@@ -29,7 +30,8 @@ enum class EBattlePresentationRecordType : uint8
 	CardPlayed UMETA(DisplayName = "Card Played"),
 	EnergyChanged UMETA(DisplayName = "Energy Changed"),
 	CardZoneChanged UMETA(DisplayName = "Card Zone Changed"),
-	DeckShuffled UMETA(DisplayName = "Deck Shuffled")
+	DeckShuffled UMETA(DisplayName = "Deck Shuffled"),
+	StatusChanged UMETA(DisplayName = "Status Changed")
 };
 
 UENUM(BlueprintType)
@@ -217,6 +219,63 @@ struct SLAYTHESPIREDEMO_API FDeckShuffledPresentationPayload
 };
 
 USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FStatusChangedPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FName SourcePresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FName TargetPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FName StatusId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	int64 RuntimeSequence = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	int32 AmountBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	int32 AmountAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	bool bCreated = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	bool bRemoved = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	EStatusChangeReason Reason = EStatusChangeReason::Applied;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FText DescriptionBefore;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FText DescriptionAfter;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	bool bUseAtlasIcon = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FVector2D UVOffset = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FVector2D UVScale = FVector2D::UnitVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FVector2D TrimOffset = FVector2D::ZeroVector;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FVector2D TrimScale = FVector2D::UnitVector;
+};
+
+USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationPlaybackToken
 {
 	GENERATED_BODY()
@@ -281,6 +340,9 @@ struct SLAYTHESPIREDEMO_API FPresentationRecord
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Deck")
 	FDeckShuffledPresentationPayload DeckShuffled;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
+	FStatusChangedPresentationPayload StatusChanged;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
 	FString FaultReason;
