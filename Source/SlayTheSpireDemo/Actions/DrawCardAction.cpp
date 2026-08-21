@@ -81,7 +81,9 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 		{
 			// Direct BattleManager debug draws still use the original Initialize(Deck)
 			// entry point. Resolve the same narrow battle-scoped dependencies from the
-			// Queue's authoritative owner without searching the world.
+			// Queue's authoritative owner without searching the world. Presentation
+			// recording is deliberately not inferred from the Queue Outer; it is carried
+			// independently by this Action's explicit writer value.
 			ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
 			if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
 			{
@@ -93,9 +95,11 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 
 		UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
 		ShuffleAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
+		ShuffleAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 
 		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
 		RetryDrawAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
+		RetryDrawAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 
 		TArray<UBattleAction*> ContinuationBatch;
 		ContinuationBatch.Add(ShuffleAction);
