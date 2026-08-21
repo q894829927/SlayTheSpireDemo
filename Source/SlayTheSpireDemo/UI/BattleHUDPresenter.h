@@ -5,6 +5,7 @@
 #include "BattleHUDPresenter.generated.h"
 
 class ABattleManager;
+class APlayerController;
 class UBattleHUDViewModel;
 class UBattleHUDWidgetBase;
 class UBattlePresentationController;
@@ -44,4 +45,10 @@ public:
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	// BeginPlay resolves the real local player and delegates to this assembly
+	// boundary. Keeping actor lifecycle dispatch outside the method lets the
+	// Editor-only test module provide an explicit valid local PlayerController
+	// without calling BeginPlay directly on an actor that has not begun play.
+	bool InitializeHUD(APlayerController* PlayerController);
 };

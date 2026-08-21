@@ -127,7 +127,7 @@ bool UPhase6UIA2APlaybackWidget::PlayPresentationRecord_Implementation(
 	return bAcceptAsyncPlayback;
 }
 
-void APhase6UIA2ATestPresenter::InvokeBeginPlayForTesting()
+bool APhase6UIA2ATestPresenter::InvokeInitializeHUDForTesting(APlayerController* PlayerController)
 {
-	BeginPlay();
+	return InitializeHUD(PlayerController);
 }

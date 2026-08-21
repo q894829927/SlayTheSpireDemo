@@ -5,6 +5,8 @@
 #include "Phase6UIA2ATestTypes.h"
 #include "Battle/BattleManager.h"
 #include "Combat/Combatant.h"
+#include "Engine/Engine.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/BattleHUDViewModel.h"
@@ -36,6 +38,23 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 		return false;
 	}
 
+	// CreateWidget(APlayerController, ...) requires an attached ULocalPlayer.
+	// The transient test world does not run the normal GameMode login path, so
+	// provide only the ownership identity needed by UMG without faking BeginPlay.
+	if (!TestNotNull(TEXT("Engine exists for ULocalPlayer ownership"), GEngine))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	ULocalPlayer* LocalPlayer = NewObject<ULocalPlayer>(GEngine);
+	if (!TestNotNull(TEXT("Local player created for HUD ownership"), LocalPlayer))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	PlayerController->Player = LocalPlayer;
+	LocalPlayer->PlayerController = PlayerController;
+
 	Player->PresentationId = TEXT("DuplicatePresentationId");
 	Enemy->PresentationId = TEXT("DuplicatePresentationId");
 	Battle->Player = Player;
@@ -51,7 +70,10 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 	Presenter->WidgetClass = UPhase6UIA2APlaybackWidget::StaticClass();
 	Presenter->bConfigureGameAndUIInput = false;
 	Presenter->bEnableCommittedPresentation = true;
-	Presenter->InvokeBeginPlayForTesting();
+	TestTrue(
+		TEXT("Presenter HUD assembly succeeds without manual BeginPlay dispatch"),
+		Presenter->InvokeInitializeHUDForTesting(PlayerController)
+	);
 
 	TestTrue(TEXT("Presenter still creates the normal HUD Widget"), IsValid(Presenter->WidgetInstance));
 	TestTrue(TEXT("Presenter still creates a ViewModel"), IsValid(Presenter->ViewModel));

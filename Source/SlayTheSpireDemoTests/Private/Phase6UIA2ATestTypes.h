@@ -108,5 +108,5 @@ class SLAYTHESPIREDEMOTESTS_API APhase6UIA2ATestPresenter : public ABattleHUDPre
 	GENERATED_BODY()
 
 public:
-	void InvokeBeginPlayForTesting();
+	bool InvokeInitializeHUDForTesting(APlayerController* PlayerController);
 };

@@ -16,23 +16,29 @@ void ABattleHUDPresenter::BeginPlay()
 {
 	Super::BeginPlay();
 
+	APlayerController* PlayerController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
+	InitializeHUD(PlayerController);
+}
+
+bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
+{
+
 	if (!IsValid(BattleManager))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter has no BattleManager reference."));
-		return;
+		return false;
 	}
 
 	if (!WidgetClass)
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter has no WidgetClass."));
-		return;
+		return false;
 	}
 
-	APlayerController* PlayerController = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 	if (!IsValid(PlayerController))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter could not find the local PlayerController."));
-		return;
+		return false;
 	}
 
 	const bool bUsePresentationController =
@@ -44,7 +50,7 @@ void ABattleHUDPresenter::BeginPlay()
 	if (!IsValid(ViewModel) || !ViewModel->Initialize(BattleManager.Get(), bUsePresentationController))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter failed to initialize the BattleHUD ViewModel."));
-		return;
+		return false;
 	}
 
 	// Widget creation is intentionally independent from Presentation availability.
@@ -54,7 +60,7 @@ void ABattleHUDPresenter::BeginPlay()
 	if (!IsValid(WidgetInstance))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter failed to create the Battle HUD Widget."));
-		return;
+		return false;
 	}
 
 	WidgetInstance->SetViewModel(ViewModel.Get());
@@ -96,6 +102,8 @@ void ABattleHUDPresenter::BeginPlay()
 		PlayerController->SetInputMode(InputMode);
 		PlayerController->bShowMouseCursor = true;
 	}
+
+	return true;
 }
 
 void ABattleHUDPresenter::EndPlay(const EEndPlayReason::Type EndPlayReason)
