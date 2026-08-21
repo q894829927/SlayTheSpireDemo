@@ -1,6 +1,7 @@
 #include "Phase6UIA2ATestTypes.h"
 
 #include "Actions/BattleActionQueue.h"
+#include "Cards/CardPlayContext.h"
 #include "Events/BattleEvent.h"
 #include "Presentation/PresentationTypes.h"
 
@@ -42,6 +43,48 @@ void UPhase6UIA2AProbeAction::Execute(UBattleActionQueue* /*Queue*/)
 		}
 	}
 	Finish();
+}
+
+void UPhase6UIA2AProbeCardEffect::Initialize(
+	UPhase6UIA2AProbeState* InState,
+	bool bInAppendRecord
+)
+{
+	State = InState;
+	bAppendRecord = bInAppendRecord;
+}
+
+void UPhase6UIA2AProbeCardEffect::BuildActions(
+	const FCardPlayContext& Context,
+	TArray<UBattleAction*>& OutActions
+) const
+{
+	if (!IsValid(State) || !IsValid(Context.ActionOuter))
+	{
+		return;
+	}
+
+	State->RecordContextWriter(Context.PresentationRecordWriter);
+	UPhase6UIA2AProbeAction* Action = NewObject<UPhase6UIA2AProbeAction>(Context.ActionOuter);
+	Action->Initialize(State.Get(), bAppendRecord);
+	OutActions.Add(Action);
+}
+
+void UPhase6UIA2AProbeCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
+{
+	OutNames.Reset();
+}
+
+void UPhase6UIA2AProbeCardEffect::BuildPreviewArguments(
+	const FCardEffectPreviewContext& /*Context*/,
+	FPreviewTextArgumentBuilder& /*OutArguments*/
+) const
+{
+}
+
+void UPhase6UIA2AProbeCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
+{
+	OutErrors.Reset();
 }
 
 void UPhase6UIA2AProbeTrigger::Initialize(UPhase6UIA2AProbeState* InState)
