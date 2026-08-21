@@ -91,6 +91,15 @@ namespace Phase6UIA2AHardeningTest
 		return false;
 	}
 
+	void ExpectPresentationUnavailableLog(FAutomationTestBase& Test)
+	{
+		Test.AddExpectedErrorPlain(
+			TEXT("[Presentation] Unavailable for BattleId="),
+			EAutomationExpectedErrorFlags::Contains,
+			1
+		);
+	}
+
 	FPresentationResolutionEnvelope MakeFaultEnvelope(
 		const FPresentationStateSnapshot& Snapshot,
 		int64 ResolutionId,
@@ -355,6 +364,7 @@ bool FPhase6UIA2AControllerStaleIsolationTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("Synthetic historical record is in async playback before failure"), SealFailureController->IsWaitingForCompletionForTesting());
 
 	SealFailureFixture.Battle->GetPresentationRecorderForTesting()->SetForceNextSealFailureForTesting(true);
+	ExpectPresentationUnavailableLog(*this);
 	TestTrue(TEXT("Gameplay request remains accepted when Presentation seal fails"), SealFailureFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
 	TestFalse(TEXT("Seal failure disables Presentation only"), SealFailureFixture.Battle->IsPresentationAvailable());
 	FPresentationStateSnapshot SealFailureLatest;
@@ -391,6 +401,7 @@ bool FPhase6UIA2AControllerStaleIsolationTest::RunTest(const FString& Parameters
 	FPresentationRecord FailedRecord;
 	FailedRecord.Type = EBattlePresentationRecordType::None;
 	TestFalse(TEXT("Forced append failure invalidates unpublished history"), AppendFailureFixture.Battle->GetActivePresentationRecordWriterForTesting().Append(FailedRecord));
+	ExpectPresentationUnavailableLog(*this);
 	TestFalse(TEXT("Invalid append batch cannot seal"), AppendFailureFixture.Battle->SealActivePresentationResolutionForTesting());
 	TestFalse(TEXT("Append failure disables Presentation only"), AppendFailureFixture.Battle->IsPresentationAvailable());
 	TestTrue(TEXT("Gameplay still accepts later request after append failure"), AppendFailureFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());

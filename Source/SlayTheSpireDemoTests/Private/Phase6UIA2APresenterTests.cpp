@@ -107,8 +107,8 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 
 	LocalPlayer->PlayerController = nullptr;
 	PlayerController->Player = nullptr;
-	TestNull(TEXT("Temporary LocalPlayer no longer references test PlayerController"), LocalPlayer->PlayerController);
-	TestNull(TEXT("Test PlayerController no longer references temporary LocalPlayer"), PlayerController->Player);
+	TestTrue(TEXT("Temporary LocalPlayer no longer references test PlayerController"), LocalPlayer->PlayerController == nullptr);
+	TestTrue(TEXT("Test PlayerController no longer references temporary LocalPlayer"), PlayerController->Player == nullptr);
 
 	World->DestroyWorld(false);
 	return true;
