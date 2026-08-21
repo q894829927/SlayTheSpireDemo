@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "../Presentation/BattlePresentationRecorder.h"
 #include "BattleAction.generated.h"
 
 class UBattleAction;
@@ -22,6 +23,16 @@ public:
 		return bIsFinished;
 	}
 
+	void SetPresentationRecordWriter(const FPresentationRecordWriter& InWriter)
+	{
+		PresentationRecordWriter = InWriter;
+	}
+
+	const FPresentationRecordWriter& GetPresentationRecordWriter() const
+	{
+		return PresentationRecordWriter;
+	}
+
 	FOnBattleActionFinished OnFinished;
 
 protected:
@@ -29,4 +40,5 @@ protected:
 
 private:
 	bool bIsFinished = false;
+	FPresentationRecordWriter PresentationRecordWriter;
 };
