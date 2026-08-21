@@ -2,13 +2,13 @@
 
 Date: **2026-08-22**
 
-Status: **7A-1 / 7A-2 SOURCE IMPLEMENTED; 7A-3 PENDING; UE5.8 VALIDATION NOT RUN**
+Status: **7A-1 / 7A-2 / 7A-3 SOURCE IMPLEMENTED; 7A-4 VALIDATION NOT RUN**
 
 Branch: `phase7-relic-gameplay`
 
 This document records implementation progress against `docs/Phase7EarlyDevelopmentBoundary.md`.
 
-## Implemented in the first Phase 7A slice
+## Implemented
 
 ### 7A-1 — Relic Definition + Runtime Identity
 
@@ -26,6 +26,7 @@ URelicInstance
 ├── RuntimeSequence
 ├── GetRelicId()
 ├── GetRuntimeSequence()
+├── GetBattle()
 └── GetDebugLabel()
 ```
 
@@ -45,7 +46,8 @@ URelicContainer
 ├── FindRelicById()
 ├── ContainsRelic()
 ├── ContainsRelicInstance()
-└── GetRelics()
+├── GetRelics()
+└── GetBattle()
 ```
 
 Typed add semantics:
@@ -67,6 +69,64 @@ ordered TArray storage preserves deterministic insertion enumeration
 runtime object creation uses the existing battle-scoped sequence allocator
 ```
 
+### 7A-3 — Battle ownership + initialization + restart lifecycle
+
+Implemented without changing the existing `StartBattle()` body.
+
+`ABattleManager` now owns the authoritative player Relic runtime through:
+
+```text
+ABattleManager
+└── PlayerRelicContainer (private/transient)
+```
+
+Formal access is:
+
+```text
+ABattleManager::GetPlayerRelicContainer()
+```
+
+The accessor lazily creates the Container as a Battle-owned UObject and synchronizes it to the current `BattleId`.
+
+Battle setup uses the temporary/demo injection surface:
+
+```text
+DebugStartingRelics[]
+```
+
+On first access in a Battle session:
+
+```text
+GetPlayerRelicContainer()
+↓
+create Container if needed
+↓
+if BattleId changed
+    Initialize(Battle)
+    clear previous membership
+    replay DebugStartingRelics in authored array order
+↓
+return current-battle Container
+```
+
+This avoids a large parallel edit to the actively changing `BattleManager.cpp` while still making BattleId the runtime-session boundary.
+
+On battle restart:
+
+```text
+StartBattle()
+↓
+BattleId advances
+↓
+next formal RelicContainer access detects the new BattleId
+↓
+old membership is cleared
+↓
+new runtime instances are created from DebugStartingRelics
+```
+
+RuntimeSequence is battle-scoped and may restart between BattleIds. Exact historical identity therefore must never be interpreted as RuntimeSequence alone across battles.
+
 ## Focused Automation authored
 
 Prefix:
@@ -75,26 +135,32 @@ Prefix:
 SlayTheSpireDemo.Phase7A
 ```
 
-Three tests are currently authored:
+Four tests are currently authored:
 
 ```text
 Runtime.MembershipAndIdentity
 Runtime.InvalidAndReset
 Runtime.DefinitionIsolation
+Runtime.BattleRestartLifecycle
 ```
 
 Coverage includes:
 
 ```text
 valid creation
+BattleManager-owned Container
 logical vs exact runtime identity
 duplicate no-op semantics
 invalid null/None definition input
 stable insertion enumeration
-non-zero/monotonic runtime sequence expectations
+non-zero/monotonic runtime sequence expectations within one allocator session
 explicit Battle context
 definition/runtime object separation
 Container reset/reinitialize behavior
+DebugStartingRelics setup injection
+BattleId restart detection
+old exact runtime instance isolation after restart
+current-battle membership rebuild
 ```
 
 A dedicated workflow is available at:
@@ -103,38 +169,24 @@ A dedicated workflow is available at:
 .github/workflows/ue-phase7a-tests.yml
 ```
 
-The workflow builds `SlayTheSpireDemoEditor` on the UE5.8 self-hosted runner and requires exactly 3 focused Phase7A tests.
+The workflow builds `SlayTheSpireDemoEditor` on the UE5.8 self-hosted runner and requires exactly 4 focused Phase7A tests.
 
 ## Still pending for Phase 7A
 
-### 7A-3 — Battle ownership + initialization + restart lifecycle
+### 7A-4 — UE5.8 validation / affected regression
 
-Not yet implemented in the first slice.
-
-Required next work:
-
-```text
-ABattleManager owns the authoritative PlayerRelicContainer
-small explicit battle setup/injection path for starting Relic definitions
-StartBattle/new battle runtime clears previous Relic membership
-new battle runtime cannot observe stale previous-battle Relic instances
-focused restart-lifecycle Automation
-```
-
-Do not begin Phase 7B Trigger integration before this ownership/lifecycle slice is closed.
-
-### 7A-4 — Validation / affected regression
-
-Source tests and CI gate are authored, but no UE5.8 run is claimed yet.
+Source tests and the CI gate are authored, but no UE5.8 run is claimed yet.
 
 Required before closing Phase 7A:
 
 ```text
 UE5.8 Editor build PASS
-Phase7A focused Automation PASS
+Phase7A focused Automation 4/4 PASS
 affected Phase5/Phase6 regression PASS
 static source review PASS
 ```
+
+Do not begin Phase 7B Trigger integration until this validation gate is closed.
 
 ## Scope guard
 
