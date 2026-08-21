@@ -25,21 +25,32 @@ void ACombatant::InitializeCombatant()
 	UE_LOG(LogTemp, Log, TEXT("[%s] initialized: HP=%d/%d Block=%d"), *GetName(), HP, MaxHP, Block);
 }
 
-void ACombatant::TakeCombatDamage(int32 Amount)
+FDamageCommitResult ACombatant::TakeCombatDamage(int32 Amount)
 {
+	FDamageCommitResult Result;
 	if (Amount <= 0 || IsDead())
 	{
-		return;
+		return Result;
 	}
+
+	Result.bCommitted = true;
+	Result.IncomingDamage = Amount;
+	Result.HPBefore = HP;
+	Result.BlockBefore = Block;
 
 	const int32 BlockedDamage = FMath::Min(Block, Amount);
 	Block -= BlockedDamage;
 
-	const int32 HPDamage = Amount - BlockedDamage;
-	if (HPDamage > 0)
+	const int32 UnblockedDamage = Amount - BlockedDamage;
+	if (UnblockedDamage > 0)
 	{
-		HP = FMath::Max(0, HP - HPDamage);
+		HP = FMath::Max(0, HP - UnblockedDamage);
 	}
+
+	Result.HPAfter = HP;
+	Result.BlockAfter = Block;
+	Result.BlockedDamage = Result.BlockBefore - Result.BlockAfter;
+	Result.HPDamage = Result.HPBefore - Result.HPAfter;
 
 	UE_LOG(
 		LogTemp,
@@ -47,34 +58,49 @@ void ACombatant::TakeCombatDamage(int32 Amount)
 		TEXT("[%s] took %d combat damage: blocked=%d hpDamage=%d HP=%d/%d Block=%d"),
 		*GetName(),
 		Amount,
-		BlockedDamage,
-		HPDamage,
+		Result.BlockedDamage,
+		Result.HPDamage,
 		HP,
 		MaxHP,
 		Block
 	);
+
+	return Result;
 }
 
-void ACombatant::GainBlock(int32 Amount)
+FBlockCommitResult ACombatant::GainBlock(int32 Amount)
 {
+	FBlockCommitResult Result;
 	if (Amount <= 0 || IsDead())
 	{
-		return;
+		return Result;
 	}
 
+	Result.bCommitted = true;
+	Result.BlockBefore = Block;
 	Block += Amount;
+	Result.BlockAfter = Block;
+	Result.BlockDelta = Result.BlockAfter - Result.BlockBefore;
+
 	UE_LOG(LogTemp, Log, TEXT("[%s] gained %d block: Block=%d"), *GetName(), Amount, Block);
+	return Result;
 }
 
-void ACombatant::ClearBlock()
+FBlockCommitResult ACombatant::ClearBlock()
 {
+	FBlockCommitResult Result;
 	if (Block == 0)
 	{
-		return;
+		return Result;
 	}
 
+	Result.bCommitted = true;
+	Result.BlockBefore = Block;
 	UE_LOG(LogTemp, Log, TEXT("[%s] block cleared: %d -> 0"), *GetName(), Block);
 	Block = 0;
+	Result.BlockAfter = Block;
+	Result.BlockDelta = Result.BlockAfter - Result.BlockBefore;
+	return Result;
 }
 
 bool ACombatant::IsDead() const
