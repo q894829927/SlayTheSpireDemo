@@ -70,6 +70,8 @@ public:
 #endif
 
 private:
+	friend struct FPresentationRecordWriter;
+
 	struct FActiveResolutionBuilder
 	{
 		bool bActive = false;
@@ -80,6 +82,7 @@ private:
 		TArray<FPresentationRecord> Records;
 	};
 
+	bool IsWriterCurrentAndValid(uint64 WriterBattleId, uint64 WriterResolutionId) const;
 	void ClearActiveBuilder();
 	void InvalidateActiveBuilder();
 

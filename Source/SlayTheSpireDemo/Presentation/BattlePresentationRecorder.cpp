@@ -2,15 +2,17 @@
 
 bool FPresentationRecordWriter::IsAvailable() const
 {
+	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
 	return BattleId != 0
 		&& ResolutionId != 0
-		&& Recorder.IsValid();
+		&& IsValid(ResolvedRecorder)
+		&& ResolvedRecorder->IsWriterCurrentAndValid(BattleId, ResolutionId);
 }
 
 bool FPresentationRecordWriter::Append(FPresentationRecord Record) const
 {
 	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
-	return IsValid(ResolvedRecorder)
+	return IsAvailable()
 		&& ResolvedRecorder->AppendRecord(BattleId, ResolutionId, MoveTemp(Record));
 }
 
@@ -113,14 +115,7 @@ bool UBattlePresentationRecorder::AppendRecord(
 	FPresentationRecord Record
 )
 {
-	if (!ActiveBuilder.bActive
-		|| WriterBattleId != ActiveBuilder.BattleId
-		|| WriterResolutionId != ActiveBuilder.ResolutionId)
-	{
-		return false;
-	}
-
-	if (!ActiveBuilder.bValid)
+	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId))
 	{
 		return false;
 	}
@@ -218,6 +213,19 @@ int32 UBattlePresentationRecorder::GetActiveRecordCountForTesting() const
 	return ActiveBuilder.bActive ? ActiveBuilder.Records.Num() : 0;
 }
 #endif
+
+bool UBattlePresentationRecorder::IsWriterCurrentAndValid(
+	uint64 WriterBattleId,
+	uint64 WriterResolutionId
+) const
+{
+	return ActiveBuilder.bActive
+		&& ActiveBuilder.bValid
+		&& WriterBattleId != 0
+		&& WriterResolutionId != 0
+		&& WriterBattleId == ActiveBuilder.BattleId
+		&& WriterResolutionId == ActiveBuilder.ResolutionId;
+}
 
 void UBattlePresentationRecorder::ClearActiveBuilder()
 {

@@ -22,7 +22,6 @@ void ABattleHUDPresenter::BeginPlay()
 
 bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
 {
-
 	if (!IsValid(BattleManager))
 	{
 		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Presenter has no BattleManager reference."));
@@ -43,7 +42,7 @@ bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
 
 	const bool bUsePresentationController =
 		bEnableCommittedPresentation
-		&& BattleManager->bEnableCommittedPresentationRecording
+		&& BattleManager->IsCommittedPresentationRecordingEnabledForBattle()
 		&& BattleManager->IsPresentationAvailable();
 
 	ViewModel = NewObject<UBattleHUDViewModel>(this);
@@ -108,6 +107,12 @@ bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
 
 void ABattleHUDPresenter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ShutdownHUD();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ABattleHUDPresenter::ShutdownHUD()
+{
 	if (IsValid(WidgetInstance))
 	{
 		WidgetInstance->SetPresentationController(nullptr);
@@ -130,6 +135,4 @@ void ABattleHUDPresenter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		ViewModel->Shutdown();
 		ViewModel = nullptr;
 	}
-
-	Super::EndPlay(EndPlayReason);
 }

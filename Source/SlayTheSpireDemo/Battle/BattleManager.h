@@ -83,8 +83,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5CStatuses;
 
-	// Presentation recording is optional. Disabling it never changes Gameplay;
-	// stable frozen baselines and ordinary read publication still continue.
+	// Configuration is sampled once by StartBattle and remains immutable for that
+	// BattleId. Runtime edits affect only the next StartBattle; they never tear down
+	// an already-wired PresentationController in the middle of a resolution.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle|Presentation")
 	bool bEnableCommittedPresentationRecording = true;
 
@@ -164,6 +165,16 @@ public:
 	bool TryGetLatestFrozenPresentationBaseline(FPresentationStateSnapshot& OutSnapshot) const;
 	bool IsPresentationAvailable() const;
 	FText GetPresentationUnavailableReason() const;
+
+	// Recording enablement is latched for the current BattleId at StartBattle.
+	// This is the value Presenter/Controller/runtime resolution code must use;
+	// bEnableCommittedPresentationRecording is configuration for the next battle.
+	bool IsCommittedPresentationRecordingEnabledForBattle() const;
+
+	// Highest sealed Resolution already reflected by the latest frozen baseline.
+	// A Controller that subscribes after this baseline exists uses the watermark
+	// to avoid replaying sealed-but-not-yet-publicly-delivered historical work.
+	uint64 GetLatestFrozenPresentationBaselineResolutionId() const;
 
 	// Deferred public immutable Envelope delivery. It never replays to late
 	// subscribers. A subscriber that attaches late bootstraps from the latest
@@ -307,8 +318,10 @@ private:
 	uint64 LastPublishedReadStateRevision = 0;
 	uint64 LastSealedPresentationResolutionId = 0;
 	uint64 LastDeliveredPresentationResolutionId = 0;
+	uint64 LatestFrozenPresentationBaselineResolutionId = 0;
 	bool bHasLatestFrozenPresentationBaseline = false;
 	bool bPresentationAvailable = true;
+	bool bCommittedPresentationRecordingEnabledForBattle = true;
 	bool bReadStateReadyPublishScheduled = false;
 	FTSTicker::FDelegateHandle ReadStateReadyTickerHandle;
 

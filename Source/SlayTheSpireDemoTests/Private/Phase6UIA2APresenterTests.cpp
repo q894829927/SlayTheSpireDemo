@@ -96,6 +96,20 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 		TestTrue(TEXT("HUD exposes a development-facing error"), !Presenter->ViewModel->LastFeedback.IsEmpty());
 	}
 
+	// This fixture does not enter the normal Actor BeginPlay/EndPlay lifecycle.
+	// Explicitly tear down HUD objects and sever the temporary Engine-owned
+	// LocalPlayer <-> world PlayerController links before destroying the World so
+	// no subsequent Automation case can inherit a stale world reference.
+	Presenter->InvokeShutdownHUDForTesting();
+	TestNull(TEXT("Explicit test cleanup releases Presenter Widget"), Presenter->WidgetInstance.Get());
+	TestNull(TEXT("Explicit test cleanup releases Presenter ViewModel"), Presenter->ViewModel.Get());
+	TestNull(TEXT("Explicit test cleanup releases Presenter Controller"), Presenter->PresentationController.Get());
+
+	LocalPlayer->PlayerController = nullptr;
+	PlayerController->Player = nullptr;
+	TestNull(TEXT("Temporary LocalPlayer no longer references test PlayerController"), LocalPlayer->PlayerController);
+	TestNull(TEXT("Test PlayerController no longer references temporary LocalPlayer"), PlayerController->Player);
+
 	World->DestroyWorld(false);
 	return true;
 }

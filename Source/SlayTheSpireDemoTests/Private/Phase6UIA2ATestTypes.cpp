@@ -132,3 +132,8 @@ bool APhase6UIA2ATestPresenter::InvokeInitializeHUDForTesting(APlayerController*
 {
 	return InitializeHUD(PlayerController);
 }
+
+void APhase6UIA2ATestPresenter::InvokeShutdownHUDForTesting()
+{
+	ShutdownHUD();
+}

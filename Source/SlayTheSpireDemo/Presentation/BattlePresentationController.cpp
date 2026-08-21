@@ -23,15 +23,36 @@ bool UBattlePresentationController::Initialize(
 		this,
 		&UBattlePresentationController::HandlePresentationResolutionReady
 	);
+	InBattleManager->OnReadStateReady.AddUObject(
+		this,
+		&UBattlePresentationController::HandleReadStateReady
+	);
 
 	FPresentationStateSnapshot Baseline;
 	if (InBattleManager->TryGetLatestFrozenPresentationBaseline(Baseline))
 	{
 		CurrentBattleId = Baseline.BattleId;
-		// Late subscribers do not replay history. They start from the newest frozen
-		// baseline already applied by the ViewModel and may bind input only if that
-		// exact revision is still current.
+
+		// A late subscriber starts from the newest frozen baseline. Any Resolution
+		// already reflected by that baseline is historical even if its deferred
+		// public Envelope has not fired yet, so seed the de-duplication watermark
+		// before the subscription can receive that pending delivery.
+		const int64 BaselineResolutionWatermark = static_cast<int64>(
+			InBattleManager->GetLatestFrozenPresentationBaselineResolutionId()
+		);
+		LastQueuedResolutionId = BaselineResolutionWatermark;
+		LastCompletedResolutionId = BaselineResolutionWatermark;
+
 		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+	}
+
+	if (!InBattleManager->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+	}
+	else if (!InBattleManager->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
 	}
 	return true;
 }
@@ -42,6 +63,7 @@ void UBattlePresentationController::Shutdown()
 	if (ABattleManager* Battle = BattleManager.Get())
 	{
 		Battle->OnPresentationResolutionReady.RemoveAll(this);
+		Battle->OnReadStateReady.RemoveAll(this);
 	}
 
 	AdvancePlaybackGeneration();
@@ -96,6 +118,18 @@ void UBattlePresentationController::NotifyPresentationFinished(
 
 void UBattlePresentationController::SkipPresentation()
 {
+	ABattleManager* Battle = BattleManager.Get();
+	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+	if (IsValid(Battle) && !Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
 	CancelActiveTimeout();
 	AdvancePlaybackGeneration();
 
@@ -157,9 +191,23 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 	}
 
 	ABattleManager* Battle = BattleManager.Get();
+	if (!IsValid(Battle))
+	{
+		return;
+	}
+	if (!Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+	if (!Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
 	FPresentationStateSnapshot LatestBaseline;
-	if (!IsValid(Battle)
-		|| !Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+	if (!Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
 		|| Envelope.BattleId != LatestBaseline.BattleId
 		|| Envelope.FinalStateRevision > LatestBaseline.StateRevision)
 	{
@@ -171,19 +219,17 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 	if (CurrentBattleId != LatestBaseline.BattleId)
 	{
 		// A real BattleManager restart invalidates every callback/backlog from the
-		// prior battle. Only an Envelope matching the manager's current frozen
-		// baseline is allowed to establish the new battle scope.
-		CancelActiveTimeout();
-		AdvancePlaybackGeneration();
-		PlaybackQueue.Reset();
-		ActiveEnvelope = FPresentationResolutionEnvelope{};
-		bHasActiveEnvelope = false;
-		bWaitingForCompletion = false;
-		ActiveRecordIndex = INDEX_NONE;
-		ActivePlaybackToken = FPresentationPlaybackToken{};
+		// prior battle. Because this Controller was already subscribed across the
+		// restart, new-battle Envelopes are still future work and may play normally.
+		ResetPlaybackState(true);
 		LastQueuedResolutionId = 0;
 		LastCompletedResolutionId = 0;
 		CurrentBattleId = LatestBaseline.BattleId;
+	}
+
+	if (IsValid(ViewModel) && !ViewModel->IsPresentationDisplayOwned())
+	{
+		ViewModel->SetPresentationDisplayOwned(true);
 	}
 
 	if (!IsEnvelopeForCurrentBattle(Envelope)
@@ -203,6 +249,37 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 
 	PlaybackQueue.Add(Envelope);
 	StartNextEnvelope();
+}
+
+void UBattlePresentationController::HandleReadStateReady(
+	uint64 InBattleId,
+	uint64 InStateRevision
+)
+{
+	ABattleManager* Battle = BattleManager.Get();
+	if (!IsValid(Battle))
+	{
+		return;
+	}
+
+	if (!Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+
+	if (!Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
+	// The read edge is not a second display owner while committed Presentation is
+	// active. It exists here only to detect Presentation-only fail-safe transitions.
+	// Normal historical/caught-up display still flows exclusively through Envelope
+	// playback and FinalSnapshot application.
+	(void)InBattleId;
+	(void)InStateRevision;
 }
 
 void UBattlePresentationController::StartNextEnvelope()
@@ -302,6 +379,18 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 		return;
 	}
 
+	ABattleManager* Battle = BattleManager.Get();
+	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+	if (IsValid(Battle) && !Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
 	const int64 CompletedResolutionId = ActiveEnvelope.ResolutionId;
 	if (IsValid(ViewModel))
 	{
@@ -331,14 +420,19 @@ void UBattlePresentationController::CollapseToEnvelope(
 	const FPresentationResolutionEnvelope& Envelope
 )
 {
-	CancelActiveTimeout();
-	AdvancePlaybackGeneration();
-	PlaybackQueue.Reset();
-	ActiveEnvelope = FPresentationResolutionEnvelope{};
-	bHasActiveEnvelope = false;
-	bWaitingForCompletion = false;
-	ActiveRecordIndex = INDEX_NONE;
-	ActivePlaybackToken = FPresentationPlaybackToken{};
+	ABattleManager* Battle = BattleManager.Get();
+	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+	if (IsValid(Battle) && !Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
+	ResetPlaybackState(true);
 
 	if (IsValid(ViewModel))
 	{
@@ -346,6 +440,79 @@ void UBattlePresentationController::CollapseToEnvelope(
 		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 	}
 	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Envelope.ResolutionId);
+}
+
+void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
+{
+	CancelActiveTimeout();
+	if (bAdvanceGeneration)
+	{
+		AdvancePlaybackGeneration();
+	}
+	PlaybackQueue.Reset();
+	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	bHasActiveEnvelope = false;
+	bWaitingForCompletion = false;
+	ActiveRecordIndex = INDEX_NONE;
+	ActivePlaybackToken = FPresentationPlaybackToken{};
+}
+
+void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
+{
+	ABattleManager* Battle = BattleManager.Get();
+	ResetPlaybackState(true);
+
+	FPresentationStateSnapshot LatestBaseline;
+	if (IsValid(Battle) && Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
+	{
+		CurrentBattleId = LatestBaseline.BattleId;
+		const int64 BaselineResolutionWatermark = static_cast<int64>(
+			Battle->GetLatestFrozenPresentationBaselineResolutionId()
+		);
+		LastQueuedResolutionId = BaselineResolutionWatermark;
+		LastCompletedResolutionId = BaselineResolutionWatermark;
+		if (IsValid(ViewModel))
+		{
+			// Catch up to the exact frozen Gameplay result first, then surface the
+			// Presentation-only failure and keep input locked.
+			ViewModel->ApplyPresentationSnapshot(LatestBaseline, true);
+		}
+	}
+
+	if (IsValid(ViewModel))
+	{
+		ViewModel->EnterPresentationUnavailable(
+			IsValid(Battle)
+				? Battle->GetPresentationUnavailableReason()
+				: FText::FromString(TEXT("Committed Presentation is unavailable for this battle."))
+		);
+	}
+}
+
+void UBattlePresentationController::EnterDirectBaselineMode()
+{
+	ABattleManager* Battle = BattleManager.Get();
+	ResetPlaybackState(true);
+
+	if (!IsValid(ViewModel))
+	{
+		return;
+	}
+
+	ViewModel->SetPresentationDisplayOwned(false);
+
+	FPresentationStateSnapshot LatestBaseline;
+	if (IsValid(Battle) && Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
+	{
+		CurrentBattleId = LatestBaseline.BattleId;
+		const int64 BaselineResolutionWatermark = static_cast<int64>(
+			Battle->GetLatestFrozenPresentationBaselineResolutionId()
+		);
+		LastQueuedResolutionId = BaselineResolutionWatermark;
+		LastCompletedResolutionId = BaselineResolutionWatermark;
+		ViewModel->ApplyPresentationSnapshot(LatestBaseline, true);
+		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+	}
 }
 
 void UBattlePresentationController::CancelActiveTimeout()

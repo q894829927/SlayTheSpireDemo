@@ -140,6 +140,7 @@ bool FPhase6UIA2ARecorderHardeningTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Overlapping Begin is rejected"), Recorder->BeginResolution(EPresentationResolutionOrigin::System, OverlapWriter));
 	TestFalse(TEXT("Rejected overlapping Begin cannot leave stale builder active"), Recorder->HasActiveResolution());
 	TestFalse(TEXT("Rejected overlapping Begin returns no usable writer"), OverlapWriter.IsAvailable());
+	TestFalse(TEXT("Writer from cleared overlapping builder is no longer available"), FirstWriter.IsAvailable());
 
 	FPresentationRecordWriter FaultWriter;
 	TestTrue(TEXT("Fresh Resolution begins after stale builder was cleared"), Recorder->BeginResolution(EPresentationResolutionOrigin::System, FaultWriter));
@@ -150,6 +151,7 @@ bool FPhase6UIA2ARecorderHardeningTest::RunTest(const FString& Parameters)
 	AfterFault.Type = EBattlePresentationRecordType::None;
 	TestFalse(TEXT("No record may append after terminal ResolutionFault"), FaultWriter.Append(AfterFault));
 	TestFalse(TEXT("Post-fault append invalidates active record batch"), Recorder->IsActiveResolutionValid());
+	TestFalse(TEXT("Invalidated builder makes previously issued writer unavailable"), FaultWriter.IsAvailable());
 	TestEqual(TEXT("Invalidated terminal batch discards unpublished records"), Recorder->GetActiveRecordCountForTesting(), 0);
 
 	FPresentationStateSnapshot Snapshot;
@@ -158,6 +160,16 @@ bool FPhase6UIA2ARecorderHardeningTest::RunTest(const FString& Parameters)
 	FPresentationResolutionEnvelope Envelope;
 	TestFalse(TEXT("Invalidated terminal batch cannot seal"), Recorder->SealResolution(Snapshot, Envelope));
 	TestFalse(TEXT("Failed seal releases invalid builder"), Recorder->HasActiveResolution());
+	TestFalse(TEXT("Writer remains unavailable after invalid builder is released"), FaultWriter.IsAvailable());
+
+	FPresentationRecordWriter SealedWriter;
+	TestTrue(TEXT("Clean Resolution begins for stale-writer seal regression"), Recorder->BeginResolution(EPresentationResolutionOrigin::System, SealedWriter));
+	TestTrue(TEXT("Clean writer is available while its builder is active"), SealedWriter.IsAvailable());
+	TestTrue(TEXT("Clean Resolution seals"), Recorder->SealResolution(Snapshot, Envelope));
+	TestFalse(TEXT("Sealed writer no longer reports available"), SealedWriter.IsAvailable());
+	FPresentationRecord StaleAppend;
+	StaleAppend.Type = EBattlePresentationRecordType::None;
+	TestFalse(TEXT("Sealed writer cannot append into a later builder"), SealedWriter.Append(StaleAppend));
 	return true;
 }
 
@@ -217,6 +229,31 @@ bool FPhase6UIA2APresentationIdentityAndDirectModeTest::RunTest(const FString& P
 	DirectFixture.Flush();
 	TestTrue(TEXT("Direct frozen-baseline owner advances after deferred read edge"), DirectVM->StateRevision > OldRevision);
 	TestFalse(TEXT("Direct frozen-baseline owner refreshes current input bindings"), DirectVM->bInputLocked);
+
+	// Recording configuration is immutable for the current BattleId. Editing the
+	// exposed config during play must not orphan an already Controller-owned HUD.
+	FFixture LatchedFixture(true);
+	if (!RequireReady(*this, LatchedFixture))
+	{
+		return false;
+	}
+	LatchedFixture.Flush();
+	UBattleHUDViewModel* LatchedVM = NewObject<UBattleHUDViewModel>(LatchedFixture.World);
+	TestTrue(TEXT("Latched-config Controller-owned ViewModel initializes"), LatchedVM->Initialize(LatchedFixture.Battle, true));
+	UBattlePresentationController* LatchedController = NewObject<UBattlePresentationController>(LatchedFixture.World);
+	TestTrue(TEXT("Latched-config Controller initializes"), LatchedController->Initialize(LatchedFixture.Battle, LatchedVM, nullptr));
+	const int64 LatchedOldRevision = LatchedVM->StateRevision;
+
+	LatchedFixture.Battle->bEnableCommittedPresentationRecording = false;
+	TestTrue(
+		TEXT("Runtime config edit does not change current BattleId recording latch"),
+		LatchedFixture.Battle->IsCommittedPresentationRecordingEnabledForBattle()
+	);
+	TestTrue(TEXT("Request still establishes Presentation for the latched battle"), LatchedFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
+	TestEqual(TEXT("Controller-owned HUD waits for deferred delivery"), LatchedVM->StateRevision, LatchedOldRevision);
+	LatchedFixture.Flush();
+	TestTrue(TEXT("Latched recording keeps Controller-owned HUD advancing"), LatchedVM->StateRevision > LatchedOldRevision);
+	TestFalse(TEXT("Latched recording HUD catches up and unlocks input"), LatchedVM->bInputLocked);
 	return true;
 }
 
@@ -229,6 +266,28 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FPhase6UIA2AControllerStaleIsolationTest::RunTest(const FString& Parameters)
 {
 	using namespace Phase6UIA2AHardeningTest;
+
+	// A Controller can subscribe after an Envelope has sealed but before its
+	// deferred public callback. The frozen baseline already contains that result,
+	// so bootstrap must seed a Resolution watermark and suppress replay.
+	FFixture LatePendingFixture;
+	if (!RequireReady(*this, LatePendingFixture))
+	{
+		return false;
+	}
+	TestTrue(TEXT("BattleStart Envelope is still pending before late Controller subscribes"), LatePendingFixture.Battle->GetPendingPresentationDeliveryCountForTesting() > 0);
+	FPresentationStateSnapshot LatePendingBaseline;
+	TestTrue(TEXT("Late Controller bootstrap baseline exists"), LatePendingFixture.Battle->TryGetLatestFrozenPresentationBaseline(LatePendingBaseline));
+	const int64 LatePendingWatermark = static_cast<int64>(LatePendingFixture.Battle->GetLatestFrozenPresentationBaselineResolutionId());
+	TestTrue(TEXT("Bootstrap baseline carries a sealed Resolution watermark"), LatePendingWatermark > 0);
+	UBattleHUDViewModel* LatePendingVM = NewObject<UBattleHUDViewModel>(LatePendingFixture.World);
+	TestTrue(TEXT("Late Controller-owned ViewModel initializes"), LatePendingVM->Initialize(LatePendingFixture.Battle, true));
+	UBattlePresentationController* LatePendingController = NewObject<UBattlePresentationController>(LatePendingFixture.World);
+	TestTrue(TEXT("Late Controller initializes from frozen baseline"), LatePendingController->Initialize(LatePendingFixture.Battle, LatePendingVM, nullptr));
+	TestEqual(TEXT("Late Controller seeds completed watermark from baseline"), LatePendingController->GetLastCompletedResolutionIdForTesting(), LatePendingWatermark);
+	LatePendingFixture.Flush();
+	TestEqual(TEXT("Pending historical Envelope does not replay after late subscribe"), LatePendingController->GetLastCompletedResolutionIdForTesting(), LatePendingWatermark);
+	TestFalse(TEXT("Late historical delivery cannot enter playback wait"), LatePendingController->IsWaitingForCompletionForTesting());
 
 	FFixture Fixture;
 	if (!RequireReady(*this, Fixture))
@@ -271,6 +330,78 @@ bool FPhase6UIA2AControllerStaleIsolationTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("Late destruction of stale widget cannot skip replacement playback"), Controller->IsWaitingForCompletionForTesting());
 	Controller->NotifyPresentationFinished(NewWidget->LastToken);
 	TestFalse(TEXT("Replacement widget valid token completes normally"), Controller->IsWaitingForCompletionForTesting());
+
+	// PresentationUnavailable must invalidate an already in-flight playback token,
+	// apply the newest frozen Gameplay result, and leave the HUD visibly locked in
+	// the failure state rather than allowing a late timeout/callback to overwrite it.
+	FFixture SealFailureFixture;
+	if (!RequireReady(*this, SealFailureFixture))
+	{
+		return false;
+	}
+	SealFailureFixture.Flush();
+	UBattleHUDViewModel* SealFailureVM = NewObject<UBattleHUDViewModel>(SealFailureFixture.World);
+	TestTrue(TEXT("Seal-failure ViewModel initializes Controller-owned"), SealFailureVM->Initialize(SealFailureFixture.Battle, true));
+	UPhase6UIA2APlaybackWidget* SealFailureWidget = NewObject<UPhase6UIA2APlaybackWidget>(SealFailureFixture.World);
+	UBattlePresentationController* SealFailureController = NewObject<UBattlePresentationController>(SealFailureFixture.World);
+	TestTrue(TEXT("Seal-failure Controller initializes"), SealFailureController->Initialize(SealFailureFixture.Battle, SealFailureVM, SealFailureWidget));
+	FPresentationStateSnapshot SealFailureBaseline;
+	TestTrue(TEXT("Seal-failure starting baseline exists"), SealFailureFixture.Battle->TryGetLatestFrozenPresentationBaseline(SealFailureBaseline));
+	const int64 SealFailureOldRevision = SealFailureVM->StateRevision;
+	const int64 SyntheticResolutionId = static_cast<int64>(SealFailureFixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1000;
+	SealFailureFixture.Battle->OnPresentationResolutionReady.Broadcast(
+		MakeFaultEnvelope(SealFailureBaseline, SyntheticResolutionId, SyntheticResolutionId)
+	);
+	TestTrue(TEXT("Synthetic historical record is in async playback before failure"), SealFailureController->IsWaitingForCompletionForTesting());
+
+	SealFailureFixture.Battle->GetPresentationRecorderForTesting()->SetForceNextSealFailureForTesting(true);
+	TestTrue(TEXT("Gameplay request remains accepted when Presentation seal fails"), SealFailureFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
+	TestFalse(TEXT("Seal failure disables Presentation only"), SealFailureFixture.Battle->IsPresentationAvailable());
+	FPresentationStateSnapshot SealFailureLatest;
+	TestTrue(TEXT("Seal failure still leaves exact latest frozen baseline"), SealFailureFixture.Battle->TryGetLatestFrozenPresentationBaseline(SealFailureLatest));
+	TestTrue(TEXT("Gameplay resolution advanced beyond displayed revision"), SealFailureLatest.StateRevision > SealFailureOldRevision);
+	SealFailureFixture.Flush();
+	TestFalse(TEXT("PresentationUnavailable cancels in-flight playback"), SealFailureController->IsWaitingForCompletionForTesting());
+	TestEqual(TEXT("Unavailable HUD catches up to latest frozen revision"), SealFailureVM->StateRevision, SealFailureLatest.StateRevision);
+	TestEqual(TEXT("Unavailable HUD catches up to latest frozen BattleId"), SealFailureVM->BattleId, SealFailureLatest.BattleId);
+	TestEqual(TEXT("Unavailable state cannot be overwritten by old playback"), SealFailureVM->InteractionState, EBattleHUDInteractionState::PresentationUnavailable);
+	TestTrue(TEXT("PresentationUnavailable keeps input locked"), SealFailureVM->bInputLocked);
+	SealFailureController->NotifyPresentationFinished(SealFailureWidget->LastToken);
+	TestEqual(TEXT("Stale completion after failure is ignored"), SealFailureVM->InteractionState, EBattleHUDInteractionState::PresentationUnavailable);
+
+	// Append failure follows the same no-partial-history catch-up path. The failed
+	// same-revision System batch disables Presentation, and the next normal Gameplay
+	// resolution must still advance the frozen HUD before exposing the error state.
+	FFixture AppendFailureFixture;
+	if (!RequireReady(*this, AppendFailureFixture))
+	{
+		return false;
+	}
+	AppendFailureFixture.Flush();
+	UBattleHUDViewModel* AppendFailureVM = NewObject<UBattleHUDViewModel>(AppendFailureFixture.World);
+	TestTrue(TEXT("Append-failure ViewModel initializes Controller-owned"), AppendFailureVM->Initialize(AppendFailureFixture.Battle, true));
+	UBattlePresentationController* AppendFailureController = NewObject<UBattlePresentationController>(AppendFailureFixture.World);
+	TestTrue(TEXT("Append-failure Controller initializes"), AppendFailureController->Initialize(AppendFailureFixture.Battle, AppendFailureVM, nullptr));
+	const int64 AppendFailureOldRevision = AppendFailureVM->StateRevision;
+	TestTrue(TEXT("Append-failure System Resolution begins"), AppendFailureFixture.Battle->BeginSystemPresentationResolutionForTesting());
+	FPresentationRecord FirstRecord;
+	FirstRecord.Type = EBattlePresentationRecordType::None;
+	TestTrue(TEXT("Append-failure first record commits"), AppendFailureFixture.Battle->GetActivePresentationRecordWriterForTesting().Append(FirstRecord));
+	AppendFailureFixture.Battle->GetPresentationRecorderForTesting()->SetForceNextAppendFailureForTesting(true);
+	FPresentationRecord FailedRecord;
+	FailedRecord.Type = EBattlePresentationRecordType::None;
+	TestFalse(TEXT("Forced append failure invalidates unpublished history"), AppendFailureFixture.Battle->GetActivePresentationRecordWriterForTesting().Append(FailedRecord));
+	TestFalse(TEXT("Invalid append batch cannot seal"), AppendFailureFixture.Battle->SealActivePresentationResolutionForTesting());
+	TestFalse(TEXT("Append failure disables Presentation only"), AppendFailureFixture.Battle->IsPresentationAvailable());
+	TestTrue(TEXT("Gameplay still accepts later request after append failure"), AppendFailureFixture.Battle->RequestEndPlayerTurn().IsAcceptedForResolution());
+	FPresentationStateSnapshot AppendFailureLatest;
+	TestTrue(TEXT("Append failure path still freezes latest Gameplay baseline"), AppendFailureFixture.Battle->TryGetLatestFrozenPresentationBaseline(AppendFailureLatest));
+	AppendFailureFixture.Flush();
+	TestTrue(TEXT("Append-failure HUD advances beyond old revision"), AppendFailureVM->StateRevision > AppendFailureOldRevision);
+	TestEqual(TEXT("Append-failure HUD applies newest frozen revision"), AppendFailureVM->StateRevision, AppendFailureLatest.StateRevision);
+	TestEqual(TEXT("Append-failure HUD remains PresentationUnavailable"), AppendFailureVM->InteractionState, EBattleHUDInteractionState::PresentationUnavailable);
+	TestTrue(TEXT("Append-failure HUD remains input locked"), AppendFailureVM->bInputLocked);
+	TestFalse(TEXT("Append-failure Controller has no stale playback"), AppendFailureController->IsWaitingForCompletionForTesting());
 	return true;
 }
 

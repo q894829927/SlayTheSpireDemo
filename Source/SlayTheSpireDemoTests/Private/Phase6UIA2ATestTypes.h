@@ -109,4 +109,5 @@ class SLAYTHESPIREDEMOTESTS_API APhase6UIA2ATestPresenter : public ABattleHUDPre
 
 public:
 	bool InvokeInitializeHUDForTesting(APlayerController* PlayerController);
+	void InvokeShutdownHUDForTesting();
 };

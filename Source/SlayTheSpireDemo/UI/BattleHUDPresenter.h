@@ -51,4 +51,8 @@ protected:
 	// Editor-only test module provide an explicit valid local PlayerController
 	// without calling BeginPlay directly on an actor that has not begun play.
 	bool InitializeHUD(APlayerController* PlayerController);
+
+	// Idempotent HUD teardown shared by EndPlay and Editor-only fixture cleanup.
+	// It intentionally does not dispatch Actor lifecycle methods itself.
+	void ShutdownHUD();
 };

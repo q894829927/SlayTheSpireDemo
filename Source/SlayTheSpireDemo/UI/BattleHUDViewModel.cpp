@@ -491,6 +491,16 @@ void UBattleHUDViewModel::HandleReadStateReady(uint64 InBattleId, uint64 InState
 
 	if (!Battle->IsPresentationAvailable())
 	{
+		// Presentation-only failure must not strand the HUD on the previous frozen
+		// revision. Apply the newest exact frozen baseline first when it matches this
+		// public read edge, then expose PresentationUnavailable and keep input locked.
+		FPresentationStateSnapshot LatestBaseline;
+		if (Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+			&& LatestBaseline.BattleId == static_cast<int64>(InBattleId)
+			&& LatestBaseline.StateRevision == static_cast<int64>(InStateRevision))
+		{
+			ApplyPresentationSnapshot(LatestBaseline, true);
+		}
 		EnterPresentationUnavailable(Battle->GetPresentationUnavailableReason());
 		return;
 	}

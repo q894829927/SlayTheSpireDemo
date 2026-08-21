@@ -49,11 +49,15 @@ protected:
 
 private:
 	void HandlePresentationResolutionReady(const FPresentationResolutionEnvelope& Envelope);
+	void HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision);
 	void StartNextEnvelope();
 	void StartNextRecord();
 	void CompleteActiveRecord();
 	void CompleteActiveEnvelope();
 	void CollapseToEnvelope(const FPresentationResolutionEnvelope& Envelope);
+	void ResetPlaybackState(bool bAdvanceGeneration);
+	void EnterPresentationUnavailableFailSafe();
+	void EnterDirectBaselineMode();
 	void CancelActiveTimeout();
 	void ScheduleActiveTimeout();
 	bool HandleActiveTimeout(float DeltaTime);

@@ -304,6 +304,18 @@ FText ABattleManager::GetPresentationUnavailableReason() const
 	return PresentationUnavailableReason;
 }
 
+bool ABattleManager::IsCommittedPresentationRecordingEnabledForBattle() const
+{
+	return bCommittedPresentationRecordingEnabledForBattle;
+}
+
+uint64 ABattleManager::GetLatestFrozenPresentationBaselineResolutionId() const
+{
+	return bHasLatestFrozenPresentationBaseline
+		? LatestFrozenPresentationBaselineResolutionId
+		: 0;
+}
+
 void ABattleManager::ResetPresentationForBattle()
 {
 	if (ReadStateReadyTickerHandle.IsValid())
@@ -313,8 +325,14 @@ void ABattleManager::ResetPresentationForBattle()
 	}
 	bReadStateReadyPublishScheduled = false;
 
+	// Presentation recording is a BattleId-scoped configuration. Runtime edits to
+	// the exposed config are intentionally deferred until the next StartBattle so
+	// an already-created Controller can never lose its producer mid-resolution.
+	bCommittedPresentationRecordingEnabledForBattle = bEnableCommittedPresentationRecording;
+
 	PendingPublicDeliveryQueue.Reset();
 	LatestFrozenPresentationBaseline = FPresentationStateSnapshot{};
+	LatestFrozenPresentationBaselineResolutionId = 0;
 	bHasLatestFrozenPresentationBaseline = false;
 	bPresentationAvailable = true;
 	PresentationUnavailableReason = FText::GetEmpty();
@@ -339,7 +357,7 @@ void ABattleManager::ResetPresentationForBattle()
 
 bool ABattleManager::BeginPresentationResolution(EPresentationResolutionOrigin Origin)
 {
-	if (!bEnableCommittedPresentationRecording || !bPresentationAvailable)
+	if (!bCommittedPresentationRecordingEnabledForBattle || !bPresentationAvailable)
 	{
 		return false;
 	}
@@ -422,6 +440,7 @@ void ABattleManager::FinalizePresentationResolutionAtStableBoundary()
 	}
 
 	LatestFrozenPresentationBaseline = FrozenSnapshot;
+	LatestFrozenPresentationBaselineResolutionId = LastSealedPresentationResolutionId;
 	bHasLatestFrozenPresentationBaseline = true;
 
 	if (!IsValid(PresentationRecorder) || !PresentationRecorder->HasActiveResolution())
@@ -455,6 +474,7 @@ void ABattleManager::FinalizePresentationResolutionAtStableBoundary()
 	}
 
 	LastSealedPresentationResolutionId = static_cast<uint64>(Envelope.ResolutionId);
+	LatestFrozenPresentationBaselineResolutionId = LastSealedPresentationResolutionId;
 	EnqueuePendingPublicPresentation(MoveTemp(Envelope));
 }
 
@@ -474,6 +494,7 @@ void ABattleManager::FreezeLatestPresentationBaselineWithoutResolution()
 	}
 
 	LatestFrozenPresentationBaseline = FrozenSnapshot;
+	LatestFrozenPresentationBaselineResolutionId = LastSealedPresentationResolutionId;
 	bHasLatestFrozenPresentationBaseline = true;
 }
 
@@ -534,7 +555,7 @@ void ABattleManager::DrainPendingPublicPresentationDeliveries()
 		return;
 	}
 
-	if (!bPresentationAvailable || !bEnableCommittedPresentationRecording)
+	if (!bPresentationAvailable || !bCommittedPresentationRecordingEnabledForBattle)
 	{
 		PendingPublicDeliveryQueue.Reset();
 		return;
@@ -549,7 +570,7 @@ void ABattleManager::DrainPendingPublicPresentationDeliveries()
 		// operation. If that operation disables Presentation, stop delivering the
 		// remainder of this moved local batch instead of leaking stale playback
 		// after the fail-safe transition.
-		if (!bPresentationAvailable || !bEnableCommittedPresentationRecording)
+		if (!bPresentationAvailable || !bCommittedPresentationRecordingEnabledForBattle)
 		{
 			break;
 		}
