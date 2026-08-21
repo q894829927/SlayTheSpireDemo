@@ -238,12 +238,15 @@ namespace Phase6UIA2BTest
 		EBattlePresentationRecordType Type
 	)
 	{
-		return Envelope.Records.CountByPredicate(
-			[Type](const FPresentationRecord& Record)
+		int32 Count = 0;
+		for (const FPresentationRecord& Record : Envelope.Records)
+		{
+			if (Record.Type == Type)
 			{
-				return Record.Type == Type;
+				++Count;
 			}
-		);
+		}
+		return Count;
 	}
 
 	UStatusData* ApplyStrength(FFixture& Fixture, int32 Amount)
@@ -366,7 +369,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 {
-	// Modifier-resolved amount and absorption payload.
 	FFixture ModifierFixture;
 	if (!RequireReady(*this, ModifierFixture)) return false;
 	ModifierFixture.ResetDeliveries();
@@ -386,7 +388,6 @@ bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Record stores actual HP damage"), ModifierDamage->Damage.HPDamage, 4);
 	TestEqual(TEXT("Damage absorption has no duplicate BlockChanged"), CountRecords(*ModifierEnvelope, EBattlePresentationRecordType::BlockChanged), 0);
 
-	// Fully blocked damage remains a Damage record.
 	FFixture FullBlockFixture;
 	FullBlockFixture.ResetDeliveries();
 	FullBlockFixture.Enemy->Block = 20;
@@ -400,7 +401,6 @@ bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Fully blocked HP damage"), FullBlockDamage->Damage.HPDamage, 0);
 	TestEqual(TEXT("Fully blocked damage still has no BlockChanged duplicate"), CountRecords(*FullBlockEnvelope, EBattlePresentationRecordType::BlockChanged), 0);
 
-	// Current multi-hit card effect: living target gets two independent records.
 	FFixture MultiFixture;
 	MultiFixture.ResetDeliveries();
 	MultiFixture.Enemy->HP = 20;
@@ -442,7 +442,6 @@ bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Multi-hit presentation sequence increases"), MultiDamage[1]->PresentationSequence > MultiDamage[0]->PresentationSequence);
 	}
 
-	// First hit lethal: later hit no-commits and emits no Damage(0).
 	FFixture LethalMultiFixture;
 	LethalMultiFixture.ResetDeliveries();
 	LethalMultiFixture.Enemy->HP = 4;
@@ -476,7 +475,6 @@ bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Lethal history ends with Victory"), LethalEnvelope->Records[1].Type, EBattlePresentationRecordType::Victory);
 	}
 
-	// BattleManager producer path carries the same resolved ids.
 	FFixture ManagerFixture;
 	ManagerFixture.ResetDeliveries();
 	ManagerFixture.Battle->TestAttack();
@@ -488,7 +486,6 @@ bool FPhase6UIA2BDamageRecordTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Manager producer source id"), ManagerDamage->Damage.SourcePresentationId, FName(TEXT("PlayerHero")));
 	TestEqual(TEXT("Manager producer target id"), ManagerDamage->Damage.TargetPresentationId, FName(TEXT("EnemyPrimary")));
 
-	// No-source/System damage is valid when Target identity is trustworthy.
 	FFixture SystemFixture;
 	SystemFixture.ResetDeliveries();
 	TestTrue(TEXT("No-source system damage executes"), RunSystemDamage(SystemFixture, nullptr, SystemFixture.Enemy, 3));
@@ -509,7 +506,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPhase6UIA2BBlockChangedRecordTest::RunTest(const FString& Parameters)
 {
-	// Card-effect producer.
 	FFixture CardFixture;
 	if (!RequireReady(*this, CardFixture)) return false;
 	CardFixture.ResetDeliveries();
@@ -544,7 +540,6 @@ bool FPhase6UIA2BBlockChangedRecordTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Block delta identity"), CardBlock->BlockChanged.BlockDelta, CardBlock->BlockChanged.BlockAfter - CardBlock->BlockChanged.BlockBefore);
 	TestEqual(TEXT("Block FinalSnapshot matches commit"), CardEnvelope->FinalSnapshot.Player.Block, CardBlock->BlockChanged.BlockAfter);
 
-	// BattleManager producer path.
 	FFixture ManagerFixture;
 	ManagerFixture.ResetDeliveries();
 	ManagerFixture.Battle->TestGainBlock();
@@ -556,7 +551,6 @@ bool FPhase6UIA2BBlockChangedRecordTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Manager block source id"), ManagerBlock->BlockChanged.SourcePresentationId, FName(TEXT("PlayerHero")));
 	TestEqual(TEXT("Manager block target id"), ManagerBlock->BlockChanged.TargetPresentationId, FName(TEXT("PlayerHero")));
 
-	// Nullable Source remains a valid Gain fact.
 	FFixture SystemFixture;
 	SystemFixture.ResetDeliveries();
 	TestTrue(TEXT("No-source block executes"), RunSystemBlock(SystemFixture, nullptr, SystemFixture.Player, 3));
@@ -657,7 +651,6 @@ bool FPhase6UIA2BLethalOrderingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Defeat FinalSnapshot player HP"), DefeatEnvelope->FinalSnapshot.Player.HP, 0);
 	TestEqual(TEXT("Defeat terminal emitted once"), CountRecords(*DefeatEnvelope, EBattlePresentationRecordType::Defeat), 1);
 
-	// CheckBattleResult terminal state is globally irreversible.
 	FFixture TerminalFixture;
 	TerminalFixture.Battle->BattleState = EBattleState::Defeat;
 	TerminalFixture.Enemy->HP = 0;
@@ -669,7 +662,6 @@ bool FPhase6UIA2BLethalOrderingTest::RunTest(const FString& Parameters)
 	TerminalFixture.Battle->CheckBattleResultForTesting();
 	TestEqual(TEXT("Victory cannot switch to Defeat"), TerminalFixture.Battle->BattleState, EBattleState::Victory);
 
-	// Every terminal record closes its unpublished recorder batch.
 	UBattlePresentationRecorder* Recorder = NewObject<UBattlePresentationRecorder>(TerminalFixture.World);
 	const EBattlePresentationRecordType TerminalTypes[] = {
 		EBattlePresentationRecordType::ResolutionFault,
@@ -767,13 +759,12 @@ bool FPhase6UIA2BDamageBlockPlaybackTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Block token sequence"), BlockToken.PresentationSequence, int64(1002));
 	Controller->NotifyPresentationFinished(DamageToken);
 	TestTrue(TEXT("Stale duplicate Damage completion cannot finish Block"), Controller->IsWaitingForCompletionForTesting());
-	TestEqual(TEXT("Block token remains active after stale callback"), Controller->GetActivePlaybackTokenForTesting(), BlockToken);
+	TestTrue(TEXT("Block token remains active after stale callback"), Controller->GetActivePlaybackTokenForTesting() == BlockToken);
 	Controller->NotifyPresentationFinished(BlockToken);
 	TestFalse(TEXT("Envelope completes after Block"), Controller->IsWaitingForCompletionForTesting());
 	TestEqual(TEXT("Completed envelope applies FinalSnapshot"), ViewModel->Player.Block, 9);
 	TestEqual(TEXT("Completed Resolution watermark"), Controller->GetLastCompletedResolutionIdForTesting(), FirstResolutionId);
 
-	// Returning false is an immediate fallback, not a timeout wait.
 	Widget->bAcceptAsyncPlayback = false;
 	FPresentationResolutionEnvelope Fallback = Envelope;
 	Fallback.ResolutionId = FirstResolutionId + 1;
@@ -787,7 +778,6 @@ bool FPhase6UIA2BDamageBlockPlaybackTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Fallback applies its FinalSnapshot"), ViewModel->Player.Block, 11);
 	TestEqual(TEXT("Fallback advances Resolution watermark"), Controller->GetLastCompletedResolutionIdForTesting(), Fallback.ResolutionId);
 
-	// Skip invalidates an accepted token and catches up without Gameplay involvement.
 	Widget->bAcceptAsyncPlayback = true;
 	FPresentationResolutionEnvelope Skipped = Fallback;
 	Skipped.ResolutionId = Fallback.ResolutionId + 1;
@@ -813,7 +803,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPhase6UIA2BPresentationFailureIsolationTest::RunTest(const FString& Parameters)
 {
-	// Writer absent from the beginning is a legal no-history mode.
 	FFixture NoHistoryFixture(false);
 	if (!RequireReady(*this, NoHistoryFixture)) return false;
 	const int32 NoHistoryHPBefore = NoHistoryFixture.Enemy->HP;
@@ -824,7 +813,6 @@ bool FPhase6UIA2BPresentationFailureIsolationTest::RunTest(const FString& Parame
 	TestFalse(TEXT("Recording-disabled Gameplay has no resolution fault"), NoHistoryFixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
 	TestEqual(TEXT("Recording-disabled mode publishes no historical Envelope"), NoHistoryFixture.Deliveries.Num(), 0);
 
-	// A current writer plus a committed fact with missing required payload invalidates history only.
 	FFixture InvalidPayloadFixture;
 	InvalidPayloadFixture.ResetDeliveries();
 	const int32 InvalidPayloadHPBefore = InvalidPayloadFixture.Enemy->HP;
@@ -832,7 +820,6 @@ bool FPhase6UIA2BPresentationFailureIsolationTest::RunTest(const FString& Parame
 	UBattleActionQueue* InvalidQueue = InvalidPayloadFixture.Battle->GetActionQueueForTesting();
 	UDamageAction* InvalidAction = NewObject<UDamageAction>(InvalidQueue);
 	InvalidAction->Initialize(InvalidPayloadFixture.Player, InvalidPayloadFixture.Enemy, 4, EDamageKind::Attack);
-	// Intentionally do not provide participant IDs. Payload validation must occur only after commit.
 	InvalidAction->SetPresentationRecordWriter(InvalidPayloadFixture.Battle->GetActivePresentationRecordWriterForTesting());
 	TestTrue(TEXT("Invalid-payload Action inserts"), InvalidQueue->AddToBack(InvalidAction));
 	TestTrue(TEXT("Invalid-payload Action executes"), InvalidQueue->StartProcessing());
@@ -845,7 +832,6 @@ bool FPhase6UIA2BPresentationFailureIsolationTest::RunTest(const FString& Parame
 	TestTrue(TEXT("Invalid payload still freezes newest baseline"), InvalidPayloadFixture.Battle->TryGetLatestFrozenPresentationBaseline(InvalidBaseline));
 	TestEqual(TEXT("Invalid payload baseline reflects committed HP"), InvalidBaseline.Enemy.HP, InvalidPayloadFixture.Enemy->HP);
 
-	// Forced Append failure has the same fail-soft Gameplay semantics.
 	FFixture AppendFailureFixture;
 	AppendFailureFixture.ResetDeliveries();
 	const int32 AppendFailureHPBefore = AppendFailureFixture.Enemy->HP;
