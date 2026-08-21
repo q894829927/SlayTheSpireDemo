@@ -1,6 +1,7 @@
 #include "BattleManager.h"
 
 #include "BattleReadSnapshot.h"
+#include "EnergyMutation.h"
 #include "../Actions/ApplyStatusAction.h"
 #include "../Actions/BattleActionQueue.h"
 #include "../Actions/DamageAction.h"
@@ -201,6 +202,34 @@ namespace
 				TEXT("[Presentation] Turn-start Block clear record append failed; Gameplay remains authoritative."));
 		}
 	}
+
+	void AppendEnergyChangedPresentationRecord(
+		const FEnergyCommitResult& CommitResult,
+		const FPresentationRecordWriter& Writer
+	)
+	{
+		if (!CommitResult.bSucceeded || !CommitResult.bCommitted || !Writer.IsAvailable())
+		{
+			return;
+		}
+
+		if (CommitResult.Delta != CommitResult.EnergyAfter - CommitResult.EnergyBefore)
+		{
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(LogTemp, Warning, TEXT("[Presentation] Energy commit violated its Delta invariant."));
+			return;
+		}
+
+		FPresentationRecord Record;
+		Record.Type = EBattlePresentationRecordType::EnergyChanged;
+		Record.EnergyChanged.EnergyBefore = CommitResult.EnergyBefore;
+		Record.EnergyChanged.EnergyAfter = CommitResult.EnergyAfter;
+		Record.EnergyChanged.Delta = CommitResult.Delta;
+		if (!Writer.Append(MoveTemp(Record)))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Presentation] EnergyChanged append failed; Gameplay energy remains authoritative."));
+		}
+	}
 }
 
 ABattleManager::ABattleManager()
@@ -216,9 +245,6 @@ void ABattleManager::StartBattle()
 		return;
 	}
 
-	// A restarted battle replaces the complete Queue scope. Detach this manager
-	// from the old Queue first so late completion/fault signals from abandoned
-	// work cannot affect the new battle.
 	if (IsValid(ActionQueue.Get()))
 	{
 		ActionQueue->OnQueueEmpty.RemoveAll(this);
@@ -763,9 +789,6 @@ FGameplayRequestResult ABattleManager::RequestPlayCard(UCardInstance* Card, ACom
 		return FGameplayRequestResult::Rejected(Validation.FailureReason);
 	}
 
-	// Presentation Resolution identity exists before any post-validation step that
-	// can request a framework fault. Failure to begin Presentation degrades only
-	// Presentation; Gameplay continues with the already-validated request.
 	BeginPresentationResolution(EPresentationResolutionOrigin::PlayCard);
 
 	UBattleEventDispatcher* Dispatcher = nullptr;
@@ -810,6 +833,7 @@ FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
 	}
 
 	BeginPresentationResolution(EPresentationResolutionOrigin::EndTurn);
+	const FPresentationRecordWriter PresentationWriter = GetActivePresentationRecordWriter();
 
 	TArray<UBattleAction*> TurnEndBatch;
 	if (!BuildPlayerTurnEndBatch(TurnEndBatch))
@@ -818,7 +842,7 @@ FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
 		return FGameplayRequestResult::Rejected(EGameplayRequestFailureReason::QueueRejected);
 	}
 
-	ApplyWriterToBatch(GetActivePresentationRecordWriter(), TurnEndBatch);
+	ApplyWriterToBatch(PresentationWriter, TurnEndBatch);
 
 	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnEndBatch))
 	{
@@ -828,7 +852,8 @@ FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
 	}
 
 	BattleState = EBattleState::PlayerTurnEnding;
-	Energy = 0;
+	const FEnergyCommitResult EnergyCommit = BattleEnergyMutation::SetValue(this, 0);
+	AppendEnergyChangedPresentationRecord(EnergyCommit, PresentationWriter);
 
 	UE_LOG(
 		LogTemp,
@@ -917,14 +942,7 @@ bool ABattleManager::CanSpendEnergy(int32 Amount) const
 
 bool ABattleManager::TrySpendEnergy(int32 Amount)
 {
-	if (!CanSpendEnergy(Amount))
-	{
-		return false;
-	}
-
-	Energy -= Amount;
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Energy spent: Amount=%d Energy=%d/%d"), Amount, Energy, MaxEnergy);
-	return true;
+	return BattleEnergyMutation::TrySpend(this, Amount).bSucceeded;
 }
 
 uint64 ABattleManager::AllocateRuntimeSequence()
@@ -990,8 +1008,6 @@ void ABattleManager::StartOpeningHand()
 		return;
 	}
 
-	// BattleStart setup draws intentionally receive no RecordWriter. They are
-	// initialization normalization and must seal an empty-record opening Envelope.
 	if (!ActionQueue->AddBatchToBackPreserveOrder(OpeningBatch))
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Opening Hand draw batch insertion failed while BattleStart was authoritative."));
@@ -1045,7 +1061,8 @@ void ABattleManager::StartPlayerTurn()
 		return;
 	}
 
-	ApplyWriterToBatch(GetActivePresentationRecordWriter(), TurnStartBatch);
+	const FPresentationRecordWriter PresentationWriter = GetActivePresentationRecordWriter();
+	ApplyWriterToBatch(PresentationWriter, TurnStartBatch);
 	if (!ActionQueue->AddBatchToBackPreserveOrder(TurnStartBatch))
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Player turn-start draw batch insertion failed before PlayerTurnStarting state commit."));
@@ -1053,13 +1070,14 @@ void ABattleManager::StartPlayerTurn()
 	}
 
 	BattleState = EBattleState::PlayerTurnStarting;
-	Energy = MaxEnergy;
+	const FEnergyCommitResult EnergyCommit = BattleEnergyMutation::SetValue(this, MaxEnergy);
+	AppendEnergyChangedPresentationRecord(EnergyCommit, PresentationWriter);
 	const FBlockCommitResult PlayerBlockClear = Player->ClearBlock();
 	AppendTurnStartClearPresentationRecord(
 		this,
 		Player.Get(),
 		PlayerBlockClear,
-		GetActivePresentationRecordWriter()
+		PresentationWriter
 	);
 
 	if (TurnStartBatch.Num() == 0)
@@ -1313,9 +1331,6 @@ void ABattleManager::HandleActionQueueResolutionFaulted(
 
 	AppendPresentationResolutionFault(Reason, ExecutedCount, LastAction);
 	FinalizePresentationResolutionAtStableBoundary();
-
-	// Fault state is fully committed and any Presentation builder has already
-	// sealed/aborted synchronously. Public callbacks remain deferred.
 	ScheduleReadStateReadyPublish();
 }
 
@@ -1556,7 +1571,7 @@ bool ABattleManager::BuildDrawActionBatch(int32 DrawCount, TArray<UBattleAction*
 	for (int32 Index = 0; Index < DrawCount; ++Index)
 	{
 		UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
-		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants);
+		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants, Player.Get());
 		OutActions.Add(Action);
 	}
 	return true;
@@ -1580,7 +1595,7 @@ bool ABattleManager::BuildPlayerTurnEndBatch(TArray<UBattleAction*>& OutActions)
 		}
 
 		UDiscardCardAction* DiscardAction = NewObject<UDiscardCardAction>(ActionQueue.Get());
-		DiscardAction->Initialize(DeckRuntime.Get(), Card.Get());
+		DiscardAction->Initialize(DeckRuntime.Get(), Card.Get(), Player.Get());
 		OutActions.Add(DiscardAction);
 	}
 
@@ -1653,11 +1668,11 @@ void ABattleManager::QueueDrawCardAction()
 	TArray<ACombatant*> Combatants;
 	if (TryBuildEventDispatchContext(Dispatcher, Combatants))
 	{
-		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants);
+		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants, Player.Get());
 	}
 	else
 	{
-		Action->Initialize(DeckRuntime.Get());
+		Action->Initialize(DeckRuntime.Get(), Player.Get());
 	}
 	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
@@ -1671,7 +1686,7 @@ void ABattleManager::QueueDiscardCardAction(UCardInstance* Card)
 	}
 
 	UDiscardCardAction* Action = NewObject<UDiscardCardAction>(ActionQueue.Get());
-	Action->Initialize(DeckRuntime.Get(), Card);
+	Action->Initialize(DeckRuntime.Get(), Card, Player.Get());
 	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
 }
