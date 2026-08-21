@@ -355,11 +355,13 @@ void UBattlePresentationController::CancelActiveTimeout()
 		FTSTicker::GetCoreTicker().RemoveTicker(PlaybackTimeoutTickerHandle);
 		PlaybackTimeoutTickerHandle.Reset();
 	}
+	ScheduledTimeoutToken = FPresentationPlaybackToken{};
 }
 
 void UBattlePresentationController::ScheduleActiveTimeout()
 {
 	CancelActiveTimeout();
+	ScheduledTimeoutToken = ActivePlaybackToken;
 	PlaybackTimeoutTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateUObject(this, &UBattlePresentationController::HandleActiveTimeout),
 		FMath::Max(0.05f, PlaybackTimeoutSeconds)
@@ -369,7 +371,12 @@ void UBattlePresentationController::ScheduleActiveTimeout()
 bool UBattlePresentationController::HandleActiveTimeout(float /*DeltaTime*/)
 {
 	PlaybackTimeoutTickerHandle.Reset();
-	if (bWaitingForCompletion)
+	const FPresentationPlaybackToken TimeoutToken = ScheduledTimeoutToken;
+	ScheduledTimeoutToken = FPresentationPlaybackToken{};
+	if (bWaitingForCompletion
+		&& TimeoutToken == ActivePlaybackToken
+		&& TimeoutToken.LocalPlaybackGeneration == LocalPlaybackGeneration
+		&& TimeoutToken.BattleId == CurrentBattleId)
 	{
 		CompleteActiveRecord();
 	}
