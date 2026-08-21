@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "../Battle/BattleState.h"
+#include "../Modifiers/ModifierTypes.h"
 #include "../UI/BattleHUDTypes.h"
 #include "PresentationTypes.generated.h"
 
@@ -18,7 +19,78 @@ UENUM(BlueprintType)
 enum class EBattlePresentationRecordType : uint8
 {
 	None UMETA(DisplayName = "None"),
-	ResolutionFault UMETA(DisplayName = "Resolution Fault")
+	ResolutionFault UMETA(DisplayName = "Resolution Fault"),
+	Damage UMETA(DisplayName = "Damage"),
+	BlockChanged UMETA(DisplayName = "Block Changed"),
+	Victory UMETA(DisplayName = "Victory"),
+	Defeat UMETA(DisplayName = "Defeat")
+};
+
+UENUM(BlueprintType)
+enum class EBlockPresentationReason : uint8
+{
+	Gain UMETA(DisplayName = "Gain"),
+	TurnStartClear UMETA(DisplayName = "Turn Start Clear")
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FDamagePresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	FName SourcePresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	FName TargetPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	EDamageKind DamageKind = EDamageKind::Attack;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 IncomingDamage = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 HPBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 HPAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 BlockBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 BlockAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 BlockedDamage = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	int32 HPDamage = 0;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FBlockChangedPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	FName SourcePresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	FName TargetPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	EBlockPresentationReason Reason = EBlockPresentationReason::Gain;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	int32 BlockBefore = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	int32 BlockAfter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	int32 BlockDelta = 0;
 };
 
 USTRUCT(BlueprintType)
@@ -69,9 +141,12 @@ struct SLAYTHESPIREDEMO_API FPresentationRecord
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation")
 	EBattlePresentationRecordType Type = EBattlePresentationRecordType::None;
 
-	// A2A owns only fault transport. Later slices add typed committed payloads at
-	// their owning commit boundaries rather than widening this into a generic
-	// Variant/GameplayTag payload container.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
+	FDamagePresentationPayload Damage;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Block")
+	FBlockChangedPresentationPayload BlockChanged;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
 	FString FaultReason;
 
