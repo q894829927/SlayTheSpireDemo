@@ -20,9 +20,9 @@ URelicContainer* ABattleManager::GetPlayerRelicContainer()
 	{
 		PlayerRelicContainer->Initialize(this);
 
-		for (URelicData* Definition : DebugStartingRelics)
+		for (const TObjectPtr<URelicData>& Definition : DebugStartingRelics)
 		{
-			const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition);
+			const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get());
 			if (Result.Outcome == ERelicAddOutcome::Invalid)
 			{
 				UE_LOG(LogTemp, Warning, TEXT("[Relic] Ignored invalid DebugStartingRelics entry."));
