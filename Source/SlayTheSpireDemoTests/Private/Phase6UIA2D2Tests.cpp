@@ -10,7 +10,9 @@
 #include "Combat/Combatant.h"
 #include "Engine/World.h"
 #include "Events/TurnEndStatusDecayTrigger.h"
+#include "Presentation/BattlePresentationRecorder.h"
 #include "Presentation/PresentationTypes.h"
+#include "Presentation/StatusPresentationRecordBuilder.h"
 #include "Status/StatusContainer.h"
 #include "Status/StatusData.h"
 #include "Status/StatusInstance.h"
@@ -312,6 +314,51 @@ bool FPhase6UIA2D2InvalidHistoryDoesNotRollbackTest::RunTest(const FString& Para
 		TestFalse(TEXT("Unsafe uint64-to-int64 status identity invalidates history"), Fixture.Battle->IsPresentationAvailable());
 		TestEqual(TEXT("Unsafe identity publishes no partial envelope"), Fixture.Deliveries.Num(), 0);
 		TestTrue(TEXT("Unsafe presentation identity does not Gameplay-fault battle"), Fixture.Battle->BattleState != EBattleState::ResolutionFaulted);
+	}
+
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+		UStatusData* InvalidSourceStatus = CreateStatusDefinition(Fixture.World, TEXT("InvalidSource"), TEXT("Invalid Source"), TEXT("Invalid source {Amount}."));
+		if (!TestNotNull(TEXT("Invalid-source definition"), InvalidSourceStatus)) return false;
+
+		const FStatusMutationResult Mutation = Fixture.Enemy->GetStatusContainer()->ApplyStatusCommit(
+			InvalidSourceStatus,
+			1,
+			Fixture.Battle->AllocateRuntimeSequence()
+		);
+		if (!TestTrue(TEXT("Gameplay status commit succeeds before source validation"), Mutation.IsCommitted())) return false;
+		if (!TestTrue(TEXT("System writer begins for invalid-source probe"), Fixture.Battle->BeginSystemPresentationResolutionForTesting())) return false;
+		const FPresentationRecordWriter Writer = Fixture.Battle->GetActivePresentationRecordWriterForTesting();
+		if (!TestTrue(TEXT("Invalid-source probe writer is initially available"), Writer.IsAvailable())) return false;
+
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACombatant* InvalidSource = Fixture.World->SpawnActor<ACombatant>(ACombatant::StaticClass(), FTransform(FVector(200.0, 0.0, 0.0)), SpawnParameters);
+		if (!TestNotNull(TEXT("Invalid-source probe combatant"), InvalidSource)) return false;
+		// Make the pointer a formally supplied participant first, then invalidate the
+		// UObject. The frozen baseline keeps participant IDs stable, so only the
+		// supplied-but-invalid distinction determines whether NAME_None is legal.
+		Fixture.Battle->Player = InvalidSource;
+		InvalidSource->MarkAsGarbage();
+		TestFalse(TEXT("Supplied source UObject is invalid"), IsValid(InvalidSource));
+
+		const bool bAppended = StatusPresentation::AppendCommittedChange(
+			Writer,
+			Fixture.Battle,
+			InvalidSource,
+			Fixture.Enemy,
+			nullptr,
+			Mutation,
+			EStatusChangeReason::Applied,
+			FText::GetEmpty(),
+			StatusPresentation::FreezeDescription(Mutation.EffectiveInstance)
+		);
+		TestFalse(TEXT("Invalid non-null Source is rejected instead of frozen as NAME_None"), bAppended);
+		TestFalse(TEXT("Invalid non-null Source invalidates unpublished history"), Writer.IsAvailable());
+		TestEqual(TEXT("Gameplay commit remains authoritative after source rejection"), Mutation.EffectiveInstance->GetAmount(), 1);
+		TestTrue(TEXT("Source rejection does not manufacture Gameplay fault"), Fixture.Battle->BattleState != EBattleState::ResolutionFaulted);
+		Fixture.Battle->Player = Fixture.Player;
 	}
 	return true;
 }
