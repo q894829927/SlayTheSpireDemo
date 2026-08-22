@@ -166,7 +166,7 @@ jobs:
               }
           }
 
-          "## UE Phase 6R + UI-A2A/A2B/A2C/A2D1/A2D2/A2D3 Regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "## UE Phase 6R + UI-A2A/A2B/A2C/A2D1/A2D2/A2D3/A2D4 Regression" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
@@ -181,8 +181,9 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D1" -ExpectedCount 3 -ReportName "Phase6UIA2D1"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D2" -ExpectedCount 4 -ReportName "Phase6UIA2D2"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D3" -ExpectedCount 4 -ReportName "Phase6UIA2D3"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D4" -ExpectedCount 5 -ReportName "Phase6UIA2D4"
 
-          Write-Host "Phase 5 + Phase 6 + Phase 6UI-A2A/A2B/A2C/A2D1/A2D2/A2D3 regression gate passed. Expected total: 88 tests."
+          Write-Host "Phase 5 + Phase 6 + Phase 6UI-A2A/A2B/A2C/A2D1/A2D2/A2D3/A2D4 regression gate passed. Expected total: 93 tests."
 
   shipping-exclusion:
     needs: phase6r-regression
