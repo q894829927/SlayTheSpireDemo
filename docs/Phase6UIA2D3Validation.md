@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **PRE-HARDENING VALIDATED / CURRENT HEAD REVALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D-4**.
 
 ## Historical validated baseline
 
@@ -14,7 +14,7 @@ Phase6R affected regression       PASS 88/88
 UE5.8 Editor build                PASS through Phase6R prerequisite
 ```
 
-That result remains a valid historical result for the pre-hardening A2D-3 source base. It must not be presented as validation of the later hardening commits listed below until the gates are rerun.
+That result remains the historical pre-hardening validation baseline.
 
 ## Post-validation hardening
 
@@ -58,7 +58,7 @@ The Controller independently validates a historical `SourcePresentationId` as ei
 
 ### Description boundary
 
-The producer and reducer now both enforce:
+The producer and reducer both enforce:
 
 ```text
 create -> DescriptionBefore == Empty
@@ -69,11 +69,11 @@ Empty authored descriptions outside those structural boundaries remain legal.
 
 ### Frozen status uniqueness
 
-The freeze boundary now rejects duplicate `StatusId` in addition to the existing RuntimeSequence validity and strict ordering checks.
+The freeze boundary rejects duplicate `StatusId` in addition to RuntimeSequence validity and strict ordering checks.
 
 ### Playback preflight
 
-`StatusChanged` is now preflighted against a copy of `WorkingPresentationSnapshot` before Blueprint playback.
+`StatusChanged` is preflighted against a copy of `WorkingPresentationSnapshot` before Blueprint playback.
 
 ```text
 record arrives
@@ -89,7 +89,7 @@ The visible animation still runs against the pre-record displayed state; the rea
 
 ### Stale mutation classification
 
-`ReduceStatusCommit` and `RemoveStatusCommit` now require a complete historical identity before checking whether the exact instance is still a member of the Container.
+`ReduceStatusCommit` and `RemoveStatusCommit` require a complete historical identity before checking whether the exact instance is still a member of the Container.
 
 ```text
 invalid Definition / StatusId / RuntimeSequence / Amount -> Invalid
@@ -99,11 +99,11 @@ valid current exact instance                               -> normal commit path
 
 ### Controller bootstrap
 
-Controller initialization explicitly takes Presentation display ownership when committed Presentation is active and idempotently applies the latest frozen baseline before advancing Resolution watermarks. A stale or rebuilt ViewModel is therefore repaired instead of being left behind a watermark that suppresses older Envelopes.
+Controller initialization explicitly takes Presentation display ownership when committed Presentation is active and idempotently applies the latest frozen baseline before advancing Resolution watermarks. A stale or rebuilt ViewModel is therefore repaired before historical watermarks suppress older Envelopes.
 
-## Test coverage changes
+## Regression coverage
 
-The existing top-level prefixes/counts were preserved; coverage was extended inside the current tests rather than adding new top-level tests.
+The existing top-level prefixes/counts remain:
 
 ```text
 Phase6UIA2D1 expected: 3
@@ -112,7 +112,7 @@ Phase6UIA2D3 expected: 4
 Phase6R total expected: 88
 ```
 
-New coverage includes:
+Coverage includes:
 
 ```text
 valid stale instance -> NoOp
@@ -127,16 +127,18 @@ AmountBefore mismatch -> no Blueprint call, immediate collapse
 stale/rebuilt ViewModel -> Controller bootstrap reapplies baseline
 ```
 
-## Current validation requirement
+## Hardened current-head validation
 
-The post-hardening current head must be revalidated with:
+User-reported UE5.8 Phase6R rerun result after the hardening changes:
 
 ```text
-UE5.8 Editor build
-SlayTheSpireDemo.Phase6UIA2D1  3/3
-SlayTheSpireDemo.Phase6UIA2D2  4/4
-SlayTheSpireDemo.Phase6UIA2D3  4/4
-Phase6R aggregate             88/88
+UE5.8 Editor build                 PASS (Phase6R prerequisite)
+SlayTheSpireDemo.Phase6UIA2D1     PASS 3/3
+SlayTheSpireDemo.Phase6UIA2D2     PASS 4/4
+SlayTheSpireDemo.Phase6UIA2D3     PASS 4/4
+Phase6R aggregate                 PASS 88/88
+Failed                            0
+NotRun                            0
 ```
 
-Do not promote the hardened current head back to **VALIDATED / READY FOR A2D-4** until these gates pass.
+The hardened A2D-1 through A2D-3 status path is therefore revalidated and may be treated as **VALIDATED / READY FOR A2D-4**.
