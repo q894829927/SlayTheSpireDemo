@@ -57,7 +57,7 @@ BattleActionQueue
 - [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
   - [x] UI-A1 Operable Battle HUD — COMPLETE; current Self-target Player-selection path revalidated with UE5.8 UI-A1 11/11 and manual PIE.
-  - [ ] UI-A2 Basic Committed Presentation — UI-A2A/A2B/A2C/A2D C++ committed-presentation path implemented. A2D1–A2D4 are validated and A2D5 focused combined acceptance is owner-confirmed at 6/6, including Terminal.ResolutionFault after the Presentation-availability read-edge fix. The last separately confirmed Phase6R aggregate is 99/99 + Shipping PASS; the configured final aggregate target is 100 and must not be called passed until that separate run is confirmed. Unified Blueprint/UMG playback and PIE remain open as UI-A2E. See `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md`, `docs/Phase6UIA2EImplementation.md` and Section 16.
+  - [ ] UI-A2 Basic Committed Presentation — UI-A2A/A2B/A2C/A2D C++ committed-presentation path is implemented and sealed by owner-confirmed UE5.8 evidence: A2D5 focused 6/6, Phase6R aggregate 100/100 and Shipping exclusion PASS. Unified Blueprint/UMG playback and PIE remain open as UI-A2E; UI-A2 is not complete until A2E passes. See `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md`, `docs/Phase6UIA2EImplementation.md` and Section 16.
   - [ ] UI-A3 Deterministic Immediate Preview — A3-1 Dynamic Text is sealed/revalidated at 8/8 with authored DataAssets and PIE/package evidence. Remaining work is Target-Specific Current-State Preview, Energy + target-aware legality, transient Preview lifecycle and minimal A2/A3 combined PIE. Do not resume A3 until UI-A2E is independently complete.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
@@ -82,7 +82,7 @@ Phase 6UI-A0 validated authoritative turn/Hand lifecycle, formal Query/Request A
 
 Phase 6UI-A1 validated the concrete Battle HUD through normal UI controls. Enemy-target and Self-target cards both use gameplay-provided public legal-target selection and formal Request revalidation. Defend resolves by selecting the highlighted Player presentation. The historical owner gate passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 + Phase6UIA1 11/11 + Phase6UIA3 8/8 = 92/92, with the normal PIE battle loop and packaged Defend `{Block}` text validated.
 
-Phase 6UI-A2 now contains the complete C++ committed-presentation path through Status and terminal/fault history. A2D5 focused acceptance passed 6/6 after fixing the Presentation-availability read-edge identity. The owner has not yet separately confirmed the configured Phase6R 100/100 + Shipping rerun in the evidence available to this file, so the last aggregate evidence remains 99/99 + Shipping PASS. Visible Blueprint playback and PIE are still deferred and are now explicitly owned by UI-A2E.
+Phase 6UI-A2 now contains the complete C++ committed-presentation path through Status and terminal/fault history. A2D5 focused acceptance passed 6/6 after fixing the Presentation-availability read-edge identity, and the expanded Phase6R aggregate then passed 100/100 with Shipping exclusion PASS. The C++ committed-presentation contract is sealed. Visible Blueprint playback and PIE remain the only open A2 closure work and are explicitly owned by UI-A2E.
 
 Phase 6UI-A3 A3-1 Dynamic Text validates `BattleTextResolver`, read-only Damage/Block preview pipelines and authored Card/Status format arguments. The remaining target-specific work is named **Target-Specific Current-State Preview**, not an exact final-result predictor.
 
@@ -259,9 +259,9 @@ UI-A2B Damage + Block Committed Presentation C++ VALIDATED / 8/8
 ↓
 UI-A2C Card + Energy + Zone + Shuffle Presentation C++ VALIDATED / 8/8
 ↓
-UI-A2D Status + Terminal Presentation C++ IMPLEMENTED / A2D1-4 VALIDATED / A2D5 FOCUSED 6/6 PASS
+UI-A2D Status + Terminal Presentation C++ SEALED / A2D5 FOCUSED 6/6 PASS
 ↓
-UI-A2 aggregate closure: configured Phase6R 100/100 + Shipping evidence must be explicitly confirmed
+UI-A2 aggregate closure            Phase6R 100/100 + Shipping PASS
 ↓
 UI-A2E Unified Blueprint Playback & PIE Acceptance NEXT
 ↓
@@ -588,15 +588,15 @@ Phase 6UI-A2D2 4/4 PASS
 Phase 6UI-A2D3 4/4 PASS
 Phase 6UI-A2D4 6/6 PASS
 Phase 6UI-A2D5 focused 6/6 PASS
-Last separately confirmed Phase6R aggregate 99/99 PASS + Shipping exclusion PASS
-Configured next aggregate target 100 tests — NOT YET RECORDED AS PASSED
+Phase6R expanded aggregate 100/100 PASS
+Shipping exclusion PASS
 ```
 
 The exact totals are run evidence, not permanent acceptance constants. Historical owner suites with different configured prefixes must not be arithmetically combined.
 
 Manual PIE normal UI player → enemy → player loop passed. Self-target Defend → highlighted Player passed. Packaged Defend dynamic `{Block}` description passed. These existing PIE results predate unified A2 committed-record playback and do not close UI-A2E.
 
-The next UI-A2 step is: record the separate Phase6R 100/100 + Shipping closure when confirmed, then implement UI-A2E unified Blueprint playback and PIE acceptance. Do not resume A3-2 until A2E is complete.
+The next UI-A2 step is UI-A2E unified Blueprint playback and PIE acceptance. Do not resume A3-2 until A2E is complete.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -688,13 +688,13 @@ docs/Phase6UIA3DynamicTextImplementation.md
 - Phase 6A — PASSED; 23/23.
 - Phase 6B — PASSED; 12/12 and PIE turn lifecycle.
 - Phase 6C — PASSED; 5/5, Phase5–Phase6C 53/53.
-- Phase 6R — PASSED for the original Phase6 test-module extraction gate; current expanded UI aggregate separately remains at last confirmed 99/99 + Shipping PASS until a 100/100 rerun is reported.
+- Phase 6R — PASSED for the original Phase6 test-module extraction gate; current expanded UI aggregate also owner-confirmed at 100/100 with Shipping exclusion PASS.
 - Phase 6UI-A0 — PASSED; 20/20.
 - Phase 6UI-A1 — PASSED; 11/11 + Self-target Player selection + normal PIE loop.
 - Phase 6UI-A2A — C++/AUTOMATION PASSED 8/8: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue + PlaybackToken + latest-only input bindings + PresentationUnavailable.
 - Phase 6UI-A2B — C++/AUTOMATION PASSED 8/8: committed Damage/Block facts and reducer/fallback safety; visible Blueprint playback remains deferred to A2E.
 - Phase 6UI-A2C — C++/AUTOMATION PASSED 8/8: committed CardPlayed/Energy/zone/shuffle facts and WorkingSnapshot reduction; visible Blueprint playback remains deferred to A2E.
-- Phase 6UI-A2D — C++ IMPLEMENTED; A2D1 3/3, A2D2 4/4, A2D3 4/4, A2D4 6/6, A2D5 focused 6/6 owner-confirmed. Status lifecycle, turn ordering, Victory, Defeat and genuine ResolutionFault are covered. Aggregate 100/100 evidence still must be explicitly recorded if/when run.
+- Phase 6UI-A2D — C++/AUTOMATION SEALED: A2D1 3/3, A2D2 4/4, A2D3 4/4, A2D4 6/6, A2D5 focused 6/6, expanded Phase6R 100/100 and Shipping exclusion PASS. Status lifecycle, turn ordering, Victory, Defeat and genuine ResolutionFault are covered.
 - Phase 6UI-A2E — NEXT: unified Blueprint/UMG committed-record playback + PIE end-to-end acceptance.
 - Phase 6UI-A3 — PARTIAL: A3-1 Dynamic Text SEALED 8/8; A3-2 through A3-5 deliberately wait for A2E.
 - Phase 6UI-A — IN PROGRESS.
@@ -731,7 +731,7 @@ When completing a meaningful phase:
 
 ## 15. Planned Playable UI, MVVM and Presentation Architecture
 
-Phase 6UI-A0 and UI-A1 are complete. A3-1 Dynamic Text is validated and sealed. UI-A2A/A2B/A2C/A2D now form the C++ committed-presentation pipeline; A2D5 focused combined acceptance is 6/6. The separate expanded Phase6R 100/100 + Shipping result must still be recorded if it has been run. The next implementation stage is UI-A2E unified Blueprint/UMG playback and PIE, and unfinished A3 Preview work comes only after A2E. Section 16 plus `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md` and `docs/Phase6UIA2EImplementation.md` are the synchronized UI-A2 contracts/evidence.
+Phase 6UI-A0 and UI-A1 are complete. A3-1 Dynamic Text is validated and sealed. UI-A2A/A2B/A2C/A2D form the C++ committed-presentation pipeline and are sealed by A2D5 focused 6/6 + expanded Phase6R 100/100 + Shipping exclusion PASS. The next implementation stage is UI-A2E unified Blueprint/UMG playback and PIE; unfinished A3 Preview work comes only after A2E. Section 16 plus `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md` and `docs/Phase6UIA2EImplementation.md` are the synchronized UI-A2 contracts/evidence.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -744,8 +744,8 @@ Phase 6UI-A                           IN PROGRESS
     UI-A2A committed presentation infrastructure C++ VALIDATED / 8/8
     UI-A2B Damage + Block             C++ VALIDATED / 8/8
     UI-A2C Card/Energy/Zone/Shuffle   C++ VALIDATED / 8/8
-    UI-A2D Status/Terminal             C++ IMPLEMENTED; A2D5 focused 6/6 PASS
-    UI-A2 aggregate closure            configured 100/100 + Shipping confirmation pending in docs
+    UI-A2D Status/Terminal             C++ SEALED; A2D5 focused 6/6 PASS
+    UI-A2 aggregate closure            Phase6R 100/100 + Shipping PASS
     UI-A2E Blueprint/UMG + PIE         NEXT
     UI-A3 A3-1 Dynamic Text            SEALED / 8/8
     UI-A3 A3-2..A3-5 Preview           AFTER A2E
@@ -945,8 +945,9 @@ Damage + Block Presentation
 UI-A2C — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED TO A2E
 Card + Energy + Zone + Shuffle Presentation
 
-UI-A2D — C++ IMPLEMENTED; A2D1-4 VALIDATED; A2D5 FOCUSED 6/6 PASS
+UI-A2D — C++/AUTOMATION SEALED
 Status + Terminal Presentation
+A2D5 focused 6/6 + Phase6R 100/100 + Shipping PASS
 
 UI-A2E — NEXT
 Unified Blueprint Playback + PIE Acceptance
@@ -1097,7 +1098,7 @@ Live input bindings
 
 ## 16. Locked Phase 6UI-A2 Architecture Summary
 
-**Current source status: UI-A2A/A2B/A2C/A2D C++ committed-presentation source is implemented; A2D1–A2D4 are validated and A2D5 focused combined acceptance is owner-confirmed at 6/6. The last separately confirmed expanded aggregate remains 99/99 + Shipping PASS; the configured final aggregate target is 100 and must not be called passed until separately confirmed. Blueprint/UMG playback and PIE are deferred to UI-A2E, which is the next implementation step.**
+**Current source status: UI-A2A/A2B/A2C/A2D C++ committed-presentation source is implemented and sealed by owner-confirmed A2D5 focused 6/6, expanded Phase6R 100/100 and Shipping exclusion PASS. Blueprint/UMG playback and PIE are deferred to UI-A2E, which is now the next implementation step.**
 
 This section is the compact agent-facing contract. Detailed synchronized contracts/evidence are `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md` and `docs/Phase6UIA2EImplementation.md`.
 
@@ -1340,9 +1341,9 @@ Ignore duplicate/stale/old-Battle/post-Skip callbacks. Missing callback, timeout
 
 A2E must wire the real WBP so every currently visible Record type uses this protocol. The animation uses immutable Record payload; the reducer advances historical ViewModel state only when that playback completes.
 
-### 16.10 A2D5 and next acceptance boundary
+### 16.10 A2D closure and next acceptance boundary
 
-A2D5 focused acceptance now covers:
+A2D5 focused acceptance covers:
 
 ```text
 StatusLifecycle
@@ -1353,19 +1354,12 @@ Terminal.Defeat
 Terminal.ResolutionFault
 ```
 
-Owner-confirmed result:
+Owner-confirmed final result:
 
 ```text
-A2D5 focused 6/6 PASS
+A2D5 focused      6/6 PASS
+Phase6R aggregate 100/100 PASS
+Shipping          PASS
 ```
 
-The last separately confirmed expanded aggregate remains:
-
-```text
-Phase6R 99/99 PASS
-Shipping exclusion PASS
-```
-
-The workflow is configured for a natural final total of 100 after the sixth planned A2D5 scenario. Record `100/100 + Shipping PASS` only after that separate run is explicitly confirmed.
-
-After aggregate closure, UI-A2E is the next implementation/PIE boundary. Do not resume A3-2 before A2E is complete.
+The C++ committed-presentation contract is sealed. UI-A2E is now the next implementation/PIE boundary. Do not resume A3-2 before A2E is complete.
