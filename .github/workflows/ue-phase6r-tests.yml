@@ -41,7 +41,7 @@ jobs:
       - name: Verify test-module extraction boundary
         shell: powershell
         run: |
-          $ProjectPath = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $ProjectPath = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
           $ProjectJson = Get-Content $ProjectPath -Raw | ConvertFrom-Json
           $TestModules = @($ProjectJson.Modules | Where-Object { $_.Name -eq "SlayTheSpireDemoTests" })
           if ($TestModules.Count -ne 1) {
@@ -51,7 +51,7 @@ jobs:
               throw "SlayTheSpireDemoTests must be declared as an Editor module."
           }
 
-          $RuntimeTestsPath = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo\Tests"
+          $RuntimeTestsPath = "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemo\\Tests"
           if (Test-Path $RuntimeTestsPath) {
               $RuntimeTestFiles = @(Get-ChildItem $RuntimeTestsPath -Recurse -File)
               if ($RuntimeTestFiles.Count -gt 0) {
@@ -59,23 +59,23 @@ jobs:
               }
           }
 
-          $RuntimeSource = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo"
+          $RuntimeSource = "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemo"
           $RuntimeTestTypeHits = @(Get-ChildItem $RuntimeSource -Recurse -File -Include *.h,*.cpp | Select-String -Pattern "UPhase6ATest")
           if ($RuntimeTestTypeHits.Count -gt 0) {
               throw "Phase6A reflected test helpers still appear in Runtime source."
           }
 
-          $RuntimeBuildCs = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo\SlayTheSpireDemo.Build.cs" -Raw
+          $RuntimeBuildCs = Get-Content "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemo\\SlayTheSpireDemo.Build.cs" -Raw
           if ($RuntimeBuildCs -match "SlayTheSpireDemoTests") {
               throw "Runtime module must never depend on SlayTheSpireDemoTests."
           }
 
-          $GameTarget = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo.Target.cs" -Raw
+          $GameTarget = Get-Content "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemo.Target.cs" -Raw
           if ($GameTarget -match "SlayTheSpireDemoTests") {
               throw "Game target must not include SlayTheSpireDemoTests."
           }
 
-          $EditorTarget = Get-Content "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemoEditor.Target.cs" -Raw
+          $EditorTarget = Get-Content "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemoEditor.Target.cs" -Raw
           if ($EditorTarget -notmatch "SlayTheSpireDemoTests") {
               throw "Editor target must include SlayTheSpireDemoTests."
           }
@@ -83,10 +83,10 @@ jobs:
       - name: Check UE5.8 toolchain
         shell: powershell
         run: |
-          $UE = "E:\Unreal engine\UE_5.8"
-          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
-          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
-          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $UE = "E:\\Unreal engine\\UE_5.8"
+          $Build = "$UE\\Engine\\Build\\BatchFiles\\Build.bat"
+          $EditorCmd = "$UE\\Engine\\Binaries\\Win64\\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
 
           foreach ($Path in @($Build, $EditorCmd, $Project)) {
               if (!(Test-Path $Path)) {
@@ -97,9 +97,9 @@ jobs:
       - name: Build SlayTheSpireDemoEditor with test module
         shell: powershell
         run: |
-          $UE = "E:\Unreal engine\UE_5.8"
-          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
-          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $UE = "E:\\Unreal engine\\UE_5.8"
+          $Build = "$UE\\Engine\\Build\\BatchFiles\\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
 
           & $Build SlayTheSpireDemoEditor Win64 Development $Project -WaitMutex -NoHotReloadFromIDE
           if ($LASTEXITCODE -ne 0) {
@@ -109,9 +109,9 @@ jobs:
       - name: Run Phase 5, Phase 6, and UI-A2 regression gate
         shell: powershell
         run: |
-          $UE = "E:\Unreal engine\UE_5.8"
-          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
-          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $UE = "E:\\Unreal engine\\UE_5.8"
+          $EditorCmd = "$UE\\Engine\\Binaries\\Win64\\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
 
           function Run-AutomationGate {
               param(
@@ -120,8 +120,8 @@ jobs:
                   [string]$ReportName
               )
 
-              $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\$ReportName"
-              $IndexJson = "$Report\index.json"
+              $Report = "$env:GITHUB_WORKSPACE\\Saved\\AutomationReports\\$ReportName"
+              $IndexJson = "$Report\\index.json"
               if (Test-Path $Report) {
                   Remove-Item $Report -Recurse -Force
               }
@@ -182,9 +182,9 @@ jobs:
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D2" -ExpectedCount 4 -ReportName "Phase6UIA2D2"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D3" -ExpectedCount 4 -ReportName "Phase6UIA2D3"
           Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D4" -ExpectedCount 6 -ReportName "Phase6UIA2D4"
-          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D5" -ExpectedCount 5 -ReportName "Phase6UIA2D5"
+          Run-AutomationGate -Prefix "SlayTheSpireDemo.Phase6UIA2D5" -ExpectedCount 6 -ReportName "Phase6UIA2D5"
 
-          Write-Host "Phase 5 + Phase 6 + Phase 6UI-A2A/A2B/A2C/A2D1/A2D2/A2D3/A2D4/A2D5 regression gate passed. Expected discovered total: 99 tests."
+          Write-Host "Phase 5 + Phase 6 + Phase 6UI-A2A/A2B/A2C/A2D1/A2D2/A2D3/A2D4/A2D5 regression gate passed. Expected discovered total: 100 tests."
 
   shipping-exclusion:
     needs: phase6r-regression
@@ -217,9 +217,9 @@ jobs:
       - name: Build Shipping game target
         shell: powershell
         run: |
-          $UE = "E:\Unreal engine\UE_5.8"
-          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
-          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $UE = "E:\\Unreal engine\\UE_5.8"
+          $Build = "$UE\\Engine\\Build\\BatchFiles\\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
 
           foreach ($Path in @($Build, $Project)) {
               if (!(Test-Path $Path)) {
@@ -236,8 +236,8 @@ jobs:
         shell: powershell
         run: |
           $ArtifactRoots = @(
-              "$env:GITHUB_WORKSPACE\Binaries",
-              "$env:GITHUB_WORKSPACE\Intermediate"
+              "$env:GITHUB_WORKSPACE\\Binaries",
+              "$env:GITHUB_WORKSPACE\\Intermediate"
           )
 
           $Forbidden = @()
@@ -254,7 +254,7 @@ jobs:
               throw "Editor/test-only module artifacts appeared in the Shipping build: $Paths"
           }
 
-          $RuntimeSource = "$env:GITHUB_WORKSPACE\Source\SlayTheSpireDemo"
+          $RuntimeSource = "$env:GITHUB_WORKSPACE\\Source\\SlayTheSpireDemo"
           $RuntimeTestTypeHits = @(Get-ChildItem $RuntimeSource -Recurse -File -Include *.h,*.cpp | Select-String -Pattern "UPhase6ATest")
           if ($RuntimeTestTypeHits.Count -gt 0) {
               throw "Runtime source still contains Phase6ATest reflected helpers."
