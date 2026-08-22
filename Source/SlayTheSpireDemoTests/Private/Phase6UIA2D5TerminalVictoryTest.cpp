@@ -247,7 +247,7 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Working baseline Energy"), Working.Energy, 3);
 	TestEqual(TEXT("Working baseline Hand count"), Working.HandCards.Num(), 1);
 	TestEqual(TEXT("Working baseline Enemy HP"), Working.Enemy.HP, 100);
-	TestFalse(TEXT("Working baseline Enemy alive"), Working.Enemy.bDead);
+	TestFalse(TEXT("Working baseline Enemy is not dead"), Working.Enemy.bDead);
 	TestTrue(TEXT("Displayed outcome remains non-terminal before playback"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::None);
 
 	if (!TestTrue(TEXT("Complete CardPlayed"), Fixture.CompleteCurrentPlayback()))
@@ -323,21 +323,11 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Displayed terminal Enemy dead"), Fixture.ViewModel->Enemy.bDead);
 	TestEqual(TEXT("Displayed terminal Discard count"), Fixture.ViewModel->DiscardCount, 1);
 
-	FPresentationStateSnapshot CompletedWorking;
-	if (!TestTrue(
-		TEXT("Completed Victory WorkingSnapshot exists"),
-		Fixture.Controller->TryGetWorkingSnapshotForTesting(CompletedWorking)
-	))
-	{
-		return false;
-	}
-	TestTrue(TEXT("Completed WorkingSnapshot enters Victory"), CompletedWorking.BattleState == EBattleState::Victory);
-	TestTrue(TEXT("Completed WorkingSnapshot outcome Victory"), CompletedWorking.Outcome == EBattleHUDOutcome::Victory);
-	TestFalse(TEXT("Completed WorkingSnapshot cannot end turn"), CompletedWorking.bCanEndTurn);
-	TestEqual(TEXT("Completed WorkingSnapshot reconciles terminal Energy"), CompletedWorking.Energy, 0);
-	TestEqual(TEXT("Completed WorkingSnapshot Enemy HP"), CompletedWorking.Enemy.HP, 0);
-	TestTrue(TEXT("Completed WorkingSnapshot Enemy dead"), CompletedWorking.Enemy.bDead);
-	TestEqual(TEXT("Completed WorkingSnapshot Discard count"), CompletedWorking.DiscardCount, 1);
+	FPresentationStateSnapshot ReleasedWorking;
+	TestFalse(
+		TEXT("Caught-up Controller releases WorkingSnapshot after terminal Envelope completion"),
+		Fixture.Controller->TryGetWorkingSnapshotForTesting(ReleasedWorking)
+	);
 
 	TestTrue(
 		TEXT("Victory Envelope reducer-owned state matches FinalSnapshot"),
