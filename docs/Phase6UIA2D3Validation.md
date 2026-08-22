@@ -2,116 +2,141 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-4**.
+Status: **PRE-HARDENING VALIDATED / CURRENT HEAD REVALIDATION PENDING**.
 
-Validated A2D-3 source base:
+## Historical validated baseline
 
-```text
-d33d6815d78253a094e8f56448fe32085e191974
-docs: record UI-A2D3 static source review
-```
-
-At review time `main` is `9efe59f6ef68cbc30d12bae4b403b0ceb39ea946`; the only change after the A2D-3 source-review commit is the Phase 7A workflow registration, so no A2D-3 runtime/test source changed after the reviewed A2D-3 base.
-
-This record captures the user-reported UE5.8 validation result for A2D-3.
-
-## Focused Automation
-
-Prefix:
+The original A2D-3 implementation was validated in UE5.8 with:
 
 ```text
-SlayTheSpireDemo.Phase6UIA2D3
+Phase6UIA2D3 focused Automation   PASS 4/4
+Phase6R affected regression       PASS 88/88
+UE5.8 Editor build                PASS through Phase6R prerequisite
 ```
 
-Expected and reported result:
+That result remains a valid historical result for the pre-hardening A2D-3 source base. It must not be presented as validation of the later hardening commits listed below until the gates are rerun.
+
+## Post-validation hardening
+
+A follow-up A2D review identified and fixed seven boundary issues:
 
 ```text
-Discovered: 4
-Succeeded:  4
-Failed:     0
-NotRun:     0
+1. supplied-but-invalid non-null Status Source could collapse to NAME_None
+2. Controller did not validate Status SourcePresentationId
+3. Controller did not revalidate create/remove Description boundaries
+4. frozen Status baseline did not explicitly reject duplicate StatusId
+5. malformed/stale Status record could reach Blueprint before reducer validation
+6. structurally invalid stale Status instance could be classified as NoOp
+7. Controller bootstrap needed an explicit stale-ViewModel repair/ownership contract
 ```
 
-Top-level tests:
+Runtime fix commits:
 
 ```text
-SlayTheSpireDemo.Phase6UIA2D3.Snapshot.RuntimeSequenceSorting
-SlayTheSpireDemo.Phase6UIA2D3.Playback.StatusLifecycleReducer
-SlayTheSpireDemo.Phase6UIA2D3.Safety.StaleRuntimeSequenceCollapses
-SlayTheSpireDemo.Phase6UIA2D3.Safety.AmountMismatchCollapses
+9ba552e1  fix(ui-a2d): reject invalid non-null status sources
+adc82508  fix(ui-a2d): validate stale status identity before no-op
+6c0b2d47  fix(ui-a2d): reject duplicate status ids at freeze boundary
+82b36508  fix(ui-a2d): prevalidate status history before playback
 ```
 
-Result: **PASS (4/4)**.
-
-## Affected regression gate
-
-The Phase6R aggregate gate includes:
+Test hardening commits:
 
 ```text
-Phase5          13
-Phase6A         23
-Phase6B         12
-Phase6C          5
-Phase6UIA2A      8
-Phase6UIA2B      8
-Phase6UIA2C      8
-Phase6UIA2D1     3
-Phase6UIA2D2     4
-Phase6UIA2D3     4
-------------------
-Total           88
+6114c8e8  test(ui-a2d): distinguish invalid stale status identity from no-op
+9fd6701a  test(ui-a2d): cover invalid supplied status source
+79dff285  test(ui-a2d): lock hardened status playback boundaries
 ```
 
-Reported result: **PASS (88/88)**.
+## Hardened contracts
 
-The Phase6R workflow builds `SlayTheSpireDemoEditor Win64 Development` using the configured UE5.8 toolchain before running the regression prefixes. A successful 88/88 execution therefore also satisfies the A2D-3 Editor-build prerequisite.
+### Source identity
 
-## Validated A2D-3 contract
+Only a genuine `Source == nullptr` may freeze to `SourcePresentationId == NAME_None`.
+A supplied non-null Source must be valid, belong to the authoritative battle participant set, and resolve a non-empty PresentationId.
 
-The validated source covers:
+The Controller independently validates a historical `SourcePresentationId` as either `NAME_None` or one of the participant IDs already frozen in the WorkingSnapshot.
+
+### Description boundary
+
+The producer and reducer now both enforce:
 
 ```text
-FBattleHUDStatusView.RuntimeSequence
-Gameplay uint64 -> Presentation int64 guard
-FinalSnapshot RuntimeSequence sorting
-StatusChanged visible playback participation
-WorkingPresentationSnapshot status reducer
-exact StatusId + RuntimeSequence identity
-AmountBefore chain validation
-create / increase / reduce / remove historical projection
-stale RuntimeSequence mismatch -> FinalSnapshot collapse
-amount mismatch -> FinalSnapshot collapse
-Presentation mismatch does not mutate Gameplay
-Presentation mismatch does not manufacture ResolutionFault
+create -> DescriptionBefore == Empty
+remove -> DescriptionAfter  == Empty
 ```
 
-## Post-validation review notes
+Empty authored descriptions outside those structural boundaries remain legal.
 
-A follow-up A2D1-A2D3 source review found three defensive-hardening opportunities that do not invalidate the successful validation result:
+### Frozen status uniqueness
+
+The freeze boundary now rejects duplicate `StatusId` in addition to the existing RuntimeSequence validity and strict ordering checks.
+
+### Playback preflight
+
+`StatusChanged` is now preflighted against a copy of `WorkingPresentationSnapshot` before Blueprint playback.
 
 ```text
-1. Status reducer payload validation does not currently validate SourcePresentationId.
-2. Reducer validation relies on the producer for create DescriptionBefore == Empty and
-   remove DescriptionAfter == Empty instead of re-validating those payload boundaries.
-3. Frozen Status snapshots validate RuntimeSequence ordering/uniqueness, while duplicate
-   StatusId rejection is enforced by the reducer rather than explicitly at freeze time.
+record arrives
+-> copy WorkingSnapshot
+-> apply/validate Status reducer on the copy
+-> failure: collapse directly to Envelope.FinalSnapshot, do not call Blueprint
+-> success: offer Record to Blueprint
+-> callback / native fallback / timeout
+-> apply the same reducer to the real WorkingSnapshot
 ```
 
-These should be considered before A2D-5 combined acceptance and can be covered with focused malformed-history tests.
+The visible animation still runs against the pre-record displayed state; the real historical state advances only after playback completion.
 
-## Phase boundary
+### Stale mutation classification
 
-A2D-3 is closed at the C++/Automation level.
-
-The next implementation slice is:
+`ReduceStatusCommit` and `RemoveStatusCommit` now require a complete historical identity before checking whether the exact instance is still a member of the Container.
 
 ```text
-A2D-4
-FTerminalPresentationPayload
-FResolutionFaultPresentationPayload
-Victory / Defeat / ResolutionFault formal visible playback
-terminal WorkingSnapshot reducer
-terminal ViewModel transition timing
+invalid Definition / StatusId / RuntimeSequence / Amount -> Invalid
+valid old instance absent from Container                    -> NoOp
+valid current exact instance                               -> normal commit path
 ```
 
-Blueprint integration and PIE smoke remain intentionally deferred until the complete A2D C++ presentation pipeline is ready for combined acceptance.
+### Controller bootstrap
+
+Controller initialization explicitly takes Presentation display ownership when committed Presentation is active and idempotently applies the latest frozen baseline before advancing Resolution watermarks. A stale or rebuilt ViewModel is therefore repaired instead of being left behind a watermark that suppresses older Envelopes.
+
+## Test coverage changes
+
+The existing top-level prefixes/counts were preserved; coverage was extended inside the current tests rather than adding new top-level tests.
+
+```text
+Phase6UIA2D1 expected: 3
+Phase6UIA2D2 expected: 4
+Phase6UIA2D3 expected: 4
+Phase6R total expected: 88
+```
+
+New coverage includes:
+
+```text
+valid stale instance -> NoOp
+structurally invalid stale instance -> Invalid
+invalid non-null Source -> unpublished history invalidated
+fake SourcePresentationId -> pre-playback collapse
+create with non-empty DescriptionBefore -> pre-playback collapse
+remove with non-empty DescriptionAfter -> pre-playback collapse
+duplicate frozen StatusId -> freeze failure
+stale RuntimeSequence -> no Blueprint call, immediate collapse
+AmountBefore mismatch -> no Blueprint call, immediate collapse
+stale/rebuilt ViewModel -> Controller bootstrap reapplies baseline
+```
+
+## Current validation requirement
+
+The post-hardening current head must be revalidated with:
+
+```text
+UE5.8 Editor build
+SlayTheSpireDemo.Phase6UIA2D1  3/3
+SlayTheSpireDemo.Phase6UIA2D2  4/4
+SlayTheSpireDemo.Phase6UIA2D3  4/4
+Phase6R aggregate             88/88
+```
+
+Do not promote the hardened current head back to **VALIDATED / READY FOR A2D-4** until these gates pass.
