@@ -2,23 +2,32 @@
 
 Date: **2026-08-22**
 
-Status: **REVIEW FIX APPLIED / STATIC REVIEW COMPLETE / UE5.8 REVALIDATION PENDING**.
+Status: **VALIDATED / FOCUSED UE5.8 AUTOMATION PASSED 6/6**.
 
-A2D5-6 `Terminal.Defeat` is validated and sealed. Current validated baseline:
+A2D5-6 `Terminal.Defeat` was already validated and sealed. The owner has now rerun the A2D5 focused gate after the Presentation-availability review fix and confirmed success.
+
+Current focused evidence:
 
 ```text
 UE5.8 Editor Development build   PASS
-A2D5 focused                    PASS 5/5
+A2D5 focused                    PASS 6/6
+A2D5-7 Terminal.ResolutionFault PASS
+```
+
+The last separately confirmed aggregate baseline remains:
+
+```text
 Phase6R aggregate               PASS 99/99
 Shipping exclusion              PASS
 ```
 
-Current gate values:
+Current aggregate workflow target:
 
 ```text
-A2D5 focused expected = 6
 Phase6R expected total = 100
 ```
+
+Do not promote that expected value to confirmed `100/100` until the separate owner aggregate run is explicitly reported.
 
 ## Scenario
 
@@ -44,7 +53,7 @@ EnergyChanged(3 -> 0)
 → ResolutionFault
 ```
 
-The rejected EnemyTurn batch must produce no partial `Damage`, `BlockChanged`, `CardZoneChanged`, `DeckShuffled`, `StatusChanged`, `Victory`, or `Defeat` records.
+The rejected EnemyTurn batch produces no partial `Damage`, `BlockChanged`, `CardZoneChanged`, `DeckShuffled`, `StatusChanged`, `Victory`, or `Defeat` records.
 
 ## Framework fault diagnostics
 
@@ -88,19 +97,19 @@ ResolutionFault completion
     → exact FinalSnapshot reconciliation
 ```
 
-Duplicate completion of the same terminal playback token is required to be a NoOp.
+Duplicate completion of the same terminal playback token is a NoOp.
 
 ## Presentation-failure negative case
 
-The same top-level test also verifies:
+The same top-level test verifies:
 
 ```text
 Presentation freeze failure != Gameplay ResolutionFault
 ```
 
-A forced Presentation snapshot freeze failure must result in Presentation unavailability while Gameplay stays in `PlayerTurn` and ActionQueue remains healthy.
+A forced Presentation snapshot freeze failure results in Presentation unavailability while Gameplay stays in `PlayerTurn` and ActionQueue remains healthy.
 
-### Defect found in first UE5.8 6-test run
+### Defect found in first UE5.8 six-test run
 
 The first run failed only at:
 
@@ -108,19 +117,19 @@ The first run failed only at:
 Presentation freeze failure exposes PresentationUnavailable UI
 ```
 
-The underlying Gameplay state was correct and Presentation was marked unavailable, but the public read edge was suppressed because the old dedupe key only considered:
+The underlying Gameplay state was correct and Presentation was marked unavailable, but the public read edge was suppressed because the old dedupe key considered only:
 
 ```text
 BattleId
 StateRevision
 ```
 
-The freeze failure changes Presentation availability without mutating Gameplay revision, so Controller/ViewModel received no `OnReadStateReady` notification.
+Freeze failure changes Presentation availability without mutating Gameplay revision, so Controller/ViewModel originally received no `OnReadStateReady` notification.
 
 Production fix:
 
 ```text
-ReadStateReady dedupe now also tracks the last published Presentation availability.
+ReadStateReady dedupe also tracks the last published Presentation availability.
 ```
 
 Therefore:
@@ -147,6 +156,8 @@ ActionQueue remains healthy
 Outcome remains None
 ```
 
+The owner-confirmed rerun passed the complete focused gate after this fix.
+
 ## Consistency checks
 
 ```text
@@ -155,4 +166,14 @@ AssertCapturedEnvelopeOrder()
 AssertControllerPlaybackMatchesCapturedHistory()
 ```
 
-The review fix changes only read-edge availability identity plus test diagnostic matching. It does not change ActionQueue semantics, terminal reducer behavior, Record taxonomy, Controller token protocol, or test discovery counts.
+The review fix changed only read-edge availability identity plus test diagnostic matching. It did not change ActionQueue semantics, terminal reducer behavior, Record taxonomy, Controller token protocol, or test discovery counts.
+
+## Next step
+
+A2D5 focused acceptance is complete. The next source/asset phase is not unfinished A3 Preview work. After the separate `Phase6R 100/100 + Shipping` closure evidence is recorded, proceed to:
+
+```text
+UI-A2E — Unified Blueprint Playback & PIE Acceptance
+```
+
+See `docs/Phase6UIA2EImplementation.md` for the locked A2E -> A3 sequence.
