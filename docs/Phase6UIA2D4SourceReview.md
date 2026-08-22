@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **STATIC REVIEW COMPLETE / FOCUSED UE5.8 VALIDATED / FULL REGRESSION PENDING**.
+Status: **VALIDATED / READY FOR A2D-5**.
 
 ## Review scope
 
@@ -24,7 +24,7 @@ A2A generic playback probe migration
 focused Automation and Phase6R count update
 ```
 
-A2D-1 through A2D-3 remain the validated baseline and were not redesigned.
+A2D-1 through A2D-3 remained the validated baseline and were not redesigned.
 
 ## 1. Type ownership
 
@@ -43,7 +43,7 @@ FaultExecutedActionCount
 FaultLastActionName
 ```
 
-were removed from runtime source. Repository search found no remaining runtime/test references to those legacy root field names; only design/history documentation still mentions them as removed fields.
+were removed from runtime source. Repository review found no remaining runtime/test references to those legacy root field names; only design/history documentation may mention them as removed fields.
 
 ## 2. Producer review
 
@@ -145,7 +145,7 @@ The real WorkingSnapshot is not advanced during terminal animation.
 
 Pre-A2D4 A2A tests used `ResolutionFault` as a generic visible-record probe. With formal terminal semantics that would create invalid synthetic history.
 
-Those generic probes were migrated to no-state-change `BlockChanged` records. Real framework fault tests remain real `ResolutionFault` scenarios and now inspect the typed payload where relevant.
+Those generic probes were migrated to no-state-change `BlockChanged` records. Real framework fault tests remain real `ResolutionFault` scenarios and inspect the typed payload where relevant.
 
 No A2A top-level test count changed.
 
@@ -162,7 +162,7 @@ Playback.TerminalTimeout
 Safety.PreflightFallbackSkip
 ```
 
-The source coverage includes:
+Coverage includes:
 
 ```text
 typed producer identity/diagnostics
@@ -191,41 +191,41 @@ NotRun                          0
 EditorExit                      0
 ```
 
-This confirms the A2D-4 runtime/test source compiles under UE5.8 and the focused terminal contract is executable, not merely statically plausible.
+## 10. Full regression result
 
-## 10. CI contract
+The updated Phase6R gate includes A2D-4 and retains the Shipping exclusion job.
 
-Dedicated A2D-4 gate:
+User-reported successful full workflow result:
 
 ```text
-SlayTheSpireDemo.Phase6UIA2D4
-ExpectedCount = 6
+Phase6R aggregate       PASS 94/94
+A2D1                    PASS 3/3
+A2D2                    PASS 4/4
+A2D3                    PASS 4/4
+A2D4                    PASS 6/6
+Failed                  0
+NotRun                  0
+Shipping exclusion      PASS
 ```
 
-Updated Phase6R total:
+This validates that the A2D-4 changes did not regress the earlier Phase 5 / Phase 6 / UI-A2 slices covered by Phase6R and that the Editor-only test module remains excluded from Shipping artifacts.
+
+## 11. Final review result
+
+No unresolved A2D-4 blocker remains in the reviewed scope.
+
+The implementation has now passed both source review and authoritative UE5.8 execution gates:
 
 ```text
-94
-```
-
-The Shipping exclusion job remains chained after regression success.
-
-## 11. Remaining validation
-
-The focused gate is complete, but A2D-4 is not promoted to A2D-5 yet because shared regression coverage still needs a fresh run against the A2D-4 source.
-
-Required remaining gates:
-
-```text
-A2D1 3/3
-A2D2 4/4
-A2D3 4/4
-Phase6R 94/94
+focused A2D4 6/6
+full Phase6R 94/94
 Shipping exclusion PASS
 ```
 
-After those pass, status may move to:
+A2D-4 is sealed as:
 
 ```text
 VALIDATED / READY FOR A2D-5
 ```
+
+A2D-5 should treat A2D-1 through A2D-4 as the validated incoming baseline and reopen them only for a demonstrated cross-slice invariant defect.
