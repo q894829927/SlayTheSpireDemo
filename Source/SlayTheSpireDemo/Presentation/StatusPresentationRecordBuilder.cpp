@@ -59,9 +59,17 @@ namespace
 			return false;
 		}
 
-		if (IsValid(Source) && (!Battle->TryResolveCombatantPresentationId(Source, OutSourceId) || OutSourceId.IsNone()))
+		// A genuinely absent Source is the only case that may freeze NAME_None.
+		// A supplied-but-invalid UObject must not be silently reclassified as a
+		// system/anonymous source after Gameplay has committed.
+		if (Source != nullptr)
 		{
-			return false;
+			if (!IsValid(Source)
+				|| !Battle->TryResolveCombatantPresentationId(Source, OutSourceId)
+				|| OutSourceId.IsNone())
+			{
+				return false;
+			}
 		}
 
 		return Battle->TryResolveCombatantPresentationId(Target, OutTargetId)
