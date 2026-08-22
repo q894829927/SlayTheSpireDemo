@@ -258,19 +258,29 @@ namespace Phase6UIA2D5Test
 		}
 	}
 
-	void FAcceptanceFixture::ResetAcceptanceCapture()
+	bool FAcceptanceFixture::ResetAcceptanceCapture()
 	{
+		if (!IsValid(Battle)
+			|| !IsValid(Controller)
+			|| Controller->IsWaitingForCompletionForTesting()
+			|| Controller->GetBacklogCountForTesting() != 0)
+		{
+			return false;
+		}
+
+		FPresentationStateSnapshot LatestBaseline;
+		if (!Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
+		{
+			return false;
+		}
+
 		CapturedEnvelopes.Reset();
 		if (IsValid(Widget))
 		{
 			Widget->ResetCapture();
 		}
-
-		FPresentationStateSnapshot LatestBaseline;
-		if (IsValid(Battle) && Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
-		{
-			NextEnvelopeBaseline = LatestBaseline;
-		}
+		NextEnvelopeBaseline = LatestBaseline;
+		return true;
 	}
 
 	bool FAcceptanceFixture::CompleteCurrentPlayback()
