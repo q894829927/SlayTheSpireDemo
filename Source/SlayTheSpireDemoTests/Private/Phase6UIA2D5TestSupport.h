@@ -38,7 +38,7 @@ namespace Phase6UIA2D5Test
 
 		bool IsReady() const;
 		void Flush() const;
-		void ResetAcceptanceCapture();
+		bool ResetAcceptanceCapture();
 		bool CompleteCurrentPlayback();
 		bool DrainPlayback(int32 MaxCompletions = 128);
 
