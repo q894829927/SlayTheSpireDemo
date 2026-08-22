@@ -1,6 +1,6 @@
 #include "Phase6UIA2D5TestTypes.h"
 
-bool UPhase6UIA2D5PlaybackWidget::PlayPresentationRecord_Implementation(
+bool UPhase6UIA2D5PlaybackWidget::BeginPresentationRecordPlayback_Implementation(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token
 )
