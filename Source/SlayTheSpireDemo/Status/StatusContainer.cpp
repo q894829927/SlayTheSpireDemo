@@ -165,19 +165,6 @@ FStatusMutationResult UStatusContainer::ReduceStatusCommit(
 		return Result;
 	}
 
-	const int32 Index = FindExactStatusIndex(ExpectedInstance);
-	if (Index == INDEX_NONE)
-	{
-		Result.Outcome = EStatusMutationOutcome::NoOp;
-		Result.StatusId = ExpectedInstance->GetStatusId();
-		Result.RuntimeSequence = ExpectedInstance->GetRuntimeSequence();
-		Result.AmountBefore = FMath::Max(ExpectedInstance->GetAmount(), 0);
-		Result.AmountAfter = Result.AmountBefore;
-		Result.EffectiveInstance = ExpectedInstance;
-		Result.EffectiveDefinition = ExpectedInstance->GetDefinition();
-		return Result;
-	}
-
 	UStatusData* EffectiveDefinition = ExpectedInstance->GetDefinition();
 	const int32 OldAmount = ExpectedInstance->GetAmount();
 	if (!IsValid(EffectiveDefinition)
@@ -185,7 +172,20 @@ FStatusMutationResult UStatusContainer::ReduceStatusCommit(
 		|| ExpectedInstance->GetRuntimeSequence() == 0
 		|| OldAmount <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Status] ReduceStatus rejected: exact runtime instance is structurally invalid."));
+		UE_LOG(LogTemp, Warning, TEXT("[Status] ReduceStatus rejected: runtime instance has no complete historical identity."));
+		return Result;
+	}
+
+	const int32 Index = FindExactStatusIndex(ExpectedInstance);
+	if (Index == INDEX_NONE)
+	{
+		Result.Outcome = EStatusMutationOutcome::NoOp;
+		Result.StatusId = ExpectedInstance->GetStatusId();
+		Result.RuntimeSequence = ExpectedInstance->GetRuntimeSequence();
+		Result.AmountBefore = OldAmount;
+		Result.AmountAfter = OldAmount;
+		Result.EffectiveInstance = ExpectedInstance;
+		Result.EffectiveDefinition = EffectiveDefinition;
 		return Result;
 	}
 
@@ -260,19 +260,6 @@ FStatusMutationResult UStatusContainer::RemoveStatusCommit(UStatusInstance* Expe
 		return Result;
 	}
 
-	const int32 Index = FindExactStatusIndex(ExpectedInstance);
-	if (Index == INDEX_NONE)
-	{
-		Result.Outcome = EStatusMutationOutcome::NoOp;
-		Result.StatusId = ExpectedInstance->GetStatusId();
-		Result.RuntimeSequence = ExpectedInstance->GetRuntimeSequence();
-		Result.AmountBefore = FMath::Max(ExpectedInstance->GetAmount(), 0);
-		Result.AmountAfter = Result.AmountBefore;
-		Result.EffectiveInstance = ExpectedInstance;
-		Result.EffectiveDefinition = ExpectedInstance->GetDefinition();
-		return Result;
-	}
-
 	UStatusData* EffectiveDefinition = ExpectedInstance->GetDefinition();
 	const int32 OldAmount = ExpectedInstance->GetAmount();
 	if (!IsValid(EffectiveDefinition)
@@ -280,7 +267,20 @@ FStatusMutationResult UStatusContainer::RemoveStatusCommit(UStatusInstance* Expe
 		|| ExpectedInstance->GetRuntimeSequence() == 0
 		|| OldAmount <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Status] RemoveStatus rejected: exact runtime instance is structurally invalid."));
+		UE_LOG(LogTemp, Warning, TEXT("[Status] RemoveStatus rejected: runtime instance has no complete historical identity."));
+		return Result;
+	}
+
+	const int32 Index = FindExactStatusIndex(ExpectedInstance);
+	if (Index == INDEX_NONE)
+	{
+		Result.Outcome = EStatusMutationOutcome::NoOp;
+		Result.StatusId = ExpectedInstance->GetStatusId();
+		Result.RuntimeSequence = ExpectedInstance->GetRuntimeSequence();
+		Result.AmountBefore = OldAmount;
+		Result.AmountAfter = OldAmount;
+		Result.EffectiveInstance = ExpectedInstance;
+		Result.EffectiveDefinition = EffectiveDefinition;
 		return Result;
 	}
 
