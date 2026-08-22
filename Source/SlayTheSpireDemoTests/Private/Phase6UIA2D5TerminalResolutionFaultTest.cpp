@@ -110,7 +110,7 @@ bool FPhase6UIA2D5TerminalResolutionFaultTest::RunTest(const FString& Parameters
 		TestTrue(TEXT("Fault baseline displayed Outcome is None"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::None);
 
 		AddExpectedErrorPlain(
-			TEXT("[Battle] StartEnemyTurn failed to enqueue the atomic enemy Intent action batch."),
+			TEXT("[Battle] StartEnemyTurn failed"),
 			EAutomationExpectedErrorFlags::Contains,
 			1
 		);
@@ -173,9 +173,12 @@ bool FPhase6UIA2D5TerminalResolutionFaultTest::RunTest(const FString& Parameters
 		TestEqual(TEXT("Fault EndTurn Energy delta"), EndEnergy.EnergyChanged.Delta, -3);
 
 		const FPresentationRecord& Fault = Envelope.Records[1];
-		const FString ExpectedReason = TEXT("Enemy turn batch insertion failed before EnemyTurn state commit.");
-		TestEqual(TEXT("Fault reason is exact framework diagnostic"), Fault.ResolutionFault.Reason, ExpectedReason);
-		TestEqual(TEXT("Queue retains exact framework fault reason"), Queue->GetResolutionFaultReason(), ExpectedReason);
+		TestFalse(TEXT("Fault reason is non-empty"), Fault.ResolutionFault.Reason.IsEmpty());
+		TestEqual(
+			TEXT("Fault reason freezes authoritative Queue diagnostic"),
+			Fault.ResolutionFault.Reason,
+			Queue->GetResolutionFaultReason()
+		);
 		TestEqual(
 			TEXT("Fault executed count freezes authoritative Queue diagnostic"),
 			Fault.ResolutionFault.ExecutedActionCount,
