@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **A2D5-1 VALIDATED / A2D5-2 IMPLEMENTED / UE5.8 VALIDATION PENDING**.
+Status: **A2D5-1 VALIDATED / A2D5-2 IMPLEMENTED + REVIEW-HARDENED / UE5.8 VALIDATION PENDING**.
 
 Validated baseline entering A2D5-2:
 
@@ -203,6 +203,33 @@ next Baseline revision == previous FinalSnapshot revision
 
 Captured Envelopes are never sorted before comparison.
 
+A2D5-2 review additionally introduced:
+
+```text
+AssertControllerPlaybackMatchesCapturedHistory()
+```
+
+Implementation:
+
+```text
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5PlaybackAssertions.cpp
+```
+
+It flattens captured Records strictly in producer/capture order without sorting and requires the real playback widget to match every record and token by:
+
+```text
+Type
+BattleId
+ResolutionId
+PresentationSequence
+PlaybackToken.BattleId
+PlaybackToken.ResolutionId
+PlaybackToken.PresentationSequence
+positive LocalPlaybackGeneration
+```
+
+Empty Envelopes contribute zero expected playback calls and therefore remain legal.
+
 ---
 
 ## 8. A2D5-1 validation issues found and fixed
@@ -238,7 +265,7 @@ REAL CONTROLLER PLAYBACK CAPTURE READY
 
 ## 10. A2D5-2 — StatusLifecycle implementation
 
-Added top-level Automation test:
+Top-level Automation test:
 
 ```text
 Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5StatusLifecycleTest.cpp
@@ -308,61 +335,89 @@ The fixture intentionally uses zero enemy damage and no cards for this scenario 
 
 The test accepts additional non-status Records/Envelopes produced by that macro flow and validates every captured Envelope independently.
 
-### 10.3 Stale exact-instance isolation
+### 10.3 Review fix — stale exact-instance isolation uses a real pending batch
 
-A `UReduceStatusAction` targeting exact Weak#A is created and retained while Weak#A still exists.
+The original draft created and retained a stale `UReduceStatusAction` while Weak#A existed, but did not add it to a queue until after Weak#B existed. Review classified that as insufficiently authentic.
 
-Only after:
-
-```text
-Weak#A removed
-→ Weak#B recreated with same StatusId and newer RuntimeSequence
-```
-
-is the retained Action executed in a new real System Resolution.
-
-Important boundary:
+The hardened version now does:
 
 ```text
-old Action keeps exact Weak#A pointer
-new current Resolution writer is assigned at execution
-no expired writer is reused
+Weak#A exists
+→ create independent holding UBattleActionQueue
+→ create stale UReduceStatusAction with holding queue as Outer
+→ AddToBack(stale Action) while Weak#A is still authoritative
+→ verify holding queue PendingCount == 1
+→ Weak#A removed through normal battle queue
+→ Weak#B recreated through normal battle queue
+→ verify stale Action is still pending
+→ begin a new formal System Presentation Resolution
+→ assign that current writer to the already-pending stale Action
+→ start holding queue
+→ exact-instance membership check returns Gameplay NoOp
 ```
 
-Expected result:
+This proves the stale mutation comes from a real queued Action identity while still avoiding reuse of an expired Presentation writer.
+
+### 10.4 Review fix — empty stale Resolution publication is optional
+
+The stale contract is now only:
 
 ```text
 Gameplay mutation = NoOp
-Weak#B amount remains 2
-Weak#B identity remains unchanged
-no seventh StatusChanged Record
-no visible Controller playback call for the no-op
+Weak#B remains amount 2
+Weak#B concrete identity remains unchanged
+no additional Weak StatusChanged Record
+no visible Controller playback call for the stale mutation
 ```
 
-An empty formal Resolution Envelope may still seal and publish; the acceptance rule is **no committed mutation means no Presentation Record**, not "no Envelope object may exist".
+The test no longer requires a new Envelope to exist.
 
-### 10.4 Per-Envelope consistency
+If the current producer publishes one or more Envelopes during the stale finalization edge, every newly observed Envelope must contain zero Records. A producer that suppresses an empty Envelope remains valid.
 
-At the end of the scenario, every captured Envelope is checked separately:
+### 10.5 Review fix — status ordering is exercised, not vacuous
+
+Before the formal Weak lifecycle capture starts, the test creates a persistent non-decaying `AnchorStatus` and drains its real Controller playback.
+
+It then calls `ResetAcceptanceCapture()` so the formal A2D5-2 baseline contains:
 
 ```text
-Capture.Baseline
-→ production reducer replay for Capture.Envelope.Records only
-→ reducer-owned result
-== Capture.Envelope.FinalSnapshot reducer-owned fields
+AnchorStatus#A
 ```
 
-The test also checks monotonic `(BattleId, ResolutionId)` capture order and does not sort status history before comparing producer order.
+Weak#A and later Weak#B are created with newer RuntimeSequence values, producing real two-row arrays:
+
+```text
+AnchorStatus#A
+Weak#A
+```
+
+and later:
+
+```text
+AnchorStatus#A
+Weak#B
+```
+
+This makes both the real ViewModel checks and the per-Envelope `CompareStatusArrays()` RuntimeSequence ordering assertions execute on arrays with more than one status.
+
+### 10.6 Review fix — Controller consumption order is checked directly
+
+At the end of the scenario, every captured Envelope is checked separately for reducer consistency and the real widget history is matched against the captured record stream without sorting.
+
+This proves:
+
+```text
+no missing playback Record
+no extra playback Record
+no cross-Envelope reordering
+no record/token identity mismatch
+```
+
+and supplements `AssertCapturedEnvelopeOrder()`, which only validates publication/capture order.
 
 ---
 
 ## 11. A2D5 focused gate and Phase6R discovery count
-
-Added:
-
-```text
-.github/workflows/ue-phase6uia2d5-tests.yml
-```
 
 Current A2D5 focused expectation:
 
@@ -371,7 +426,7 @@ SlayTheSpireDemo.Phase6UIA2D5
 Expected discovered tests = 1
 ```
 
-Phase6R now includes the A2D5 prefix with expected count 1.
+Phase6R includes the A2D5 prefix with expected count 1.
 
 Therefore, after A2D5-2 code is present but before execution:
 
@@ -384,17 +439,26 @@ Do **not** call this `95/95 PASS` until the updated aggregate workflow actually 
 
 ---
 
-## 12. Static review result for A2D5-2
+## 12. Static review result for hardened A2D5-2
+
+Review findings addressed:
+
+```text
+[fixed] stale NoOp no longer requires an Envelope
+[fixed] stale Action is truly pending while Weak#A still exists
+[fixed] Controller record/token order is compared to captured history
+[fixed] RuntimeSequence ordering is exercised with AnchorStatus + Weak
+```
 
 No new Presentation Record type, Gameplay Status mechanic, Recorder rule, Controller lifecycle protocol or runtime reducer behavior was added.
 
-No A2D1-A2D4 runtime code was modified for A2D5-2.
+No A2D1-A2D4 runtime code was modified for these fixes.
 
 Current status:
 
 ```text
 A2D5-1 VALIDATED
-A2D5-2 STATUS LIFECYCLE IMPLEMENTED
+A2D5-2 STATUS LIFECYCLE IMPLEMENTED + REVIEW-HARDENED
 STATIC REVIEW COMPLETE
 UE5.8 FOCUSED / UPDATED PHASE6R VALIDATION PENDING
 EXPECTED DISCOVERED TOTAL = 95
