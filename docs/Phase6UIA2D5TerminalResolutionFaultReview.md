@@ -2,32 +2,19 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / FOCUSED UE5.8 AUTOMATION PASSED 6/6**.
+Status: **VALIDATED / SEALED**.
 
-A2D5-6 `Terminal.Defeat` was already validated and sealed. The owner has now rerun the A2D5 focused gate after the Presentation-availability review fix and confirmed success.
+A2D5-6 `Terminal.Defeat` was already validated and sealed. The owner reran the A2D5 focused gate after the Presentation-availability review fix and confirmed success, then completed the expanded aggregate + Shipping closure.
 
-Current focused evidence:
+Final owner-confirmed evidence:
 
 ```text
 UE5.8 Editor Development build   PASS
 A2D5 focused                    PASS 6/6
 A2D5-7 Terminal.ResolutionFault PASS
-```
-
-The last separately confirmed aggregate baseline remains:
-
-```text
-Phase6R aggregate               PASS 99/99
+Phase6R aggregate               PASS 100/100
 Shipping exclusion              PASS
 ```
-
-Current aggregate workflow target:
-
-```text
-Phase6R expected total = 100
-```
-
-Do not promote that expected value to confirmed `100/100` until the separate owner aggregate run is explicitly reported.
 
 ## Scenario
 
@@ -156,7 +143,7 @@ ActionQueue remains healthy
 Outcome remains None
 ```
 
-The owner-confirmed rerun passed the complete focused gate after this fix.
+The owner-confirmed rerun passed the complete focused gate after this fix, and the final 100/100 aggregate plus Shipping gate also passed.
 
 ## Consistency checks
 
@@ -168,9 +155,11 @@ AssertControllerPlaybackMatchesCapturedHistory()
 
 The review fix changed only read-edge availability identity plus test diagnostic matching. It did not change ActionQueue semantics, terminal reducer behavior, Record taxonomy, Controller token protocol, or test discovery counts.
 
-## Next step
+## Closure / next step
 
-A2D5 focused acceptance is complete. The next source/asset phase is not unfinished A3 Preview work. After the separate `Phase6R 100/100 + Shipping` closure evidence is recorded, proceed to:
+A2D5 C++/Automation acceptance is complete and sealed.
+
+Proceed to:
 
 ```text
 UI-A2E — Unified Blueprint Playback & PIE Acceptance
