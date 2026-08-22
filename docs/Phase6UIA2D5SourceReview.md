@@ -2,9 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **A2D5-1 VALIDATED / READY FOR A2D5-2**.
+Status: **A2D5-1 VALIDATED / A2D5-2 IMPLEMENTED / UE5.8 VALIDATION PENDING**.
 
-Validated baseline after A2D5-1:
+Validated baseline entering A2D5-2:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -16,7 +16,7 @@ Phase6R aggregate               PASS 94/94
 Shipping exclusion              PASS
 ```
 
-A2D5-1 adds acceptance-test infrastructure only. It does not add a new Presentation Record, Gameplay mechanic, Controller lifecycle rule, or production reducer behavior.
+A2D5 remains a combined acceptance slice. A2D5-2 adds one top-level integration scenario and does not add a new runtime Presentation capability.
 
 ---
 
@@ -31,7 +31,7 @@ Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestTypes.cpp
 
 `UPhase6UIA2D5PlaybackWidget` records every visible `FPresentationRecord` and its corresponding `FPresentationPlaybackToken` while preserving the existing async accept/decline contract.
 
-This lets later A2D5 scenarios inspect the real Controller playback order instead of relying only on offline Record arrays.
+This lets A2D5 scenarios inspect the real Controller playback order instead of relying only on offline Record arrays.
 
 ---
 
@@ -56,8 +56,6 @@ UBattlePresentationController
 captured Resolution Envelopes
 ```
 
-The fixture starts a real battle with committed Presentation enabled, initializes the real Controller/ViewModel path, and captures published Envelopes only after the BattleStart baseline has stabilized.
-
 Each Envelope is stored with its own historical playback baseline:
 
 ```text
@@ -66,7 +64,7 @@ FCapturedEnvelope
 └── Envelope
 ```
 
-After capture, that Envelope's immutable `FinalSnapshot` becomes the baseline for the next captured Envelope. Independent Resolutions are therefore never flattened into one synthetic history.
+After capture, that Envelope's immutable `FinalSnapshot` becomes the baseline for the next captured Envelope. Independent Resolutions are never flattened into one synthetic history.
 
 `ResetAcceptanceCapture()` succeeds only when the Controller is caught up:
 
@@ -74,8 +72,6 @@ After capture, that Envelope's immutable `FinalSnapshot` becomes the baseline fo
 not waiting for completion
 AND backlog == 0
 ```
-
-This prevents tests from rebasing against a Gameplay snapshot that is newer than the displayed Controller state.
 
 ---
 
@@ -90,7 +86,7 @@ LastCapturedEnvelope()
 FindCapturedEnvelope(ResolutionId)
 ```
 
-Later acceptance scenarios can therefore exercise:
+Acceptance scenarios therefore exercise:
 
 ```text
 real Envelope delivery
@@ -125,9 +121,7 @@ Implementation:
 Source/SlayTheSpireDemo/Presentation/BattlePresentationControllerTesting.cpp
 ```
 
-It temporarily installs the supplied Baseline/Envelope into an isolated Controller harness and invokes the existing production `ApplyRecordToWorkingSnapshot()` reducer for every Record in order.
-
-The test module does not maintain a duplicate Damage/Block/Card/Energy/Zone/Shuffle/Status/Terminal reducer implementation.
+It invokes the existing production `ApplyRecordToWorkingSnapshot()` reducer for every Record in order. The test module does not maintain a duplicate reducer implementation.
 
 This remains restricted to `WITH_DEV_AUTOMATION_TESTS` and does not alter Shipping runtime behavior.
 
@@ -184,15 +178,7 @@ Selection, hover, LegalTargets, Widget bindings and other non-reducer-owned stat
 
 A2C intentionally does not emit `EnergyChanged` for terminal/fault normalization.
 
-Gameplay terminal paths may set:
-
-```text
-Victory          → Energy = 0
-Defeat           → Energy = 0
-ResolutionFault  → Energy = 0
-```
-
-while terminal reducers own only:
+Gameplay terminal paths may set Energy to zero while terminal reducers own only:
 
 ```text
 BattleState
@@ -200,9 +186,7 @@ Outcome
 bCanEndTurn
 ```
 
-Therefore terminal Envelopes may legitimately require FinalSnapshot reconciliation for exact Energy. The A2D5 consistency helper does not incorrectly require reduced terminal Energy to equal `FinalSnapshot.Energy`.
-
-Non-terminal Envelopes still require exact Energy equality.
+Therefore terminal Envelopes may legitimately require FinalSnapshot reconciliation for exact Energy. Non-terminal Envelopes still require exact Energy equality.
 
 ---
 
@@ -217,56 +201,210 @@ strictly increasing ResolutionId
 next Baseline revision == previous FinalSnapshot revision
 ```
 
-Captured Envelopes are never sorted before comparison. Later TurnCycle and other multi-Resolution scenarios must additionally verify real Controller playback order from the capture widget.
+Captured Envelopes are never sorted before comparison.
 
 ---
 
-## 8. Validation issues found and fixed
+## 8. A2D5-1 validation issues found and fixed
 
-The first UE5.8 regression build exposed a Unity-build-only test translation-unit collision: `Phase5RegressionTests.cpp` had a file-level `using namespace Phase5Regression;`, and Unity compilation made its `FFixture` collide with `Phase6UIA2AHardeningTest::FFixture`.
-
-The test module was therefore made non-Unity only:
+The first UE5.8 regression build exposed a Unity-build-only test translation-unit collision. The Editor Automation test module was made non-Unity only:
 
 ```text
 c4ed21daeaabaf6eab02ecf829242e3697269c64
 fix(tests): isolate automation cpp translation units
 ```
 
-This affects only the Editor Automation test module and does not alter runtime behavior.
-
-The next UE5.8 build exposed one incomplete-type compile error in A2D5 support: `IsValid(UDeckRuntime*)` required the full `UDeckRuntime` definition. The exact include was added:
+The next build exposed an incomplete `UDeckRuntime` type in A2D5 support. The exact include was added:
 
 ```text
 6baf3b62dc5ae8a752cafeaa8fc769334dca509e
 fix(ui-a2d5): include deck runtime in acceptance support
 ```
 
-No production Presentation contract change was required.
+After those fixes, the full Phase6R workflow passed 94/94 and Shipping exclusion passed. A2D5-1 is sealed.
 
 ---
 
-## 9. Final A2D5-1 validation
-
-After the two compile fixes above, the full Phase6R workflow was reported successful.
-
-Validated result:
-
-```text
-UE5.8 Editor Development build   PASS
-Phase6R aggregate               PASS 94/94
-Shipping exclusion              PASS
-```
-
-A2D5-1 adds no top-level Automation tests, so the aggregate discovery count remains **94** at this stage. The planned A2D5 scenario tests have not yet raised the expected total.
-
-No high-confidence A2D1-A2D4 production defect was found during A2D5-1.
-
-Final status:
+## 9. A2D5-1 final status
 
 ```text
 A2D5-1 VALIDATED
 ACCEPTANCE FIXTURE READY
 PER-ENVELOPE CONSISTENCY HELPER READY
 REAL CONTROLLER PLAYBACK CAPTURE READY
-READY FOR A2D5-2 STATUS LIFECYCLE
+```
+
+---
+
+## 10. A2D5-2 — StatusLifecycle implementation
+
+Added top-level Automation test:
+
+```text
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5StatusLifecycleTest.cpp
+
+SlayTheSpireDemo.Phase6UIA2D5.StatusLifecycle
+```
+
+The test runs one concrete `Weak` status through the complete committed lifecycle:
+
+```text
+Weak#A  0 → 2   Applied
+Weak#A  2 → 3   Increased
+Weak#A  3 → 2   Reduced
+Weak#A  2 → 1   TurnEndDecay
+Weak#A  1 → 0   Removed
+Weak#B  0 → 2   Applied
+```
+
+Required historical payload assertions include:
+
+```text
+StatusId
+RuntimeSequence
+AmountBefore / AmountAfter
+bCreated / bRemoved
+Reason
+DisplayName
+DescriptionBefore / DescriptionAfter
+bUseAtlasIcon
+UVOffset / UVScale
+TrimOffset / TrimScale
+```
+
+The first five commits must retain Weak#A's exact RuntimeSequence. Recreated Weak#B must have a strictly newer RuntimeSequence.
+
+### 10.1 Real Controller timing
+
+Applied / Increased / Reduced / Removed paths run through the real async Controller widget.
+
+The test explicitly checks that Gameplay commits first while the displayed ViewModel remains at its old historical state until the current PlaybackToken completes.
+
+Examples:
+
+```text
+Gameplay Weak amount 2 → 3
+while playback active:
+    ViewModel Weak amount remains 2
+completion token:
+    ViewModel Weak amount becomes 3
+```
+
+and:
+
+```text
+Gameplay removes Weak#A
+while Removed playback active:
+    ViewModel still shows Weak#A amount 1
+completion token:
+    ViewModel removes the row
+```
+
+### 10.2 Real TurnEndDecay
+
+Turn-end decay is produced through the real `RequestEndPlayerTurn()` macro flow, not by manually fabricating a `StatusChanged` Record.
+
+The fixture intentionally uses zero enemy damage and no cards for this scenario so unrelated gameplay remains minimal while the real EndTurn/EnemyTurn/PlayerTurnStart progression still executes.
+
+The test accepts additional non-status Records/Envelopes produced by that macro flow and validates every captured Envelope independently.
+
+### 10.3 Stale exact-instance isolation
+
+A `UReduceStatusAction` targeting exact Weak#A is created and retained while Weak#A still exists.
+
+Only after:
+
+```text
+Weak#A removed
+→ Weak#B recreated with same StatusId and newer RuntimeSequence
+```
+
+is the retained Action executed in a new real System Resolution.
+
+Important boundary:
+
+```text
+old Action keeps exact Weak#A pointer
+new current Resolution writer is assigned at execution
+no expired writer is reused
+```
+
+Expected result:
+
+```text
+Gameplay mutation = NoOp
+Weak#B amount remains 2
+Weak#B identity remains unchanged
+no seventh StatusChanged Record
+no visible Controller playback call for the no-op
+```
+
+An empty formal Resolution Envelope may still seal and publish; the acceptance rule is **no committed mutation means no Presentation Record**, not "no Envelope object may exist".
+
+### 10.4 Per-Envelope consistency
+
+At the end of the scenario, every captured Envelope is checked separately:
+
+```text
+Capture.Baseline
+→ production reducer replay for Capture.Envelope.Records only
+→ reducer-owned result
+== Capture.Envelope.FinalSnapshot reducer-owned fields
+```
+
+The test also checks monotonic `(BattleId, ResolutionId)` capture order and does not sort status history before comparing producer order.
+
+---
+
+## 11. A2D5 focused gate and Phase6R discovery count
+
+Added:
+
+```text
+.github/workflows/ue-phase6uia2d5-tests.yml
+```
+
+Current A2D5 focused expectation:
+
+```text
+SlayTheSpireDemo.Phase6UIA2D5
+Expected discovered tests = 1
+```
+
+Phase6R now includes the A2D5 prefix with expected count 1.
+
+Therefore, after A2D5-2 code is present but before execution:
+
+```text
+previous validated aggregate = 94/94 PASS
+new expected discovered total = 95
+```
+
+Do **not** call this `95/95 PASS` until the updated aggregate workflow actually runs successfully.
+
+---
+
+## 12. Static review result for A2D5-2
+
+No new Presentation Record type, Gameplay Status mechanic, Recorder rule, Controller lifecycle protocol or runtime reducer behavior was added.
+
+No A2D1-A2D4 runtime code was modified for A2D5-2.
+
+Current status:
+
+```text
+A2D5-1 VALIDATED
+A2D5-2 STATUS LIFECYCLE IMPLEMENTED
+STATIC REVIEW COMPLETE
+UE5.8 FOCUSED / UPDATED PHASE6R VALIDATION PENDING
+EXPECTED DISCOVERED TOTAL = 95
+```
+
+Required validation before A2D5-2 can be sealed:
+
+```text
+UE5.8 Editor Development build PASS
+A2D5 focused 1/1 PASS
+updated Phase6R aggregate 95/95 PASS
+Shipping exclusion PASS
 ```
