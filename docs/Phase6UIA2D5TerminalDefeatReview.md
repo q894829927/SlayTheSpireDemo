@@ -2,24 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
-
-Integration branch:
-
-```text
-a2d5-terminal-defeat
-```
-
-Validated baseline entering A2D5-6:
-
-```text
-UE5.8 Editor Development build   PASS
-A2D5 focused                    PASS 4/4
-Phase6R aggregate               PASS 98/98
-Shipping exclusion              PASS
-```
-
-A2D5-5 `Terminal.Victory` is validated and sealed.
+Status: **VALIDATED / SEALED**.
 
 Top-level Automation test:
 
@@ -27,13 +10,16 @@ Top-level Automation test:
 SlayTheSpireDemo.Phase6UIA2D5.Terminal.Defeat
 ```
 
-File:
+Validated UE5.8 baseline after A2D5-6:
 
 ```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TerminalDefeatTest.cpp
+UE5.8 Editor Development build   PASS
+A2D5 focused                    PASS 5/5
+Phase6R aggregate               PASS 99/99
+Shipping exclusion              PASS
 ```
 
-The fixture uses the real committed enemy intent path:
+The scenario uses the real committed enemy intent path:
 
 ```text
 Player HP = 100
@@ -43,15 +29,13 @@ Hand = empty
 Enemy committed Attack = 100
 ```
 
-The real formal request is:
+Formal request:
 
 ```text
 ABattleManager::RequestEndPlayerTurn()
 ```
 
-No terminal state or terminal Record is fabricated.
-
-Required producer history:
+Validated producer history:
 
 ```text
 EnergyChanged(3 -> 0)
@@ -59,11 +43,11 @@ EnergyChanged(3 -> 0)
 → Defeat
 ```
 
-Required terminal rules:
+Validated terminal rules:
 
 ```text
 Envelope Origin = EndTurn
-Defeat is unique and final
+Defeat unique and final
 Winner = EnemyPrimary
 Defeated = PlayerHero
 no Victory
@@ -73,24 +57,7 @@ no CardZoneChanged for empty Hand
 no DeckShuffled after terminal enemy damage
 ```
 
-The absence assertions are mutation-driven: zero Block and empty Hand are legal no-ops and must not synthesize records.
-
-Runtime ordering basis:
-
-```text
-RequestEndPlayerTurn
-→ Energy clear
-→ StartEnemyTurn
-→ committed enemy Damage
-→ Player becomes dead
-→ Enemy TurnEndedAction skips event dispatch because a combatant is dead
-→ QueueEmpty / CheckBattleResult
-→ Defeat
-```
-
-The flow does not progress into another PlayerTurn after lethal enemy damage.
-
-Controller timing under test:
+Controller timing was validated record-by-record:
 
 ```text
 EnergyChanged completion
@@ -110,7 +77,7 @@ Defeat completion
     → caught-up Controller releases WorkingSnapshot
 ```
 
-While Defeat is active:
+While Defeat playback is active:
 
 ```text
 InteractionState = Resolving
@@ -119,7 +86,7 @@ bInputLocked = true
 bCanEndTurn = false
 ```
 
-The real Defeat token is captured and a duplicate completion is required to be a NoOp.
+The real Defeat token is captured and duplicate completion is verified as a NoOp.
 
 Consistency coverage:
 
@@ -129,6 +96,6 @@ AssertCapturedEnvelopeOrder()
 AssertControllerPlaybackMatchesCapturedHistory()
 ```
 
-No production runtime changes were required by the static review.
+No production runtime changes were required.
 
-After integration the focused gate expects **5** A2D5 tests and Phase6R expects **99** total tests. These remain expected counts until A2D5-6 validation passes.
+A2D5-6 is sealed. The next and final planned A2D5 top-level scenario is `Terminal.ResolutionFault`.
