@@ -96,9 +96,12 @@ public:
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	) override;
+	virtual void CancelPresentationRecordPlayback_Implementation() override;
 
 	bool bAcceptAsyncPlayback = true;
+	bool bNotifySynchronouslyFromPlay = false;
 	int32 PlayCallCount = 0;
+	int32 CancelCallCount = 0;
 	FPresentationPlaybackToken LastToken;
 };
 
