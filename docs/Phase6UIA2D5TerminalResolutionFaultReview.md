@@ -2,15 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **REVIEW FIX APPLIED / STATIC REVIEW COMPLETE / UE5.8 REVALIDATION PENDING**.
 
-Branch:
-
-```text
-a2d5-terminal-resolution-fault
-```
-
-A2D5-6 `Terminal.Defeat` is now validated and sealed. Current validated baseline:
+A2D5-6 `Terminal.Defeat` is validated and sealed. Current validated baseline:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -19,7 +13,7 @@ Phase6R aggregate               PASS 99/99
 Shipping exclusion              PASS
 ```
 
-After integration, the gate values become:
+Current gate values:
 
 ```text
 A2D5 focused expected = 6
@@ -57,12 +51,13 @@ The rejected EnemyTurn batch must produce no partial `Damage`, `BlockChanged`, `
 The terminal Record is matched against ActionQueue-owned diagnostics:
 
 ```text
+ResolutionFault.Reason is non-empty
 ResolutionFault.Reason == Queue.GetResolutionFaultReason()
 ResolutionFault.ExecutedActionCount == Queue.GetExecutedCountInResolution()
 ResolutionFault.LastActionName == Queue.GetLastExecutedAction()->GetFName()
 ```
 
-The last executed action must be the real player `UTurnEndedAction`.
+The human-readable English reason is deliberately not treated as a stable ABI. The last executed action must be the real player `UTurnEndedAction`.
 
 The fault occurs before EnemyTurn state commit:
 
@@ -105,6 +100,53 @@ Presentation freeze failure != Gameplay ResolutionFault
 
 A forced Presentation snapshot freeze failure must result in Presentation unavailability while Gameplay stays in `PlayerTurn` and ActionQueue remains healthy.
 
+### Defect found in first UE5.8 6-test run
+
+The first run failed only at:
+
+```text
+Presentation freeze failure exposes PresentationUnavailable UI
+```
+
+The underlying Gameplay state was correct and Presentation was marked unavailable, but the public read edge was suppressed because the old dedupe key only considered:
+
+```text
+BattleId
+StateRevision
+```
+
+The freeze failure changes Presentation availability without mutating Gameplay revision, so Controller/ViewModel received no `OnReadStateReady` notification.
+
+Production fix:
+
+```text
+ReadStateReady dedupe now also tracks the last published Presentation availability.
+```
+
+Therefore:
+
+```text
+same BattleId
+same StateRevision
+PresentationAvailable true -> false
+```
+
+still produces one public read edge. Once that unavailable state has been published, identical later edges deduplicate again.
+
+This preserves the ownership boundary:
+
+```text
+Presentation failure
+→ PresentationUnavailable UI
+→ input locked
+
+but
+
+Gameplay remains PlayerTurn
+ActionQueue remains healthy
+Outcome remains None
+```
+
 ## Consistency checks
 
 ```text
@@ -113,4 +155,4 @@ AssertCapturedEnvelopeOrder()
 AssertControllerPlaybackMatchesCapturedHistory()
 ```
 
-No runtime production changes, new Record types, or Controller protocol changes are introduced by A2D5-7.
+The review fix changes only read-edge availability identity plus test diagnostic matching. It does not change ActionQueue semantics, terminal reducer behavior, Record taxonomy, Controller token protocol, or test discovery counts.
