@@ -121,7 +121,9 @@ void ABattleManager::FlushScheduledReadStateReadyForTesting()
 void ABattleManager::TryPublishReadStateReady()
 {
 	// Sealed immutable Envelopes are delivered first and in ResolutionId order.
-	// The current-state read edge remains a separate BattleId/StateRevision edge.
+	// The current-state public edge is keyed by Gameplay revision plus the sticky
+	// Presentation-availability state so an availability transition cannot be
+	// suppressed merely because Gameplay itself did not mutate.
 	DrainPendingPublicPresentationDeliveries();
 
 	FBattleReadSnapshot Snapshot;
@@ -131,21 +133,24 @@ void ABattleManager::TryPublishReadStateReady()
 	}
 
 	if (Snapshot.BattleId == LastPublishedBattleId &&
-		Snapshot.StateRevision == LastPublishedReadStateRevision)
+		Snapshot.StateRevision == LastPublishedReadStateRevision &&
+		bPresentationAvailable == bLastPublishedPresentationAvailable)
 	{
 		return;
 	}
 
 	LastPublishedBattleId = Snapshot.BattleId;
 	LastPublishedReadStateRevision = Snapshot.StateRevision;
+	bLastPublishedPresentationAvailable = bPresentationAvailable;
 
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Battle] ReadStateReady. BattleId=%llu Revision=%llu State=%d"),
+		TEXT("[Battle] ReadStateReady. BattleId=%llu Revision=%llu State=%d PresentationAvailable=%s"),
 		Snapshot.BattleId,
 		Snapshot.StateRevision,
-		static_cast<int32>(Snapshot.BattleState)
+		static_cast<int32>(Snapshot.BattleState),
+		bPresentationAvailable ? TEXT("true") : TEXT("false")
 	);
 
 	OnReadStateReady.Broadcast(Snapshot.BattleId, Snapshot.StateRevision);
