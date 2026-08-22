@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **STATIC REVIEW COMPLETE / UE5.8 BUILD AND AUTOMATION NOT RUN**
+Status: **VALIDATED / COMPLETE / READY FOR PHASE 7B**
 
 Branch: `phase7-relic-gameplay`
 
@@ -55,19 +55,7 @@ Phase 8 combo code
 
 No Phase 7B/7C implementation was introduced during Phase 7A.
 
-## 2. UHT / C++ header review
-
-- `RelicData.h`, `RelicInstance.h` and `RelicContainer.h` place their generated header after normal includes.
-- `URelicData` mirrors the existing DataAsset pattern while intentionally exposing only `RelicId`, `DisplayName` and `Description` in 7A.
-- `URelicInstance` is a runtime UObject with private initialization owned by `URelicContainer`; no mutable state is stored on the shared DataAsset.
-- `FRelicAddResult` is a narrow synchronous C++ result and is intentionally non-reflected.
-- `BattleManager.h` uses forward declarations for `URelicData` and `URelicContainer`; the repository already uses the same reflected `TObjectPtr`/`TArray<TObjectPtr<...>>` forward-declaration style for other UObject types.
-- The Editor test module already exposes the Runtime module root as a private include path, so `Relics/...` includes do not require widening the Runtime module's public include surface.
-- No new Runtime module dependency is required.
-
-No high-confidence UHT or C++ compile blocker was identified by static inspection. This is not a substitute for the UE5.8 Editor build.
-
-## 3. Definition/runtime separation
+## 2. Runtime model review
 
 `URelicData` owns immutable authored definition data only:
 
@@ -77,7 +65,7 @@ DisplayName
 Description
 ```
 
-`URelicInstance` owns the concrete battle runtime identity:
+`URelicInstance` owns concrete battle runtime identity:
 
 ```text
 Definition
@@ -85,13 +73,9 @@ Battle
 RuntimeSequence
 ```
 
-The base instance intentionally has no generic `Counter`, `StateValue`, Trigger list or Modifier list.
+The base instance has no generic Counter/state bag, Trigger list or Modifier list.
 
-The same `URelicData` can back multiple distinct runtime objects without sharing runtime mutation.
-
-## 4. Membership / duplicate semantics
-
-`URelicContainer::AddRelic()` has explicit outcomes:
+`URelicContainer::AddRelic()` exposes explicit outcomes:
 
 ```text
 Invalid
@@ -99,113 +83,51 @@ Duplicate
 Added
 ```
 
-The current one-member-per-RelicId rule is enforced before runtime allocation.
+One active member per non-empty RelicId is enforced before runtime creation. Ordered `TArray` storage preserves deterministic enumeration.
 
-Therefore a duplicate add:
+## 3. Runtime identity and lifecycle review
 
-```text
-finds the existing member
-returns Duplicate + existing Instance
-does not allocate a replacement member
-does not change ordered membership
-```
-
-Invalid input leaves membership unchanged.
-
-The Container stores runtime members in an ordered `TArray`, so deterministic gameplay does not inherit unordered `TMap`/`TSet` iteration.
-
-## 5. Runtime identity review
-
-Relic instances reuse:
+Relics reuse:
 
 ```text
 ABattleManager::AllocateRuntimeSequence()
 ```
 
-rather than introducing a Relic-only sequence domain.
+Within one battle allocator session, tests require non-zero, unique and monotonic runtime identities without assuming contiguous `+1` allocation.
 
-Within one battle allocator session, tests require only:
+Across BattleIds, RuntimeSequence may restart. Therefore cross-battle identity must never be interpreted as RuntimeSequence alone.
 
-```text
-RuntimeSequence > 0
-later created identity > earlier created identity
-```
-
-They do not require contiguous `+1` allocation.
-
-Across different `BattleId` sessions, the existing BattleManager allocator may restart. Therefore cross-battle identity must never be interpreted as `RuntimeSequence` alone.
-
-For future stale queued work, the exact runtime UObject instance must be validated against current Container membership. A same-`RelicId` replacement must not be treated as the old exact instance.
-
-## 6. Battle ownership and restart lifecycle
-
-The authoritative player Relic runtime is owned as:
+The authoritative player Relic runtime is:
 
 ```text
 ABattleManager
 └── PlayerRelicContainer
 ```
 
-`PlayerRelicContainer` is private/transient and is exposed through:
+The Container UObject may persist across `StartBattle()` calls, but membership is session-scoped by BattleId and is rebuilt through `GetPlayerRelicContainer()` from `DebugStartingRelics`.
+
+Durable rule for Phase 7B+:
 
 ```text
-GetPlayerRelicContainer()
+Do not cache Relic membership across BattleId changes.
+Resolve current membership through the current BattleManager/Container path.
+Queued exact-instance work must validate current exact membership before mutation.
 ```
 
-The Container object itself is retained across `StartBattle()` calls, but its membership is session-scoped by `BattleId`.
+## 4. Static/UHT review
 
-Formal synchronization behavior:
+- Generated-header placement follows Unreal header rules.
+- Runtime UObject ownership is explicit.
+- DataAsset/runtime state separation is preserved.
+- No new Runtime module dependency was introduced.
+- The existing Editor test module include setup supports `Relics/...` headers.
+- No high-confidence C++/UHT blocker was identified statically.
 
-```text
-GetPlayerRelicContainer()
-↓
-create Container if missing
-↓
-if the cached Container BattleId != current BattleId
-    Initialize(this)
-    clear old members
-    rebuild DebugStartingRelics in deterministic array order
-↓
-return current-battle Container
-```
+The subsequent UE5.8 Editor build passed, closing the remaining compile uncertainty.
 
-This deliberately minimizes edits to the actively changing `BattleManager.cpp` while Phase 6UI-A2D is being developed in parallel.
+## 5. Focused and regression validation
 
-### Durable rule for Phase 7B+
-
-Code must not cache Relic membership across battle sessions and then continue using it after `StartBattle()`.
-
-After a battle session changes, callers must resolve the current Relic runtime through the current BattleManager/Container path and validate exact instance membership before mutation.
-
-The current lazy synchronization is acceptable for the isolated 7A runtime boundary because no Relic Trigger executes before formal RelicContainer access. If a later phase requires eager Relic initialization before any event dispatch, that phase should add the smallest explicit initialization call rather than bypassing this ownership contract.
-
-## 7. Setup injection boundary
-
-`DebugStartingRelics` is a temporary/demo battle setup input only.
-
-It is not:
-
-```text
-Run inventory
-SaveGame persistence
-reward selection
-map progression
-permanent Relic collection architecture
-```
-
-The array order is the deterministic authored setup order used for runtime creation.
-
-Invalid entries are ignored fail-soft while valid entries continue to initialize. Duplicate RelicIds resolve through the normal Container duplicate rule.
-
-## 8. Focused Automation review
-
-Exactly four focused tests are authored under:
-
-```text
-SlayTheSpireDemo.Phase7A
-```
-
-Tests:
+Validated Phase 7A focused tests:
 
 ```text
 Runtime.MembershipAndIdentity
@@ -214,76 +136,36 @@ Runtime.DefinitionIsolation
 Runtime.BattleRestartLifecycle
 ```
 
-The suite covers:
+Validation result:
 
 ```text
-BattleManager ownership
-valid runtime creation
-logical and exact identity
-non-zero/monotonic same-session sequence behavior
-duplicate no-op semantics
-invalid input isolation
-stable insertion enumeration
-explicit Battle context
-definition/runtime separation
-manual Container reset/reinitialize
-BattleId advancement
-restart membership rebuild
-old exact-instance isolation after restart
+UE5.8 Editor build                     PASS
+Phase7A focused Automation             4/4 PASS
+Affected Phase5/6/UI-A2 regression    84/84 PASS
+Static source review                   PASS
 ```
 
-The restart test intentionally does not require RuntimeSequence to increase across BattleIds.
-
-## 9. CI / regression gate review
-
-`.github/workflows/ue-phase7a-tests.yml` is manual owner-only self-hosted UE5.8 validation.
-
-It is configured to:
+Formal record:
 
 ```text
-build SlayTheSpireDemoEditor
-run Phase7A focused Automation, expected 4/4
-run the existing affected Phase5/6/UI-A2 regression baseline, expected 84/84
+docs/Phase7AValidation.md
 ```
 
-The affected regression set mirrors the currently configured Phase6R source baseline:
+## 6. Closure state
 
 ```text
-Phase5          13
-Phase6A         23
-Phase6B         12
-Phase6C          5
-Phase6UIA2A      8
-Phase6UIA2B      8
-Phase6UIA2C      8
-Phase6UIA2D1     3
-Phase6UIA2D2     4
-------------------
-Total           84
+7A-1 Definition + Runtime Identity       PASS
+7A-2 Container Membership               PASS
+7A-3 Battle Ownership / Restart          PASS
+7A-4 Focused gate                       4/4 PASS
+7A-4 Affected regression               84/84 PASS
+Static source review                     PASS
+UE5.8 Editor build                       PASS
 ```
 
-No PASS result is claimed until the self-hosted runner actually executes the workflow.
-
-## 10. Current Phase 7A closure state
-
-Static source state:
+Therefore:
 
 ```text
-7A-1 Definition + Runtime Identity       IMPLEMENTED
-7A-2 Container Membership               IMPLEMENTED
-7A-3 Battle Ownership / Restart          IMPLEMENTED
-7A-4 Focused gate definition             IMPLEMENTED
-7A-4 Affected regression definition      IMPLEMENTED
-Static source review                     COMPLETE
-UE5.8 Editor build                       NOT RUN
-Phase7A focused Automation               NOT RUN
-Affected 84-test regression              NOT RUN
+Phase 7A COMPLETE
+Phase 7B READY TO DESIGN / IMPLEMENT
 ```
-
-Therefore the correct current claim is:
-
-```text
-Phase 7A source implementation complete and ready for UE5.8 validation.
-```
-
-Do not claim `Phase 7A COMPLETE` or begin Phase 7B until the required UE5.8 validation evidence is recorded.
