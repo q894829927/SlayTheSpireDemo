@@ -11,7 +11,7 @@ A2D5-3 CardStatusIntegration VALIDATED
 A2D5-4 TurnCycleOrdering VALIDATED
 A2D5-5 Terminal.Victory VALIDATED
 A2D5-6 Terminal.Defeat VALIDATED
-A2D5-7 Terminal.ResolutionFault IMPLEMENTED / UE5.8 VALIDATION PENDING
+A2D5-7 Terminal.ResolutionFault REVIEW FIX APPLIED / UE5.8 REVALIDATION PENDING
 ```
 
 Current validated baseline after A2D5-6:
@@ -27,7 +27,7 @@ Phase6R aggregate               PASS 99/99
 Shipping exclusion              PASS
 ```
 
-The integrated tree now contains all six originally planned A2D5 top-level scenarios:
+The integrated tree contains all six originally planned A2D5 top-level scenarios:
 
 ```text
 StatusLifecycle
@@ -38,7 +38,7 @@ Terminal.Defeat
 Terminal.ResolutionFault
 ```
 
-Therefore the next validation targets are:
+Current validation targets remain:
 
 ```text
 A2D5 focused expected = 6
@@ -198,9 +198,10 @@ EnergyChanged(3 -> 0)
 → ResolutionFault
 ```
 
-The test also verifies frozen framework diagnostics:
+The test verifies frozen framework diagnostics by ownership rather than by locking human-readable wording:
 
 ```text
+Reason is non-empty
 Reason == Queue fault reason
 ExecutedActionCount == Queue diagnostic
 LastActionName == real last executed TurnEndedAction
@@ -216,14 +217,48 @@ Presentation freeze failure
 Gameplay/ActionQueue ResolutionFault
 ```
 
-Static review found no production runtime defect. No runtime code or Record taxonomy was changed.
+### Review defect found by first 6-test run
+
+The first A2D5-7 UE5.8 run reached the Presentation-failure negative fixture and failed only at:
+
+```text
+Presentation freeze failure exposes PresentationUnavailable UI
+```
+
+Root cause:
+
+```text
+PresentationAvailable true -> false
+Gameplay BattleId/StateRevision unchanged
+TryPublishReadStateReady deduplicated only by BattleId/StateRevision
+OnReadStateReady was suppressed
+Controller/ViewModel never observed PresentationUnavailable
+```
+
+Production fix:
+
+```text
+ReadStateReady public-edge identity now includes Presentation availability.
+A true -> false availability transition publishes even when Gameplay revision is unchanged.
+Repeated identical availability/state edges still deduplicate normally.
+```
+
+Files changed for the fix:
+
+```text
+Source/SlayTheSpireDemo/Battle/BattleManager.h
+Source/SlayTheSpireDemo/Battle/BattleManagerUIA0ReadState.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TerminalResolutionFaultTest.cpp
+```
+
+No ActionQueue semantics, terminal reducer, Record taxonomy, or workflow discovery counts were changed.
 
 Current status:
 
 ```text
-IMPLEMENTED
+REVIEW FIX APPLIED
 STATIC REVIEW COMPLETE
-UE5.8 VALIDATION PENDING
+UE5.8 REVALIDATION PENDING
 A2D5 focused expected = 6
 Phase6R expected total = 100
 ```
