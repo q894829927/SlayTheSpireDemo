@@ -118,7 +118,7 @@ void UPhase6UIA2AProbeTrigger::BuildReactions(
 	OutActions.Add(Action);
 }
 
-bool UPhase6UIA2APlaybackWidget::PlayPresentationRecord_Implementation(
+bool UPhase6UIA2APlaybackWidget::BeginPresentationRecordPlayback_Implementation(
 	const FPresentationRecord& /*Record*/,
 	const FPresentationPlaybackToken& Token
 )
@@ -132,9 +132,12 @@ bool UPhase6UIA2APlaybackWidget::PlayPresentationRecord_Implementation(
 	return bAcceptAsyncPlayback;
 }
 
-void UPhase6UIA2APlaybackWidget::CancelPresentationRecordPlayback_Implementation()
+void UPhase6UIA2APlaybackWidget::CancelPresentationRecordPlayback_Implementation(
+	const FPresentationPlaybackToken& Token
+)
 {
 	++CancelCallCount;
+	LastCancelledToken = Token;
 }
 
 bool APhase6UIA2ATestPresenter::InvokeInitializeHUDForTesting(APlayerController* PlayerController)
