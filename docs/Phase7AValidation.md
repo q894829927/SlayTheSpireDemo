@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / COMPLETE / READY FOR PHASE 7B**
+Status: **VALIDATED / COMPLETE / POST-MAIN-SYNC REVALIDATED / READY FOR PHASE 7B**
 
 Branch: `phase7-relic-gameplay`
 
@@ -34,6 +34,37 @@ Runtime.MembershipAndIdentity
 Runtime.InvalidAndReset
 Runtime.DefinitionIsolation
 Runtime.BattleRestartLifecycle
+```
+
+## Post-main-sync revalidation
+
+Before beginning Phase 7B, current `main` was merged into `phase7-relic-gameplay`.
+
+Sync merge commit:
+
+```text
+0eb4e1b547d212cbe9dddfc59b82caf7c2d0b010
+```
+
+The merge brought the current UI-A2D3 / Presentation mainline into the Phase 7 branch while preserving the validated Phase 7A Relic Runtime implementation.
+
+After that synchronization, the Phase 7A automation was run again and reported **PASS**.
+
+Recorded post-sync result:
+
+```text
+UE5.8 Editor build                     PASS
+Phase7A focused Automation             4/4 PASS
+Phase7A configured affected regression 84/84 PASS
+```
+
+The Phase 7A workflow currently enumerates the affected regression baseline through `Phase6UIA2D2`. Current mainline Phase6R additionally contains `Phase6UIA2D3`; therefore Phase 7B's new gate must use the latest mainline regression baseline rather than copying the older 84-test list forward unchanged.
+
+The durable conclusion after the sync is:
+
+```text
+Phase 7A Runtime remains validated on top of the synchronized mainline.
+Phase 7B may now be designed against the latest Event / Trigger / Presentation source base.
 ```
 
 ## Closed Phase 7A scope
@@ -91,7 +122,7 @@ Required rules:
 ## Phase status
 
 ```text
-Phase 7A Relic Runtime              COMPLETE
+Phase 7A Relic Runtime              COMPLETE / REVALIDATED AFTER MAIN SYNC
 Phase 7B Trigger Source Integration READY TO DESIGN / IMPLEMENT
 Phase 7C Sundial                    NOT STARTED
 Phase 7D Multi-Relic Validation     NOT STARTED
