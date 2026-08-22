@@ -35,10 +35,10 @@ jobs:
       - name: Check UE5.8 toolchain
         shell: powershell
         run: |
-          $UE = "E:\\Unreal engine\\UE_5.8"
-          $Build = "$UE\\Engine\\Build\\BatchFiles\\Build.bat"
-          $EditorCmd = "$UE\\Engine\\Binaries\\Win64\\UnrealEditor-Cmd.exe"
-          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
           foreach ($Path in @($Build, $EditorCmd, $Project)) {
               if (!(Test-Path $Path)) { throw "Required path not found: $Path" }
           }
@@ -46,22 +46,22 @@ jobs:
       - name: Build SlayTheSpireDemoEditor
         shell: powershell
         run: |
-          $UE = "E:\\Unreal engine\\UE_5.8"
-          $Build = "$UE\\Engine\\Build\\BatchFiles\\Build.bat"
-          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
           & $Build SlayTheSpireDemoEditor Win64 Development $Project -WaitMutex -NoHotReloadFromIDE
           if ($LASTEXITCODE -ne 0) { throw "UE Editor build failed with exit code $LASTEXITCODE" }
 
       - name: Run Phase 6UI-A2D5 focused gate
         shell: powershell
         run: |
-          $UE = "E:\\Unreal engine\\UE_5.8"
-          $EditorCmd = "$UE\\Engine\\Binaries\\Win64\\UnrealEditor-Cmd.exe"
-          $Project = "$env:GITHUB_WORKSPACE\\SlayTheSpireDemo.uproject"
+          $UE = "E:\Unreal engine\UE_5.8"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
           $Prefix = "SlayTheSpireDemo.Phase6UIA2D5"
           $ExpectedCount = 6
-          $Report = "$env:GITHUB_WORKSPACE\\Saved\\AutomationReports\\Phase6UIA2D5"
-          $IndexJson = "$Report\\index.json"
+          $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\Phase6UIA2D5"
+          $IndexJson = "$Report\index.json"
 
           if (Test-Path $Report) { Remove-Item $Report -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $Report | Out-Null
