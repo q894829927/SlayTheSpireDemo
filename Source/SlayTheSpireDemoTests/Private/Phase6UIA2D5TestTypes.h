@@ -10,7 +10,7 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2D5PlaybackWidget : public UBattleHUDW
 	GENERATED_BODY()
 
 public:
-	virtual bool PlayPresentationRecord_Implementation(
+	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	) override;
