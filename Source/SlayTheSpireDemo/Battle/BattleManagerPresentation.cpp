@@ -194,16 +194,19 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 		OutView.Block = Source.Block;
 		OutView.bDead = Source.bDead;
 		OutView.Statuses.Reserve(Source.Statuses.Num());
+		TSet<FName> SeenStatusIds;
 
 		for (const FStatusReadView& Status : Source.Statuses)
 		{
 			if (Status.StatusId.IsNone()
 				|| Status.Amount <= 0
 				|| Status.RuntimeSequence == 0
-				|| Status.RuntimeSequence > static_cast<uint64>(MAX_int64))
+				|| Status.RuntimeSequence > static_cast<uint64>(MAX_int64)
+				|| SeenStatusIds.Contains(Status.StatusId))
 			{
 				return false;
 			}
+			SeenStatusIds.Add(Status.StatusId);
 
 			FBattleHUDStatusView FrozenStatus;
 			FrozenStatus.StatusId = Status.StatusId;
