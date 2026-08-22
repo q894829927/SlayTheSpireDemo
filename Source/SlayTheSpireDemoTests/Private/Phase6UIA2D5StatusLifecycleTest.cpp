@@ -202,8 +202,12 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 		EStatusChangeReason::Reduced
 	);
 
-	TestTrue(TEXT("Controller waits on Applied playback"), Fixture.Controller->IsWaitingForCompletionForTesting());
-	TestEqual(TEXT("Applied is first visible A2D5 record"), Fixture.Widget->PlayCallCount, 1);
+	if (!TestTrue(TEXT("Controller waits on Applied playback"), Fixture.Controller->IsWaitingForCompletionForTesting())
+		|| !TestEqual(TEXT("Applied is first visible A2D5 record"), Fixture.Widget->PlayCallCount, 1)
+		|| !TestEqual(TEXT("Applied capture contains one record"), Fixture.Widget->PlayedRecords.Num(), 1))
+	{
+		return false;
+	}
 	TestTrue(TEXT("Applied visible record type"), Fixture.Widget->PlayedRecords.Last().Type == EBattlePresentationRecordType::StatusChanged);
 	TestTrue(TEXT("Displayed status remains absent before Applied completion"), FindDisplayedStatus(Fixture.ViewModel, TEXT("Weak")) == nullptr);
 	TestTrue(TEXT("Applied playback completion accepted"), Fixture.CompleteCurrentPlayback());
