@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / VALIDATION PENDING**.
+Status: **FOCUSED VALIDATED / FULL REGRESSION PENDING**.
 
 ## Validated incoming baseline
 
@@ -16,7 +16,7 @@ SlayTheSpireDemo.Phase6UIA2D3     PASS 4/4
 Phase6R aggregate                 PASS 88/88
 ```
 
-Those results validate the incoming A2D-1 through A2D-3 baseline only. A2D-4 changes runtime Presentation code, compatibility tests and CI counts, so a fresh engine run is required.
+Those results validate the incoming A2D-1 through A2D-3 baseline only. A2D-4 changes runtime Presentation code, compatibility tests and CI counts, so a fresh full regression run is still required before promotion to A2D-5.
 
 ## Current A2D-4 implementation
 
@@ -67,12 +67,17 @@ SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
 SlayTheSpireDemo.Phase6UIA2D4.Safety.PreflightFallbackSkip
 ```
 
-Current result:
+Current result after the timeout-test include fix (`f0d03895`):
 
 ```text
-UE5.8 Editor build    PENDING
-A2D4 focused 6/6      PENDING
+UE5.8 Editor build    PASS
+A2D4 focused 6/6      PASS
+Failed                 0
+NotRun                 0
+EditorExit             0
 ```
+
+This focused run validates that the A2D-4 source compiles under UE5.8 and that all six terminal producer/playback/safety tests pass on the hardened implementation.
 
 ## Regression gate
 
@@ -113,18 +118,18 @@ Shipping exclusion  PENDING
 
 ## Promotion rule
 
-Do not mark A2D-4 complete or begin A2D-5 acceptance work based only on static source review.
+Do not mark A2D-4 complete or begin A2D-5 acceptance work based only on the focused gate.
 
 Promotion requires all of:
 
 ```text
-UE5.8 Editor Development build PASS
-A2D4 focused 6/6 PASS
-A2D1 3/3 PASS
-A2D2 4/4 PASS
-A2D3 4/4 PASS
-Phase6R 94/94 PASS
-Shipping exclusion PASS
+UE5.8 Editor Development build PASS      [PASS]
+A2D4 focused 6/6 PASS                    [PASS]
+A2D1 3/3 PASS                            [pending fresh Phase6R]
+A2D2 4/4 PASS                            [pending fresh Phase6R]
+A2D3 4/4 PASS                            [pending fresh Phase6R]
+Phase6R 94/94 PASS                       [PENDING]
+Shipping exclusion PASS                  [PENDING]
 ```
 
 After those pass, update this document and `Phase6UIA2D4SourceReview.md` to:
