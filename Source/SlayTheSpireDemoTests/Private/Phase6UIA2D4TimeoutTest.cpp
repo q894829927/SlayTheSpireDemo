@@ -224,6 +224,39 @@ bool FPhase6UIA2D4TerminalTimeoutTest::RunTest(const FString& Parameters)
 		);
 	}
 
+	// Sub-scenario 3: committed card snapshots convert to the existing HUD card DTO
+	// without introducing live playability state or requiring Blueprint writes to a
+	// BlueprintReadOnly view model struct.
+	{
+		FFixture Fixture;
+		if (!TestTrue(TEXT("Card-view conversion fixture created"), Fixture.IsReady()))
+		{
+			return false;
+		}
+
+		FPresentationCardSnapshot Snapshot;
+		Snapshot.RuntimeId = 42;
+		Snapshot.CardId = TEXT("TestCommittedCard");
+		Snapshot.DisplayName = FText::FromString(TEXT("Committed Card"));
+		Snapshot.Cost = 2;
+		Snapshot.CardType = ECardType::Skill;
+		Snapshot.TargetType = ECardTargetType::Self;
+		Snapshot.Description = FText::FromString(TEXT("Presentation-only description"));
+		Snapshot.CardArt = nullptr;
+
+		const FBattleHUDCardView View = Fixture.Widget->MakePresentationCardView(Snapshot);
+		TestEqual(TEXT("Presentation card view preserves RuntimeId"), View.RuntimeId, Snapshot.RuntimeId);
+		TestEqual(TEXT("Presentation card view preserves CardId"), View.CardId, Snapshot.CardId);
+		TestTrue(TEXT("Presentation card view preserves DisplayName"), View.DisplayName.EqualTo(Snapshot.DisplayName));
+		TestEqual(TEXT("Presentation card view preserves Cost"), View.Cost, Snapshot.Cost);
+		TestEqual(TEXT("Presentation card view preserves CardType"), View.CardType, Snapshot.CardType);
+		TestEqual(TEXT("Presentation card view preserves TargetType"), View.TargetType, Snapshot.TargetType);
+		TestTrue(TEXT("Presentation card view preserves Description"), View.Description.EqualTo(Snapshot.Description));
+		TestTrue(TEXT("Presentation card view preserves CardArt"), View.CardArt == Snapshot.CardArt);
+		TestFalse(TEXT("Presentation card view is never gameplay-playable"), View.bGameplayPlayable);
+		TestTrue(TEXT("Presentation card view has no live unplayable reason"), View.UnplayableReason.IsEmpty());
+	}
+
 	return true;
 }
 
