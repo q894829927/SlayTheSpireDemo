@@ -2,9 +2,18 @@
 
 Date: **2026-08-22**
 
-Status: **A2D5-1 VALIDATED / A2D5-2 VALIDATED / A2D5-3 VALIDATED / READY FOR A2D5-4**.
+Status:
 
-Validated baseline after A2D5-3:
+```text
+A2D5-1 VALIDATED
+A2D5-2 StatusLifecycle VALIDATED
+A2D5-3 CardStatusIntegration VALIDATED
+A2D5-4 TurnCycleOrdering VALIDATED
+A2D5-5 Terminal.Victory VALIDATED
+A2D5-6 Terminal.Defeat IMPLEMENTED / UE5.8 VALIDATION PENDING
+```
+
+Current validated baseline:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -12,360 +21,241 @@ A2D1                            PASS 3/3
 A2D2                            PASS 4/4
 A2D3                            PASS 4/4
 A2D4                            PASS 6/6
-A2D5 focused                   PASS 2/2
-Phase6R aggregate               PASS 96/96
+A2D5 focused                    PASS 4/4
+Phase6R aggregate               PASS 98/98
 Shipping exclusion              PASS
 ```
 
-A2D5 remains a combined acceptance slice. No new runtime Presentation capability has been introduced by A2D5-1 through A2D5-3.
+The integrated tree now contains five A2D5 top-level tests, so the next validation targets are:
+
+```text
+A2D5 focused expected = 5
+Phase6R expected total = 99
+```
+
+These are expected counts only until `Terminal.Defeat` passes in UE5.8.
 
 ---
 
-## 1. A2D5 acceptance infrastructure
+## Shared acceptance architecture
 
-The shared acceptance path uses:
+A2D5 remains a combined C++ acceptance slice. It adds no new Presentation capability merely to satisfy tests.
+
+The real path under acceptance is:
 
 ```text
-real BattleManager / Gameplay producer
-→ committed Presentation Resolution Envelope
+Gameplay commit
+→ committed Presentation Record
+→ immutable Resolution Envelope
 → BattlePresentationController
 → visible record-by-record playback
 → PlaybackToken completion
-→ WorkingSnapshot progression
+→ WorkingPresentationSnapshot progression
 → exact FinalSnapshot reconciliation
 ```
 
-Supporting files:
+Shared support:
 
 ```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestTypes.h
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestTypes.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestSupport.h
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestSupport.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5PlaybackAssertions.cpp
+Phase6UIA2D5TestTypes.*
+Phase6UIA2D5TestSupport.*
+Phase6UIA2D5PlaybackAssertions.cpp
 ```
 
-The fixture owns a real Game `UWorld`, Player, Enemy, `ABattleManager`, `UBattleHUDViewModel`, playback widget and `UBattlePresentationController`.
+Each Envelope is checked independently with production reducers. Multiple Resolutions are never flattened into one synthetic reducer history.
 
-Each captured Envelope stores its own historical baseline:
-
-```text
-FCapturedEnvelope
-├── Baseline
-└── Envelope
-```
-
-Independent Resolutions are never flattened into one synthetic replay history.
-
-`AssertReducerOwnedStateMatchesFinalSnapshot()` replays one Envelope through the production Controller reducers and compares only reducer-owned fields against that Envelope's `FinalSnapshot`.
-
-`AssertCapturedEnvelopeOrder()` verifies monotonic `(BattleId, ResolutionId)` publication order without sorting.
-
-`AssertControllerPlaybackMatchesCapturedHistory()` flattens captured Records strictly in producer order and verifies the real widget history and playback tokens by:
-
-```text
-Type
-BattleId
-ResolutionId
-PresentationSequence
-PlaybackToken.BattleId
-PlaybackToken.ResolutionId
-PlaybackToken.PresentationSequence
-positive LocalPlaybackGeneration
-```
-
-Empty Envelopes contribute zero expected playback calls and remain legal.
+Controller playback history is compared in producer order without sorting, including Record and PlaybackToken identity.
 
 ---
 
-## 2. A2D5-1 — acceptance fixture + consistency helper
+## Locked cross-slice contracts preserved
 
-A2D5-1 established:
+### Card cost ownership
 
-```text
-shared real-battle fixture
-Envelope capture helpers
-per-Envelope production reducer consistency helper
-real Controller playback capture
-```
-
-Validation issues found during UE5.8 build and fixed:
+Card-play energy cost is represented only by:
 
 ```text
-c4ed21daeaabaf6eab02ecf829242e3697269c64
-fix(tests): isolate automation cpp translation units
-
-6baf3b62dc5ae8a752cafeaa8fc769334dca509e
-fix(ui-a2d5): include deck runtime in acceptance support
+CardPlayed.EnergyBefore
+CardPlayed.EnergyAfter
+CardPlayed.CostPaid
 ```
 
-Validated result:
+No duplicate `EnergyChanged` is emitted for the same card spend.
 
-```text
-A2D5-1 VALIDATED
-Phase6R 94/94 PASS
-Shipping exclusion PASS
-```
+### Turn boundary
+
+`TurnEnded` is not a Presentation Record. Acceptance verifies the actual visible committed mutations caused by the macro turn.
+
+### No-op rule
+
+No committed mutation means no Presentation Record. Tests do not require records for zero block clears, unchanged energy, empty shuffle sources, stale status mutations, or other no-ops.
+
+### Terminal timing
+
+Terminal Records are unique and final. A terminal Record enters WorkingSnapshot only after its own visible playback completes. Exact terminal reconciliation is then owned by the Envelope FinalSnapshot.
+
+Terminal Energy remains a FinalSnapshot reconciliation field; Victory/Defeat reducers do not synthesize terminal `EnergyChanged`.
 
 ---
 
-## 3. A2D5-2 — StatusLifecycle
-
-Top-level Automation test:
-
-```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5StatusLifecycleTest.cpp
-SlayTheSpireDemo.Phase6UIA2D5.StatusLifecycle
-```
+## A2D5-2 — StatusLifecycle
 
 Validated lifecycle:
 
 ```text
-Weak#A  0 → 2   Applied
-Weak#A  2 → 3   Increased
-Weak#A  3 → 2   Reduced
-Weak#A  2 → 1   TurnEndDecay
-Weak#A  1 → 0   Removed
-Weak#B  0 → 2   Applied
+Weak#A 0 -> 2 Applied
+Weak#A 2 -> 3 Increased
+Weak#A 3 -> 2 Reduced
+Weak#A 2 -> 1 TurnEndDecay
+Weak#A 1 -> 0 Removed
+Weak#B 0 -> 2 Applied
 ```
 
-The hardened test validates:
-
-```text
-real pending stale Action identity
-exact old-instance isolation
-stale mutation → Gameplay NoOp
-no StatusChanged Record for no-op
-empty stale Envelope publication remains optional
-Weak#B remains unchanged
-recreated instance receives newer RuntimeSequence
-frozen descriptions/icon metadata remain historical
-RuntimeSequence array ordering is exercised with AnchorStatus + Weak
-real Controller record/token order matches producer history
-per-Envelope reducer consistency
-```
+Coverage includes real pending stale Action identity, exact old-instance isolation, no-record stale NoOp, RuntimeSequence ordering, Controller token order, and per-Envelope reducer consistency.
 
 Validated result:
 
 ```text
-A2D5 focused    1/1 PASS
-Phase6R         95/95 PASS
-Shipping        PASS
+A2D5 focused 1/1 PASS
+Phase6R 95/95 PASS
+Shipping PASS
 ```
-
-A2D5-2 is sealed.
 
 ---
 
-## 4. A2D5-3 — CardStatusIntegration
+## A2D5-3 — CardStatusIntegration
 
-Top-level Automation test:
-
-```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5CardStatusIntegrationTest.cpp
-SlayTheSpireDemo.Phase6UIA2D5.CardStatusIntegration
-```
-
-The scenario authors one real one-cost Enemy-target Attack card using only existing runtime effects:
-
-```text
-Effects[0] = DamageCardEffect(7)
-Effects[1] = ApplyStatusCardEffect(Weak, +2)
-Effects[2] = ApplyStatusCardEffect(Vulnerable, +1)
-DefaultDestination = Discard
-```
-
-Two runtime copies of the same immutable card definition are drawn into the opening Hand.
-
-### 4.1 First card Resolution
-
-Required producer order:
+Real one-cost card history:
 
 ```text
 CardPlayed
 → Damage
-→ StatusChanged(Weak Applied)
-→ StatusChanged(Vulnerable Applied)
-→ CardZoneChanged(PlayArea → DiscardPile)
+→ StatusChanged(Weak)
+→ StatusChanged(Vulnerable)
+→ CardZoneChanged
 ```
 
-Validated ownership and values:
-
-```text
-CardPlayed RuntimeId == exact first runtime card
-Energy 3 → 2
-CostPaid = 1
-EnergyChanged count = 0
-Damage HP 100 → 93
-Weak 0 → 2 Applied
-Vulnerable 0 → 1 Applied
-exact authored status order preserved
-only one CardZoneChanged
-no Hand → PlayArea zone Record
-finish-card zone change is final Record
-```
-
-This confirms the locked A2C ownership boundary: card-play energy cost lives only in `CardPlayed.EnergyBefore/EnergyAfter/CostPaid` and does not emit a duplicate `EnergyChanged`.
-
-### 4.2 Record-by-record historical Controller timing
-
-After Gameplay has fully committed the first card, authoritative state is already:
-
-```text
-Energy = 2
-Hand = 1
-Enemy HP = 93
-Discard = 1
-Weak = 2
-Vulnerable = 1
-```
-
-while the display remains at the pre-Envelope baseline before the first playback token completes:
-
-```text
-Energy = 3
-Hand = 2
-Enemy HP = 100
-Discard = 0
-Enemy Statuses = 0
-```
-
-Token completion then advances only the state owned by the completed Record:
-
-```text
-CardPlayed completion
-    → Energy / Hand advance
-
-Damage completion
-    → Enemy HP advances
-
-Weak completion
-    → Weak row appears
-
-Vulnerable completion
-    → Vulnerable row appears
-
-CardZoneChanged completion
-    → Discard advances
-    → exact FinalSnapshot reconciliation
-```
-
-The combined stream therefore remains historical and is not collapsed prematurely to `FinalSnapshot`.
-
-### 4.3 Second card Resolution — merge existing concrete status identities
-
-The second runtime card produces:
-
-```text
-CardPlayed
-→ Damage
-→ StatusChanged(Weak Increased)
-→ StatusChanged(Vulnerable Increased)
-→ CardZoneChanged(PlayArea → DiscardPile)
-```
-
-Validated values:
-
-```text
-Energy 2 → 1
-EnergyChanged count = 0
-Enemy HP 93 → 86
-Weak 2 → 4 Increased
-Vulnerable 1 → 2 Increased
-```
-
-Concrete identity must be preserved across reapplication:
-
-```text
-Weak object after second play == Weak object after first play
-Weak RuntimeSequence unchanged
-
-Vulnerable object after second play == Vulnerable object after first play
-Vulnerable RuntimeSequence unchanged
-```
-
-The displayed enemy status row count remains exactly two, rejecting duplicate UI entries keyed only by application events.
-
-### 4.4 Multi-Envelope and reducer consistency
-
-Both card Resolutions are independently validated:
-
-```text
-Envelope[0].Baseline
-→ production reducer replay of Envelope[0].Records
-→ reducer-owned result == Envelope[0].FinalSnapshot
-
-Envelope[1].Baseline
-→ production reducer replay of Envelope[1].Records
-→ reducer-owned result == Envelope[1].FinalSnapshot
-```
-
-The test also verifies:
-
-```text
-strict ResolutionId order
-no sorting before comparison
-no missing playback Record
-no extra playback Record
-no cross-Envelope Controller reordering
-record/token identity match
-```
-
-Static review found no high-confidence cross-slice production defect and required no A2D1-A2D4 production runtime changes.
-
----
-
-## 5. A2D5-3 validation
-
-The updated UE5.8 focused workflow and full Phase6R workflow were reported successful after A2D5-3 implementation.
+A second runtime card reuses the same concrete Weak/Vulnerable status instances and RuntimeSequences, proving no duplicate status rows are created.
 
 Validated result:
 
 ```text
-UE5.8 Editor Development build   PASS
-A2D5 focused                    PASS 2/2
-Phase6R aggregate               PASS 96/96
-Shipping exclusion              PASS
-```
-
-The aggregate discovery count is therefore legitimately **96/96 PASS**.
-
-Final status after A2D5-3:
-
-```text
-A2D5-1 VALIDATED
-A2D5-2 STATUS LIFECYCLE VALIDATED
-A2D5-3 CARD STATUS INTEGRATION VALIDATED
-A2D5 FOCUSED 2/2 PASS
-PHASE6R 96/96 PASS
-SHIPPING EXCLUSION PASS
-READY FOR A2D5-4 TURN CYCLE ORDERING
+A2D5 focused 2/2 PASS
+Phase6R 96/96 PASS
+Shipping PASS
 ```
 
 ---
 
-## 6. Next slice — A2D5-4 TurnCycleOrdering
+## A2D5-4 — TurnCycleOrdering
 
-The next top-level acceptance scenario is:
-
-```text
-SlayTheSpireDemo.Phase6UIA2D5.TurnCycleOrdering
-```
-
-It must validate actual Gameplay output rather than introducing a `TurnEnded` Presentation Record.
-
-Required visible facts remain:
+The forced macro-turn scenario validates the real order:
 
 ```text
-EnergyChanged(current → 0)                  [only if changed]
-→ Hand → Discard                            [actual cards]
-→ StatusChanged(TurnEndDecay)               [actual decay]
-→ Enemy BlockChanged(clear)                 [if nonzero]
+EnergyChanged(3 -> 0)
+→ Hand -> Discard x3
+→ StatusChanged(TurnEndDecay)
+→ Enemy BlockChanged(clear)
 → Enemy Damage
-→ Player EnergyChanged(current → MaxEnergy) [only if changed]
-→ Player BlockChanged(clear)                [if actual block clears]
-→ DeckShuffled                              [if real shuffle]
-→ DrawPile → Hand                           [actual draws]
+→ EnergyChanged(0 -> 3)
+→ Player BlockChanged(clear)
+→ DeckShuffled
+→ DrawPile -> Hand x2
 ```
 
-The fixture should force nonzero Energy, nonempty Hand, decaying Status, clearable Block, insufficient DrawPile and nonempty Discard so these contracts are exercised rather than vacuously asserted.
+No `TurnEnded` record exists or is expected.
+
+Validated result:
+
+```text
+A2D5 focused 3/3 PASS
+Phase6R 97/97 PASS
+Shipping PASS
+```
+
+---
+
+## A2D5-5 — Terminal.Victory
+
+Real lethal card history:
+
+```text
+CardPlayed
+→ Damage(Enemy 100 -> 0)
+→ CardZoneChanged(PlayArea -> Discard)
+→ Victory
+```
+
+Victory is unique and final. Enemy is already visibly dead before Victory playback completes, while Outcome remains `None`, interaction remains `Resolving`, and input remains locked.
+
+After the Victory token completes, the ViewModel enters Terminal and reconciles exactly to FinalSnapshot. Re-submitting the same terminal token is a NoOp.
+
+Validated result:
+
+```text
+A2D5 focused 4/4 PASS
+Phase6R 98/98 PASS
+Shipping exclusion PASS
+```
+
+A2D5-5 is sealed.
+
+---
+
+## A2D5-6 — Terminal.Defeat
+
+Top-level test:
+
+```text
+SlayTheSpireDemo.Phase6UIA2D5.Terminal.Defeat
+```
+
+Real lethal enemy-turn history:
+
+```text
+RequestEndPlayerTurn
+→ EnergyChanged(3 -> 0)
+→ Damage(EnemyPrimary -> PlayerHero, HP 100 -> 0)
+→ Defeat
+```
+
+Required acceptance:
+
+```text
+Defeat unique and final
+Winner = EnemyPrimary
+Defeated = PlayerHero
+Player.bDead visible before terminal completion
+Outcome remains None while Defeat playback is active
+InteractionState remains Resolving while active
+input remains locked
+terminal token completes exactly once
+duplicate terminal token is NoOp
+FinalSnapshot reconciliation exact
+```
+
+The fixture intentionally uses an empty Hand and zero Block so no-op cleanup paths cannot add unrelated records.
+
+Static review found no high-confidence production defect and required no A2D1-A2D4 runtime change.
+
+Current status:
+
+```text
+IMPLEMENTED
+STATIC REVIEW COMPLETE
+UE5.8 VALIDATION PENDING
+A2D5 focused expected = 5
+Phase6R expected total = 99
+```
+
+---
+
+## Next after Defeat validation
+
+The final planned A2D5 scenario is:
+
+```text
+SlayTheSpireDemo.Phase6UIA2D5.Terminal.ResolutionFault
+```
+
+It must use a genuine Gameplay/ActionQueue framework fault, not Presentation corruption.
