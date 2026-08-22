@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **STATIC REVIEW COMPLETE / FOCUSED UE5.8 VALIDATED / FULL REGRESSION PENDING**.
 
 ## Review scope
 
@@ -10,7 +10,7 @@ Reviewed A2D-4 additions:
 
 ```text
 typed Victory / Defeat payload
- typed ResolutionFault payload
+typed ResolutionFault payload
 legacy root fault-field removal
 Victory / Defeat producer identity freezing
 ResolutionFault typed producer
@@ -177,7 +177,23 @@ stale callback after skip ignored
 Presentation recovery does not fault Gameplay
 ```
 
-## 9. CI contract
+## 9. Focused UE5.8 validation result
+
+The first focused workflow attempt exposed one compile-only test issue: `Phase6UIA2D4TimeoutTest.cpp` dereferenced `UBattleActionQueue` while only seeing its forward declaration. Commit `f0d03895` added the missing `Actions/BattleActionQueue.h` include.
+
+The rerun then passed the complete focused gate:
+
+```text
+UE5.8 Editor Development build  PASS
+SlayTheSpireDemo.Phase6UIA2D4  PASS 6/6
+Failed                          0
+NotRun                          0
+EditorExit                      0
+```
+
+This confirms the A2D-4 runtime/test source compiles under UE5.8 and the focused terminal contract is executable, not merely statically plausible.
+
+## 10. CI contract
 
 Dedicated A2D-4 gate:
 
@@ -194,22 +210,22 @@ Updated Phase6R total:
 
 The Shipping exclusion job remains chained after regression success.
 
-## 10. Static review result
+## 11. Remaining validation
 
-No high-confidence C++/UHT structural blocker was found by source inspection.
+The focused gate is complete, but A2D-4 is not promoted to A2D-5 yet because shared regression coverage still needs a fresh run against the A2D-4 source.
 
-The UE5.8 `FAutomationTestBase` API used by the new tests includes `TestTrue`, `TestFalse`, `TestEqual` and templated `TestNotNull`, so the helper/test assertion style is compatible with UE5.8 Automation APIs.
-
-Static review is not a substitute for the authoritative engine build/run. Current status remains **UE5.8 VALIDATION PENDING**.
-
-Required next gates:
+Required remaining gates:
 
 ```text
-UE5.8 Editor build
-A2D4 6/6
 A2D1 3/3
 A2D2 4/4
 A2D3 4/4
 Phase6R 94/94
 Shipping exclusion PASS
+```
+
+After those pass, status may move to:
+
+```text
+VALIDATED / READY FOR A2D-5
 ```
