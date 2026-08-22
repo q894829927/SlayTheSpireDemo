@@ -2,11 +2,11 @@
 
 Date: **2026-08-22**
 
-Status: **STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D-4**.
 
 A2D-3 implements the locked Status historical projection slice: `FBattleHUDStatusView.RuntimeSequence`, deterministic frozen Status ordering, `StatusChanged` WorkingPresentationSnapshot reduction, and mismatch collapse to the immutable `Envelope.FinalSnapshot`.
 
-This document records source/static review only. It does not claim UnrealHeaderTool, MSVC, Unreal Editor, Automation, Blueprint, or PIE execution.
+The original static review is now supplemented by the user-reported UE5.8 validation result: focused A2D-3 Automation **4/4 PASS** and affected Phase6R regression **88/88 PASS**. The Phase6R workflow builds `SlayTheSpireDemoEditor Win64 Development` before running those tests, so the Editor-build prerequisite is also satisfied.
 
 ## Implemented scope
 
@@ -27,48 +27,19 @@ A2D-3 does not query live Gameplay from the Controller reducer.
 
 ## Frozen snapshot identity and ordering
 
-`FStatusReadView` already carries Gameplay `uint64 RuntimeSequence`. A2D-3 freezes it into:
+`FStatusReadView` carries Gameplay `uint64 RuntimeSequence`; A2D-3 freezes it into `FBattleHUDStatusView::RuntimeSequence` (`int64`). The freeze path rejects empty Status IDs, non-positive amounts, zero runtime identities, and identities above `MAX_int64`.
 
-```cpp
-FBattleHUDStatusView::RuntimeSequence // int64
-```
-
-The freeze path rejects a Status if:
-
-```text
-StatusId == NAME_None
-Amount <= 0
-RuntimeSequence == 0
-RuntimeSequence > MAX_int64
-```
-
-After freezing, each combatant Status array is explicitly sorted by:
-
-```text
-RuntimeSequence ascending
-```
-
-The freeze path then verifies strict ordering. Duplicate/non-positive Presentation runtime identities cannot become an authoritative frozen baseline.
-
-This removes the former dependency on `UStatusContainer` insertion order.
+Each combatant Status array is sorted by `RuntimeSequence ascending`, and strict ordering is verified after sorting. This removes the former dependency on `UStatusContainer` insertion order.
 
 ## WorkingSnapshot reducer
 
-For every `StatusChanged` record, the Controller first resolves the target combatant only from:
-
-```text
-Record.StatusChanged.TargetPresentationId
-```
-
-The concrete Status identity is:
+For each `StatusChanged` record, the Controller resolves the target combatant only from `TargetPresentationId`. Concrete Status identity is:
 
 ```text
 StatusId + RuntimeSequence
 ```
 
-within that target combatant.
-
-Before applying a Status change, the reducer validates the existing Status projection:
+Before applying a mutation the reducer validates the current Status projection:
 
 ```text
 StatusId non-empty
@@ -78,47 +49,15 @@ RuntimeSequence strictly ascending
 no duplicate live StatusId
 ```
 
-### Create
+Create rejects duplicate StatusId or RuntimeSequence and inserts the new frozen view at the RuntimeSequence-sorted location.
 
-`Applied` requires:
+Increase/reduce requires the exact identity and `Current.Amount == Record.AmountBefore`, then applies `AmountAfter`, `DescriptionAfter`, DisplayName and atlas metadata from the immutable Record.
 
-```text
-bCreated == true
-bRemoved == false
-AmountBefore == 0
-AmountAfter > 0
-```
-
-The reducer rejects a create if either the live StatusId or the RuntimeSequence already exists. It builds `FBattleHUDStatusView` entirely from the frozen payload and inserts it at the RuntimeSequence-sorted position.
-
-### Increase / reduce
-
-For an existing Status, the reducer requires the exact identity and:
-
-```text
-Current.Amount == Record.AmountBefore
-```
-
-It then applies:
-
-```text
-AmountAfter
-DescriptionAfter
-frozen DisplayName
-frozen atlas metadata
-```
-
-The existing RuntimeSequence remains unchanged.
-
-### Remove
-
-Removal requires the same exact identity and AmountBefore check. Only that exact array entry is removed.
-
-A stale `Weak#10` record therefore cannot modify or remove a replacement `Weak#50`.
+Remove requires the same exact identity and AmountBefore check and deletes only that exact runtime instance. A stale `Weak#10` record therefore cannot mutate or remove a replacement `Weak#50`.
 
 ## Reason / structure validation
 
-Reducer-side validation mirrors the committed producer semantics:
+Reducer-side validation mirrors producer semantics:
 
 ```text
 Applied
@@ -136,36 +75,15 @@ Removed
   bRemoved == true
 ```
 
-Malformed historical payloads are not partially applied.
-
 ## Reducer mismatch behavior
 
-Any Status historical mismatch returns reducer failure, including:
+Historical mismatches such as an unknown target, invalid Status identity, invalid current projection, duplicate create identity, missing exact identity, AmountBefore mismatch, or invalid reason/amount shape cause incremental playback to stop and collapse to the immutable `Envelope.FinalSnapshot`.
 
-```text
-unknown TargetPresentationId
-invalid StatusId / RuntimeSequence
-unsorted/invalid current Status projection
-create duplicates StatusId or RuntimeSequence
-exact identity missing
-AmountBefore mismatch
-invalid Reason/amount/membership shape
-```
-
-The existing Controller path then performs:
-
-```text
-stop incremental playback
--> CollapseToEnvelope
--> apply immutable Envelope.FinalSnapshot
--> advance playback generation
-```
-
-This is Presentation recovery only. It does not mutate Gameplay and does not manufacture `ResolutionFault`.
+This is Presentation-only recovery: Gameplay is not mutated and no Gameplay `ResolutionFault` is manufactured.
 
 ## Status projection boundary
 
-The A2D-3 reducer owns only Status projection values:
+A2D-3 reduces only Status-owned projection values:
 
 ```text
 Combatant.Statuses identity/order
@@ -175,46 +93,30 @@ DisplayName
 atlas metadata
 ```
 
-It deliberately does not recompute from live Gameplay:
-
-```text
-card dynamic descriptions
-enemy intent derived damage
-playability / legal-target bindings
-other indirectly status-dependent projections
-```
-
-Those remain exact at Envelope completion through `FinalSnapshot` reconciliation.
+It intentionally does not recalculate live card descriptions, enemy intent damage, playability, legal-target bindings, or other indirectly Status-dependent projections. Those are reconciled exactly at Envelope completion through `FinalSnapshot`.
 
 ## A2D-2 integration hardening found during A2D-3
 
-Static review of reducer/final-snapshot equivalence exposed two producer consistency details and they were corrected before A2D-3 validation:
+A2D-3 review corrected two producer consistency details:
 
-1. A legitimately empty authored Status description is allowed. Producer boundary checks now require only creation-Before empty and removal-After empty; they do not treat every non-created empty `DescriptionBefore` as corrupt history.
-2. Frozen `StatusChanged.DisplayName` now uses the same fallback as FinalSnapshot freezing:
-
-```text
-Definition.DisplayName empty
--> FText::FromName(StatusId)
-```
-
-The reducer and FinalSnapshot therefore use the same visible metadata convention.
+1. Legitimately empty authored Status descriptions are allowed; only creation-Before and removal-After boundary emptiness is required.
+2. Frozen `StatusChanged.DisplayName` uses the same fallback as FinalSnapshot freezing: empty authored DisplayName falls back to `FText::FromName(StatusId)`.
 
 ## Visible playback boundary
 
-`StatusChanged` now participates in the generic Controller visible-playback path.
+`StatusChanged` participates in the generic Controller playback path:
 
 ```text
-Blueprint accepts -> wait for normal token callback
-Blueprint returns false / no Widget -> native immediate completion
+Blueprint accepts -> wait for token callback
+Blueprint false / no Widget -> native immediate completion
 Timeout -> existing fail-safe completion
 ```
 
-A2D-3 adds no Blueprint animation. Blueprint/PIE integration remains deferred.
+A2D-3 itself adds no Blueprint animation. Blueprint/PIE integration remains deferred.
 
-## Focused Automation authored
+## Focused Automation
 
-Exactly four top-level tests exist under:
+Exactly four top-level tests exist:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D3.Snapshot.RuntimeSequenceSorting
@@ -223,26 +125,13 @@ SlayTheSpireDemo.Phase6UIA2D3.Safety.StaleRuntimeSequenceCollapses
 SlayTheSpireDemo.Phase6UIA2D3.Safety.AmountMismatchCollapses
 ```
 
-Coverage includes:
+Coverage includes sorting, runtime identity freezing, create/update/reduce/remove lifecycle, DescriptionAfter projection, DisplayName fallback, exact RuntimeSequence preservation, stale identity collapse, AmountBefore mismatch collapse, Gameplay non-mutation, and no synthetic Gameplay fault.
 
-```text
-explicit 30 / 10 / 20 runtime identities -> frozen 10 / 20 / 30
-RuntimeSequence carried into FBattleHUDStatusView
-create reducer insertion order
-Applied / Increased / Reduced / Removed lifecycle
-DescriptionAfter intermediate projection
-DisplayName fallback consistency
-exact RuntimeSequence preservation on update
-exact removal
-stale old RuntimeSequence cannot remove replacement instance
-AmountBefore mismatch collapses to FinalSnapshot
-Presentation collapse does not mutate Gameplay
-Presentation mismatch does not manufacture Gameplay fault
-```
+Reported result: **PASS (4/4)**.
 
-## CI gates
+## CI / regression gate
 
-Dedicated manual workflow:
+Dedicated workflow:
 
 ```text
 .github/workflows/ue-phase6uia2d3-tests.yml
@@ -250,7 +139,7 @@ Prefix: SlayTheSpireDemo.Phase6UIA2D3
 ExpectedCount: 4
 ```
 
-Aggregate Phase6R now includes A2D-3:
+Aggregate Phase6R includes:
 
 ```text
 Phase5          13
@@ -267,22 +156,23 @@ Phase6UIA2D3     4
 Total           88
 ```
 
-## Static compile / UHT review
+Reported result: **PASS (88/88)**.
 
-The review checked the touched reflected types and main C++ call boundaries:
+Phase6R builds `SlayTheSpireDemoEditor Win64 Development` using the configured UE5.8 toolchain before running the prefixes, so the successful regression run also records the required Editor build as passed.
+
+## Post-validation A2D review notes
+
+A follow-up A2D1-A2D3 code review found three defensive-hardening opportunities. They do not invalidate the successful 4/4 and 88/88 validation:
 
 ```text
-FBattleHUDStatusView int64 BlueprintReadOnly field
-FStatusReadView uint64 -> int64 checked conversion
-TArray Status sorting/insertion
-BattlePresentationController Status reducer helpers
-existing FPresentationRecord StatusChanged payload
-existing UPhase6UIA2APlaybackWidget async test transport
-BattleActionQueue batch signature
-BattlePresentationRecorder HasActiveResolution public access
+1. Controller Status payload validation does not currently validate SourcePresentationId.
+2. Controller reducer relies on producer validation for create DescriptionBefore == Empty
+   and remove DescriptionAfter == Empty instead of re-validating these boundaries.
+3. Frozen Status snapshots enforce RuntimeSequence ordering/uniqueness, while duplicate
+   StatusId rejection is enforced later by the reducer rather than explicitly at freeze time.
 ```
 
-No definite C++/UHT blocker was found by source inspection. UE5.8 build remains authoritative.
+These are recommended additions before A2D-5 combined acceptance, ideally with focused malformed-history tests.
 
 ## Explicitly out of A2D-3
 
@@ -308,9 +198,11 @@ Focused Automation source                  AUTHORED: 4 tests
 Focused GitHub Actions workflow            CONFIGURED: 4 expected
 Phase6R aggregate                          CONFIGURED: 88 expected
 Static compile/UHT review                  COMPLETE
-UE5.8 Editor build                         NOT RUN for A2D-3
-Phase6UIA2D3 Automation                    NOT RUN
-88-test affected regression                NOT RUN
+UE5.8 Editor build                         PASS
+Phase6UIA2D3 Automation                    PASS 4/4
+88-test affected regression                PASS 88/88
 ```
 
-Do not mark A2D-3 validated until UE5.8 Editor build, focused 4/4, and affected Phase6R 88/88 execute successfully.
+A2D-3 is closed at the C++/Automation level and is ready for A2D-4.
+
+See `docs/Phase6UIA2D3Validation.md` for the dedicated validation record.
