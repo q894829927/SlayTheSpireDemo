@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D-5**.
 
 Baseline before A2D-4:
 
@@ -14,7 +14,7 @@ Phase6R PASS 88/88
 UE5.8 Editor build PASS through Phase6R prerequisite
 ```
 
-A2D-4 starts from the validated A2D-1 through A2D-3 status path. It does not reopen those slices.
+A2D-4 was implemented on top of the validated A2D-1 through A2D-3 status path without reopening those slices.
 
 ---
 
@@ -289,7 +289,7 @@ Those generic probes were migrated to no-state-change `BlockChanged` records. Te
 
 ## 9. Focused Automation
 
-A2D-4 currently defines six top-level tests:
+A2D-4 defines six top-level tests:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D4.Producer.VictoryPayload
@@ -300,7 +300,7 @@ SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
 SlayTheSpireDemo.Phase6UIA2D4.Safety.PreflightFallbackSkip
 ```
 
-Coverage proves or is intended to prove:
+Validated coverage includes:
 
 ```text
 Victory typed participant identity
@@ -328,7 +328,7 @@ Prefix: SlayTheSpireDemo.Phase6UIA2D4
 ExpectedCount: 6
 ```
 
-Phase6R expected counts are now:
+Phase6R expected counts:
 
 ```text
 Phase5          13
@@ -346,7 +346,7 @@ Phase6UIA2D4     6
 Total           94
 ```
 
-The Phase6R workflow still includes the Shipping test-module exclusion gate.
+The Phase6R workflow also includes the Shipping test-module exclusion gate.
 
 ---
 
@@ -373,28 +373,42 @@ b4a30f97  test(ui-a2d4): use nonterminal probes for A2A controller lifecycle
 60bc3b64  test(ui-a2d4): prove terminal timeout completion
 e4892ef1  ci(ui-a2d4): include terminal timeout coverage
 524bf2be  ci(ui-a2d4): raise regression gate for timeout test
+f0d03895  fix(ui-a2d4): include action queue in timeout test
 ```
 
 ---
 
-## 12. Validation requirement
+## 12. Authoritative validation result
 
-Source implementation and static review are complete, but this document does **not** claim runtime validation yet.
-
-Required authoritative gates:
+Focused UE5.8 gate:
 
 ```text
-UE5.8 Editor Development build
-SlayTheSpireDemo.Phase6UIA2D4  6/6
-SlayTheSpireDemo.Phase6UIA2D1  3/3
-SlayTheSpireDemo.Phase6UIA2D2  4/4
-SlayTheSpireDemo.Phase6UIA2D3  4/4
-Phase6R aggregate             94/94
-Shipping exclusion             PASS
+UE5.8 Editor Development build  PASS
+SlayTheSpireDemo.Phase6UIA2D4  PASS 6/6
+Failed                          0
+NotRun                          0
+EditorExit                      0
 ```
 
-Only after these pass may A2D-4 be marked:
+Full user-reported Phase6R workflow:
+
+```text
+Phase6R aggregate       PASS 94/94
+A2D1                    PASS 3/3
+A2D2                    PASS 4/4
+A2D3                    PASS 4/4
+A2D4                    PASS 6/6
+Failed                  0
+NotRun                  0
+Shipping exclusion      PASS
+```
+
+All locked implementation and validation gates are satisfied.
+
+A2D-4 is therefore sealed as:
 
 ```text
 VALIDATED / READY FOR A2D-5
 ```
+
+A2D-5 may use A2D-1 through A2D-4 as its validated incoming baseline.
