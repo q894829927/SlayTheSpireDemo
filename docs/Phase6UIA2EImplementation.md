@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **ROADMAP LOCKED / IMPLEMENTATION NEXT AFTER A2D5 CLOSURE**.
+Status: **READY TO IMPLEMENT / A2D5 C++ GATE SEALED**.
 
 UI-A2E closes the remaining player-visible gap in UI-A2. UI-A2A through UI-A2D establish the committed-presentation transport, reducers, status identity, terminal semantics and combined C++ acceptance. A2E is the unified Blueprint/UMG integration and PIE acceptance step that proves those committed historical facts are actually shown to the player in the intended order.
 
@@ -11,11 +11,11 @@ The mainline must not jump directly from A2D5 C++ acceptance to unfinished UI-A3
 ## 1. Locked development order
 
 ```text
-A2D5 C++ / Automation closure
+A2D5 C++ / Automation closure     COMPLETE / SEALED
 ↓
 synchronize AGENTS + A2/A2D validation evidence
 ↓
-UI-A2E Unified Blueprint Playback
+UI-A2E Unified Blueprint Playback NEXT
 ↓
 UI-A2E PIE end-to-end acceptance
 ↓
@@ -32,14 +32,16 @@ A3-4 ViewModel Transient Preview Lifecycle
 A3-5 Minimal UMG + A2/A3 Combined PIE
 ```
 
-Current owner-confirmed evidence at the time this roadmap was recorded:
+Owner-confirmed A2D closure evidence:
 
 ```text
 A2D5 focused                    PASS 6/6
-A2D5-7 Terminal.ResolutionFault VALIDATED by focused UE5.8 Automation
+A2D5-7 Terminal.ResolutionFault VALIDATED
+Phase6R aggregate               PASS 100/100
+Shipping exclusion              PASS
 ```
 
-Do not record `Phase6R 100/100` or Shipping exclusion as passed unless that separate owner run is also explicitly confirmed. If that evidence is still missing, it is the final A2D5 closure gate before A2E asset work begins.
+The C++ committed-presentation path is therefore closed. A2 itself remains open only because unified Blueprint/UMG historical playback and PIE acceptance have not yet been completed.
 
 ---
 
@@ -364,7 +366,7 @@ For a fixed multi-hit Damage effect, `7 x 2` means two independent attack intent
 
 ## 11. A3-1 — Dynamic Text
 
-The existing Dynamic Text slice remains the baseline and is formally treated as the first A3 slice once its already-recorded 8/8 + DataAsset/PIE/package evidence is synchronized.
+The existing Dynamic Text slice is sealed at 8/8 with its already-recorded DataAsset/PIE/package evidence.
 
 Card-face enemy-target Damage continues to omit one concrete Enemy target. It may include source-side modifiers while target-specific modifiers are reserved for A3-2.
 
