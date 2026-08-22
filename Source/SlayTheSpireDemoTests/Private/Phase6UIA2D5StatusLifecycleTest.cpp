@@ -23,6 +23,20 @@ namespace Phase6UIA2D5StatusLifecycleTest
 {
 	using namespace Phase6UIA2D5Test;
 
+	UStatusData* CreateAnchorDefinition(UObject* Outer)
+	{
+		UStatusData* Definition = NewObject<UStatusData>(Outer);
+		if (!IsValid(Definition))
+		{
+			return nullptr;
+		}
+
+		Definition->StatusId = TEXT("AnchorStatus");
+		Definition->DisplayName = FText::FromString(TEXT("Anchor Status"));
+		Definition->Description = FText::FromString(TEXT("Anchor amount {Amount}."));
+		return Definition;
+	}
+
 	UStatusData* CreateWeakDefinition(UObject* Outer)
 	{
 		UStatusData* Definition = NewObject<UStatusData>(Outer);
@@ -81,6 +95,54 @@ namespace Phase6UIA2D5StatusLifecycleTest
 		return !Queue->IsBusy() && !Queue->IsResolutionFaulted();
 	}
 
+	bool RunAlreadyPendingSystemAction(
+		FAcceptanceFixture& Fixture,
+		UBattleActionQueue* PendingQueue,
+		UBattleAction* PendingAction
+	)
+	{
+		if (!Fixture.IsReady()
+			|| !IsValid(PendingQueue)
+			|| !IsValid(PendingAction)
+			|| PendingQueue->IsResolutionFaulted()
+			|| PendingQueue->GetPendingCount() != 1)
+		{
+			return false;
+		}
+
+		UBattleActionQueue* BattleQueue = Fixture.Battle->GetActionQueueForTesting();
+		if (!IsValid(BattleQueue)
+			|| BattleQueue->IsBusy()
+			|| !Fixture.Battle->BeginSystemPresentationResolutionForTesting())
+		{
+			return false;
+		}
+
+		const FPresentationRecordWriter Writer = Fixture.Battle->GetActivePresentationRecordWriterForTesting();
+		if (!Writer.IsAvailable())
+		{
+			return false;
+		}
+
+		// The Action was already a real pending queue member while Weak#A existed.
+		// Only the current formal Resolution writer is supplied immediately before
+		// this retained Action is allowed to execute.
+		PendingAction->SetPresentationRecordWriter(Writer);
+		if (!PendingQueue->StartProcessing())
+		{
+			return false;
+		}
+
+		// Empty/no-op Resolutions are allowed either to publish an empty Envelope or
+		// to remain unpublished. Do not make envelope publication part of the stale
+		// mutation contract. A genuine Presentation failure is still rejected.
+		(void)Fixture.Battle->SealActivePresentationResolutionForTesting();
+		Fixture.Flush();
+		return !PendingQueue->IsBusy()
+			&& !PendingQueue->IsResolutionFaulted()
+			&& Fixture.Battle->IsPresentationAvailable();
+	}
+
 	UStatusInstance* FindMutableStatus(UStatusContainer* Container, FName StatusId)
 	{
 		if (!IsValid(Container))
@@ -122,7 +184,8 @@ namespace Phase6UIA2D5StatusLifecycleTest
 		{
 			for (const FPresentationRecord& Record : Capture.Envelope.Records)
 			{
-				if (Record.Type == EBattlePresentationRecordType::StatusChanged)
+				if (Record.Type == EBattlePresentationRecordType::StatusChanged
+					&& Record.StatusChanged.StatusId == TEXT("Weak"))
 				{
 					OutHistory.Add(Record.StatusChanged);
 				}
@@ -163,12 +226,41 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UStatusData* Weak = CreateWeakDefinition(Fixture.World);
 	UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
 	UStatusContainer* Container = Fixture.Player->GetStatusContainer();
-	if (!TestNotNull(TEXT("Weak definition"), Weak)
-		|| !TestNotNull(TEXT("Battle action queue"), Queue)
-		|| !TestNotNull(TEXT("Player status container"), Container))
+	UStatusData* Anchor = CreateAnchorDefinition(Fixture.World);
+	UStatusData* Weak = CreateWeakDefinition(Fixture.World);
+	if (!TestNotNull(TEXT("Battle action queue"), Queue)
+		|| !TestNotNull(TEXT("Player status container"), Container)
+		|| !TestNotNull(TEXT("Anchor definition"), Anchor)
+		|| !TestNotNull(TEXT("Weak definition"), Weak))
+	{
+		return false;
+	}
+
+	// Establish a persistent lower-sequence status before the formal A2D5-2
+	// capture begins. This makes the status-order assertions exercise a real
+	// two-row array instead of vacuously passing on a single Weak row.
+	UApplyStatusAction* CreateAnchor = NewObject<UApplyStatusAction>(Queue);
+	CreateAnchor->Initialize(Fixture.Battle, Fixture.Player, Fixture.Player, Anchor, 1);
+	if (!TestTrue(TEXT("Anchor status commits"), RunSystemAction(Fixture, CreateAnchor))
+		|| !TestTrue(TEXT("Anchor playback drains"), Fixture.DrainPlayback()))
+	{
+		return false;
+	}
+
+	UStatusInstance* AnchorInstance = FindMutableStatus(Container, TEXT("AnchorStatus"));
+	const FBattleHUDStatusView* DisplayedAnchor = FindDisplayedStatus(Fixture.ViewModel, TEXT("AnchorStatus"));
+	if (!TestNotNull(TEXT("Anchor runtime instance"), AnchorInstance)
+		|| !TestNotNull(TEXT("Anchor displayed row"), DisplayedAnchor))
+	{
+		return false;
+	}
+	const uint64 AnchorSequence = AnchorInstance->GetRuntimeSequence();
+	TestTrue(TEXT("Anchor RuntimeSequence positive"), AnchorSequence > 0);
+	TestEqual(TEXT("Anchor amount"), AnchorInstance->GetAmount(), 1);
+
+	if (!TestTrue(TEXT("Acceptance capture rebases after Anchor"), Fixture.ResetAcceptanceCapture()))
 	{
 		return false;
 	}
@@ -187,9 +279,16 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	const uint64 WeakASequence = WeakA->GetRuntimeSequence();
 	TestTrue(TEXT("Weak#A RuntimeSequence positive"), WeakASequence > 0);
+	TestTrue(TEXT("Weak#A RuntimeSequence follows Anchor"), WeakASequence > AnchorSequence);
 
-	TStrongObjectPtr<UReduceStatusAction> StaleReduce(NewObject<UReduceStatusAction>(Queue));
-	if (!TestNotNull(TEXT("Stale exact-instance reduce action retained"), StaleReduce.Get()))
+	// Queue the stale exact-instance Action now, while Weak#A is still a real
+	// authoritative member. The holding queue is deliberately not started yet.
+	TStrongObjectPtr<UBattleActionQueue> StaleQueue(NewObject<UBattleActionQueue>(Fixture.Battle));
+	TStrongObjectPtr<UReduceStatusAction> StaleReduce(
+		IsValid(StaleQueue.Get()) ? NewObject<UReduceStatusAction>(StaleQueue.Get()) : nullptr
+	);
+	if (!TestNotNull(TEXT("Stale holding queue"), StaleQueue.Get())
+		|| !TestNotNull(TEXT("Stale exact-instance reduce action"), StaleReduce.Get()))
 	{
 		return false;
 	}
@@ -201,6 +300,12 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 		1,
 		EStatusChangeReason::Reduced
 	);
+	if (!TestTrue(TEXT("Stale reduce enters holding Action batch while Weak#A exists"), StaleQueue->AddToBack(StaleReduce.Get()))
+		|| !TestEqual(TEXT("Stale holding queue has one pending Action"), StaleQueue->GetPendingCount(), 1)
+		|| !TestTrue(TEXT("Weak#A is still authoritative when stale Action becomes pending"), Container->ContainsStatusInstance(WeakA)))
+	{
+		return false;
+	}
 
 	if (!TestTrue(TEXT("Controller waits on Applied playback"), Fixture.Controller->IsWaitingForCompletionForTesting())
 		|| !TestEqual(TEXT("Applied is first visible A2D5 record"), Fixture.Widget->PlayCallCount, 1)
@@ -219,6 +324,16 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("Displayed Weak amount after Applied"), DisplayedA2->Amount, 2);
 	TestEqual(TEXT("Displayed Weak identity after Applied"), DisplayedA2->RuntimeSequence, static_cast<int64>(WeakASequence));
+	TestEqual(TEXT("Two displayed statuses exercise ordering"), Fixture.ViewModel->Player.Statuses.Num(), 2);
+	if (Fixture.ViewModel->Player.Statuses.Num() == 2)
+	{
+		TestEqual(TEXT("Anchor remains first displayed status"), Fixture.ViewModel->Player.Statuses[0].StatusId, FName(TEXT("AnchorStatus")));
+		TestEqual(TEXT("Weak#A is second displayed status"), Fixture.ViewModel->Player.Statuses[1].StatusId, FName(TEXT("Weak")));
+		TestTrue(
+			TEXT("Displayed status order is RuntimeSequence ascending"),
+			Fixture.ViewModel->Player.Statuses[0].RuntimeSequence < Fixture.ViewModel->Player.Statuses[1].RuntimeSequence
+		);
+	}
 
 	UApplyStatusAction* IncreaseA = NewObject<UApplyStatusAction>(Queue);
 	IncreaseA->Initialize(Fixture.Battle, Fixture.Player, Fixture.Player, Weak, 1);
@@ -279,6 +394,7 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("End-turn publishes at least one Envelope"), Fixture.CapturedEnvelopes.Num() > CapturesBeforeEndTurn);
 	TestTrue(TEXT("End-turn Controller playback drains"), Fixture.DrainPlayback());
 	TestEqual(TEXT("Gameplay returns to PlayerTurn after zero-damage enemy turn"), Fixture.Battle->BattleState, EBattleState::PlayerTurn);
+	TestTrue(TEXT("Anchor survives turn cycle"), Container->ContainsStatusInstance(AnchorInstance));
 	TestTrue(TEXT("Weak#A survives TurnEndDecay"), Container->ContainsStatusInstance(WeakA));
 	TestEqual(TEXT("Gameplay Weak amount after TurnEndDecay"), WeakA->GetAmount(), 1);
 	const FBattleHUDStatusView* DisplayedA1 = FindDisplayedStatus(Fixture.ViewModel, TEXT("Weak"));
@@ -303,8 +419,10 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("Displayed Weak remains amount one before Removed completion"), DisplayedBeforeRemove->Amount, 1);
 	TestFalse(TEXT("Gameplay Weak#A removed before presentation completion"), Container->ContainsStatusInstance(WeakA));
+	TestEqual(TEXT("Stale Action remains pending after Weak#A removal"), StaleQueue->GetPendingCount(), 1);
 	TestTrue(TEXT("Removed playback drains"), Fixture.DrainPlayback());
 	TestTrue(TEXT("Displayed Weak removed after playback completion"), FindDisplayedStatus(Fixture.ViewModel, TEXT("Weak")) == nullptr);
+	TestNotNull(TEXT("Anchor remains displayed after Weak#A removal"), FindDisplayedStatus(Fixture.ViewModel, TEXT("AnchorStatus")));
 
 	UApplyStatusAction* CreateB = NewObject<UApplyStatusAction>(Queue);
 	CreateB->Initialize(Fixture.Battle, Fixture.Player, Fixture.Player, Weak, 2);
@@ -319,7 +437,9 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	const uint64 WeakBSequence = WeakB->GetRuntimeSequence();
 	TestTrue(TEXT("Weak#B is a different object"), WeakB != WeakA);
-	TestTrue(TEXT("Weak#B RuntimeSequence is newer"), WeakBSequence > WeakASequence);
+	TestTrue(TEXT("Weak#B RuntimeSequence is newer than Weak#A"), WeakBSequence > WeakASequence);
+	TestTrue(TEXT("Weak#B RuntimeSequence remains after Anchor"), WeakBSequence > AnchorSequence);
+	TestEqual(TEXT("Stale Action is still pending after Weak#B recreate"), StaleQueue->GetPendingCount(), 1);
 	TestTrue(TEXT("Weak#B playback drains"), Fixture.DrainPlayback());
 	const FBattleHUDStatusView* DisplayedB2 = FindDisplayedStatus(Fixture.ViewModel, TEXT("Weak"));
 	if (!TestNotNull(TEXT("Displayed Weak#B exists after recreate"), DisplayedB2))
@@ -328,14 +448,27 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("Displayed Weak#B amount"), DisplayedB2->Amount, 2);
 	TestEqual(TEXT("Displayed Weak#B concrete identity"), DisplayedB2->RuntimeSequence, static_cast<int64>(WeakBSequence));
+	TestEqual(TEXT("Two displayed statuses remain after recreate"), Fixture.ViewModel->Player.Statuses.Num(), 2);
+	if (Fixture.ViewModel->Player.Statuses.Num() == 2)
+	{
+		TestEqual(TEXT("Anchor remains first after Weak recreate"), Fixture.ViewModel->Player.Statuses[0].StatusId, FName(TEXT("AnchorStatus")));
+		TestEqual(TEXT("Weak#B remains second after recreate"), Fixture.ViewModel->Player.Statuses[1].StatusId, FName(TEXT("Weak")));
+		TestTrue(
+			TEXT("Recreated displayed statuses remain RuntimeSequence ordered"),
+			Fixture.ViewModel->Player.Statuses[0].RuntimeSequence < Fixture.ViewModel->Player.Statuses[1].RuntimeSequence
+		);
+	}
 
 	const int32 PlayedBeforeStale = Fixture.Widget->PlayCallCount;
 	const int32 CapturesBeforeStale = Fixture.CapturedEnvelopes.Num();
-	if (!TestTrue(TEXT("Retained stale Weak#A reduce executes in a real system Resolution"), RunSystemAction(Fixture, StaleReduce.Get())))
+	if (!TestTrue(
+		TEXT("Already-pending stale Weak#A reduce executes in a new formal system Resolution"),
+		RunAlreadyPendingSystemAction(Fixture, StaleQueue.Get(), StaleReduce.Get())
+	))
 	{
 		return false;
 	}
-	TestTrue(TEXT("Stale system Resolution seals/publishes"), Fixture.CapturedEnvelopes.Num() > CapturesBeforeStale);
+	TestEqual(TEXT("Stale holding queue drains"), StaleQueue->GetPendingCount(), 0);
 	TestEqual(TEXT("Stale exact-instance NoOp produces no visible Record"), Fixture.Widget->PlayCallCount, PlayedBeforeStale);
 	TestTrue(TEXT("Stale empty/no-op playback remains caught up"), Fixture.DrainPlayback());
 	TestTrue(TEXT("Weak#B remains authoritative member"), Container->ContainsStatusInstance(WeakB));
@@ -348,6 +481,18 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("Displayed Weak#B amount unchanged by stale action"), DisplayedAfterStale->Amount, 2);
 	TestEqual(TEXT("Displayed Weak#B identity unchanged by stale action"), DisplayedAfterStale->RuntimeSequence, static_cast<int64>(WeakBSequence));
+
+	// Empty/no-op Resolution publication is optional. If the current producer does
+	// publish one, it must contain no committed Records. Do not require the
+	// Envelope itself to exist.
+	for (int32 Index = CapturesBeforeStale; Index < Fixture.CapturedEnvelopes.Num(); ++Index)
+	{
+		TestEqual(
+			*FString::Printf(TEXT("Optional stale Envelope[%d] contains no Records"), Index),
+			Fixture.CapturedEnvelopes[Index].Envelope.Records.Num(),
+			0
+		);
+	}
 
 	TestTrue(
 		TEXT("Captured Envelope order is monotonic"),
@@ -367,9 +512,19 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 		);
 	}
 
+	TestTrue(
+		TEXT("Controller playback records/tokens match captured history in producer order"),
+		AssertControllerPlaybackMatchesCapturedHistory(
+			*this,
+			Fixture.CapturedEnvelopes,
+			Fixture.Widget,
+			TEXT("StatusLifecycle Controller")
+		)
+	);
+
 	TArray<FStatusChangedPresentationPayload> History;
 	GatherStatusHistory(Fixture.CapturedEnvelopes, History);
-	if (!TestEqual(TEXT("Status lifecycle emits exactly six committed StatusChanged records"), History.Num(), 6))
+	if (!TestEqual(TEXT("Status lifecycle emits exactly six committed Weak StatusChanged records"), History.Num(), 6))
 	{
 		return false;
 	}
@@ -420,7 +575,7 @@ bool FPhase6UIA2D5StatusLifecycleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Removed description after empty"), History[4].DescriptionAfter.IsEmpty());
 	TestTrue(TEXT("Recreated description before empty"), History[5].DescriptionBefore.IsEmpty());
 	TestEqual(TEXT("Recreated description after"), History[5].DescriptionAfter.ToString(), FString(TEXT("Weak amount 2.")));
-	TestEqual(TEXT("Stale exact-instance mutation adds no StatusChanged history"), History.Num(), 6);
+	TestEqual(TEXT("Stale exact-instance mutation adds no Weak StatusChanged history"), History.Num(), 6);
 	return true;
 }
 
