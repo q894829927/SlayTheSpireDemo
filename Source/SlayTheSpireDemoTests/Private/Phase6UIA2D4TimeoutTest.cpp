@@ -146,7 +146,7 @@ bool FPhase6UIA2D4TerminalTimeoutTest::RunTest(const FString& Parameters)
 	using namespace Phase6UIA2D4TimeoutTest;
 
 	// Sub-scenario 1: Controller timeout advances the frozen historical state and
-	// the Widget is explicitly told, via its ViewModel boundary, to stop any stale
+	// the Widget is explicitly told, via its ViewModel boundary, to stop the exact
 	// Blueprint visual that was still playing for the abandoned token.
 	{
 		FFixture Fixture;
@@ -164,6 +164,7 @@ bool FPhase6UIA2D4TerminalTimeoutTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Terminal record waits before timeout"), Fixture.Controller->IsWaitingForCompletionForTesting());
 		TestEqual(TEXT("Displayed outcome remains non-terminal before timeout"), Fixture.ViewModel->Outcome, EBattleHUDOutcome::None);
 		TestEqual(TEXT("Starting playback does not cancel itself"), Fixture.Widget->CancelCallCount, CancelCountBeforePlayback);
+		const FPresentationPlaybackToken TimeoutToken = Fixture.Widget->LastToken;
 
 		Fixture.Controller->ExpireActivePlaybackForTesting();
 		TestFalse(TEXT("Timeout clears wait"), Fixture.Controller->IsWaitingForCompletionForTesting());
@@ -171,15 +172,20 @@ bool FPhase6UIA2D4TerminalTimeoutTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Timeout enters terminal interaction state"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Terminal);
 		TestEqual(TEXT("Timeout completes terminal envelope"), Fixture.Controller->GetLastCompletedResolutionIdForTesting(), ResolutionId);
 		TestFalse(TEXT("Timeout never faults Gameplay"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
+		TestEqual(
+			TEXT("Timeout cancels exactly one stale Blueprint visual"),
+			Fixture.Widget->CancelCallCount,
+			CancelCountBeforePlayback + 1
+		);
 		TestTrue(
-			TEXT("Timeout-driven ViewModel advancement cancels stale Blueprint visual"),
-			Fixture.Widget->CancelCallCount > CancelCountBeforePlayback
+			TEXT("Timeout cancellation carries the exact abandoned Token"),
+			Fixture.Widget->LastCancelledToken == TimeoutToken
 		);
 	}
 
 	// Sub-scenario 2: even a miswired Blueprint that calls Notify synchronously
-	// from PlayPresentationRecord cannot re-enter Controller record progression.
-	// The Widget base defers forwarding to the next CoreTicker turn.
+	// from the playback event cannot re-enter Controller record progression. The
+	// Widget base defers forwarding to the next CoreTicker turn.
 	{
 		FFixture Fixture;
 		if (!TestTrue(TEXT("Synchronous-callback fixture created"), Fixture.IsReady()))
@@ -194,7 +200,7 @@ bool FPhase6UIA2D4TerminalTimeoutTest::RunTest(const FString& Parameters)
 
 		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
 		TestEqual(TEXT("Synchronous-misuse Blueprint receives one record"), Fixture.Widget->PlayCallCount, 1);
-		TestTrue(TEXT("Synchronous Notify cannot complete inside PlayPresentationRecord stack"), Fixture.Controller->IsWaitingForCompletionForTesting());
+		TestTrue(TEXT("Synchronous Notify cannot complete inside playback event stack"), Fixture.Controller->IsWaitingForCompletionForTesting());
 		TestTrue(TEXT("Terminal outcome remains historical before deferred callback"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::None);
 		TestTrue(TEXT("Resolution watermark is not completed re-entrantly"), Fixture.Controller->GetLastCompletedResolutionIdForTesting() < ResolutionId);
 
