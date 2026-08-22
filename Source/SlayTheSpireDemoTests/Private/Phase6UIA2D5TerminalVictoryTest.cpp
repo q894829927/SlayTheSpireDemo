@@ -180,6 +180,7 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	TestTrue(TEXT("Lethal Envelope origin is PlayCard"), Envelope.Origin == EPresentationResolutionOrigin::PlayCard);
 	TestTrue(TEXT("Record[0] CardPlayed"), Envelope.Records[0].Type == EBattlePresentationRecordType::CardPlayed);
 	TestTrue(TEXT("Record[1] Damage"), Envelope.Records[1].Type == EBattlePresentationRecordType::Damage);
 	TestTrue(TEXT("Record[2] CardZoneChanged"), Envelope.Records[2].Type == EBattlePresentationRecordType::CardZoneChanged);
@@ -294,7 +295,9 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Working Energy stays at post-card value before terminal completion"), Working.Energy, 2);
 	TestEqual(TEXT("Displayed Discard advances before Victory"), Fixture.ViewModel->DiscardCount, 1);
 	TestTrue(TEXT("Displayed outcome remains None while Victory animates"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::None);
-	TestTrue(TEXT("Displayed interaction is not Terminal while Victory animates"), Fixture.ViewModel->InteractionState != EBattleHUDInteractionState::Terminal);
+	TestTrue(TEXT("Displayed interaction remains Resolving while Victory animates"), Fixture.ViewModel->InteractionState == EBattleHUDInteractionState::Resolving);
+	TestTrue(TEXT("Displayed input remains locked while Victory animates"), Fixture.ViewModel->bInputLocked);
+	TestFalse(TEXT("Displayed EndTurn remains disabled while Victory animates"), Fixture.ViewModel->bCanEndTurn);
 	TestEqual(TEXT("Victory becomes fourth visible playback"), Fixture.Widget->PlayCallCount, 4);
 	TestTrue(TEXT("Victory token is waiting"), Fixture.Controller->IsWaitingForCompletionForTesting());
 
@@ -318,6 +321,8 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Victory Resolution completes"), Fixture.Controller->GetLastCompletedResolutionIdForTesting(), Envelope.ResolutionId);
 	TestTrue(TEXT("Displayed outcome enters Victory only after terminal completion"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::Victory);
 	TestTrue(TEXT("Displayed interaction enters Terminal"), Fixture.ViewModel->InteractionState == EBattleHUDInteractionState::Terminal);
+	TestTrue(TEXT("Displayed terminal input stays locked"), Fixture.ViewModel->bInputLocked);
+	TestFalse(TEXT("Displayed terminal EndTurn stays disabled"), Fixture.ViewModel->bCanEndTurn);
 	TestEqual(TEXT("Displayed terminal Energy reconciles to zero"), Fixture.ViewModel->Energy, 0);
 	TestEqual(TEXT("Displayed terminal Enemy HP"), Fixture.ViewModel->Enemy.HP, 0);
 	TestTrue(TEXT("Displayed terminal Enemy dead"), Fixture.ViewModel->Enemy.bDead);
@@ -328,6 +333,14 @@ bool FPhase6UIA2D5TerminalVictoryTest::RunTest(const FString& Parameters)
 		TEXT("Caught-up Controller releases WorkingSnapshot after terminal Envelope completion"),
 		Fixture.Controller->TryGetWorkingSnapshotForTesting(ReleasedWorking)
 	);
+
+	const int64 CompletedResolutionId = Fixture.Controller->GetLastCompletedResolutionIdForTesting();
+	const int32 CompletedPlayCallCount = Fixture.Widget->PlayCallCount;
+	Fixture.Controller->NotifyPresentationFinished(VictoryToken);
+	TestEqual(TEXT("Duplicate Victory token does not advance completed Resolution"), Fixture.Controller->GetLastCompletedResolutionIdForTesting(), CompletedResolutionId);
+	TestEqual(TEXT("Duplicate Victory token does not start extra playback"), Fixture.Widget->PlayCallCount, CompletedPlayCallCount);
+	TestFalse(TEXT("Duplicate Victory token does not recreate wait"), Fixture.Controller->IsWaitingForCompletionForTesting());
+	TestTrue(TEXT("Duplicate Victory token leaves displayed outcome Victory"), Fixture.ViewModel->Outcome == EBattleHUDOutcome::Victory);
 
 	TestTrue(
 		TEXT("Victory Envelope reducer-owned state matches FinalSnapshot"),
