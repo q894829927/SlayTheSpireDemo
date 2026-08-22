@@ -125,7 +125,16 @@ bool UPhase6UIA2APlaybackWidget::PlayPresentationRecord_Implementation(
 {
 	++PlayCallCount;
 	LastToken = Token;
+	if (bNotifySynchronouslyFromPlay)
+	{
+		NotifyPresentationFinished(Token);
+	}
 	return bAcceptAsyncPlayback;
+}
+
+void UPhase6UIA2APlaybackWidget::CancelPresentationRecordPlayback_Implementation()
+{
+	++CancelCallCount;
 }
 
 bool APhase6UIA2ATestPresenter::InvokeInitializeHUDForTesting(APlayerController* PlayerController)
