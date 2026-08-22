@@ -43,6 +43,11 @@ public:
 	int64 GetLastCompletedResolutionIdForTesting() const;
 	void ExpireActivePlaybackForTesting();
 	bool TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const;
+	bool ReduceEnvelopeForTesting(
+		const FPresentationStateSnapshot& Baseline,
+		const FPresentationResolutionEnvelope& Envelope,
+		FPresentationStateSnapshot& OutReducedSnapshot
+	);
 #endif
 
 protected:
