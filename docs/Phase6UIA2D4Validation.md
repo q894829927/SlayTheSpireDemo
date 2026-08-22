@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **FOCUSED VALIDATED / FULL REGRESSION PENDING**.
+Status: **VALIDATED / READY FOR A2D-5**.
 
 ## Validated incoming baseline
 
@@ -16,7 +16,7 @@ SlayTheSpireDemo.Phase6UIA2D3     PASS 4/4
 Phase6R aggregate                 PASS 88/88
 ```
 
-Those results validate the incoming A2D-1 through A2D-3 baseline only. A2D-4 changes runtime Presentation code, compatibility tests and CI counts, so a fresh full regression run is still required before promotion to A2D-5.
+A2D-4 was implemented on top of that sealed A2D-1 through A2D-3 baseline and then revalidated through both its focused UE5.8 gate and the expanded full Phase6R regression gate.
 
 ## Current A2D-4 implementation
 
@@ -46,17 +46,7 @@ Workflow:
 .github/workflows/ue-phase6uia2d4-tests.yml
 ```
 
-Expected:
-
-```text
-Prefix: SlayTheSpireDemo.Phase6UIA2D4
-Tests:  6/6
-Failed: 0
-NotRun: 0
-EditorExit: 0
-```
-
-Expected top-level tests:
+Top-level tests:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D4.Producer.VictoryPayload
@@ -67,21 +57,21 @@ SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
 SlayTheSpireDemo.Phase6UIA2D4.Safety.PreflightFallbackSkip
 ```
 
-Current result after the timeout-test include fix (`f0d03895`):
+Validated result after the timeout-test include fix (`f0d03895`):
 
 ```text
-UE5.8 Editor build    PASS
-A2D4 focused 6/6      PASS
-Failed                 0
-NotRun                 0
-EditorExit             0
+UE5.8 Editor Development build   PASS
+A2D4 focused                    PASS 6/6
+Failed                           0
+NotRun                           0
+EditorExit                       0
 ```
 
-This focused run validates that the A2D-4 source compiles under UE5.8 and that all six terminal producer/playback/safety tests pass on the hardened implementation.
+This validates that the A2D-4 source compiles under UE5.8 and that all six terminal producer/playback/safety tests execute successfully.
 
-## Regression gate
+## Full regression gate
 
-Updated Phase6R expected counts:
+Phase6R expected counts:
 
 ```text
 Phase5          13
@@ -99,41 +89,39 @@ Phase6UIA2D4     6
 Total           94
 ```
 
-Required aggregate result:
+User-reported successful full Phase6R workflow result:
 
 ```text
-Phase6R 94/94
-Failed  0
-NotRun  0
-EditorExit 0
+Phase6R aggregate       PASS 94/94
+Failed                  0
+NotRun                  0
+A2D1                    PASS 3/3
+A2D2                    PASS 4/4
+A2D3                    PASS 4/4
+A2D4                    PASS 6/6
+Shipping exclusion      PASS
+```
+
+Because the Shipping exclusion job is chained after the regression job, successful completion of the full Phase6R workflow closes both the regression and Shipping test-module exclusion gates.
+
+## Final promotion result
+
+All promotion requirements are now satisfied:
+
+```text
+UE5.8 Editor Development build PASS
+A2D4 focused 6/6 PASS
+A2D1 3/3 PASS
+A2D2 4/4 PASS
+A2D3 4/4 PASS
+Phase6R 94/94 PASS
 Shipping exclusion PASS
 ```
 
-Current result:
-
-```text
-Phase6R 94/94       PENDING
-Shipping exclusion  PENDING
-```
-
-## Promotion rule
-
-Do not mark A2D-4 complete or begin A2D-5 acceptance work based only on the focused gate.
-
-Promotion requires all of:
-
-```text
-UE5.8 Editor Development build PASS      [PASS]
-A2D4 focused 6/6 PASS                    [PASS]
-A2D1 3/3 PASS                            [pending fresh Phase6R]
-A2D2 4/4 PASS                            [pending fresh Phase6R]
-A2D3 4/4 PASS                            [pending fresh Phase6R]
-Phase6R 94/94 PASS                       [PENDING]
-Shipping exclusion PASS                  [PENDING]
-```
-
-After those pass, update this document and `Phase6UIA2D4SourceReview.md` to:
+A2D-4 is therefore sealed as:
 
 ```text
 VALIDATED / READY FOR A2D-5
 ```
+
+A2D-5 may treat A2D-1 through A2D-4 as the validated incoming Presentation baseline and should not reopen their contracts unless a new cross-slice defect proves a shared invariant is wrong.
