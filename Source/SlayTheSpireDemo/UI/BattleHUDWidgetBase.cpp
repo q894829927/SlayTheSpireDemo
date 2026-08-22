@@ -61,6 +61,24 @@ bool UBattleHUDWidgetBase::EndTurn()
 	return IsValid(ViewModel) && ViewModel->RequestEndTurn();
 }
 
+FBattleHUDCardView UBattleHUDWidgetBase::MakePresentationCardView(
+	const FPresentationCardSnapshot& Snapshot
+) const
+{
+	FBattleHUDCardView View;
+	View.RuntimeId = Snapshot.RuntimeId;
+	View.CardId = Snapshot.CardId;
+	View.DisplayName = Snapshot.DisplayName;
+	View.Cost = Snapshot.Cost;
+	View.CardType = Snapshot.CardType;
+	View.TargetType = Snapshot.TargetType;
+	View.Description = Snapshot.Description;
+	View.CardArt = Snapshot.CardArt;
+	View.bGameplayPlayable = false;
+	View.UnplayableReason = FText::GetEmpty();
+	return View;
+}
+
 bool UBattleHUDWidgetBase::PlayPresentationRecord(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token
