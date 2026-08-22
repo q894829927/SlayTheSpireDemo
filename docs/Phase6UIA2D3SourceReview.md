@@ -2,11 +2,11 @@
 
 Date: **2026-08-22**
 
-Status: **POST-VALIDATION HARDENING COMPLETE / UE5.8 REVALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D-4**.
 
 A2D-3 implements the locked Status historical projection slice: `FBattleHUDStatusView.RuntimeSequence`, deterministic frozen Status ordering, `StatusChanged` WorkingPresentationSnapshot reduction, and mismatch collapse to the immutable `Envelope.FinalSnapshot`.
 
-The original implementation previously passed focused A2D-3 Automation **4/4** and affected Phase6R **88/88**. Subsequent review hardening changed runtime and test source, so those results are retained as historical validation of the pre-hardening base only. The current hardened head must be rerun before A2D-3 is marked validated again.
+The original implementation passed focused A2D-3 Automation **4/4** and affected Phase6R **88/88**. A later hardening pass changed runtime and test source; the hardened current head has now also completed the required UE5.8 regression rerun with **Phase6R 88/88 PASS**.
 
 ## Implemented and hardened scope
 
@@ -44,8 +44,6 @@ StatusId unique within the combatant frozen array
 
 Statuses are sorted by `RuntimeSequence ascending`, then strict ordering verifies RuntimeSequence uniqueness.
 
-The authoritative freeze boundary therefore establishes the same StatusId/RuntimeSequence uniqueness assumptions later required by the reducer.
-
 ## Producer source identity
 
 Only an actually absent Source is anonymous:
@@ -55,7 +53,7 @@ Source == nullptr
 -> SourcePresentationId == NAME_None
 ```
 
-A supplied non-null Source must remain valid and resolve through the authoritative BattleManager participant resolver. A supplied invalid/pending-kill object cannot be silently converted into `NAME_None`; it invalidates the current unpublished Presentation history while leaving committed Gameplay intact.
+A supplied non-null Source must remain valid and resolve through the authoritative BattleManager participant resolver. A supplied invalid/pending-kill object invalidates the current unpublished Presentation history while leaving committed Gameplay intact.
 
 ## WorkingSnapshot reducer and preflight
 
@@ -69,7 +67,7 @@ TargetPresentationId
 
 The Status reducer validates current projection invariants, Source/Target participant identity, immutable payload shape, reason/amount semantics, Description structural boundaries, exact runtime identity, and AmountBefore continuity.
 
-Before a `StatusChanged` Record is offered to Blueprint, `StartNextRecord` now performs the same reducer on a temporary copy of `WorkingPresentationSnapshot`.
+Before a `StatusChanged` Record is offered to Blueprint, `StartNextRecord` performs the same reducer on a temporary copy of `WorkingPresentationSnapshot`.
 
 ```text
 valid preflight
@@ -84,22 +82,9 @@ invalid preflight
 -> collapse directly to Envelope.FinalSnapshot
 ```
 
-This prevents known-corrupt historical facts from producing a visible animation before recovery.
-
-## Description boundaries
-
-Producer and reducer both enforce:
-
-```text
-create -> DescriptionBefore == Empty
-remove -> DescriptionAfter == Empty
-```
-
-Empty authored descriptions in other legitimate states remain allowed.
-
 ## Stale mutation semantics
 
-Gameplay mutation classification now distinguishes malformed arguments from valid stale identity:
+Gameplay mutation classification is:
 
 ```text
 structurally invalid stale instance -> Invalid
@@ -113,11 +98,9 @@ Structure is validated before Container membership in both exact Reduce and exac
 
 Controller initialization explicitly takes Presentation display ownership when committed Presentation is active. If a frozen baseline exists, it is idempotently applied to the Controller/ViewModel before Resolution watermarks are raised.
 
-A stale or newly rebuilt ViewModel therefore cannot remain visually behind while older Envelopes are suppressed by an already-advanced watermark.
-
 ## Focused Automation source
 
-The same four top-level A2D-3 tests remain, so the dedicated workflow still expects exactly four:
+The same four top-level A2D-3 tests remain:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D3.Snapshot.RuntimeSequenceSorting
@@ -126,21 +109,11 @@ SlayTheSpireDemo.Phase6UIA2D3.Safety.StaleRuntimeSequenceCollapses
 SlayTheSpireDemo.Phase6UIA2D3.Safety.AmountMismatchCollapses
 ```
 
-Coverage has been extended to include:
+Coverage includes duplicate frozen StatusId rejection, stale/rebuilt ViewModel bootstrap repair, stale RuntimeSequence and AmountBefore mismatch rejection before Blueprint, fake SourcePresentationId rejection, and create/remove Description-boundary rejection.
 
-```text
-duplicate frozen StatusId rejection
-stale/rebuilt ViewModel bootstrap repair
-stale RuntimeSequence rejected before Blueprint call
-AmountBefore mismatch rejected before Blueprint call
-fake SourcePresentationId rejected before Blueprint call
-create with illegal DescriptionBefore rejected before Blueprint call
-remove with illegal DescriptionAfter rejected before Blueprint call
-```
+## CI / regression validation
 
-A2D-1 and A2D-2 existing top-level tests were also extended for malformed stale identity and supplied-invalid Source behavior without changing their expected counts.
-
-## CI / regression expected counts
+Expected aggregate remains:
 
 ```text
 Phase5          13
@@ -157,31 +130,17 @@ Phase6UIA2D3     4
 Total           88
 ```
 
-No workflow count update is required because hardening was added inside existing top-level tests.
-
-## Static re-review
-
-The requested seven findings were reviewed after implementation. No high-confidence compile/UHT blocker was identified by source inspection, and the intended normal-path ordering remains:
+Post-hardening UE5.8 validation result:
 
 ```text
-valid record preflight
--> Blueprint playback
--> completion
--> real WorkingSnapshot commit
--> exact FinalSnapshot reconciliation at Envelope completion
+Editor build                          PASS
+Phase6UIA2D1 Automation               PASS 3/3
+Phase6UIA2D2 Automation               PASS 4/4
+Phase6UIA2D3 Automation               PASS 4/4
+Phase6R aggregate                     PASS 88/88
 ```
 
-The authoritative validation requirement is now:
-
-```text
-UE5.8 Editor build                         PENDING RERUN
-Phase6UIA2D1 Automation 3/3                PENDING RERUN
-Phase6UIA2D2 Automation 4/4                PENDING RERUN
-Phase6UIA2D3 Automation 4/4                PENDING RERUN
-Phase6R aggregate 88/88                    PENDING RERUN
-```
-
-Do not mark the hardened current head `VALIDATED / READY FOR A2D-4` until those checks pass.
+The requested seven findings are closed, no blocking defect remains in the reviewed A2D-1 through A2D-3 status path, and the hardened source is **VALIDATED / READY FOR A2D-4**.
 
 ## Explicitly out of A2D-3
 
