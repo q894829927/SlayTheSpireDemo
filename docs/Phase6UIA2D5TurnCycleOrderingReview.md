@@ -2,14 +2,14 @@
 
 Date: **2026-08-22**
 
-Status: **IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **VALIDATED / READY FOR A2D5-5 TERMINAL.VICTORY**.
 
-Validated baseline entering A2D5-4:
+Validated baseline after A2D5-4:
 
 ```text
 UE5.8 Editor Development build   PASS
-A2D5 focused                    PASS 2/2
-Phase6R aggregate               PASS 96/96
+A2D5 focused                    PASS 3/3
+Phase6R aggregate               PASS 97/97
 Shipping exclusion              PASS
 ```
 
@@ -45,9 +45,9 @@ All three opening-hand cards are discarded by EndTurn. This creates Discard=3 wh
 
 The enemy attack is intentionally smaller than Player Block. Damage changes Player Block 7 -> 4 without HP loss, leaving a nonzero block for the later PlayerTurnStart clear 4 -> 0. This ensures the Player block-clear record is real rather than a no-op.
 
-## Required producer order
+## Validated producer order
 
-The one real EndTurn macro Resolution must emit exactly:
+The one real EndTurn macro Resolution emits exactly:
 
 ```text
 EnergyChanged(3 -> 0)
@@ -71,7 +71,7 @@ A2D5-4 validates this as one captured EndTurn Envelope rather than flattening mu
 
 ## Controller timing
 
-Gameplay completes the macro turn before presentation playback catches up. The test then completes real PlaybackTokens record-by-record and checks historical ViewModel progression:
+Gameplay completes the macro turn before presentation playback catches up. The test completes real PlaybackTokens record-by-record and validates historical ViewModel progression:
 
 ```text
 baseline: Energy3 Hand3 Draw0 Discard0 PBlock7 EBlock5 Decay2
@@ -87,11 +87,11 @@ first draw: Hand0 -> 1, Draw3 -> 2
 second draw: Hand1 -> 2, Draw2 -> 1
 ```
 
-The drawn RuntimeIds must be concrete cards from the original three-card deck and must match FinalSnapshot hand order.
+The drawn RuntimeIds are concrete cards from the original three-card deck and match FinalSnapshot hand order.
 
 ## Consistency checks
 
-The scenario also requires:
+Validated checks:
 
 ```text
 AssertReducerOwnedStateMatchesFinalSnapshot()
@@ -103,18 +103,24 @@ No Record sorting is performed before comparison.
 
 ## Scope
 
-A2D5-4 changes only Editor Automation tests, CI discovery counts, and documentation. It adds no production Record type, no Gameplay turn mechanic, no Controller protocol, and no reducer rule.
+A2D5-4 changed only Editor Automation tests, CI discovery counts, and documentation. It added no production Record type, no Gameplay turn mechanic, no Controller protocol, and no reducer rule.
 
-Focused gate now expects:
-
-```text
-A2D5 = 3 tests
-```
-
-Updated Phase6R expected discovery total:
+Validated discovery counts:
 
 ```text
-97
+A2D5 focused = 3/3 PASS
+Phase6R      = 97/97 PASS
 ```
 
-These are expected counts only until UE5.8 focused and aggregate workflows pass.
+## Final status
+
+```text
+A2D5-1 VALIDATED
+A2D5-2 STATUS LIFECYCLE VALIDATED
+A2D5-3 CARD STATUS INTEGRATION VALIDATED
+A2D5-4 TURN CYCLE ORDERING VALIDATED
+A2D5 FOCUSED 3/3 PASS
+PHASE6R 97/97 PASS
+SHIPPING EXCLUSION PASS
+READY FOR A2D5-5 TERMINAL.VICTORY
+```
