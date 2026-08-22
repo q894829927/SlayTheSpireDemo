@@ -7,6 +7,7 @@
 #include "Battle/BattleManager.h"
 #include "Cards/CardData.h"
 #include "Combat/Combatant.h"
+#include "Deck/DeckRuntime.h"
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"
 #include "Presentation/BattlePresentationController.h"
