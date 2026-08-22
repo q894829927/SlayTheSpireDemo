@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-08-21
+快照日期：2026-08-23
 
 ## 1. 用途与边界
 
@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-21 02:27:15 | 73 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`EventGraph` 232 nodes |
+| `WBP_BattleHUD` | 2026-08-23 00:40:09 | 74 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 26 nodes；`EventGraph` 275 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
@@ -57,6 +57,7 @@ PLANNED / NOT WIRED
 | `Btn_Confirm` | `(0.46, 0.72)` | `(0.5, 0.5)` | `130 × 45` | false | 0 | Collapsed |
 | `Btn_Cancel` | `(0.54, 0.72)` | `(0.5, 0.5)` | `130 × 45` | false | 0 | Collapsed |
 | `Txt_Feedback` | `(0.5, 0.53)` | `(0.5, 0.5)` | `400 × 50` | false | 20 | Visible |
+| `OV_PlayArea` | `(0.5, 0.61)` | `(0.5, 0.5)` | `200 × 260` | false | 0 | Hit Test Invisible |
 | `StatusTooltip_Player` | `(0.3396, 0.5)` | `(0.0, 1.0)` | Auto Size | true | 200 | Collapsed |
 | `StatusTooltip_Enemy` | `(0.56, 0.48)` | `(1.0, 0.5)` | Auto Size | true | 200 | Collapsed |
 | `Overlay_Terminal` | stretch `(0,0) → (1,1)` | `(0,0)` | fill | false | 100 | Collapsed |
@@ -189,6 +190,161 @@ Combatant_EnemyPresentation.OnTargetRequested(TargetId)
 2. `RefreshCombatantPresentations` 中旧的 Player/Enemy 手动遍历与临时变量映射，Function Entry 已改接新 helper，因此旧组没有执行入口。
 
 它们不会运行，也不会影响当前目标选择。后续可在蓝图编辑器中框选删除以降低维护噪音；不要把 Sequence `Then 12` 重新接回旧路径。
+
+### 3.5 UI-A2E committed-presentation 连线 — CURRENT SAVED / PARTIAL
+
+本次保存的资产开始接入 UI-A2E，但当前只完成了 `CardPlayed` 的部分播放骨架，尚不能认定为正式可运行的 A2E Router。
+
+新增 Designer 控件：
+
+```text
+CanvasPanel_54
+└── OV_PlayArea : Overlay
+    Anchor     = (0.5, 0.61)
+    Alignment  = (0.5, 0.5)
+    Size       = 200 × 260
+    ZOrder     = 0
+    Visibility = Hit Test Invisible
+```
+
+新增蓝图成员：
+
+```text
+ActivePresentationToken : FPresentationPlaybackToken
+ActivePresentationType  : EBattlePresentationRecordType
+ActivePresentationTimer : FTimerHandle
+PlayedCardWidget        : WBP_BattleCard reference
+HiddenHandCardWidget    : WBP_BattleCard reference
+bDamageTargetIsPlayer   : bool
+```
+
+#### BeginPresentationRecordPlayback 图
+
+资产中的 Graph 名是：
+
+```text
+BeginPresentationRecordPlayback
+```
+
+Function Entry 在蓝图中显示为父类事件名：
+
+```text
+Play Presentation Record(Record, Token) → bool
+```
+
+图内已经放置的 `CardPlayed` 数据/校验路径是：
+
+```text
+Break Presentation Record
+→ Type → Switch EBattlePresentationRecordType
+
+CardPlayed
+→ Break CardPlayed payload
+→ 校验 HandIndexBefore >= 0
+→ 校验 HandIndexBefore < HB_Hand.ChildrenCount
+→ HB_Hand.GetChildAt(HandIndexBefore)
+→ Cast WBP_BattleCard
+→ CardView.RuntimeId == Payload.Card.RuntimeId
+→ PlayCardPresentation(CardPlayed, Token, HandCardWidget)
+→ Return true
+```
+
+`None / ResolutionFault / Damage / BlockChanged / Victory / Defeat / EnergyChanged / CardZoneChanged / DeckShuffled / StatusChanged` 当前均接到 `Return false`，意图是交给 C++ Controller 的 immediate fallback。
+
+但 **CURRENT SAVED 的实际执行线尚未接通上述 Switch**：
+
+```text
+Function Entry.then
+→ 直接 Return false
+
+Switch EBattlePresentationRecordType.execute
+→ 无输入执行线
+```
+
+因此当前保存版本对所有 Record 都立即返回 `false`；`CardPlayed` 校验与 `PlayCardPresentation` 路径虽然已经放在图中并接好数据线，但目前不可达。
+
+#### PlayCardPresentation
+
+当前保存的自定义事件流程：
+
+```text
+PlayCardPresentation(CardPlayed, Token, HandCardWidget)
+→ ActivePresentationToken = Token
+→ ActivePresentationType = CardPlayed
+→ HiddenHandCardWidget = HandCardWidget
+→ HandCardWidget.Visibility = Hidden
+→ Break CardPlayed.Card
+→ MakePresentationCardView(Card snapshot)
+→ Create WBP_BattleCard
+    OwningPlayer = GetOwningPlayer
+    CardView     = presentation-only card view
+    OwnerHUD     = self
+→ PlayedCardWidget = created card
+→ PlayedCardWidget.Visibility = Hit Test Invisible
+→ OV_PlayArea.AddChild(PlayedCardWidget)
+→ SetTimerByEvent(2.0s, FinishPresentationRecord)
+```
+
+这个路径不会通过 Widget 查询 Gameplay；播放卡面来自 Record 内冻结的 `FPresentationCardSnapshot`。
+
+#### FinishPresentationRecord
+
+当前保存的完成分流：
+
+```text
+FinishPresentationRecord
+→ Switch ActivePresentationType
+
+Damage
+→ bDamageTargetIsPlayer
+   ├── true  → Combatant_PlayerPresentation.RenderOpacity = 1
+   └── false → Combatant_EnemyPresentation.RenderOpacity = 1
+→ NotifyPresentationRecordFinished
+
+CardPlayed
+→ HiddenHandCardWidget = None
+→ NotifyPresentationRecordFinished
+
+CardZoneChanged
+→ IsValid(PlayedCardWidget)
+   ├── valid   → RemoveFromParent → PlayedCardWidget = None
+   └── invalid → 直接继续
+→ NotifyPresentationRecordFinished
+```
+
+其余 Record Type 在该 Switch 上没有完成分支。
+
+当前 `Damage` 只有恢复 RenderOpacity 的收尾路径；尚未看到对应的 Damage 开始播放入口，`bDamageTargetIsPlayer` 也尚未被当前新增连线赋值。`CardZoneChanged` 只有清理临时卡牌的收尾路径，但 `BeginPresentationRecordPlayback` 尚未接受该 Record。
+
+#### NotifyPresentationRecordFinished
+
+当前保存的统一回调：
+
+```text
+NotifyPresentationRecordFinished
+→ ClearAndInvalidateTimerByHandle(ActivePresentationTimer)
+→ NotifyPresentationFinished(ActivePresentationToken)
+→ ActivePresentationType = None
+→ ActivePresentationToken = default
+```
+
+目前 `SetTimerByEvent` 的 `ReturnValue` 没有连接到 `ActivePresentationTimer` 的 Set 节点。也就是说变量虽然已经建立，当前保存线路并没有保存实际 Timer Handle；当 CardPlayed 正式接通后，Clear/Cancel 仍需要补上这个数据所有权。
+
+当前没有保存 `Cancel Presentation Record Playback` 的 Blueprint override。A2E 后续还需要补齐取消当前 Timer/临时 Widget/原 Hand Widget 隐藏状态的 Token-scoped 清理。
+
+#### 当前 A2E 状态结论
+
+```text
+A1 Hand / HUD / target selection wiring
+= 保持原有 CURRENT SAVED 状态
+
+A2E PlayPresentationRecord Router
+= 新增了 CardPlayed 部分骨架
+= 当前入口仍直接 Return false
+= 尚未完成全部 Record routing
+= 尚未完成 Timer Handle 保存与取消清理
+= 尚未经过 Blueprint compile / PIE acceptance
+```
 
 ## 4. WBP_BattleCard — CURRENT SAVED
 
@@ -491,7 +647,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次只读结构检查确认保存资产上的执行线和数据线完整，但按用户约束没有编译 Blueprint、运行 PIE 或自动化。因此本文记录为“连线结构正确”，不替代运行时 PIE 验证。
+本次只读结构检查确认原有 A1 HUD/目标选择线路仍保存在资产中；新增 A2E 线路则明确处于 `CURRENT SAVED / PARTIAL`：播放入口尚未接入 Record Switch，Timer Handle 尚未保存，不能描述为已经接通。按用户约束，本次没有编译 Blueprint、运行 PIE 或自动化；本文只记录磁盘上的真实节点、数据线和执行线，不替代 Blueprint compile 或 PIE 验证。
 
 ## 12. 后续修改时的同步清单
 
