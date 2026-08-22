@@ -2,9 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **A2D5-1 VALIDATED / A2D5-2 IMPLEMENTED + REVIEW-HARDENED / UE5.8 VALIDATION PENDING**.
+Status: **A2D5-1 VALIDATED / A2D5-2 VALIDATED / READY FOR A2D5-3**.
 
-Validated baseline entering A2D5-2:
+Validated baseline after A2D5-2:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -12,7 +12,8 @@ A2D1                            PASS 3/3
 A2D2                            PASS 4/4
 A2D3                            PASS 4/4
 A2D4                            PASS 6/6
-Phase6R aggregate               PASS 94/94
+A2D5 focused                   PASS 1/1
+Phase6R aggregate               PASS 95/95
 Shipping exclusion              PASS
 ```
 
@@ -299,7 +300,7 @@ UVOffset / UVScale
 TrimOffset / TrimScale
 ```
 
-The first five commits must retain Weak#A's exact RuntimeSequence. Recreated Weak#B must have a strictly newer RuntimeSequence.
+The first five commits retain Weak#A's exact RuntimeSequence. Recreated Weak#B has a strictly newer RuntimeSequence.
 
 ### 10.1 Real Controller timing
 
@@ -337,9 +338,7 @@ The test accepts additional non-status Records/Envelopes produced by that macro 
 
 ### 10.3 Review fix — stale exact-instance isolation uses a real pending batch
 
-The original draft created and retained a stale `UReduceStatusAction` while Weak#A existed, but did not add it to a queue until after Weak#B existed. Review classified that as insufficiently authentic.
-
-The hardened version now does:
+The hardened version uses a real pending Action batch:
 
 ```text
 Weak#A exists
@@ -360,7 +359,7 @@ This proves the stale mutation comes from a real queued Action identity while st
 
 ### 10.4 Review fix — empty stale Resolution publication is optional
 
-The stale contract is now only:
+The stale contract is:
 
 ```text
 Gameplay mutation = NoOp
@@ -370,7 +369,7 @@ no additional Weak StatusChanged Record
 no visible Controller playback call for the stale mutation
 ```
 
-The test no longer requires a new Envelope to exist.
+The test does not require a new Envelope to exist.
 
 If the current producer publishes one or more Envelopes during the stale finalization edge, every newly observed Envelope must contain zero Records. A producer that suppresses an empty Envelope remains valid.
 
@@ -417,58 +416,45 @@ and supplements `AssertCapturedEnvelopeOrder()`, which only validates publicatio
 
 ---
 
-## 11. A2D5 focused gate and Phase6R discovery count
+## 11. A2D5-2 validation
 
-Current A2D5 focused expectation:
+The UE5.8 focused workflow and updated Phase6R workflow were reported successful after the hardened review fixes.
 
-```text
-SlayTheSpireDemo.Phase6UIA2D5
-Expected discovered tests = 1
-```
-
-Phase6R includes the A2D5 prefix with expected count 1.
-
-Therefore, after A2D5-2 code is present but before execution:
+Validated result:
 
 ```text
-previous validated aggregate = 94/94 PASS
-new expected discovered total = 95
+UE5.8 Editor Development build   PASS
+A2D5 focused                    PASS 1/1
+Phase6R aggregate               PASS 95/95
+Shipping exclusion              PASS
 ```
 
-Do **not** call this `95/95 PASS` until the updated aggregate workflow actually runs successfully.
+The aggregate discovery count is now legitimately **95/95 PASS** because exactly one A2D5 top-level scenario has been implemented and validated.
 
 ---
 
-## 12. Static review result for hardened A2D5-2
+## 12. A2D5-2 final status
 
-Review findings addressed:
+Review findings addressed and validated:
 
 ```text
-[fixed] stale NoOp no longer requires an Envelope
-[fixed] stale Action is truly pending while Weak#A still exists
-[fixed] Controller record/token order is compared to captured history
-[fixed] RuntimeSequence ordering is exercised with AnchorStatus + Weak
+[validated] stale NoOp no longer requires an Envelope
+[validated] stale Action is truly pending while Weak#A still exists
+[validated] Controller record/token order matches captured history
+[validated] RuntimeSequence ordering is exercised with AnchorStatus + Weak
 ```
 
 No new Presentation Record type, Gameplay Status mechanic, Recorder rule, Controller lifecycle protocol or runtime reducer behavior was added.
 
 No A2D1-A2D4 runtime code was modified for these fixes.
 
-Current status:
+Final status:
 
 ```text
 A2D5-1 VALIDATED
-A2D5-2 STATUS LIFECYCLE IMPLEMENTED + REVIEW-HARDENED
-STATIC REVIEW COMPLETE
-UE5.8 FOCUSED / UPDATED PHASE6R VALIDATION PENDING
-EXPECTED DISCOVERED TOTAL = 95
-```
-
-Required validation before A2D5-2 can be sealed:
-
-```text
-UE5.8 Editor Development build PASS
-A2D5 focused 1/1 PASS
-updated Phase6R aggregate 95/95 PASS
-Shipping exclusion PASS
+A2D5-2 STATUS LIFECYCLE VALIDATED
+A2D5 FOCUSED 1/1 PASS
+PHASE6R 95/95 PASS
+SHIPPING EXCLUSION PASS
+READY FOR A2D5-3 CARD STATUS INTEGRATION
 ```
