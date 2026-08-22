@@ -3,6 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Phase6UIA2ATestTypes.h"
+#include "Actions/BattleActionQueue.h"
 #include "Battle/BattleManager.h"
 #include "Combat/Combatant.h"
 #include "Engine/World.h"
