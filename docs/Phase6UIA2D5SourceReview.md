@@ -2,9 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **A2D5-1 IMPLEMENTED / STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **A2D5-1 VALIDATED / READY FOR A2D5-2**.
 
-Incoming validated baseline:
+Validated baseline after A2D5-1:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -20,7 +20,7 @@ A2D5-1 adds acceptance-test infrastructure only. It does not add a new Presentat
 
 ---
 
-## 1. Added acceptance playback capture type
+## 1. Acceptance playback capture
 
 Files:
 
@@ -31,11 +31,11 @@ Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TestTypes.cpp
 
 `UPhase6UIA2D5PlaybackWidget` records every visible `FPresentationRecord` and its corresponding `FPresentationPlaybackToken` while preserving the existing async accept/decline contract.
 
-This allows later A2D5 scenarios to inspect the real Controller playback order rather than relying only on offline Record arrays.
+This lets later A2D5 scenarios inspect the real Controller playback order instead of relying only on offline Record arrays.
 
 ---
 
-## 2. Added real-battle acceptance fixture
+## 2. Real-battle acceptance fixture
 
 Files:
 
@@ -56,9 +56,9 @@ UBattlePresentationController
 captured Resolution Envelopes
 ```
 
-The fixture starts a real battle with committed Presentation enabled, initializes the real Controller/ViewModel path, and captures published Envelopes after the BattleStart baseline has stabilized.
+The fixture starts a real battle with committed Presentation enabled, initializes the real Controller/ViewModel path, and captures published Envelopes only after the BattleStart baseline has stabilized.
 
-Each captured Envelope is stored together with its own playback baseline:
+Each Envelope is stored with its own historical playback baseline:
 
 ```text
 FCapturedEnvelope
@@ -66,16 +66,16 @@ FCapturedEnvelope
 └── Envelope
 ```
 
-After an Envelope is captured, its immutable `FinalSnapshot` becomes the capture baseline for the next published Envelope. A2D5 therefore does not concatenate independent Resolutions into one synthetic history.
+After capture, that Envelope's immutable `FinalSnapshot` becomes the baseline for the next captured Envelope. Independent Resolutions are therefore never flattened into one synthetic history.
 
-`ResetAcceptanceCapture()` is allowed only when the Controller is caught up:
+`ResetAcceptanceCapture()` succeeds only when the Controller is caught up:
 
 ```text
 not waiting for completion
 AND backlog == 0
 ```
 
-This prevents a test from resetting to a latest frozen Gameplay baseline while the displayed Controller state is still behind.
+This prevents tests from rebasing against a Gameplay snapshot that is newer than the displayed Controller state.
 
 ---
 
@@ -90,23 +90,24 @@ LastCapturedEnvelope()
 FindCapturedEnvelope(ResolutionId)
 ```
 
-Later scenarios can therefore drive:
+Later acceptance scenarios can therefore exercise:
 
 ```text
 real Envelope delivery
 → Controller visible playback
-→ real PlaybackToken
+→ PlaybackToken
 → NotifyPresentationFinished
+→ WorkingSnapshot advance
 → next Record / next Envelope
 ```
 
-The offline consistency helper does not replace this path.
+The offline consistency helper remains supplemental and does not replace this integration path.
 
 ---
 
 ## 4. Production reducer replay test seam
 
-A test-only method was added to `UBattlePresentationController`:
+A test-only method exists on `UBattlePresentationController`:
 
 ```cpp
 #if WITH_DEV_AUTOMATION_TESTS
@@ -118,19 +119,17 @@ bool ReduceEnvelopeForTesting(
 #endif
 ```
 
-Implementation lives in:
+Implementation:
 
 ```text
 Source/SlayTheSpireDemo/Presentation/BattlePresentationControllerTesting.cpp
 ```
 
-The method temporarily installs the supplied Baseline/Envelope into an isolated Controller harness and invokes the existing production `ApplyRecordToWorkingSnapshot()` reducer for every Record in sequence.
+It temporarily installs the supplied Baseline/Envelope into an isolated Controller harness and invokes the existing production `ApplyRecordToWorkingSnapshot()` reducer for every Record in order.
 
-It does not duplicate Damage/Block/Card/Energy/Zone/Shuffle/Status/Terminal reducer logic in the test module.
+The test module does not maintain a duplicate Damage/Block/Card/Energy/Zone/Shuffle/Status/Terminal reducer implementation.
 
-The temporary Controller state is restored before the method returns.
-
-This is a test seam only; no Shipping runtime behavior changes.
+This remains restricted to `WITH_DEV_AUTOMATION_TESTS` and does not alter Shipping runtime behavior.
 
 ---
 
@@ -142,10 +141,10 @@ This is a test seam only; no Shipping runtime behavior changes.
 captured Baseline
 → production reducer replay over this Envelope only
 → ReducedSnapshot
-→ compare reducer-owned fields with this Envelope.FinalSnapshot
+→ compare reducer-owned state with Envelope.FinalSnapshot
 ```
 
-Current compared fields are:
+Compared state includes:
 
 ```text
 Player / Enemy:
@@ -158,9 +157,7 @@ Player / Enemy:
     Amount
     DisplayName
     Description
-    bUseAtlasIcon
-    UVOffset / UVScale
-    TrimOffset / TrimScale
+    frozen atlas/icon metadata
 
 Hand:
     ordered concrete RuntimeId sequence
@@ -177,16 +174,17 @@ Terminal:
     BattleState
     Outcome
     bCanEndTurn
-    compared when a terminal Record exists
 ```
+
+Selection, hover, LegalTargets, Widget bindings and other non-reducer-owned state are deliberately excluded.
 
 ---
 
-## 6. Terminal Energy ownership clarification discovered during A2D5-1
+## 6. Terminal Energy ownership boundary
 
-The A2C contract intentionally does not emit `EnergyChanged` for terminal/fault normalization.
+A2C intentionally does not emit `EnergyChanged` for terminal/fault normalization.
 
-Current Gameplay terminal paths set:
+Gameplay terminal paths may set:
 
 ```text
 Victory          → Energy = 0
@@ -194,7 +192,7 @@ Defeat           → Energy = 0
 ResolutionFault  → Energy = 0
 ```
 
-but terminal reducers are explicitly allowed to mutate only:
+while terminal reducers own only:
 
 ```text
 BattleState
@@ -202,24 +200,13 @@ Outcome
 bCanEndTurn
 ```
 
-Therefore a terminal Envelope may legally produce:
+Therefore terminal Envelopes may legitimately require FinalSnapshot reconciliation for exact Energy. The A2D5 consistency helper does not incorrectly require reduced terminal Energy to equal `FinalSnapshot.Energy`.
 
-```text
-Baseline / ordinary Records reduce Energy to X
-terminal Gameplay normalization makes FinalSnapshot.Energy = 0
-terminal reducer does not synthesize Energy = 0
-FinalSnapshot reconciliation applies the exact terminal Energy
-```
-
-For that reason the A2D5 consistency helper does **not** require reduced Energy to equal FinalSnapshot Energy when the Envelope contains Victory, Defeat, or ResolutionFault.
-
-This is not a production defect. It is the existing ownership boundary between committed Records and exact FinalSnapshot reconciliation.
-
-Non-terminal Envelopes still require reduced Energy to equal FinalSnapshot Energy.
+Non-terminal Envelopes still require exact Energy equality.
 
 ---
 
-## 7. Multi-Envelope structural helper
+## 7. Multi-Envelope structure
 
 `AssertCapturedEnvelopeOrder()` checks:
 
@@ -227,53 +214,59 @@ Non-terminal Envelopes still require reduced Energy to equal FinalSnapshot Energ
 BattleId continuity
 ResolutionId > 0
 strictly increasing ResolutionId
-next captured Baseline revision == previous Envelope.FinalSnapshot revision
+next Baseline revision == previous FinalSnapshot revision
 ```
 
-It deliberately does not sort captured Envelopes before comparison.
-
-Later TurnCycle and multi-Resolution scenarios must combine this structural assertion with the real Controller playback-order assertions from the capture widget.
+Captured Envelopes are never sorted before comparison. Later TurnCycle and other multi-Resolution scenarios must additionally verify real Controller playback order from the capture widget.
 
 ---
 
-## 8. Top-level test count
+## 8. Validation issues found and fixed
 
-A2D5-1 adds no new top-level Automation test yet.
+The first UE5.8 regression build exposed a Unity-build-only test translation-unit collision: `Phase5RegressionTests.cpp` had a file-level `using namespace Phase5Regression;`, and Unity compilation made its `FFixture` collide with `Phase6UIA2AHardeningTest::FFixture`.
 
-Therefore the currently validated aggregate baseline remains:
+The test module was therefore made non-Unity only:
 
 ```text
-Phase6R aggregate = 94/94 PASS
+c4ed21daeaabaf6eab02ecf829242e3697269c64
+fix(tests): isolate automation cpp translation units
 ```
 
-The planned A2D5 six-scenario discovery count is not activated until those scenario tests are implemented.
+This affects only the Editor Automation test module and does not alter runtime behavior.
 
-Do not claim an expected total of 100 from A2D5-1 alone.
+The next UE5.8 build exposed one incomplete-type compile error in A2D5 support: `IsValid(UDeckRuntime*)` required the full `UDeckRuntime` definition. The exact include was added:
+
+```text
+6baf3b62dc5ae8a752cafeaa8fc769334dca509e
+fix(ui-a2d5): include deck runtime in acceptance support
+```
+
+No production Presentation contract change was required.
 
 ---
 
-## 9. Static review result
+## 9. Final A2D5-1 validation
 
-No high-confidence production contract defect was found during A2D5-1 source review.
+After the two compile fixes above, the full Phase6R workflow was reported successful.
 
-No A2D1-A2D4 runtime behavior was redesigned.
-
-The new Runtime-facing change is restricted to `WITH_DEV_AUTOMATION_TESTS` and delegates to the already validated production reducer implementation.
-
-Authoritative validation still requires a real UE5.8 Editor build after these source additions.
-
-Current status remains:
+Validated result:
 
 ```text
-A2D5-1 IMPLEMENTED
-STATIC REVIEW COMPLETE
-UE5.8 BUILD / REGRESSION VALIDATION PENDING
+UE5.8 Editor Development build   PASS
+Phase6R aggregate               PASS 94/94
+Shipping exclusion              PASS
 ```
 
-Recommended next validation before building A2D5 scenarios:
+A2D5-1 adds no top-level Automation tests, so the aggregate discovery count remains **94** at this stage. The planned A2D5 scenario tests have not yet raised the expected total.
+
+No high-confidence A2D1-A2D4 production defect was found during A2D5-1.
+
+Final status:
 
 ```text
-UE5.8 Editor Development build PASS
-existing Phase6R aggregate 94/94 PASS
-Shipping exclusion PASS
+A2D5-1 VALIDATED
+ACCEPTANCE FIXTURE READY
+PER-ENVELOPE CONSISTENCY HELPER READY
+REAL CONTROLLER PLAYBACK CAPTURE READY
+READY FOR A2D5-2 STATUS LIFECYCLE
 ```
