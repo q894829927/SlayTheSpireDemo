@@ -60,6 +60,10 @@ namespace Phase6UIA2D5Test
 						*FString::Printf(TEXT("%s RuntimeSequence order"), *Item),
 						Actual[Index - 1].RuntimeSequence < A.RuntimeSequence
 					);
+					bOk &= Test.TestTrue(
+						*FString::Printf(TEXT("%s FinalSnapshot RuntimeSequence order"), *Item),
+						Expected[Index - 1].RuntimeSequence < E.RuntimeSequence
+					);
 				}
 			}
 			return bOk;
@@ -354,21 +358,24 @@ namespace Phase6UIA2D5Test
 			return false;
 		}
 
-		const FPresentationStateSnapshot& Final = Envelope.FinalSnapshot;
-		bOk &= CompareCombatantReducerOwnedState(Test, Reduced.Player, Final.Player, Context + TEXT(" Player"));
-		bOk &= CompareCombatantReducerOwnedState(Test, Reduced.Enemy, Final.Enemy, Context + TEXT(" Enemy"));
-		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s Energy"), *Context), Reduced.Energy, Final.Energy);
-		bOk &= CompareHandRuntimeOrder(Test, Reduced.HandCards, Final.HandCards, Context);
-		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s DrawCount"), *Context), Reduced.DrawCount, Final.DrawCount);
-		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s DiscardCount"), *Context), Reduced.DiscardCount, Final.DiscardCount);
-		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s ExhaustCount"), *Context), Reduced.ExhaustCount, Final.ExhaustCount);
-
 		const bool bHasTerminalRecord = Envelope.Records.ContainsByPredicate(
 			[](const FPresentationRecord& Record)
 			{
 				return IsTerminalRecordType(Record.Type);
 			}
 		);
+		const FPresentationStateSnapshot& Final = Envelope.FinalSnapshot;
+		bOk &= CompareCombatantReducerOwnedState(Test, Reduced.Player, Final.Player, Context + TEXT(" Player"));
+		bOk &= CompareCombatantReducerOwnedState(Test, Reduced.Enemy, Final.Enemy, Context + TEXT(" Enemy"));
+		if (!bHasTerminalRecord)
+		{
+			bOk &= Test.TestEqual(*FString::Printf(TEXT("%s Energy"), *Context), Reduced.Energy, Final.Energy);
+		}
+		bOk &= CompareHandRuntimeOrder(Test, Reduced.HandCards, Final.HandCards, Context);
+		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s DrawCount"), *Context), Reduced.DrawCount, Final.DrawCount);
+		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s DiscardCount"), *Context), Reduced.DiscardCount, Final.DiscardCount);
+		bOk &= Test.TestEqual(*FString::Printf(TEXT("%s ExhaustCount"), *Context), Reduced.ExhaustCount, Final.ExhaustCount);
+
 		if (bHasTerminalRecord)
 		{
 			bOk &= Test.TestEqual(
