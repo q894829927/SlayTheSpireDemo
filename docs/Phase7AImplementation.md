@@ -2,13 +2,13 @@
 
 Date: **2026-08-22**
 
-Status: **SOURCE IMPLEMENTATION + STATIC REVIEW COMPLETE / UE5.8 VALIDATION NOT RUN**
+Status: **COMPLETE / VALIDATED / READY FOR PHASE 7B**
 
 Branch: `phase7-relic-gameplay`
 
-This document records implementation progress against `docs/Phase7EarlyDevelopmentBoundary.md`.
+This document records the completed Phase 7A implementation against `docs/Phase7EarlyDevelopmentBoundary.md`.
 
-## Implemented
+## 1. Implemented runtime foundation
 
 ### 7A-1 — Relic Definition + Runtime Identity
 
@@ -59,75 +59,57 @@ ERelicAddOutcome
 └── Added
 ```
 
-Current membership rules:
+Membership rules:
 
 ```text
 RelicId must be non-empty
 one active member per RelicId in one Container
-duplicate add returns existing instance and does not add membership
+duplicate add returns the existing instance and does not add membership
 ordered TArray storage preserves deterministic insertion enumeration
 runtime object creation uses the existing battle-scoped sequence allocator
 ```
 
 ### 7A-3 — Battle ownership + initialization + restart lifecycle
 
-Implemented without changing the existing `StartBattle()` body.
-
-`ABattleManager` owns the authoritative player Relic runtime through:
+`ABattleManager` owns the authoritative player Relic runtime:
 
 ```text
 ABattleManager
 └── PlayerRelicContainer (private/transient)
 ```
 
-Formal access is:
+Formal access:
 
 ```text
 ABattleManager::GetPlayerRelicContainer()
 ```
 
-The accessor lazily creates the Container as a Battle-owned UObject and synchronizes it to the current `BattleId`.
-
-Battle setup uses the temporary/demo injection surface:
+Temporary/demo setup input:
 
 ```text
 DebugStartingRelics[]
 ```
 
-On first access in a Battle session:
+Runtime session flow:
 
 ```text
 GetPlayerRelicContainer()
 ↓
 create Container if needed
 ↓
-if BattleId changed
+if cached BattleId != current BattleId
     Initialize(Battle)
     clear previous membership
-    replay DebugStartingRelics in authored array order
+    replay DebugStartingRelics in deterministic authored order
 ↓
 return current-battle Container
 ```
 
-This avoids a large parallel edit to the actively changing `BattleManager.cpp` while still making BattleId the runtime-session boundary.
+Across `StartBattle()` calls, the Container UObject may remain owned by the BattleManager, but membership is rebuilt for the new BattleId. Old exact runtime instances are not current members after restart.
 
-On battle restart:
+RuntimeSequence is battle-scoped and may restart across BattleIds, so cross-battle identity must never be interpreted as RuntimeSequence alone.
 
-```text
-StartBattle()
-↓
-BattleId advances
-↓
-next formal RelicContainer access detects the new BattleId
-↓
-old membership is cleared
-↓
-new runtime instances are created from DebugStartingRelics
-```
-
-RuntimeSequence is battle-scoped and may restart between BattleIds. Exact historical identity therefore must never be interpreted as RuntimeSequence alone across battles.
-
-## Focused Automation authored
+## 2. Focused Automation
 
 Prefix:
 
@@ -135,7 +117,7 @@ Prefix:
 SlayTheSpireDemo.Phase7A
 ```
 
-Four tests are authored:
+Validated tests:
 
 ```text
 Runtime.MembershipAndIdentity
@@ -148,85 +130,47 @@ Coverage includes:
 
 ```text
 valid creation
-BattleManager-owned Container
+BattleManager ownership
 logical vs exact runtime identity
 duplicate no-op semantics
-invalid null/None definition input
-stable insertion enumeration
-non-zero/monotonic runtime sequence expectations within one allocator session
+invalid input isolation
+stable ordered enumeration
+same-session RuntimeSequence semantics
 explicit Battle context
-definition/runtime object separation
-Container reset/reinitialize behavior
+definition/runtime separation
+Container reset/reinitialize
 DebugStartingRelics setup injection
 BattleId restart detection
-old exact runtime instance isolation after restart
+old exact-instance isolation after restart
 current-battle membership rebuild
 ```
 
-## Validation gate authored
+## 3. Validation result
 
-A dedicated workflow is available at:
-
-```text
-.github/workflows/ue-phase7a-tests.yml
-```
-
-It is configured to run:
-
-```text
-UE5.8 Editor build
-Phase7A focused Automation              4 tests
-existing affected Phase5/6/UI-A2 gate 84 tests
-```
-
-Affected regression prefixes:
-
-```text
-Phase5          13
-Phase6A         23
-Phase6B         12
-Phase6C          5
-Phase6UIA2A      8
-Phase6UIA2B      8
-Phase6UIA2C      8
-Phase6UIA2D1     3
-Phase6UIA2D2     4
-------------------
-Total           84
-```
-
-Static review is recorded in:
-
-```text
-docs/Phase7ASourceReview.md
-```
-
-No high-confidence C++/UHT blocker was identified statically, but this is not a compiler result.
-
-## Still pending for Phase 7A
-
-Actual UE5.8 execution has not been run/recorded yet.
-
-Required before closing Phase 7A:
+The Phase 7A GitHub Actions gate passed:
 
 ```text
 UE5.8 Editor build                     PASS
 Phase7A focused Automation             4/4 PASS
 Affected Phase5/6/UI-A2 regression    84/84 PASS
-Static source review                   COMPLETE
+Static source review                   PASS
 ```
 
-Until those runtime/build results exist, the correct claim is:
+Formal validation record:
 
 ```text
-Phase 7A source implementation complete and ready for UE5.8 validation.
+docs/Phase7AValidation.md
 ```
 
-Do not begin Phase 7B Trigger integration until the validation gate is closed.
+Static review:
 
-## Scope guard
+```text
+docs/Phase7ASourceReview.md
+```
 
-The current source intentionally does not contain:
+## 4. Scope guard
+
+Phase 7A intentionally does not contain:
 
 ```text
 Relic Trigger definitions
@@ -238,4 +182,25 @@ Relic Modifier contribution
 Relic Presentation
 Relic HUD / UMG
 Phase 8 combo code
+```
+
+These remain later-phase work.
+
+## 5. Closure
+
+```text
+7A-1 Definition + Runtime Identity       PASS
+7A-2 Container Membership               PASS
+7A-3 Battle Ownership / Restart          PASS
+7A-4 Focused Automation                  4/4 PASS
+7A-4 Affected regression                84/84 PASS
+Static source review                     PASS
+UE5.8 Editor build                       PASS
+```
+
+Therefore:
+
+```text
+Phase 7A COMPLETE
+Phase 7B READY TO START
 ```
