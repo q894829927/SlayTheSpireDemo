@@ -26,6 +26,16 @@ namespace
 		return nullptr;
 	}
 
+	bool IsOptionalParticipantPresentationId(
+		const FPresentationStateSnapshot& Snapshot,
+		FName PresentationId
+	)
+	{
+		return PresentationId.IsNone()
+			|| PresentationId == Snapshot.Player.PresentationId
+			|| PresentationId == Snapshot.Enemy.PresentationId;
+	}
+
 	int32 FindHandCardIndexByRuntimeId(
 		const TArray<FBattleHUDCardView>& HandCards,
 		int32 RuntimeId
@@ -105,7 +115,9 @@ namespace
 			|| Payload.RuntimeSequence <= 0
 			|| Payload.AmountBefore < 0
 			|| Payload.AmountAfter < 0
-			|| (Payload.bCreated && Payload.bRemoved))
+			|| (Payload.bCreated && Payload.bRemoved)
+			|| (Payload.bCreated && !Payload.DescriptionBefore.IsEmpty())
+			|| (Payload.bRemoved && !Payload.DescriptionAfter.IsEmpty()))
 		{
 			return false;
 		}
@@ -166,7 +178,8 @@ namespace
 		const FStatusChangedPresentationPayload& Payload
 	)
 	{
-		if (!ValidateStatusChangedPayload(Payload))
+		if (!ValidateStatusChangedPayload(Payload)
+			|| !IsOptionalParticipantPresentationId(Snapshot, Payload.SourcePresentationId))
 		{
 			return false;
 		}
@@ -246,10 +259,21 @@ bool UBattlePresentationController::Initialize(
 		&UBattlePresentationController::HandleReadStateReady
 	);
 
+	// Controller ownership is explicit at bootstrap. This prevents a stale or
+	// independently initialized ViewModel from accepting live read-state updates
+	// between baseline catch-up and the first committed Envelope.
+	if (InBattleManager->IsPresentationAvailable()
+		&& InBattleManager->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		InViewModel->SetPresentationDisplayOwned(true);
+	}
+
 	FPresentationStateSnapshot Baseline;
 	if (InBattleManager->TryGetLatestFrozenPresentationBaseline(Baseline))
 	{
 		CurrentBattleId = Baseline.BattleId;
+		// Apply the authoritative baseline before advancing watermarks. This is
+		// intentionally idempotent and repairs a stale/rebuilt ViewModel.
 		ApplyDisplayedSnapshot(Baseline, false);
 
 		const int64 BaselineResolutionWatermark = static_cast<int64>(
@@ -555,6 +579,27 @@ void UBattlePresentationController::StartNextRecord()
 	{
 		CompleteActiveRecord();
 		return;
+	}
+
+	// Status history must be trustworthy before Blueprint sees it. Preflight on
+	// a copy so valid records can animate against the old displayed state; the
+	// real WorkingPresentationSnapshot is still committed only after completion.
+	if (Record.Type == EBattlePresentationRecordType::StatusChanged)
+	{
+		if (!bHasWorkingPresentationSnapshot)
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
+
+		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
+		if (!ApplyStatusChangedRecord(PreflightSnapshot, Record.StatusChanged))
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
 	}
 
 	ActivePlaybackToken.BattleId = Record.BattleId;
