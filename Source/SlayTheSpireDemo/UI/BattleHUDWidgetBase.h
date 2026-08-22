@@ -47,6 +47,17 @@ public:
 		const FPresentationPlaybackToken& Token
 	);
 
+	// Presentation-only visual cancellation hook. Blueprint should stop any active
+	// record animation/transient visual and clear its locally stored playback data.
+	// It must NOT call NotifyPresentationFinished from this cancellation event.
+	// Controller token/generation checks remain the authority for stale callbacks.
+	UFUNCTION(BlueprintNativeEvent, Category = "Battle Presentation")
+	void CancelPresentationRecordPlayback();
+	virtual void CancelPresentationRecordPlayback_Implementation();
+
+	// Even if Blueprint accidentally invokes this from inside PlayPresentationRecord,
+	// forwarding to the Controller is deferred to the CoreTicker so Controller
+	// playback cannot re-enter StartNextRecord through the Blueprint call stack.
 	UFUNCTION(BlueprintCallable, Category = "Battle Presentation")
 	void NotifyPresentationFinished(const FPresentationPlaybackToken& Token);
 
@@ -68,4 +79,11 @@ protected:
 private:
 	UFUNCTION()
 	void HandleViewModelChanged();
+
+	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);
+
+	// Prevents a normal completion/explicit Skip from being interpreted as a
+	// fail-safe visual cancellation when Controller state updates synchronously
+	// broadcast the ViewModel change back to this Widget.
+	bool bSuppressPresentationCancellation = false;
 };
