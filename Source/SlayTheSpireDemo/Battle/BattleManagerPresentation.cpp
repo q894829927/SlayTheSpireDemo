@@ -197,8 +197,17 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 
 		for (const FStatusReadView& Status : Source.Statuses)
 		{
+			if (Status.StatusId.IsNone()
+				|| Status.Amount <= 0
+				|| Status.RuntimeSequence == 0
+				|| Status.RuntimeSequence > static_cast<uint64>(MAX_int64))
+			{
+				return false;
+			}
+
 			FBattleHUDStatusView FrozenStatus;
 			FrozenStatus.StatusId = Status.StatusId;
+			FrozenStatus.RuntimeSequence = static_cast<int64>(Status.RuntimeSequence);
 			FrozenStatus.Amount = Status.Amount;
 			FrozenStatus.Description = Status.CurrentDescription;
 
@@ -219,6 +228,21 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 			}
 
 			OutView.Statuses.Add(MoveTemp(FrozenStatus));
+		}
+
+		OutView.Statuses.Sort(
+			[](const FBattleHUDStatusView& A, const FBattleHUDStatusView& B)
+			{
+				return A.RuntimeSequence < B.RuntimeSequence;
+			}
+		);
+
+		for (int32 Index = 1; Index < OutView.Statuses.Num(); ++Index)
+		{
+			if (OutView.Statuses[Index - 1].RuntimeSequence >= OutView.Statuses[Index].RuntimeSequence)
+			{
+				return false;
+			}
 		}
 
 		return true;

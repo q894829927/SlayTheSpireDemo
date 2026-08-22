@@ -29,7 +29,8 @@ namespace
 		case EStatusChangeReason::TurnEndDecay:
 			return !Mutation.bCreated
 				&& Mutation.AmountBefore > Mutation.AmountAfter
-				&& Mutation.AmountAfter >= 0;
+				&& Mutation.AmountAfter >= 0
+				&& Mutation.bRemoved == (Mutation.AmountAfter == 0);
 
 		case EStatusChangeReason::Removed:
 			return !Mutation.bCreated
@@ -184,7 +185,9 @@ bool StatusPresentation::AppendCommittedChange(
 	Record.StatusChanged.bCreated = Mutation.bCreated;
 	Record.StatusChanged.bRemoved = Mutation.bRemoved;
 	Record.StatusChanged.Reason = Reason;
-	Record.StatusChanged.DisplayName = Definition->DisplayName;
+	Record.StatusChanged.DisplayName = Definition->DisplayName.IsEmpty()
+		? FText::FromName(Mutation.StatusId)
+		: Definition->DisplayName;
 	Record.StatusChanged.DescriptionBefore = DescriptionBefore;
 	Record.StatusChanged.DescriptionAfter = DescriptionAfter;
 	Record.StatusChanged.bUseAtlasIcon = Definition->IconRegion.bUseAtlasIcon;

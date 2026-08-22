@@ -54,6 +54,172 @@ namespace
 		View.UnplayableReason = FText::GetEmpty();
 		return View;
 	}
+
+	int32 FindStatusIndexByIdentity(
+		const TArray<FBattleHUDStatusView>& Statuses,
+		FName StatusId,
+		int64 RuntimeSequence
+	)
+	{
+		if (StatusId.IsNone() || RuntimeSequence <= 0)
+		{
+			return INDEX_NONE;
+		}
+		return Statuses.IndexOfByPredicate(
+			[StatusId, RuntimeSequence](const FBattleHUDStatusView& Status)
+			{
+				return Status.StatusId == StatusId
+					&& Status.RuntimeSequence == RuntimeSequence;
+			}
+		);
+	}
+
+	bool ValidateStatusViewArray(const TArray<FBattleHUDStatusView>& Statuses)
+	{
+		for (int32 Index = 0; Index < Statuses.Num(); ++Index)
+		{
+			const FBattleHUDStatusView& Status = Statuses[Index];
+			if (Status.StatusId.IsNone() || Status.RuntimeSequence <= 0 || Status.Amount <= 0)
+			{
+				return false;
+			}
+			if (Index > 0 && Statuses[Index - 1].RuntimeSequence >= Status.RuntimeSequence)
+			{
+				return false;
+			}
+			for (int32 OtherIndex = Index + 1; OtherIndex < Statuses.Num(); ++OtherIndex)
+			{
+				if (Statuses[OtherIndex].StatusId == Status.StatusId)
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	bool ValidateStatusChangedPayload(const FStatusChangedPresentationPayload& Payload)
+	{
+		if (Payload.TargetPresentationId.IsNone()
+			|| Payload.StatusId.IsNone()
+			|| Payload.RuntimeSequence <= 0
+			|| Payload.AmountBefore < 0
+			|| Payload.AmountAfter < 0
+			|| (Payload.bCreated && Payload.bRemoved))
+		{
+			return false;
+		}
+
+		switch (Payload.Reason)
+		{
+		case EStatusChangeReason::Applied:
+			return Payload.bCreated
+				&& !Payload.bRemoved
+				&& Payload.AmountBefore == 0
+				&& Payload.AmountAfter > 0;
+
+		case EStatusChangeReason::Increased:
+			return !Payload.bCreated
+				&& !Payload.bRemoved
+				&& Payload.AmountBefore > 0
+				&& Payload.AmountAfter > Payload.AmountBefore;
+
+		case EStatusChangeReason::Reduced:
+		case EStatusChangeReason::TurnEndDecay:
+			return !Payload.bCreated
+				&& Payload.AmountBefore > Payload.AmountAfter
+				&& Payload.AmountAfter >= 0
+				&& Payload.bRemoved == (Payload.AmountAfter == 0);
+
+		case EStatusChangeReason::Removed:
+			return !Payload.bCreated
+				&& Payload.bRemoved
+				&& Payload.AmountBefore > 0
+				&& Payload.AmountAfter == 0;
+
+		default:
+			return false;
+		}
+	}
+
+	void ApplyStatusMetadata(
+		const FStatusChangedPresentationPayload& Payload,
+		FBattleHUDStatusView& View
+	)
+	{
+		View.StatusId = Payload.StatusId;
+		View.RuntimeSequence = Payload.RuntimeSequence;
+		View.DisplayName = Payload.DisplayName.IsEmpty()
+			? FText::FromName(Payload.StatusId)
+			: Payload.DisplayName;
+		View.Description = Payload.DescriptionAfter;
+		View.Amount = Payload.AmountAfter;
+		View.bUseAtlasIcon = Payload.bUseAtlasIcon;
+		View.UVOffset = Payload.UVOffset;
+		View.UVScale = Payload.UVScale;
+		View.TrimOffset = Payload.TrimOffset;
+		View.TrimScale = Payload.TrimScale;
+	}
+
+	bool ApplyStatusChangedRecord(
+		FPresentationStateSnapshot& Snapshot,
+		const FStatusChangedPresentationPayload& Payload
+	)
+	{
+		if (!ValidateStatusChangedPayload(Payload))
+		{
+			return false;
+		}
+
+		FBattleHUDCombatantView* Target = FindCombatantView(Snapshot, Payload.TargetPresentationId);
+		if (Target == nullptr || !ValidateStatusViewArray(Target->Statuses))
+		{
+			return false;
+		}
+
+		if (Payload.bCreated)
+		{
+			for (const FBattleHUDStatusView& Existing : Target->Statuses)
+			{
+				if (Existing.StatusId == Payload.StatusId
+					|| Existing.RuntimeSequence == Payload.RuntimeSequence)
+				{
+					return false;
+				}
+			}
+
+			FBattleHUDStatusView NewStatus;
+			ApplyStatusMetadata(Payload, NewStatus);
+			int32 InsertIndex = 0;
+			while (InsertIndex < Target->Statuses.Num()
+				&& Target->Statuses[InsertIndex].RuntimeSequence < Payload.RuntimeSequence)
+			{
+				++InsertIndex;
+			}
+			Target->Statuses.Insert(MoveTemp(NewStatus), InsertIndex);
+			return ValidateStatusViewArray(Target->Statuses);
+		}
+
+		const int32 StatusIndex = FindStatusIndexByIdentity(
+			Target->Statuses,
+			Payload.StatusId,
+			Payload.RuntimeSequence
+		);
+		if (StatusIndex == INDEX_NONE
+			|| Target->Statuses[StatusIndex].Amount != Payload.AmountBefore)
+		{
+			return false;
+		}
+
+		if (Payload.bRemoved)
+		{
+			Target->Statuses.RemoveAt(StatusIndex);
+			return ValidateStatusViewArray(Target->Statuses);
+		}
+
+		ApplyStatusMetadata(Payload, Target->Statuses[StatusIndex]);
+		return ValidateStatusViewArray(Target->Statuses);
+	}
 }
 
 bool UBattlePresentationController::Initialize(
@@ -383,7 +549,8 @@ void UBattlePresentationController::StartNextRecord()
 		|| Record.Type == EBattlePresentationRecordType::CardPlayed
 		|| Record.Type == EBattlePresentationRecordType::EnergyChanged
 		|| Record.Type == EBattlePresentationRecordType::CardZoneChanged
-		|| Record.Type == EBattlePresentationRecordType::DeckShuffled;
+		|| Record.Type == EBattlePresentationRecordType::DeckShuffled
+		|| Record.Type == EBattlePresentationRecordType::StatusChanged;
 	if (!bRecordSupportsVisiblePlayback)
 	{
 		CompleteActiveRecord();
@@ -720,6 +887,9 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 		WorkingPresentationSnapshot.DrawCount = Record.DeckShuffled.DrawCountAfter;
 		WorkingPresentationSnapshot.DiscardCount = Record.DeckShuffled.DiscardCountAfter;
 		return true;
+
+	case EBattlePresentationRecordType::StatusChanged:
+		return ApplyStatusChangedRecord(WorkingPresentationSnapshot, Record.StatusChanged);
 
 	case EBattlePresentationRecordType::None:
 		return false;
