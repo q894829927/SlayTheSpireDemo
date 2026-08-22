@@ -11,10 +11,10 @@ A2D5-3 CardStatusIntegration VALIDATED
 A2D5-4 TurnCycleOrdering VALIDATED
 A2D5-5 Terminal.Victory VALIDATED
 A2D5-6 Terminal.Defeat VALIDATED
-A2D5-7 Terminal.ResolutionFault REVIEW FIX APPLIED / UE5.8 REVALIDATION PENDING
+A2D5-7 Terminal.ResolutionFault VALIDATED
 ```
 
-Current validated baseline after A2D5-6:
+Owner-confirmed current focused evidence:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -22,12 +22,19 @@ A2D1                            PASS 3/3
 A2D2                            PASS 4/4
 A2D3                            PASS 4/4
 A2D4                            PASS 6/6
-A2D5 focused                    PASS 5/5
+A2D5 focused                    PASS 6/6
+```
+
+The last separately confirmed aggregate baseline before A2D5-7 was:
+
+```text
 Phase6R aggregate               PASS 99/99
 Shipping exclusion              PASS
 ```
 
-The integrated tree contains all six originally planned A2D5 top-level scenarios:
+The workflow now expects the natural final aggregate of `100` tests after all six planned A2D5 top-level scenarios. Do **not** record `Phase6R 100/100` or the corresponding Shipping result as passed until that separate owner run is explicitly confirmed.
+
+The integrated tree contains exactly the six originally planned A2D5 top-level scenarios:
 
 ```text
 StatusLifecycle
@@ -38,14 +45,7 @@ Terminal.Defeat
 Terminal.ResolutionFault
 ```
 
-Current validation targets remain:
-
-```text
-A2D5 focused expected = 6
-Phase6R expected total = 100
-```
-
-`100` is the natural aggregate after the sixth planned A2D5 scenario; no extra test was added to reach a round number.
+No seventh test was added merely to reach a round aggregate number.
 
 ---
 
@@ -92,7 +92,7 @@ Weak#A 1 -> 0 Removed
 Weak#B 0 -> 2 Applied
 ```
 
-Validated baseline reached **95/95**.
+Stale exact-instance actions cannot retarget the recreated status instance. RuntimeSequence identity/order and frozen status metadata remain part of the acceptance contract.
 
 ---
 
@@ -108,7 +108,7 @@ CardPlayed
 → CardZoneChanged
 ```
 
-Repeated application preserves concrete status identity and RuntimeSequence. Validated baseline reached **96/96**.
+Repeated application produces `Increased` changes on the same concrete runtime identities rather than duplicate status rows.
 
 ---
 
@@ -128,7 +128,7 @@ EnergyChanged(3 -> 0)
 → DrawPile -> Hand x2
 ```
 
-Validated baseline reached **97/97**.
+Producer order is actual Gameplay order and is not sorted for Presentation convenience.
 
 ---
 
@@ -143,7 +143,7 @@ CardPlayed
 → Victory
 ```
 
-Victory is unique/final, lethal state is visible before terminal completion, and duplicate terminal token completion is a NoOp. Validated baseline reached **98/98**.
+Victory is unique/final, lethal state is visible before terminal completion, and duplicate terminal-token completion is a NoOp.
 
 ---
 
@@ -157,17 +157,15 @@ EnergyChanged(3 -> 0)
 → Defeat
 ```
 
-Defeat is unique/final. Player death becomes visible before terminal completion, while Outcome remains `None` and interaction remains `Resolving`. Duplicate terminal token completion is a NoOp.
+Defeat is unique/final. Player death becomes visible before terminal completion, while Outcome remains `None` and interaction remains `Resolving`. Duplicate terminal-token completion is a NoOp.
 
-Validated result:
+Previous owner-confirmed aggregate evidence at this point was:
 
 ```text
 A2D5 focused 5/5 PASS
 Phase6R 99/99 PASS
 Shipping exclusion PASS
 ```
-
-A2D5-6 is sealed.
 
 ---
 
@@ -217,48 +215,69 @@ Presentation freeze failure
 Gameplay/ActionQueue ResolutionFault
 ```
 
-### Review defect found by first 6-test run
+### Review defect and production fix
 
-The first A2D5-7 UE5.8 run reached the Presentation-failure negative fixture and failed only at:
+The first six-test run failed only because a `PresentationAvailable true -> false` transition with unchanged Gameplay `(BattleId, StateRevision)` was suppressed by read-edge de-duplication. That prevented Controller/ViewModel from observing `PresentationUnavailable`.
+
+The production read-edge identity was corrected so Presentation availability participates in de-duplication:
 
 ```text
-Presentation freeze failure exposes PresentationUnavailable UI
+same BattleId
++ same StateRevision
++ same Presentation availability
+→ duplicate edge may be suppressed
+
+same BattleId
++ same StateRevision
++ availability changed
+→ publish a new public read edge
 ```
 
-Root cause:
+This preserves the ownership split:
 
 ```text
-PresentationAvailable true -> false
-Gameplay BattleId/StateRevision unchanged
-TryPublishReadStateReady deduplicated only by BattleId/StateRevision
-OnReadStateReady was suppressed
-Controller/ViewModel never observed PresentationUnavailable
+Presentation failure
+→ PresentationUnavailable / input locked
+→ Gameplay remains healthy
+→ no fake ResolutionFault
 ```
 
-Production fix:
+The owner reran the focused A2D5 gate after the fix and confirmed success:
 
 ```text
-ReadStateReady public-edge identity now includes Presentation availability.
-A true -> false availability transition publishes even when Gameplay revision is unchanged.
-Repeated identical availability/state edges still deduplicate normally.
+A2D5 focused 6/6 PASS
+A2D5-7 Terminal.ResolutionFault VALIDATED
 ```
 
-Files changed for the fix:
+No ActionQueue semantics, terminal reducer, Record taxonomy, or test-discovery counts were changed by the review fix.
+
+---
+
+## Next gate and roadmap
+
+A2D5 focused acceptance is complete. Before declaring the entire A2 C++ gate sealed, record the separate aggregate evidence when available:
 
 ```text
-Source/SlayTheSpireDemo/Battle/BattleManager.h
-Source/SlayTheSpireDemo/Battle/BattleManagerUIA0ReadState.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2D5TerminalResolutionFaultTest.cpp
+Phase6R expected = 100/100
+Shipping exclusion expected = PASS
 ```
 
-No ActionQueue semantics, terminal reducer, Record taxonomy, or workflow discovery counts were changed.
-
-Current status:
+After aggregate closure, the next implementation stage is **UI-A2E — Unified Blueprint Playback & PIE Acceptance**, not unfinished A3 Preview work. The locked follow-up route is recorded in:
 
 ```text
-REVIEW FIX APPLIED
-STATIC REVIEW COMPLETE
-UE5.8 REVALIDATION PENDING
-A2D5 focused expected = 6
-Phase6R expected total = 100
+docs/Phase6UIA2EImplementation.md
+```
+
+The key ordering is:
+
+```text
+A2D5 closure
+→ A2E unified Blueprint/UMG playback
+→ A2E PIE end-to-end acceptance
+→ UI-A2 COMPLETE / SEALED
+→ A3-1 Dynamic Text sealed
+→ A3-2 Target-Specific Current-State Preview
+→ A3-3 Energy + Target-Aware Legality
+→ A3-4 ViewModel transient Preview lifecycle
+→ A3-5 minimal UMG + A2/A3 combined PIE
 ```
