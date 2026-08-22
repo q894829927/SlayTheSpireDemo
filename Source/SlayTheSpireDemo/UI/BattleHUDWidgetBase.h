@@ -34,6 +34,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool EndTurn();
 
+	// Converts an immutable committed-presentation card snapshot into the existing
+	// HUD card DTO used by WBP_BattleCard. The transient presentation copy is never
+	// gameplay-playable and carries no live legality state.
+	UFUNCTION(BlueprintPure, Category = "Battle Presentation|Card", meta = (DisplayName = "Make Presentation Card View"))
+	FBattleHUDCardView MakePresentationCardView(
+		const FPresentationCardSnapshot& Snapshot
+	) const;
+
 	// Controller-facing wrapper. It tracks the exact Token before entering
 	// Blueprint so timeout/collapse/unavailable paths can cancel only the currently
 	// offered presentation visual. Returning false means immediate native fallback.
