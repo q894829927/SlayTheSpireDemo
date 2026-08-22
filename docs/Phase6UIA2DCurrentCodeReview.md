@@ -2,7 +2,7 @@
 
 Date: **2026-08-22**
 
-Status: **REVIEW FINDINGS FIXED / STATIC RE-REVIEW COMPLETE / UE5.8 REVALIDATION PENDING**.
+Status: **REVIEW FINDINGS FIXED / UE5.8 REVALIDATED / READY FOR A2D-4**.
 
 Reviewed hardened source head includes:
 
@@ -20,7 +20,15 @@ This review covers the implemented A2D-1 through A2D-3 status path. A2D-4 termin
 
 ## Overall result
 
-The previously reported hardening findings have been resolved in source and covered by focused Automation source changes. No new blocking defect was found by static inspection.
+The previously reported seven hardening findings have been resolved in source and covered by Automation. The hardened current head has completed its UE5.8 affected regression rerun successfully.
+
+```text
+UE5.8 Editor build                 PASS
+Phase6UIA2D1                       PASS 3/3
+Phase6UIA2D2                       PASS 4/4
+Phase6UIA2D3                       PASS 4/4
+Phase6R aggregate                  PASS 88/88
+```
 
 The current architecture remains:
 
@@ -36,146 +44,55 @@ Gameplay StatusContainer owns mutation truth
 -> Presentation failure never manufactures Gameplay ResolutionFault
 ```
 
-The previous 4/4 and 88/88 results predate these source changes. Current hardened head requires revalidation.
-
 ## Resolved 1 — supplied invalid Source no longer becomes anonymous
 
-Path:
-
-```text
-Source/SlayTheSpireDemo/Presentation/StatusPresentationRecordBuilder.cpp
-```
-
-Current rule:
-
-```text
-Source == nullptr
--> SourcePresentationId == NAME_None
-
-Source != nullptr
--> Source must be IsValid
--> must resolve through BattleManager
--> resolved PresentationId must be non-empty
-```
-
-A supplied invalid Source now invalidates the unpublished Presentation Resolution rather than being silently frozen as a system/anonymous source.
+`Source == nullptr` is the only path that may freeze `NAME_None`. A supplied non-null Source must be valid and resolve through the authoritative BattleManager participant resolver.
 
 ## Resolved 2 — Controller validates SourcePresentationId
 
-Path:
-
-```text
-Source/SlayTheSpireDemo/Presentation/BattlePresentationController.cpp
-```
-
-Status reducer validation now accepts only:
-
-```text
-NAME_None
-or WorkingSnapshot.Player.PresentationId
-or WorkingSnapshot.Enemy.PresentationId
-```
-
-A fake/impossible historical source therefore fails incremental history validation without querying live Gameplay.
+Status reducer validation accepts only `NAME_None` or a participant PresentationId already present in the WorkingSnapshot.
 
 ## Resolved 3 — description structural boundaries are double-checked
 
-Controller now mirrors the producer's structural rules:
+Controller mirrors the producer rules:
 
 ```text
 bCreated && DescriptionBefore non-empty -> reject
 bRemoved && DescriptionAfter non-empty  -> reject
 ```
 
-This deliberately does not reject an empty authored description on ordinary retained statuses.
-
 ## Resolved 4 — freeze/reducer StatusId uniqueness is symmetric
 
-Path:
-
-```text
-Source/SlayTheSpireDemo/Battle/BattleManagerPresentation.cpp
-```
-
-`FreezeCombatant` now maintains a `TSet<FName>` and rejects duplicate StatusId at the authoritative frozen-baseline boundary. RuntimeSequence strict ordering/uniqueness remains enforced after sorting.
+`FreezeCombatant` rejects duplicate `StatusId`; RuntimeSequence strict ordering/uniqueness remains enforced after sorting.
 
 ## Resolved 5 — Status Record is validated before Blueprint playback
 
-Path:
+For `StatusChanged`, Controller performs a reducer preflight on a copy of `WorkingPresentationSnapshot`.
 
 ```text
-Source/SlayTheSpireDemo/Presentation/BattlePresentationController.cpp
-StartNextRecord
+invalid -> no Blueprint call -> collapse FinalSnapshot
+valid   -> Blueprint playback -> completion -> real WorkingSnapshot commit
 ```
 
-For `StatusChanged`, Controller now performs a reducer preflight on a copy:
-
-```text
-PreflightSnapshot = WorkingPresentationSnapshot
-ApplyStatusChangedRecord(PreflightSnapshot, Record.StatusChanged)
-```
-
-If preflight fails:
-
-```text
-no PlaybackToken ownership is handed to Blueprint
-PlayPresentationRecord is not called
-Controller collapses directly to Envelope.FinalSnapshot
-```
-
-If preflight succeeds, the copy is discarded. The real `WorkingPresentationSnapshot` remains unchanged while animation is in progress and is committed only from `CompleteActiveRecord` after Blueprint callback, native fallback, or timeout.
-
-This preserves the historical timing contract while preventing visibly playing a known-corrupt record.
+This preserves display timing while preventing visibly playing known-corrupt history.
 
 ## Resolved 6 — structurally invalid stale instance is Invalid, not NoOp
 
-Path:
+`ReduceStatusCommit` and `RemoveStatusCommit` validate complete historical identity before checking exact Container membership.
 
 ```text
-Source/SlayTheSpireDemo/Status/StatusContainer.cpp
-ReduceStatusCommit
-RemoveStatusCommit
+malformed stale instance -> Invalid
+valid stale old instance -> NoOp
+current exact instance    -> normal mutation path
 ```
-
-The methods now validate complete historical identity before checking exact Container membership:
-
-```text
-Owner matches
-Definition valid
-StatusId non-empty
-RuntimeSequence > 0
-Amount > 0
-```
-
-Only a structurally valid old instance missing from the Container is classified as `NoOp`. Malformed parameters remain `Invalid`.
 
 ## Resolved 7 — Controller bootstrap repairs stale ViewModel before watermarking
 
-Path:
-
-```text
-Source/SlayTheSpireDemo/Presentation/BattlePresentationController.cpp
-Initialize
-```
-
-The implementation already applied `ApplyDisplayedSnapshot(Baseline, false)` before raising watermarks; the hardened contract now additionally takes Presentation display ownership explicitly when committed Presentation is active and has regression coverage for a deliberately stale ViewModel.
-
-Order is now explicit:
-
-```text
-bind Controller
--> take Presentation display ownership
--> fetch frozen baseline
--> apply baseline to ViewModel / Controller snapshots
--> advance LastQueuedResolutionId / LastCompletedResolutionId
--> refresh bindings if caught up
-```
-
-This removes reliance on Presenter initialization order for correctness.
+Controller explicitly takes Presentation display ownership, applies the latest frozen baseline, then advances Resolution watermarks. Correctness no longer depends on Presenter/ViewModel initialization order.
 
 ## Regression coverage
 
-No new top-level test prefix was added, so CI expected counts remain stable:
+No new top-level prefix was added, so CI counts remain:
 
 ```text
 A2D1  3
@@ -184,19 +101,7 @@ A2D3  4
 Phase6R total 88
 ```
 
-Coverage now additionally proves:
-
-```text
-invalid stale identity != valid stale NoOp
-invalid supplied Source invalidates history only
-fake historical SourcePresentationId cannot reach Blueprint
-malformed create/remove description boundary cannot reach Blueprint
-duplicate frozen StatusId is rejected
-stale RuntimeSequence cannot reach Blueprint
-AmountBefore mismatch cannot reach Blueprint
-valid Status still advances only after playback completion
-Controller bootstrap repairs stale ViewModel state
-```
+Coverage proves invalid stale identity classification, invalid supplied Source behavior, pre-playback rejection of fake Source/description/stale amount history, duplicate frozen StatusId rejection, normal post-animation commit timing, and bootstrap repair of stale ViewModel state.
 
 ## Remaining observation — legacy ReduceStatusAction overload
 
@@ -206,20 +111,8 @@ The compatibility overload:
 Initialize(UStatusContainer*, UStatusInstance*, int32)
 ```
 
-still intentionally lacks authoritative Battle context. It remains useful for explicit no-history compatibility tests but is a low-severity API footgun if used inside a writer-active formal Resolution. This was not one of the seven requested defects and has not been removed in this hardening pass.
+still intentionally lacks authoritative Battle context. It remains a low-severity API hygiene item rather than a defect in the validated A2D1-A2D3 path. A2D-5 should remove it after migration or explicitly constrain it to no-history/test use.
 
-A2D-5 should either remove it after migration or explicitly restrict it to no-history/test use.
+## Review closure
 
-## Static re-review result
-
-No high-confidence C++/UHT blocker was found in the requested fixes by source inspection. The following still require the authoritative UE5.8 run:
-
-```text
-Editor compile/UHT
-A2D1 3/3
-A2D2 4/4
-A2D3 4/4
-Phase6R 88/88
-```
-
-Until those pass, the hardened current head is **REVALIDATION PENDING** rather than validated.
+The seven requested findings are closed and the hardened A2D-1 through A2D-3 status path is now **VALIDATED / READY FOR A2D-4**.
