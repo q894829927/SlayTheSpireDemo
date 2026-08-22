@@ -10,10 +10,11 @@ A2D5-2 StatusLifecycle VALIDATED
 A2D5-3 CardStatusIntegration VALIDATED
 A2D5-4 TurnCycleOrdering VALIDATED
 A2D5-5 Terminal.Victory VALIDATED
-A2D5-6 Terminal.Defeat IMPLEMENTED / UE5.8 VALIDATION PENDING
+A2D5-6 Terminal.Defeat VALIDATED
+A2D5-7 Terminal.ResolutionFault IMPLEMENTED / UE5.8 VALIDATION PENDING
 ```
 
-Current validated baseline:
+Current validated baseline after A2D5-6:
 
 ```text
 UE5.8 Editor Development build   PASS
@@ -21,27 +22,36 @@ A2D1                            PASS 3/3
 A2D2                            PASS 4/4
 A2D3                            PASS 4/4
 A2D4                            PASS 6/6
-A2D5 focused                    PASS 4/4
-Phase6R aggregate               PASS 98/98
+A2D5 focused                    PASS 5/5
+Phase6R aggregate               PASS 99/99
 Shipping exclusion              PASS
 ```
 
-The integrated tree now contains five A2D5 top-level tests, so the next validation targets are:
+The integrated tree now contains all six originally planned A2D5 top-level scenarios:
 
 ```text
-A2D5 focused expected = 5
-Phase6R expected total = 99
+StatusLifecycle
+CardStatusIntegration
+TurnCycleOrdering
+Terminal.Victory
+Terminal.Defeat
+Terminal.ResolutionFault
 ```
 
-These are expected counts only until `Terminal.Defeat` passes in UE5.8.
+Therefore the next validation targets are:
+
+```text
+A2D5 focused expected = 6
+Phase6R expected total = 100
+```
+
+`100` is the natural aggregate after the sixth planned A2D5 scenario; no extra test was added to reach a round number.
 
 ---
 
 ## Shared acceptance architecture
 
-A2D5 remains a combined C++ acceptance slice. It adds no new Presentation capability merely to satisfy tests.
-
-The real path under acceptance is:
+The real acceptance path remains:
 
 ```text
 Gameplay commit
@@ -54,47 +64,18 @@ Gameplay commit
 → exact FinalSnapshot reconciliation
 ```
 
-Shared support:
+Each Envelope is reduced independently through production reducers. Controller history is compared in producer order without sorting.
+
+Locked contracts remain unchanged:
 
 ```text
-Phase6UIA2D5TestTypes.*
-Phase6UIA2D5TestSupport.*
-Phase6UIA2D5PlaybackAssertions.cpp
+card cost lives only in CardPlayed
+TurnEnded is not a Presentation Record
+no committed mutation => no Presentation Record
+terminal Record is unique and final
+terminal Energy is reconciled by FinalSnapshot
+Presentation failure != Gameplay ResolutionFault
 ```
-
-Each Envelope is checked independently with production reducers. Multiple Resolutions are never flattened into one synthetic reducer history.
-
-Controller playback history is compared in producer order without sorting, including Record and PlaybackToken identity.
-
----
-
-## Locked cross-slice contracts preserved
-
-### Card cost ownership
-
-Card-play energy cost is represented only by:
-
-```text
-CardPlayed.EnergyBefore
-CardPlayed.EnergyAfter
-CardPlayed.CostPaid
-```
-
-No duplicate `EnergyChanged` is emitted for the same card spend.
-
-### Turn boundary
-
-`TurnEnded` is not a Presentation Record. Acceptance verifies the actual visible committed mutations caused by the macro turn.
-
-### No-op rule
-
-No committed mutation means no Presentation Record. Tests do not require records for zero block clears, unchanged energy, empty shuffle sources, stale status mutations, or other no-ops.
-
-### Terminal timing
-
-Terminal Records are unique and final. A terminal Record enters WorkingSnapshot only after its own visible playback completes. Exact terminal reconciliation is then owned by the Envelope FinalSnapshot.
-
-Terminal Energy remains a FinalSnapshot reconciliation field; Victory/Defeat reducers do not synthesize terminal `EnergyChanged`.
 
 ---
 
@@ -111,21 +92,13 @@ Weak#A 1 -> 0 Removed
 Weak#B 0 -> 2 Applied
 ```
 
-Coverage includes real pending stale Action identity, exact old-instance isolation, no-record stale NoOp, RuntimeSequence ordering, Controller token order, and per-Envelope reducer consistency.
-
-Validated result:
-
-```text
-A2D5 focused 1/1 PASS
-Phase6R 95/95 PASS
-Shipping PASS
-```
+Validated baseline reached **95/95**.
 
 ---
 
 ## A2D5-3 — CardStatusIntegration
 
-Real one-cost card history:
+Validated real card history:
 
 ```text
 CardPlayed
@@ -135,21 +108,13 @@ CardPlayed
 → CardZoneChanged
 ```
 
-A second runtime card reuses the same concrete Weak/Vulnerable status instances and RuntimeSequences, proving no duplicate status rows are created.
-
-Validated result:
-
-```text
-A2D5 focused 2/2 PASS
-Phase6R 96/96 PASS
-Shipping PASS
-```
+Repeated application preserves concrete status identity and RuntimeSequence. Validated baseline reached **96/96**.
 
 ---
 
 ## A2D5-4 — TurnCycleOrdering
 
-The forced macro-turn scenario validates the real order:
+Validated macro-turn history:
 
 ```text
 EnergyChanged(3 -> 0)
@@ -163,21 +128,13 @@ EnergyChanged(3 -> 0)
 → DrawPile -> Hand x2
 ```
 
-No `TurnEnded` record exists or is expected.
-
-Validated result:
-
-```text
-A2D5 focused 3/3 PASS
-Phase6R 97/97 PASS
-Shipping PASS
-```
+Validated baseline reached **97/97**.
 
 ---
 
 ## A2D5-5 — Terminal.Victory
 
-Real lethal card history:
+Validated lethal card history:
 
 ```text
 CardPlayed
@@ -186,57 +143,80 @@ CardPlayed
 → Victory
 ```
 
-Victory is unique and final. Enemy is already visibly dead before Victory playback completes, while Outcome remains `None`, interaction remains `Resolving`, and input remains locked.
-
-After the Victory token completes, the ViewModel enters Terminal and reconciles exactly to FinalSnapshot. Re-submitting the same terminal token is a NoOp.
-
-Validated result:
-
-```text
-A2D5 focused 4/4 PASS
-Phase6R 98/98 PASS
-Shipping exclusion PASS
-```
-
-A2D5-5 is sealed.
+Victory is unique/final, lethal state is visible before terminal completion, and duplicate terminal token completion is a NoOp. Validated baseline reached **98/98**.
 
 ---
 
 ## A2D5-6 — Terminal.Defeat
 
-Top-level test:
+Validated lethal enemy-turn history:
 
 ```text
-SlayTheSpireDemo.Phase6UIA2D5.Terminal.Defeat
-```
-
-Real lethal enemy-turn history:
-
-```text
-RequestEndPlayerTurn
-→ EnergyChanged(3 -> 0)
+EnergyChanged(3 -> 0)
 → Damage(EnemyPrimary -> PlayerHero, HP 100 -> 0)
 → Defeat
 ```
 
-Required acceptance:
+Defeat is unique/final. Player death becomes visible before terminal completion, while Outcome remains `None` and interaction remains `Resolving`. Duplicate terminal token completion is a NoOp.
+
+Validated result:
 
 ```text
-Defeat unique and final
-Winner = EnemyPrimary
-Defeated = PlayerHero
-Player.bDead visible before terminal completion
-Outcome remains None while Defeat playback is active
-InteractionState remains Resolving while active
-input remains locked
-terminal token completes exactly once
-duplicate terminal token is NoOp
-FinalSnapshot reconciliation exact
+A2D5 focused 5/5 PASS
+Phase6R 99/99 PASS
+Shipping exclusion PASS
 ```
 
-The fixture intentionally uses an empty Hand and zero Block so no-op cleanup paths cannot add unrelated records.
+A2D5-6 is sealed.
 
-Static review found no high-confidence production defect and required no A2D1-A2D4 runtime change.
+---
+
+## A2D5-7 — Terminal.ResolutionFault
+
+Top-level test:
+
+```text
+SlayTheSpireDemo.Phase6UIA2D5.Terminal.ResolutionFault
+```
+
+The test uses a genuine framework structural fault rather than Presentation corruption:
+
+```text
+SetForceInvalidEnemyTurnBatchForTesting(true)
+→ RequestEndPlayerTurn()
+→ EnergyChanged(3 -> 0)
+→ valid Player TurnEndedAction completes
+→ malformed EnemyTurn atomic batch is rejected
+→ ActionQueue framework fault
+→ ResolutionFault
+```
+
+Required visible history:
+
+```text
+EnergyChanged(3 -> 0)
+→ ResolutionFault
+```
+
+The test also verifies frozen framework diagnostics:
+
+```text
+Reason == Queue fault reason
+ExecutedActionCount == Queue diagnostic
+LastActionName == real last executed TurnEndedAction
+```
+
+Controller timing requires `Outcome=None / Resolving` until the terminal fault token completes, then `Outcome=ResolutionFaulted / Terminal`, with duplicate token completion as a NoOp.
+
+A second negative fixture proves:
+
+```text
+Presentation freeze failure
+!=
+Gameplay/ActionQueue ResolutionFault
+```
+
+Static review found no production runtime defect. No runtime code or Record taxonomy was changed.
 
 Current status:
 
@@ -244,18 +224,6 @@ Current status:
 IMPLEMENTED
 STATIC REVIEW COMPLETE
 UE5.8 VALIDATION PENDING
-A2D5 focused expected = 5
-Phase6R expected total = 99
+A2D5 focused expected = 6
+Phase6R expected total = 100
 ```
-
----
-
-## Next after Defeat validation
-
-The final planned A2D5 scenario is:
-
-```text
-SlayTheSpireDemo.Phase6UIA2D5.Terminal.ResolutionFault
-```
-
-It must use a genuine Gameplay/ActionQueue framework fault, not Presentation corruption.
