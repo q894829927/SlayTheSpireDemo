@@ -78,4 +78,11 @@ namespace Phase6UIA2D5Test
 		const TArray<FCapturedEnvelope>& Captures,
 		const FString& Context
 	);
+
+	bool AssertControllerPlaybackMatchesCapturedHistory(
+		FAutomationTestBase& Test,
+		const TArray<FCapturedEnvelope>& Captures,
+		const UPhase6UIA2D5PlaybackWidget* Widget,
+		const FString& Context
+	);
 }
