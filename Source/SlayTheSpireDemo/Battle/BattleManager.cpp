@@ -1417,11 +1417,27 @@ void ABattleManager::CheckBattleResult()
 		const FPresentationRecordWriter Writer = GetActivePresentationRecordWriter();
 		if (Writer.IsAvailable())
 		{
-			FPresentationRecord Record;
-			Record.Type = EBattlePresentationRecordType::Victory;
-			if (!Writer.Append(MoveTemp(Record)))
+			FName WinnerId = NAME_None;
+			FName DefeatedId = NAME_None;
+			if (!TryResolveCombatantPresentationId(Player.Get(), WinnerId)
+				|| !TryResolveCombatantPresentationId(Enemy.Get(), DefeatedId)
+				|| WinnerId.IsNone()
+				|| DefeatedId.IsNone()
+				|| WinnerId == DefeatedId)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Victory record append failed; Gameplay terminal state remains authoritative."));
+				Writer.InvalidateCurrentResolution();
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Victory committed without trustworthy terminal participant identities."));
+			}
+			else
+			{
+				FPresentationRecord Record;
+				Record.Type = EBattlePresentationRecordType::Victory;
+				Record.Terminal.WinnerPresentationId = WinnerId;
+				Record.Terminal.DefeatedPresentationId = DefeatedId;
+				if (!Writer.Append(MoveTemp(Record)))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[Presentation] Victory record append failed; Gameplay terminal state remains authoritative."));
+				}
 			}
 		}
 
@@ -1437,11 +1453,27 @@ void ABattleManager::CheckBattleResult()
 		const FPresentationRecordWriter Writer = GetActivePresentationRecordWriter();
 		if (Writer.IsAvailable())
 		{
-			FPresentationRecord Record;
-			Record.Type = EBattlePresentationRecordType::Defeat;
-			if (!Writer.Append(MoveTemp(Record)))
+			FName WinnerId = NAME_None;
+			FName DefeatedId = NAME_None;
+			if (!TryResolveCombatantPresentationId(Enemy.Get(), WinnerId)
+				|| !TryResolveCombatantPresentationId(Player.Get(), DefeatedId)
+				|| WinnerId.IsNone()
+				|| DefeatedId.IsNone()
+				|| WinnerId == DefeatedId)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Defeat record append failed; Gameplay terminal state remains authoritative."));
+				Writer.InvalidateCurrentResolution();
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Defeat committed without trustworthy terminal participant identities."));
+			}
+			else
+			{
+				FPresentationRecord Record;
+				Record.Type = EBattlePresentationRecordType::Defeat;
+				Record.Terminal.WinnerPresentationId = WinnerId;
+				Record.Terminal.DefeatedPresentationId = DefeatedId;
+				if (!Writer.Append(MoveTemp(Record)))
+				{
+					UE_LOG(LogTemp, Warning, TEXT("[Presentation] Defeat record append failed; Gameplay terminal state remains authoritative."));
+				}
 			}
 		}
 

@@ -25,10 +25,10 @@ public:
 	void Shutdown();
 	void SetWidget(UBattleHUDWidgetBase* InWidget);
 
-	UFUNCTION(BlueprintCallable, Category = "Battle Presentation")
+	// Intentionally C++-only. Blueprint completion/skip must pass through
+	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
+	// hardening cannot be bypassed by a concrete WBP.
 	void NotifyPresentationFinished(const FPresentationPlaybackToken& Token);
-
-	UFUNCTION(BlueprintCallable, Category = "Battle Presentation")
 	void SkipPresentation();
 
 	void NotifyWidgetLost(UBattleHUDWidgetBase* LostWidget);
@@ -43,6 +43,11 @@ public:
 	int64 GetLastCompletedResolutionIdForTesting() const;
 	void ExpireActivePlaybackForTesting();
 	bool TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const;
+	bool ReduceEnvelopeForTesting(
+		const FPresentationStateSnapshot& Baseline,
+		const FPresentationResolutionEnvelope& Envelope,
+		FPresentationStateSnapshot& OutReducedSnapshot
+	);
 #endif
 
 protected:

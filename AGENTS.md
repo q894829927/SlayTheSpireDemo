@@ -57,8 +57,8 @@ BattleActionQueue
 - [ ] Phase 6UI-A playable Battle UI — IN PROGRESS.
   - [x] UI-A0 Playable Gameplay Boundary — COMPLETE; UE5.8 Editor build + Phase5/6 regressions + UI-A0 20/20 passed, current owner-only gate 73/73.
   - [x] UI-A1 Operable Battle HUD — COMPLETE; current Self-target Player-selection path revalidated with UE5.8 UI-A1 11/11 and manual PIE.
-  - [ ] UI-A2 Basic Committed Presentation — UI-A2A/A2B/A2C C++ source validated by the UE5.8 affected aggregate gate at 77/77; Blueprint presentation and PIE remain deferred. UI-A2D Status/Terminal contract is design-locked and implementation has not started. See `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md`, `docs/Phase6UIA2DImplementation.md` and Section 16.
-  - [ ] UI-A3 Deterministic Immediate Preview — dynamic card/status text slice implemented, DataAsset-authored and UE5.8/PIE/package revalidated with UI-A3 8/8; remaining target-specific/energy-result preview still planned.
+  - [ ] UI-A2 Basic Committed Presentation — UI-A2A/A2B/A2C/A2D C++ committed-presentation path is implemented and sealed by owner-confirmed UE5.8 evidence: A2D5 focused 6/6, Phase6R aggregate 100/100 and Shipping exclusion PASS. Unified Blueprint/UMG playback and PIE remain open as UI-A2E; UI-A2 is not complete until A2E passes. See `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md`, `docs/Phase6UIA2EImplementation.md` and Section 16.
+  - [ ] UI-A3 Deterministic Immediate Preview — A3-1 Dynamic Text is sealed/revalidated at 8/8 with authored DataAssets and PIE/package evidence. Remaining work is Target-Specific Current-State Preview, Energy + target-aware legality, transient Preview lifecycle and minimal A2/A3 combined PIE. Do not resume A3 until UI-A2E is independently complete.
 - [ ] Phase 7 relic system — PLANNED AFTER Phase 6UI-A.
 - [ ] Phase 8 Pommel Strike+ + Sundial architecture/presentation validation — PLANNED AFTER Phase 7.
 - [ ] Phase 6UI-B advanced UX / preview / developer tooling — PLANNED AFTER Phase 8.
@@ -80,11 +80,11 @@ Phase 6 validated deterministic post-commit Events/Triggers, exact-instance stat
 
 Phase 6UI-A0 validated authoritative turn/Hand lifecycle, formal Query/Request APIs, coherent `(BattleId, StateRevision)` snapshots, non-reentrant `OnReadStateReady`, committed Enemy Intent and UI-A0 20/20.
 
-Phase 6UI-A1 validated the concrete Battle HUD through normal UI controls. Enemy-target and Self-target cards both use gameplay-provided public legal-target selection and formal Request revalidation. Defend resolves by selecting the highlighted Player presentation. The current owner gate passes Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 + Phase6UIA1 11/11 + Phase6UIA3 8/8 = 92/92, with the normal PIE battle loop and packaged Defend `{Block}` text validated.
+Phase 6UI-A1 validated the concrete Battle HUD through normal UI controls. Enemy-target and Self-target cards both use gameplay-provided public legal-target selection and formal Request revalidation. Defend resolves by selecting the highlighted Player presentation. The historical owner gate passed Phase5 13/13 + Phase6A 23/23 + Phase6B 12/12 + Phase6C 5/5 + Phase6UIA0 20/20 + Phase6UIA1 11/11 + Phase6UIA3 8/8 = 92/92, with the normal PIE battle loop and packaged Defend `{Block}` text validated.
 
-Phase 6UI-A2A/A2B/A2C C++ now contains committed-presentation transport and safety, Damage/Block history, and Card/Energy/Zone/Shuffle history. The owner-confirmed UE5.8 affected aggregate gate passed A2A 8/8 + A2B 8/8 + A2C 8/8 inside 77/77. This validates C++/Automation only; visible Blueprint playback and PIE are still deferred. UI-A2D Status/Terminal is design-locked but not implemented.
+Phase 6UI-A2 now contains the complete C++ committed-presentation path through Status and terminal/fault history. A2D5 focused acceptance passed 6/6 after fixing the Presentation-availability read-edge identity, and the expanded Phase6R aggregate then passed 100/100 with Shipping exclusion PASS. The C++ committed-presentation contract is sealed. Visible Blueprint playback and PIE remain the only open A2 closure work and are explicitly owned by UI-A2E.
 
-Phase 6UI-A3 dynamic-text slice validates `BattleTextResolver`, read-only Damage/Block preview pipelines and authored Card/Status format arguments. Target-specific exact preview and immediate Energy-result preview remain future UI-A3 work.
+Phase 6UI-A3 A3-1 Dynamic Text validates `BattleTextResolver`, read-only Damage/Block preview pipelines and authored Card/Status format arguments. The remaining target-specific work is named **Target-Specific Current-State Preview**, not an exact final-result predictor.
 
 ### Manual UE assets/configuration
 
@@ -92,7 +92,7 @@ Current project-owned content remains under `Content/SlayTheSpireDemo/`. Importa
 
 Current temporary `L_BattleTest` debug bindings remain debug-only and are not the formal card-input architecture.
 
-UI-A2A/A2B/A2C C++ validation introduced no required `.uasset` or `.umap` change. Unified A2B/A2C/A2D visible presentation will later require explicit user-side UMG wiring.
+UI-A2 C++ validation introduced no required `.uasset` or `.umap` change. UI-A2E unified Damage/Block/Card/Energy/Zone/Shuffle/Status/Terminal visible presentation requires explicit user-side UMG wiring and PIE validation.
 
 ---
 
@@ -259,12 +259,23 @@ UI-A2B Damage + Block Committed Presentation C++ VALIDATED / 8/8
 ↓
 UI-A2C Card + Energy + Zone + Shuffle Presentation C++ VALIDATED / 8/8
 ↓
-UI-A2D Status + Terminal Presentation DESIGN LOCKED / NOT IMPLEMENTED
+UI-A2D Status + Terminal Presentation C++ SEALED / A2D5 FOCUSED 6/6 PASS
 ↓
-UI-A3 Deterministic Immediate Preview — DYNAMIC TEXT SLICE VALIDATED / 8/8; REMAINING TARGET/ENERGY PREVIEW PLANNED
+UI-A2 aggregate closure            Phase6R 100/100 + Shipping PASS
+↓
+UI-A2E Unified Blueprint Playback & PIE Acceptance NEXT
+↓
+UI-A2 COMPLETE / SEALED
+↓
+UI-A3 Deterministic Immediate Preview
+    A3-1 Dynamic Text SEALED / 8/8
+    A3-2 Target-Specific Current-State Preview
+    A3-3 Energy + Target-Aware Legality
+    A3-4 ViewModel Transient Preview Lifecycle
+    A3-5 Minimal UMG + A2/A3 Combined PIE
 ```
 
-Detailed UI-A2 contracts/evidence: `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md`, `docs/Phase6UIA2DImplementation.md` and Section 16.
+Detailed UI-A2 contracts/evidence: `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md`, `docs/Phase6UIA2EImplementation.md` and Section 16.
 
 ### Phase 7 — Relics — PLANNED AFTER PHASE 6UI-A
 
@@ -530,13 +541,19 @@ Saved/
 55. Internal Resolution Seal and public notification are separate lifecycles. Once Gameplay/macro work becomes stable, Freeze/Seal must synchronously release the active builder before any next `BeginResolution`; a sealed Envelope may wait for deferred public delivery.
 56. `OnPresentationResolutionReady` obeys the same accepted-Request non-reentrancy rule as `OnReadStateReady`: neither public callback may fire before the originating accepted Request returns.
 57. Writer absence from the start is valid no-history mode. If an active writer Append fails, invalidate the whole current record batch, discard buffered unpublished Records and never Seal/Publish a partial Envelope; use the final frozen baseline/fail-safe path instead.
-58. Envelope de-duplication identity is `(BattleId, ResolutionId)`. Read-state edge de-duplication identity is `(BattleId, StateRevision)`. Never use the last published read revision as the sole Envelope identity.
+58. Envelope de-duplication identity is `(BattleId, ResolutionId)`. Read-state public-edge de-duplication also tracks Presentation availability so a `true -> false` availability transition at the same Gameplay revision is observable. Never use the last published read revision as the sole Envelope identity.
 59. Sealed Envelopes awaiting deferred public delivery are stored in a battle-scoped bounded FIFO, never one overwriteable `PendingEnvelope`. Preserve `(BattleId, ResolutionId)` order, clear the FIFO on battle restart, reject old-Battle entries and degrade/collapse Presentation safely on overflow without requesting Gameplay ResolutionFault.
 60. Initial BattleStart shuffle and opening-Hand draws are setup normalization and emit no Presentation Records. The ordinary empty-record BattleStart Envelope applies its frozen final snapshot directly; visible opening-hand animation requires a future explicit policy switch.
 61. UI-A2 bounded queues use the smallest sufficient policy: fixed bound + FIFO + collapse/skip to the newest frozen `FinalSnapshot`. Do not build ACK, persistence, priority scheduling, per-Origin policies, backpressure or a general presentation scheduler before a real source requires them.
 62. Resolved combatant PresentationId is immutable for one battle. After the first exact frozen baseline, later authored-field mutation must not reroute Snapshot, LegalTargets or Presentation Records in that battle.
 63. Playback timeout completion is bound to the same active `FPresentationPlaybackToken`/generation as Blueprint completion. A stale timeout after Skip, widget replacement, restart or generation reset must be ignored.
 64. A stale Widget destruction callback must not skip playback already owned by a replacement Widget.
+65. UI-A2E unified Blueprint/UMG playback and PIE acceptance must complete before unfinished UI-A3 Preview work resumes. A2 is the post-commit historical surface; A3 is the pre-commit current-state preview surface.
+66. A3 target preview is named `Target-Specific Current-State Preview`. It reports supported Operation values resolved for the current `(BattleId, StateRevision, Card, Target)` and does not promise the final outcome of the whole card Resolution.
+67. Immediate Preview construction is owned by a Gameplay/read Query boundary. ViewModel/UMG manage selection, hover/focus, clearing and display only; they must not iterate CardEffects or reimplement Damage/Block/Energy legality rules.
+68. First-version Immediate Preview uses a flat Blueprint-friendly Operations array so arbitrary Effect composition does not collapse into one Damage/one Block field. Damage preview means resolved incoming damage before Block absorption, not predicted HP loss.
+69. The current one-Enemy read/target model remains unchanged by A3. Do not introduce multi-enemy Gameplay merely to exercise Preview switching; use one Enemy across different StateRevisions.
+70. First-version Preview lifecycle clears selection, legal targets and Preview on BattleId/StateRevision change rather than retaining/recomputing selection across revisions. Preview target semantics remain separate from combatant/status inspection events.
 
 Prefer clear architecture over clever abstractions.
 
@@ -562,18 +579,24 @@ Phase 6C       5/5 PASS
 Phase 6UI-A0  20/20 PASS
 Phase 6UI-A1  11/11 PASS
 Phase 6UI-A3   8/8 PASS
-Current combined owner run 92/92 PASS
+Historical combined owner run 92/92 PASS
 Phase 6UI-A2A  8/8 PASS
 Phase 6UI-A2B  8/8 PASS
 Phase 6UI-A2C  8/8 PASS
-Affected Phase5-Phase6UIA2C aggregate 77/77 PASS
+Phase 6UI-A2D1 3/3 PASS
+Phase 6UI-A2D2 4/4 PASS
+Phase 6UI-A2D3 4/4 PASS
+Phase 6UI-A2D4 6/6 PASS
+Phase 6UI-A2D5 focused 6/6 PASS
+Phase6R expanded aggregate 100/100 PASS
+Shipping exclusion PASS
 ```
 
-The exact totals are run evidence, not permanent acceptance constants. The 92/92 owner run and 77/77 A2 affected aggregate cover different configured suites and must not be arithmetically combined.
+The exact totals are run evidence, not permanent acceptance constants. Historical owner suites with different configured prefixes must not be arithmetically combined.
 
-Manual PIE normal UI player → enemy → player loop passed. Self-target Defend → highlighted Player passed. Packaged Defend dynamic `{Block}` description passed.
+Manual PIE normal UI player → enemy → player loop passed. Self-target Defend → highlighted Player passed. Packaged Defend dynamic `{Block}` description passed. These existing PIE results predate unified A2 committed-record playback and do not close UI-A2E.
 
-The next UI-A2 source step is UI-A2D implementation against the locked Status/Terminal contract. Do not claim A2D build/Automation, Blueprint playback or PIE until those actions are actually performed with user authorization.
+The next UI-A2 step is UI-A2E unified Blueprint playback and PIE acceptance. Do not resume A3-2 until A2E is complete.
 
 When UE Editor work is required, label it `USER ACTION REQUIRED` and give exact steps.
 
@@ -609,6 +632,7 @@ Actions/PlayCardAction.h/.cpp
 Actions/FinishCardPlayAction.h/.cpp
 Actions/ApplyStatusAction.h/.cpp
 Actions/ReduceStatusAction.h/.cpp
+Actions/RemoveStatusAction.h/.cpp
 Actions/TurnEndedAction.h/.cpp
 Cards/CardData.h/.cpp
 Cards/CardInstance.h/.cpp
@@ -646,6 +670,9 @@ docs/Phase6UIA0Implementation.md
 docs/Phase6UIA1Implementation.md
 docs/Phase6UIA1CombatantInspectionSetup.md
 docs/Phase6UIA2Implementation.md
+docs/Phase6UIA2DImplementation.md
+docs/Phase6UIA2D5SourceReview.md
+docs/Phase6UIA2EImplementation.md
 docs/Phase6UIA3DynamicTextImplementation.md
 ```
 
@@ -661,14 +688,15 @@ docs/Phase6UIA3DynamicTextImplementation.md
 - Phase 6A — PASSED; 23/23.
 - Phase 6B — PASSED; 12/12 and PIE turn lifecycle.
 - Phase 6C — PASSED; 5/5, Phase5–Phase6C 53/53.
-- Phase 6R — PASSED; Editor test module + Shipping exclusion.
+- Phase 6R — PASSED for the original Phase6 test-module extraction gate; current expanded UI aggregate also owner-confirmed at 100/100 with Shipping exclusion PASS.
 - Phase 6UI-A0 — PASSED; 20/20.
 - Phase 6UI-A1 — PASSED; 11/11 + Self-target Player selection + normal PIE loop.
-- Phase 6UI-A2A — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue + PlaybackToken + latest-only input bindings + PresentationUnavailable.
-- Phase 6UI-A2B — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: committed Damage/Block facts and reducer/fallback safety; visible Blueprint playback remains deferred.
-- Phase 6UI-A2C — C++/AUTOMATION PASSED 8/8 inside the affected 77/77 gate: committed CardPlayed/Energy/zone/shuffle facts and WorkingSnapshot reduction; visible Blueprint playback remains deferred.
-- Phase 6UI-A2D — DESIGN LOCKED / NOT IMPLEMENTED: Status lifecycle + formal terminal/fault treatment + combined acceptance.
-- Phase 6UI-A3 — PARTIAL / CURRENT SLICE PASSED; dynamic text 8/8, remaining target-specific/Energy preview planned.
+- Phase 6UI-A2A — C++/AUTOMATION PASSED 8/8: frozen display state + explicit optional RecordWriter + Gameplay Begin/Abort/internal Seal + immutable Resolution Envelope + battle-scoped bounded pending-public-delivery FIFO + deferred ordered publication + bounded fail-safe Controller queue + PlaybackToken + latest-only input bindings + PresentationUnavailable.
+- Phase 6UI-A2B — C++/AUTOMATION PASSED 8/8: committed Damage/Block facts and reducer/fallback safety; visible Blueprint playback remains deferred to A2E.
+- Phase 6UI-A2C — C++/AUTOMATION PASSED 8/8: committed CardPlayed/Energy/zone/shuffle facts and WorkingSnapshot reduction; visible Blueprint playback remains deferred to A2E.
+- Phase 6UI-A2D — C++/AUTOMATION SEALED: A2D1 3/3, A2D2 4/4, A2D3 4/4, A2D4 6/6, A2D5 focused 6/6, expanded Phase6R 100/100 and Shipping exclusion PASS. Status lifecycle, turn ordering, Victory, Defeat and genuine ResolutionFault are covered.
+- Phase 6UI-A2E — NEXT: unified Blueprint/UMG committed-record playback + PIE end-to-end acceptance.
+- Phase 6UI-A3 — PARTIAL: A3-1 Dynamic Text SEALED 8/8; A3-2 through A3-5 deliberately wait for A2E.
 - Phase 6UI-A — IN PROGRESS.
 - Phase 7 — PLANNED AFTER Phase 6UI-A.
 - Phase 8 — PLANNED AFTER Phase 7.
@@ -703,7 +731,7 @@ When completing a meaningful phase:
 
 ## 15. Planned Playable UI, MVVM and Presentation Architecture
 
-Phase 6UI-A0 and UI-A1 are complete. The current UI-A3 dynamic-text slice is validated. UI-A2A/A2B/A2C C++ passed the owner-confirmed affected 77/77 aggregate; Blueprint presentation and PIE remain deferred. UI-A2D is design-locked and not implemented. Section 16 plus `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md` and `docs/Phase6UIA2DImplementation.md` are the synchronized UI-A2 contracts/evidence.
+Phase 6UI-A0 and UI-A1 are complete. A3-1 Dynamic Text is validated and sealed. UI-A2A/A2B/A2C/A2D form the C++ committed-presentation pipeline and are sealed by A2D5 focused 6/6 + expanded Phase6R 100/100 + Shipping exclusion PASS. The next implementation stage is UI-A2E unified Blueprint/UMG playback and PIE; unfinished A3 Preview work comes only after A2E. Section 16 plus `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md` and `docs/Phase6UIA2EImplementation.md` are the synchronized UI-A2 contracts/evidence.
 
 ### 15.1 Post-Phase-6 development order
 
@@ -716,8 +744,11 @@ Phase 6UI-A                           IN PROGRESS
     UI-A2A committed presentation infrastructure C++ VALIDATED / 8/8
     UI-A2B Damage + Block             C++ VALIDATED / 8/8
     UI-A2C Card/Energy/Zone/Shuffle   C++ VALIDATED / 8/8
-    UI-A2D Status/Terminal            DESIGN LOCKED / NOT IMPLEMENTED
-    UI-A3 deterministic immediate preview — dynamic-text slice validated; remaining target/energy preview planned
+    UI-A2D Status/Terminal             C++ SEALED; A2D5 focused 6/6 PASS
+    UI-A2 aggregate closure            Phase6R 100/100 + Shipping PASS
+    UI-A2E Blueprint/UMG + PIE         NEXT
+    UI-A3 A3-1 Dynamic Text            SEALED / 8/8
+    UI-A3 A3-2..A3-5 Preview           AFTER A2E
 ↓
 Phase 7 Relics
 ↓
@@ -828,7 +859,7 @@ OnPresentationResolutionReady / OnReadStateReady
 
 Historical playback never queries Recorder/current Gameplay to reconstruct the past.
 
-Envelope identity is `(BattleId, ResolutionId)`. Stable read-edge identity is `(BattleId, StateRevision)`; these de-duplication domains must remain separate.
+Envelope identity is `(BattleId, ResolutionId)`. Stable read public-edge identity includes `(BattleId, StateRevision)` plus Presentation availability state so a Presentation-only availability transition cannot be lost while Gameplay revision is unchanged. These domains must remain separate.
 
 The pending-public-delivery FIFO is only the short handoff between internal Seal and public broadcast. It is not Recorder history and it is distinct from the Controller's post-delivery playback backlog. It must never overwrite an older undelivered Envelope. `OnReadStateReady` may expose only the latest current read edge, but Presentation Envelopes must be delivered without revision-based coalescing.
 
@@ -908,17 +939,25 @@ Operable Battle HUD
 UI-A2A — C++ VALIDATED / 8/8
 Committed Presentation Infrastructure
 
-UI-A2B — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED
+UI-A2B — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED TO A2E
 Damage + Block Presentation
 
-UI-A2C — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED
+UI-A2C — C++ VALIDATED / 8/8; BLUEPRINT/PIE DEFERRED TO A2E
 Card + Energy + Zone + Shuffle Presentation
 
-UI-A2D — DESIGN LOCKED / NOT IMPLEMENTED
+UI-A2D — C++/AUTOMATION SEALED
 Status + Terminal Presentation
+A2D5 focused 6/6 + Phase6R 100/100 + Shipping PASS
+
+UI-A2E — NEXT
+Unified Blueprint Playback + PIE Acceptance
 
 UI-A3 — PARTIAL
-Deterministic Immediate Preview
+A3-1 Dynamic Text SEALED / 8/8
+A3-2 Target-Specific Current-State Preview AFTER A2E
+A3-3 Energy + Target-Aware Legality
+A3-4 ViewModel Transient Preview Lifecycle
+A3-5 Minimal UMG + A2/A3 Combined PIE
 ```
 
 UI-A2 slice ownership is fixed as:
@@ -942,7 +981,6 @@ UI-A2A
 - PlaybackToken
 - Skip / timeout / stale callback / missing callback / Widget loss fail-safe
 - newest-only live input-binding refresh
-- no real Damage animation required
 
 UI-A2B
 - Damage / Block CommitResults + Records
@@ -950,7 +988,6 @@ UI-A2B
 - Damage-consumed Block is carried only by Damage Record; no duplicate BlockChanged Record
 - TurnStartClear Block history
 - lethal Damage → Victory/Defeat Record ordering
-- simple Damage/Block playback
 
 UI-A2C
 - CardPlayed
@@ -961,12 +998,21 @@ UI-A2C
 
 UI-A2D
 - Status create / merge / reduce / remove + reason
-- formal Victory/Defeat visual treatment
-- formal ResolutionFault visual treatment
-- combined end-to-end acceptance
+- exact RuntimeSequence historical identity
+- frozen Before/After Status presentation metadata
+- formal Victory/Defeat/ResolutionFault treatment
+- combined A2D5 acceptance
+
+UI-A2E
+- WBP routes all currently visible A2 Record types through PlayPresentationRecord
+- async Blueprint playback owns NotifyPresentationFinished(Token)
+- record-payload animation precedes reducer completion
+- exact FinalSnapshot reconciliation + live binding refresh
+- ordinary card/status/turn-cycle/Victory/Defeat/ResolutionFault PIE
+- PresentationUnavailable remains separate from Gameplay ResolutionFault
 ```
 
-`ResolutionFault` lifecycle and generic playback safety are A2A infrastructure. A2D does not introduce them; it adds formal visible treatment and comprehensive acceptance.
+`ResolutionFault` lifecycle and generic playback safety are A2A infrastructure. A2D formalizes typed terminal/fault semantics and acceptance. A2E is the first unified player-visible Blueprint/PIE closure across A2B+A2C+A2D.
 
 ### 15.12 UI/MVVM architecture summary
 
@@ -986,7 +1032,7 @@ Begin Presentation Resolution            │
       ▼                                  │
 BattleActionQueue                        │
       │                                  │
-      ▼                                  │
+      ▼                                  ▼
 Modifier / Action / Event / Trigger      │
       │                                  │
       ├──────────── Commit ──────────────┤
@@ -1052,9 +1098,9 @@ Live input bindings
 
 ## 16. Locked Phase 6UI-A2 Architecture Summary
 
-**Current source status: UI-A2A/A2B/A2C C++ validated by the owner-confirmed UE5.8 affected aggregate at 77/77; Blueprint playback/PIE deferred. UI-A2D is design-locked and not implemented.** The architecture remains locked; A2D must follow `docs/Phase6UIA2DImplementation.md`.
+**Current source status: UI-A2A/A2B/A2C/A2D C++ committed-presentation source is implemented and sealed by owner-confirmed A2D5 focused 6/6, expanded Phase6R 100/100 and Shipping exclusion PASS. Blueprint/UMG playback and PIE are deferred to UI-A2E, which is now the next implementation step.**
 
-This section is the compact agent-facing contract. Detailed synchronized contracts/evidence are `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2CValidation.md` and `docs/Phase6UIA2DImplementation.md`.
+This section is the compact agent-facing contract. Detailed synchronized contracts/evidence are `docs/Phase6UIA2Implementation.md`, `docs/Phase6UIA2DImplementation.md`, `docs/Phase6UIA2D5SourceReview.md` and `docs/Phase6UIA2EImplementation.md`.
 
 ### 16.1 Required closed loop
 
@@ -1122,57 +1168,11 @@ unlock input if authoritative Gameplay is request-eligible
 
 Historical display uses only `FPresentationStateSnapshot`. It contains no mutable Gameplay runtime dependency.
 
-The first A2A implementation freezes the complete current HUD display contract:
+The implemented A2 frozen model carries the complete current HUD display contract, including Battle/State identity, terminal state, Energy, combatant HP/Block/dead state/statuses, ordered Hand card values, pile counts and committed Enemy Intent presentation values. Status entries include exact RuntimeSequence identity after A2D.
 
-```text
-FPresentationStateSnapshot
-├── BattleId
-├── StateRevision
-├── BattleState
-├── Outcome
-├── Energy / MaxEnergy
-├── bCanEndTurn                         advisory display value for this revision
-├── Player : FPresentationCombatantState
-├── Enemy  : FPresentationCombatantState
-├── HandCards[] : FPresentationCardState
-├── DrawCount / DiscardCount / ExhaustCount
-└── EnemyIntent : FPresentationIntentState
+These values are produced for an exact revision. Applying the frozen state must not read `UCardInstance`, `UCardData`, `UStatusInstance`, `UStatusData`, `ACombatant`, BattleManager Query APIs or current Enemy Intent again.
 
-FPresentationCombatantState
-├── resolved PresentationId
-├── bPlayer
-├── DisplayName
-├── HP / MaxHP / Block / bDead
-└── Statuses[] : FPresentationStatusState
-
-FPresentationStatusState
-├── StatusId / Amount
-├── DisplayName
-├── resolved dynamic Description
-└── icon presentation metadata
-    ├── bUseAtlasIcon
-    ├── UVOffset / UVScale
-    └── TrimOffset / TrimScale
-
-FPresentationCardState
-├── RuntimeId / CardId
-├── DisplayName
-├── Cost
-├── CardType / TargetType
-├── resolved dynamic Description
-├── immutable CardArt reference
-└── bGameplayPlayable / UnplayableReason
-
-FPresentationIntentState
-├── Type / DisplayName
-├── committed BaseAmount
-├── bHasCurrentResolvedDamageAmount
-└── CurrentResolvedDamageAmount
-```
-
-These values are produced once for the exact revision. Applying the frozen state must not read `UCardInstance`, `UCardData`, `UStatusInstance`, `UStatusData`, `ACombatant`, BattleManager Query APIs or current Enemy Intent again. Existing HUD value structs are reused where already self-contained rather than creating a redundant third DTO hierarchy.
-
-Selection, hover, `LastFeedback`, current legal-target objects and `PlaybackToken` are transient presentation/input state rather than historical battle display state and do not belong in `FPresentationStateSnapshot`.
+Selection, hover, inspection, Preview target, `LastFeedback`, current legal-target runtime objects and `PlaybackToken` are transient presentation/input state rather than historical battle display state and do not belong in `FPresentationStateSnapshot`.
 
 The separate live input cache maps RuntimeId/TargetId to weak runtime objects only for the newest caught-up revision. Historical Envelopes never use it.
 
@@ -1203,11 +1203,11 @@ A sealed Envelope owns `BattleId`, `ResolutionId`, `Origin`, `FinalStateRevision
 Envelope identity / Seal+Publish de-dup
 = (BattleId, ResolutionId)
 
-Read-state edge de-dup
-= (BattleId, StateRevision)
+Read-state public-edge de-dup
+= (BattleId, StateRevision, Presentation availability state)
 ```
 
-One `(BattleId, ResolutionId)` seals/publishes at most one Envelope. A duplicate stable read callback must not re-Seal an Envelope, but `LastPublishedReadStateRevision` must not be used as the Envelope's sole identity.
+One `(BattleId, ResolutionId)` seals/publishes at most one Envelope. A duplicate stable read callback must not re-Seal an Envelope. A Presentation availability transition at an otherwise unchanged Gameplay revision still publishes one public edge so Controller/ViewModel can enter `PresentationUnavailable`.
 
 The pending-public-delivery FIFO preserves sealed Envelope order independently of read-edge coalescing. Battle restart clears it. Old-Battle entries are never delivered. If its bound is exceeded, Presentation may collapse/skip toward the newest frozen `FinalSnapshot` or disable itself for that battle, but Gameplay continues unchanged and no Gameplay ResolutionFault is requested.
 
@@ -1218,7 +1218,7 @@ clear/discard current Presentation builder
 ↓
 Presentation unavailable/disabled for this battle
 ↓
-ordinary Gameplay state and deferred OnReadStateReady continue
+ordinary Gameplay state and deferred public read edge continue
 ↓
 never Gameplay ResolutionFault
 ```
@@ -1269,9 +1269,7 @@ Action / BattleManager
 → Presentation Record
 ```
 
-Damage/Block use Before/After commit results. Status Apply/Reduce/Remove use one mutation-result shape. Deck uses real zone-change facts. These business CommitResults/Records belong to A2B/A2C/A2D and are **not** implemented by A2A.
-
-`CardPlayed` must preserve exact `EnergyBefore`, `EnergyAfter` and `CostPaid`; playback must not inspect live Energy.
+Damage/Block use Before/After commit results. Status Apply/Reduce/Remove use one mutation-result shape with exact RuntimeSequence identity. Deck uses real zone-change facts. `CardPlayed` preserves exact `EnergyBefore`, `EnergyAfter` and `CostPaid`.
 
 ### 16.7 Specific ordering boundaries
 
@@ -1286,17 +1284,24 @@ Opening normalization ClearBlock → no visible Record
 Initial BattleStart shuffle → no Shuffle Record
 BattleStart opening-Hand draws → no CardDrawn Records
 Normal empty-record BattleStart Envelope → apply FinalSnapshot directly
-Future visible opening-hand animation → explicit policy switch, not implicit setup recording
 
 Hand → PlayArea + Energy spend commit
 → CardPlayed with Energy history
 → card-effect Records
+→ CardZoneChanged final destination
+
+Status Commit
+→ StatusChanged using exact runtime identity and frozen Before/After metadata
 
 Shuffle commit
-→ Shuffle Record
+→ DeckShuffled Record
 → FDeckShuffledEvent
 → reactions
 → RetryDraw
+
+Victory / Defeat / ResolutionFault
+→ unique terminal Record
+→ final Record of the Envelope
 ```
 
 ### 16.8 Unified PresentationId + visible bootstrap failure
@@ -1307,7 +1312,7 @@ The first exact frozen baseline locks those resolved participant IDs for the bat
 
 Invalid presentation bootstrap enters UI-only `PresentationUnavailable`, not Gameplay `ResolutionFaulted`.
 
-Selected UI-A2A policy:
+Selected policy:
 
 ```text
 ViewModel initialization succeeds into PresentationUnavailable
@@ -1322,11 +1327,9 @@ ViewModel initialization succeeds into PresentationUnavailable
 
 Before public delivery, the Battle-side pending-public-delivery FIFO owns sealed Envelopes that are waiting for the deferred notification boundary. After delivery, Controller owns its separate bounded playback backlog. Each Envelope applies its own FinalSnapshot.
 
-Neither queue is Recorder history. The delivery FIFO must preserve every sealed Resolution in order until delivered or an explicit fail-safe collapse occurs; it must never use a single overwriteable pending slot. Controller backlog policy begins only after public delivery.
+Neither queue is Recorder history. The delivery FIFO preserves sealed Resolution order until delivered or an explicit fail-safe collapse occurs; it never uses one overwriteable pending slot.
 
-The first implementation remains deliberately small. Normal player input locking means the ordinary playable flow normally has at most one player-origin Envelope awaiting visible completion; multiple queued Envelopes mainly protect Debug/API/System/future autonomous flows. Implement only a fixed-size FIFO and one deterministic overflow rule: discard/collapse obsolete playback and apply the newest retained frozen `FinalSnapshot`. Do not add acknowledgements, persistence, priorities, origin-specific routing, producer backpressure or a generic scheduling subsystem.
-
-Generic PlaybackToken/Skip safety belongs to A2A:
+Generic PlaybackToken/Skip safety:
 
 ```text
 PlayPresentationRecord(Record, Token)
@@ -1336,51 +1339,27 @@ NotifyPresentationFinished(Token)
 
 Ignore duplicate/stale/old-Battle/post-Skip callbacks. Missing callback, timeout, Widget destruction or Presentation-disabled mode causes Presentation catch-up/fallback only, never Gameplay fault.
 
-Timeout callbacks are tied to the token/generation that scheduled them, and stale Widget-loss callbacks are ignored after widget replacement.
+A2E must wire the real WBP so every currently visible Record type uses this protocol. The animation uses immutable Record payload; the reducer advances historical ViewModel state only when that playback completes.
 
-Backlog collapse applies the newest sealed Envelope.FinalSnapshot; it does not repull display state from Gameplay.
+### 16.10 A2D closure and next acceptance boundary
 
-### 16.10 A2A Automation gate
-
-Before UI-A2B visible Damage/Block playback begins, tests cover at least:
+A2D5 focused acceptance covers:
 
 ```text
-AcceptedRequestEstablishesResolutionBeforeExecution
-OrdinaryValidationRejectionCreatesNoResolution
-PostValidationFrameworkFaultSealsFaultResolution
-BattleStartBeginsBeforeFaultCapableOpeningWork
-BattleStartOpeningDrawCreatesNoPresentationRecords
-SystemResolutionCanBeCreated
-EmptyRecordResolutionSealsSafely
-FaultRetainsCommittedRecordsAndAppendsResolutionFaultLast
-ResolutionSealsBeforeNextRequestCanBegin
-PresentationEnvelopeNotificationDoesNotReenterAcceptedRequest
-OneActiveResolutionSealsAtMostOnce
-DuplicateStablePublishDoesNotDuplicateEnvelope
-EnvelopeDedupUsesBattleIdAndResolutionId
-MultipleSealedBeforeDeferredDeliveryPreserveResolutionOrder
-BattleRestartClearsPendingPublicDeliveryQueue
-PendingDeliveryOverflowFallsBackWithoutGameplayFault
-FreezeFailureDisablesPresentationWithoutGameplayFault
-SealFailureDoesNotLeakBuilderIntoNextResolution
-AppendFailureDoesNotSealPartialEnvelope
-BattleRestartDoesNotLeakBuilderOrRecords
-LateSubscriberDoesNotReplayOldBattle
-NoControllerOrPresentationDisabledLeavesGameplayUnchanged
-HistoricalFrozenSnapshotAppliesWithoutMutableRuntimeReads
-FrozenSnapshotContainsCompleteCurrentHUDDisplayValues
-HistoricalEnvelopeCannotUseLiveInputBindings
-InputBindingsRefreshOnlyAtNewestMatchingBattleRevision
-OnReadStateReadyCannotBypassActivePresentationSequencing
-RecordWriterIsOptionalAndExplicit
-NestedReactionUsesSameActiveResolutionWriter
-RecordAppendFailureDoesNotChangeGameplayFinishOrQueue
-ControllerBacklogIsBounded
-PlaybackTokenDuplicateAndStaleCompletionIgnored
-SkipMissingCallbackTimeoutWidgetLossCatchUpWithoutGameplayFault
-ResolvedPresentationIdSharedBySnapshotTargetsAndRecords
-InvalidResolvedPresentationIdShowsPresentationUnavailable
-PresentationUnavailableStillCreatesErrorCapableHUD
+StatusLifecycle
+CardStatusIntegration
+TurnCycleOrdering
+Terminal.Victory
+Terminal.Defeat
+Terminal.ResolutionFault
 ```
 
-The Editor-only `SlayTheSpireDemoTests` module contains the dedicated A2A infrastructure, presenter and hardening suites. The owner-confirmed UE5.8 aggregate passed A2A 8/8 together with A2B 8/8 and A2C 8/8 (affected total 77/77). This evidence does not validate deferred Blueprint playback or PIE.
+Owner-confirmed final result:
+
+```text
+A2D5 focused      6/6 PASS
+Phase6R aggregate 100/100 PASS
+Shipping          PASS
+```
+
+The C++ committed-presentation contract is sealed. UI-A2E is now the next implementation/PIE boundary. Do not resume A3-2 before A2E is complete.

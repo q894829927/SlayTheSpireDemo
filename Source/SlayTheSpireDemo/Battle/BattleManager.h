@@ -311,6 +311,7 @@ private:
 	bool bPlayerRelicContainerInitializedForBattle = false;
 	bool bHasLatestFrozenPresentationBaseline = false;
 	bool bPresentationAvailable = true;
+	bool bLastPublishedPresentationAvailable = true;
 	bool bCommittedPresentationRecordingEnabledForBattle = true;
 	bool bReadStateReadyPublishScheduled = false;
 	FTSTicker::FDelegateHandle ReadStateReadyTickerHandle;

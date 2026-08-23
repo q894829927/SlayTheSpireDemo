@@ -6,117 +6,101 @@ Status: **VALIDATED / READY FOR A2D-4**.
 
 A2D-3 implements the locked Status historical projection slice: `FBattleHUDStatusView.RuntimeSequence`, deterministic frozen Status ordering, `StatusChanged` WorkingPresentationSnapshot reduction, and mismatch collapse to the immutable `Envelope.FinalSnapshot`.
 
-The original static review is now supplemented by the user-reported UE5.8 validation result: focused A2D-3 Automation **4/4 PASS** and affected Phase6R regression **88/88 PASS**. The Phase6R workflow builds `SlayTheSpireDemoEditor Win64 Development` before running those tests, so the Editor-build prerequisite is also satisfied.
+The original implementation passed focused A2D-3 Automation **4/4** and affected Phase6R **88/88**. A later hardening pass changed runtime and test source; the hardened current head has now also completed the required UE5.8 regression rerun with **Phase6R 88/88 PASS**.
 
-## Implemented scope
+## Implemented and hardened scope
 
 ```text
 FBattleHUDStatusView.RuntimeSequence
 Gameplay uint64 -> Presentation int64 freeze guard
 FinalSnapshot Status RuntimeSequence sorting
 strict frozen RuntimeSequence uniqueness/order
+explicit frozen StatusId uniqueness
 StatusChanged visible-playback participation
+pre-playback Status reducer validation on WorkingSnapshot copy
 WorkingPresentationSnapshot Status reducer
 exact StatusId + RuntimeSequence matching
+SourcePresentationId participant validation
 AmountBefore chain validation
 create / increase / reduce / remove projection
-reducer mismatch -> FinalSnapshot collapse
+create/remove Description structural validation
+reducer mismatch -> FinalSnapshot collapse before Blueprint playback
+Controller bootstrap baseline repair before watermark advance
 ```
 
-A2D-3 does not query live Gameplay from the Controller reducer.
+A2D-3 does not query live Gameplay from the Controller reducer or preflight path.
 
 ## Frozen snapshot identity and ordering
 
-`FStatusReadView` carries Gameplay `uint64 RuntimeSequence`; A2D-3 freezes it into `FBattleHUDStatusView::RuntimeSequence` (`int64`). The freeze path rejects empty Status IDs, non-positive amounts, zero runtime identities, and identities above `MAX_int64`.
-
-Each combatant Status array is sorted by `RuntimeSequence ascending`, and strict ordering is verified after sorting. This removes the former dependency on `UStatusContainer` insertion order.
-
-## WorkingSnapshot reducer
-
-For each `StatusChanged` record, the Controller resolves the target combatant only from `TargetPresentationId`. Concrete Status identity is:
+`FStatusReadView` carries Gameplay `uint64 RuntimeSequence`; Presentation freezes it as `int64` only after validating:
 
 ```text
-StatusId + RuntimeSequence
-```
-
-Before applying a mutation the reducer validates the current Status projection:
-
-```text
-StatusId non-empty
-RuntimeSequence > 0
+StatusId != NAME_None
 Amount > 0
-RuntimeSequence strictly ascending
-no duplicate live StatusId
+RuntimeSequence > 0
+RuntimeSequence <= MAX_int64
+StatusId unique within the combatant frozen array
 ```
 
-Create rejects duplicate StatusId or RuntimeSequence and inserts the new frozen view at the RuntimeSequence-sorted location.
+Statuses are sorted by `RuntimeSequence ascending`, then strict ordering verifies RuntimeSequence uniqueness.
 
-Increase/reduce requires the exact identity and `Current.Amount == Record.AmountBefore`, then applies `AmountAfter`, `DescriptionAfter`, DisplayName and atlas metadata from the immutable Record.
+## Producer source identity
 
-Remove requires the same exact identity and AmountBefore check and deletes only that exact runtime instance. A stale `Weak#10` record therefore cannot mutate or remove a replacement `Weak#50`.
-
-## Reason / structure validation
-
-Reducer-side validation mirrors producer semantics:
+Only an actually absent Source is anonymous:
 
 ```text
-Applied
-  create 0 -> positive
-
-Increased
-  positive -> larger positive
-
-Reduced / TurnEndDecay
-  positive -> smaller non-negative
-  bRemoved exactly matches AmountAfter == 0
-
-Removed
-  explicit positive -> 0
-  bRemoved == true
+Source == nullptr
+-> SourcePresentationId == NAME_None
 ```
 
-## Reducer mismatch behavior
+A supplied non-null Source must remain valid and resolve through the authoritative BattleManager participant resolver. A supplied invalid/pending-kill object invalidates the current unpublished Presentation history while leaving committed Gameplay intact.
 
-Historical mismatches such as an unknown target, invalid Status identity, invalid current projection, duplicate create identity, missing exact identity, AmountBefore mismatch, or invalid reason/amount shape cause incremental playback to stop and collapse to the immutable `Envelope.FinalSnapshot`.
+## WorkingSnapshot reducer and preflight
 
-This is Presentation-only recovery: Gameplay is not mutated and no Gameplay `ResolutionFault` is manufactured.
-
-## Status projection boundary
-
-A2D-3 reduces only Status-owned projection values:
+Concrete status identity is:
 
 ```text
-Combatant.Statuses identity/order
-Amount
-Description
-DisplayName
-atlas metadata
+TargetPresentationId
++ StatusId
++ RuntimeSequence
 ```
 
-It intentionally does not recalculate live card descriptions, enemy intent damage, playability, legal-target bindings, or other indirectly Status-dependent projections. Those are reconciled exactly at Envelope completion through `FinalSnapshot`.
+The Status reducer validates current projection invariants, Source/Target participant identity, immutable payload shape, reason/amount semantics, Description structural boundaries, exact runtime identity, and AmountBefore continuity.
 
-## A2D-2 integration hardening found during A2D-3
-
-A2D-3 review corrected two producer consistency details:
-
-1. Legitimately empty authored Status descriptions are allowed; only creation-Before and removal-After boundary emptiness is required.
-2. Frozen `StatusChanged.DisplayName` uses the same fallback as FinalSnapshot freezing: empty authored DisplayName falls back to `FText::FromName(StatusId)`.
-
-## Visible playback boundary
-
-`StatusChanged` participates in the generic Controller playback path:
+Before a `StatusChanged` Record is offered to Blueprint, `StartNextRecord` performs the same reducer on a temporary copy of `WorkingPresentationSnapshot`.
 
 ```text
-Blueprint accepts -> wait for token callback
-Blueprint false / no Widget -> native immediate completion
-Timeout -> existing fail-safe completion
+valid preflight
+-> discard temporary result
+-> offer Record to Blueprint
+-> real WorkingSnapshot remains unchanged during animation
+-> callback/native fallback/timeout
+-> apply Record to real WorkingSnapshot
+
+invalid preflight
+-> do not call Blueprint PlayPresentationRecord
+-> collapse directly to Envelope.FinalSnapshot
 ```
 
-A2D-3 itself adds no Blueprint animation. Blueprint/PIE integration remains deferred.
+## Stale mutation semantics
 
-## Focused Automation
+Gameplay mutation classification is:
 
-Exactly four top-level tests exist:
+```text
+structurally invalid stale instance -> Invalid
+structurally valid old instance absent from Container -> NoOp
+current exact instance -> normal mutation semantics
+```
+
+Structure is validated before Container membership in both exact Reduce and exact Remove.
+
+## Controller bootstrap
+
+Controller initialization explicitly takes Presentation display ownership when committed Presentation is active. If a frozen baseline exists, it is idempotently applied to the Controller/ViewModel before Resolution watermarks are raised.
+
+## Focused Automation source
+
+The same four top-level A2D-3 tests remain:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2D3.Snapshot.RuntimeSequenceSorting
@@ -125,21 +109,11 @@ SlayTheSpireDemo.Phase6UIA2D3.Safety.StaleRuntimeSequenceCollapses
 SlayTheSpireDemo.Phase6UIA2D3.Safety.AmountMismatchCollapses
 ```
 
-Coverage includes sorting, runtime identity freezing, create/update/reduce/remove lifecycle, DescriptionAfter projection, DisplayName fallback, exact RuntimeSequence preservation, stale identity collapse, AmountBefore mismatch collapse, Gameplay non-mutation, and no synthetic Gameplay fault.
+Coverage includes duplicate frozen StatusId rejection, stale/rebuilt ViewModel bootstrap repair, stale RuntimeSequence and AmountBefore mismatch rejection before Blueprint, fake SourcePresentationId rejection, and create/remove Description-boundary rejection.
 
-Reported result: **PASS (4/4)**.
+## CI / regression validation
 
-## CI / regression gate
-
-Dedicated workflow:
-
-```text
-.github/workflows/ue-phase6uia2d3-tests.yml
-Prefix: SlayTheSpireDemo.Phase6UIA2D3
-ExpectedCount: 4
-```
-
-Aggregate Phase6R includes:
+Expected aggregate remains:
 
 ```text
 Phase5          13
@@ -156,53 +130,27 @@ Phase6UIA2D3     4
 Total           88
 ```
 
-Reported result: **PASS (88/88)**.
-
-Phase6R builds `SlayTheSpireDemoEditor Win64 Development` using the configured UE5.8 toolchain before running the prefixes, so the successful regression run also records the required Editor build as passed.
-
-## Post-validation A2D review notes
-
-A follow-up A2D1-A2D3 code review found three defensive-hardening opportunities. They do not invalidate the successful 4/4 and 88/88 validation:
+Post-hardening UE5.8 validation result:
 
 ```text
-1. Controller Status payload validation does not currently validate SourcePresentationId.
-2. Controller reducer relies on producer validation for create DescriptionBefore == Empty
-   and remove DescriptionAfter == Empty instead of re-validating these boundaries.
-3. Frozen Status snapshots enforce RuntimeSequence ordering/uniqueness, while duplicate
-   StatusId rejection is enforced later by the reducer rather than explicitly at freeze time.
+Editor build                          PASS
+Phase6UIA2D1 Automation               PASS 3/3
+Phase6UIA2D2 Automation               PASS 4/4
+Phase6UIA2D3 Automation               PASS 4/4
+Phase6R aggregate                     PASS 88/88
 ```
 
-These are recommended additions before A2D-5 combined acceptance, ideally with focused malformed-history tests.
+The requested seven findings are closed, no blocking defect remains in the reviewed A2D-1 through A2D-3 status path, and the hardened source is **VALIDATED / READY FOR A2D-4**.
 
 ## Explicitly out of A2D-3
 
 ```text
-A2D-4 FTerminalPresentationPayload
-A2D-4 FResolutionFaultPresentationPayload
-A2D-4 Victory / Defeat / ResolutionFault formal visible playback
-A2D-4 terminal reducer / terminal ViewModel timing
-A2D-5 combined acceptance matrix
-unified Blueprint integration
+A2D-4 typed terminal payloads
+A2D-4 Victory / Defeat / ResolutionFault formal terminal reducer/playback
+A2D-4 terminal ViewModel timing
+A2D-5 combined acceptance
+unified Blueprint visual integration
 PIE smoke
 ```
 
-## Validation status
-
-```text
-FBattleHUDStatusView.RuntimeSequence       IMPLEMENTED
-FinalSnapshot RuntimeSequence sorting      IMPLEMENTED
-StatusChanged WorkingSnapshot reducer      IMPLEMENTED
-exact identity + AmountBefore validation   IMPLEMENTED
-mismatch -> FinalSnapshot collapse         IMPLEMENTED
-Focused Automation source                  AUTHORED: 4 tests
-Focused GitHub Actions workflow            CONFIGURED: 4 expected
-Phase6R aggregate                          CONFIGURED: 88 expected
-Static compile/UHT review                  COMPLETE
-UE5.8 Editor build                         PASS
-Phase6UIA2D3 Automation                    PASS 4/4
-88-test affected regression                PASS 88/88
-```
-
-A2D-3 is closed at the C++/Automation level and is ready for A2D-4.
-
-See `docs/Phase6UIA2D3Validation.md` for the dedicated validation record.
+See `docs/Phase6UIA2D3Validation.md` and `docs/Phase6UIA2DCurrentCodeReview.md` for the validation history and hardened review record.

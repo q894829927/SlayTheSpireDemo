@@ -3,25 +3,19 @@
 Status:
 
 ```text
-SOURCE CHANGED
-UE5.8 BUILD PASSED AFTER SOURCE FIX
-AUTOMATION OWNER RUN: 7/8 TWICE; literal expected-error matching fixed, 8/8 RERUN PENDING
-DATAASSET AUTHORING PENDING
-PIE REVALIDATION PENDING
+A3-1 DYNAMIC TEXT SEALED
+UE5.8 BUILD PASS
+AUTOMATION OWNER RUN PASS 8/8
+DATAASSET AUTHORING COMPLETE
+PIE REVALIDATION PASS
+PACKAGE REVALIDATION PASS
 ```
 
-The second owner run still reported the two intentional fail-soft Error logs.
-UE5.8 treats `AddExpectedError` patterns as regular expressions by default, so
-the literal `[` / `]` characters did not match. The regression now uses
-`AddExpectedErrorPlain`; this is a test-harness correction only.
+This slice is the completed first part of UI-A3. It remains intentionally separate from the unfinished target-specific/current-state Preview work.
 
 ## Boundary
 
-`UCardData::Description` and `UStatusData::Description` keep their serialized
-property names, but are authored as `FText::Format` patterns. Gameplay-side
-read-only resolvers produce final FText inside `TryBuildPlayerFacingReadSnapshot`.
-The ViewModel and UMG do not calculate Strength, Weak, Vulnerable, Dexterity or
-Frailty.
+`UCardData::Description` and `UStatusData::Description` keep their serialized property names, but are authored as `FText::Format` patterns. Gameplay-side read-only resolvers produce final FText inside `TryBuildPlayerFacingReadSnapshot`. The ViewModel and UMG do not calculate Strength, Weak, Vulnerable, Dexterity or Frailty.
 
 ```text
 CardEffect / Status Modifier
@@ -32,19 +26,25 @@ CardEffect / Status Modifier
 → Widget display
 ```
 
-Enemy-target cards deliberately omit the concrete Enemy target while resolving
-their card-face Damage. This includes player Source modifiers but excludes a
-particular enemy's target modifiers. Self-target cards resolve Player as both
-Source and Target.
+Enemy-target cards deliberately omit the concrete Enemy target while resolving their card-face Damage. This includes player Source modifiers but excludes a particular enemy's target modifiers. Self-target cards resolve Player as both Source and Target.
 
-Preview resolution does not Commit, enqueue Actions, emit Events, consume RNG or
-mutate runtime state. Invalid, missing or duplicate format arguments render `?`
-and invalidate the owning DataAsset through editor validation.
+This distinction is now part of the locked A3 roadmap:
 
-## UE Editor asset authoring required
+```text
+Card-face Dynamic Text
+= current source-side/self presentation value
 
-Author these values in UE Editor; do not rewrite the binary assets with text tools.
-Localized wording may vary, but argument names must match exactly.
+A3-2 Target-Specific Current-State Preview
+= supported Operation value for one concrete current target at one BattleId/StateRevision
+```
+
+Do not call the latter an exact final card result. It does not simulate later commits, trigger/relic reactions or final HP outcomes.
+
+Preview/text resolution does not Commit, enqueue Actions, emit Events, consume RNG or mutate runtime state. Invalid, missing or duplicate format arguments render `?` and invalidate the owning DataAsset through editor validation.
+
+## Authored UE assets
+
+The validated DataAsset argument scheme is:
 
 ```text
 DA_Card_Strike
@@ -87,19 +87,29 @@ Description Format = Block gained reduced {BlockReductionPercent}%.
 BlockRatio.DescriptionArgumentName = BlockReductionPercent
 ```
 
-Run **Validate Assets** on these Card/Status DataAssets after authoring. Any missing,
-duplicate or unknown argument must be fixed before PIE validation.
-
 ## Regression source
 
-`Source/SlayTheSpireDemoTests/Private/Phase6UIA3DynamicTextTests.cpp` contains 8
-tests covering source-side Damage, self Block, multi-effect arguments, runtime
-Status Amount, ratio percentages, read-only behavior, fail-soft validation and
-revision-scoped snapshot refresh.
+`Source/SlayTheSpireDemoTests/Private/Phase6UIA3DynamicTextTests.cpp` contains 8 tests covering source-side Damage, fixed multi-hit intent, self Block, multi-effect named arguments, runtime Status Amount, ratio percentages, read-only behavior, fail-soft validation and revision-scoped snapshot refresh.
 
-The owner-only UI workflow now expects:
+Validated focused evidence:
 
 ```text
-Phase6UIA3 = 8
-Current gated total = 92
+Phase6UIA3 = 8/8 PASS
 ```
+
+The historical combined UI owner run that included this slice passed 92/92. Exact totals are evidence for that run, not permanent architecture constants.
+
+## Next A3 work — only after UI-A2E
+
+The mainline does **not** proceed directly from A2D5 to A3-2. First complete `UI-A2E — Unified Blueprint Playback & PIE Acceptance` and seal the post-commit A2 presentation surface.
+
+Then continue:
+
+```text
+A3-2 Target-Specific Current-State Preview
+A3-3 Energy + Target-Aware Legality
+A3-4 ViewModel Transient Preview Lifecycle
+A3-5 Minimal UMG + A2/A3 Combined PIE
+```
+
+The locked detailed route is `docs/Phase6UIA2EImplementation.md`.

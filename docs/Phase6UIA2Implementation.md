@@ -1,29 +1,31 @@
 # Phase 6UI-A2 — Basic Committed Presentation
 
-Status: **UI-A2A/A2B/A2C C++ VALIDATED / A2D DESIGN LOCKED**.
+Status: **C++ COMMITTED-PRESENTATION COMPLETE / VALIDATED / SEALED; BLUEPRINT/PIE NEXT IN A2E**.
 
 UI-A2 replaces the UI-A0/UI-A1 immediate/no-op presentation catch-up boundary with deterministic playback of already-committed gameplay facts. It does not make `BattleActionQueue`, `BattleState` or authoritative gameplay wait for animation.
 
-This document is the base implementation contract. UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure; A2B/A2C add committed Damage/Block and Card/Energy/Zone/Shuffle facts. The more specific A2D Status/Terminal contract is `docs/Phase6UIA2DImplementation.md`.
+UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure; A2B/A2C add committed Damage/Block and Card/Energy/Zone/Shuffle facts; A2D adds Status and formal terminal/fault committed presentation. The player-visible Blueprint/UMG closure is owned by `UI-A2E — Unified Blueprint Playback & PIE Acceptance`.
 
 ### Current implementation / validation status
 
-The repository owner confirmed the UE5.8 affected aggregate run for the current UI-A2A/A2B/A2C C++ source. Exact evidence is recorded in `docs/Phase6UIA2CValidation.md`.
-
-Current evidence boundary:
+Owner-confirmed final C++/Automation evidence:
 
 ```text
 UI-A2A C++ / Automation             PASSED 8/8
 UI-A2B C++ / Automation             PASSED 8/8
 UI-A2C C++ / Automation             PASSED 8/8
-Affected aggregate gate             PASSED 77/77
-Blueprint A2B/A2C playback          DEFERRED
-PIE presentation smoke              DEFERRED
-UI-A2D design contract              LOCKED
-UI-A2D implementation / validation  NOT STARTED
+UI-A2D1                             PASSED 3/3
+UI-A2D2                             PASSED 4/4
+UI-A2D3                             PASSED 4/4
+UI-A2D4                             PASSED 6/6
+UI-A2D5 focused                     PASSED 6/6
+Phase6R expanded aggregate          PASSED 100/100
+Shipping exclusion                  PASS
+Unified Blueprint/UMG playback      NEXT — UI-A2E
+PIE committed-presentation smoke    NEXT — UI-A2E
 ```
 
-The historical 92/92 owner run and the affected 77/77 A2 aggregate are different configured suites and must not be added together. C++/Automation validation does not claim the deferred Blueprint animation or PIE work.
+The exact discovered totals are run evidence, not permanent architecture constants. C++/Automation validation does not claim the remaining Blueprint/UMG or PIE work.
 
 ---
 
@@ -131,14 +133,7 @@ BattleHUDViewModel
 = copies/applies FPresentationStateSnapshot
 ```
 
-`FPresentationStateSnapshot` may keep immutable presentation assets such as textures. It must not depend on mutable Gameplay runtime identities such as:
-
-```text
-UCardInstance
-UStatusInstance
-ACombatant
-ABattleManager
-```
+`FPresentationStateSnapshot` may keep immutable presentation assets such as textures. It must not depend on mutable Gameplay runtime identities such as `UCardInstance`, `UStatusInstance`, `ACombatant` or `ABattleManager`.
 
 Applying a frozen snapshot must not call current Gameplay APIs to rebuild historical card metadata, status text, playability, target legality, HP/Block/Energy or pile state.
 
@@ -150,7 +145,7 @@ The current formal Request API still needs runtime objects:
 RequestPlayCard(UCardInstance*, ACombatant*)
 ```
 
-UI-A2A therefore keeps a separate, non-authoritative input binding cache only for the newest caught-up revision:
+UI-A2 keeps a separate, non-authoritative input-binding cache only for the newest caught-up revision:
 
 ```text
 RuntimeId → TWeakObjectPtr<UCardInstance>
@@ -171,15 +166,13 @@ Controller caught up to newest sealed (BattleId, StateRevision)
 → only then unlock normal input
 ```
 
-The binding cache exists only to forward current user intent to formal Gameplay Requests. It is not Gameplay authority. Requests still revalidate authoritative state.
-
-Do not expand UI-A2A into `RequestPlayCardByRuntimeId()` without a later concrete need.
+The cache exists only to forward current user intent to formal Gameplay Requests. Requests still revalidate authoritative state.
 
 ### 2.3 Seal lifecycle and public notification lifecycle are separate
 
 `OnReadStateReady(BattleId, StateRevision)` remains a non-replaying edge meaning that a stable current state can be read. It is not a historical payload.
 
-The internal Gameplay-stable boundary must complete synchronously before another Resolution may begin:
+Internal stability must synchronously complete:
 
 ```text
 Queue / macro flow becomes fully stable
@@ -192,53 +185,40 @@ Seal active Envelope exactly once
 ↓
 clear/release active builder
 ↓
-append sealed Envelope to the battle-scoped pending-public-delivery FIFO
+append sealed Envelope to battle-scoped pending-public-delivery FIFO
 ```
 
-This internal sealing step may happen while the originating public Request is still on the call stack. That is required so a later Debug/API/Automation/System caller cannot begin Resolution N+1 while Resolution N still owns the active builder.
+More than one Resolution may Seal before the deferred public callback runs. Therefore this handoff is a FIFO, not one overwriteable `PendingEnvelope`.
 
-More than one Resolution may Seal before the deferred public callback runs. Therefore this handoff must be a FIFO, not one overwriteable `PendingEnvelope`:
+The FIFO is battle-scoped and bounded, preserves ResolutionId order, is cleared on battle restart, never delivers an old BattleId and does not coalesce Envelopes merely because current read-state notification advances to a newer StateRevision. Overflow is Presentation-only degradation; it never requests Gameplay ResolutionFault.
 
-```text
-Seal Resolution N
-→ PendingPublicDeliveryQueue.Enqueue(Envelope N)
-→ release builder
-→ Begin/Seal Resolution N+1 is allowed
-→ PendingPublicDeliveryQueue.Enqueue(Envelope N+1)
-→ deferred boundary delivers N, then N+1
-```
-
-The FIFO is battle-scoped and bounded. It preserves `ResolutionId` order, is cleared on battle restart, never delivers an old `BattleId`, and does not coalesce Envelopes merely because current read-state notification advances to a newer `StateRevision`. Overflow is Presentation-only degradation: collapse/skip toward the newest frozen `FinalSnapshot` or disable Presentation for the battle, but never request Gameplay `ResolutionFault`.
-
-Public callbacks are deliberately later:
+Public callbacks happen later:
 
 ```text
-originating public Request returns AcceptedForResolution / Rejected result
+originating public Request returns
 ↓
 next safe deferred public-notification boundary
 ↓
 drain pending-public-delivery FIFO in ResolutionId order
 ↓
-OnPresentationResolutionReady(each sealed Envelope), when presentation delivery is enabled
+OnPresentationResolutionReady(each sealed Envelope)
 ↓
-OnReadStateReady(BattleId, StateRevision) for ordinary read observers
+OnReadStateReady(BattleId, StateRevision)
 ```
 
-Neither `OnPresentationResolutionReady` nor `OnReadStateReady` may re-enter an accepted public Request before that Request returns.
+Neither public callback may re-enter an accepted public Request before that Request returns.
 
 Display ownership is singular:
 
 ```text
 Presentation enabled
 → Presenter/Controller drives ViewModel display using frozen snapshots
-→ ViewModel must not Pull+Apply live state from OnReadStateReady
+→ ViewModel does not Pull+Apply live state from OnReadStateReady
 
 Presentation disabled / no Controller
 → apply the same newest frozen baseline immediately at the public presentation boundary
 → no historical playback required
 ```
-
-`OnReadStateReady` remains useful for ordinary current-state observers, but it must not become a second HUD display driver.
 
 ### 2.4 Ordinary validation rejection creates no Resolution; post-validation framework fault does
 
@@ -280,13 +260,11 @@ ResolutionId
 PresentationSequence
 ```
 
-`PresentationSequence` is battle-scoped deterministic ordering and is independent of `StateRevision`.
-
-Do not use UObject address, Widget creation order, delegate registration order, frame timing, animation timing or unordered iteration as presentation order.
+`PresentationSequence` is battle-scoped deterministic ordering and is independent of StateRevision.
 
 ### 3.2 Origins
 
-First implementation uses only:
+Current origins:
 
 ```text
 BattleStart
@@ -299,7 +277,7 @@ Do not predeclare AI/Relic/Replay origins until a real caller needs them.
 
 ### 3.3 End Turn macro flow
 
-The current complete automatic End Turn progression is one Resolution:
+The complete automatic End Turn progression is one Resolution:
 
 ```text
 remaining Hand cleanup
@@ -320,7 +298,7 @@ There may be at most one active Presentation Resolution builder for the battle.
 ```text
 BeginResolution(N)
 ↓
-Gameplay for N may resolve synchronously inside StartProcessing()
+Gameplay for N may resolve synchronously
 ↓
 internal stable boundary seals or aborts N
 ↓
@@ -329,29 +307,27 @@ active builder is released
 only then may BeginResolution(N+1) succeed
 ```
 
-The deferred public delivery of Envelope N does not keep Resolution N active. Sealed-but-not-yet-delivered Envelopes are immutable entries in the bounded pending-public-delivery FIFO, not active Recorder builders.
+Deferred public delivery does not keep Resolution N active. Sealed-but-not-yet-delivered Envelopes are immutable entries in the bounded pending-public-delivery FIFO.
 
-If a caller attempts to begin another Resolution while a builder is still legitimately active, the call must not silently overwrite that builder. The implemented A2A fail-safe rejects the second Begin, clears the stale presentation-only builder, and degrades Presentation for that battle rather than carrying the stale builder into a later Resolution. Gameplay remains unchanged.
-
-The pending-public-delivery FIFO is not a Recorder history database and is separate from the Controller backlog. Its only responsibility is reliable ordered handoff from internal Seal to deferred public broadcast.
+If another Begin is attempted while a builder is still legitimately active, the implemented fail-safe rejects the second Begin, clears the stale presentation-only builder and degrades Presentation for that battle rather than overwriting it. Gameplay remains unchanged.
 
 ### 3.5 Fault lifecycle belongs to UI-A2A
 
-`ResolutionFault` Record lifecycle is infrastructure, not an A2D-only feature.
+`ResolutionFault` Record lifecycle is infrastructure.
 
-If a fault occurs after the builder exists:
+If a framework fault occurs after the builder exists:
 
 ```text
 already committed Records remain
-→ append ResolutionFault as the final Record
+→ append ResolutionFault as final Record
 → freeze ResolutionFaulted FinalSnapshot
-→ Seal once at the internal stable boundary
+→ Seal once
 → release builder
 ```
 
-Once `ResolutionFault` has been appended, any later append attempt invalidates the whole unpublished batch. This enforces the append-last invariant instead of publishing a history in which a terminal framework fault is followed by ordinary records.
+Once ResolutionFault has been appended, any later append invalidates the whole unpublished batch.
 
-UI-A2A must implement and test this lifecycle even though the polished/normal visible fault presentation belongs to UI-A2D.
+A2D later formalized the typed fault payload, terminal reducer semantics and visible treatment contract; A2D5 validated a genuine queue/framework fault path.
 
 ---
 
@@ -379,8 +355,6 @@ empty-record Resolution is legal when recording remained valid
 sealed Envelope lifetime is independent from active builder lifetime
 ```
 
-The Controller never receives a ResolutionId and then queries the Recorder for “whatever records currently exist”.
-
 `FinalStateRevision` identifies the stable state captured by the Resolution. It is not the Envelope's unique identity.
 
 ---
@@ -401,7 +375,7 @@ Recorder is not a replay database and does not own presentation backlog or defer
 
 ### 5.2 RecordWriter is optional, explicit and battle-scoped
 
-Actions that can create player-facing committed facts receive/use a narrow optional battle-scoped RecordWriter/Sink dependency through explicit initialization/context propagation.
+Actions that can create player-facing committed facts receive/use a narrow optional battle-scoped RecordWriter/Sink through explicit initialization/context propagation.
 
 Hard rules:
 
@@ -413,105 +387,55 @@ Action must not use a global/singleton Recorder
 Gameplay Runtime owners must not depend on RecordWriter
 ```
 
-Reaction and nested Actions created during one active Gameplay Resolution must inherit/receive the same active Resolution writer through their existing explicit action-building/dispatch context path.
-
-The exact C++ interface may stay small in A2A, but the dependency must be explicit and optional.
+Nested/reaction Actions in one active Gameplay Resolution receive the same writer through their explicit action-building/dispatch context path.
 
 ### 5.3 Writer absence and append failure have different semantics
 
-If Presentation recording is disabled before the Resolution begins, or there is intentionally no writer:
+Writer absent from the start is valid no-history mode. Gameplay runs normally and the final frozen baseline is enough.
+
+If a writer exists and an Append unexpectedly fails after earlier Records may already have been accepted:
 
 ```text
-Gameplay runs normally
-→ no historical Records are expected
-→ no historical Envelope is required for playback
-→ stable boundary still freezes the latest FPresentationStateSnapshot baseline
-→ presentation/no-controller path may apply that baseline directly
-```
-
-This is a valid no-history mode, not an error.
-
-If a writer exists and an Append unexpectedly fails after one or more earlier Records may already have been accepted:
-
-```text
-mark current presentation builder invalid
+mark current builder invalid
 ↓
 discard every buffered-but-unpublished Record for that Resolution
 ↓
-do not Seal or Publish a partial historical Envelope
+do not Seal/Publish partial historical Envelope
 ↓
-continue Gameplay Commit / Action Finish / Queue ordering normally
+continue Gameplay Commit / Action Finish / Queue ordering
 ↓
-at stable boundary still Freeze the exact final presentation baseline
+Freeze exact final baseline at stability when possible
 ↓
-enter PresentationUnavailable or equivalent fail-safe no-history catch-up for the battle
+PresentationUnavailable / fail-safe catch-up
 ↓
 never Gameplay ResolutionFault
-```
-
-Example that must never be published as a trustworthy historical Envelope:
-
-```text
-CardPlayed append succeeds
-Damage append fails
-Status append never occurs
-FinalSnapshot already contains Damage + Status results
-```
-
-Publishing `[CardPlayed] + FinalSnapshot` as if it were complete history is forbidden. Once the active writer has failed, the Resolution's historical record batch is invalid as a whole.
-
-Required regression:
-
-```text
-AppendFailureDoesNotSealPartialEnvelope
 ```
 
 ---
 
 ## 6. Freeze, Seal, identity and de-duplication policy
 
-Read-state publication identity and Envelope identity are deliberately different:
+Envelope identity and read-state public-edge identity are deliberately different:
 
 ```text
 Envelope identity / de-duplication
 = (BattleId, ResolutionId)
 
-Read-state edge identity / de-duplication
-= (BattleId, StateRevision)
+Read-state public edge
+= Gameplay (BattleId, StateRevision) plus Presentation availability state
 ```
 
-Rules:
+One active ResolutionId seals at most once. One sealed `(BattleId, ResolutionId)` publishes at most once. Duplicate stable read callbacks do not re-Seal historical Envelopes.
 
-```text
-one active ResolutionId → at most one Seal
-one sealed (BattleId, ResolutionId) → at most one public Envelope delivery
-same stable (BattleId, StateRevision) callback repeated
-→ must not re-Seal the current/previous Resolution
-→ must not duplicate OnReadStateReady for the same read edge
-```
-
-Do not use `LastPublishedReadStateRevision` or any equivalent read-edge cache as the sole Envelope identity. A historical operation batch and a stable state version have different semantics; future System/no-op/empty-record Resolutions must not be forced into a permanent one-to-one identity assumption.
-
-A duplicate stable callback may be suppressed by the read-state de-duplication path, but Envelope de-duplication remains based on the Resolution identity that was actually sealed.
+A2D5 review fixed the Presentation-only edge case where availability changes at an unchanged Gameplay revision. A `PresentationAvailable true -> false` transition must remain observable by Controller/ViewModel even when BattleId/StateRevision do not change; identical subsequent edges may still deduplicate.
 
 If raw read succeeds but Freeze fails, or Envelope construction/Seal fails:
 
 ```text
 clear/discard current Presentation builder safely
 mark Presentation unavailable/disabled for this battle
-allow ordinary Gameplay state and deferred OnReadStateReady behavior to continue
+allow ordinary Gameplay and deferred public read behavior to continue
 never request Gameplay ResolutionFault
-```
-
-A Freeze/Seal failure must not leave a half-sealed builder that can later duplicate Records into another Envelope.
-
-Required A2A regressions include:
-
-```text
-DuplicateStablePublishDoesNotDuplicateEnvelope
-EnvelopeDedupUsesBattleIdAndResolutionId
-FreezeFailureDisablesPresentationWithoutGameplayFault
-SealFailureDoesNotReplayBuilderIntoNextResolution
 ```
 
 ---
@@ -531,51 +455,22 @@ Action / BattleManager
 
 ### 7.1 Damage
 
-```text
-FDamageCommitResult
-├── bCommitted
-├── IncomingDamage
-├── HPBefore
-├── HPAfter
-├── BlockBefore
-├── BlockAfter
-├── BlockedDamage
-└── HPDamage
-```
+Damage commit truth contains incoming damage, HP before/after, Block before/after, blocked damage and HP damage.
 
-`ACombatant::TakeCombatDamage()` returns the result. `UDamageAction` combines it with Source/Target/DamageKind/resolved amount and writes the Damage Record.
-
-The Damage Record is the single presentation fact for damage absorption and HP loss. It already owns `BlockBefore / BlockAfter / BlockedDamage` together with `HPBefore / HPAfter / HPDamage`. Damage consuming Block must not emit an additional `BlockChanged` Record for the same commit, otherwise playback would show the Block loss twice. Independent Block gain/clear operations still produce `BlockChanged` normally.
+The Damage Record is the single presentation fact for damage absorption and HP loss. Damage consuming Block must not emit another BlockChanged Record for the same commit.
 
 ### 7.2 Block
 
-`GainBlock()` / `ClearBlock()` return at least:
+Block gain/clear commit truth contains Block before/after and changed amount.
 
 ```text
-FBlockCommitResult
-├── bCommitted
-├── BlockBefore
-├── BlockAfter
-└── ChangedAmount
-```
-
-`ClearBlock()` remains a direct BattleManager operation for UI-A2; do not migrate it to an Action only for Presentation.
-
-```text
-StartOpeningHand ClearBlock
-→ initialization normalization
-→ no visible Record
-
-StartPlayerTurn / StartEnemyTurn ClearBlock
-→ BlockChanged
-→ Reason = TurnStartClear
+StartOpeningHand ClearBlock → setup normalization → no visible Record
+StartPlayerTurn / StartEnemyTurn ClearBlock → BlockChanged(TurnStartClear)
 ```
 
 ### 7.3 Energy / CardPlayed
 
-`CardPlayed` must preserve the energy commit historically. Do not read final/live Energy when playback occurs.
-
-UI-A2C must implement either a dedicated `FEnergyCommitResult` or an equivalent exact PlayCard commit result. The player-facing CardPlayed Record must contain at least:
+CardPlayed preserves exact energy history:
 
 ```text
 CardRuntimeId
@@ -587,270 +482,87 @@ EnergyAfter
 CostPaid
 ```
 
-The intended visible order is:
-
-```text
-CardPlayed / Hand leaves current display
-→ Energy Before → After
-→ card effect Records such as Damage / Block / Draw
-```
+Card cost lives only in CardPlayed. Do not emit duplicate EnergyChanged for the same cost.
 
 ### 7.4 Deck/card zones
 
-DeckRuntime returns a generic mutation fact rather than recording Presentation directly:
+DeckRuntime returns generic real zone-mutation facts. Action-level presentation maps them to `CardZoneChanged` and related committed history. Shuffle is recorded only after a real discard-to-draw shuffle commit.
 
-```text
-FCardZoneMutationResult
-├── bCommitted
-├── CardRuntimeId
-├── CardId
-├── FromZone
-└── ToZone
-```
-
-Cover:
-
-```text
-DrawPile → Hand
-Hand → PlayArea
-Hand → Discard
-PlayArea → Discard
-PlayArea → Exhaust
-PlayArea → Removed
-```
-
-Action-level presentation maps these facts to `CardPlayed`, `CardDrawn`, `CardDiscarded`, `CardExhausted`, `CardRemoved` as needed.
-
-Shuffle remains Action-level:
-
-```text
-Shuffle commit
-→ Shuffle Presentation Record
-→ FDeckShuffledEvent
-→ reactions
-→ RetryDraw
-```
-
-Initial setup shuffle emits no Shuffle Record.
-
-Opening-Hand draws performed during `BattleStart` setup emit no `CardDrawn` Records even though they use the authoritative draw mutation path. Opening setup is normalization, not normal visible battle history:
-
-```text
-BattleStart
-→ initial deterministic shuffle: no Record
-→ opening-Hand draws: no Records
-→ Seal empty-record BattleStart Envelope
-→ apply its frozen FinalSnapshot directly
-```
-
-If opening-hand animation is desired later, add an explicit visible-opening policy switch and define its playback semantics. Do not obtain it by accidentally treating setup draws as ordinary `DrawCardAction` presentation.
+Initial setup shuffle and BattleStart opening-Hand draws emit no visible shuffle/draw Records. Normal BattleStart may therefore seal an empty-record Envelope whose FinalSnapshot establishes the visible baseline.
 
 ### 7.5 Status
 
-```text
-FStatusMutationResult
-├── bCommitted
-├── StatusId
-├── RuntimeSequence
-├── AmountBefore
-├── AmountAfter
-├── bCreated
-└── bRemoved
-```
+A2D implements a typed status mutation result with exact RuntimeSequence identity, AmountBefore/After, create/remove flags and effective runtime definition/instance for synchronous freezing only.
 
-Use this shape for Apply/Reduce/RemoveStatusById. The Container reports only the mutation fact. Action/BattleManager adds Source and semantic reason such as `Applied`, `Increased`, `Reduced`, `TurnEndDecay` or `Removed`.
-
-Direct test-only mutation does not auto-generate Presentation Records.
+Apply/Reduce/Remove no-op or stale exact-instance paths emit no StatusChanged Record. Presentation freezes dynamic Before/After text and icon metadata from the true effective definition.
 
 ---
 
 ## 8. Frozen presentation state model
 
-`FPresentationStateSnapshot` is the only complete display model used by both immediate baseline rendering and sealed Envelopes.
+`FPresentationStateSnapshot` is the complete display model used by immediate baseline rendering and sealed Envelopes. It freezes all current HUD values needed to apply one exact revision without re-entering mutable Gameplay.
 
-It freezes all values that the ViewModel currently needs so applying it never re-enters mutable Gameplay.
+It includes Battle identity/state/outcome, Energy, bCanEndTurn, Player/Enemy combatant display state, ordered statuses with RuntimeSequence, ordered Hand cards, pile counts and committed Enemy Intent presentation.
 
-The first implementation field contract is:
-
-```text
-FPresentationStateSnapshot
-├── BattleId
-├── StateRevision
-├── BattleState
-├── Outcome
-├── Energy / MaxEnergy
-├── bCanEndTurn                         advisory display value for this revision
-├── Player : FPresentationCombatantState
-├── Enemy  : FPresentationCombatantState
-├── HandCards[] : FPresentationCardState
-├── DrawCount / DiscardCount / ExhaustCount
-└── EnemyIntent : FPresentationIntentState
-
-FPresentationCombatantState
-├── resolved PresentationId
-├── bPlayer
-├── DisplayName
-├── HP / MaxHP / Block / bDead
-└── Statuses[] : FPresentationStatusState
-
-FPresentationStatusState
-├── StatusId / Amount
-├── DisplayName
-├── resolved dynamic Description
-├── bUseAtlasIcon
-├── UVOffset / UVScale
-└── TrimOffset / TrimScale
-
-FPresentationCardState
-├── RuntimeId / CardId
-├── DisplayName
-├── Cost
-├── CardType / TargetType
-├── resolved dynamic Description
-├── immutable CardArt reference
-├── bGameplayPlayable
-└── UnplayableReason
-
-FPresentationIntentState
-├── Type / DisplayName
-├── committed BaseAmount
-├── bHasCurrentResolvedDamageAmount
-└── CurrentResolvedDamageAmount
-```
-
-This list freezes everything the current HUD derives from `FBattleReadSnapshot`, `CardData`, `StatusData`, current playability queries and the committed Intent read view. Applying it later must not access `UCardInstance`, `UCardData`, `UStatusInstance`, `UStatusData`, `ACombatant`, BattleManager Query APIs or current Enemy Intent.
-
-Selection, hover, `LastFeedback`, legal-target runtime bindings and `PlaybackToken` remain transient presentation/input state and are not part of the historical snapshot. Existing self-contained HUD value structs may be reused or moved into this boundary; do not create a third parallel DTO hierarchy.
-
-`RuntimeId` and resolved `PresentationId` remain value identities inside the frozen model. Any weak runtime objects needed to submit a new Request belong only to the latest caught-up input-binding cache described in Section 2.2.
+Selection, hover, feedback, legal-target runtime bindings and PlaybackToken remain transient presentation/input state and are not historical snapshot state.
 
 ---
 
 ## 9. Unified resolved PresentationId
 
-Do not add a PresentationId Registry/validator UObject.
-
-Use one Battle-layer resolver conceptually:
-
-```cpp
-bool ABattleManager::TryResolveCombatantPresentationId(
-    const ACombatant* Combatant,
-    FName& OutPresentationId
-) const;
-```
+One Battle-layer resolver owns resolved participant presentation identity. Snapshot, LegalTargets and Presentation Records use the same resolved value.
 
 Rules:
 
 ```text
-explicit authored PresentationId non-empty
-→ use it
-
-Combatant == Player
-→ fallback Player
-
-Combatant == current Enemy
-→ fallback EnemyPrimary
-
-not part of current battle
-→ fail
+explicit authored PresentationId non-empty → use it
+Combatant == Player → fallback Player
+Combatant == current Enemy → fallback EnemyPrimary
+not part of current battle → fail
 ```
 
-Validate resolved IDs, not raw authored fields:
-
-```text
-all participants resolve
-resolved ID non-empty
-resolved IDs battle-scoped unique
-```
-
-Snapshot, LegalTargets and Presentation Records use the same resolved value. ViewModel fallback logic is removed once Battle-level resolution owns the semantic.
-
-PresentationId is immutable for the battle lifetime. The implemented resolver locks each participant to the resolved IDs captured by the first exact frozen baseline, so later mutation of the authored `ACombatant::PresentationId` field cannot silently reroute later Snapshots, LegalTargets or Records within the same battle.
+Resolved IDs are non-empty, battle-scoped unique and locked for the battle lifetime after the first exact frozen baseline.
 
 ---
 
 ## 10. Presentation bootstrap failure
 
-Invalid resolved PresentationId, Freeze bootstrap failure or other Presentation-only initialization failures must not become Gameplay `ResolutionFaulted`.
+Invalid resolved PresentationId, Freeze bootstrap failure or other Presentation-only initialization failures do not become Gameplay ResolutionFaulted.
 
-Use a UI-only state such as:
+Selected policy:
 
 ```text
 PresentationUnavailable
+→ ViewModel initialization succeeds into explicit UI-only error state
+→ Presenter still creates normal HUD Widget
+→ normal player input disabled
+→ visible development-facing error surface
+→ headless Gameplay correctness unchanged
 ```
-
-Selected implementation policy for UI-A2A: **ViewModel initialization still succeeds into an explicit UI-only error state.**
-
-```text
-Presentation bootstrap validation fails
-↓
-ViewModel enters PresentationUnavailable
-↓
-normal player input remains disabled
-↓
-Presenter still creates the normal HUD Widget
-↓
-HUD shows a clear development-facing error panel/message
-↓
-Recorder/Controller may remain disabled for the battle
-↓
-headless Gameplay correctness is unchanged
-```
-
-Do not return early from Presenter before any Widget can show the failure.
 
 ---
 
 ## 11. Controller / Presenter ownership
 
-`ABattleHUDPresenter` remains the assembly point. It may create/wire:
-
-```text
-BattleHUDViewModel
-BattlePresentationController
-Battle HUD Widget
-```
-
-The Presenter/Coordinator decides whether Presentation is enabled and owns sequencing between deferred Envelope delivery and ViewModel application.
-
-`OnReadStateReady` is not a second HUD display owner.
+`ABattleHUDPresenter` remains the assembly point for ViewModel, PresentationController and HUD Widget. `OnReadStateReady` is not a second HUD display owner.
 
 ### 11.1 Bounded Envelope queue
 
-Controller owns the sealed backlog after public delivery, not Recorder.
+Controller owns sealed backlog after public delivery. Each Envelope consumes its own Records then applies its own FinalSnapshot.
 
-```text
-Envelope 12 → its Records → its FinalSnapshot
-Envelope 13 → its Records → its FinalSnapshot
-...
-```
-
-Each Envelope applies its own FinalSnapshot after completion/skip.
-
-If backlog exceeds the configured UX bound:
-
-```text
-collapse/skip obsolete queued playback
-→ Apply newest sealed Envelope.FinalSnapshot
-→ discard obsolete transitional display state
-→ if newest BattleId/Revision is caught up, refresh live input bindings
-```
-
-Do not re-pull display state from Gameplay during collapse.
-
-Keep the first implementation minimal. Because normal player input remains locked until catch-up, ordinary player-origin flow normally has at most one Envelope awaiting visible completion. Multiple queued Envelopes mainly protect Debug/API/System calls and future autonomous producers. Use only:
+First implementation policy remains intentionally small:
 
 ```text
 fixed queue bound
 + FIFO ordering
-+ deterministic overflow collapse to the newest retained FinalSnapshot
++ deterministic overflow collapse to newest retained FinalSnapshot
 ```
 
-Do not add ACK protocols, persistence, priority scheduling, per-Origin queue policy, producer backpressure, adaptive batching or a general presentation scheduler until a real producer requires it. The same minimal-policy rule applies to the pre-public-delivery FIFO.
+No ACK protocol, persistence, priority scheduling, per-Origin queue policy, producer backpressure, adaptive batching or general presentation scheduler is introduced without a concrete need.
 
 ### 11.2 PlaybackToken belongs to UI-A2A
 
-The generic playback completion safety protocol is infrastructure and must exist before UI-A2B adds real Damage/Block playback:
+Generic safety protocol:
 
 ```text
 PlayPresentationRecord(Record, PlaybackToken)
@@ -858,22 +570,9 @@ PlayPresentationRecord(Record, PlaybackToken)
 NotifyPresentationFinished(PlaybackToken)
 ```
 
-Controller must:
+Controller ignores duplicate/stale/old-Battle/post-Skip callbacks, handles timeout/missing callback/Widget loss safely and never advances Gameplay because Presentation finished.
 
-```text
-ignore duplicate completion
-ignore stale Resolution/Sequence callback
-ignore previous-Battle callback
-ignore callback from before Skip/generation reset
-ignore timeout callbacks whose scheduled token no longer matches the active token
-support Skip / fast-forward
-catch up when Widget is destroyed
-ignore stale destruction from an already-replaced Widget
-use timeout/immediate fallback when Blueprint never completes
-apply FinalSnapshot when Presentation is disabled
-```
-
-Timeout/Skip/fallback advances or collapses Presentation only. It never advances Gameplay or requests Gameplay fault.
+A2E now owns wiring the real WBP to this already-validated protocol.
 
 ---
 
@@ -881,83 +580,31 @@ Timeout/Skip/fallback advances or collapses Presentation only. It never advances
 
 ### UI-A2A — infrastructure — C++ VALIDATED / 8/8
 
-Implemented source scope:
+Owns generic Record/Envelope transport, Begin/Abort/Seal lifecycle, fault lifecycle, frozen snapshot, explicit optional writer propagation, no-partial-history policy, deferred publication, PresentationUnavailable, Presenter/Controller display ownership, bounded backlog, PlaybackToken, skip/timeout/stale callback safety and newest-only input-binding refresh.
+
+### UI-A2B — Damage + Block — C++ VALIDATED / 8/8
+
+Owns committed Damage/Block facts, fully blocked damage, damage-consumed Block inside Damage only, TurnStartClear and lethal Damage terminal ordering.
+
+### UI-A2C — Card / Energy / Zone / Shuffle — C++ VALIDATED / 8/8
+
+Owns CardPlayed with exact energy cost history, CardZoneChanged, draw/discard/exhaust/remove facts and Shuffle → reactions → RetryDraw ordering.
+
+### UI-A2D — Status + formal terminal/fault presentation — C++/AUTOMATION SEALED
+
+Owns exact status mutation truth/identity, StatusChanged reasons/frozen values, status historical reducer, typed Victory/Defeat/ResolutionFault terminal semantics and combined acceptance.
+
+Final A2D evidence:
 
 ```text
-generic Record/Envelope transport
-BattleId / ResolutionId / PresentationSequence
-Resolution Origin / Begin / Abort / internal Seal lifecycle
-seal-before-next-Begin invariant
-ResolutionFault Record lifecycle and append-last invariant
-frozen FPresentationStateSnapshot
-RecordWriter explicit optional propagation
-append-failure invalidation / no partial Envelope
-immutable Envelope pairing
-separate Envelope vs read-state de-duplication
-Freeze/Seal failure policy
-public deferred Envelope/Ready notification
-no accepted-Request callback reentrancy
-PresentationUnavailable bootstrap path
-Presenter/Controller display ownership
-bounded Envelope backlog
-PlaybackToken
-Skip / missing callback / stale callback / timeout / Widget-loss fail-safe
-latest-only runtime input binding refresh
+A2D5 focused      6/6 PASS
+Phase6R aggregate 100/100 PASS
+Shipping          PASS
 ```
 
-A2A does **not** implement real Damage/Block business records or animation. Its infrastructure is validated; visible presentation remains part of the deferred unified Blueprint integration.
+### UI-A2E — Unified Blueprint Playback & PIE Acceptance — NEXT
 
-### UI-A2B — Damage + Block vertical slice — C++ VALIDATED / 8/8
-
-Adds:
-
-```text
-FDamageCommitResult
-FBlockCommitResult
-Damage Record
-BlockChanged Record
-fully blocked damage
-damage-consumed Block is represented inside Damage Record only; no duplicate BlockChanged Record
-TurnStartClear Block record
-lethal Damage → Victory/Defeat Record ordering
-simple Damage/Block playback
-```
-
-The generic PlaybackToken/Skip/fail-safe already exists from A2A.
-
-Victory/Defeat ordering is exercised here because lethal Damage is the first concrete terminal-producing presentation path.
-
-### UI-A2C — cards/deck/energy — C++ VALIDATED / 8/8
-
-Adds:
-
-```text
-CardPlayed
-exact EnergyBefore / EnergyAfter / CostPaid history
-CardZoneChanged
-Draw
-Hand discard
-PlayArea → Discard
-PlayArea → Exhaust
-PlayArea → Removed
-Shuffle → reactions → RetryDraw ordering
-```
-
-### UI-A2D — Status + formal terminal/fault visual presentation — DESIGN LOCKED / NOT IMPLEMENTED
-
-Adds:
-
-```text
-Status create / merge / reduce / remove
-Status change reason
-formal Victory / Defeat visual treatment
-formal ResolutionFault visual treatment
-combined end-to-end presentation acceptance
-```
-
-`ResolutionFault` lifecycle itself already exists from A2A; A2D adds the normal visible treatment and combined acceptance rather than introducing the record type for the first time.
-
-The complete A2D contract, including exact Status MutationResult/identity, historical descriptions, terminal reducer validation and producer matrix, is `docs/Phase6UIA2DImplementation.md`.
+Owns the concrete WBP route for all visible A2 Record types, token completion wiring, minimal diagnostic playback, exact FinalSnapshot catch-up, input unlock timing, terminal surfaces, PresentationUnavailable separation and PIE end-to-end acceptance.
 
 ---
 
@@ -965,7 +612,7 @@ The complete A2D contract, including exact Status MutationResult/identity, histo
 
 ### 13.1 Internal Gameplay-stable sealing boundary
 
-When the Queue/macro flow becomes stable, sealing is synchronous Gameplay-side bookkeeping and must finish before another Resolution can begin:
+When Queue/macro flow becomes stable, sealing is synchronous Gameplay-side bookkeeping and finishes before another Resolution may begin:
 
 ```text
 Queue/macro flow stable
@@ -974,54 +621,26 @@ Build raw player-facing read snapshot
 ↓
 Freeze exact FPresentationStateSnapshot
 ↓
-if recording builder is valid:
-    Seal (BattleId, ResolutionId) exactly once
-    move immutable Envelope into pending-publication storage
-else if recording was intentionally disabled:
-    keep only the frozen latest baseline
-else if append/freeze/seal failed:
-    discard invalid builder/history
-    keep frozen baseline when available
-    mark Presentation unavailable/degraded
+Seal valid active Envelope or keep only baseline for valid no-history mode
 ↓
 clear/release active builder
 ```
 
-Do not wait for the CoreTicker/public Ready edge to release the builder.
-
 ### 13.2 Deferred public-notification boundary
-
-The public delivery step remains deferred so accepted Requests cannot be completed re-entrantly from inside their own call stack:
 
 ```text
 originating public Request has returned
 ↓
 public deferred callback/ticker boundary
 ↓
-if sealed Envelopes are pending and Presentation delivery is enabled:
-    drain PendingPublicDeliveryQueue in ResolutionId order
-    publish OnPresentationResolutionReady(Envelope) for each entry
+drain pending-public-delivery FIFO in ResolutionId order
 ↓
-update/expose current latest frozen baseline as appropriate
+OnPresentationResolutionReady(each Envelope)
 ↓
-OnReadStateReady(BattleId, StateRevision)
+OnReadStateReady(current public read edge)
 ```
 
-`OnPresentationResolutionReady` and `OnReadStateReady` obey the same non-reentrancy rule for accepted public Requests.
-
-No active Resolution exists merely because a sealed Envelope is still waiting for public delivery.
-
-The public delivery FIFO and Controller playback queue are separate bounded queues:
-
-```text
-Recorder active builder
-→ Seal
-→ Battle-side PendingPublicDeliveryQueue
-→ deferred public broadcast
-→ Controller playback backlog
-```
-
-The first prevents loss before notification; the second manages visual playback after notification. Neither is a long-term history store. A single pending slot is forbidden because another Resolution may Seal before the deferred callback executes.
+The public delivery FIFO and Controller playback queue are separate bounded queues. Neither is a history database.
 
 ### 13.3 De-duplication ownership
 
@@ -1029,81 +648,39 @@ The first prevents loss before notification; the second manages visual playback 
 Envelope Seal/Publish de-dup
 → (BattleId, ResolutionId)
 
-ordinary stable read-edge de-dup
-→ (BattleId, StateRevision)
+ordinary public read-edge de-dup
+→ Gameplay revision + Presentation availability state
 ```
 
-A duplicate stable-read callback must not cause another Envelope Seal. Conversely, Envelope identity must not be inferred solely from the last published read revision.
-
-`OnReadStateReady` may coalesce current-state observation to the newest revision according to its existing scheduler, but sealed Presentation Envelopes may not be lost or overwritten by that coalescing. Pending delivery uses `(BattleId, ResolutionId)` ordering and identity.
-
-When no active Resolution exists, a new stable baseline may still be frozen for late HUD initialization without inventing a fake historical Resolution.
+A duplicate read callback must not cause another Envelope Seal. Presentation-availability transitions must not be suppressed just because Gameplay revision is unchanged.
 
 ---
 
-## 14. UI-A2A Automation gate
+## 14. C++ Automation closure
 
-Before UI-A2B visible Damage/Block playback begins, focused tests must cover at least:
+The earlier A2A/A2B/A2C focused gates remain valid, and A2D completed the Status/terminal combined acceptance.
 
-```text
-AcceptedRequestEstablishesResolutionBeforeExecution
-OrdinaryValidationRejectionCreatesNoResolution
-PostValidationFrameworkFaultSealsFaultResolution
-BattleStartBeginsBeforeFaultCapableOpeningWork
-BattleStartOpeningDrawCreatesNoPresentationRecords
-SystemResolutionCanBeCreated
-EmptyRecordResolutionSealsSafely
-FaultRetainsCommittedRecordsAndAppendsResolutionFaultLast
-ResolutionSealsBeforeNextRequestCanBegin
-PresentationEnvelopeNotificationDoesNotReenterAcceptedRequest
-OneActiveResolutionSealsAtMostOnce
-DuplicateStablePublishDoesNotDuplicateEnvelope
-EnvelopeDedupUsesBattleIdAndResolutionId
-MultipleSealedBeforeDeferredDeliveryPreserveResolutionOrder
-BattleRestartClearsPendingPublicDeliveryQueue
-PendingDeliveryOverflowFallsBackWithoutGameplayFault
-FreezeFailureDisablesPresentationWithoutGameplayFault
-SealFailureDoesNotLeakBuilderIntoNextResolution
-AppendFailureDoesNotSealPartialEnvelope
-BattleRestartDoesNotLeakBuilderOrRecords
-LateSubscriberDoesNotReplayOldBattle
-NoControllerOrPresentationDisabledLeavesGameplayUnchanged
-HistoricalFrozenSnapshotAppliesWithoutMutableRuntimeReads
-FrozenSnapshotContainsCompleteCurrentHUDDisplayValues
-HistoricalEnvelopeCannotUseLiveInputBindings
-InputBindingsRefreshOnlyAtNewestMatchingBattleRevision
-OnReadStateReadyCannotBypassActivePresentationSequencing
-RecordWriterIsOptionalAndExplicit
-NestedReactionUsesSameActiveResolutionWriter
-RecordAppendFailureDoesNotChangeGameplayFinishOrQueue
-ControllerBacklogIsBounded
-PlaybackTokenDuplicateAndStaleCompletionIgnored
-SkipMissingCallbackTimeoutWidgetLossCatchUpWithoutGameplayFault
-ResolvedPresentationIdSharedBySnapshotTargetsAndRecords
-InvalidResolvedPresentationIdShowsPresentationUnavailable
-PresentationUnavailableStillCreatesErrorCapableHUD
-```
-
-These semantics are authored across:
+Final owner-confirmed closure:
 
 ```text
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2AInfrastructureTests.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2APresenterTests.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2AHardeningTests.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA2ATestTypes.h/.cpp
+A2D1 3/3 PASS
+A2D2 4/4 PASS
+A2D3 4/4 PASS
+A2D4 6/6 PASS
+A2D5 focused 6/6 PASS
+Phase6R expanded aggregate 100/100 PASS
+Shipping exclusion PASS
 ```
 
-The hardening suite additionally covers overlapping-Begin builder cleanup, terminal fault append rejection, battle-lifetime resolved PresentationId stability, stale old-battle Envelope rejection, stale old-Widget loss isolation and direct frozen-baseline HUD operation when committed recording is disabled.
-
-These A2A suites passed 8/8 in the owner-confirmed UE5.8 affected aggregate together with A2B 8/8 and A2C 8/8 (77/77 total). This evidence does not include deferred Blueprint playback or PIE presentation smoke.
+This closes the C++ committed-presentation contract. It does not claim real Blueprint/UMG animation or PIE historical playback.
 
 ---
 
 ## 15. USER ACTION REQUIRED boundary
 
-UI-A2A should be Automation-first and should not require new UMG animation work.
+UI-A2E requires real UE Editor work for the concrete Widget Blueprint/UMG surface. Text-only source tooling must not claim to create or edit `.uasset` / `.umap` assets.
 
-When UI-A2B begins visible playback, user-side UE Editor work may be required to wire Blueprint presentation callbacks/animations. At that time instructions must specify the exact Widget asset, event/function, property values, expected sequence and validation result.
+When A2E begins, instructions must specify exact Widget assets/events, Record routing, token callback wiring, minimum visible behavior and PIE scenarios.
 
 ---
 
@@ -1111,7 +688,9 @@ When UI-A2B begins visible playback, user-side UE Editor work may be required to
 
 UI-A2 is successful when presentation is a deterministic, bounded, fail-safe explanation of facts that Gameplay already committed.
 
-The final invariant is:
+The C++ contract is sealed. UI-A2 as a whole is **not yet complete** because A2E player-visible Blueprint/PIE acceptance remains.
+
+Final invariant:
 
 ```text
 Gameplay result
@@ -1121,16 +700,23 @@ Historical display
 = driven only by sealed Records + that Envelope.FinalSnapshot
 
 Resolution lifecycle
-= internal Seal releases the builder before any next Begin; public delivery may be deferred
+= internal Seal releases builder before any next Begin; public delivery may be deferred
 
 Envelope identity
 = BattleId + ResolutionId
 
-Read-state edge identity
-= BattleId + StateRevision
+Read-state public edge
+= current Gameplay revision plus Presentation availability transition semantics
 
 Current input identity
 = refreshed only after display catches up to newest matching BattleId/Revision
 ```
 
-UI-A2A infrastructure and the A2B/A2C committed-fact reducers are C++/Automation validated. Visible Blueprint integration remains intentionally deferred until A2D C++/Automation is closed, after which Damage/Block/Card/Energy/Zone/Status/Terminal playback should be wired and PIE-smoked as one coherent presentation surface.
+Next stage:
+
+```text
+UI-A2E Unified Blueprint Playback
+→ UI-A2E PIE end-to-end acceptance
+→ UI-A2 COMPLETE / SEALED
+→ resume UI-A3-2 Target-Specific Current-State Preview
+```

@@ -185,9 +185,19 @@ bool FPhase6UIA2D1StatusMutationLifecycleTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("Container empty after exact reduce removal"), Container->GetStatuses().Num(), 0);
 
 	const FStatusMutationResult StaleReduce = Container->ReduceStatusCommit(Weak10, 1);
-	TestTrue(TEXT("Stale exact reduce is NoOp"), StaleReduce.Outcome == EStatusMutationOutcome::NoOp);
+	TestTrue(TEXT("Structurally valid stale exact reduce is NoOp"), StaleReduce.Outcome == EStatusMutationOutcome::NoOp);
 	TestFalse(TEXT("Stale reduce does not recreate membership"), Container->ContainsStatusInstance(Weak10));
 	TestEqual(TEXT("Stale reduce leaves container empty"), Container->GetStatuses().Num(), 0);
+
+	// Once the stale object's historical identity becomes structurally invalid,
+	// it is no longer a legal stale/no-op request. Invalid parameters must remain
+	// distinguishable from a valid old instance that simply left the Container.
+	WeakDefinition->StatusId = NAME_None;
+	const FStatusMutationResult InvalidStaleReduce = Container->ReduceStatusCommit(Weak10, 1);
+	TestTrue(TEXT("Structurally invalid stale reduce is Invalid"), InvalidStaleReduce.Outcome == EStatusMutationOutcome::Invalid);
+	const FStatusMutationResult InvalidStaleRemove = Container->RemoveStatusCommit(Weak10);
+	TestTrue(TEXT("Structurally invalid stale remove is Invalid"), InvalidStaleRemove.Outcome == EStatusMutationOutcome::Invalid);
+	TestEqual(TEXT("Invalid stale operations leave container empty"), Container->GetStatuses().Num(), 0);
 	return true;
 }
 

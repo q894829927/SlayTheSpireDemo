@@ -276,6 +276,33 @@ struct SLAYTHESPIREDEMO_API FStatusChangedPresentationPayload
 };
 
 USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FTerminalPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Terminal")
+	FName WinnerPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Terminal")
+	FName DefeatedPresentationId = NAME_None;
+};
+
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FResolutionFaultPresentationPayload
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
+	FString Reason;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
+	int32 ExecutedActionCount = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
+	FName LastActionName = NAME_None;
+};
+
+USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationPlaybackToken
 {
 	GENERATED_BODY()
@@ -344,14 +371,11 @@ struct SLAYTHESPIREDEMO_API FPresentationRecord
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Status")
 	FStatusChangedPresentationPayload StatusChanged;
 
-	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
-	FString FaultReason;
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Terminal")
+	FTerminalPresentationPayload Terminal;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
-	int32 FaultExecutedActionCount = 0;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Fault")
-	FName FaultLastActionName = NAME_None;
+	FResolutionFaultPresentationPayload ResolutionFault;
 };
 
 USTRUCT(BlueprintType)

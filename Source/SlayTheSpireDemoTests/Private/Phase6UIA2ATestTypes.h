@@ -92,14 +92,20 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2APlaybackWidget : public UBattleHUDWi
 	GENERATED_BODY()
 
 public:
-	virtual bool PlayPresentationRecord_Implementation(
+	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token
+	) override;
+	virtual void CancelPresentationRecordPlayback_Implementation(
 		const FPresentationPlaybackToken& Token
 	) override;
 
 	bool bAcceptAsyncPlayback = true;
+	bool bNotifySynchronouslyFromPlay = false;
 	int32 PlayCallCount = 0;
+	int32 CancelCallCount = 0;
 	FPresentationPlaybackToken LastToken;
+	FPresentationPlaybackToken LastCancelledToken;
 };
 
 UCLASS(Transient)

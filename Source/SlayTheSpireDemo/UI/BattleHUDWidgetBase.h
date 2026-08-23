@@ -34,19 +34,50 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool EndTurn();
 
-	// Return true only when Blueprint actually started asynchronous playback and
-	// will later call NotifyPresentationFinished(Token). The native default returns
-	// false, providing the A2A missing-callback immediate fallback without asset edits.
-	UFUNCTION(BlueprintNativeEvent, Category = "Battle Presentation")
+	// Converts an immutable committed-presentation card snapshot into the existing
+	// HUD card DTO used by WBP_BattleCard. The transient presentation copy is never
+	// gameplay-playable and carries no live legality state.
+	UFUNCTION(BlueprintPure, Category = "Battle Presentation|Card", meta = (DisplayName = "Make Presentation Card View"))
+	FBattleHUDCardView MakePresentationCardView(
+		const FPresentationCardSnapshot& Snapshot
+	) const;
+
+	// Controller-facing wrapper. It tracks the exact Token before entering
+	// Blueprint so timeout/collapse/unavailable paths can cancel only the currently
+	// offered presentation visual. Returning false means immediate native fallback.
 	bool PlayPresentationRecord(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	);
-	virtual bool PlayPresentationRecord_Implementation(
+
+	// Blueprint override point used by the controller-facing wrapper above.
+	// Return true only when Blueprint actually started asynchronous playback and
+	// will later call NotifyPresentationFinished(Token). The native default returns
+	// false, providing the A2A missing-callback immediate fallback without asset edits.
+	UFUNCTION(BlueprintNativeEvent, Category = "Battle Presentation", meta = (DisplayName = "Play Presentation Record"))
+	bool BeginPresentationRecordPlayback(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token
+	);
+	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	);
 
+	// Presentation-only visual cancellation hook. Blueprint should stop only the
+	// visual/transient state belonging to this Token. It must NOT call
+	// NotifyPresentationFinished from this cancellation event. The base class
+	// clears its tracked token before dispatching the event, so even a bad/stale
+	// Blueprint callback cannot erase a newer visual owner.
+	UFUNCTION(BlueprintNativeEvent, Category = "Battle Presentation", meta = (DisplayName = "Cancel Presentation Record Playback"))
+	void CancelPresentationRecordPlayback(const FPresentationPlaybackToken& Token);
+	virtual void CancelPresentationRecordPlayback_Implementation(
+		const FPresentationPlaybackToken& Token
+	);
+
+	// Even if Blueprint accidentally invokes this from inside the playback event,
+	// forwarding to the Controller is deferred to the CoreTicker so Controller
+	// playback cannot re-enter StartNextRecord through the Blueprint call stack.
 	UFUNCTION(BlueprintCallable, Category = "Battle Presentation")
 	void NotifyPresentationFinished(const FPresentationPlaybackToken& Token);
 
@@ -68,4 +99,16 @@ protected:
 private:
 	UFUNCTION()
 	void HandleViewModelChanged();
+
+	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);
+	void CancelTrackedPresentationPlayback();
+	void ClearTrackedPresentationPlayback(const FPresentationPlaybackToken& Token);
+
+	bool bHasTrackedPresentationPlayback = false;
+	FPresentationPlaybackToken TrackedPresentationPlaybackToken;
+
+	// Prevents a normal completion/explicit Skip from being interpreted as a
+	// fail-safe visual cancellation when Controller state updates synchronously
+	// broadcast the ViewModel change back to this Widget.
+	bool bSuppressPresentationCancellation = false;
 };

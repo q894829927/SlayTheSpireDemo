@@ -1,0 +1,107 @@
+name: UE Phase 6UI-A2D5 Automation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ue58-phase6uia2d5-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  phase6uia2d5-tests:
+    if: github.actor == github.repository_owner && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, windows, x64, ue58]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          clean: true
+
+      - name: Verify trusted execution context
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -ne "workflow_dispatch") { throw "This self-hosted workflow must only run via workflow_dispatch." }
+          if ("${{ github.actor }}" -ne "${{ github.repository_owner }}") { throw "Only the repository owner may run this self-hosted workflow." }
+          if ("${{ github.ref }}" -ne "refs/heads/main") { throw "This self-hosted workflow may only run from main." }
+
+      - name: Check UE5.8 toolchain
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          foreach ($Path in @($Build, $EditorCmd, $Project)) {
+              if (!(Test-Path $Path)) { throw "Required path not found: $Path" }
+          }
+
+      - name: Build SlayTheSpireDemoEditor
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $Build = "$UE\Engine\Build\BatchFiles\Build.bat"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          & $Build SlayTheSpireDemoEditor Win64 Development $Project -WaitMutex -NoHotReloadFromIDE
+          if ($LASTEXITCODE -ne 0) { throw "UE Editor build failed with exit code $LASTEXITCODE" }
+
+      - name: Run Phase 6UI-A2D5 focused gate
+        shell: powershell
+        run: |
+          $UE = "E:\Unreal engine\UE_5.8"
+          $EditorCmd = "$UE\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+          $Project = "$env:GITHUB_WORKSPACE\SlayTheSpireDemo.uproject"
+          $Prefix = "SlayTheSpireDemo.Phase6UIA2D5"
+          $ExpectedCount = 6
+          $Report = "$env:GITHUB_WORKSPACE\Saved\AutomationReports\Phase6UIA2D5"
+          $IndexJson = "$Report\index.json"
+
+          if (Test-Path $Report) { Remove-Item $Report -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $Report | Out-Null
+
+          & $EditorCmd `
+              $Project `
+              -unattended `
+              -nop4 `
+              -NullRHI `
+              -NoSplash `
+              -NoSound `
+              "-ExecCmds=Automation RunTest $Prefix;Quit" `
+              "-ReportExportPath=$Report" `
+              -log
+
+          $EditorExitCode = $LASTEXITCODE
+          if (!(Test-Path $IndexJson)) {
+              throw "Automation report was not generated for $Prefix at $IndexJson"
+          }
+
+          $Result = Get-Content $IndexJson -Raw | ConvertFrom-Json
+          $Tests = @($Result.tests | Where-Object { $_.fullTestPath -like "$Prefix.*" })
+          $NonSuccess = @($Tests | Where-Object { $_.state -ne 'Success' })
+
+          "## UE Phase 6UI-A2D5 Automation" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| Prefix | Tests | Failed | Not run | Editor exit |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "|---|---:|---:|---:|---:|" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "| $Prefix | $($Tests.Count)/$ExpectedCount | $($Result.failed) | $($Result.notRun) | $EditorExitCode |" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+          if ($Tests.Count -ne $ExpectedCount) {
+              throw "Expected exactly $ExpectedCount tests for $Prefix, but found $($Tests.Count)."
+          }
+          if ($NonSuccess.Count -gt 0) {
+              Write-Host ($NonSuccess | ConvertTo-Json -Depth 12)
+              $Names = ($NonSuccess | ForEach-Object { "$($_.fullTestPath) [$($_.state)]" }) -join '; '
+              throw "Non-success tests for ${Prefix}: $Names"
+          }
+          if ($Result.failed -ne 0 -or $Result.notRun -ne 0 -or $EditorExitCode -ne 0) {
+              throw "Automation gate failed for $Prefix."
+          }
+
+          Write-Host "Phase 6UI-A2D5 focused gate passed. Expected discovered total: 6 tests."

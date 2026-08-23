@@ -58,10 +58,6 @@ bool ABattleManager::TryResolveCombatantPresentationId(
 		return false;
 	}
 
-	// Once the first exact frozen baseline exists, its resolved participant IDs
-	// become the authoritative presentation identity for the remainder of this
-	// battle. StartBattle runs synchronously through that first stable baseline, so
-	// external callers cannot mutate authored IDs between validation and freezing.
 	if (bHasLatestFrozenPresentationBaseline
 		&& LatestFrozenPresentationBaseline.BattleId == static_cast<int64>(BattleId))
 	{
@@ -194,16 +190,19 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 		OutView.Block = Source.Block;
 		OutView.bDead = Source.bDead;
 		OutView.Statuses.Reserve(Source.Statuses.Num());
+		TSet<FName> SeenStatusIds;
 
 		for (const FStatusReadView& Status : Source.Statuses)
 		{
 			if (Status.StatusId.IsNone()
 				|| Status.Amount <= 0
 				|| Status.RuntimeSequence == 0
-				|| Status.RuntimeSequence > static_cast<uint64>(MAX_int64))
+				|| Status.RuntimeSequence > static_cast<uint64>(MAX_int64)
+				|| SeenStatusIds.Contains(Status.StatusId))
 			{
 				return false;
 			}
+			SeenStatusIds.Add(Status.StatusId);
 
 			FBattleHUDStatusView FrozenStatus;
 			FrozenStatus.StatusId = Status.StatusId;
@@ -349,9 +348,6 @@ void ABattleManager::ResetPresentationForBattle()
 	}
 	bReadStateReadyPublishScheduled = false;
 
-	// Presentation recording is a BattleId-scoped configuration. Runtime edits to
-	// the exposed config are intentionally deferred until the next StartBattle so
-	// an already-created Controller can never lose its producer mid-resolution.
 	bCommittedPresentationRecordingEnabledForBattle = bEnableCommittedPresentationRecording;
 
 	PendingPublicDeliveryQueue.Reset();
@@ -395,8 +391,6 @@ bool ABattleManager::BeginPresentationResolution(EPresentationResolutionOrigin O
 	FPresentationRecordWriter Writer;
 	if (!PresentationRecorder->BeginResolution(Origin, Writer))
 	{
-		// Recorder guarantees a failed overlapping Begin cannot leave the previous
-		// builder active. From here the battle degrades Presentation only.
 		MarkPresentationUnavailable(TEXT("Presentation Resolution begin failed or another builder was still active."));
 		return false;
 	}
@@ -436,9 +430,9 @@ void ABattleManager::AppendPresentationResolutionFault(
 
 	FPresentationRecord FaultRecord;
 	FaultRecord.Type = EBattlePresentationRecordType::ResolutionFault;
-	FaultRecord.FaultReason = Reason;
-	FaultRecord.FaultExecutedActionCount = ExecutedCount;
-	FaultRecord.FaultLastActionName = IsValid(LastAction) ? LastAction->GetFName() : NAME_None;
+	FaultRecord.ResolutionFault.Reason = Reason;
+	FaultRecord.ResolutionFault.ExecutedActionCount = FMath::Max(0, ExecutedCount);
+	FaultRecord.ResolutionFault.LastActionName = IsValid(LastAction) ? LastAction->GetFName() : NAME_None;
 	if (!Writer.Append(MoveTemp(FaultRecord)))
 	{
 		MarkPresentationUnavailable(TEXT("Presentation record append failed; historical playback was disabled for this battle."));
@@ -537,10 +531,6 @@ void ABattleManager::MarkPresentationUnavailable(const FString& Reason)
 	);
 	PendingPublicDeliveryQueue.Reset();
 
-	// PresentationUnavailable is an explicit, expected fail-safe state rather
-	// than a Gameplay framework fault. Keep the diagnostic visible without
-	// turning intentional Automation coverage of that state into an unexpected
-	// Error-log failure.
 	UE_LOG(
 		LogTemp,
 		Warning,
@@ -590,10 +580,6 @@ void ABattleManager::DrainPendingPublicPresentationDeliveries()
 
 	for (const FPresentationResolutionEnvelope& Envelope : Deliveries)
 	{
-		// A public Envelope observer may synchronously start another formal/System
-		// operation. If that operation disables Presentation, stop delivering the
-		// remainder of this moved local batch instead of leaking stale playback
-		// after the fail-safe transition.
 		if (!bPresentationAvailable || !bCommittedPresentationRecordingEnabledForBattle)
 		{
 			break;

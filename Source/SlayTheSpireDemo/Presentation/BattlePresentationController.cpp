@@ -26,6 +26,153 @@ namespace
 		return nullptr;
 	}
 
+	bool IsOptionalParticipantPresentationId(
+		const FPresentationStateSnapshot& Snapshot,
+		FName PresentationId
+	)
+	{
+		return PresentationId.IsNone()
+			|| PresentationId == Snapshot.Player.PresentationId
+			|| PresentationId == Snapshot.Enemy.PresentationId;
+	}
+
+	bool IsTerminalRecordType(EBattlePresentationRecordType Type)
+	{
+		return Type == EBattlePresentationRecordType::Victory
+			|| Type == EBattlePresentationRecordType::Defeat
+			|| Type == EBattlePresentationRecordType::ResolutionFault;
+	}
+
+	bool IsTerminalSnapshot(const FPresentationStateSnapshot& Snapshot)
+	{
+		return Snapshot.BattleState == EBattleState::Victory
+			|| Snapshot.BattleState == EBattleState::Defeat
+			|| Snapshot.BattleState == EBattleState::ResolutionFaulted
+			|| Snapshot.Outcome != EBattleHUDOutcome::None;
+	}
+
+	bool ValidateTerminalEnvelopeShape(const FPresentationResolutionEnvelope& Envelope)
+	{
+		int32 TerminalIndex = INDEX_NONE;
+		for (int32 Index = 0; Index < Envelope.Records.Num(); ++Index)
+		{
+			if (!IsTerminalRecordType(Envelope.Records[Index].Type))
+			{
+				continue;
+			}
+			if (TerminalIndex != INDEX_NONE)
+			{
+				return false;
+			}
+			TerminalIndex = Index;
+		}
+
+		if (TerminalIndex != INDEX_NONE && TerminalIndex != Envelope.Records.Num() - 1)
+		{
+			return false;
+		}
+
+		const bool bFinalIsTerminal = IsTerminalSnapshot(Envelope.FinalSnapshot);
+		if (!bFinalIsTerminal)
+		{
+			return TerminalIndex == INDEX_NONE;
+		}
+		if (TerminalIndex == INDEX_NONE)
+		{
+			return false;
+		}
+
+		const EBattlePresentationRecordType Type = Envelope.Records[TerminalIndex].Type;
+		switch (Envelope.FinalSnapshot.BattleState)
+		{
+		case EBattleState::Victory:
+			return Envelope.FinalSnapshot.Outcome == EBattleHUDOutcome::Victory
+				&& Type == EBattlePresentationRecordType::Victory;
+		case EBattleState::Defeat:
+			return Envelope.FinalSnapshot.Outcome == EBattleHUDOutcome::Defeat
+				&& Type == EBattlePresentationRecordType::Defeat;
+		case EBattleState::ResolutionFaulted:
+			return Envelope.FinalSnapshot.Outcome == EBattleHUDOutcome::ResolutionFaulted
+				&& Type == EBattlePresentationRecordType::ResolutionFault;
+		default:
+			return false;
+		}
+	}
+
+	bool ApplyTerminalRecord(
+		FPresentationStateSnapshot& Snapshot,
+		const FPresentationStateSnapshot& FinalSnapshot,
+		const FPresentationRecord& Record
+	)
+	{
+		if (!IsTerminalRecordType(Record.Type)
+			|| Snapshot.BattleId <= 0
+			|| Snapshot.BattleId != FinalSnapshot.BattleId
+			|| IsTerminalSnapshot(Snapshot))
+		{
+			return false;
+		}
+
+		switch (Record.Type)
+		{
+		case EBattlePresentationRecordType::Victory:
+			if (Record.Terminal.WinnerPresentationId.IsNone()
+				|| Record.Terminal.DefeatedPresentationId.IsNone()
+				|| Record.Terminal.WinnerPresentationId == Record.Terminal.DefeatedPresentationId
+				|| Record.Terminal.WinnerPresentationId != Snapshot.Player.PresentationId
+				|| Record.Terminal.WinnerPresentationId != FinalSnapshot.Player.PresentationId
+				|| Record.Terminal.DefeatedPresentationId != Snapshot.Enemy.PresentationId
+				|| Record.Terminal.DefeatedPresentationId != FinalSnapshot.Enemy.PresentationId
+				|| !Snapshot.Enemy.bDead
+				|| !FinalSnapshot.Enemy.bDead
+				|| FinalSnapshot.BattleState != EBattleState::Victory
+				|| FinalSnapshot.Outcome != EBattleHUDOutcome::Victory)
+			{
+				return false;
+			}
+			Snapshot.BattleState = EBattleState::Victory;
+			Snapshot.Outcome = EBattleHUDOutcome::Victory;
+			Snapshot.bCanEndTurn = false;
+			return true;
+
+		case EBattlePresentationRecordType::Defeat:
+			if (Record.Terminal.WinnerPresentationId.IsNone()
+				|| Record.Terminal.DefeatedPresentationId.IsNone()
+				|| Record.Terminal.WinnerPresentationId == Record.Terminal.DefeatedPresentationId
+				|| Record.Terminal.WinnerPresentationId != Snapshot.Enemy.PresentationId
+				|| Record.Terminal.WinnerPresentationId != FinalSnapshot.Enemy.PresentationId
+				|| Record.Terminal.DefeatedPresentationId != Snapshot.Player.PresentationId
+				|| Record.Terminal.DefeatedPresentationId != FinalSnapshot.Player.PresentationId
+				|| !Snapshot.Player.bDead
+				|| !FinalSnapshot.Player.bDead
+				|| FinalSnapshot.BattleState != EBattleState::Defeat
+				|| FinalSnapshot.Outcome != EBattleHUDOutcome::Defeat)
+			{
+				return false;
+			}
+			Snapshot.BattleState = EBattleState::Defeat;
+			Snapshot.Outcome = EBattleHUDOutcome::Defeat;
+			Snapshot.bCanEndTurn = false;
+			return true;
+
+		case EBattlePresentationRecordType::ResolutionFault:
+			if (Record.ResolutionFault.Reason.IsEmpty()
+				|| Record.ResolutionFault.ExecutedActionCount < 0
+				|| FinalSnapshot.BattleState != EBattleState::ResolutionFaulted
+				|| FinalSnapshot.Outcome != EBattleHUDOutcome::ResolutionFaulted)
+			{
+				return false;
+			}
+			Snapshot.BattleState = EBattleState::ResolutionFaulted;
+			Snapshot.Outcome = EBattleHUDOutcome::ResolutionFaulted;
+			Snapshot.bCanEndTurn = false;
+			return true;
+
+		default:
+			return false;
+		}
+	}
+
 	int32 FindHandCardIndexByRuntimeId(
 		const TArray<FBattleHUDCardView>& HandCards,
 		int32 RuntimeId
@@ -105,7 +252,9 @@ namespace
 			|| Payload.RuntimeSequence <= 0
 			|| Payload.AmountBefore < 0
 			|| Payload.AmountAfter < 0
-			|| (Payload.bCreated && Payload.bRemoved))
+			|| (Payload.bCreated && Payload.bRemoved)
+			|| (Payload.bCreated && !Payload.DescriptionBefore.IsEmpty())
+			|| (Payload.bRemoved && !Payload.DescriptionAfter.IsEmpty()))
 		{
 			return false;
 		}
@@ -117,26 +266,22 @@ namespace
 				&& !Payload.bRemoved
 				&& Payload.AmountBefore == 0
 				&& Payload.AmountAfter > 0;
-
 		case EStatusChangeReason::Increased:
 			return !Payload.bCreated
 				&& !Payload.bRemoved
 				&& Payload.AmountBefore > 0
 				&& Payload.AmountAfter > Payload.AmountBefore;
-
 		case EStatusChangeReason::Reduced:
 		case EStatusChangeReason::TurnEndDecay:
 			return !Payload.bCreated
 				&& Payload.AmountBefore > Payload.AmountAfter
 				&& Payload.AmountAfter >= 0
 				&& Payload.bRemoved == (Payload.AmountAfter == 0);
-
 		case EStatusChangeReason::Removed:
 			return !Payload.bCreated
 				&& Payload.bRemoved
 				&& Payload.AmountBefore > 0
 				&& Payload.AmountAfter == 0;
-
 		default:
 			return false;
 		}
@@ -166,7 +311,8 @@ namespace
 		const FStatusChangedPresentationPayload& Payload
 	)
 	{
-		if (!ValidateStatusChangedPayload(Payload))
+		if (!ValidateStatusChangedPayload(Payload)
+			|| !IsOptionalParticipantPresentationId(Snapshot, Payload.SourcePresentationId))
 		{
 			return false;
 		}
@@ -237,14 +383,14 @@ bool UBattlePresentationController::Initialize(
 	BattleManager = InBattleManager;
 	ViewModel = InViewModel;
 	Widget = InWidget;
-	InBattleManager->OnPresentationResolutionReady.AddUObject(
-		this,
-		&UBattlePresentationController::HandlePresentationResolutionReady
-	);
-	InBattleManager->OnReadStateReady.AddUObject(
-		this,
-		&UBattlePresentationController::HandleReadStateReady
-	);
+	InBattleManager->OnPresentationResolutionReady.AddUObject(this, &UBattlePresentationController::HandlePresentationResolutionReady);
+	InBattleManager->OnReadStateReady.AddUObject(this, &UBattlePresentationController::HandleReadStateReady);
+
+	if (InBattleManager->IsPresentationAvailable()
+		&& InBattleManager->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		InViewModel->SetPresentationDisplayOwned(true);
+	}
 
 	FPresentationStateSnapshot Baseline;
 	if (InBattleManager->TryGetLatestFrozenPresentationBaseline(Baseline))
@@ -252,12 +398,9 @@ bool UBattlePresentationController::Initialize(
 		CurrentBattleId = Baseline.BattleId;
 		ApplyDisplayedSnapshot(Baseline, false);
 
-		const int64 BaselineResolutionWatermark = static_cast<int64>(
-			InBattleManager->GetLatestFrozenPresentationBaselineResolutionId()
-		);
+		const int64 BaselineResolutionWatermark = static_cast<int64>(InBattleManager->GetLatestFrozenPresentationBaselineResolutionId());
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
-
 		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 	}
 
@@ -309,16 +452,13 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 
 	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
 	Widget = InWidget;
-
 	if (bHadInFlightPresentation)
 	{
 		SkipPresentation();
 	}
 }
 
-void UBattlePresentationController::NotifyPresentationFinished(
-	const FPresentationPlaybackToken& Token
-)
+void UBattlePresentationController::NotifyPresentationFinished(const FPresentationPlaybackToken& Token)
 {
 	if (!bWaitingForCompletion
 		|| Token != ActivePlaybackToken
@@ -386,7 +526,6 @@ void UBattlePresentationController::NotifyWidgetLost(UBattleHUDWidgetBase* LostW
 	{
 		return;
 	}
-
 	Widget = nullptr;
 	SkipPresentation();
 }
@@ -397,9 +536,7 @@ void UBattlePresentationController::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-void UBattlePresentationController::HandlePresentationResolutionReady(
-	const FPresentationResolutionEnvelope& Envelope
-)
+void UBattlePresentationController::HandlePresentationResolutionReady(const FPresentationResolutionEnvelope& Envelope)
 {
 	if (Envelope.BattleId <= 0 || Envelope.ResolutionId <= 0)
 	{
@@ -463,10 +600,7 @@ void UBattlePresentationController::HandlePresentationResolutionReady(
 	StartNextEnvelope();
 }
 
-void UBattlePresentationController::HandleReadStateReady(
-	uint64 InBattleId,
-	uint64 InStateRevision
-)
+void UBattlePresentationController::HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision)
 {
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle))
@@ -504,7 +638,8 @@ void UBattlePresentationController::StartNextEnvelope()
 	ActiveRecordIndex = INDEX_NONE;
 
 	if (!bHasDisplayedPresentationSnapshot
-		|| DisplayedPresentationSnapshot.BattleId != ActiveEnvelope.BattleId)
+		|| DisplayedPresentationSnapshot.BattleId != ActiveEnvelope.BattleId
+		|| !ValidateTerminalEnvelopeShape(ActiveEnvelope))
 	{
 		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
 		CollapseToEnvelope(FallbackEnvelope);
@@ -544,6 +679,8 @@ void UBattlePresentationController::StartNextRecord()
 
 	const bool bRecordSupportsVisiblePlayback =
 		Record.Type == EBattlePresentationRecordType::ResolutionFault
+		|| Record.Type == EBattlePresentationRecordType::Victory
+		|| Record.Type == EBattlePresentationRecordType::Defeat
 		|| Record.Type == EBattlePresentationRecordType::Damage
 		|| Record.Type == EBattlePresentationRecordType::BlockChanged
 		|| Record.Type == EBattlePresentationRecordType::CardPlayed
@@ -555,6 +692,42 @@ void UBattlePresentationController::StartNextRecord()
 	{
 		CompleteActiveRecord();
 		return;
+	}
+
+	if (Record.Type == EBattlePresentationRecordType::StatusChanged)
+	{
+		if (!bHasWorkingPresentationSnapshot)
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
+
+		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
+		if (!ApplyStatusChangedRecord(PreflightSnapshot, Record.StatusChanged))
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
+	}
+	else if (IsTerminalRecordType(Record.Type))
+	{
+		if (!bHasWorkingPresentationSnapshot
+			|| ActiveRecordIndex != ActiveEnvelope.Records.Num() - 1)
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
+
+		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
+		if (!ApplyTerminalRecord(PreflightSnapshot, ActiveEnvelope.FinalSnapshot, Record))
+		{
+			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
+			CollapseToEnvelope(FallbackEnvelope);
+			return;
+		}
 	}
 
 	ActivePlaybackToken.BattleId = Record.BattleId;
@@ -653,9 +826,7 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 	}
 }
 
-void UBattlePresentationController::CollapseToEnvelope(
-	const FPresentationResolutionEnvelope& Envelope
-)
+void UBattlePresentationController::CollapseToEnvelope(const FPresentationResolutionEnvelope& Envelope)
 {
 	ABattleManager* Battle = BattleManager.Get();
 	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
@@ -702,9 +873,7 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 	if (IsValid(Battle) && Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
 	{
 		CurrentBattleId = LatestBaseline.BattleId;
-		const int64 BaselineResolutionWatermark = static_cast<int64>(
-			Battle->GetLatestFrozenPresentationBaselineResolutionId()
-		);
+		const int64 BaselineResolutionWatermark = static_cast<int64>(Battle->GetLatestFrozenPresentationBaselineResolutionId());
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
 		ApplyDisplayedSnapshot(LatestBaseline, false);
@@ -724,21 +893,17 @@ void UBattlePresentationController::EnterDirectBaselineMode()
 {
 	ABattleManager* Battle = BattleManager.Get();
 	ResetPlaybackState(true);
-
 	if (!IsValid(ViewModel))
 	{
 		return;
 	}
 
 	ViewModel->SetPresentationDisplayOwned(false);
-
 	FPresentationStateSnapshot LatestBaseline;
 	if (IsValid(Battle) && Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline))
 	{
 		CurrentBattleId = LatestBaseline.BattleId;
-		const int64 BaselineResolutionWatermark = static_cast<int64>(
-			Battle->GetLatestFrozenPresentationBaselineResolutionId()
-		);
+		const int64 BaselineResolutionWatermark = static_cast<int64>(Battle->GetLatestFrozenPresentationBaselineResolutionId());
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
 		ApplyDisplayedSnapshot(LatestBaseline, true);
@@ -756,10 +921,7 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 	{
 	case EBattlePresentationRecordType::Damage:
 	{
-		FBattleHUDCombatantView* Target = FindCombatantView(
-			WorkingPresentationSnapshot,
-			Record.Damage.TargetPresentationId
-		);
+		FBattleHUDCombatantView* Target = FindCombatantView(WorkingPresentationSnapshot, Record.Damage.TargetPresentationId);
 		if (Target == nullptr)
 		{
 			return false;
@@ -772,10 +934,7 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 
 	case EBattlePresentationRecordType::BlockChanged:
 	{
-		FBattleHUDCombatantView* Target = FindCombatantView(
-			WorkingPresentationSnapshot,
-			Record.BlockChanged.TargetPresentationId
-		);
+		FBattleHUDCombatantView* Target = FindCombatantView(WorkingPresentationSnapshot, Record.BlockChanged.TargetPresentationId);
 		if (Target == nullptr)
 		{
 			return false;
@@ -792,10 +951,7 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 		{
 			return false;
 		}
-		const int32 HandIndex = FindHandCardIndexByRuntimeId(
-			WorkingPresentationSnapshot.HandCards,
-			Card.RuntimeId
-		);
+		const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
 		if (HandIndex == INDEX_NONE
 			|| HandIndex != Record.CardPlayed.HandIndexBefore
 			|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
@@ -834,20 +990,14 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 				return false;
 			}
 			--WorkingPresentationSnapshot.DrawCount;
-			WorkingPresentationSnapshot.HandCards.Insert(
-				MakeHUDCardView(Card),
-				Record.CardZoneChanged.ToIndex
-			);
+			WorkingPresentationSnapshot.HandCards.Insert(MakeHUDCardView(Card), Record.CardZoneChanged.ToIndex);
 			return true;
 		}
 
 		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
 			&& Record.CardZoneChanged.ToZone == ECardZone::DiscardPile)
 		{
-			const int32 HandIndex = FindHandCardIndexByRuntimeId(
-				WorkingPresentationSnapshot.HandCards,
-				Card.RuntimeId
-			);
+			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
 			if (HandIndex == INDEX_NONE
 				|| HandIndex != Record.CardZoneChanged.FromIndex
 				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
@@ -891,21 +1041,18 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 	case EBattlePresentationRecordType::StatusChanged:
 		return ApplyStatusChangedRecord(WorkingPresentationSnapshot, Record.StatusChanged);
 
-	case EBattlePresentationRecordType::None:
-		return false;
-
 	case EBattlePresentationRecordType::ResolutionFault:
 	case EBattlePresentationRecordType::Victory:
 	case EBattlePresentationRecordType::Defeat:
+		return ApplyTerminalRecord(WorkingPresentationSnapshot, ActiveEnvelope.FinalSnapshot, Record);
+
+	case EBattlePresentationRecordType::None:
 	default:
-		return true;
+		return false;
 	}
 }
 
-void UBattlePresentationController::ApplyDisplayedSnapshot(
-	const FPresentationStateSnapshot& Snapshot,
-	bool bRefreshBindings
-)
+void UBattlePresentationController::ApplyDisplayedSnapshot(const FPresentationStateSnapshot& Snapshot, bool bRefreshBindings)
 {
 	DisplayedPresentationSnapshot = Snapshot;
 	WorkingPresentationSnapshot = Snapshot;
@@ -965,9 +1112,7 @@ void UBattlePresentationController::AdvancePlaybackGeneration()
 	}
 }
 
-bool UBattlePresentationController::IsEnvelopeForCurrentBattle(
-	const FPresentationResolutionEnvelope& Envelope
-) const
+bool UBattlePresentationController::IsEnvelopeForCurrentBattle(const FPresentationResolutionEnvelope& Envelope) const
 {
 	return CurrentBattleId > 0
 		&& Envelope.BattleId == CurrentBattleId

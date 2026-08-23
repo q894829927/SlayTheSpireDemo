@@ -257,48 +257,67 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPhase6UIA2D3SnapshotRuntimeSequenceSortingTest::RunTest(const FString& Parameters)
 {
-	FFixture Fixture;
-	if (!RequireReady(*this, Fixture)) return false;
-
-	UStatusData* Status30 = CreateStatusDefinition(Fixture.World, TEXT("Status30"), TEXT("Status 30"), TEXT("Amount {Amount}."));
-	UStatusData* Status10 = CreateStatusDefinition(Fixture.World, TEXT("Status10"), TEXT("Status 10"), TEXT("Amount {Amount}."));
-	UStatusData* Status20 = CreateStatusDefinition(Fixture.World, TEXT("Status20"), TEXT("Status 20"), TEXT("Amount {Amount}."));
-	if (!TestNotNull(TEXT("Status30 definition"), Status30)
-		|| !TestNotNull(TEXT("Status10 definition"), Status10)
-		|| !TestNotNull(TEXT("Status20 definition"), Status20))
 	{
-		return false;
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		UStatusData* Status30 = CreateStatusDefinition(Fixture.World, TEXT("Status30"), TEXT("Status 30"), TEXT("Amount {Amount}."));
+		UStatusData* Status10 = CreateStatusDefinition(Fixture.World, TEXT("Status10"), TEXT("Status 10"), TEXT("Amount {Amount}."));
+		UStatusData* Status20 = CreateStatusDefinition(Fixture.World, TEXT("Status20"), TEXT("Status 20"), TEXT("Amount {Amount}."));
+		if (!TestNotNull(TEXT("Status30 definition"), Status30)
+			|| !TestNotNull(TEXT("Status10 definition"), Status10)
+			|| !TestNotNull(TEXT("Status20 definition"), Status20))
+		{
+			return false;
+		}
+
+		UStatusContainer* Container = Fixture.Player->GetStatusContainer();
+		TestTrue(TEXT("Sequence 30 status commits"), Container->ApplyStatusCommit(Status30, 1, 30).IsCommitted());
+		TestTrue(TEXT("Sequence 10 status commits"), Container->ApplyStatusCommit(Status10, 1, 10).IsCommitted());
+		TestTrue(TEXT("Sequence 20 status commits"), Container->ApplyStatusCommit(Status20, 1, 20).IsCommitted());
+		Fixture.ResetDeliveries();
+		TestTrue(TEXT("Current status state freezes"), Fixture.FreezeCurrentState());
+
+		const FPresentationResolutionEnvelope* Envelope = Fixture.LastDelivery();
+		if (!TestNotNull(TEXT("Sorted snapshot envelope"), Envelope)) return false;
+		const TArray<FBattleHUDStatusView>& Statuses = Envelope->FinalSnapshot.Player.Statuses;
+		TestEqual(TEXT("Three statuses are frozen"), Statuses.Num(), 3);
+		if (Statuses.Num() != 3) return false;
+		TestEqual(TEXT("First status is RuntimeSequence 10"), Statuses[0].RuntimeSequence, static_cast<int64>(10));
+		TestEqual(TEXT("Second status is RuntimeSequence 20"), Statuses[1].RuntimeSequence, static_cast<int64>(20));
+		TestEqual(TEXT("Third status is RuntimeSequence 30"), Statuses[2].RuntimeSequence, static_cast<int64>(30));
+		TestEqual(TEXT("Sequence sort keeps Status10 identity"), Statuses[0].StatusId, FName(TEXT("Status10")));
+		TestEqual(TEXT("Sequence sort keeps Status20 identity"), Statuses[1].StatusId, FName(TEXT("Status20")));
+		TestEqual(TEXT("Sequence sort keeps Status30 identity"), Statuses[2].StatusId, FName(TEXT("Status30")));
+
+		FPresentationStateSnapshot Latest;
+		TestTrue(TEXT("Latest frozen baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Latest));
+		TestEqual(TEXT("Latest baseline preserves sorted status count"), Latest.Player.Statuses.Num(), 3);
+		if (Latest.Player.Statuses.Num() == 3)
+		{
+			TestTrue(
+				TEXT("Latest baseline ordering is strictly ascending"),
+				Latest.Player.Statuses[0].RuntimeSequence < Latest.Player.Statuses[1].RuntimeSequence
+					&& Latest.Player.Statuses[1].RuntimeSequence < Latest.Player.Statuses[2].RuntimeSequence
+			);
+		}
 	}
 
-	UStatusContainer* Container = Fixture.Player->GetStatusContainer();
-	TestTrue(TEXT("Sequence 30 status commits"), Container->ApplyStatusCommit(Status30, 1, 30).IsCommitted());
-	TestTrue(TEXT("Sequence 10 status commits"), Container->ApplyStatusCommit(Status10, 1, 10).IsCommitted());
-	TestTrue(TEXT("Sequence 20 status commits"), Container->ApplyStatusCommit(Status20, 1, 20).IsCommitted());
-	Fixture.ResetDeliveries();
-	TestTrue(TEXT("Current status state freezes"), Fixture.FreezeCurrentState());
-
-	const FPresentationResolutionEnvelope* Envelope = Fixture.LastDelivery();
-	if (!TestNotNull(TEXT("Sorted snapshot envelope"), Envelope)) return false;
-	const TArray<FBattleHUDStatusView>& Statuses = Envelope->FinalSnapshot.Player.Statuses;
-	TestEqual(TEXT("Three statuses are frozen"), Statuses.Num(), 3);
-	if (Statuses.Num() != 3) return false;
-	TestEqual(TEXT("First status is RuntimeSequence 10"), Statuses[0].RuntimeSequence, static_cast<int64>(10));
-	TestEqual(TEXT("Second status is RuntimeSequence 20"), Statuses[1].RuntimeSequence, static_cast<int64>(20));
-	TestEqual(TEXT("Third status is RuntimeSequence 30"), Statuses[2].RuntimeSequence, static_cast<int64>(30));
-	TestEqual(TEXT("Sequence sort keeps Status10 identity"), Statuses[0].StatusId, FName(TEXT("Status10")));
-	TestEqual(TEXT("Sequence sort keeps Status20 identity"), Statuses[1].StatusId, FName(TEXT("Status20")));
-	TestEqual(TEXT("Sequence sort keeps Status30 identity"), Statuses[2].StatusId, FName(TEXT("Status30")));
-
-	FPresentationStateSnapshot Latest;
-	TestTrue(TEXT("Latest frozen baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Latest));
-	TestEqual(TEXT("Latest baseline preserves sorted status count"), Latest.Player.Statuses.Num(), 3);
-	if (Latest.Player.Statuses.Num() == 3)
 	{
-		TestTrue(
-			TEXT("Latest baseline ordering is strictly ascending"),
-			Latest.Player.Statuses[0].RuntimeSequence < Latest.Player.Statuses[1].RuntimeSequence
-				&& Latest.Player.Statuses[1].RuntimeSequence < Latest.Player.Statuses[2].RuntimeSequence
-		);
+		FFixture DuplicateFixture;
+		if (!RequireReady(*this, DuplicateFixture)) return false;
+		UStatusData* First = CreateStatusDefinition(DuplicateFixture.World, TEXT("FirstStatus"), TEXT("First"), TEXT("First {Amount}."));
+		UStatusData* Second = CreateStatusDefinition(DuplicateFixture.World, TEXT("SecondStatus"), TEXT("Second"), TEXT("Second {Amount}."));
+		if (!TestNotNull(TEXT("Duplicate-id first definition"), First)
+			|| !TestNotNull(TEXT("Duplicate-id second definition"), Second)) return false;
+		UStatusContainer* Container = DuplicateFixture.Player->GetStatusContainer();
+		TestTrue(TEXT("Duplicate-id first runtime status commits"), Container->ApplyStatusCommit(First, 1, 100).IsCommitted());
+		TestTrue(TEXT("Duplicate-id second runtime status commits"), Container->ApplyStatusCommit(Second, 1, 200).IsCommitted());
+		Second->StatusId = First->StatusId;
+		DuplicateFixture.ResetDeliveries();
+		TestFalse(TEXT("Freeze rejects duplicate live StatusId identities"), DuplicateFixture.FreezeCurrentState());
+		TestFalse(TEXT("Duplicate StatusId freeze failure degrades Presentation only"), DuplicateFixture.Battle->IsPresentationAvailable());
+		TestTrue(TEXT("Duplicate StatusId freeze failure does not Gameplay-fault battle"), DuplicateFixture.Battle->BattleState != EBattleState::ResolutionFaulted);
 	}
 	return true;
 }
@@ -334,12 +353,24 @@ bool FPhase6UIA2D3StatusLifecycleReducerTest::RunTest(const FString& Parameters)
 	Fixture.ResetDeliveries();
 	TestTrue(TEXT("Anchor baseline freezes"), Fixture.FreezeCurrentState());
 
+	FPresentationStateSnapshot ExpectedBaseline;
+	if (!TestTrue(TEXT("Anchor frozen baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(ExpectedBaseline))) return false;
+
 	UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
-	TestTrue(TEXT("Presentation-owned ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
+	TestTrue(TEXT("ViewModel initializes before Controller ownership"), ViewModel->Initialize(Fixture.Battle, false));
+	// Simulate a HUD rebuild/caller that hands the Controller a valid but stale
+	// ViewModel. Controller bootstrap must repair display state before raising the
+	// Resolution watermark, rather than depending on Presenter call order.
+	ViewModel->BattleId = -111;
+	ViewModel->StateRevision = -222;
+	ViewModel->Player.Statuses.Reset();
 	UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
 	Widget->bAcceptAsyncPlayback = true;
 	UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
 	TestTrue(TEXT("Controller initializes from Anchor baseline"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
+	TestTrue(TEXT("Controller explicitly owns presentation display after bootstrap"), ViewModel->IsPresentationDisplayOwned());
+	TestEqual(TEXT("Controller repairs stale ViewModel BattleId before watermarking"), ViewModel->BattleId, ExpectedBaseline.BattleId);
+	TestEqual(TEXT("Controller repairs stale ViewModel StateRevision before watermarking"), ViewModel->StateRevision, ExpectedBaseline.StateRevision);
 	TestEqual(TEXT("Anchor baseline visible before new history"), ViewModel->Player.Statuses.Num(), 1);
 
 	Fixture.ResetDeliveries();
@@ -479,9 +510,8 @@ bool FPhase6UIA2D3StaleRuntimeSequenceCollapseTest::RunTest(const FString& Param
 	));
 
 	Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
-	TestTrue(TEXT("Stale remove is offered for visible playback"), Controller->IsWaitingForCompletionForTesting());
-	Controller->NotifyPresentationFinished(Controller->GetActivePlaybackTokenForTesting());
-	TestFalse(TEXT("Stale reducer mismatch collapses immediately"), Controller->IsWaitingForCompletionForTesting());
+	TestEqual(TEXT("Stale record is rejected before Blueprint playback"), Widget->PlayCallCount, 0);
+	TestFalse(TEXT("Stale reducer mismatch collapses before waiting"), Controller->IsWaitingForCompletionForTesting());
 	TestEqual(TEXT("Synthetic stale envelope is marked completed"), Controller->GetLastCompletedResolutionIdForTesting(), ResolutionId);
 	const FBattleHUDStatusView* DisplayedWeak = FindStatusView(ViewModel->Player, TEXT("Weak"));
 	if (!TestNotNull(TEXT("Replacement Weak survives stale remove"), DisplayedWeak)) return false;
@@ -504,66 +534,169 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FPhase6UIA2D3AmountMismatchCollapseTest::RunTest(const FString& Parameters)
 {
-	FFixture Fixture;
-	if (!RequireReady(*this, Fixture)) return false;
-
-	UStatusData* Weak = CreateStatusDefinition(Fixture.World, TEXT("Weak"), TEXT("Weak"), TEXT("Weak amount {Amount}."));
-	if (!TestNotNull(TEXT("Weak definition"), Weak)) return false;
-	const FStatusMutationResult Initial = Fixture.Player->GetStatusContainer()->ApplyStatusCommit(Weak, 2, 60);
-	TestTrue(TEXT("Weak#60 baseline commits"), Initial.IsCommitted());
-	Fixture.ResetDeliveries();
-	TestTrue(TEXT("Weak#60 baseline freezes"), Fixture.FreezeCurrentState());
-
-	UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
-	TestTrue(TEXT("Amount-mismatch ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
-	UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
-	Widget->bAcceptAsyncPlayback = true;
-	UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
-	TestTrue(TEXT("Amount-mismatch Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
-
-	FPresentationStateSnapshot Baseline;
-	if (!TestTrue(TEXT("Amount-mismatch frozen baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Baseline))) return false;
-	const int64 ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1;
-	FPresentationResolutionEnvelope Envelope;
-	Envelope.BattleId = Baseline.BattleId;
-	Envelope.ResolutionId = ResolutionId;
-	Envelope.Origin = EPresentationResolutionOrigin::System;
-	Envelope.FinalStateRevision = Baseline.StateRevision;
-	Envelope.FinalSnapshot = Baseline;
-	if (Envelope.FinalSnapshot.Player.Statuses.Num() != 1)
 	{
-		AddError(TEXT("Amount-mismatch fixture expected one frozen status."));
-		return false;
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		UStatusData* Weak = CreateStatusDefinition(Fixture.World, TEXT("Weak"), TEXT("Weak"), TEXT("Weak amount {Amount}."));
+		if (!TestNotNull(TEXT("Weak definition"), Weak)) return false;
+		const FStatusMutationResult Initial = Fixture.Player->GetStatusContainer()->ApplyStatusCommit(Weak, 2, 60);
+		TestTrue(TEXT("Weak#60 baseline commits"), Initial.IsCommitted());
+		Fixture.ResetDeliveries();
+		TestTrue(TEXT("Weak#60 baseline freezes"), Fixture.FreezeCurrentState());
+
+		UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
+		TestTrue(TEXT("Amount-mismatch ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
+		UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
+		Widget->bAcceptAsyncPlayback = true;
+		UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
+		TestTrue(TEXT("Amount-mismatch Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
+
+		FPresentationStateSnapshot Baseline;
+		if (!TestTrue(TEXT("Amount-mismatch frozen baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Baseline))) return false;
+		const int64 ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1;
+		FPresentationResolutionEnvelope Envelope;
+		Envelope.BattleId = Baseline.BattleId;
+		Envelope.ResolutionId = ResolutionId;
+		Envelope.Origin = EPresentationResolutionOrigin::System;
+		Envelope.FinalStateRevision = Baseline.StateRevision;
+		Envelope.FinalSnapshot = Baseline;
+		if (Envelope.FinalSnapshot.Player.Statuses.Num() != 1)
+		{
+			AddError(TEXT("Amount-mismatch fixture expected one frozen status."));
+			return false;
+		}
+		Envelope.FinalSnapshot.Player.Statuses[0].Amount = 3;
+		Envelope.FinalSnapshot.Player.Statuses[0].Description = FText::FromString(TEXT("Weak amount 3."));
+		Envelope.Records.Add(MakeSyntheticStatusRecord(
+			Envelope,
+			1,
+			Baseline.Player.PresentationId,
+			TEXT("Weak"),
+			60,
+			999,
+			1000,
+			EStatusChangeReason::Increased,
+			false,
+			false
+		));
+
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
+		TestEqual(TEXT("Amount mismatch is rejected before Blueprint playback"), Widget->PlayCallCount, 0);
+		TestFalse(TEXT("Amount mismatch collapses without waiting"), Controller->IsWaitingForCompletionForTesting());
+		const FBattleHUDStatusView* DisplayedWeak = FindStatusView(ViewModel->Player, TEXT("Weak"));
+		if (!TestNotNull(TEXT("FinalSnapshot keeps Weak visible after collapse"), DisplayedWeak)) return false;
+		TestEqual(TEXT("Collapse applies authoritative FinalSnapshot amount"), DisplayedWeak->Amount, 3);
+		TestEqual(TEXT("Collapse applies authoritative FinalSnapshot description"), DisplayedWeak->Description.ToString(), FString(TEXT("Weak amount 3.")));
+		UStatusInstance* LiveWeak = FindMutableStatus(Fixture.Player->GetStatusContainer(), TEXT("Weak"));
+		if (!TestNotNull(TEXT("Live Weak remains after Presentation collapse"), LiveWeak)) return false;
+		TestEqual(TEXT("Presentation collapse never mutates Gameplay amount"), LiveWeak->GetAmount(), 2);
+		TestFalse(TEXT("Amount mismatch does not manufacture Gameplay fault"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
+		Controller->Shutdown();
 	}
-	Envelope.FinalSnapshot.Player.Statuses[0].Amount = 3;
-	Envelope.FinalSnapshot.Player.Statuses[0].Description = FText::FromString(TEXT("Weak amount 3."));
-	Envelope.Records.Add(MakeSyntheticStatusRecord(
-		Envelope,
-		1,
-		Baseline.Player.PresentationId,
-		TEXT("Weak"),
-		60,
-		999,
-		1000,
-		EStatusChangeReason::Increased,
-		false,
-		false
-	));
 
-	Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
-	TestTrue(TEXT("Mismatched amount record is offered for visible playback"), Controller->IsWaitingForCompletionForTesting());
-	Controller->NotifyPresentationFinished(Controller->GetActivePlaybackTokenForTesting());
-	TestFalse(TEXT("Amount mismatch collapses without waiting"), Controller->IsWaitingForCompletionForTesting());
-	const FBattleHUDStatusView* DisplayedWeak = FindStatusView(ViewModel->Player, TEXT("Weak"));
-	if (!TestNotNull(TEXT("FinalSnapshot keeps Weak visible after collapse"), DisplayedWeak)) return false;
-	TestEqual(TEXT("Collapse applies authoritative FinalSnapshot amount"), DisplayedWeak->Amount, 3);
-	TestEqual(TEXT("Collapse applies authoritative FinalSnapshot description"), DisplayedWeak->Description.ToString(), FString(TEXT("Weak amount 3.")));
-	UStatusInstance* LiveWeak = FindMutableStatus(Fixture.Player->GetStatusContainer(), TEXT("Weak"));
-	if (!TestNotNull(TEXT("Live Weak remains after Presentation collapse"), LiveWeak)) return false;
-	TestEqual(TEXT("Presentation collapse never mutates Gameplay amount"), LiveWeak->GetAmount(), 2);
-	TestFalse(TEXT("Amount mismatch does not manufacture Gameplay fault"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+		Fixture.ResetDeliveries();
+		TestTrue(TEXT("Fake-source baseline freezes"), Fixture.FreezeCurrentState());
+		UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
+		TestTrue(TEXT("Fake-source ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
+		UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
+		Widget->bAcceptAsyncPlayback = true;
+		UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
+		TestTrue(TEXT("Fake-source Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
+		FPresentationStateSnapshot Baseline;
+		if (!TestTrue(TEXT("Fake-source baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Baseline))) return false;
+		FPresentationResolutionEnvelope Envelope;
+		Envelope.BattleId = Baseline.BattleId;
+		Envelope.ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1;
+		Envelope.Origin = EPresentationResolutionOrigin::System;
+		Envelope.FinalStateRevision = Baseline.StateRevision;
+		Envelope.FinalSnapshot = Baseline;
+		FPresentationRecord Record = MakeSyntheticStatusRecord(
+			Envelope, 1, Baseline.Player.PresentationId, TEXT("Synthetic"), 101, 0, 1,
+			EStatusChangeReason::Applied, true, false);
+		Record.StatusChanged.SourcePresentationId = TEXT("ImpossibleSource");
+		Envelope.Records.Add(Record);
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
+		TestEqual(TEXT("Impossible SourcePresentationId never reaches Blueprint"), Widget->PlayCallCount, 0);
+		TestFalse(TEXT("Impossible SourcePresentationId collapses immediately"), Controller->IsWaitingForCompletionForTesting());
+		Controller->Shutdown();
+	}
 
-	Controller->Shutdown();
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+		Fixture.ResetDeliveries();
+		TestTrue(TEXT("Malformed-create baseline freezes"), Fixture.FreezeCurrentState());
+		UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
+		TestTrue(TEXT("Malformed-create ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
+		UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
+		Widget->bAcceptAsyncPlayback = true;
+		UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
+		TestTrue(TEXT("Malformed-create Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
+		FPresentationStateSnapshot Baseline;
+		if (!TestTrue(TEXT("Malformed-create baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Baseline))) return false;
+		FPresentationResolutionEnvelope Envelope;
+		Envelope.BattleId = Baseline.BattleId;
+		Envelope.ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1;
+		Envelope.Origin = EPresentationResolutionOrigin::System;
+		Envelope.FinalStateRevision = Baseline.StateRevision;
+		Envelope.FinalSnapshot = Baseline;
+		FBattleHUDStatusView FinalStatus;
+		FinalStatus.StatusId = TEXT("MalformedCreate");
+		FinalStatus.RuntimeSequence = 111;
+		FinalStatus.Amount = 1;
+		FinalStatus.DisplayName = FText::FromString(TEXT("Malformed Create"));
+		FinalStatus.Description = FText::FromString(TEXT("MalformedCreate amount 1."));
+		Envelope.FinalSnapshot.Player.Statuses.Add(FinalStatus);
+		FPresentationRecord Record = MakeSyntheticStatusRecord(
+			Envelope, 1, Baseline.Player.PresentationId, TEXT("MalformedCreate"), 111, 0, 1,
+			EStatusChangeReason::Applied, true, false);
+		Record.StatusChanged.DescriptionBefore = FText::FromString(TEXT("Illegal create-before text"));
+		Envelope.Records.Add(Record);
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
+		TestEqual(TEXT("Create with non-empty DescriptionBefore never reaches Blueprint"), Widget->PlayCallCount, 0);
+		TestFalse(TEXT("Malformed create description collapses immediately"), Controller->IsWaitingForCompletionForTesting());
+		TestNotNull(TEXT("Collapse still applies authoritative created FinalSnapshot"), FindStatusView(ViewModel->Player, TEXT("MalformedCreate")));
+		Controller->Shutdown();
+	}
+
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+		UStatusData* Weak = CreateStatusDefinition(Fixture.World, TEXT("MalformedRemove"), TEXT("Malformed Remove"), TEXT("MalformedRemove amount {Amount}."));
+		if (!TestNotNull(TEXT("Malformed-remove definition"), Weak)) return false;
+		TestTrue(TEXT("Malformed-remove baseline status commits"), Fixture.Player->GetStatusContainer()->ApplyStatusCommit(Weak, 1, 121).IsCommitted());
+		Fixture.ResetDeliveries();
+		TestTrue(TEXT("Malformed-remove baseline freezes"), Fixture.FreezeCurrentState());
+		UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(Fixture.World);
+		TestTrue(TEXT("Malformed-remove ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true));
+		UPhase6UIA2APlaybackWidget* Widget = NewObject<UPhase6UIA2APlaybackWidget>(Fixture.World);
+		Widget->bAcceptAsyncPlayback = true;
+		UBattlePresentationController* Controller = NewObject<UBattlePresentationController>(Fixture.World);
+		TestTrue(TEXT("Malformed-remove Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Widget));
+		FPresentationStateSnapshot Baseline;
+		if (!TestTrue(TEXT("Malformed-remove baseline exists"), Fixture.Battle->TryGetLatestFrozenPresentationBaseline(Baseline))) return false;
+		FPresentationResolutionEnvelope Envelope;
+		Envelope.BattleId = Baseline.BattleId;
+		Envelope.ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 1;
+		Envelope.Origin = EPresentationResolutionOrigin::System;
+		Envelope.FinalStateRevision = Baseline.StateRevision;
+		Envelope.FinalSnapshot = Baseline;
+		Envelope.FinalSnapshot.Player.Statuses.Reset();
+		FPresentationRecord Record = MakeSyntheticStatusRecord(
+			Envelope, 1, Baseline.Player.PresentationId, TEXT("MalformedRemove"), 121, 1, 0,
+			EStatusChangeReason::Removed, false, true);
+		Record.StatusChanged.DescriptionAfter = FText::FromString(TEXT("Illegal remove-after text"));
+		Envelope.Records.Add(Record);
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
+		TestEqual(TEXT("Remove with non-empty DescriptionAfter never reaches Blueprint"), Widget->PlayCallCount, 0);
+		TestFalse(TEXT("Malformed remove description collapses immediately"), Controller->IsWaitingForCompletionForTesting());
+		TestNull(TEXT("Collapse still applies authoritative removed FinalSnapshot"), FindStatusView(ViewModel->Player, TEXT("MalformedRemove")));
+		Controller->Shutdown();
+	}
 	return true;
 }
 
