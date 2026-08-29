@@ -172,7 +172,7 @@ When a meaningful phase changes:
 
 ## Multi-Agent Workflow
 
-The primary agent owns:
+The primary Sol agent owns:
 
 - architecture;
 - phase sequencing;
@@ -181,7 +181,24 @@ The primary agent owns:
 - conflict resolution;
 - final acceptance.
 
-For non-trivial work, use subagents when independent bounded work can be delegated safely.
+Project-scoped custom agents are defined under `.codex/agents/`:
+
+- `repo_explorer`: read-only architecture, dependency, impact and test investigation;
+- `implementation_worker`: one bounded architect-approved write task;
+- `test_runner`: build, Automation, regression and log evidence;
+- `architecture_reviewer`: independent read-only invariant and regression review.
+
+All project custom subagents use `gpt-5.6-luna` with `max` reasoning effort. Sol remains the sole architecture and integration owner.
+
+For non-trivial work:
+
+1. Inspect the current phase and required predecessor gates.
+2. Delegate independent investigation to one or more `repo_explorer` agents when useful.
+3. Have the primary Sol agent decide architecture, edit boundaries and acceptance criteria.
+4. Delegate at most one overlapping behavior/file set to `implementation_worker`.
+5. Use `test_runner` for focused validation and the required regression evidence.
+6. Use `architecture_reviewer` for an independent review.
+7. Have the primary Sol agent resolve findings, integrate the result and update documentation.
 
 Good delegation targets include:
 
@@ -194,6 +211,8 @@ Good delegation targets include:
 The primary agent must make architecture decisions before delegating implementation that depends on those decisions.
 
 Parallelize independent investigation and validation work. Do not parallelize implementation slices that have explicit phase or behavioral dependencies.
+
+UI-A2E slices remain sequential according to `docs/UIA2ERemainingSteps.zh-CN.md`. In particular, do not implement Status removal, EnergyChanged or later playback slices before the preceding slice reaches its required acceptance boundary.
 
 Never allow two write-capable agents to modify overlapping files or the same behavioral ownership boundary concurrently.
 
