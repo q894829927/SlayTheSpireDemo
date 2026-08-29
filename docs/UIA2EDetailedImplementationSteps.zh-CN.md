@@ -17423,3 +17423,1200 @@ Scenario E：Cancel / Skip / fail-safe
 ```
 
 下一节不再主要增加功能节点，而是做最终跨 Record 顺序、无闪回、exact-token、Idle/Terminal 收口和 A2E Seal 前验收。
+
+---
+
+# 第十二节：UI-A2E 全链 PIE End-to-End Acceptance
+
+## 12.1 本节目标
+
+这一节不再新增新的 Presentation Record 类型，而是把前面已经分别实现的 Blueprint async playback 串成真实战斗流程，验证：
+
+```text
+Gameplay commit
+→ Presentation Envelope
+→ Record 逐条播放
+→ exact-token completion
+→ WorkingSnapshot reducer 推进
+→ ViewModel 正式刷新
+→ 下一条 Record
+→ 最终 Idle / Terminal
+```
+
+只有本节所有 Scenario 都通过，才允许进入最后的文档收口与 `UI-A2E COMPLETE / SEALED`。
+
+本节重点不是“单个动画看起来正常”，而是验证不同 Record 连续出现时不会发生：
+
+```text
+顺序错误
+重复表现
+Before/After 闪回
+历史状态提前推进
+stale timer
+stale token
+旧 transient widget 残留
+Resolving 卡死
+输入过早解锁
+terminal 被后续 HUD 刷新覆盖
+```
+
+---
+
+## 12.2 进入本节前的硬性前置条件
+
+开始全链 PIE 前，必须确认前面各节均已经实际接线并通过对应局部验收：
+
+```text
+CardPlayed                         VALIDATED
+Damage                             VALIDATED
+BlockChanged                       VALIDATED
+CardZoneChanged PlayArea->Dest     VALIDATED
+StatusChanged Creation             VALIDATED
+StatusChanged Update/Reduction     VALIDATED
+StatusChanged Removal              VALIDATED
+EnergyChanged                      VALIDATED
+CardZoneChanged Draw/EndTurn       VALIDATED
+DeckShuffled                       VALIDATED
+Victory                            VALIDATED
+Defeat                             VALIDATED
+ResolutionFault                    VALIDATED
+Cancel/Reconcile audit             PASS
+```
+
+如果其中任一项仍是：
+
+```text
+NOT WIRED
+PARTIAL
+未做 PIE
+```
+
+不要通过全链 Scenario 来“顺便测试”。先回对应章节单独修好。
+
+---
+
+## 12.3 开始前 Compile / Save
+
+按依赖顺序执行：
+
+```text
+WBP_BattleStatus
+→ Compile
+→ Save
+
+WBP_BattleCard
+→ Compile
+→ Save
+
+WBP_BattleHUD
+→ Compile
+→ Save
+```
+
+要求：
+
+```text
+0 Errors
+```
+
+如果 Blueprint Compiler Results 有 Warning，只要与本轮逻辑有关，也先检查清楚；不要在存在未知节点错误的情况下记录正式 End-to-End PASS。
+
+随后关闭可能残留的旧 PIE，再重新开始一个全新的 PIE session。
+
+---
+
+## 12.4 本节统一观察方法
+
+每个 Scenario 都同时观察三个层面。
+
+### A. Record 顺序
+
+用当前项目已有的 Presentation / Battle 日志确认 Record 顺序。
+
+不要仅凭 UI 动画先后肉眼猜测。
+
+至少记录：
+
+```text
+ResolutionId
+PresentationSequence
+Record.Type
+必要的 payload 关键字段
+```
+
+同一个 Envelope 中 `PresentationSequence` 必须严格递增。
+
+### B. HUD transient visual
+
+每条 Blueprint 接管的 Record 在自己的 active window 内，应只显示该 Record 的冻结 After 值或对应 transient visual。
+
+例如：
+
+```text
+Damage
+→ HPAfter / BlockAfter
+
+StatusChanged
+→ AmountAfter / DescriptionAfter
+
+EnergyChanged
+→ EnergyAfter
+
+DeckShuffled
+→ DrawCountAfter / DiscardCountAfter
+```
+
+### C. Record 完成后的正式 HUD
+
+0.5 秒 async 完成后：
+
+```text
+NotifyPresentationFinished(Token)
+→ reducer 推进
+→ ViewModel Changed
+→ 正常 HUD rebuild
+```
+
+最终显示必须与刚才 transient After 一致。
+
+禁止出现：
+
+```text
+Before
+→ transient After
+→ Before
+→ formal After
+```
+
+本节把这种现象统一记为：
+
+```text
+After flashback
+```
+
+任何 Scenario 出现一次都不能判 PASS。
+
+---
+
+# Scenario A：普通非致死出牌链
+
+## 12.5 目标
+
+先用最简单的普通攻击确认已经验证过的基础链在完整 A2E 下仍然成立。
+
+推荐使用：
+
+```text
+Strike / 普通单体攻击牌
+```
+
+要求攻击不会击杀 Enemy。
+
+例如：
+
+```text
+Enemy HP = 100
+Strike Damage = 6
+Player Energy = 5
+Card Cost = 1
+```
+
+---
+
+## 12.6 操作步骤
+
+1. 新开 PIE。
+2. 等待 HUD 完全进入可操作状态。
+3. 记录打牌前：
+
+```text
+Player Energy
+Enemy HP
+Enemy Block
+Hand 中目标卡 RuntimeId
+Discard/Exhaust 数量
+InteractionState
+```
+
+4. 选择 Strike。
+5. 选择 Enemy。
+6. Confirm。
+7. 从点击 Confirm 开始，不再进行第二次输入，等待整个表现队列自然结束。
+
+---
+
+## 12.7 预期 Record 语义
+
+普通攻击至少应看到类似：
+
+```text
+CardPlayed
+→ Damage
+→ 可能的 followup Records
+→ CardZoneChanged(PlayArea → DiscardPile / ExhaustPile / RemovedPile)
+```
+
+关键能量规则：
+
+```text
+CardPlayed
+EnergyBefore = 5
+EnergyAfter  = 4
+CostPaid     = 1
+```
+
+同一次费用不能随后再出现一个等价的：
+
+```text
+EnergyChanged 5 → 4
+```
+
+如果出现，就是卡费重复表现，Scenario A 直接 FAIL。
+
+---
+
+## 12.8 视觉检查
+
+### CardPlayed active window
+
+应看到：
+
+```text
+原 Hand Card 暂时 Hidden
+PlayArea 出现 presentation-only Card Widget
+Energy 直接显示 EnergyAfter
+```
+
+### Damage active window
+
+应看到：
+
+```text
+Enemy presentation flash / opacity effect
+Damage number
+Enemy HP = Damage.HPAfter
+Enemy Block = Damage.BlockAfter
+```
+
+### CardZoneChanged active window
+
+应看到 PlayArea card 按当前既定 destination retirement 逻辑结束，不留下 duplicate Card Widget。
+
+---
+
+## 12.9 Scenario A 完成条件
+
+等待最后一条 Record 完成后，确认：
+
+```text
+Enemy HP 最终正确
+Player Energy 最终正确
+手牌中已无该 RuntimeId
+目标 pile 数量正确
+OV_PlayArea 无残留卡
+Txt_DamagePresentation = Collapsed
+两个 Combatant RenderOpacity = 1.0
+ActivePresentationType = None
+没有 active timer 残留
+InteractionState = Idle（若战斗仍可继续）
+```
+
+并确认无：
+
+```text
+Energy 5→4→5→4
+HP Before→After→Before→After
+牌先消失又重新回 Hand
+同一 CardZoneChanged 播放两次
+```
+
+全部满足：
+
+```text
+Scenario A = PASS
+```
+
+---
+
+# Scenario B：StatusChanged 生命周期完整链
+
+## 12.10 目标
+
+在同一次真实战斗中把一个状态经历：
+
+```text
+Creation
+→ Increase / Reapply
+→ Reduction / TurnEndDecay
+→ Removal
+```
+
+验证 exact identity 始终稳定。
+
+状态身份必须始终按：
+
+```text
+TargetPresentationId
++ StatusId
++ RuntimeSequence
+```
+
+不要只观察“屏幕上看起来只有一个 Weak”。日志中也必须确认 RuntimeSequence 没被错误替换。
+
+---
+
+## 12.11 Creation
+
+触发一个当前项目能真实创建的状态，例如：
+
+```text
+Weak / Vulnerable / 等价状态
+```
+
+确认 Record：
+
+```text
+bCreated = true
+bRemoved = false
+AmountBefore = 0
+AmountAfter > 0
+RuntimeSequence > 0
+```
+
+视觉：
+
+```text
+原本无状态
+→ transient 创建状态 row
+→ async interval 内持续可见
+→ Notify
+→ formal HUD 仍保留同一状态
+```
+
+不得：
+
+```text
+出现 → 消失 → 再出现
+```
+
+---
+
+## 12.12 Increase / Reapply
+
+再次施加相同 runtime status，使其产生：
+
+```text
+bCreated = false
+bRemoved = false
+Reason = Increased
+AmountAfter > AmountBefore
+```
+
+确认：
+
+```text
+RuntimeSequence 与 Creation 相同
+状态 Widget 数量保持 1
+原 Widget Amount A → B
+```
+
+不得出现第二个同 StatusId icon。
+
+正常 completion 后仍为：
+
+```text
+B
+```
+
+不得：
+
+```text
+A → B → A → B
+```
+
+---
+
+## 12.13 Reduction / TurnEndDecay
+
+触发真实：
+
+```text
+Reduced
+或
+TurnEndDecay
+```
+
+但本次先让 `AmountAfter > 0`，不要立即 Removal。
+
+确认：
+
+```text
+bCreated = false
+bRemoved = false
+AmountBefore > AmountAfter > 0
+same RuntimeSequence
+```
+
+视觉必须是同一个 row：
+
+```text
+A → B
+```
+
+没有 duplicate，也没有 After flashback。
+
+---
+
+## 12.14 Removal
+
+最后让该状态变成：
+
+```text
+AmountAfter = 0
+bRemoved = true
+```
+
+active window：
+
+```text
+精确 Widget 临时 Collapsed
+```
+
+completion 后：
+
+```text
+reducer 正式从 ViewModel.Statuses 移除
+HUD rebuild 后仍然不存在
+```
+
+不得出现：
+
+```text
+消失 → 出现 → 再消失
+```
+
+也不能影响其他 Status row。
+
+全部满足：
+
+```text
+Scenario B = PASS
+```
+
+---
+
+# Scenario C：完整 EndTurn / EnemyTurn / 新回合链
+
+## 12.15 目标
+
+这是 A2E 非终局流程中最重要的一条。
+
+需要覆盖真实存在的：
+
+```text
+Hand → DiscardPile
+BlockChanged TurnStartClear / 其他真实 Block 变化
+Status TurnEndDecay
+EnergyChanged EndTurn / TurnStart
+Enemy Damage
+DeckShuffled（若本次条件满足）
+DrawPile → Hand
+```
+
+注意：
+
+```text
+TurnEnded 本身不是 Presentation Record
+```
+
+不要因为点击了 EndTurn 就期待一条 `TurnEnded` 可见 Record。
+
+只有真实发生变化的 committed facts 才应出现 Presentation Record。
+
+---
+
+## 12.16 构造前置状态
+
+为了让一次 EndTurn 覆盖尽可能多的 Record，进入点击 EndTurn 前建议准备：
+
+```text
+Hand 中至少有 2 张未使用牌
+Player 有非零 Block（如果当前规则会在回合切换清除）
+Player 或 Enemy 有会 TurnEndDecay 的 Status
+Player Energy > 0
+Enemy 有可执行攻击 Intent
+DrawPile 尽量接近 0
+DiscardPile 有若干张牌
+```
+
+若为了触发 shuffle 需要先多走几回合，可以先准备到：
+
+```text
+DrawPile = 0
+DiscardPile > 0
+下一次需要抽牌
+```
+
+再执行本 Scenario。
+
+---
+
+## 12.17 点击 EndTurn 后不要追加人工输入
+
+点击：
+
+```text
+Btn_EndTurn
+```
+
+之后直到下一玩家回合重新 Idle 前：
+
+```text
+不要点卡牌
+不要点角色
+不要重复点 EndTurn
+不要 Skip
+```
+
+观察整个自动队列自然播放。
+
+---
+
+## 12.18 检查 Hand → DiscardPile
+
+每一张实际被弃掉的 Hand Card 都应有自己的：
+
+```text
+CardZoneChanged
+FromZone = Hand
+ToZone   = DiscardPile
+```
+
+要求：
+
+```text
+按 RuntimeId 找到正确 Hand Widget
+只处理该卡
+每个 Record 完成后 reducer 再推进正式 Hand/Discard
+多张卡按 Record 顺序逐条完成
+```
+
+禁止一次 Blueprint Event 直接：
+
+```text
+ClearChildren 全部手牌
+```
+
+来代替多条历史 Record。
+
+---
+
+## 12.19 检查 EnergyChanged
+
+若 EndTurn 真实发生：
+
+```text
+EnergyBefore > EnergyAfter
+```
+
+应看到一条独立 `EnergyChanged`。
+
+新玩家回合如果真实恢复能量：
+
+```text
+EnergyBefore < EnergyAfter
+```
+
+再看到对应 `EnergyChanged`。
+
+每条都只表现一次。
+
+再次确认：
+
+```text
+这些 EnergyChanged 不是 CardPlayed Cost 重复记录
+```
+
+---
+
+## 12.20 检查 Enemy Damage
+
+敌方攻击时：
+
+```text
+Damage
+```
+
+应按冻结：
+
+```text
+IncomingDamage
+BlockedDamage
+HPDamage
+HPAfter
+BlockAfter
+```
+
+显示。
+
+如果玩家有 Block，特别检查：
+
+```text
+完全格挡时 HP 不下降
+BlockAfter 正确
+```
+
+不要出现“先由 BlockChanged 清零，再 Damage 又拿旧 Block”这类历史顺序错乱。
+
+---
+
+## 12.21 检查 DeckShuffled → Draw
+
+若当前 Scenario 触发 shuffle，日志顺序必须是：
+
+```text
+DeckShuffled
+→ CardZoneChanged(DrawPile → Hand)
+```
+
+DeckShuffled active window：
+
+```text
+Draw count = DrawCountAfter
+Discard count = DiscardCountAfter
+```
+
+不能在这里提前创建下一张 Hand card。
+
+只有下一条：
+
+```text
+CardZoneChanged DrawPile→Hand
+```
+
+才创建对应 presentation Hand card。
+
+若一次抽多张牌，必须逐条按各自 Record 播放。
+
+---
+
+## 12.22 Scenario C 最终状态
+
+整个 EnemyTurn + TurnStart/Draw 链结束后确认：
+
+```text
+InteractionState = Idle
+Player 可以再次正常选择卡牌
+Btn_EndTurn 状态与当前 ViewModel 一致
+Hand 与最终 ViewModel.HandCards 一致
+Draw / Discard / Exhaust count 一致
+Energy 一致
+Player/Enemy HP、Block、Status 一致
+没有 presentation-only Card Widget 残留
+没有 hidden formal Hand Card 残留
+没有 active status transient 引用
+没有 active timer
+```
+
+如果没有触发 DeckShuffled，只能把 Scenario C 的 shuffle 子项记为：
+
+```text
+NOT EXERCISED
+```
+
+不能因此宣称 DeckShuffled full-chain PASS；必须单独构造触发后再补齐。
+
+全部必要子项通过后：
+
+```text
+Scenario C = PASS
+```
+
+---
+
+# Scenario D：Lethal Victory 全链
+
+## 12.23 目标
+
+验证 lethal card 在真实 Envelope 中仍保持锁定顺序：
+
+```text
+CardPlayed
+→ Damage
+→ followups
+→ CardZoneChanged(PlayArea → Destination)
+→ Victory
+```
+
+这里最重要的是：
+
+```text
+Victory 必须最后出现
+```
+
+不能因为 Enemy.HPAfter == 0 就让 Blueprint 自行提前弹出胜利界面。
+
+---
+
+## 12.24 构造 lethal 状态
+
+把 Enemy HP 控制到一张合法攻击牌可击杀的范围。
+
+例如：
+
+```text
+Enemy HP = 5
+Strike incoming damage >= 5
+```
+
+记录出牌前：
+
+```text
+Enemy HP
+Player Energy
+Card RuntimeId
+目标 destination
+```
+
+然后正常：
+
+```text
+Select Card
+→ Select Enemy
+→ Confirm
+```
+
+---
+
+## 12.25 检查 Damage lethal visual
+
+Damage active window 应先表现：
+
+```text
+Enemy HPAfter = 0
+Enemy.bDead 的正式历史值尚由 reducer 按 Record 推进
+```
+
+但这一步不能提前显示 Victory terminal overlay。
+
+如果 Damage 一开始就弹 Victory：
+
+```text
+Scenario D = FAIL
+```
+
+---
+
+## 12.26 检查 lethal 后 followups
+
+如果该攻击会产生：
+
+```text
+StatusChanged
+BlockChanged
+其他当前合法 followup
+```
+
+它们仍按 Envelope 顺序继续播放。
+
+不要因为目标已经死亡而由 Blueprint 自行跳过已经被 Gameplay commit 的 followup Record。
+
+---
+
+## 12.27 检查 PlayArea retirement 在 Victory 前完成
+
+确认：
+
+```text
+CardZoneChanged(PlayArea → Destination)
+```
+
+先完成。
+
+此时：
+
+```text
+PlayedCardWidget 被正确清理
+```
+
+然后才进入：
+
+```text
+Victory
+```
+
+终局 overlay 不应覆盖一个仍悬在 PlayArea 的临时卡牌。
+
+---
+
+## 12.28 检查 Victory active / formal transition
+
+Victory active window：
+
+```text
+Overlay_Terminal 显示胜利状态
+输入不可继续提交 Gameplay Request
+```
+
+exact-token completion 后：
+
+```text
+WorkingSnapshot → Victory
+ViewModel.BattleState = Victory
+ViewModel.Outcome = Victory
+正常 HUD rebuild 仍保持 Victory overlay
+```
+
+不得：
+
+```text
+Victory Visible
+→ Notify
+→ Overlay Collapsed
+→ ViewModel rebuild
+→ Victory Visible
+```
+
+如果有一次闪回，FAIL。
+
+最终：
+
+```text
+InteractionState = Terminal
+```
+
+Scenario D 通过：
+
+```text
+Scenario D = PASS
+```
+
+---
+
+# Scenario E：Defeat / ResolutionFault / PresentationUnavailable 隔离
+
+## 12.29 为什么 Scenario E 同时检查三种结果
+
+本节最后需要证明：
+
+```text
+正常 Gameplay Defeat
+Framework/GamePlay ResolutionFault
+PresentationUnavailable
+```
+
+三者不会互相伪装。
+
+其中：
+
+```text
+Defeat / ResolutionFault
+= Terminal Record
+
+PresentationUnavailable
+= Presentation 层 fail-safe
+```
+
+---
+
+## 12.30 E1：Defeat
+
+构造玩家低 HP，让真实 Enemy attack 致死。
+
+预期链至少类似：
+
+```text
+相关 EndTurn Records
+→ Enemy Damage
+→ followups
+→ Defeat
+```
+
+Defeat 必须是该 terminal Envelope 的最后一条 terminal Record。
+
+Damage 先显示：
+
+```text
+Player HPAfter = 0
+```
+
+随后最后才：
+
+```text
+Defeat
+```
+
+完成后：
+
+```text
+ViewModel.BattleState = Defeat
+ViewModel.Outcome = Defeat
+InteractionState = Terminal
+Overlay_Terminal 保持 Defeat
+```
+
+不得在 Damage 阶段提前显示 Defeat。
+
+---
+
+## 12.31 E2：ResolutionFault
+
+使用项目当前已有的可重复故障构造方式触发真实：
+
+```text
+ResolutionFault Record
+```
+
+不要通过 Blueprint 手工调用 terminal event 伪造。
+
+确认 payload 至少满足：
+
+```text
+Reason 非空
+ExecutedActionCount >= 0
+```
+
+视觉显示必须明确属于：
+
+```text
+Resolution Faulted
+```
+
+completion 后：
+
+```text
+ViewModel.BattleState = ResolutionFaulted
+ViewModel.Outcome = ResolutionFaulted
+InteractionState = Terminal
+```
+
+---
+
+## 12.32 E3：PresentationUnavailable 隔离
+
+这一步只验证边界，不要求为了测试去破坏 Gameplay 数据。
+
+使用当前项目已经存在的 Presentation unavailable / fail-safe 触发方式。
+
+预期：
+
+```text
+ViewModel.InteractionState
+= PresentationUnavailable
+```
+
+并显示 Presentation 层不可用信息。
+
+必须确认：
+
+```text
+没有生成 ResolutionFault Record
+没有把 Outcome 写成 ResolutionFaulted
+没有把 Presentation failure 伪装成 Gameplay failure
+```
+
+三者隔离全部成立：
+
+```text
+Scenario E = PASS
+```
+
+---
+
+# 第十二节 F：跨 Scenario 的统一 Token / Lifecycle 检查
+
+## 12.33 每条异步 Record 都只能完成一次
+
+在 A-E 的日志中检查：
+
+```text
+每个 PresentationSequence
+→ 最多一个有效 completion
+```
+
+如果 stale timer 后来又触发一次 Notify，Controller 虽然有 exact-token 防护，也说明 Blueprint 生命周期没有完全清理，不能直接忽略。
+
+要求：
+
+```text
+正常 timer completion 后对应 TimerHandle 被清理
+Cancel 后 TimerHandle 被清理
+旧 callback 不再改变当前 visual
+```
+
+---
+
+## 12.34 Input unlock 时机
+
+在队列仍有未完成 Record 时：
+
+```text
+不要允许用户开始下一次 Gameplay Request
+```
+
+尤其 Scenario C 里：
+
+```text
+EnemyTurn 尚未播放完
+Draw 尚未播放完
+```
+
+时不能提前恢复正常选牌输入。
+
+只有 Controller 已 catch up，ViewModel 正式刷新 live input bindings 后，才应回到：
+
+```text
+Idle
+```
+
+或目标选择等正常输入状态。
+
+---
+
+## 12.35 最终 HUD 与 FinalSnapshot 一致
+
+每个非 Cancel Scenario 结束后，用可观察字段逐项比对最终 HUD：
+
+```text
+Player HP
+Player Block
+Player Statuses
+Enemy HP
+Enemy Block
+Enemy Statuses
+Energy
+HandCards RuntimeId / 顺序
+DrawCount
+DiscardCount
+ExhaustCount
+Outcome
+BattleState
+```
+
+最终 HUD 不允许保留任何只属于上一条 active Record 的 transient After overlay/widget。
+
+---
+
+# 第十二节 G：正式验收记录模板
+
+## 12.36 每个 Scenario 都写入结果
+
+建议在正式 validation log 中记录：
+
+```text
+UI-A2E End-to-End Acceptance
+
+Scenario A - ordinary nonlethal card chain
+Result: PASS / FAIL
+Record order:
+...
+Visual transition:
+...
+Final state:
+...
+
+Scenario B - status lifecycle
+Result: PASS / FAIL
+RuntimeSequence:
+...
+Creation / Increase / Reduction / Removal:
+...
+
+Scenario C - EndTurn / EnemyTurn / next Turn
+Result: PASS / FAIL
+Record order:
+...
+Shuffle exercised: YES / NO
+Final Idle/Input unlock:
+...
+
+Scenario D - lethal Victory
+Result: PASS / FAIL
+Record order:
+CardPlayed → Damage → ... → CardZoneChanged → Victory
+Terminal flashback: NO / YES
+
+Scenario E - Defeat / ResolutionFault / PresentationUnavailable isolation
+Defeat: PASS / FAIL
+ResolutionFault: PASS / FAIL
+PresentationUnavailable isolation: PASS / FAIL
+```
+
+不要只写：
+
+```text
+A2E looks good
+```
+
+必须保留足够证据让以后能判断究竟测试过哪些分支。
+
+---
+
+## 12.37 本节总 PASS 条件
+
+只有同时满足以下条件，才能把本节记为 PASS：
+
+```text
+[ ] Scenario A PASS
+[ ] Scenario B PASS
+[ ] Scenario C PASS
+[ ] Scenario C 中 DeckShuffled 已真实 exercised，或已补跑等价 full-chain shuffle case
+[ ] Scenario D PASS
+[ ] Scenario E Defeat PASS
+[ ] Scenario E ResolutionFault PASS
+[ ] Scenario E PresentationUnavailable isolation PASS
+[ ] 所有异步 Record exact-token completion 正常
+[ ] 无 stale timer 可见副作用
+[ ] 无 Before→After→Before→After flashback
+[ ] 无重复 Widget / duplicate Record visual
+[ ] 无长期 Resolving
+[ ] 输入只在 Controller catch-up 后解锁
+[ ] 非终局 Scenario 最终回 Idle
+[ ] terminal Scenario 最终保持 Terminal
+[ ] 最终 HUD 与 FinalSnapshot 一致
+```
+
+任一项失败：
+
+```text
+UI-A2E End-to-End Acceptance = FAIL
+```
+
+先修复对应 Record/lifecycle，再重新跑受影响 Scenario。
+
+---
+
+## 12.38 本节完成后的状态
+
+如果全部通过，可以记录：
+
+```text
+UI-A2E Unified Blueprint Playback
+= IMPLEMENTED
+
+UI-A2E PIE End-to-End Acceptance
+= VALIDATED
+```
+
+但此时仍不要直接宣布：
+
+```text
+UI-A2E SEALED
+UI-A2 SEALED
+```
+
+还需要最后一节做：
+
+```text
+验证文档收口
+Saved Blueprint Snapshot 更新
+C++/Blueprint 边界复核
+剩余 NOT WIRED 标记清零
+最终 Seal checklist
+```
+
+下一节：
+
+```text
+第十三节：UI-A2E 最终文档收口与 Seal
+```
