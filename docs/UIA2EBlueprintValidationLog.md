@@ -201,9 +201,11 @@ Target starts without the status
 → exact-token completion succeeds
 → reducer advances the ViewModel status list
 → the formal HUD status remains visible after rebuild
-→ no status -> disappear -> status flashback is observed
+→ no visible status -> disappear -> status flashback is observed
 → later Records continue and playback returns to Idle
 ```
+
+Interpretation of the flashback check above: the invalid `status visible → disappear → visible again` sequence was **not** observed during acceptance.
 
 Therefore:
 
