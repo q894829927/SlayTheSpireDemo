@@ -5602,3 +5602,950 @@ StatusChanged Removal PIE Acceptance
 → 后续 Records 继续
 → 最终不挂 Resolving
 ```
+
+---
+
+# 第六节：PIE 验收 `StatusChanged Removal`
+
+## 6.1 本节目标
+
+第五节已经把：
+
+```text
+StatusChanged
+bRemoved = true
+```
+
+从 C++ immediate fallback 接入 Blueprint async playback。
+
+本节只做**真实运行时验收**，不再改 Removal 的核心结构。只有本节通过后，才能把：
+
+```text
+StatusChanged removal
+```
+
+从：
+
+```text
+WIRED / NOT PIE VALIDATED
+```
+
+提升为：
+
+```text
+VALIDATED
+```
+
+本节的最低验收对象是一条真实 producer 产生的：
+
+```text
+AmountBefore = A，A > 0
+AmountAfter  = 0
+bRemoved     = true
+```
+
+的 `StatusChanged` Record。
+
+---
+
+## 6.2 PIE 前先确认第五节结构没有被编辑器刷新破坏
+
+退出 PIE，按顺序：
+
+```text
+WBP_BattleStatus
+→ Compile
+→ 0 Errors
+→ Save
+
+WBP_BattleHUD
+→ Compile
+→ 0 Errors
+→ Save
+```
+
+然后快速检查四处：
+
+```text
+① StatusChanged Router 的 bRemoved=true 分支
+② Removal 的 FindStatusWidgetByIdentity
+③ PlayStatusChangedPresentation 的 bRemoved=true 分支
+④ Cancel Presentation Record Playback 的 StatusChanged rebuild
+```
+
+尤其确认：
+
+```text
+Removal Set Visibility.Target = ExistingStatusWidget
+Visibility = Collapsed
+```
+
+而不是误接成整个 `WB_PlayerStatuses` / `WB_EnemyStatuses`。
+
+---
+
+## 6.3 必须使用真实 Gameplay 产生 Removal
+
+本节不要手工：
+
+```text
+Make StatusChanged Payload
+直接调用 PlayStatusChangedPresentation
+直接 SetVisibility(Collapsed)
+```
+
+必须通过项目当前真实 Gameplay 规则，让状态自然从正值归零并被移除。
+
+最常见测试方式是：
+
+```text
+先建立一个会自然衰减的状态
+→ 将其减到 1
+→ 再触发一次真实衰减
+→ 产生 1 → 0 Removal
+```
+
+具体状态以项目当前配置为准，例如 Weak / Vulnerable 或其他真实会产生 `bRemoved=true` 的状态。
+
+如果某状态归零时 producer 不产生 `StatusChanged bRemoved=true`，不要强行拿它验收；换一个实际支持 Removal Record 的状态。
+
+---
+
+## 6.4 先建立一个“正式存在”的状态行
+
+进入 PIE 后先通过真实操作创建状态，例如：
+
+```text
+Enemy：无 Weak
+→ 施加 Weak
+→ Creation 完成
+→ 正式 HUD 出现 Weak A
+```
+
+必须先等 Creation 的 async playback 完整结束，使：
+
+```text
+ViewModel.Statuses
+```
+
+已经正式包含这个状态。
+
+不要在 Creation 的 0.5 秒 transient 窗口中立刻触发 Removal；那不是本节要验证的正常历史链。
+
+---
+
+## 6.5 把状态准备到最后一层，但先不要移除
+
+通过真实 reapply / decay，让目标状态最终来到：
+
+```text
+Amount = 1
+```
+
+或项目规则中的最后一个正值。
+
+此时应确认：
+
+```text
+HUD 中状态仍可见
+ViewModel 中该状态仍存在
+CurrentStatusView.StatusId 正确
+CurrentStatusView.RuntimeSequence 正确
+```
+
+如果前一步是 Reduction：
+
+```text
+2 → 1
+```
+
+先等待该 Reduction 完整 Notify 并回到稳定状态，再触发最后的 Removal。
+
+---
+
+## 6.6 记录 Removal 前的精确身份
+
+在触发最后一次衰减前，记录当前正式状态行：
+
+```text
+TargetPresentationId = <实际值>
+StatusId             = <实际状态>
+RuntimeSequence      = <实际 int64>
+Amount               = 1（或实际最后正值）
+```
+
+本节重点不是只看“状态最后消失了”，而是证明 Blueprint 删除表现作用于 Record 指定的 exact runtime row。
+
+如果使用 Blueprint Debugger，可以观察 `CurrentStatusView`；不要为了测试新增持久成员变量。
+
+---
+
+## 6.7 触发真实 Removal Record
+
+执行会让该状态归零的真实操作，例如：
+
+```text
+EndTurn
+→ TurnEndDecay
+→ Weak 1 → 0
+```
+
+或项目真实的其他 Remove 原因。
+
+确认实际 Presentation Record 至少满足：
+
+```text
+Record.Type          = StatusChanged
+TargetPresentationId = 前面记录的目标
+StatusId             = 前面记录的状态
+RuntimeSequence      = 前面记录的 runtime sequence
+AmountBefore         = A，A > 0
+AmountAfter          = 0
+bRemoved             = true
+```
+
+`Reason` 使用 producer 实际值，不要要求必须是某个固定枚举/文本；本节只记录真实值。
+
+---
+
+## 6.8 `bRemoved=true` 必须优先进入 Removal Router
+
+运行时预期：
+
+```text
+Switch.StatusChanged
+↓
+TargetKnown = true
+↓
+Branch(bRemoved)
+↓ true
+FindStatusWidgetByIdentity(...)
+```
+
+不能继续落到：
+
+```text
+Branch(bCreated)
+```
+
+也不能走 Update / Reduction 的 `SetStatusView(AmountAfter=0)`。
+
+如果 Debugger 显示 Removal 进入了 Update 路径，立即停止验收，回查第五节的分流顺序。
+
+---
+
+## 6.9 Removal 的 exact identity 必须 `Found=true`
+
+`FindStatusWidgetByIdentity` 输入必须与 Record 一致：
+
+```text
+TargetPresentationId
+StatusId
+RuntimeSequence(int64)
+```
+
+预期：
+
+```text
+Found = true
+StatusWidget = 当前正式状态行
+```
+
+如果 `Found=false`，不要为了通过测试放宽成只按 `StatusId`。
+
+按顺序排查：
+
+```text
+1. 当前 WrapBox 中状态行是否已经正式存在
+2. CurrentStatusView 是否保存正确身份
+3. StatusId 是否一致
+4. RuntimeSequence 是否一致
+5. TargetPresentationId 是否选中了正确 Player / Enemy WrapBox
+6. 是否在 Removal 前发生了意外 Rebuild，导致 runtime identity 不一致
+```
+
+找不到 exact row 时 Router 正确行为仍是：
+
+```text
+Return false
+→ C++ fallback
+```
+
+但这种情况不能作为 Removal Blueprint async 验收 PASS。
+
+---
+
+## 6.10 Removal 开始时只允许精确状态行消失
+
+`Found=true` 后：
+
+```text
+PlayStatusChangedPresentation
+→ ActiveStatusPresentationWidget = FoundWidget
+→ SetVisibility(Collapsed)
+```
+
+视觉上应看到：
+
+```text
+目标状态图标消失
+```
+
+同时不能发生：
+
+```text
+整个 Player 状态区消失
+整个 Enemy 状态区消失
+另一个不同 StatusId 的图标消失
+同目标其他状态全部清空
+```
+
+如果目标同时有多个状态，建议保留至少一个其他状态作为旁证，例如：
+
+```text
+Weak 1 + Vulnerable 2
+→ 移除 Weak
+→ Vulnerable 2 必须仍可见
+```
+
+---
+
+## 6.11 Removal 期间不能短暂显示 `0`
+
+正确视觉序列：
+
+```text
+Weak 1
+→ Weak 直接消失
+```
+
+不能看到：
+
+```text
+Weak 1
+→ Weak 0
+→ 消失
+```
+
+如果出现 `Weak 0`，检查：
+
+```text
+Removal 分支是否错误调用 ExistingStatusWidget.SetStatusView(FrozenStatusView)
+```
+
+第五节锁定的 Removal 最小表现是：
+
+```text
+Collapsed
+```
+
+而不是把 `AmountAfter=0` 渲染出来。
+
+---
+
+## 6.12 Removal 的 0.5 秒 async 窗口语义
+
+Removal 开始后约 0.5 秒内应处于：
+
+```text
+HUD：exact status row 已 Collapsed
+历史 ViewModel：该 status row 仍然存在
+Controller：当前 Removal Record 仍由 Blueprint 持有
+```
+
+这不是数据不一致，而是 committed-presentation 的正常历史播放窗口。
+
+在 Notify 之前，不应该由 Blueprint 主动从 `ViewModel.Statuses` 删除该状态。
+
+---
+
+## 6.13 Removal 期间 Widget 可以仍在 WrapBox 中
+
+因为第五节使用的是：
+
+```text
+SetVisibility(Collapsed)
+```
+
+所以在 0.5 秒窗口里：
+
+```text
+WrapBox Child 数量可能仍包含该 Widget
+```
+
+这本身不是失败。
+
+本节视觉要求是：
+
+```text
+目标状态不可见且不占布局
+```
+
+正式 Widget 数组/WrapBox 的 authoritative 重建发生在：
+
+```text
+Notify
+→ reducer
+→ ViewModel refresh
+```
+
+之后。
+
+不要因为 Child 仍存在就临时加入 `RemoveFromParent`。
+
+---
+
+## 6.14 约 0.5 秒后必须 exact-token 正常完成
+
+预期链：
+
+```text
+ActivePresentationTimer
+↓
+FinishPresentationRecord
+↓
+StatusChanged case
+↓
+NotifyPresentationRecordFinished
+↓
+NotifyPresentationFinished(ActivePresentationToken)
+↓
+Controller 接受当前 exact token
+```
+
+关键检查：
+
+```text
+Notify 时 ActivePresentationToken 仍然是当前 Removal Token
+```
+
+不能先：
+
+```text
+ActivePresentationToken = default
+```
+
+再 Notify。
+
+---
+
+## 6.15 Notify 后 reducer 才正式删除状态
+
+exact-token completion 被接受后，预期：
+
+```text
+StatusChanged reducer
+→ 从当前 WorkingSnapshot / ViewModel 对应 combatant statuses 中删除 exact runtime row
+```
+
+随后正常 HUD refresh：
+
+```text
+RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
+或
+RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)
+```
+
+最终 authoritative HUD 中：
+
+```text
+该状态不存在
+```
+
+这一步才是正式数据层面的删除结果。
+
+---
+
+## 6.16 最重要检查：不能出现“消失 → 再出现 → 再消失”
+
+Removal 正确视觉序列必须是：
+
+```text
+可见
+→ Collapsed
+→ 保持不存在
+```
+
+禁止：
+
+```text
+可见
+→ Collapsed
+→ Visible
+→ 再消失
+```
+
+也就是不能出现：
+
+```text
+disappear → reappear → disappear
+```
+
+如果出现闪回，重点检查：
+
+```text
+1. FinishPresentationRecord.StatusChanged 是否 SetVisibility(Visible)
+2. Finish 是否在 Notify 前 RebuildStatusIcons(old ViewModel)
+3. 是否在 Notify 前手动调用 RefreshCombatantPresentations
+4. 是否有旧的 Cancel/cleanup 路径错误触发
+5. reducer 推进前是否收到旧 ViewModel refresh
+```
+
+正常 Finish 不恢复状态行。
+
+---
+
+## 6.17 最终 WrapBox 中不应保留正式可见的旧行
+
+Notify + reducer + HUD rebuild 完成后，检查：
+
+```text
+被移除的 StatusId / RuntimeSequence
+```
+
+不再出现在目标正式状态列表。
+
+如果只能观察视觉，至少确认状态持续不存在；如果可通过 Blueprint Debugger / 当前 ViewModel 状态数组观察，则确认数组中 exact runtime row 已不存在。
+
+不要把“旧 Widget 只是 Collapsed 但 authoritative ViewModel 仍保留它”误判为 PASS。
+
+最终必须是：
+
+```text
+ViewModel 也已经删除
+```
+
+---
+
+## 6.18 其他状态必须保持不变
+
+如果目标有其他状态，例如：
+
+```text
+Weak 1
+Vulnerable 2
+```
+
+Removal 只针对 Weak，则最终应是：
+
+```text
+Vulnerable 2
+```
+
+不能因为 HUD rebuild 或错误 `ClearChildren` 逻辑导致其他状态丢失。
+
+如果其他状态在 reducer 后也根据真实 Gameplay Record 发生变化，则以实际后续 Records 为准；本条 Removal 自身不能越权删除它们。
+
+---
+
+## 6.19 同 `StatusId` 多 runtime row 的精确性抽查（若项目可构造）
+
+如果当前 Gameplay 允许同一 combatant 同时存在：
+
+```text
+StatusId 相同
+RuntimeSequence 不同
+```
+
+的两条状态，则这是最强 identity 验收。
+
+例如：
+
+```text
+Weak seq=17
+Weak seq=24
+```
+
+Removal Record 指定：
+
+```text
+Weak seq=17
+```
+
+则只允许 `seq=17` 消失，`seq=24` 必须保留。
+
+如果当前 Gameplay 设计不允许这种并存，不需要为了测试修改规则。本项记录为：
+
+```text
+Not Applicable / 当前规则不可构造
+```
+
+即可，不能因此阻塞基本 Removal 验收。
+
+---
+
+## 6.20 继续观察 Removal 后面的 Records
+
+如果 Removal 来自 EndTurn / TurnStart 等大 Envelope，不要在状态消失后立刻停止 PIE。
+
+继续观察后续 Record 是否按 producer 顺序推进。
+
+可能包括：
+
+```text
+BlockChanged
+Damage
+CardZoneChanged
+EnergyChanged（若此时仍 fallback）
+DeckShuffled（若此时仍 fallback）
+其他 StatusChanged
+```
+
+以项目实际输出为准。
+
+必须满足：
+
+```text
+Removal 不吞掉后续 Record
+Removal 不导致重复播放
+最终不会卡在 Resolving
+```
+
+---
+
+## 6.21 最终必须恢复到正常交互 / Idle
+
+完整 Envelope 处理结束后确认：
+
+```text
+Presentation backlog 正常耗尽
+Controller 不再等待 Removal Token
+HUD 与 ViewModel 一致
+输入状态按正常游戏流程恢复
+```
+
+不能出现：
+
+```text
+状态已经消失
+但 EndTurn 后永远不能继续操作
+```
+
+若发生，优先检查：
+
+```text
+Router 是否 Return true 但 Timer 没启动
+Finish 是否没有进入 StatusChanged case
+Notify 是否使用了错误/默认 Token
+Notify 是否在清 Token 之后执行
+```
+
+---
+
+## 6.22 Removal Cancel 运行时抽查（有正式入口时执行）
+
+如果项目当前存在可靠正式 Cancel 入口，可以额外验证：
+
+```text
+历史 ViewModel：Weak 1
+↓
+Removal 开始
+↓
+Weak Widget Collapsed
+↓
+0.5 秒内触发正式 Cancel
+```
+
+预期：
+
+```text
+Clear Timer
+→ StatusChanged Cancel
+→ RebuildStatusIcons from historical ViewModel
+→ Weak 1 恢复可见
+→ 不 Notify 被取消 Removal
+```
+
+最终：
+
+```text
+HUD = Weak 1
+ViewModel = Weak 1
+```
+
+如果当前没有可控的正式 Cancel 入口，不要为了本节在 Blueprint 中硬调用 Cancel。把运行时 Cancel 证明留到后面的统一 Cancel/Reconcile 验收。
+
+---
+
+## 6.23 如果 Removal 仍走 fallback，排查顺序
+
+看到 `bRemoved=true` Record 但没有约 0.5 秒 async 窗口时，依次检查：
+
+```text
+1. TargetKnown 是否为 true
+2. bRemoved Branch 是否接到了 Removal Find
+3. Removal Find 是否 Found=true
+4. Found=true 是否调用 PlayStatusChangedPresentation
+5. ExistingStatusWidget 是否接 FoundStatusWidget
+6. 调用后是否 Return true
+7. Event 内 bRemoved=true 是否进入 Collapsed 分支
+8. StartPresentationFinishTimer 是否执行
+```
+
+不要通过“把所有 Removal 都 Return true”绕过 Find 校验。
+
+---
+
+## 6.24 如果状态没有消失，排查顺序
+
+如果 Router 已命中但图标仍可见：
+
+```text
+1. SetVisibility 是否真的执行
+2. Target 是否是 ExistingStatusWidget
+3. Visibility 是否是 Collapsed
+4. 是否误对另一个 WBP_BattleStatus 执行
+5. 紧接着是否有旧 ViewModel rebuild 把状态重新创建
+```
+
+特别注意：
+
+```text
+Collapsed
+```
+
+不是 `Hidden` 的替代要求；本节锁定的是 `Collapsed`，让布局也立即收缩。
+
+---
+
+## 6.25 如果状态消失后马上又出现，排查顺序
+
+如果看到：
+
+```text
+消失 → 很快重新出现
+```
+
+先区分它是否最后又消失。
+
+如果是：
+
+```text
+消失 → 出现 → 消失
+```
+
+重点查 Finish/旧 ViewModel rebuild。
+
+如果是：
+
+```text
+消失 → 出现并一直存在
+```
+
+重点查：
+
+```text
+1. reducer 是否真正应用 bRemoved
+2. RuntimeSequence 是否匹配 reducer 中的 exact row
+3. Notify 是否被 Controller 接受
+4. 是否实际走了 fallback 而 Blueprint visual 与 reducer 时序不一致
+```
+
+不要在 Blueprint Finish 中再手动删除 ViewModel 来掩盖 reducer 问题。
+
+---
+
+## 6.26 如果误删了其他状态，排查顺序
+
+如果 Removal 后其他状态也消失：
+
+```text
+1. SetVisibility Target 是否错误接到 WrapBox
+2. 是否调用了 ClearChildren
+3. 是否错误调用 RebuildStatusIcons(empty array)
+4. Player / Enemy Statuses 是否接反
+5. exact identity lookup 是否选择了错误目标容器
+```
+
+正常 Removal Event 自身只应该：
+
+```text
+Collapse 一个 exact WBP_BattleStatus
+```
+
+---
+
+## 6.27 Creation / Update / Reduction 回归抽查
+
+Removal 验收通过后，不需要重新完整跑第四节，但至少做最小 smoke：
+
+```text
+Creation：无状态 → 状态出现
+Update：A → B，B > 0
+Reduction：B → C，C > 0
+Removal：C → 0
+```
+
+确认第五节新增的：
+
+```text
+Branch(bRemoved)
+```
+
+没有破坏 `bRemoved=false` 的旧路径。
+
+最低视觉序列：
+
+```text
+无 → A → B → C → 无
+```
+
+其中不能出现重复图标或错误闪回。
+
+---
+
+## 6.28 本节正式验收清单
+
+要把 Removal 标为 VALIDATED，至少满足：
+
+```text
+[ ] 使用真实 Gameplay producer 产生 Removal
+[ ] Record.Type=StatusChanged
+[ ] AmountBefore>0
+[ ] AmountAfter=0
+[ ] bRemoved=true
+
+[ ] TargetPresentationId 正确
+[ ] StatusId 正确
+[ ] RuntimeSequence 正确且保持 exact identity
+[ ] TargetKnown=true
+[ ] Router 进入 bRemoved=true 分支
+[ ] FindStatusWidgetByIdentity Found=true
+[ ] FoundWidget 是正确状态行
+
+[ ] Removal 不调用 SetStatusView(AmountAfter=0)
+[ ] Removal 不显示 0 层状态
+[ ] Removal SetVisibility=Collapsed
+[ ] 只有目标状态行消失
+[ ] 其他无关状态保持正常
+
+[ ] StartPresentationFinishTimer 正常执行
+[ ] 约 0.5s async ownership 正常
+[ ] Finish 进入 StatusChanged case
+[ ] exact-token Notify 正常
+[ ] Notify 前未清 ActivePresentationToken
+
+[ ] reducer 后 ViewModel 正式删除 exact runtime row
+[ ] HUD rebuild 后状态持续不存在
+[ ] 没有 disappear→reappear→disappear 闪回
+[ ] 没有误删其他 status row
+[ ] 后续 Records 继续
+[ ] 最终不挂 Resolving
+[ ] 最终回到正常交互/下一阶段
+
+[ ] Creation smoke 仍正常
+[ ] Update/Reduction smoke 仍正常
+```
+
+---
+
+## 6.29 正式验证日志模板
+
+本节通过后，再把**实际观察值**写入：
+
+```text
+docs/UIA2EBlueprintValidationLog.md
+```
+
+建议格式：
+
+```text
+StatusChanged Removal PIE
+Target                 = <Player/Enemy>
+TargetPresentationId   = <实际值>
+StatusId                = <实际状态>
+RuntimeSequence         = <实际 int64>
+AmountBefore            = <实际 A>
+AmountAfter             = 0
+bCreated                = <实际值>
+bRemoved                = true
+Reason                  = <实际 Reason>
+ExactWidgetFound        = Yes
+VisibilityDuringPlayback= Collapsed
+ZeroAmountRendered      = No
+ReappearFlashObserved   = No
+OtherStatusAffected     = No
+ExactTokenCompleted     = Yes
+RemovedFromFinalViewModel = Yes
+ReturnedToIdle          = Yes
+Result                  = PASS
+```
+
+如果某字段当前调试输出不可见，不要编造数值；可以记录：
+
+```text
+Not Observed
+```
+
+然后只对已实际证明的项做结论。
+
+---
+
+## 6.30 本节完成后的 StatusChanged 状态
+
+本节完全通过后，StatusChanged 三类都可以记为：
+
+```text
+StatusChanged creation          VALIDATED
+StatusChanged update/reduction  VALIDATED
+StatusChanged removal           VALIDATED
+```
+
+这意味着：
+
+```text
+StatusChanged Blueprint Playback = COMPLETE for A2E scope
+```
+
+但**不代表整个 UI-A2E 完成**。
+
+后面还至少有：
+
+```text
+EnergyChanged
+DeckShuffled
+Terminal：Victory / Defeat / ResolutionFault
+统一 Cancel / Reconcile 收尾
+A2E 全链 PIE Acceptance
+最终文档 Seal
+```
+
+---
+
+## 6.31 本节完成判定
+
+只有 owner 实际确认上述 Removal PIE 通过后，才允许把 validation log 改为：
+
+```text
+StatusChanged removal = VALIDATED
+```
+
+如果只完成蓝图结构、没有 PIE，则保持：
+
+```text
+WIRED / NOT PIE VALIDATED
+```
+
+如果 PIE 中某项失败，则记录失败现象并回到对应结构修复，不要提前进入 EnergyChanged。
+
+---
+
+## 6.32 下一节
+
+下一节开始实现：
+
+```text
+EnergyChanged Blueprint Playback
+```
+
+重点会记录：
+
+```text
+哪些 Energy 变化应由 EnergyChanged Record 表现
+CardPlayed cost 为什么不能重复产生 EnergyChanged 表现
+如何只消费冻结 EnergyBefore / EnergyAfter
+如何更新 EnergyPanel 而不修改 ViewModel
+如何接 Router / Timer / Finish / Cancel
+如何保持 terminal energy nuance
+最后如何做 Energy PIE 验收
+```
