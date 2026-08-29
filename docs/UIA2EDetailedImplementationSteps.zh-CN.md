@@ -118,7 +118,7 @@ Token         : FPresentationPlaybackToken
 PlayStatusChangedPresentation(StatusChanged, Token)
 → ActivePresentationToken = Token
 → ActivePresentationType = StatusChanged
-→ Break StatusChanged Presentation Payload
+→ Break Status Changed Presentation Payload
 → Make Presentation Status View
 → Create Widget WBP_BattleStatus
 → ActiveStatusPresentationWidget = Created Widget
@@ -2284,4 +2284,1030 @@ CancelPresentationRecordPlayback
 → 从当前历史 ViewModel 重建 Player / Enemy status rows
 → 同时覆盖 Creation Cancel 与 Update Cancel
 → 不调用正常完成 Notify
+```
+
+---
+
+# 第三节：加固 `CancelPresentationRecordPlayback`，让 StatusChanged Cancel 正确恢复历史状态
+
+## 3.1 本节目标
+
+第一、二节完成后，`StatusChanged` 已经具备：
+
+```text
+Creation
+Update / Reduction
+```
+
+两类 Blueprint async playback。
+
+问题在于旧 Cancel 是为 Creation 设计的。当前保存快照中的状态取消逻辑是：
+
+```text
+IsValid(ActiveStatusPresentationWidget)
+→ RemoveFromParent
+→ ActiveStatusPresentationWidget = None
+```
+
+Creation 时这样做可以删除“尚未正式进入历史 ViewModel 的临时新状态”；但 Update 时：
+
+```text
+ActiveStatusPresentationWidget
+```
+
+指向的是已经存在于 `WB_PlayerStatuses` / `WB_EnemyStatuses` 中的正式历史状态行。
+
+如果仍然 `RemoveFromParent`，例如：
+
+```text
+历史 ViewModel = Weak 2
+当前 Record 临时播放 = Weak 4
+发生 Cancel
+```
+
+旧逻辑会把这个正式 Weak Widget 直接删除，HUD 就会变成“没有 Weak”，而历史 ViewModel 明明仍是 `Weak 2`。
+
+因此本节必须把 StatusChanged Cancel 改为：
+
+```text
+不依赖 ActiveStatusPresentationWidget 自己恢复
+→ 直接从当前历史 ViewModel.Statuses 重建 Player / Enemy 两个正式状态区
+```
+
+本节完成后，Creation Cancel 与 Update Cancel 使用同一套恢复策略。
+
+---
+
+## 3.2 为什么 Cancel 必须使用“当前历史 ViewModel”
+
+A2E 的时序契约是：
+
+```text
+正在播放的 Record
+= 已经提交、但 reducer 还没有推进到 ViewModel 的当前历史事实
+
+ViewModel
+= 只包含已经完成播放的历史事实
+```
+
+所以在当前 StatusChanged Record 尚未正常 Notify 前：
+
+### Creation
+
+```text
+Record：无状态 → Weak 2
+播放期间 HUD 临时显示 Weak 2
+ViewModel 仍然是“无 Weak”
+```
+
+Cancel 时从 ViewModel 重建：
+
+```text
+Weak 2 transient 消失
+→ 正确恢复“无 Weak”
+```
+
+### Update / Reduction
+
+```text
+Record：Weak 2 → Weak 4
+播放期间 HUD 临时显示 Weak 4
+ViewModel 仍然是 Weak 2
+```
+
+Cancel 时从 ViewModel 重建：
+
+```text
+Weak 4 transient visual 被替换
+→ 正确恢复 Weak 2
+```
+
+因此 Cancel 不需要保存第二套：
+
+```text
+AmountBefore
+PreviousStatusView
+PreviousDescription
+```
+
+历史 ViewModel 已经是唯一恢复来源。
+
+---
+
+## 3.3 本节修改位置
+
+打开：
+
+```text
+WBP_BattleHUD
+```
+
+进入 Event Graph，找到父类 Blueprint override：
+
+```text
+Cancel Presentation Record Playback
+```
+
+底层对应：
+
+```text
+CancelPresentationRecordPlayback(Token)
+```
+
+当前保存版本已经包含通用清理骨架，包括：
+
+```text
+ClearAndInvalidateTimerByHandle(ActivePresentationTimer)
+恢复 HiddenHandCardWidget
+移除 PlayedCardWidget
+隐藏 Txt_DamagePresentation
+Player / Enemy RenderOpacity 恢复 1.0
+清理 ActiveStatusPresentationWidget
+清空临时引用
+ActivePresentationType = None
+ActivePresentationToken = default
+```
+
+本节只替换“Status 状态控件清理”这一段。
+
+不要重写整条 Cancel。
+
+---
+
+## 3.4 先保留 Cancel 前半段通用清理
+
+以下现有行为全部保留：
+
+```text
+Cancel Event
+↓
+ClearAndInvalidateTimerByHandle(ActivePresentationTimer)
+↓
+若 HiddenHandCardWidget 有效则恢复可见
+↓
+若 PlayedCardWidget 有效则 RemoveFromParent
+↓
+Txt_DamagePresentation = Collapsed
+↓
+Player / Enemy RenderOpacity = 1.0
+```
+
+特别是 Timer 必须继续优先清掉。
+
+原因：Cancel 已经发生后，旧 `FinishPresentationRecord` 不能在 0.5 秒后再次触发正常完成。
+
+不要把：
+
+```text
+ClearAndInvalidateTimerByHandle
+```
+
+移动到 Status 重建之后。
+
+---
+
+## 3.5 找到并删除旧的 Status `RemoveFromParent` 路径
+
+找到当前这一段：
+
+```text
+Get ActiveStatusPresentationWidget
+↓
+Is Valid
+├ valid
+│   ↓
+│ Remove From Parent
+│
+└ invalid
+    ↓
+继续
+
+→ Set ActiveStatusPresentationWidget = None
+```
+
+本节要移除的核心节点是：
+
+```text
+Remove From Parent(ActiveStatusPresentationWidget)
+```
+
+Update/Reduction 接入之后，这个节点不再安全。
+
+### 必须确认
+
+删除/断开后，Status Cancel 路径中不能再出现：
+
+```text
+ActiveStatusPresentationWidget → RemoveFromParent
+```
+
+不要保留成：
+
+```text
+Creation 时 RemoveFromParent
+Update 时 Rebuild
+```
+
+因为 Cancel Event 当前没有保存“这是 creation 还是 update”的独立可靠成员状态，而且完全没有必要增加第二套状态。
+
+统一从 ViewModel 重建更简单，也更符合 reducer 时序。
+
+---
+
+## 3.6 在清空 `ActivePresentationType` 之前判断当前类型
+
+拖出：
+
+```text
+Get ActivePresentationType
+```
+
+从 enum pin 拉线，搜索等于比较：
+
+```text
+==
+```
+
+选择对应 enum 的 Equality 节点，把另一端设为：
+
+```text
+StatusChanged
+```
+
+得到：
+
+```text
+IsStatusChangedCancel
+= ActivePresentationType == StatusChanged
+```
+
+注意这个判断必须发生在：
+
+```text
+Set ActivePresentationType = None
+```
+
+之前。
+
+如果先清 Type，再判断，结果永远不会是 `StatusChanged`。
+
+---
+
+## 3.7 推荐用一个 `Sequence` 解决执行线汇合
+
+Blueprint 的执行输入不能简单把两个 Branch 输出硬接到同一个普通节点。
+
+为了让：
+
+```text
+StatusChanged 时先恢复状态列表
+然后所有 Record 都继续执行公共清理
+```
+
+推荐在旧 Status 清理位置放：
+
+```text
+Sequence
+```
+
+结构：
+
+```text
+前面的通用 Cancel 清理
+↓
+Sequence
+├ Then 0 → StatusChanged 专用恢复
+└ Then 1 → 公共尾部清理
+```
+
+`RebuildStatusIcons` 是同步 Blueprint function，不是 Latent 节点，因此：
+
+```text
+Then 0
+```
+
+完整执行结束后才会执行：
+
+```text
+Then 1
+```
+
+这能避免为了“合并白线”复制大量公共清理节点。
+
+---
+
+## 3.8 `Sequence.Then 0`：Branch 判断 StatusChanged
+
+从：
+
+```text
+Sequence.Then 0
+```
+
+接：
+
+```text
+Branch
+```
+
+Condition：
+
+```text
+IsStatusChangedCancel
+```
+
+最终：
+
+```text
+Sequence.Then 0
+↓
+Branch(ActivePresentationType == StatusChanged)
+```
+
+### False
+
+保持不连接即可。
+
+这表示当前取消的是：
+
+```text
+CardPlayed
+Damage
+BlockChanged
+CardZoneChanged
+未来其他 Record
+```
+
+就不需要重建 Status WrapBox。
+
+### True
+
+进入 ViewModel 有效性检查。
+
+---
+
+## 3.9 `True` 后检查 `ViewModel` 是否有效
+
+拖出：
+
+```text
+Get ViewModel
+```
+
+使用带执行 pin 的：
+
+```text
+Is Valid
+```
+
+宏。
+
+连接：
+
+```text
+Branch(IsStatusChangedCancel).True
+→ IsValid(ViewModel).Exec
+
+ViewModel
+→ IsValid.InputObject
+```
+
+### Is Valid
+
+执行 Player / Enemy 状态重建。
+
+### Is Not Valid
+
+本节建议**不要**再回退到：
+
+```text
+RemoveFromParent(ActiveStatusPresentationWidget)
+```
+
+因为我们无法判断该引用是 transient creation widget，还是正式 update widget。
+
+若 ViewModel 已无效，没有可靠历史来源可以进行局部恢复。此时让专用恢复分支结束，后面的公共清理仍会清空 Blueprint transient reference；正常 Widget 销毁/后续完整刷新负责收口。
+
+这比“猜测性删除一个正式状态行”安全。
+
+---
+
+## 3.10 取得 `ViewModel.Player.Statuses`
+
+从有效的 `ViewModel` 获取：
+
+```text
+Player
+```
+
+其类型是：
+
+```text
+FBattleHUDCombatantView
+```
+
+可以：
+
+```text
+Get ViewModel
+→ Get Player
+→ Break Battle HUD Combatant View
+→ Statuses
+```
+
+只需要使用：
+
+```text
+Statuses
+```
+
+数组 pin。
+
+不要读取 Gameplay Combatant，也不要从 `ActiveStatusPresentationWidget.CurrentStatusView` 反推出旧状态。
+
+---
+
+## 3.11 第一次调用 `RebuildStatusIcons`：恢复 Player
+
+放置当前 WBP 已有函数：
+
+```text
+RebuildStatusIcons
+```
+
+输入连接：
+
+```text
+Statuses
+← ViewModel.Player.Statuses
+
+StatusContainer / WrapBox
+← WB_PlayerStatuses
+```
+
+具体参数显示名以当前函数节点为准；语义必须是：
+
+```text
+RebuildStatusIcons(
+    ViewModel.Player.Statuses,
+    WB_PlayerStatuses
+)
+```
+
+执行线：
+
+```text
+IsValid(ViewModel).Is Valid
+↓
+RebuildStatusIcons(Player)
+```
+
+该函数会按当前历史数组重建正式 Player 状态行。
+
+---
+
+## 3.12 取得 `ViewModel.Enemy.Statuses`
+
+同样从 ViewModel 获取：
+
+```text
+Enemy
+→ Break Battle HUD Combatant View
+→ Statuses
+```
+
+得到：
+
+```text
+ViewModel.Enemy.Statuses
+```
+
+不要复用 Player 的 Statuses 数组。
+
+---
+
+## 3.13 第二次调用 `RebuildStatusIcons`：恢复 Enemy
+
+再放一个：
+
+```text
+RebuildStatusIcons
+```
+
+连接：
+
+```text
+Statuses
+← ViewModel.Enemy.Statuses
+
+StatusContainer / WrapBox
+← WB_EnemyStatuses
+```
+
+执行线：
+
+```text
+RebuildStatusIcons(Player)
+↓
+RebuildStatusIcons(Enemy)
+```
+
+最终 StatusChanged 专用恢复是：
+
+```text
+ActivePresentationType == StatusChanged
+↓
+IsValid(ViewModel)
+↓
+RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
+↓
+RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)
+```
+
+---
+
+## 3.14 为什么建议 Player / Enemy 两边都重建
+
+理论上当前 StatusChanged Record 只会针对一个 Target。
+
+但 Cancel 的职责是：
+
+```text
+把 Presentation UI 恢复到当前历史 ViewModel 的完整正式状态
+```
+
+两边一起重建有几个好处：
+
+```text
+不需要在 Cancel 再保存 TargetPresentationId
+不需要判断 ActiveStatusPresentationWidget 属于哪个 WrapBox
+Creation / Update / Reduction 共用一个恢复路径
+未来 Removal 也能直接复用
+不会依赖数组 index 或 Widget parent
+```
+
+当前只有 Player + Enemy 两个正式 combatant status container，因此成本很低。
+
+---
+
+## 3.15 不要用 `RefreshCombatantPresentations` 替代这两次重建
+
+虽然：
+
+```text
+RefreshCombatantPresentations
+```
+
+最终也会调用两次 `RebuildStatusIcons`，本节仍推荐直接调用：
+
+```text
+RebuildStatusIcons(Player.Statuses, WB_PlayerStatuses)
+RebuildStatusIcons(Enemy.Statuses, WB_EnemyStatuses)
+```
+
+原因是 Cancel 当前只需要恢复 Status visual。
+
+不要顺便刷新：
+
+```text
+HP
+Block
+Target Selection
+Combatant Presentation
+其他 ViewModel UI
+```
+
+这样能减少 Cancel 的副作用范围，后续统一 A2E cancellation review 也更容易审计。
+
+---
+
+## 3.16 `Sequence.Then 1`：统一清空 Status transient reference
+
+从：
+
+```text
+Sequence.Then 1
+```
+
+接：
+
+```text
+Set ActiveStatusPresentationWidget
+```
+
+Value 保持：
+
+```text
+None
+```
+
+也就是：
+
+```text
+ActiveStatusPresentationWidget = None
+```
+
+这样无论：
+
+```text
+当前是不是 StatusChanged
+ViewModel 是否有效
+Creation 还是 Update
+```
+
+最终都不会保留 stale status widget reference。
+
+注意：这里是**清引用**，不是 `RemoveFromParent`。
+
+---
+
+## 3.17 `Then 1` 后继续原来的公共尾部清理
+
+`Set ActiveStatusPresentationWidget = None` 之后，继续接回当前已经存在的公共 Cancel 尾部，例如：
+
+```text
+HiddenHandCardWidget = None
+PlayedCardWidget = None
+bDamageTargetIsPlayer = false（若当前已有）
+ActivePresentationType = None
+ActivePresentationToken = default
+```
+
+具体变量顺序保持当前保存版本即可。
+
+本节不要为了排版重写所有通用变量。
+
+核心顺序要求只有两个：
+
+```text
+① Status 恢复发生在 ActivePresentationType 清空之前
+② ActiveStatusPresentationWidget 最终清为 None
+```
+
+---
+
+## 3.18 Cancel 路径绝对不要调用正常完成 Notify
+
+检查整个：
+
+```text
+Cancel Presentation Record Playback
+```
+
+不能出现：
+
+```text
+NotifyPresentationFinished
+NotifyPresentationRecordFinished
+FinishPresentationRecord
+```
+
+Cancel 的语义是：
+
+```text
+停止旧视觉所有权
+恢复到已完成的历史 ViewModel
+清理 Blueprint transient state
+```
+
+不是：
+
+```text
+把被取消的 Record 当作正常播放完成
+```
+
+Controller 会负责之后的 generation/token/reconciliation 逻辑。
+
+---
+
+## 3.19 不要在 Blueprint 内重新比较传入的 Cancel Token
+
+当前保存快照中：
+
+```text
+Cancel Presentation Record Playback(Token)
+```
+
+收到的 `Token` 没有在 Blueprint 内再次比较。
+
+本节继续保持这一点。
+
+调用边界的“当前 Token 是否仍属于该 Widget”已经由基类 C++ Controller 负责。
+
+不要新增：
+
+```text
+IncomingToken == ActivePresentationToken ?
+```
+
+然后自己决定是否执行 Cancel。
+
+这会复制一套 ownership 判定，并可能和 C++ generation 语义漂移。
+
+---
+
+## 3.20 正常 Finish 路径保持不变
+
+本节只改 Cancel。
+
+检查：
+
+```text
+FinishPresentationRecord
+```
+
+中的 `StatusChanged` case 仍保持：
+
+```text
+StatusChanged
+→ NotifyPresentationRecordFinished
+→ ActiveStatusPresentationWidget = None
+```
+
+正常完成时不要：
+
+```text
+RebuildStatusIcons(AmountBefore)
+RemoveFromParent ActiveStatusPresentationWidget
+恢复 CurrentStatusView 旧值
+```
+
+正常 Update 的正确时序仍是：
+
+```text
+历史 Weak 2
+→ Record 临时显示 Weak 4
+→ timer
+→ Notify exact token
+→ reducer 把 ViewModel 推进到 Weak 4
+→ 正常 HUD refresh
+→ 最终仍 Weak 4
+```
+
+如果 Finish 主动恢复旧值，会产生：
+
+```text
+2 → 4 → 2 → 4
+```
+
+闪回。
+
+---
+
+## 3.21 Creation Cancel 的预期语义
+
+完成本节后，如果 Creation playback 被 Cancel：
+
+```text
+历史 ViewModel：无 Weak
+当前 transient：Weak 2
+```
+
+执行：
+
+```text
+Cancel
+→ Clear Timer
+→ ActivePresentationType == StatusChanged
+→ Rebuild Player / Enemy Statuses from ViewModel
+→ transient Weak 2 被正式列表重建覆盖掉
+→ ActiveStatusPresentationWidget = None
+→ 不 Notify
+```
+
+最终：
+
+```text
+HUD = 无 Weak
+ViewModel = 无 Weak
+```
+
+正确。
+
+---
+
+## 3.22 Update / Reduction Cancel 的预期语义
+
+如果 Update playback 被 Cancel：
+
+```text
+历史 ViewModel：Weak 2
+当前 transient visual：Weak 4
+```
+
+执行：
+
+```text
+Cancel
+→ Clear Timer
+→ Rebuild Player / Enemy Statuses from ViewModel
+→ Weak 4 被历史 Weak 2 替换
+→ ActiveStatusPresentationWidget = None
+→ 不 Notify
+```
+
+最终：
+
+```text
+HUD = Weak 2
+ViewModel = Weak 2
+```
+
+正确。
+
+Reduction 同理，例如：
+
+```text
+历史 Weak 4
+临时 Weak 3
+Cancel
+→ 恢复 Weak 4
+```
+
+---
+
+## 3.23 本节完成后的推荐完整结构
+
+状态相关部分可抽象为：
+
+```text
+Cancel Presentation Record Playback(Token)
+↓
+ClearAndInvalidateTimerByHandle(ActivePresentationTimer)
+↓
+原有 Card / Damage / Opacity 通用清理
+↓
+Sequence
+
+├─ Then 0
+│    ↓
+│  Branch(ActivePresentationType == StatusChanged)
+│
+│  ├─ false
+│  │    → 无操作
+│  │
+│  └─ true
+│       ↓
+│     IsValid(ViewModel)
+│
+│     ├─ Is Not Valid
+│     │    → 无猜测性 RemoveFromParent
+│     │
+│     └─ Is Valid
+│          ↓
+│        RebuildStatusIcons(
+│            ViewModel.Player.Statuses,
+│            WB_PlayerStatuses
+│        )
+│          ↓
+│        RebuildStatusIcons(
+│            ViewModel.Enemy.Statuses,
+│            WB_EnemyStatuses
+│        )
+│
+└─ Then 1
+     ↓
+   ActiveStatusPresentationWidget = None
+     ↓
+   原有公共 transient reference 清理
+     ↓
+   ActivePresentationType = None
+     ↓
+   ActivePresentationToken = default
+```
+
+整个 Cancel 路径：
+
+```text
+没有 Notify
+没有修改 ViewModel
+没有重新计算 Status
+没有 ActiveStatusPresentationWidget.RemoveFromParent
+```
+
+---
+
+## 3.24 Compile + Save
+
+本节只修改：
+
+```text
+WBP_BattleHUD
+```
+
+操作：
+
+```text
+1. Compile WBP_BattleHUD
+2. 查看 Compiler Results
+3. 确认 0 Errors
+4. Save
+```
+
+常见错误检查：
+
+### `RebuildStatusIcons` 参数类型不匹配
+
+确认：
+
+```text
+Player.Statuses / Enemy.Statuses
+= Array<FBattleHUDStatusView>
+```
+
+容器分别是：
+
+```text
+WB_PlayerStatuses
+WB_EnemyStatuses
+```
+
+### `ViewModel.Player` / `Enemy` 取不到 Statuses
+
+使用：
+
+```text
+Get Player / Get Enemy
+→ Break Battle HUD Combatant View
+→ Statuses
+```
+
+不要从 Gameplay 对象取。
+
+### 编译提示旧 `RemoveFromParent` 链断开
+
+如果你删除了节点但留下孤立执行线，清掉旧线即可；不要为了消警告把它重新接回。
+
+---
+
+## 3.25 本节静态验收清单
+
+Compile 成功后逐项检查：
+
+```text
+[ ] Cancel 一开始仍清 ActivePresentationTimer
+[ ] HiddenHandCardWidget 恢复逻辑未被破坏
+[ ] PlayedCardWidget 清理逻辑未被破坏
+[ ] Damage text / RenderOpacity 恢复逻辑未被破坏
+
+[ ] Status Cancel 不再 ActiveStatusPresentationWidget.RemoveFromParent
+[ ] 在 ActivePresentationType 清空前判断 == StatusChanged
+[ ] 只有 StatusChanged 才执行 status list rebuild
+[ ] StatusChanged Cancel 检查 ViewModel 有效性
+[ ] Player 使用 ViewModel.Player.Statuses
+[ ] Player 重建到 WB_PlayerStatuses
+[ ] Enemy 使用 ViewModel.Enemy.Statuses
+[ ] Enemy 重建到 WB_EnemyStatuses
+[ ] 没有从 UStatusInstance / UStatusData 查询
+[ ] 没有修改 ViewModel.Statuses
+
+[ ] ViewModel 无效时不猜测性删除正式 status row
+[ ] ActiveStatusPresentationWidget 最终清为 None
+[ ] ActivePresentationType 最终清为 None
+[ ] ActivePresentationToken 最终清为 default
+[ ] Cancel 没有调用 NotifyPresentationFinished
+[ ] Cancel 没有调用 NotifyPresentationRecordFinished
+[ ] Cancel 没有调用 FinishPresentationRecord
+
+[ ] FinishPresentationRecord 的 StatusChanged 正常完成路径未被改坏
+[ ] WBP_BattleHUD Compile 0 Errors
+[ ] WBP_BattleHUD 已 Save
+```
+
+---
+
+## 3.26 本节完成判定
+
+本节要求：
+
+```text
+StatusChanged Cancel hardening 完成
++ Creation / Update / Reduction 统一从历史 ViewModel 恢复
++ 不再直接 RemoveFromParent ActiveStatusPresentationWidget
++ Cancel 不 Notify
++ Compile 0 Errors
++ Save
+```
+
+本节仍然以**静态结构 + Compile**为主，不把 Update/Reduction 标记为 VALIDATED。
+
+第三节结束后的状态应记为：
+
+```text
+StatusChanged creation          VALIDATED（既有证据）
+StatusChanged update/reduction  WIRED / NOT PIE VALIDATED
+StatusChanged removal           FALLBACK
+
+Router                          WIRED
+Exact identity lookup           WIRED
+Cancel reconciliation           WIRED
+PIE update/reduction            NOT RUN
+```
+
+下一节进入第一次正式运行时验收：
+
+```text
+StatusChanged Update / Increase PIE
++ StatusChanged Reduction / TurnEndDecay PIE
+→ 检查同一 Widget、无重复、无闪回、exact-token completion、最终 Idle
 ```
