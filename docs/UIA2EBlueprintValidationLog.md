@@ -139,9 +139,80 @@ CardZoneChanged(PlayArea -> Destination)
 → controller advances the historical zone state
 ```
 
+## Current implemented slice awaiting PIE validation
+
+### StatusChanged — creation (`bCreated = true`)
+
+Status: **IMPLEMENTED / PIE PENDING**
+
+Saved implementation:
+
+```text
+StatusChanged Router
+→ validate TargetPresentationId against Player / Enemy
+→ require bCreated = true
+→ require bRemoved = false
+→ invalid/non-creation case returns false to C++ immediate fallback
+→ PlayStatusChangedPresentation
+→ ActivePresentationToken = Token
+→ ActivePresentationType = StatusChanged
+→ MakePresentationStatusView(StatusChanged)
+→ create WBP_BattleStatus
+→ SetStatusView using frozen Record fields
+→ add transient status widget to Player or Enemy WrapBox
+→ StartPresentationFinishTimer (0.5 s)
+→ FinishPresentationRecord
+→ NotifyPresentationRecordFinished
+→ clear ActiveStatusPresentationWidget reference
+```
+
+Current frozen DTO conversion uses:
+
+```text
+StatusId        ← Record.StatusId
+RuntimeSequence ← Record.RuntimeSequence
+DisplayName     ← Record.DisplayName
+Description     ← Record.DescriptionAfter
+Amount          ← Record.AmountAfter
+bUseAtlasIcon   ← Record.bUseAtlasIcon
+UVOffset        ← Record.UVOffset
+UVScale         ← Record.UVScale
+TrimOffset      ← Record.TrimOffset
+TrimScale       ← Record.TrimScale
+```
+
+Implementation contract currently satisfied by the saved graph/source:
+
+- Creation accepts only a known Player/Enemy target.
+- Creation accepts only `bCreated = true && bRemoved = false`.
+- Update/reduction/removal still return `false` and use C++ immediate fallback.
+- The visual is built from frozen Record payload data; Blueprint does not query `UStatusInstance` or `UStatusData`.
+- `StatusId` and `RuntimeSequence` are preserved in the presentation DTO.
+- Amount uses `AmountAfter`; description uses `DescriptionAfter`.
+- Cancel removes a valid transient `ActiveStatusPresentationWidget`, clears the reference, and does not call normal completion Notify.
+- Normal completion does not remove the transient widget before Notify; the subsequent ViewModel refresh rebuilds the formal status list.
+
+PIE acceptance is still required before this slice can be marked VALIDATED.
+
+Required creation acceptance:
+
+```text
+Target starts without the status
+→ play a card/effect that creates Weak/Vulnerable or equivalent
+→ StatusChanged has bCreated = true, bRemoved = false
+→ transient exact status row appears on the correct combatant
+→ row displays Record.AmountAfter and frozen icon data
+→ row remains through the async interval
+→ exact-token Notify completes
+→ reducer advances ViewModel statuses
+→ normal HUD rebuild leaves the same final status visible
+→ no visible status -> disappear -> status flashback
+→ playback continues through later Records and returns to Idle
+```
+
 ## Shared async / cancellation contract
 
-Status: **VALIDATED for the currently wired slices**
+Status: **VALIDATED for the already validated slices; StatusChanged creation structurally follows the same contract but awaits PIE acceptance**
 
 Current shared rules:
 
@@ -166,58 +237,55 @@ Rules to preserve:
 ## Current A2E state
 
 ```text
-CardPlayed       VALIDATED
-Damage           VALIDATED
-BlockChanged     VALIDATED
-CardZoneChanged  VALIDATED (PlayArea -> Destination slice)
+CardPlayed              VALIDATED
+Damage                  VALIDATED
+BlockChanged            VALIDATED
+CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
+StatusChanged creation  IMPLEMENTED / PIE PENDING
 
-EnergyChanged    NOT WIRED
-DeckShuffled     NOT WIRED
-StatusChanged    NOT WIRED
-Victory          NOT WIRED
-Defeat           NOT WIRED
-ResolutionFault  NOT WIRED
+StatusChanged update    NOT WIRED
+StatusChanged removal   NOT WIRED
+EnergyChanged           NOT WIRED
+DeckShuffled            NOT WIRED
+Victory                 NOT WIRED
+Defeat                  NOT WIRED
+ResolutionFault         NOT WIRED
 ```
 
 A2E remains **PARTIAL** and must not be marked COMPLETE/SEALED yet.
 
 ## Locked next step
 
-Next implementation target: **StatusChanged Blueprint Playback**.
+Immediate next step: **PIE-validate StatusChanged creation**.
 
-First vertical slice should validate status creation before update/removal:
+Do not implement amount update/reduction or removal until the creation slice is proven in PIE.
+
+After creation is validated, extend the same `StatusChanged` route in this order:
 
 ```text
-StatusChanged
-→ Router validates TargetPresentationId against Player / Enemy
-→ PlayStatusChangedPresentation
-→ consume frozen StatusChanged payload
-→ first target case: bCreated = true, e.g. no Weak → Weak 2
-→ show the exact frozen status identity/value without calculating Gameplay state
-→ short async timer
-→ exact-token Notify
-→ controller reducer advances ViewModel statuses
+1. Amount update / increase / reduction
+   → locate exact status identity by TargetPresentationId + StatusId + RuntimeSequence
+   → display frozen AmountAfter / DescriptionAfter
+   → exact-token async completion
+
+2. Removal
+   → locate the exact same runtime identity
+   → show/remove the exact status row from the frozen Record
+   → exact-token async completion
+
+3. Only after full StatusChanged validation:
+   → EnergyChanged + EndTurn
+   → shuffle / remaining zone transitions
+   → terminal records
+   → full A2E PIE acceptance
 ```
 
-The status identity contract must use the Record fields, especially:
+The status identity contract remains:
 
 ```text
 TargetPresentationId
-StatusId
-RuntimeSequence
-AmountBefore
-AmountAfter
-bCreated
-bRemoved
-Reason
-DisplayName
-DescriptionBefore
-DescriptionAfter
-bUseAtlasIcon
-UVOffset / UVScale
-TrimOffset / TrimScale
++ StatusId
++ RuntimeSequence
 ```
 
-Do not identify a status only by array index. Do not mutate the ViewModel status array from Blueprint.
-
-After the creation slice is validated, extend the same route to amount update/reduction and removal. Only after `StatusChanged` is validated should mainline proceed to `EnergyChanged + EndTurn`, then shuffle/remaining zone transitions, then terminal records and full A2E PIE acceptance.
+Do not identify a status only by array index or by `StatusId` alone. Do not mutate the ViewModel status array from Blueprint.
