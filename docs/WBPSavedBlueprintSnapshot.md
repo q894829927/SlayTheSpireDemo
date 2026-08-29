@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-08-29
+快照日期：2026-08-30
 
 ## 1. 用途与边界
 
@@ -16,7 +16,7 @@ PLANNED / NOT WIRED
 = 已确定的下一步方案，但当前 .uasset 尚未完成
 ```
 
-本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。2026-08-29 的增量通过 Unreal MCP Editor 写入 `WBP_BattleHUD`，随后完成 Blueprint Compile 与资产保存；此前已记录的 PIE 证据仍保留，本轮 StatusChanged 接线未重新运行 PIE。其余未涉及的 WBP 仍沿用原只读快照状态。
+本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。当前版本依据 2026-08-30 读取到的磁盘资产更新；此前通过 Unreal MCP Editor 写入并保存的 Damage、BlockChanged、StatusChanged 等接线及其既有编译/PIE证据仍保留，本轮只同步实际连线与资产时间，未重新运行 PIE。其余未涉及的 WBP 仍沿用原只读快照状态。
 
 `.uasset` 始终是最终事实来源；本文是便于阅读的人工快照。若编辑器中存在尚未保存的改动，它们不属于本快照。
 
@@ -24,9 +24,9 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-29 23:03:47 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 76 nodes；`EventGraph` 394 nodes |
+| `WBP_BattleHUD` | 2026-08-30 01:14:33 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 76 nodes；`FindStatusWidgetByIdentity` 47 nodes；`EventGraph` 393 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
-| `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
+| `WBP_BattleStatus` | 2026-08-30 01:14:34 | 4 | `SetStatusView` 19 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
 | `WBP_CombatantPresentation` | 2026-08-21 00:55:38 | 10 | `EventGraph` 25 nodes |
 | `WBP_CombatantTooltip` | 2026-08-20 16:48:35 | 6 | `EventGraph` 3 nodes |
@@ -79,8 +79,9 @@ PlayerPanel : VerticalBox
 │           └── OV_PlayerBlock
 │               ├── Img_PlayerBlock
 │               └── Txt_PlayerBlock
-├── Txt_PlayerName                 Hidden
-└── WB_PlayerStatuses              Self Hit Test Invisible
+└── OV_PlayerMeta : Overlay
+    ├── Txt_PlayerName             Hidden
+    └── WB_PlayerStatuses           Self Hit Test Invisible
 
 EnemyPanel : VerticalBox
 ├── SB_EnemyVitals
@@ -93,8 +94,9 @@ EnemyPanel : VerticalBox
 │           └── OV_EnemyBlock
 │               ├── Img_EnemyBlock
 │               └── Txt_EnemyBlock
-├── Txt_EnemyName                  Hidden
-└── WB_EnemyStatuses               Self Hit Test Invisible
+└── OV_EnemyMeta : Overlay
+    ├── Txt_EnemyName              Hidden
+    └── WB_EnemyStatuses            Self Hit Test Invisible
 ```
 
 当前状态：
@@ -344,7 +346,7 @@ PlayDamagePresentation(Damage, Token)
        → StartPresentationFinishTimer
 ```
 
-`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。`Txt_DamagePresentation` 是根 Canvas 上的 `TextBlock`，Designer 中为 `Is Variable`，默认 `Collapsed`，字体为居中 Roboto Bold 30；其 Canvas Slot 为 Anchor `(0.5, 0.45)`、Alignment `(0.5, 0.5)`、`200 × 70`、`ZOrder = 30`。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
+`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。`Txt_DamagePresentation` 是根 Canvas 上的 `TextBlock`；当前只读报告读取到 `Is Variable = false`，但 Graph 中已有对它的 `Get` 引用。若后续编辑器编译报告该引用失效，应在 Designer 勾选 `Is Variable` 后重新保存。它默认 `Collapsed`，字体为居中 Roboto Bold 30；其 Canvas Slot 为 Anchor `(0.5, 0.45)`、Alignment `(0.5, 0.5)`、`200 × 70`、`ZOrder = 30`。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
 
 本次新增的目标分支直接消费同一个冻结 `Damage` Record 的 `HPAfter` 与 `BlockAfter`：不重新计算 `HPDamage`，不写回或重算 `ViewModel`。HP 百分比的分母使用对应目标的 `MaxHP`，并通过 `Max(..., 1.0)` 防止零分母。Player/Enemy 两条分支分别更新自己的 HP 文本、血条百分比和格挡文本，然后统一进入 `StartPresentationFinishTimer`。
 
@@ -487,6 +489,34 @@ Switch EBattlePresentationRecordType → StatusChanged
 ```
 
 因此第一阶段只接管 `bCreated = true` 且 `bRemoved = false` 的状态创建记录；更新、叠层变化和移除记录仍返回 `false`，交回 C++ fallback。`TargetKnown` 由 Player/Enemy 两个 `PresentationId` 的 `Name → String → EqualExactly(String)` 比较组成，不匹配时不会启动错误的异步 Timer。蓝图节点的语义事件名为 `PlayStatusChangedPresentation`；当前编辑器为该历史自定义事件保留了内部生成后缀，但参数、调用和执行链均对应上述事件。
+
+#### FindStatusWidgetByIdentity — CURRENT SAVED / NOT YET USED BY ROUTER
+
+当前新增的函数图 `FindStatusWidgetByIdentity`（47 nodes）保存了状态控件查找逻辑：
+
+```text
+Input:
+    TargetPresentationId : Name
+    StatusId              : Name
+    RuntimeSequence       : Integer64
+
+→ SearchFound = false
+→ FoundStatusWidget = None
+→ TargetPresentationId 与 ViewModel.Player.PresentationId 比较
+   ├── 相等 → TargetStatusWrapBox = WB_PlayerStatuses
+   └── 不相等时再与 ViewModel.Enemy.PresentationId 比较
+       ├── 相等 → TargetStatusWrapBox = WB_EnemyStatuses
+       └── 仍不相等 → 返回 Found = false
+→ For Loop（FirstIndex 默认 0，LastIndex = ChildrenCount - 1）
+→ GetChildAt → Cast WBP_BattleStatus
+→ 读取 CurrentStatusView
+→ StatusId 相等 AND RuntimeSequence 相等
+   ├── true → 保存 FoundStatusWidget，SearchFound = true，并 Break
+   └── false → 继续遍历
+→ 返回 Found / StatusWidget
+```
+
+该函数目前没有被 `BeginPresentationRecordPlayback` 或 EventGraph 的其他节点调用；因此 `StatusChanged` 的更新、叠层变化和移除仍按 Router 的 `Return false` 路径交给 C++ fallback。它是后续接入非创建状态变化时可复用的身份查找基础，不代表这些 Record 已经具备 Blueprint 播放。
 
 #### FinishPresentationRecord
 
@@ -664,6 +694,16 @@ SB_Status
 ```
 
 `SetStatusView` 已连接 `Amount` 文本和 Atlas 图标参数；HUD 的 `RebuildStatusIcons` 会为 Player / Enemy 当前状态创建该控件。它已是 HUD 状态小图标的正式生成控件。
+
+当前蓝图成员为：
+
+```text
+StatusView        : FBattleHUDStatusView
+MID_StatusIcon    : MaterialInstanceDynamic reference
+CurrentStatusView : FBattleHUDStatusView
+```
+
+`SetStatusView(InStatusView)` 先把输入保存到 `CurrentStatusView`，再保存到原有 `StatusView` 并刷新金额和图标。`CurrentStatusView` 供 HUD 的 `FindStatusWidgetByIdentity` 函数读取状态身份；它不是第二份 Gameplay 状态。
 
 ## 6. WBP_BattleTargetButton — CURRENT SAVED
 
