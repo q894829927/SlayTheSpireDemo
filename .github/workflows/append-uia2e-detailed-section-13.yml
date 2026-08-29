@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - docs/.uia2e-detailed-section-13.tmp.md
+      - .github/workflows/append-uia2e-detailed-section-13.yml
 
 permissions:
   contents: write
