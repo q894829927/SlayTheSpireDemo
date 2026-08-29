@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-29 18:20:35 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 55 nodes；`EventGraph` 318 nodes |
+| `WBP_BattleHUD` | 2026-08-29 18:56:24 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 55 nodes；`EventGraph` 349 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
@@ -320,12 +320,45 @@ PlayDamagePresentation(Damage, Token)
 → Damage.IncomingDamage → ToText(Integer)
 → Txt_DamagePresentation.SetText
 → Txt_DamagePresentation.Visibility = HitTestInvisible
+→ Branch(bDamageTargetIsPlayer)
+   ├── true（Player）
+   │   → Damage.HPAfter + ViewModel.Player.MaxHP
+   │      → FormatText "{Current}/{Max}"
+   │      → Txt_PlayerHP.SetText
+   │   → ToFloat(Damage.HPAfter)
+   │      / Max(ToFloat(ViewModel.Player.MaxHP), 1.0)
+   │      → PB_PlayerHP.SetPercent
+   │   → ToText(Integer)(Damage.BlockAfter)
+   │      → Txt_PlayerBlock.SetText
+   │   → StartPresentationFinishTimer
+   └── false（Enemy）
+       → Damage.HPAfter + ViewModel.Enemy.MaxHP
+          → FormatText "{Current}/{Max}"
+          → Txt_EnemyHP.SetText
+       → ToFloat(Damage.HPAfter)
+          / Max(ToFloat(ViewModel.Enemy.MaxHP), 1.0)
+          → PB_EnemyHP.SetPercent
+       → ToText(Integer)(Damage.BlockAfter)
+          → Txt_EnemyBlock.SetText
+       → StartPresentationFinishTimer
+```
+
+`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。`Txt_DamagePresentation` 是根 Canvas 上的 `TextBlock`，Designer 中为 `Is Variable`，默认 `Collapsed`，字体为居中 Roboto Bold 30；其 Canvas Slot 为 Anchor `(0.5, 0.45)`、Alignment `(0.5, 0.5)`、`200 × 70`、`ZOrder = 30`。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
+
+本次新增的目标分支直接消费同一个冻结 `Damage` Record 的 `HPAfter` 与 `BlockAfter`：不重新计算 `HPDamage`，不写回或重算 `ViewModel`。HP 百分比的分母使用对应目标的 `MaxHP`，并通过 `Max(..., 1.0)` 防止零分母。Player/Enemy 两条分支分别更新自己的 HP 文本、血条百分比和格挡文本，然后统一进入 `StartPresentationFinishTimer`。
+
+#### StartPresentationFinishTimer — CURRENT SAVED
+
+为避免 Player/Enemy 两条路径复制完成计时器，新增无输入自定义事件：
+
+```text
+StartPresentationFinishTimer
 → SetTimerByEvent(Time = 0.5, Looping = false,
                   Event = FinishPresentationRecord)
 → ReturnValue → ActivePresentationTimer
 ```
 
-`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。`Txt_DamagePresentation` 是根 Canvas 上的 `TextBlock`，Designer 中为 `Is Variable`，默认 `Collapsed`，字体为居中 Roboto Bold 30；其 Canvas Slot 为 Anchor `(0.5, 0.45)`、Alignment `(0.5, 0.5)`、`200 × 70`、`ZOrder = 30`。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
+两条目标分支都调用该事件，继续沿用现有 Playback Token、Timer Handle 和完成回调语义。`FinishPresentationRecord → Damage` 未改变：仍只隐藏伤害文本、按 `bDamageTargetIsPlayer` 将对应角色 RenderOpacity 恢复为 `1.0`，再通知 `NotifyPresentationRecordFinished`。`Cancel Presentation Record Playback` 也未恢复 `HPBefore/BlockBefore` 等历史值，只清理 Timer、隐藏伤害文本、恢复角色透明度并清空本地播放状态。
 
 #### Damage Router 校验 — CURRENT SAVED
 
@@ -404,11 +437,14 @@ A2E PlayPresentationRecord Router
 = CardZoneChanged（仅 FromZone=PlayArea）已接入异步清理骨架
 = Damage 已接入目标校验、异步播放和完成回调
 = Damage IncomingDamage 已接入 `Txt_DamagePresentation` 动态显示
+= Damage HPAfter/BlockAfter 已按目标写入 HP 文本、血条百分比和格挡文本
+= HP 百分比使用 `ToFloat(HPAfter) / Max(ToFloat(MaxHP), 1.0)`，未重算伤害或修改 ViewModel
+= Player/Enemy 共用 `StartPresentationFinishTimer`（0.5 秒，非循环，完成事件为 `FinishPresentationRecord`）
 = CardPlayed / CardZoneChanged / Damage Timer Handle 已保存
 = Cancel Playback 清理骨架已保存
 = Block / Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
 = 尚未完成全部 Record routing
-= 已完成 Blueprint compile、资产保存和普通 Strike 的浮动 PIE acceptance
+= 已完成 Blueprint compile、资产保存和本轮普通 Strike 的浮动 PIE acceptance
 ```
 
 普通 Strike 的浮动 PIE 验证记录（2026-08-29）：
@@ -420,6 +456,28 @@ A2E PlayPresentationRecord Router
 → InteractionState 回到 Idle
 → Damage 完成回调后 Enemy RenderOpacity 恢复为 1.0
 ```
+
+本轮 `HPAfter/BlockAfter` 路径的浮动 PIE 验证（2026-08-29）：
+
+```text
+启动浮动 PIE → 初始 Enemy HP 100/100、Player Energy 5/5
+→ 点击 Strike → 点击 Enemy
+→ Enemy HP 文本/血条显示 94/100（来自 Damage.HPAfter）
+→ Player Energy 变为 4/5
+→ PIE 会话正常结束，未观察到 Blueprint Compile 或运行时错误
+```
+
+有格挡的 Damage 验证（同日第二个浮动 PIE 会话）：
+
+```text
+点击 Defend → Player 获得 5 Block
+→ 点击结束回合，Enemy 对 Player 造成 IncomingDamage = 5
+→ Gameplay 日志确认 blocked = 5、hpDamage = 0、HP = 80/80、Block = 0
+→ 该 Record 的 HPAfter = 80、BlockAfter = 0 对应 Player 分支
+→ 0.5 秒播放完成后 HUD 保持 80/80、Block 0，未把 IncomingDamage 误当成 HPDamage
+```
+
+Slate 快照调用本身晚于 0.5 秒 Timer，因此中间帧不作为独立截图证据；冻结字段消费方式由已保存节点图和上述 Gameplay 结果共同确认。
 
 ## 4. WBP_BattleCard — CURRENT SAVED
 
