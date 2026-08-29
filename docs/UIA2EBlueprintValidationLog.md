@@ -139,11 +139,9 @@ CardZoneChanged(PlayArea -> Destination)
 → controller advances the historical zone state
 ```
 
-## Current implemented slice awaiting PIE validation
-
 ### StatusChanged — creation (`bCreated = true`)
 
-Status: **IMPLEMENTED / PIE PENDING**
+Status: **VALIDATED**
 
 Saved implementation:
 
@@ -166,7 +164,7 @@ StatusChanged Router
 → clear ActiveStatusPresentationWidget reference
 ```
 
-Current frozen DTO conversion uses:
+Frozen DTO conversion:
 
 ```text
 StatusId        ← Record.StatusId
@@ -181,7 +179,7 @@ TrimOffset      ← Record.TrimOffset
 TrimScale       ← Record.TrimScale
 ```
 
-Implementation contract currently satisfied by the saved graph/source:
+Validated contract:
 
 - Creation accepts only a known Player/Enemy target.
 - Creation accepts only `bCreated = true && bRemoved = false`.
@@ -189,30 +187,33 @@ Implementation contract currently satisfied by the saved graph/source:
 - The visual is built from frozen Record payload data; Blueprint does not query `UStatusInstance` or `UStatusData`.
 - `StatusId` and `RuntimeSequence` are preserved in the presentation DTO.
 - Amount uses `AmountAfter`; description uses `DescriptionAfter`.
-- Cancel removes a valid transient `ActiveStatusPresentationWidget`, clears the reference, and does not call normal completion Notify.
+- Cancel removes the transient presentation status and does not call normal completion Notify.
 - Normal completion does not remove the transient widget before Notify; the subsequent ViewModel refresh rebuilds the formal status list.
 
-PIE acceptance is still required before this slice can be marked VALIDATED.
-
-Required creation acceptance:
+Owner-confirmed PIE acceptance:
 
 ```text
 Target starts without the status
 → play a card/effect that creates Weak/Vulnerable or equivalent
-→ StatusChanged has bCreated = true, bRemoved = false
-→ transient exact status row appears on the correct combatant
-→ row displays Record.AmountAfter and frozen icon data
-→ row remains through the async interval
-→ exact-token Notify completes
-→ reducer advances ViewModel statuses
-→ normal HUD rebuild leaves the same final status visible
-→ no visible status -> disappear -> status flashback
-→ playback continues through later Records and returns to Idle
+→ StatusChanged creation appears on the correct combatant
+→ displayed amount is correct
+→ the creation presentation remains visible for the async interval
+→ exact-token completion succeeds
+→ reducer advances the ViewModel status list
+→ the formal HUD status remains visible after rebuild
+→ no status -> disappear -> status flashback is observed
+→ later Records continue and playback returns to Idle
+```
+
+Therefore:
+
+```text
+StatusChanged creation Blueprint Playback = VALIDATED
 ```
 
 ## Shared async / cancellation contract
 
-Status: **VALIDATED for the already validated slices; StatusChanged creation structurally follows the same contract but awaits PIE acceptance**
+Status: **VALIDATED for the currently wired and accepted slices**
 
 Current shared rules:
 
@@ -241,7 +242,7 @@ CardPlayed              VALIDATED
 Damage                  VALIDATED
 BlockChanged            VALIDATED
 CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
-StatusChanged creation  IMPLEMENTED / PIE PENDING
+StatusChanged creation  VALIDATED
 
 StatusChanged update    NOT WIRED
 StatusChanged removal   NOT WIRED
@@ -256,31 +257,9 @@ A2E remains **PARTIAL** and must not be marked COMPLETE/SEALED yet.
 
 ## Locked next step
 
-Immediate next step: **PIE-validate StatusChanged creation**.
+Immediate next implementation target: **StatusChanged amount update / increase / reduction**.
 
-Do not implement amount update/reduction or removal until the creation slice is proven in PIE.
-
-After creation is validated, extend the same `StatusChanged` route in this order:
-
-```text
-1. Amount update / increase / reduction
-   → locate exact status identity by TargetPresentationId + StatusId + RuntimeSequence
-   → display frozen AmountAfter / DescriptionAfter
-   → exact-token async completion
-
-2. Removal
-   → locate the exact same runtime identity
-   → show/remove the exact status row from the frozen Record
-   → exact-token async completion
-
-3. Only after full StatusChanged validation:
-   → EnergyChanged + EndTurn
-   → shuffle / remaining zone transitions
-   → terminal records
-   → full A2E PIE acceptance
-```
-
-The status identity contract remains:
+The next slice must preserve the exact status identity:
 
 ```text
 TargetPresentationId
@@ -288,4 +267,27 @@ TargetPresentationId
 + RuntimeSequence
 ```
 
-Do not identify a status only by array index or by `StatusId` alone. Do not mutate the ViewModel status array from Blueprint.
+Required behavior:
+
+```text
+existing formal status row is located by exact identity
+→ consume frozen Record.AmountAfter / DescriptionAfter / icon metadata
+→ temporarily update that exact row during the active Record
+→ short async timer
+→ exact-token Notify
+→ reducer advances the ViewModel status state
+→ normal HUD rebuild produces the same final status value
+```
+
+The implementation must not identify a status only by array index or by `StatusId` alone, and must not mutate the ViewModel status array from Blueprint.
+
+Cancellation of an update/reduction presentation must restore the formal status list from the current historical ViewModel state rather than leaving the temporary `AmountAfter` visible.
+
+After update/reduction is validated, implement removal using the same exact identity. Only after full `StatusChanged` validation should mainline proceed to:
+
+```text
+EnergyChanged + EndTurn
+→ shuffle / remaining zone transitions
+→ terminal records
+→ full A2E PIE acceptance
+```
