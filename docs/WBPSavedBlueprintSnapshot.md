@@ -16,7 +16,7 @@ PLANNED / NOT WIRED
 = 已确定的下一步方案，但当前 .uasset 尚未完成
 ```
 
-本快照通过 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。没有保存或修改任何 `.uasset`，没有编译项目，也没有运行自动化测试。
+本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。2026-08-29 的本次增量通过 Unreal MCP Editor 写入 `WBP_BattleHUD`，随后完成 Blueprint Compile、资产保存和浮动 PIE 验证；其余未涉及的 WBP 仍沿用原只读快照状态。
 
 `.uasset` 始终是最终事实来源；本文是便于阅读的人工快照。若编辑器中存在尚未保存的改动，它们不属于本快照。
 
@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-23 01:43:27 | 74 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 40 nodes；`EventGraph` 298 nodes |
+| `WBP_BattleHUD` | 2026-08-29 17:10:24 | 74 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 40 节点基线（已增加 Damage Router 校验节点）；`EventGraph` 298 节点基线（已增加 `PlayDamagePresentation` 子图） |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
@@ -265,9 +265,9 @@ CardZoneChanged
 
 该分支只接受 `FromZone = PlayArea` 的记录，用于结束当前 PlayArea 表现卡牌；其他 Zone 变化或任一校验失败均返回 `false`。
 
-其余 `None / ResolutionFault / Damage / BlockChanged / Victory / Defeat / EnergyChanged / DeckShuffled / StatusChanged` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。
+其余 `None / ResolutionFault / BlockChanged / Victory / Defeat / EnergyChanged / DeckShuffled / StatusChanged` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。`Damage` 已在本次增量中接入正式 Blueprint 播放路径，详见下文。
 
-因此当前保存版本已经有两条可达的 Blueprint 播放入口，但还没有覆盖完整 Record 类型集合。
+因此当前保存版本已经有三条可达的 Blueprint 播放入口（CardPlayed、CardZoneChanged、Damage），但还没有覆盖完整 Record 类型集合。
 
 #### PlayCardPresentation
 
@@ -293,6 +293,54 @@ PlayCardPresentation(CardPlayed, Token, HandCardWidget)
 ```
 
 这个路径不会通过 Widget 查询 Gameplay；播放卡面来自 Record 内冻结的 `FPresentationCardSnapshot`。
+
+#### PlayDamagePresentation — CURRENT SAVED
+
+新增自定义事件输入：
+
+```text
+PlayDamagePresentation
+    Damage : FDamagePresentationPayload
+    Token  : FPresentationPlaybackToken
+```
+
+当前保存的开始播放流程：
+
+```text
+PlayDamagePresentation(Damage, Token)
+→ ActivePresentationToken = Token
+→ ActivePresentationType = Damage
+→ Break Damage Presentation Payload
+→ TargetPresentationId == ViewModel.Player.PresentationId
+→ bDamageTargetIsPlayer = IsPlayer
+→ Select(IsPlayer, Combatant_PlayerPresentation,
+                   Combatant_EnemyPresentation)
+→ SelectedPresentation.RenderOpacity = 0.45
+→ SetTimerByEvent(Time = 0.5, Looping = false,
+                  Event = FinishPresentationRecord)
+→ ReturnValue → ActivePresentationTimer
+```
+
+`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
+
+#### Damage Router 校验 — CURRENT SAVED
+
+`BeginPresentationRecordPlayback` 的 `Damage` 分支现在先做正式目标校验：
+
+```text
+Switch EBattlePresentationRecordType → Damage
+→ Break Damage Presentation Payload(Record.Damage)
+→ TargetPresentationId == ViewModel.Player.PresentationId
+→ TargetPresentationId == ViewModel.Enemy.PresentationId
+→ OR
+→ Branch
+   ├── false → Return false
+   └── true
+       → PlayDamagePresentation(Record.Damage, FunctionEntry.Token)
+       → Return true
+```
+
+两个 `PresentationId` 比较使用 `Name → String` 后的 `EqualExactly(String)`，保持精确匹配语义。目标既不匹配 Player 也不匹配 Enemy 时不会启动错误的异步 Timer，并将 Record 交回 C++ immediate fallback。
 
 #### FinishPresentationRecord
 
@@ -321,7 +369,7 @@ CardZoneChanged
 
 其余 Record Type 在该 Switch 上没有完成分支。
 
-当前 `Damage` 只有恢复 RenderOpacity 的收尾路径；尚未看到对应的 Damage 开始播放入口，`bDamageTargetIsPlayer` 也尚未被当前新增连线赋值。`CardZoneChanged` 已被 Begin 图接受，但它的播放事件目前只启动短计时器，实际表现清理发生在完成分支。
+当前 `Damage` 已有成对的开始/收尾路径：开始事件把目标角色的 RenderOpacity 设为 `0.45` 并启动 `FinishPresentationRecord` Timer；完成事件按 `bDamageTargetIsPlayer` 将对应角色恢复为 `1.0`，再通知 Controller。`CardZoneChanged` 已被 Begin 图接受，但它的播放事件目前只启动短计时器，实际表现清理发生在完成分支。
 
 #### NotifyPresentationRecordFinished
 
@@ -335,7 +383,7 @@ NotifyPresentationRecordFinished
 → ActivePresentationToken = default
 ```
 
-`CardPlayed` 和 `CardZoneChanged` 两条 `SetTimerByEvent` 的 `ReturnValue` 均已连接到 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
+`CardPlayed`、`CardZoneChanged` 和 `Damage` 三条 `SetTimerByEvent` 的 `ReturnValue` 均已连接到 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
 
 当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。它会先清理 Timer，再恢复 `HiddenHandCardWidget` 的可见性、移除有效的 `PlayedCardWidget`，最后清空临时引用、Active Type 和 Active Token。事件收到的 Token 当前未在 Blueprint 内再次比较；调用边界仍由基类 Controller 的当前 Token 校验负责。
 
@@ -349,11 +397,22 @@ A2E PlayPresentationRecord Router
 = Entry 已连接 Record Switch
 = CardPlayed 已接入异步播放骨架
 = CardZoneChanged（仅 FromZone=PlayArea）已接入异步清理骨架
-= CardPlayed / CardZoneChanged Timer Handle 已保存
+= Damage 已接入目标校验、异步播放和完成回调
+= CardPlayed / CardZoneChanged / Damage Timer Handle 已保存
 = Cancel Playback 清理骨架已保存
-= Damage / Block / Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
+= Block / Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
 = 尚未完成全部 Record routing
-= 尚未经过 Blueprint compile / PIE acceptance
+= 已完成 Blueprint compile、资产保存和普通 Strike 的浮动 PIE acceptance
+```
+
+普通 Strike 的浮动 PIE 验证记录（2026-08-29）：
+
+```text
+选中 Strike → 选中 Enemy
+→ Enemy HP 100 → 94
+→ Energy 5 → 4
+→ InteractionState 回到 Idle
+→ Damage 完成回调后 Enemy RenderOpacity 恢复为 1.0
 ```
 
 ## 4. WBP_BattleCard — CURRENT SAVED
@@ -657,7 +716,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次只读结构检查确认原有 A1 HUD/目标选择线路仍保存在资产中；新增 A2E 线路明确处于 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Timer Handle 和 Cancel 清理已保存，但完整 Record routing、Blueprint compile 与 PIE acceptance 尚未完成。按用户约束，本次没有编译 Blueprint、运行 PIE 或自动化；本文只记录磁盘上的真实节点、数据线和执行线，不替代 Blueprint compile 或 PIE 验证。
+本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage 播放路径记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、Timer Handle 和 Cancel 清理已保存，但 Block/Energy/Shuffle/Status/Terminal 等完整 Record routing 仍未完成。该增量已通过 Blueprint compile、资产保存和浮动 PIE 普通 Strike 验证；本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
 
 ## 12. 后续修改时的同步清单
 
