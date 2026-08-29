@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-29 18:56:24 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 55 nodes；`EventGraph` 349 nodes |
+| `WBP_BattleHUD` | 2026-08-29 20:22:26 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 63 nodes；`EventGraph` 363 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
@@ -194,7 +194,7 @@ Combatant_EnemyPresentation.OnTargetRequested(TargetId)
 
 ### 3.5 UI-A2E committed-presentation 连线 — CURRENT SAVED / PARTIAL
 
-当前保存的资产已经把 `BeginPresentationRecordPlayback` 的入口接入 Record Type Switch，并完成了 `CardPlayed` 与 `CardZoneChanged (PlayArea → destination)` 两条可达的异步播放骨架；其余 Record 类型仍保留 C++ immediate fallback，因此尚不能认定为完整可运行的 A2E Router。
+当前保存的资产已经把 `BeginPresentationRecordPlayback` 的入口接入 Record Type Switch，并完成了 `CardPlayed`、`CardZoneChanged (PlayArea → destination)`、`Damage` 与 `BlockChanged` 四条可达的异步播放骨架；其余 Record 类型仍保留 C++ immediate fallback，因此尚不能认定为完整可运行的 A2E Router。
 
 新增 Designer 控件：
 
@@ -266,9 +266,9 @@ CardZoneChanged
 
 该分支只接受 `FromZone = PlayArea` 的记录，用于结束当前 PlayArea 表现卡牌；其他 Zone 变化或任一校验失败均返回 `false`。
 
-其余 `None / ResolutionFault / BlockChanged / Victory / Defeat / EnergyChanged / DeckShuffled / StatusChanged` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。`Damage` 已在本次增量中接入正式 Blueprint 播放路径，详见下文。
+其余 `None / ResolutionFault / Victory / Defeat / EnergyChanged / DeckShuffled / StatusChanged` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。`Damage` 与 `BlockChanged` 已在本次增量中接入正式 Blueprint 播放路径，详见下文。
 
-因此当前保存版本已经有三条可达的 Blueprint 播放入口（CardPlayed、CardZoneChanged、Damage），但还没有覆盖完整 Record 类型集合。
+因此当前保存版本已经有四条可达的 Blueprint 播放入口（CardPlayed、CardZoneChanged、Damage、BlockChanged），但还没有覆盖完整 Record 类型集合。
 
 #### PlayCardPresentation
 
@@ -347,6 +347,39 @@ PlayDamagePresentation(Damage, Token)
 
 本次新增的目标分支直接消费同一个冻结 `Damage` Record 的 `HPAfter` 与 `BlockAfter`：不重新计算 `HPDamage`，不写回或重算 `ViewModel`。HP 百分比的分母使用对应目标的 `MaxHP`，并通过 `Max(..., 1.0)` 防止零分母。Player/Enemy 两条分支分别更新自己的 HP 文本、血条百分比和格挡文本，然后统一进入 `StartPresentationFinishTimer`。
 
+#### PlayBlockChangedPresentation — CURRENT SAVED
+
+新增自定义事件输入：
+
+```text
+PlayBlockChangedPresentation
+    BlockChanged : FBlockChangedPresentationPayload
+    Token        : FPresentationPlaybackToken
+```
+
+当前保存的开始播放流程：
+
+```text
+PlayBlockChangedPresentation(BlockChanged, Token)
+→ ActivePresentationToken = Token
+→ ActivePresentationType = BlockChanged
+→ Break Block Changed Presentation Payload
+→ BlockChanged.TargetPresentationId
+   → Name → String → EqualExactly(String)
+   → ViewModel.Player.PresentationId
+→ Branch(IsPlayer)
+   ├── true（Player）
+   │   → ToText(Integer)(BlockChanged.BlockAfter)
+   │   → Txt_PlayerBlock.SetText
+   │   → StartPresentationFinishTimer
+   └── false（Enemy）
+       → ToText(Integer)(BlockChanged.BlockAfter)
+       → Txt_EnemyBlock.SetText
+       → StartPresentationFinishTimer
+```
+
+该事件直接消费冻结 Record 中的 `BlockAfter`，不使用 `BlockBefore + BlockDelta` 重算，也不读取或修改 Gameplay `ViewModel`。目标已在 Router 中确认属于 Player 或 Enemy，因此事件内 Player 比较为真时走 Player 文本，否则走 Enemy 文本；两条路径共用现有的 `StartPresentationFinishTimer`。
+
 #### StartPresentationFinishTimer — CURRENT SAVED
 
 为避免 Player/Enemy 两条路径复制完成计时器，新增无输入自定义事件：
@@ -379,6 +412,25 @@ Switch EBattlePresentationRecordType → Damage
 
 两个 `PresentationId` 比较使用 `Name → String` 后的 `EqualExactly(String)`，保持精确匹配语义。目标既不匹配 Player 也不匹配 Enemy 时不会启动错误的异步 Timer，并将 Record 交回 C++ immediate fallback。
 
+#### BlockChanged Router 校验 — CURRENT SAVED
+
+`BeginPresentationRecordPlayback` 的 `BlockChanged` 分支现在先做正式目标校验：
+
+```text
+Switch EBattlePresentationRecordType → BlockChanged
+→ Break Block Changed Presentation Payload(Record.BlockChanged)
+→ TargetPresentationId == ViewModel.Player.PresentationId
+→ TargetPresentationId == ViewModel.Enemy.PresentationId
+→ OR
+→ Branch
+   ├── false → Return false
+   └── true
+       → PlayBlockChangedPresentation(Record.BlockChanged, FunctionEntry.Token)
+       → Return true
+```
+
+两个 `PresentationId` 比较均使用 `Name → String` 后的 `EqualExactly(String)`。只有 Player/Enemy 任一匹配时才把该异步 Record 交给 Blueprint；未匹配时返回 `false`，不会启动错误的计时器。
+
 #### FinishPresentationRecord
 
 当前保存的完成分流：
@@ -394,6 +446,9 @@ Damage
    └── false → Combatant_EnemyPresentation.RenderOpacity = 1
 → NotifyPresentationRecordFinished
 
+BlockChanged
+→ NotifyPresentationRecordFinished
+
 CardPlayed
 → HiddenHandCardWidget = None
 → NotifyPresentationRecordFinished
@@ -405,7 +460,7 @@ CardZoneChanged
 → NotifyPresentationRecordFinished
 ```
 
-其余 Record Type 在该 Switch 上没有完成分支。
+其余 Record Type 在该 Switch 上没有完成分支。`BlockChanged` 完成分支不恢复 `BlockBefore`，只通过统一通知结束当前播放。
 
 当前 `Damage` 已有成对的开始/收尾路径：开始事件把目标角色的 RenderOpacity 设为 `0.45` 并启动 `FinishPresentationRecord` Timer；完成事件按 `bDamageTargetIsPlayer` 将对应角色恢复为 `1.0`，再通知 Controller。`CardZoneChanged` 已被 Begin 图接受，但它的播放事件目前只启动短计时器，实际表现清理发生在完成分支。
 
@@ -421,7 +476,7 @@ NotifyPresentationRecordFinished
 → ActivePresentationToken = default
 ```
 
-`CardPlayed`、`CardZoneChanged` 和 `Damage` 三条 `SetTimerByEvent` 的 `ReturnValue` 均已连接到 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
+`CardPlayed`、`CardZoneChanged`、`Damage` 和 `BlockChanged` 的完成计时都最终写入 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
 
 当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。它会先清理 Timer，再恢复 `HiddenHandCardWidget` 的可见性、移除有效的 `PlayedCardWidget`，隐藏 `Txt_DamagePresentation`，将 Player/Enemy 两个角色的 RenderOpacity 恢复为 `1.0`，最后清空临时引用、Active Type 和 Active Token。事件收到的 Token 当前未在 Blueprint 内再次比较；调用边界仍由基类 Controller 的当前 Token 校验负责。
 
@@ -438,13 +493,14 @@ A2E PlayPresentationRecord Router
 = Damage 已接入目标校验、异步播放和完成回调
 = Damage IncomingDamage 已接入 `Txt_DamagePresentation` 动态显示
 = Damage HPAfter/BlockAfter 已按目标写入 HP 文本、血条百分比和格挡文本
+= BlockChanged 已按目标写入冻结的 BlockAfter 格挡文本
 = HP 百分比使用 `ToFloat(HPAfter) / Max(ToFloat(MaxHP), 1.0)`，未重算伤害或修改 ViewModel
 = Player/Enemy 共用 `StartPresentationFinishTimer`（0.5 秒，非循环，完成事件为 `FinishPresentationRecord`）
 = CardPlayed / CardZoneChanged / Damage Timer Handle 已保存
 = Cancel Playback 清理骨架已保存
-= Block / Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
+= Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
 = 尚未完成全部 Record routing
-= 已完成 Blueprint compile、资产保存和本轮普通 Strike 的浮动 PIE acceptance
+= 已完成 Blueprint compile 与资产保存；本轮未新增 BlockChanged PIE acceptance（既有 Strike/Damage PIE 记录仍保留）
 ```
 
 普通 Strike 的浮动 PIE 验证记录（2026-08-29）：
@@ -780,7 +836,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage 播放路径与 `Txt_DamagePresentation` 动态伤害文本记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、Timer Handle 和 Cancel 清理已保存，但 Block/Energy/Shuffle/Status/Terminal 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD` 已重新 Compile 并保存；此前浮动 PIE 普通 Strike 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
+本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage 与 BlockChanged 播放路径、`Txt_DamagePresentation` 动态伤害文本和 Player/Enemy 格挡文本更新记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、BlockChanged、Timer Handle 和 Cancel 清理已保存，但 Energy/Shuffle/Status/Terminal 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD` 已重新 Compile 并保存；本轮未重新运行 PIE，文中此前浮动 PIE 的 Strike/Damage 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
 
 ## 12. 后续修改时的同步清单
 
