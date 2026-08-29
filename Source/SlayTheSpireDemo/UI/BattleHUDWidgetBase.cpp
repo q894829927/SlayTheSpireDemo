@@ -79,6 +79,28 @@ FBattleHUDCardView UBattleHUDWidgetBase::MakePresentationCardView(
 	return View;
 }
 
+FBattleHUDStatusView UBattleHUDWidgetBase::MakePresentationStatusView(
+	const FStatusChangedPresentationPayload& StatusChanged
+) const
+{
+	FBattleHUDStatusView View;
+
+	View.StatusId = StatusChanged.StatusId;
+	View.RuntimeSequence = StatusChanged.RuntimeSequence;
+
+	View.DisplayName = StatusChanged.DisplayName;
+	View.Description = StatusChanged.DescriptionAfter;
+	View.Amount = StatusChanged.AmountAfter;
+
+	View.bUseAtlasIcon = StatusChanged.bUseAtlasIcon;
+	View.UVOffset = StatusChanged.UVOffset;
+	View.UVScale = StatusChanged.UVScale;
+	View.TrimOffset = StatusChanged.TrimOffset;
+	View.TrimScale = StatusChanged.TrimScale;
+
+	return View;
+}
+
 bool UBattleHUDWidgetBase::PlayPresentationRecord(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token

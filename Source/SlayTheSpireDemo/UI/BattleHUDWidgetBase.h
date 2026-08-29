@@ -42,6 +42,11 @@ public:
 		const FPresentationCardSnapshot& Snapshot
 	) const;
 
+	UFUNCTION(BlueprintPure, Category = "Battle Presentation|Status", meta = (DisplayName = "Make Presentation Status View"))
+	FBattleHUDStatusView MakePresentationStatusView(
+		const FStatusChangedPresentationPayload& StatusChanged
+	) const;
+
 	// Controller-facing wrapper. It tracks the exact Token before entering
 	// Blueprint so timeout/collapse/unavailable paths can cancel only the currently
 	// offered presentation visual. Returning false means immediate native fallback.
