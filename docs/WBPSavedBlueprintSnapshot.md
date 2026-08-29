@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-29 17:10:24 | 74 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 40 节点基线（已增加 Damage Router 校验节点）；`EventGraph` 298 节点基线（已增加 `PlayDamagePresentation` 子图） |
+| `WBP_BattleHUD` | 2026-08-29 18:20:35 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 55 nodes；`EventGraph` 318 nodes |
 | `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-20 19:43:40 | 4 | `SetStatusView` 18 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
@@ -58,6 +58,7 @@ PLANNED / NOT WIRED
 | `Btn_Cancel` | `(0.54, 0.72)` | `(0.5, 0.5)` | `130 × 45` | false | 0 | Collapsed |
 | `Txt_Feedback` | `(0.5, 0.53)` | `(0.5, 0.5)` | `400 × 50` | false | 20 | Visible |
 | `OV_PlayArea` | `(0.5, 0.61)` | `(0.5, 0.5)` | `200 × 260` | false | 0 | Hit Test Invisible |
+| `Txt_DamagePresentation` | `(0.5, 0.45)` | `(0.5, 0.5)` | `200 × 70` | false | 30 | Collapsed |
 | `StatusTooltip_Player` | `(0.3396, 0.5)` | `(0.0, 1.0)` | Auto Size | true | 200 | Collapsed |
 | `StatusTooltip_Enemy` | `(0.56, 0.48)` | `(1.0, 0.5)` | Auto Size | true | 200 | Collapsed |
 | `Overlay_Terminal` | stretch `(0,0) → (1,1)` | `(0,0)` | fill | false | 100 | Collapsed |
@@ -316,12 +317,15 @@ PlayDamagePresentation(Damage, Token)
 → Select(IsPlayer, Combatant_PlayerPresentation,
                    Combatant_EnemyPresentation)
 → SelectedPresentation.RenderOpacity = 0.45
+→ Damage.IncomingDamage → ToText(Integer)
+→ Txt_DamagePresentation.SetText
+→ Txt_DamagePresentation.Visibility = HitTestInvisible
 → SetTimerByEvent(Time = 0.5, Looping = false,
                   Event = FinishPresentationRecord)
 → ReturnValue → ActivePresentationTimer
 ```
 
-`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
+`Select` 的 True/A 分支对应 Player，False/B 分支对应 Enemy。`Txt_DamagePresentation` 是根 Canvas 上的 `TextBlock`，Designer 中为 `Is Variable`，默认 `Collapsed`，字体为居中 Roboto Bold 30；其 Canvas Slot 为 Anchor `(0.5, 0.45)`、Alignment `(0.5, 0.5)`、`200 × 70`、`ZOrder = 30`。Timer 复用了已有的 `FinishPresentationRecord` 委托；该事件只读取 Record payload 和当前 HUD `ViewModel` 的 Player `PresentationId`，不查询或修改 Gameplay 历史状态。
 
 #### Damage Router 校验 — CURRENT SAVED
 
@@ -351,6 +355,7 @@ FinishPresentationRecord
 → Switch ActivePresentationType
 
 Damage
+→ Txt_DamagePresentation.Visibility = Collapsed
 → bDamageTargetIsPlayer
    ├── true  → Combatant_PlayerPresentation.RenderOpacity = 1
    └── false → Combatant_EnemyPresentation.RenderOpacity = 1
@@ -385,7 +390,7 @@ NotifyPresentationRecordFinished
 
 `CardPlayed`、`CardZoneChanged` 和 `Damage` 三条 `SetTimerByEvent` 的 `ReturnValue` 均已连接到 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
 
-当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。它会先清理 Timer，再恢复 `HiddenHandCardWidget` 的可见性、移除有效的 `PlayedCardWidget`，最后清空临时引用、Active Type 和 Active Token。事件收到的 Token 当前未在 Blueprint 内再次比较；调用边界仍由基类 Controller 的当前 Token 校验负责。
+当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。它会先清理 Timer，再恢复 `HiddenHandCardWidget` 的可见性、移除有效的 `PlayedCardWidget`，隐藏 `Txt_DamagePresentation`，将 Player/Enemy 两个角色的 RenderOpacity 恢复为 `1.0`，最后清空临时引用、Active Type 和 Active Token。事件收到的 Token 当前未在 Blueprint 内再次比较；调用边界仍由基类 Controller 的当前 Token 校验负责。
 
 #### 当前 A2E 状态结论
 
@@ -398,6 +403,7 @@ A2E PlayPresentationRecord Router
 = CardPlayed 已接入异步播放骨架
 = CardZoneChanged（仅 FromZone=PlayArea）已接入异步清理骨架
 = Damage 已接入目标校验、异步播放和完成回调
+= Damage IncomingDamage 已接入 `Txt_DamagePresentation` 动态显示
 = CardPlayed / CardZoneChanged / Damage Timer Handle 已保存
 = Cancel Playback 清理骨架已保存
 = Block / Energy / Shuffle / Status / Terminal 仍未接入 Blueprint 播放
@@ -716,7 +722,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage 播放路径记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、Timer Handle 和 Cancel 清理已保存，但 Block/Energy/Shuffle/Status/Terminal 等完整 Record routing 仍未完成。该增量已通过 Blueprint compile、资产保存和浮动 PIE 普通 Strike 验证；本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
+本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage 播放路径与 `Txt_DamagePresentation` 动态伤害文本记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、Timer Handle 和 Cancel 清理已保存，但 Block/Energy/Shuffle/Status/Terminal 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD` 已重新 Compile 并保存；此前浮动 PIE 普通 Strike 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
 
 ## 12. 后续修改时的同步清单
 
