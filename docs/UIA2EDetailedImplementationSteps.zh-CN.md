@@ -3311,3 +3311,1088 @@ StatusChanged Update / Increase PIE
 + StatusChanged Reduction / TurnEndDecay PIE
 → 检查同一 Widget、无重复、无闪回、exact-token completion、最终 Idle
 ```
+
+---
+
+# 第四节：PIE 验收 `StatusChanged` Update / Increase 与 Reduction / TurnEndDecay
+
+## 4.1 本节目标
+
+前三节已经完成了结构层面的三件事：
+
+```text
+PlayStatusChangedPresentation
+→ 已能更新 ExistingStatusWidget
+
+StatusChanged Router
+→ 已能按 TargetPresentationId + StatusId + RuntimeSequence
+  找到精确状态行后把 update/reduction 送入 Blueprint async playback
+
+CancelPresentationRecordPlayback
+→ StatusChanged Cancel 已能从历史 ViewModel.Statuses 重建正式状态列表
+```
+
+本节第一次对这条新路径做正式运行时验收。
+
+必须至少覆盖：
+
+```text
+A. Increase / Reapply
+   例如 Weak 2 → Weak 4
+
+B. Reduction / TurnEndDecay
+   例如 Weak 4 → Weak 3
+```
+
+本节通过后，才允许把：
+
+```text
+StatusChanged update/reduction
+```
+
+从：
+
+```text
+WIRED / NOT PIE VALIDATED
+```
+
+提升为：
+
+```text
+VALIDATED
+```
+
+本节**不实现 Removal**。如果实际测试中遇到 `AmountAfter = 0 && bRemoved = true`，那属于下一节。
+
+---
+
+## 4.2 开始 PIE 前的编译与保存检查
+
+先退出正在运行的 PIE。
+
+依次确认：
+
+```text
+WBP_BattleStatus
+→ Compile
+→ 0 Errors
+→ Save
+
+WBP_BattleHUD
+→ Compile
+→ 0 Errors
+→ Save
+```
+
+然后重新打开 `WBP_BattleHUD`，快速确认以下三处没有被编辑器刷新成 orphan node：
+
+```text
+① FindStatusWidgetByIdentity
+② PlayStatusChangedPresentation 的 ExistingStatusWidget pin
+③ Cancel Presentation Record Playback 中两次 RebuildStatusIcons
+```
+
+如果任一处出现黄警告或 orphan pin，先修复并重新 Compile；不要带着 Blueprint compile warning 进入本节验收。
+
+---
+
+## 4.3 本节测试数据原则
+
+优先使用项目里**真实配置、真实 Gameplay 流程会产生的 StatusChanged Record**。
+
+推荐选择：
+
+```text
+Weak
+Vulnerable
+或项目中其他能稳定重复施加、并且会自然衰减的状态
+```
+
+不要为了本节临时在 Blueprint 中伪造：
+
+```text
+Make StatusChanged Presentation Payload
+手写 AmountBefore / AmountAfter
+直接调用 PlayStatusChangedPresentation
+```
+
+原因：本节要验证的是整条链：
+
+```text
+Gameplay Commit
+→ frozen Presentation Record
+→ Controller
+→ Blueprint Router
+→ exact identity lookup
+→ async visual
+→ exact-token Notify
+→ reducer
+→ ViewModel refresh
+```
+
+只手调 Custom Event 无法证明 Router、Token 和 reducer 链是通的。
+
+---
+
+## 4.4 先做一次 Creation 回归，建立可更新的正式状态行
+
+启动 PIE。
+
+先对目标施加一个当前没有的状态，例如：
+
+```text
+Enemy：无 Weak
+→ 使用真实卡牌/效果施加 Weak 2
+```
+
+这一条应仍走已经验证过的 Creation 路径：
+
+```text
+StatusChanged
+bCreated = true
+bRemoved = false
+```
+
+视觉预期：
+
+```text
+目标原本没有状态图标
+→ Weak 2 出现在正确 Player/Enemy 的 WrapBox
+→ 保持约 0.5 秒的 async playback
+→ Notify 完成
+→ reducer 推进 ViewModel
+→ 正式列表刷新后 Weak 2 仍然存在
+```
+
+本轮只作为回归检查；如果 Creation 因本轮修改坏掉，先停止，不要继续做 Update 测试。
+
+---
+
+## 4.5 Creation 回归必须确认“只有一个正式状态行”
+
+第一次状态创建完成后，肉眼检查目标状态区：
+
+```text
+WB_PlayerStatuses
+或
+WB_EnemyStatuses
+```
+
+同一个状态应只有一个图标。
+
+例如：
+
+```text
+Weak × 1 Widget
+Amount = 2
+```
+
+不能已经出现：
+
+```text
+Weak 2
+Weak 2
+```
+
+如果 Creation 本身已经重复，Update 验收结果没有意义，应先回查 Creation Finish / HUD rebuild。
+
+---
+
+## 4.6 准备 Increase / Reapply 场景
+
+保持同一个目标、同一个已经存在的 runtime status instance，再次触发会增加层数/持续量的真实效果。
+
+示例：
+
+```text
+当前正式 HUD：Weak 2
+当前历史 ViewModel：Weak 2
+
+再次施加 Weak 2
+→ 预期 Gameplay 产生更新 Record
+→ 最终 AmountAfter = 4
+```
+
+具体数值不要求一定是 `2 → 4`，项目真实规则如果是：
+
+```text
+Weak 1 → 2
+Weak 2 → 3
+Vulnerable 2 → 4
+```
+
+都可以。
+
+验收的关键不是固定数字，而是：
+
+```text
+AmountBefore = A
+AmountAfter  = B
+A != B
+bCreated     = false
+bRemoved     = false
+RuntimeSequence 与现有正式状态相同
+```
+
+---
+
+## 4.7 确认 Increase Record 真的是 Update，而不是第二次 Creation
+
+通过当前项目已有日志、Blueprint Debugger、Record 调试输出或你现有的 Presentation 调试信息，确认该 Record 至少满足：
+
+```text
+Record.Type = StatusChanged
+bCreated = false
+bRemoved = false
+AmountBefore = A
+AmountAfter = B
+```
+
+并且：
+
+```text
+StatusId
+RuntimeSequence
+TargetPresentationId
+```
+
+与当前 HUD 正式状态行身份一致。
+
+如果第二次施加实际产生：
+
+```text
+bCreated = true
+```
+
+那说明 Gameplay 规则是在创建新的 runtime instance；这不能用于本节 Update 验收，应换一个确实会更新原实例的状态/效果。
+
+---
+
+## 4.8 Increase 开始时应命中 `FindStatusWidgetByIdentity`
+
+当 `bCreated=false && bRemoved=false` 的 Record 到来时，运行时预期路径是：
+
+```text
+StatusChanged Router
+↓
+TargetKnown = true
+↓
+bRemoved = false
+↓
+bCreated = false
+↓
+FindStatusWidgetByIdentity(
+  TargetPresentationId,
+  StatusId,
+  RuntimeSequence
+)
+↓
+Found = true
+↓
+PlayStatusChangedPresentation(
+  ExistingStatusWidget = FoundStatusWidget
+)
+↓
+Return true
+```
+
+如果你使用 Blueprint Debugger，可以在：
+
+```text
+FindStatusWidgetByIdentity
+或 Branch(Found)
+```
+
+观察一次。
+
+但不要为了验收新增持久 Debug 变量。
+
+---
+
+## 4.9 Increase 的核心视觉要求：更新同一个 Widget
+
+Update playback 开始后，应该看到：
+
+```text
+原正式状态：Weak A
+↓
+同一个位置/同一个状态图标
+↓
+Amount 变为 B
+```
+
+不能看到：
+
+```text
+Weak A + Weak B 两个图标同时存在
+```
+
+也不能看到：
+
+```text
+旧 Weak A 被删掉
+→ 新 Weak B 重新出现在列表末尾
+```
+
+本阶段要求是：
+
+```text
+ExistingStatusWidget.SetStatusView(FrozenStatusView)
+```
+
+即更新已经找到的精确 Widget。
+
+---
+
+## 4.10 Increase 的冻结数据检查
+
+临时显示值必须等于：
+
+```text
+Record.AmountAfter
+```
+
+同时 `WBP_BattleStatus.CurrentStatusView` 应被新的 frozen view 覆盖，因此其：
+
+```text
+StatusId
+RuntimeSequence
+DisplayName
+Description
+Amount
+Icon metadata
+```
+
+都来自当前 Record DTO。
+
+不要以“最终数字看起来对”作为唯一证据。
+
+如果实际代码中存在：
+
+```text
+Current Amount + Delta
+AmountBefore + 某个值
+```
+
+即使结果碰巧等于 B，也不满足 A2E frozen Record 契约。
+
+---
+
+## 4.11 Increase 的 0.5 秒 async 窗口
+
+Update 路径应该与 Creation 共用：
+
+```text
+StartPresentationFinishTimer
+Time = 0.5
+Looping = false
+```
+
+在这段时间内：
+
+```text
+HUD 已显示 AmountAfter = B
+ViewModel 仍代表上一条已完成历史，即 Amount = A
+```
+
+不要要求 ViewModel 在 timer 开始时立即变成 B。
+
+这正是 A2E 的历史播放时序。
+
+---
+
+## 4.12 Increase 正常完成后的顺序
+
+约 0.5 秒后预期：
+
+```text
+FinishPresentationRecord
+↓
+StatusChanged case
+↓
+NotifyPresentationRecordFinished
+↓
+NotifyPresentationFinished(ActivePresentationToken)
+↓
+Controller 接受精确 Token
+↓
+StatusChanged reducer 推进 WorkingSnapshot / ViewModel
+↓
+正式 HUD refresh
+↓
+ActiveStatusPresentationWidget = None
+```
+
+最终正式 HUD 必须仍显示：
+
+```text
+Amount = B
+```
+
+不能回到 A。
+
+---
+
+## 4.13 Increase 最重要的闪回检查
+
+完整肉眼序列应该是：
+
+```text
+A
+→ B
+→ B
+```
+
+其中最后两个 B 分别代表：
+
+```text
+B（当前 Record transient visual）
+B（Notify 后正式 ViewModel rebuild）
+```
+
+禁止出现：
+
+```text
+A
+→ B
+→ A
+→ B
+```
+
+如果出现 `A → B → A → B`，重点检查：
+
+```text
+FinishPresentationRecord 是否恢复了 AmountBefore
+Notify 之前是否调用了 RebuildStatusIcons
+Event Battle HUD View Model Changed 是否过早按旧 ViewModel 重建
+```
+
+正常 Finish 不应主动恢复旧状态。
+
+---
+
+## 4.14 Increase 完成后检查继续播放与 Idle
+
+该 StatusChanged Record 完成后：
+
+```text
+后续 Presentation Record 必须继续正常播放
+```
+
+例如卡牌还可能继续进入：
+
+```text
+CardZoneChanged(PlayArea -> Destination)
+```
+
+最终整个 Envelope 结束后：
+
+```text
+Presentation backlog 清空
+→ Controller catch-up
+→ 正常回 Idle / 可交互状态
+```
+
+不能出现：
+
+```text
+状态数值已经更新
+但 Presentation 一直卡在 Resolving
+```
+
+这通常意味着 Token 没有正常完成或 Router 返回值与实际 async ownership 不一致。
+
+---
+
+## 4.15 Increase 验收清单
+
+至少逐项确认：
+
+```text
+[ ] 第二次施加产生 StatusChanged
+[ ] bCreated=false
+[ ] bRemoved=false
+[ ] TargetPresentationId 正确
+[ ] StatusId 正确
+[ ] RuntimeSequence 与已有状态一致
+[ ] AmountBefore=A
+[ ] AmountAfter=B
+[ ] Router 走 Update/Reduction 分支
+[ ] FindStatusWidgetByIdentity Found=true
+[ ] 只更新一个已有 Widget
+[ ] 没有创建第二个状态图标
+[ ] 显示值直接等于 AmountAfter
+[ ] async 窗口可见
+[ ] exact-token completion 正常
+[ ] Notify 后最终仍为 B
+[ ] 没有 A→B→A→B 闪回
+[ ] 后续 Record 能继续
+[ ] 最终回 Idle / 正常交互
+```
+
+只要其中一项失败，就暂时不要把 Update 标记为 VALIDATED。
+
+---
+
+## 4.16 准备 Reduction / TurnEndDecay 场景
+
+接下来验证同一条 Update 路径能处理“减少但尚未移除”。
+
+优先使用项目真实的：
+
+```text
+TurnEndDecay
+```
+
+或其他会让状态 Amount 减少、但结果仍大于 0 的规则。
+
+示例：
+
+```text
+当前 Weak 4
+→ EndTurn
+→ Weak 3
+```
+
+要求实际 Record 是：
+
+```text
+bCreated = false
+bRemoved = false
+AmountBefore = A
+AmountAfter = B
+B < A
+B > 0
+```
+
+如果当前状态只剩 `1`，下一次衰减直接变成 `0` 并产生 `bRemoved=true`，那是 Removal，不适合作为本节 Reduction 验收。
+
+应先准备一个足够大的 Amount，让本次衰减仍保留状态。
+
+---
+
+## 4.17 Reduction 的身份检查
+
+Reduction 仍必须保持同一个 runtime identity：
+
+```text
+TargetPresentationId
+StatusId
+RuntimeSequence
+```
+
+都应与正式状态行一致。
+
+特别是：
+
+```text
+RuntimeSequence 不应因为 Amount 减少而变化
+```
+
+如果 RuntimeSequence 改变，`FindStatusWidgetByIdentity` 正确行为应该是找不到旧行并 fallback；不能为了让视觉“看起来能动”而改成只按 StatusId 匹配。
+
+---
+
+## 4.18 Reduction 的运行时路径
+
+预期仍然是：
+
+```text
+StatusChanged
+↓
+TargetKnown=true
+↓
+bRemoved=false
+↓
+bCreated=false
+↓
+FindStatusWidgetByIdentity
+↓
+Found=true
+↓
+PlayStatusChangedPresentation
+↓
+ExistingStatusWidget.SetStatusView(FrozenStatusView)
+↓
+StartPresentationFinishTimer
+```
+
+也就是说 Increase 和 Reduction **不需要两套 Blueprint Event**。
+
+它们都只是：
+
+```text
+已有精确 status row 的 AmountAfter / DescriptionAfter 更新
+```
+
+---
+
+## 4.19 Reduction 的视觉检查
+
+假设：
+
+```text
+A = 4
+B = 3
+```
+
+正确显示序列：
+
+```text
+Weak 4
+→ Weak 3
+→ 保持 Weak 3
+```
+
+不能：
+
+```text
+Weak 4
+→ 新增一个 Weak 3
+```
+
+不能：
+
+```text
+Weak 4
+→ Weak 3
+→ Weak 4
+→ Weak 3
+```
+
+也不能：
+
+```text
+Weak 4
+→ 状态图标直接消失
+```
+
+因为本条 Record 的：
+
+```text
+bRemoved = false
+```
+
+状态仍然存在。
+
+---
+
+## 4.20 Reduction 完成后的 reducer / rebuild 检查
+
+约 0.5 秒后：
+
+```text
+Notify exact token
+→ Controller reducer 推进 ViewModel
+→ ViewModel.Statuses 中该 runtime row Amount 变成 B
+→ HUD 正常 rebuild
+```
+
+最终：
+
+```text
+同一个状态仍存在
+Amount = B
+```
+
+不要在 `FinishPresentationRecord` 中恢复 A。
+
+---
+
+## 4.21 Reduction 完成后继续观察完整 EndTurn Record 顺序
+
+如果 Reduction 是 EndTurn 产生的，那么它通常处于一个包含多个 Record 的大 Envelope 中。
+
+因此不要在看到 Weak 变成 B 后立即停止 PIE。
+
+继续观察：
+
+```text
+后续 BlockChanged
+Damage
+EnergyChanged（当前仍可能 fallback）
+CardZoneChanged
+DeckShuffled（当前仍可能 fallback）
+Draw 相关 Record
+```
+
+以项目实际 producer 顺序为准。
+
+本节只要求 StatusChanged reduction 不打断这条宏流程。
+
+最终必须：
+
+```text
+不卡 Resolving
+不丢后续 Record
+能够进入下一个正式交互阶段
+```
+
+---
+
+## 4.22 Reduction 验收清单
+
+```text
+[ ] 触发真实 Reduction / TurnEndDecay
+[ ] bCreated=false
+[ ] bRemoved=false
+[ ] AmountBefore=A
+[ ] AmountAfter=B
+[ ] B < A
+[ ] B > 0
+[ ] TargetPresentationId 正确
+[ ] StatusId 正确
+[ ] RuntimeSequence 保持不变
+[ ] FindStatusWidgetByIdentity Found=true
+[ ] 更新同一个状态 Widget
+[ ] 没有重复图标
+[ ] 没有错误移除状态
+[ ] 显示值直接使用 AmountAfter
+[ ] 0.5s async 正常
+[ ] exact-token completion 正常
+[ ] Notify 后最终仍为 B
+[ ] 没有 A→B→A→B 闪回
+[ ] 后续 EndTurn Records 继续
+[ ] 最终不挂 Resolving
+```
+
+---
+
+## 4.23 明确区分 Reduction 与 Removal
+
+这一点必须单独确认。
+
+### Reduction
+
+```text
+AmountBefore = 4
+AmountAfter  = 3
+bRemoved     = false
+```
+
+本节应由 Blueprint Update 路径接管。
+
+### Removal
+
+```text
+AmountBefore = 1
+AmountAfter  = 0
+bRemoved     = true
+```
+
+当前 Router 仍应：
+
+```text
+Return false
+→ C++ fallback
+```
+
+本节不要因为看到 `1 → 0` 没有进入 Update 动画，就判定本节失败。
+
+`1 → 0` 是下一节正式要实现的 Removal。
+
+---
+
+## 4.24 再做一次 Creation 回归
+
+Increase 和 Reduction 都通过后，再用另一个当前不存在的状态，或重新开一局，做一次 Creation：
+
+```text
+无状态
+→ StatusChanged bCreated=true
+→ 状态出现
+→ Notify
+→ 正式状态保持
+```
+
+目的不是重新证明 Creation 全套，而是确认第一节加入：
+
+```text
+Branch(bCreated)
+```
+
+之后没有把原本已经验证过的 Creation 路径破坏。
+
+至少确认：
+
+```text
+Creation 仍只创建一个 Widget
+Creation ExistingStatusWidget=None 不影响运行
+Creation Finish 后状态不闪回
+```
+
+---
+
+## 4.25 Cancel 的运行时抽查策略
+
+第三节已经完成 Cancel 结构加固，但是否能在 PIE 中稳定触发 Cancel 取决于项目当前是否已有正式入口。
+
+如果当前项目有可重复触发的正式路径，例如：
+
+```text
+SkipPresentation()
+Widget 被 Controller 主动替换/失去
+合法的 presentation generation 取消
+```
+
+则建议额外做一次 Update Cancel：
+
+```text
+历史 Weak A
+→ Update transient 显示 Weak B
+→ 在 0.5s 内触发正式 Cancel
+```
+
+预期：
+
+```text
+Cancel 清 Timer
+→ 从历史 ViewModel.Statuses 重建
+→ HUD 恢复 Weak A
+→ 不 Notify 被取消的 Record
+```
+
+如果当前 PIE 没有可靠、可控的 Cancel 触发入口，**不要临时在蓝图中人为调用 Cancel Event 伪造测试**。
+
+此时把 Cancel runtime 验收保留到后面的“全局 Cancel / Reconcile 收尾”章节统一完成；本节的主线 Update/Reduction 验收仍以正常 async completion 为主。
+
+---
+
+## 4.26 如果 `Found=false`，按这个顺序排查
+
+Update/Reduction Record 明明存在，但 Router 返回 false 时，不要先改身份契约。
+
+按顺序检查：
+
+```text
+1. 当前目标 WrapBox 是否已经有正式状态 Widget
+2. WBP_BattleStatus.SetStatusView 是否保存 CurrentStatusView
+3. CurrentStatusView.StatusId 是否等于 Record.StatusId
+4. CurrentStatusView.RuntimeSequence 是否等于 Record.RuntimeSequence
+5. TargetPresentationId 是否选择了正确 Player / Enemy WrapBox
+6. RuntimeSequence 是否仍是 Integer64
+7. 当前正式状态列表是否被某次提前 rebuild 换掉
+```
+
+禁止“修复”为：
+
+```text
+只比较 StatusId
+只拿第 0 个 Child
+找不到就 Create Widget
+```
+
+这些都会破坏 exact identity。
+
+---
+
+## 4.27 如果出现重复状态图标，按这个顺序排查
+
+出现：
+
+```text
+Weak A
+Weak B
+```
+
+通常意味着 Update 被误当成 Creation 或 Update 分支里仍有 AddChild。
+
+检查：
+
+```text
+1. Record.bCreated 是否真的是 false
+2. Router bCreated=false 是否进入 FindStatusWidgetByIdentity
+3. Found=true 后 ExistingStatusWidget 是否真的连接 FoundStatusWidget
+4. PlayStatusChangedPresentation.False 是否还有 Create Widget
+5. Update False 是否还有 AddChildToWrapBox
+```
+
+Update 路径正确时：
+
+```text
+Widget 数量不增加
+```
+
+---
+
+## 4.28 如果出现数值闪回，按这个顺序排查
+
+出现：
+
+```text
+A → B → A → B
+```
+
+重点检查：
+
+```text
+1. FinishPresentationRecord.StatusChanged 是否恢复 AmountBefore
+2. Finish 前是否 RebuildStatusIcons
+3. NotifyPresentationRecordFinished 的顺序是否被改坏
+4. Controller reducer 是否在 exact token completion 后才推进
+5. Event Battle HUD View Model Changed 是否在 reducer 前收到旧 snapshot refresh
+```
+
+Blueprint 正常 Finish 只能：
+
+```text
+保持 B
+→ Notify
+→ 清 ActiveStatusPresentationWidget reference
+```
+
+不能主动恢复 A。
+
+---
+
+## 4.29 如果播放卡在 Resolving，按这个顺序排查
+
+如果状态视觉已经变成 B，但后续不继续：
+
+```text
+1. StartPresentationFinishTimer 是否真的执行
+2. ActivePresentationTimer 是否有效
+3. FinishPresentationRecord 是否被 Timer 调到
+4. Finish 的 StatusChanged case 是否进入 NotifyPresentationRecordFinished
+5. Notify 时 ActivePresentationToken 是否仍是当前 Token
+6. Notify 前是否错误地先清空 Token
+7. Router 是否 Return true 但实际上没有启动 Timer
+```
+
+锁定规则仍是：
+
+```text
+NotifyPresentationFinished(ActivePresentationToken)
+必须先发生
+→ 然后才清 ActivePresentationToken
+```
+
+---
+
+## 4.30 本节证据记录模板
+
+本节通过后，把实际观察结果记录到：
+
+```text
+docs/UIA2EBlueprintValidationLog.md
+```
+
+建议按以下格式写真实数据，不要填假示例：
+
+```text
+StatusChanged Update / Increase PIE
+Target               = <Player/Enemy>
+StatusId              = <实际状态>
+RuntimeSequence       = <实际值>
+AmountBefore          = <A>
+AmountAfter           = <B>
+bCreated              = false
+bRemoved              = false
+WidgetCountBefore     = <N>
+WidgetCountDuring     = <N>
+WidgetCountAfter      = <N>
+Result                = PASS
+FlashbackObserved     = No
+DuplicateObserved     = No
+ReturnedToIdle        = Yes
+
+StatusChanged Reduction / TurnEndDecay PIE
+Target               = <Player/Enemy>
+StatusId              = <实际状态>
+RuntimeSequence       = <实际值>
+AmountBefore          = <A>
+AmountAfter           = <B>
+bCreated              = false
+bRemoved              = false
+Result                = PASS
+FlashbackObserved     = No
+DuplicateObserved     = No
+ReturnedToIdle        = Yes
+```
+
+只有 owner 实际确认的值才能写进正式验证日志。
+
+---
+
+## 4.31 本节最终验收条件
+
+要把：
+
+```text
+StatusChanged update/reduction
+```
+
+标记为 VALIDATED，至少必须同时满足：
+
+```text
+[ ] Creation 回归正常
+
+[ ] Increase / Reapply 产生真实 bCreated=false bRemoved=false Record
+[ ] Increase 精确身份匹配成功
+[ ] Increase 更新同一个 Widget
+[ ] Increase 无重复图标
+[ ] Increase 无 A→B→A→B 闪回
+[ ] Increase exact-token completion 成功
+[ ] Increase 后续 Records 正常
+[ ] Increase 最终回 Idle / 正常交互
+
+[ ] Reduction / TurnEndDecay 产生真实 bCreated=false bRemoved=false Record
+[ ] Reduction AmountAfter > 0
+[ ] Reduction 精确身份匹配成功
+[ ] Reduction 更新同一个 Widget
+[ ] Reduction 无重复图标
+[ ] Reduction 不误移除
+[ ] Reduction 无 A→B→A→B 闪回
+[ ] Reduction exact-token completion 成功
+[ ] Reduction 后续 Records 正常
+[ ] Reduction 最终不挂 Resolving
+```
+
+本节通过后状态更新为：
+
+```text
+StatusChanged creation          VALIDATED
+StatusChanged update/reduction  VALIDATED
+StatusChanged removal           NOT WIRED / FALLBACK
+```
+
+A2E 整体仍然是：
+
+```text
+PARTIAL
+```
+
+不能提前标记 COMPLETE / SEALED。
+
+---
+
+## 4.32 本节完成后下一步
+
+下一节开始实现：
+
+```text
+StatusChanged Removal
+```
+
+目标是：
+
+```text
+bRemoved = true
+→ 仍用 TargetPresentationId + StatusId + RuntimeSequence 精确定位已有状态 Widget
+→ transient removal presentation
+→ 0.5s async
+→ exact-token Notify
+→ reducer 正式从 ViewModel.Statuses 删除
+→ final rebuild 后保持消失
+→ Cancel 时从历史 ViewModel 恢复
+```
+
+下一节会详细记录：
+
+```text
+Router 如何从 bRemoved=true fallback 改为正式 async
+Removal 应该隐藏还是移除 Widget
+Finish 如何避免“消失→出现→消失”闪回
+Cancel 如何复用第三节已经完成的历史状态重建
+PIE 如何验证 Amount 1 → 0 的真实 Removal
+```
