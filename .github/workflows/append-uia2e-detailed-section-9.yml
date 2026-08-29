@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - docs/.uia2e-detailed-section-9.tmp.md
+      - .github/workflows/append-uia2e-detailed-section-9.yml
 
 permissions:
   contents: write
@@ -28,7 +29,7 @@ jobs:
           git rm docs/.uia2e-detailed-section-9.tmp.md
           git rm .github/workflows/append-uia2e-detailed-section-9.yml
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+q894829927@users.noreply.github.com"
           git add docs/UIA2EDetailedImplementationSteps.zh-CN.md
           git commit -m "docs(ui-a2e): 记录详细实施步骤第九节"
           git push
