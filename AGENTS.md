@@ -158,6 +158,24 @@ When UE Editor work cannot be performed with available tools, label it `USER ACT
 
 See `docs/Validation.md` and the directory-specific test rules in `Source/SlayTheSpireDemoTests/AGENTS.md`.
 
+### UE 5.8 PowerShell Project and Build Commands
+
+For this project, use the bundled UE 5.8 .NET runtime and the following PowerShell commands. The standard compile workflow is to run the project-file generation command first, then the editor build command.
+
+1. Regenerate Visual Studio project files:
+
+```powershell
+& "E:\Unreal engine\UE_5.8\Engine\Binaries\ThirdParty\DotNet\10.0\win-x64\dotnet.exe" "E:\Unreal engine\UE_5.8\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" -ProjectFiles -project="E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" -game -engine -2022
+```
+
+2. Compile the editor target:
+
+```powershell
+& "E:\Unreal engine\UE_5.8\Engine\Build\BatchFiles\Build.bat" SlayTheSpireDemoEditor Win64 Development -Project="E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" -WaitMutex -FromMsBuild -2022 -architecture=x64
+```
+
+The first command regenerates `.sln`/`.slnx` files; it does not compile the project. The second command is the command equivalent to Visual Studio's project `生成(U)` for the `Development Editor | Win64` configuration. Do not replace these with a system `dotnet` invocation; UE 5.8 requires the bundled .NET 10 runtime.
+
 ## Documentation
 
 `AGENTS.md` files define how work must be performed. The `docs/` directory defines what the project is, what has been implemented and how phases are accepted.
