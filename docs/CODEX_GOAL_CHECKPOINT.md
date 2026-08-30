@@ -1,66 +1,37 @@
 # Codex Goal Checkpoint — Phase 6UI-A2E
 
-Last updated: **2026-08-30 (Asia/Shanghai)**
+Last updated: **2026-08-30 17:20 (Asia/Shanghai)**
 
 ## Goal
 
-Continue from the real repository baseline until UI-A2E is `COMPLETE / VALIDATED / SEALED`, then seal UI-A2 if and only if every required predecessor and final-head gate has current evidence. Do not enter UI-A3 or Phase 7. Do not push.
+Continue from the real repository baseline until UI-A2E is `COMPLETE / VALIDATED / SEALED`, then seal UI-A2 only after every required predecessor and final-head gate has current evidence. Do not enter UI-A3 or Phase 7. Do not push.
 
-Goal execution status: **IN PROGRESS — PIE PENDING** as of 2026-08-30. The former Custom Event pin-edit blocker no longer applies: the `ExistingStatusWidget : WBP_BattleStatus Object Reference` parameter and the full StatusChanged update/reduction Blueprint wiring are now saved on the formal HUD asset (SHA-256 `3DE33310...`). Remaining predecessor work is the StatusChanged Cancel rebuild (`RebuildStatusIcons`) and real Increase/Reduction PIE evidence. Do not redefine or skip the predecessor gate.
+Goal execution status: **IN PROGRESS — STATUS UPDATE/REDUCTION PIE BLOCKED BY HIDDEN EDITOR**. The StatusChanged update/reduction Router, playback, and Cancel restoration are saved and compiled. Real visual PIE acceptance is still missing, so this slice is not `VALIDATED` and Status removal remains predecessor-locked.
 
-## Repository Baseline
+## Current Repository State
 
 ```text
-Branch: codex/A2E
-Current HEAD: 51d95b5f87ea66acfa25581d6645aac7e5c93e58
-Initial git status: clean
+Branch: codex/A2E-continue
+Current HEAD: 03393e4afa654cd89dbfc7d6043e2f2e2a4f2d05
+HEAD subject: docs(ui-a2e): sync checkpoint and validation log to saved StatusChanged update wiring
+Working tree before this checkpoint update:
+ M Content/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.uasset
 ```
 
-Saved-asset and Unreal MCP graph inspection confirmed the original breakpoint (superseded — see Post-Checkpoint Baseline Update below):
+Current saved assets:
 
 ```text
-WBP_BattleHUD StatusChanged creation       saved / previously PIE validated
-FindStatusWidgetByIdentity                 saved / not yet used by Router
-StatusChanged update/reduction             not wired at checkpoint start
-StatusChanged removal and later slices     not allowed yet
-```
-
-## Post-Checkpoint Baseline Update (2026-08-30)
-
-The repository moved past the pin-edit blocker since the checkpoint was written:
-
-```text
-PR #3 merge c6257d7 / local 3038136   replaced the HUD asset with dec5b66...
-                                       (added ExistingStatusWidget parameter only)
-User Editor work (2026-08-30)          wired + saved the update/reduction path
-WBP_BattleHUD.uasset (16:24)           SHA-256 3DE33310...  (saved wiring)
-WBP_BattleStatus.uasset (15:16)        SHA-256 205180C8...  (recompiled/saved)
-PR #4 merge ba94d5b / main             now contains the wired asset
-```
-
-UE 5.8 commandlet inspection of the saved graphs confirms the real current state:
-
-```text
-PlayStatusChangedPresentation   ExistingStatusWidget : WBP Battle Status Object Reference
-                                Branch(bCreated): True = creation (Create -> SetStatusView
-                                -> IsPlayer AddChild -> Timer); False = update/reduction
-                                (ActiveStatusPresentationWidget = ExistingStatusWidget
-                                -> ExistingStatusWidget.SetStatusView -> Timer)
-BeginPresentationRecordPlayback  StatusChanged: TargetKnown -> bRemoved -> bCreated
-                                -> FindStatusWidgetByIdentity -> Found; update/reduction
-                                calls PlayStatusChangedPresentation(StatusChanged, Token,
-                                FoundStatusWidget); not-found / removed / unknown-target
-                                all Return false
-FindStatusWidgetByIdentity      now called by Router for update/reduction
-Cancel (StatusChanged)          still ActiveStatusPresentationWidget -> RemoveFromParent
-                                (RebuildStatusIcons restoration NOT done)
-Finish (StatusChanged)          NotifyPresentationRecordFinished -> clear widget (correct)
-No new PIE evidence             StatusChanged update/reduction still not VALIDATED
+WBP_BattleHUD.uasset       SHA-256 5CA39898BCF501C24243A704A54B8F92C96AA4FB0DEC59C04C3A24FA3571BD4E
+                           length 1,847,067; saved 2026-08-30 17:03:09
+WBP_BattleStatus.uasset    SHA-256 205180C8...; unchanged by this bounded edit
+Unreal PIE                 stopped (`IsPIERunning=false`)
 ```
 
 ## Last Completed Acceptance Boundary
 
-`StatusChanged creation` is the latest owner-confirmed Blueprint/PIE acceptance boundary recorded in `docs/UIA2EBlueprintValidationLog.md`.
+`StatusChanged creation` remains the latest owner-confirmed Blueprint/PIE acceptance boundary recorded in `docs/UIA2EBlueprintValidationLog.md`.
+
+The current update/reduction slice has reached **WIRED / COMPILED / SAVED / PIE PENDING**, not `VALIDATED`.
 
 ## Current Validation Matrix
 
@@ -71,104 +42,135 @@ No new PIE evidence             StatusChanged update/reduction still not VALIDAT
 | BlockChanged | VALIDATED (historical owner PIE evidence) |
 | CardZoneChanged — PlayArea to destination | VALIDATED (historical owner PIE evidence) |
 | StatusChanged creation | VALIDATED (historical owner PIE evidence) |
-| StatusChanged update/reduction | WIRED on formal asset (`3DE33310...`); PIE evidence PENDING — USER ACTION REQUIRED (Cancel rebuild + PIE) |
-| StatusChanged removal and later Blueprint slices | PENDING / predecessor-locked |
+| StatusChanged update/reduction | WIRED / COMPILED / SAVED on `5CA39898...`; real visual PIE PENDING — USER ACTION REQUIRED |
+| StatusChanged removal and later slices | PENDING / predecessor-locked |
+| Global Cancel / Reconcile | Status update/reduction Cancel restoration saved; full cross-record acceptance PENDING |
 | Scenario A-E final PIE | PENDING |
-| A2D5 final-head exactly 6 tests | PENDING current-HEAD rerun |
-| Phase6R final-head 100/100 | PENDING current-HEAD rerun |
-| Shipping exclusion final-head | PENDING current-HEAD rerun |
+| A2D5 final-head exactly 6 tests | current working tree focused run 6/6 PASS; not final-head because changes are uncommitted |
+| Phase6R final-head 100/100 | PENDING |
+| Shipping exclusion final-head | PENDING |
 
-Historical Automation results remain recorded in `docs/Validation.md`; they are not treated as final-head evidence for a future changed HEAD.
+Historical Automation results in `docs/Validation.md` are not final-head evidence for this changed working tree.
 
-## Completed Work in This Goal Run
+## Completed Work
 
-- Read the external goal objective and registered the durable Goal.
-- Read the root and relevant Source/UI/Presentation/Test/Content agent contracts.
-- Inspected required phase, validation, remaining-steps and saved-Blueprint documents.
-- Verified branch, clean status, HEAD and recent history.
-- Confirmed live Unreal MCP access, including Blueprint graph, Editor/PIE and Automation toolsets.
-- Loaded the saved `WBP_BattleHUD` asset and read the real `BeginPresentationRecordPlayback`, `EventGraph` and `FindStatusWidgetByIdentity` graphs.
-- Locked the current edit boundary to StatusChanged update/reduction only.
-- Used all four configured Luna roles: repository exploration, bounded implementation attempt, validation/environment discovery, and independent architecture review.
-- Confirmed the attempted Blueprint edit did **not** change or save the disk asset. `WBP_BattleHUD.uasset` remains SHA-256 `359614384F7E461F30563F3E4AC2CF0DC389AA46C3B990BB949ECBD3385CB259`.
-- On the resumed run, re-verified HEAD `51d95b5f87ea66acfa25581d6645aac7e5c93e58`, branch `codex/A2E`, and the checkpoint asset hash.
-- Detected that an implementation autosave had temporarily replaced the working-tree HUD asset with the creation-only hash `F8261191...`; preserved that ignored autosave under `Saved/CodexInspection/` and restored the exact clean HEAD LFS object. A UE 5.8 commandlet inspection confirmed that the divergent autosave was loadable but contained no update/reduction wiring.
-- Regenerated Visual Studio project files using UE 5.8's bundled .NET 10 runtime and ran the exact documented Editor build command successfully.
-- Retried the bounded Blueprint edit in a newly launched visible Unreal Editor. The Editor MCP could select the Custom Event and add an unnamed input row, but both hidden and visible Slate sessions failed to focus the input text field reliably. The node-level Blueprint API does not support adding Custom Event pins. No whole-graph DSL rewrite was retried.
-- Stopped the exact Editor process and discarded all unsaved in-memory/Autosave-only work. The formal disk asset remains at the clean checkpoint hash and `git status` contains no HUD asset change.
-- Loaded the latest Auto1 package read-only through a UE 5.8 commandlet and inspected its real graph. The attempted `+` action created only `NewParam : Boolean` on `PlayStatusChangedPresentation`; the synchronized call node also has `NewParam : Boolean`. It contains no `ExistingStatusWidget` string or target object-reference pin and must not be restored over the formal asset.
-- Inspected the local UE 5.8 EditorToolset and engine source. `UK2Node_EditablePinBase::CreateUserDefinedPin` can create the required Custom Event output parameter natively, but it and `RenameUserDefinedPin` are not Python-reflected `UFUNCTION`s. `UBlueprintGraphEditor::AddNodePin` only handles supported dynamic-pin interfaces and cannot edit `UK2Node_CustomEvent`. No reliable current Python/MCP endpoint exists for the required named object-reference parameter.
-- Revalidated the same blocker for the third consecutive Goal turn at 2026-08-30 12:02: HEAD and git status are unchanged, the formal HUD remains SHA-256 `359614384F7E461F30563F3E4AC2CF0DC389AA46C3B990BB949ECBD3385CB259`, no Unreal Editor process is running, and no new Compile/PIE evidence exists. This satisfies the Goal's strict blocked-audit threshold.
+- Read the root and applicable Content, Source, Presentation, UI, and Tests `AGENTS.md` files plus all required UI-A2E/UI-A2 phase, validation, snapshot, and checkpoint documents.
+- Verified the merged baseline `main@03393e4` and continued on local branch `codex/A2E-continue` without overwriting unrelated work.
+- Used all four project Luna roles for repository exploration, bounded implementation attempt, validation/PIE discovery, and independent architecture review.
+- Confirmed the saved update/reduction Router uses exact identity `TargetPresentationId + StatusId + RuntimeSequence`, reuses `ExistingStatusWidget`, applies the frozen StatusView, and returns false on missing identity.
+- Rejected the reported `FindStatusWidgetByIdentity` ordering blocker after inspecting actual exec connections: both target-selection setters feed the consuming Branch; `GetChildrenCount(GetTargetStatusWrapBox)` is a pure dependency evaluated from the selected local value. The helper was not edited.
+- Reworked `CancelPresentationRecordPlayback` incrementally in the formal HUD asset:
+  - preserves timer/card/damage/opacity cleanup;
+  - removes the Status `ActiveStatusPresentationWidget -> RemoveFromParent` path;
+  - when `ActivePresentationType == StatusChanged` and ViewModel is valid, calls `RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)` then `RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)`;
+  - clears `ActiveStatusPresentationWidget`, type, and token through the common tail;
+  - does not Notify and does not re-compare the incoming Cancel token.
+- Compiled `WBP_BattleStatus`, then `WBP_BattleHUD`, and saved both assets. The HUD was clean in Editor immediately after save and the on-disk hash became `5CA39898...`.
+- Started real PIE on `/Game/SlayTheSpireDemo/Maps/L_BattleTest`. The new run reached `Battle started`, `Player turn is gameplay request-eligible`, and `ReadStateReady ... PresentationAvailable=true` at 09:03:44 UTC, but produced no Status commit.
+- Confirmed this Editor session exposes no capturable Slate window and no arbitrary UObject UFUNCTION invocation endpoint. Stopped PIE cleanly instead of claiming visual acceptance.
+- A2D5 discovery returned exactly six required test names; test Luna ran all six on the current working tree and obtained 6/6 PASS in 0.108884 s. This is focused regression evidence only, not final-head and not Blueprint/PIE acceptance.
 
 ## Changed Files / Assets
 
-At this checkpoint:
-
 ```text
-docs/CODEX_GOAL_CHECKPOINT.md              added by primary Sol
-WBP_BattleHUD.uasset                       unchanged on disk / not saved
-AGENTS.md                                  pre-existing user modification; preserved
+Content/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.uasset
+docs/CODEX_GOAL_CHECKPOINT.md
+docs/UIA2EBlueprintValidationLog.md
+docs/Validation.md
+docs/WBPSavedBlueprintSnapshot.md
 ```
+
+No C++ source, Gameplay authority, Presentation Record/Envelope contract, map, or test was changed.
 
 ## Local Commits
 
-None created in this Goal run yet.
+Baseline already contains:
+
+```text
+ec43e27 feat(ui-a2e): wire StatusChanged update/reduction playback and update snapshot
+03393e4 docs(ui-a2e): sync checkpoint and validation log to saved StatusChanged update wiring
+```
+
+No new checkpoint commit has yet been created for the `5CA39898...` Cancel restoration edit.
 
 ## Latest Architecture Review
 
-Baseline independent review found no P0/P1 blocker for the current Status update/reduction slice. It found one pre-existing P2 risk to resolve before the later zone/shuffle boundary: `DrawCardAction.cpp:127` and `ShuffleDeckAction.cpp:67` recover `ABattleManager` from `Queue->GetOuter()` instead of explicit context. No post-change review exists because no production/asset change was saved.
+- Baseline C++ review found no P0/P1 Gameplay/Presentation separation violation in this slice.
+- Existing frozen snapshot, exact token/Cancel boundary, and exact status identity reducers remain intact.
+- The reported helper ordering P1 was resolved by actual pin/exec inspection and required no asset change.
+- Post-change independent read-only review of saved/loaded `5CA39898...` reports P0=0 and behavior-architecture P1=0. It confirmed Router lifecycle routing, exact identity, update-only `SetStatusView`, Cancel rebuild/no-Notify, and normal Finish Notify-before-clear. The remaining P1 is acceptance-only: missing real Status PIE.
+- Known out-of-scope P2 remains: `DrawCardAction.cpp` and `ShuffleDeckAction.cpp` recover `ABattleManager` from `Queue->GetOuter()`. Do not fix it inside this Status slice.
 
 ## Latest Build / Automation / PIE Evidence
 
 ```text
-UE 5.8 project-file generation: PASS; Result Succeeded; exit 0; 7.64 s
-Editor build: PASS; target up to date; 0 actions; Result Succeeded; exit 0; 1.16 s
-A2D5 via current Editor session: 6 passed / 0 failed / 0 skipped
-PIE in this Goal run: NOT RUN
-Shipping exclusion in this Goal run: NOT RUN
+Blueprint compile — WBP_BattleStatus: actual compile invoked; no compiler error logged
+Blueprint compile — WBP_BattleHUD: actual compile at 2026-08-30 09:02:59 UTC; no compiler error logged
+Blueprint save: PASS; HUD disk hash changed to 5CA39898... and was clean immediately after save
+PIE startup: PASS only for startup/ReadStateReady
+Status update/reduction PIE acceptance: NOT RUN / no current-run Status commit / no visual evidence
+A2D5 discovery: exactly 6 tests
+A2D5 current working tree focused run: 6 passed / 0 failed / 0 skipped; 0.108884 s
+A2D5 final-head: PENDING after accepted changes are committed
+Phase6R final-head: NOT RUN
+Shipping exclusion final-head: NOT RUN
 ```
 
-The A2D5 run is useful Editor-session baseline evidence only: the loaded DLL/PDB timestamp (`2026-08-30 01:11:27`) predates current HEAD, so it is not final-head evidence and must not be used to seal.
+The old 08:44 UTC Gameplay logs showing Weak/Vulnerable creation and TurnEnd reduction belong to an earlier PIE run and do not prove the current saved Blueprint playback.
+
+The reviewer observed `is_dirty=true` after graph inspection. Primary Sol immediately called `save_assets` for `WBP_BattleStatus` and `WBP_BattleHUD`, received `true`, then rechecked `WBP_BattleHUD is_dirty=false`. The disk hash remained exactly `5CA39898...`, proving the inspection did not diverge the saved package.
 
 ## Unresolved Failures
 
-- The implementation Luna tested an original-DSL round trip on `FindStatusWidgetByIdentity`; `write_graph_dsl` rejected it with `Could not connect pin ViewModel to self`. A re-read matched the original graph and no `save_assets` call occurred. Do not use whole-graph DSL rewrite for this complex Blueprint.
-- Unreal Editor recovery is complete; no Editor process remains and the formal asset is clean. The remaining blocker was capability-specific: Slate Inspector cannot reliably focus/type into the Custom Event input name/type controls, and the incremental Blueprint node API rejects adding pins to a Custom Event. **RESOLVED by user Editor work on 2026-08-30**: the `ExistingStatusWidget` parameter and the update/reduction wiring are now saved (`3DE33310...`). The remaining failures are limited to the StatusChanged Cancel rebuild and missing PIE evidence.
-- Independent architecture review rejected a HUD member-variable transport, converting the Custom Event to a function, duplicating the playback path, and adding a temporary Editor C++/plugin helper in the current slice. Those options either introduce implicit mutable call state or expand the locked asset-only boundary. The correct minimum remains the explicit `ExistingStatusWidget` pin edited in the real Blueprint Editor.
-- Validation workflow/count documentation has a discrepancy: the discovered per-prefix test counts reported by the test Luna total 131 while the locked final gate says Phase6R exactly 100/100. Resolve from the actual final-head discovered/run set before sealing; do not silently rewrite the locked acceptance number.
+- The hidden Unreal Editor has no capturable Slate window. MCP can start/stop PIE and read logs, but cannot click the HUD or verify that update/reduction preserves a single exact-identity widget without flashback.
+- MCP exposes no arbitrary UObject UFUNCTION invocation endpoint for `ABattleManager::TestApplyPhase5AStatuses()`; this run therefore could not produce the deterministic creation + same-sequence reapply scenario.
+- The implementation Luna's two whole-graph DSL attempts failed (`Could not connect pin ViewModel to self`; one also had an unclosed parenthesis). Neither attempt saved the asset. Do not repeat whole-graph DSL rewriting for this complex HUD.
+- Status removal, EnergyChanged, remaining CardZoneChanged paths, shuffle, terminal, full Cancel/Reconcile, Scenario A-E, final snapshot, final-head Automation, and both Seals remain pending.
 
 ## USER ACTION REQUIRED
 
-The `ExistingStatusWidget` parameter and the update/reduction wiring are now saved on the formal asset (SHA-256 `3DE33310...`); the original pin-edit blocker is resolved. Perform the following remaining predecessor work in the real Unreal Editor; do not implement removal or later slices:
+Use a visible Unreal Editor with the saved asset `/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD` at hash `5CA39898...`. Do not edit Status removal or later slices.
 
-1. In `CancelPresentationRecordPlayback`, keep the timer/card/damage/opacity cleanup. Remove/disable only the status path `ActiveStatusPresentationWidget -> RemoveFromParent`. Before clearing `ActivePresentationType`, test `ActivePresentationType == StatusChanged`; if true and `ViewModel` is valid, call in order `RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)` and `RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)`. Then clear `ActiveStatusPresentationWidget` and continue the existing common tail. Do not Notify and do not compare the incoming Cancel token again.
-2. Compile/save in this order: `WBP_BattleStatus` (0 errors, Save), then `WBP_BattleHUD` (0 errors, Save). Close/reopen the HUD and confirm the saved graph contains no residual `NewParam : Boolean`.
-3. Provide real PIE evidence for: creation regression; reapply/increase with `bCreated=false`, `bRemoved=false`, same `TargetPresentationId + StatusId + RuntimeSequence`, one widget and no flashback; non-removing reduction/TurnEndDecay with `AmountAfter > 0`, same widget, no removal/duplicate/flashback; following records continue and final state is Idle/not Resolving. PIE is required for `VALIDATED`, not optional. If only Compile/Save can be completed, the saved wiring may be reviewed but the predecessor gate remains pending.
+1. Open `WBP_BattleHUD`, function/event `CancelPresentationRecordPlayback`, and confirm the saved Status path exactly:
+   - condition: `ActivePresentationType == StatusChanged`;
+   - valid object: `ViewModel`;
+   - call 1: `RebuildStatusIcons`, `Statuses = ViewModel.Player.Statuses`, `TargetWrapBox = WB_PlayerStatuses`;
+   - call 2: `RebuildStatusIcons`, `Statuses = ViewModel.Enemy.Statuses`, `TargetWrapBox = WB_EnemyStatuses`;
+   - then `ActiveStatusPresentationWidget = None`, `ActivePresentationType = None`, `ActivePresentationToken = None` through the common cleanup tail;
+   - no `RemoveFromParent` on the Status path, no `NotifyPresentationFinished`, and no second comparison against the incoming `Token`.
+2. Compile/save in order: `WBP_BattleStatus` (0 errors, Save), then `WBP_BattleHUD` (0 errors, Save). Reopen the HUD once and confirm the graph persists.
+3. PIE `/Game/SlayTheSpireDemo/Maps/L_BattleTest` and capture screenshots/video plus Output Log for:
+   - creation regression;
+   - reapply/increase with `bCreated=false`, `bRemoved=false`, same `TargetPresentationId + StatusId + RuntimeSequence`, exactly one widget, frozen `AmountAfter`, no duplicate/removal/A→B→A flashback;
+   - non-removing TurnEnd reduction with `AmountAfter > 0`, same widget, no duplicate/removal/flashback;
+   - a following record completes and Controller returns Idle/not Resolving.
+4. Preferred deterministic Gameplay trigger while the queue is idle in PlayerTurn: invoke `ABattleManager::TestApplyPhase5AStatuses()` once. Expected logs include `Strength#N Amount=2 Created=true`, then the same `Strength#N Amount=3 Created=false`, plus Enemy `Weak#N Amount=2 Created=true`. End Turn should then log `ReduceStatusAction committed for Weak#N Amount 2 -> 1 Reason=3`.
 
-The full node-by-node reference remains `docs/UIA2EDetailedImplementationSteps.zh-CN.md`, sections 1-3. The normal `FinishPresentationRecord` StatusChanged path must stay as saved: Notify the exact active token, then clear `ActiveStatusPresentationWidget`, without RemoveFromParent or rebuilding old values.
+Do not report PIE PASS from logs alone; the one-widget/no-flashback UI observation is required.
 
 ## Next Exact Action
 
-After the user completes the actions above and replies `继续` (with screenshots/log evidence if available):
+When visible-Editor evidence is available, or the user replies `继续` from an environment with a visible Editor:
 
-1. Re-check HEAD, git status and the saved HUD disk hash (expected `3DE33310...`); inspect the real saved graphs rather than trusting the written claim.
-2. Verify the StatusChanged Cancel rebuild and the normal Finish path against the locked topology above; verify Blueprint compile/save evidence.
-3. Run or complete real Creation regression, Increase/Reapply and non-removing Reduction/TurnEndDecay PIE.
-4. Obtain post-change architecture review and focused validation evidence.
-5. Only if every current acceptance item passes, record `StatusChanged update/reduction = VALIDATED` and advance the allowed edit boundary to StatusChanged removal.
+1. Verify HEAD, git status, and the saved HUD hash; inspect the real saved graph.
+2. Run/collect Creation, Increase/Reapply, and non-removing Reduction PIE evidence above.
+3. Record the final architecture review result and focused validation result.
+4. Only if every item passes, mark `StatusChanged update/reduction = VALIDATED` and advance the edit boundary to StatusChanged removal.
+5. If evidence is still unavailable, keep the predecessor gate pending and do not repeat repository-baseline investigation.
 
 ## Next Allowed Edit Boundary
 
 ```text
 Asset: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD
-Behavior: StatusChanged update/reduction router, playback, and cancel restoration only
-Forbidden in this boundary: Status removal, EnergyChanged, remaining zone paths, shuffle, terminal, A3
+Behavior: StatusChanged update/reduction acceptance only
+Allowed edit if a defect is proven: Router/playback/helper/Cancel restoration for this same slice
+Forbidden: Status removal, EnergyChanged, remaining zone paths, shuffle, terminal, A3
 ```
 
 ## Remaining Ordered Slices
 
 ```text
-StatusChanged update/reduction acceptance
+StatusChanged update/reduction PIE acceptance
 StatusChanged removal acceptance
 EnergyChanged acceptance
 CardZoneChanged remaining paths
@@ -185,10 +187,10 @@ UI-A2 seal
 
 ## Do Not Repeat
 
-- Do not treat the newly saved update/reduction wiring as VALIDATED; only StatusChanged creation has PIE evidence.
+- Do not treat saved/compiled update/reduction wiring as `VALIDATED` without real visual PIE.
 - Do not treat `UIA2EDetailedImplementationSteps.zh-CN.md` as completion evidence.
-- Do not implement removal or later slices before update/reduction has the required PIE acceptance (Compile/Save is already done on `3DE33310...`).
-- Do not treat historical Automation totals as final-head results.
-- Do not repeat the failed whole-graph DSL round trip or save the currently dirty in-memory Blueprint object.
-- Do not rerun baseline repository exploration; the next work begins with the StatusChanged Cancel rebuild and the required PIE evidence.
+- Do not implement Status removal or later slices before this predecessor gate passes.
+- Do not treat historical Automation or old PIE logs as final-head/current-asset evidence.
+- Do not repeat whole-graph DSL rewriting of `WBP_BattleHUD`.
+- Do not redesign `FindStatusWidgetByIdentity`; actual exec/pure dependency order has already been inspected.
 - Do not enter UI-A3 or Phase 7 and do not push.

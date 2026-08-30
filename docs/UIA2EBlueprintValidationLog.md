@@ -246,7 +246,7 @@ BlockChanged            VALIDATED
 CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
 StatusChanged creation  VALIDATED
 
-StatusChanged update    WIRED / PIE PENDING (Blueprint saved; no PIE evidence yet)
+StatusChanged update    WIRED / COMPILED / SAVED / PIE PENDING
 StatusChanged removal   NOT WIRED
 EnergyChanged           NOT WIRED
 DeckShuffled            NOT WIRED
@@ -269,7 +269,7 @@ TargetPresentationId
 + RuntimeSequence
 ```
 
-Wired behavior (saved, awaiting PIE):
+Wired behavior (saved as HUD SHA-256 `5CA39898...`, awaiting PIE):
 
 ```text
 existing formal status row is located by exact identity
@@ -283,16 +283,36 @@ existing formal status row is located by exact identity
 
 The implementation must not identify a status only by array index or by `StatusId` alone, and must not mutate the ViewModel status array from Blueprint.
 
-Remaining predecessor work before `update/reduction` can be marked VALIDATED:
+The required StatusChanged Cancel restoration is also saved and compiled:
 
 ```text
-StatusChanged Cancel: replace ActiveStatusPresentationWidget -> RemoveFromParent
-with RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
-and RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses),
-then clear ActiveStatusPresentationWidget; no Notify.
+ActivePresentationType == StatusChanged
+→ IsValid(ViewModel)
+→ RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
+→ RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)
+→ common cleanup clears ActiveStatusPresentationWidget / Type / Token
+→ no RemoveFromParent on the Status path; no Notify; no second Token comparison
+```
+
+Compile/save evidence on 2026-08-30:
+
+```text
+WBP_BattleStatus compile invoked; no compiler error logged
+WBP_BattleHUD compile logged at 09:02:59 UTC; no compiler error logged
+WBP_BattleHUD saved 17:03:09 Asia/Shanghai
+SHA-256 5CA39898BCF501C24243A704A54B8F92C96AA4FB0DEC59C04C3A24FA3571BD4E
+```
+
+Post-change independent architecture review reported P0=0 and behavior-architecture P1=0. After that read-only inspection reported the loaded HUD dirty, the assets were saved again successfully; `WBP_BattleHUD is_dirty=false` and the disk hash remained exactly `5CA39898...`.
+
+Remaining predecessor evidence before `update/reduction` can be marked VALIDATED:
+
+```text
 Real PIE: creation regression; reapply/increase (same identity, one widget,
 no flashback); non-removing reduction/TurnEndDecay (AmountAfter > 0, same widget).
 ```
+
+The 2026-08-30 MCP PIE run reached `ReadStateReady` only. The Editor had no capturable Slate window and produced no current-run Status commit, so this is explicitly **not PIE acceptance evidence**. Earlier Gameplay logs are not evidence for the current saved Blueprint.
 
 Cancellation of an update/reduction presentation must restore the formal status list from the current historical ViewModel state rather than leaving the temporary `AmountAfter` visible.
 

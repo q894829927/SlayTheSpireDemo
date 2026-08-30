@@ -42,6 +42,24 @@ Phase6R expanded aggregate 100/100 PASS
 Shipping exclusion PASS
 ```
 
+## Current UI-A2E Goal-Run Evidence — 2026-08-30
+
+On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
+
+```text
+Terminal.Defeat             PASS
+Terminal.ResolutionFault   PASS
+Terminal.Victory           PASS
+CardStatusIntegration      PASS
+StatusLifecycle            PASS
+TurnCycleOrdering          PASS
+
+6 passed / 0 failed / 0 skipped
+total duration 0.108884 s
+```
+
+This is current-working-tree focused regression evidence only. It is not `final-head`, does not validate Blueprint/UMG playback, and does not replace the required StatusChanged PIE evidence.
+
 ## Trusted Manual Evidence
 
 - Normal UI player → enemy → player turn loop passed in PIE.
