@@ -16,7 +16,7 @@ PLANNED / NOT WIRED
 = 已确定的下一步方案，但当前 .uasset 尚未完成
 ```
 
-本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。当前版本依据 2026-08-30 读取到的磁盘资产更新；此前通过 Unreal MCP Editor 写入并保存的 Damage、BlockChanged、StatusChanged 等接线及其既有编译/PIE证据仍保留。本轮同步 StatusChanged Cancel 恢复链、实际连线、节点数与资产时间；虽启动过 PIE，但只到 `ReadStateReady` 且没有可视 Status 证据，不计为 PIE acceptance。其余未涉及的 WBP 仍沿用原只读快照状态。
+本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。当前版本依据 2026-08-30 读取到的磁盘资产更新；此前通过 Unreal MCP Editor 写入并保存的 Damage、BlockChanged、StatusChanged 等接线及其既有编译/PIE证据仍保留。本轮同步了当前工作区最新保存的 `WBP_BattleHUD` 与 `WBP_BattleCard`：HUD 的 `BeginPresentationRecordPlayback` 现为 91 节点（原 83）、`EventGraph` 现为 413 节点（原 409），且 **StatusChanged 移除（`bRemoved=true`）已被 Router 与 `PlayStatusChangedPresentation` 接管**（复用精确身份 Widget 并 Collapse）；卡牌初始化已由 `PreConstruct` 改为 `Construct` 驱动。随后通过 Unreal MCP Editor 清理了 `ExistingStatusWidget → SetStatusView.self` 的重复直连，保留经 `ActiveStatusPresentationWidget` 输出的唯一数据路径，并重新编译、保存 HUD；当前 HUD SHA-256 为 `574FF058...`。本轮仍不构成任何 PIE acceptance。其余未涉及的 WBP 仍沿用原只读快照状态。
 
 `.uasset` 始终是最终事实来源；本文是便于阅读的人工快照。若编辑器中存在尚未保存的改动，它们不属于本快照。
 
@@ -24,10 +24,10 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-30 17:03:09 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 83 nodes；`FindStatusWidgetByIdentity` 47 nodes；`EventGraph` 409 nodes |
-| `WBP_BattleCard` | 2026-08-19 22:35:56 | 20 | `EventGraph` 28 nodes |
-| `WBP_BattleStatus` | 2026-08-30 15:16:20 | 4 | `SetStatusView` 19 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
-| `WBP_BattleTargetButton` | 2026-08-19 18:01:13 | 3 | `EventGraph` 12 nodes |
+| `WBP_BattleHUD` | 2026-08-30 21:50:03 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 91 nodes；`FindStatusWidgetByIdentity` 47 nodes；`EventGraph` 413 nodes |
+| `WBP_BattleCard` | 2026-08-30 19:55:27 | 20 | `EventGraph` 28 nodes |
+| `WBP_BattleStatus` | 2026-08-30 16:38:23 | 4 | `SetStatusView` 19 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
+| `WBP_BattleTargetButton` | 2026-08-30 20:50:06 | 3 | `EventGraph` 12 nodes |
 | `WBP_CombatantPresentation` | 2026-08-21 00:55:38 | 10 | `EventGraph` 25 nodes |
 | `WBP_CombatantTooltip` | 2026-08-20 16:48:35 | 6 | `EventGraph` 3 nodes |
 | `WBP_StatusTooltip` | 2026-08-20 21:25:07 | 2 | `RebuildTooltip` 10 nodes；`EventGraph` 3 nodes |
@@ -187,16 +187,13 @@ Combatant_EnemyPresentation.OnTargetRequested(TargetId)
 → WBP_BattleHUD.SelectTarget(TargetId)
 ```
 
-当前图中还有两组断开的历史节点：
+当前图中还保留一组断开的历史节点：`RefreshCombatantPresentations` 中旧的 Player/Enemy 手动遍历与临时变量映射，Function Entry 已改接新 helper，因此旧组没有执行入口。
 
-1. `EventGraph` 中旧 `ClearChildren → ForEach LegalTargets → Create WBP_BattleTargetButton`，其入口 `ClearChildren.execute` 未连接。
-2. `RefreshCombatantPresentations` 中旧的 Player/Enemy 手动遍历与临时变量映射，Function Entry 已改接新 helper，因此旧组没有执行入口。
-
-它们不会运行，也不会影响当前目标选择。后续可在蓝图编辑器中框选删除以降低维护噪音；不要把 Sequence `Then 12` 重新接回旧路径。
+HUD `EventGraph` 中旧的 `ClearChildren → ForEach LegalTargets → Create WBP_BattleTargetButton` 组已经不存在；独立的 `WBP_BattleTargetButton` 资产仍保留，但 HUD 当前不再实例化它。上述历史节点不会运行，也不会影响当前目标选择；不要把 Sequence `Then 12` 重新接回旧路径。
 
 ### 3.5 UI-A2E committed-presentation 连线 — CURRENT SAVED / PARTIAL
 
-当前保存的资产已经把 `BeginPresentationRecordPlayback` 的入口接入 Record Type Switch，并完成了 `CardPlayed`、`CardZoneChanged (PlayArea → destination)`、`Damage`、`BlockChanged` 与 `StatusChanged`（创建 + 更新/减少）的异步播放骨架；其余 Record 类型仍保留 C++ immediate fallback，因此尚不能认定为完整可运行的 A2E Router。
+当前保存的资产已经把 `BeginPresentationRecordPlayback` 的入口接入 Record Type Switch，并完成了 `CardPlayed`、`CardZoneChanged (PlayArea → destination)`、`Damage`、`BlockChanged` 与 `StatusChanged`（创建 + 更新/减少 + 移除）的异步播放骨架；其余 Record 类型仍保留 C++ immediate fallback，因此尚不能认定为完整可运行的 A2E Router。
 
 新增 Designer 控件：
 
@@ -269,9 +266,9 @@ CardZoneChanged
 
 该分支只接受 `FromZone = PlayArea` 的记录，用于结束当前 PlayArea 表现卡牌；其他 Zone 变化或任一校验失败均返回 `false`。
 
-其余 `None / ResolutionFault / Victory / Defeat / EnergyChanged / DeckShuffled` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。`Damage`、`BlockChanged` 与 `StatusChanged` 分支已在本次增量中接入正式 Blueprint 播放路径，详见下文；StatusChanged 的移除仍保留 fallback。
+其余 `None / ResolutionFault / Victory / Defeat / EnergyChanged / DeckShuffled` 分支当前仍直接接 `Return false`，交给 C++ Controller 的 immediate fallback。`Damage`、`BlockChanged` 与 `StatusChanged` 分支已在本次增量中接入正式 Blueprint 播放路径，详见下文；StatusChanged 的移除已由 `bRemoved=true` 路径接管（按精确身份查找现有 Widget 后播放移除表现）。
 
-因此当前保存版本已经有五条可达的 Blueprint 播放入口（CardPlayed、CardZoneChanged、Damage、BlockChanged、StatusChanged 创建），加上 StatusChanged 更新/减少路径，但还没有覆盖完整 Record 类型集合。
+因此当前保存版本已经有五条可达的 Blueprint 播放入口（CardPlayed、CardZoneChanged、Damage、BlockChanged、StatusChanged 创建），加上 StatusChanged 更新/减少与移除路径，但还没有覆盖完整 Record 类型集合。
 
 #### PlayCardPresentation
 
@@ -383,7 +380,7 @@ PlayBlockChangedPresentation(BlockChanged, Token)
 
 该事件直接消费冻结 Record 中的 `BlockAfter`，不使用 `BlockBefore + BlockDelta` 重算，也不读取或修改 Gameplay `ViewModel`。目标已在 Router 中确认属于 Player 或 Enemy，因此事件内 Player 比较为真时走 Player 文本，否则走 Enemy 文本；两条路径共用现有的 `StartPresentationFinishTimer`。
 
-#### PlayStatusChangedPresentation — CURRENT SAVED / 创建 + 更新/减少
+#### PlayStatusChangedPresentation — CURRENT SAVED / 创建 + 更新/减少 + 移除
 
 自定义事件输入（已保存）：
 
@@ -394,7 +391,7 @@ PlayStatusChangedPresentation
     ExistingStatusWidget : WBP_BattleStatus Object Reference
 ```
 
-当前保存的播放流程（先走公共前缀，再按 `bCreated` 分流）：
+当前保存的播放流程（先走公共前缀，再按 `bRemoved` 分流，其次按 `bCreated` 分流）：
 
 ```text
 PlayStatusChangedPresentation(StatusChanged, Token, ExistingStatusWidget)
@@ -405,35 +402,42 @@ PlayStatusChangedPresentation(StatusChanged, Token, ExistingStatusWidget)
    （冻结视图 = StatusId / RuntimeSequence / DisplayName /
      DescriptionAfter / AmountAfter / bUseAtlasIcon / UVOffset /
      UVScale / TrimOffset / TrimScale）
-→ Branch(bCreated)
-   ├── true（创建路径）
-   │   → CreateWidget WBP_BattleStatus
-   │      OwningPlayer = GetOwningPlayer
-   │   → ActiveStatusPresentationWidget = created widget
-   │   → WBP_BattleStatus.SetStatusView(StatusView)
-   │   → Branch(IsPlayer = TargetPresentationId == Player.PresentationId)
-   │      ├── true  → WB_PlayerStatuses.AddChild(ActiveStatusPresentationWidget)
-   │      └── false → WB_EnemyStatuses.AddChild(ActiveStatusPresentationWidget)
+→ Branch(bRemoved)
+   ├── true（移除路径）
+   │   → ActiveStatusPresentationWidget = ExistingStatusWidget
+   │   → ExistingStatusWidget.SetVisibility(Collapsed)
    │   → StartPresentationFinishTimer
    │
-   └── false（更新 / 减少路径）
-       → ActiveStatusPresentationWidget = ExistingStatusWidget
-       → ExistingStatusWidget.SetStatusView(StatusView)
-       → StartPresentationFinishTimer
+   └── false → Branch(bCreated)
+       ├── true（创建路径）
+       │   → CreateWidget WBP_BattleStatus
+       │      OwningPlayer = GetOwningPlayer
+       │   → ActiveStatusPresentationWidget = created widget
+       │   → WBP_BattleStatus.SetStatusView(StatusView)
+       │   → Branch(IsPlayer = TargetPresentationId == Player.PresentationId)
+       │      ├── true  → WB_PlayerStatuses.AddChild(ActiveStatusPresentationWidget)
+       │      └── false → WB_EnemyStatuses.AddChild(ActiveStatusPresentationWidget)
+       │   → StartPresentationFinishTimer
+       │
+       └── false（更新 / 减少路径）
+           → ActiveStatusPresentationWidget = ExistingStatusWidget
+           → ExistingStatusWidget.SetStatusView(StatusView)
+           → StartPresentationFinishTimer
 ```
 
-`bCreated` 通过 Reroute（Knot）接入 `Branch` 条件；`ExistingStatusWidget` 通过 Reroute（Knot）接入 `ActiveStatusPresentationWidget`，并直接作为 `SetStatusView` 的 `self`。
+`bRemoved` 通过 Reroute（Knot）直接接入 `Branch` 条件；`bCreated` 通过 Reroute（Knot）接入内层 `Branch` 条件；`ExistingStatusWidget` 通过 Reroute（Knot）写入 `ActiveStatusPresentationWidget`。更新路径的 `SetStatusView.self` 只消费该变量节点的输出，不再保留 `ExistingStatusWidget` 到同一输入的重复直连；移除路径仍对同一精确身份 Widget 执行 `SetVisibility(Collapsed)`。
 
 约束保持：
 
 ```text
 创建路径   = 允许 CreateWidget / AddChild
 更新路径   = 禁止 CreateWidget / AddChild / RemoveFromParent / 重算 Amount / 修改 ViewModel.Statuses
-两条路径   = 共用同一个冻结 MakePresentationStatusView(StatusChanged)
+移除路径   = 复用精确匹配到的现有状态 Widget，只 SetVisibility(Collapsed)，不 RemoveFromParent、不重算 Amount、不修改 ViewModel.Statuses
+三条路径   = 共用同一个冻结 MakePresentationStatusView(StatusChanged)
             = 共用 StartPresentationFinishTimer（0.5 s，Looping = false，Event = FinishPresentationRecord）
 ```
 
-`MakePresentationStatusView` 只从冻结 payload 复制状态身份与显示字段；播放路径不查询或修改 Gameplay `ViewModel`，也不重新计算状态数值。更新路径直接复用精确匹配到的现有正式状态 Widget，不新建第二个状态图标，也不写入 `ActiveStatusId` / `ActiveStatusAmount` 等运行时状态数组。事件内 `IsPlayer` 比较只用于创建路径选择两个状态 WrapBox（目标已在 Router 中确认属于 Player/Enemy）。
+`MakePresentationStatusView` 只从冻结 payload 复制状态身份与显示字段；播放路径不查询或修改 Gameplay `ViewModel`，也不重新计算状态数值。更新路径直接复用精确匹配到的现有正式状态 Widget，不新建第二个状态图标；移除路径同样复用现有 Widget 并隐藏，不写回 `ActiveStatusId` / `ActiveStatusAmount` 等运行时状态数组。事件内 `IsPlayer` 比较只用于创建路径选择两个状态 WrapBox（目标已在 Router 中确认属于 Player/Enemy）。
 
 #### StartPresentationFinishTimer — CURRENT SAVED
 
@@ -446,7 +450,7 @@ StartPresentationFinishTimer
 → ReturnValue → ActivePresentationTimer
 ```
 
-两条目标分支都调用该事件，继续沿用现有 Playback Token、Timer Handle 和完成回调语义。`FinishPresentationRecord → Damage` 未改变：仍只隐藏伤害文本、按 `bDamageTargetIsPlayer` 将对应角色 RenderOpacity 恢复为 `1.0`，再通知 `NotifyPresentationRecordFinished`。`Cancel Presentation Record Playback` 也未恢复 `HPBefore/BlockBefore` 等历史值，只清理 Timer、隐藏伤害文本、恢复角色透明度并清空本地播放状态。
+创建、更新/减少与移除三条路径都调用该事件，继续沿用现有 Playback Token、Timer Handle 和完成回调语义。`FinishPresentationRecord → Damage` 未改变：仍只隐藏伤害文本、按 `bDamageTargetIsPlayer` 将对应角色 RenderOpacity 恢复为 `1.0`，再通知 `NotifyPresentationRecordFinished`。`Cancel Presentation Record Playback` 也未恢复 `HPBefore/BlockBefore` 等历史值，只清理 Timer、隐藏伤害文本、恢复角色透明度并清空本地播放状态。
 
 #### Damage Router 校验 — CURRENT SAVED
 
@@ -486,7 +490,7 @@ Switch EBattlePresentationRecordType → BlockChanged
 
 两个 `PresentationId` 比较均使用 `Name → String` 后的 `EqualExactly(String)`。只有 Player/Enemy 任一匹配时才把该异步 Record 交给 Blueprint；未匹配时返回 `false`，不会启动错误的计时器。
 
-#### StatusChanged Router 校验 — CURRENT SAVED / 创建 + 更新/减少
+#### StatusChanged Router 校验 — CURRENT SAVED / 创建 + 更新/减少 + 移除
 
 `BeginPresentationRecordPlayback` 的 `StatusChanged` 分支现在按生命周期分流（目标、移除、创建、身份查找）：
 
@@ -500,33 +504,35 @@ Switch EBattlePresentationRecordType → StatusChanged
    ├── false → Return false
    └── true
        → Branch(bRemoved)
-          ├── true → Return false（Removal 后续阶段实现）
+          ├── true（移除路径）
+          │   → FindStatusWidgetByIdentity(
+          │       TargetPresentationId, StatusId, RuntimeSequence)
+          │   → Branch(Found)
+          │      ├── false → Return false
+          │      └── true
+          │          → PlayStatusChangedPresentation(
+          │              Record.StatusChanged, FunctionEntry.Token, FoundStatusWidget)
+          │          → Return true
           └── false
               → Branch(bCreated)
                  ├── true
                  │   → PlayStatusChangedPresentation(
-                 │       Record.StatusChanged,
-                 │       FunctionEntry.Token,
-                 │       None)
+                 │       Record.StatusChanged, FunctionEntry.Token, None)
                  │   → Return true
                  └── false
                      → FindStatusWidgetByIdentity(
-                         TargetPresentationId,
-                         StatusId,
-                         RuntimeSequence)
+                         TargetPresentationId, StatusId, RuntimeSequence)
                      → Branch(Found)
                         ├── false → Return false
                         └── true
                             → PlayStatusChangedPresentation(
-                                Record.StatusChanged,
-                                FunctionEntry.Token,
-                                FoundStatusWidget)
+                                Record.StatusChanged, FunctionEntry.Token, FoundStatusWidget)
                             → Return true
 ```
 
-`StatusChanged` payload 与 `Token` 通过 Reroute（Knot）分别接到两个 `PlayStatusChangedPresentation` 调用节点。`TargetKnown` 由 Player/Enemy 两个 `PresentationId` 的 `Name → String → EqualExactly(String)` 比较取 `OR` 组成；`bRemoved = true` 仍返回 `false` 交给 C++ fallback；更新/减少时找不到精确身份的状态 Widget 也返回 `false`，不会伪装已经开始播放。因此当前已接管的生命周期是：创建（`bCreated=true && bRemoved=false`）与更新/减少（`bCreated=false && bRemoved=false` 且身份匹配），移除仍保留 fallback。
+`StatusChanged` payload 与 `Token` 通过 Reroute（Knot）分别接到三个 `PlayStatusChangedPresentation` 调用节点。`TargetKnown` 由 Player/Enemy 两个 `PresentationId` 的 `Name → String → EqualExactly(String)` 比较取 `OR` 组成；`bRemoved = true` 与更新/减少一样先按精确身份查找状态 Widget，找不到即返回 `false`，不会伪装已经开始播放。因此当前已接管的生命周期是：创建（`bCreated=true && bRemoved=false`）、更新/减少（`bCreated=false && bRemoved=false` 且身份匹配）与移除（`bRemoved=true` 且身份匹配），三条路径都通过同一个 `PlayStatusChangedPresentation` 播放。
 
-#### FindStatusWidgetByIdentity — CURRENT SAVED / 已被 Router 用于更新/减少
+#### FindStatusWidgetByIdentity — CURRENT SAVED / 已被 Router 用于更新/减少与移除
 
 当前函数图 `FindStatusWidgetByIdentity`（47 nodes）保存了状态控件查找逻辑：
 
@@ -552,7 +558,7 @@ Input:
 → 返回 Found / StatusWidget
 ```
 
-该函数现已被 `BeginPresentationRecordPlayback` 的 `StatusChanged` 分支调用（更新/减少路径）：`bCreated = false && bRemoved = false` 时用它按精确身份定位现有正式状态 Widget；找到才启动 Blueprint 更新表现，找不到则 `Return false` 交给 C++ immediate fallback。身份查找规则仍为 `TargetPresentationId + StatusId + RuntimeSequence` 三要素，不按数组索引或 `StatusId` 单独定位。移除路径（`bRemoved = true`）尚未调用该函数。
+该函数现已被 `BeginPresentationRecordPlayback` 的 `StatusChanged` 分支调用（更新/减少与移除路径）：`bCreated = false && bRemoved = false` 或 `bRemoved = true` 时用它按精确身份定位现有正式状态 Widget；找到才启动 Blueprint 表现，找不到则 `Return false` 交给 C++ immediate fallback。身份查找规则仍为 `TargetPresentationId + StatusId + RuntimeSequence` 三要素，不按数组索引或 `StatusId` 单独定位。
 
 #### FinishPresentationRecord
 
@@ -582,10 +588,10 @@ CardZoneChanged
    └── invalid → 直接继续
 → NotifyPresentationRecordFinished
 
-StatusChanged（创建 / 更新 / 减少）
+StatusChanged（创建 / 更新 / 减少 / 移除）
 → NotifyPresentationRecordFinished
 → ActiveStatusPresentationWidget = None
-（正常完成不 RemoveFromParent；状态图标留在目标 WrapBox，后续 HUD 刷新负责重建）
+（正常完成不 RemoveFromParent；状态图标留在目标 WrapBox，移除路径通过 Collapsed 隐藏，后续 HUD 刷新负责重建）
 ```
 
 其余 Record Type 在该 Switch 上没有完成分支。`BlockChanged` 完成分支不恢复 `BlockBefore`，只通过统一通知结束当前播放。
@@ -625,15 +631,16 @@ A2E PlayPresentationRecord Router
 = StatusChanged `bCreated=true` 已按目标创建 WBP_BattleStatus，并写入冻结 StatusView
 = StatusChanged 创建仅接受 TargetKnown AND bCreated AND NOT bRemoved
 = StatusChanged 更新/减少（bCreated=false）通过 FindStatusWidgetByIdentity 精确身份定位现有 Widget，复用它显示冻结 AmountAfter，不新建图标
-= StatusChanged Router 采用 TargetKnown → bRemoved → bCreated → Found 的生命周期分流；移除（bRemoved=true）仍走 fallback
+= StatusChanged 移除（bRemoved=true）同样通过 FindStatusWidgetByIdentity 精确身份定位现有 Widget，复用并 SetVisibility(Collapsed)，不新建图标、不 RemoveFromParent
+= StatusChanged Router 采用 TargetKnown → bRemoved → bCreated → Found 的生命周期分流；创建/更新/移除均已在 Blueprint 接管
 = StatusChanged 正常完成通知后清空 ActiveStatusPresentationWidget；取消时从 ViewModel 当前历史状态依次重建 Player/Enemy 状态列表，再经统一尾部清空引用，且不 Notify
 = HP 百分比使用 `ToFloat(HPAfter) / Max(ToFloat(MaxHP), 1.0)`，未重算伤害或修改 ViewModel
 = Player/Enemy 共用 `StartPresentationFinishTimer`（0.5 秒，非循环，完成事件为 `FinishPresentationRecord`）
 = CardPlayed / CardZoneChanged / Damage / BlockChanged / StatusChanged Timer Handle 已保存
 = Cancel Playback 清理骨架已保存
-= Energy / Shuffle / Terminal 仍未接入 Blueprint 播放；StatusChanged 移除仍走 fallback
+= Energy / Shuffle / Terminal 仍未接入 Blueprint 播放
 = 尚未完成全部 Record routing
-= 已完成 Blueprint compile 与资产保存（WBP_BattleStatus 2026-08-30 15:16、WBP_BattleHUD 2026-08-30 17:03，HUD SHA-256 `5CA39898...`）；本轮 PIE 只到 ReadStateReady，无当前 Status commit 或可视证据（既有 Strike/Damage/BlockChanged PIE 记录仍保留；StatusChanged 更新/减少的 PIE 待验证）
+= 已完成 Blueprint compile 与资产保存（WBP_BattleStatus 2026-08-30 16:38、WBP_BattleHUD 2026-08-30 21:50，HUD SHA-256 `574FF058...`；WBP_BattleCard 2026-08-30 19:55）；本轮清理了 StatusChanged 更新路径的重复 `self` 数据线并重新保存 HUD，不计为 PIE acceptance（既有 Strike/Damage/BlockChanged PIE 记录仍保留；StatusChanged 更新/减少/移除的 PIE 待验证）
 ```
 
 普通 Strike 的浮动 PIE 验证记录（2026-08-29）：
@@ -705,7 +712,7 @@ OwnerHUD : WBP_BattleHUD reference
 ### 4.2 EventGraph
 
 ```text
-PreConstruct
+Construct
 → Break CardView
 → Sequence
    ├── DisplayName → Txt_CardName
@@ -718,7 +725,7 @@ Btn_Card.OnClicked
 → OwnerHUD.SelectCard(CardView.RuntimeId)
 ```
 
-动态伤害、格挡和状态数值已经通过 `CardView.Description` 的最终 `FText` 进入控件；WBP 不自行计算 Gameplay 数值。
+当前保存版本中卡牌初始化由 `Construct` 事件驱动（此前为 `PreConstruct`）；`PreConstruct` / `Tick` 入口当前未连接任何执行流。动态伤害、格挡和状态数值已经通过 `CardView.Description` 的最终 `FText` 进入控件；WBP 不自行计算 Gameplay 数值。
 
 ## 5. WBP_BattleStatus — CURRENT SAVED
 
@@ -763,7 +770,7 @@ OwnerHUD   : WBP_BattleHUD reference
 EventGraph：
 
 ```text
-PreConstruct
+Construct
 → Break TargetView
 → DisplayName → Txt_TargetName
 
@@ -979,7 +986,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage、BlockChanged 与 `StatusChanged`（创建 + 更新/减少）播放路径、`Txt_DamagePresentation` 动态伤害文本、Player/Enemy 格挡文本、WBP_BattleStatus 创建表现、`ExistingStatusWidget` 更新表现，以及 Status Cancel 的双侧 `RebuildStatusIcons` 恢复链记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、BlockChanged、StatusChanged 创建与更新/减少、Timer Handle 和当前 Status Cancel 恢复已保存，但 Energy/Shuffle/Terminal、StatusChanged 移除和最终全局 Cancel/Reconcile 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD`（2026-08-30 17:03，SHA-256 `5CA39898...`）与 `WBP_BattleStatus`（2026-08-30 15:16）已重新 Compile 并保存；本轮 PIE 只到 `ReadStateReady`，没有当前 Status commit 或可视证据，不能认定 StatusChanged 更新/减少通过 PIE。文中此前 Strike/Damage 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
+本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage、BlockChanged 与 `StatusChanged`（创建 + 更新/减少 + 移除）播放路径、`Txt_DamagePresentation` 动态伤害文本、Player/Enemy 格挡文本、WBP_BattleStatus 创建表现、`ExistingStatusWidget` 更新/移除表现，以及 Status Cancel 的双侧 `RebuildStatusIcons` 恢复链记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、BlockChanged、StatusChanged 创建/更新/减少/移除、Timer Handle 和当前 Status Cancel 恢复已保存，但 Energy/Shuffle/Terminal 和最终全局 Cancel/Reconcile 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD`（2026-08-30 21:50，SHA-256 `574FF058...`）、`WBP_BattleStatus`（2026-08-30 16:38）与 `WBP_BattleCard`（2026-08-30 19:55）为磁盘最新保存状态；本轮已通过 UE 编辑器接口重新编译并保存 HUD，但没有 PIE 运行，不能认定 StatusChanged 更新/减少/移除通过 PIE。文中此前 Strike/Damage 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
 
 ## 12. 后续修改时的同步清单
 

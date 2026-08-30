@@ -173,17 +173,20 @@ PresentationUnavailable
 
 # 2. StatusChanged Update / Reduction
 
-这一阶段完成后目标状态：
+当前保存资产的真实状态：
 
 ```text
 StatusChanged creation          VALIDATED
-StatusChanged update/reduction  VALIDATED
-StatusChanged removal           NOT WIRED
+StatusChanged update/reduction  WIRED / COMPILED / SAVED / PIE PENDING
+StatusChanged removal           WIRED / COMPILED / SAVED / PIE PENDING
 ```
 
-## 2.1 修改 PlayStatusChangedPresentation
+`WBP_BattleHUD` 已经落地本节的 Blueprint 接线；下面的步骤保留为连线复核和
+PIE 验收依据，不应再次执行整张图重写。
 
-给现有 Custom Event 增加输入：
+## 2.1 复核 PlayStatusChangedPresentation
+
+现有 Custom Event 已保存以下输入：
 
 ```text
 ExistingStatusWidget
@@ -207,7 +210,7 @@ ActivePresentationToken = Token
 → MakePresentationStatusView(StatusChanged)
 ```
 
-增加：
+复核：
 
 ```text
 Branch(bCreated)
@@ -267,7 +270,7 @@ Record icon / atlas metadata
 
 ## 2.2 重构 StatusChanged Router
 
-当前只接受 creation 的 Router 改为：
+Router 目标结构（当前保存的 `WBP_BattleHUD` 已实现，以下用于复核）：
 
 ```text
 StatusChanged
@@ -279,8 +282,23 @@ TargetKnown?
 └ true
     ↓
     bRemoved?
-    ├ true → Return false
-    │         // Removal 下一阶段实现
+    ├ true
+    │   → FindStatusWidgetByIdentity(
+    │       TargetPresentationId,
+    │       StatusId,
+    │       RuntimeSequence
+    │     )
+    │   ↓
+    │   Found?
+    │   ├ false → Return false
+    │   └ true
+    │       → PlayStatusChangedPresentation(
+    │           Record.StatusChanged,
+    │           Token,
+    │           FoundStatusWidget
+    │         )
+    │       → Return true
+    │
     └ false
         ↓
         bCreated?
@@ -322,14 +340,15 @@ TargetKnown?
 
 ## 2.3 修改 StatusChanged Cancel
 
-当前 creation-only 的：
+原 creation-only 的：
 
 ```text
 ActiveStatusPresentationWidget
 → RemoveFromParent
 ```
 
-不能直接用于 update，因为 update 时它指向正式状态 Widget。
+不能直接用于 update，因为 update 时它指向正式状态 Widget。当前保存的 Cancel
+已经改为按下面的历史 ViewModel 重建路径处理：
 
 StatusChanged Cancel 改为从当前历史 ViewModel 重建正式状态区：
 
@@ -496,6 +515,9 @@ StatusChanged update/reduction = VALIDATED
 # 3. StatusChanged Removal
 
 只有 Update/Reduction PIE 通过后进入。
+
+当前 HUD 已保存本节的最小 Removal 实现；本节剩余工作是按下述身份规则完成 PIE
+验收，除非验收发现缺陷，不要重复添加 Router 或播放节点。
 
 ## 3.1 Router 接管 bRemoved=true
 

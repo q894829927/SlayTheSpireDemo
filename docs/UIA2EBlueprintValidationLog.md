@@ -183,7 +183,7 @@ Validated contract:
 
 - Creation accepts only a known Player/Enemy target.
 - Creation accepts only `bCreated = true && bRemoved = false`.
-- Update/reduction is now wired in the saved Blueprint (`Branch(bCreated)` update path + Router identity lookup) but is **not yet PIE-validated**; removal still returns `false` and uses C++ immediate fallback.
+- Update/reduction and removal are wired in the saved Blueprint (`Branch(bCreated)` update path plus Router identity lookup for both non-removed and removed rows), but neither slice is **PIE-validated** yet.
 - The visual is built from frozen Record payload data; Blueprint does not query `UStatusInstance` or `UStatusData`.
 - `StatusId` and `RuntimeSequence` are preserved in the presentation DTO.
 - Amount uses `AmountAfter`; description uses `DescriptionAfter`.
@@ -212,6 +212,29 @@ Therefore:
 ```text
 StatusChanged creation Blueprint Playback = VALIDATED
 ```
+
+### StatusChanged — update/reduction and removal
+
+Status: **WIRED / COMPILED / SAVED / PIE PENDING**
+
+The current saved HUD routes both non-creation lifecycles by the exact identity
+`TargetPresentationId + StatusId + RuntimeSequence`:
+
+```text
+TargetKnown
+→ bRemoved?
+   ├ true  → FindStatusWidgetByIdentity → Found → PlayStatusChangedPresentation(FoundWidget)
+   └ false → bCreated?
+              ├ true  → PlayStatusChangedPresentation(None)
+              └ false → FindStatusWidgetByIdentity → Found → PlayStatusChangedPresentation(FoundWidget)
+```
+
+The removal playback reuses the found widget and sets it to `Collapsed`; it does not
+create a second status row or call `RemoveFromParent`. The update path uses the frozen
+`StatusView` and the single `ActiveStatusPresentationWidget` output for `SetStatusView.self`.
+The exact-token completion and StatusChanged Cancel rebuild remain shared with the
+creation path. These are saved-asset facts only; real PIE observation of update,
+reduction and removal is still required.
 
 ## Shared async / cancellation contract
 
@@ -247,7 +270,7 @@ CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
 StatusChanged creation  VALIDATED
 
 StatusChanged update    WIRED / COMPILED / SAVED / PIE PENDING
-StatusChanged removal   NOT WIRED
+StatusChanged removal   WIRED / COMPILED / SAVED / PIE PENDING
 EnergyChanged           NOT WIRED
 DeckShuffled            NOT WIRED
 Victory                 NOT WIRED
@@ -269,7 +292,7 @@ TargetPresentationId
 + RuntimeSequence
 ```
 
-Wired behavior (saved as HUD SHA-256 `5CA39898...`, awaiting PIE):
+Wired behavior (saved as HUD SHA-256 `574FF058...`, awaiting PIE):
 
 ```text
 existing formal status row is located by exact identity
@@ -298,12 +321,13 @@ Compile/save evidence on 2026-08-30:
 
 ```text
 WBP_BattleStatus compile invoked; no compiler error logged
-WBP_BattleHUD compile logged at 09:02:59 UTC; no compiler error logged
-WBP_BattleHUD saved 17:03:09 Asia/Shanghai
-SHA-256 5CA39898BCF501C24243A704A54B8F92C96AA4FB0DEC59C04C3A24FA3571BD4E
+WBP_BattleHUD compile: UE Blueprint tool returned successfully after the duplicate-link cleanup
+WBP_BattleHUD save: AssetTools returned true; is_dirty=false
+WBP_BattleHUD saved 21:50:03 Asia/Shanghai
+SHA-256 574FF05882D4876831B373D60D23CA3DFF564AE19E4AD143B77CE4724E48EAA3
 ```
 
-Post-change independent architecture review reported P0=0 and behavior-architecture P1=0. After that read-only inspection reported the loaded HUD dirty, the assets were saved again successfully; `WBP_BattleHUD is_dirty=false` and the disk hash remained exactly `5CA39898...`.
+The earlier independent architecture review reported P0=0 and behavior-architecture P1=0. This turn changed only the redundant Blueprint data link described above; after the edit the saved HUD was re-read, `WBP_BattleHUD is_dirty=false`, and the disk hash is `574FF058...`.
 
 Remaining predecessor evidence before `update/reduction` can be marked VALIDATED:
 
@@ -316,7 +340,7 @@ The 2026-08-30 MCP PIE run reached `ReadStateReady` only. The Editor had no capt
 
 Cancellation of an update/reduction presentation must restore the formal status list from the current historical ViewModel state rather than leaving the temporary `AmountAfter` visible.
 
-After update/reduction is validated, implement removal using the same exact identity. Only after full `StatusChanged` validation should mainline proceed to:
+After update/reduction is validated, perform PIE acceptance for the already-saved removal path using the same exact identity. Only after full `StatusChanged` validation should mainline proceed to:
 
 ```text
 EnergyChanged + EndTurn
