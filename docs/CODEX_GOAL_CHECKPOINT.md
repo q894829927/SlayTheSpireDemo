@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Phase 6UI-A2E
 
-Last updated: **2026-08-30 17:20 (Asia/Shanghai)**
+Last updated: **2026-08-30 17:35 (Asia/Shanghai)**
 
 ## Goal
 
@@ -12,10 +12,10 @@ Goal execution status: **IN PROGRESS — STATUS UPDATE/REDUCTION PIE BLOCKED BY 
 
 ```text
 Branch: codex/A2E-continue
-Current HEAD: 03393e4afa654cd89dbfc7d6043e2f2e2a4f2d05
-HEAD subject: docs(ui-a2e): sync checkpoint and validation log to saved StatusChanged update wiring
-Working tree before this checkpoint update:
- M Content/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.uasset
+Current HEAD: a097ab4d9ed04030c5c1c7e5807f24c955719cdd
+HEAD subject: chore(ui-a2e): checkpoint status cancel restoration
+Working tree after this durable metadata refresh:
+ M docs/CODEX_GOAL_CHECKPOINT.md
 ```
 
 Current saved assets:
@@ -89,9 +89,10 @@ Baseline already contains:
 ```text
 ec43e27 feat(ui-a2e): wire StatusChanged update/reduction playback and update snapshot
 03393e4 docs(ui-a2e): sync checkpoint and validation log to saved StatusChanged update wiring
+a097ab4 chore(ui-a2e): checkpoint status cancel restoration
 ```
 
-No new checkpoint commit has yet been created for the `5CA39898...` Cancel restoration edit.
+Commit `a097ab4` contains the saved `5CA39898...` Cancel restoration, synchronized validation/snapshot documents, architecture-review result, and focused A2D5 evidence. This file has one intentional uncommitted metadata refresh so a resumed agent can see the exact post-commit HEAD and status.
 
 ## Latest Architecture Review
 
