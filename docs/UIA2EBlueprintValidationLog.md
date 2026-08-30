@@ -1,6 +1,6 @@
 # UI-A2E Blueprint Playback Validation Log
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
 
 This file records owner-confirmed Blueprint/PIE validation evidence for UI-A2E so later work does not regress or accidentally re-open already validated slices.
 
@@ -183,7 +183,7 @@ Validated contract:
 
 - Creation accepts only a known Player/Enemy target.
 - Creation accepts only `bCreated = true && bRemoved = false`.
-- Update/reduction/removal still return `false` and use C++ immediate fallback.
+- Update/reduction is now wired in the saved Blueprint (`Branch(bCreated)` update path + Router identity lookup) but is **not yet PIE-validated**; removal still returns `false` and uses C++ immediate fallback.
 - The visual is built from frozen Record payload data; Blueprint does not query `UStatusInstance` or `UStatusData`.
 - `StatusId` and `RuntimeSequence` are preserved in the presentation DTO.
 - Amount uses `AmountAfter`; description uses `DescriptionAfter`.
@@ -246,7 +246,7 @@ BlockChanged            VALIDATED
 CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
 StatusChanged creation  VALIDATED
 
-StatusChanged update    NOT WIRED
+StatusChanged update    WIRED / PIE PENDING (Blueprint saved; no PIE evidence yet)
 StatusChanged removal   NOT WIRED
 EnergyChanged           NOT WIRED
 DeckShuffled            NOT WIRED
@@ -259,9 +259,9 @@ A2E remains **PARTIAL** and must not be marked COMPLETE/SEALED yet.
 
 ## Locked next step
 
-Immediate next implementation target: **StatusChanged amount update / increase / reduction**.
+Immediate next work: **StatusChanged update/reduction PIE acceptance, then removal**.
 
-The next slice must preserve the exact status identity:
+The saved Blueprint now preserves the exact status identity:
 
 ```text
 TargetPresentationId
@@ -269,7 +269,7 @@ TargetPresentationId
 + RuntimeSequence
 ```
 
-Required behavior:
+Wired behavior (saved, awaiting PIE):
 
 ```text
 existing formal status row is located by exact identity
@@ -282,6 +282,17 @@ existing formal status row is located by exact identity
 ```
 
 The implementation must not identify a status only by array index or by `StatusId` alone, and must not mutate the ViewModel status array from Blueprint.
+
+Remaining predecessor work before `update/reduction` can be marked VALIDATED:
+
+```text
+StatusChanged Cancel: replace ActiveStatusPresentationWidget -> RemoveFromParent
+with RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)
+and RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses),
+then clear ActiveStatusPresentationWidget; no Notify.
+Real PIE: creation regression; reapply/increase (same identity, one widget,
+no flashback); non-removing reduction/TurnEndDecay (AmountAfter > 0, same widget).
+```
 
 Cancellation of an update/reduction presentation must restore the formal status list from the current historical ViewModel state rather than leaving the temporary `AmountAfter` visible.
 
