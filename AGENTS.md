@@ -190,57 +190,162 @@ When a meaningful phase changes:
 
 ## Multi-Agent Workflow
 
-The primary Sol agent owns:
+The primary Sol agent remains the sole owner of:
 
 - architecture;
-- phase sequencing;
+- phase sequencing and predecessor gates;
+- edit boundaries;
 - cross-module decisions;
-- integration;
-- conflict resolution;
-- final acceptance.
+- integration and conflict resolution;
+- acceptance claims and final sealing.
 
 Project-scoped custom agents are defined under `.codex/agents/`:
 
-- `repo_explorer`: read-only architecture, dependency, impact and test investigation;
-- `implementation_worker`: one bounded architect-approved write task;
-- `test_runner`: build, Automation, regression and log evidence;
-- `architecture_reviewer`: independent read-only invariant and regression review.
+- `implementation_worker`: primary Blueprint/UMG execution worker for continuous bounded edits;
+- `repo_explorer`: on-demand read-only investigation for a concrete unknown only;
+- `test_runner`: batch-level build/Automation/log validation;
+- `architecture_reviewer`: batch-level independent read-only invariant review.
 
-All project custom subagents use `gpt-5.6-luna` with `max` reasoning effort. Sol remains the sole architecture and integration owner.
+All project custom subagents use `gpt-5.6-luna`. Reasoning effort is role-specific: implementation/review use higher effort, exploration/testing use lower effort. The project agent concurrency limit is intentionally low to reduce duplicated context and quota consumption.
 
-For non-trivial work:
+### Efficiency-first default
 
-1. Inspect the current phase and required predecessor gates.
-2. Delegate independent investigation to one or more `repo_explorer` agents when useful.
-3. Have the primary Sol agent decide architecture, edit boundaries and acceptance criteria.
-4. Delegate at most one overlapping behavior/file set to `implementation_worker`.
-5. Use `test_runner` for focused validation and the required regression evidence.
-6. Use `architecture_reviewer` for an independent review.
-7. Have the primary Sol agent resolve findings, integrate the result and update documentation.
+For current UI-A2E Blueprint work, the default execution combination is:
 
-Good delegation targets include:
+```text
+Primary Sol
++
+implementation_worker
+```
 
-- repository exploration;
-- dependency and impact analysis;
-- test discovery and log analysis;
-- bounded non-overlapping implementation;
-- independent review.
+Do not automatically start all four Luna agents for every slice.
 
-The primary agent must make architecture decisions before delegating implementation that depends on those decisions.
-
-Parallelize independent investigation and validation work. Do not parallelize implementation slices that have explicit phase or behavioral dependencies.
-
-UI-A2E slices remain sequential according to `docs/UIA2ERemainingSteps.zh-CN.md`. In particular, do not implement Status removal, EnergyChanged or later playback slices before the preceding slice reaches its required acceptance boundary.
+Normally keep at most `Primary Sol + 1 Luna` active. A second read-only Luna may be used only when there is a concrete independent unknown that would otherwise block the writer.
 
 Never allow two write-capable agents to modify overlapping files or the same behavioral ownership boundary concurrently.
 
-A subagent does not own architecture. If its task requires changing any of the following, it must return the issue to the primary agent instead of redesigning the system independently:
+### Agent invocation policy
 
-- authoritative state ownership;
-- `BattleActionQueue` semantics;
-- Modifier/Event/Trigger contracts;
-- Gameplay/Presentation boundaries;
-- Presentation Record/Envelope semantics;
-- phase ordering.
+`implementation_worker` is the default subagent during Blueprint-first implementation. Sol may let it continue across several adjacent edits inside one already-approved functional batch when the contracts and predecessor order are clear. Compile and Save each meaningful Blueprint slice, but do not force a full review/test cycle after every small node group.
 
-Subagent completion is not acceptance. The primary agent must review the result and required validation evidence before treating the task as complete.
+`repo_explorer` is not a default predecessor step. Invoke it only for a concrete unknown such as an unclear Blueprint node/function/asset structure, contract ambiguity, ownership question, or specific regression surface. It must not repeat repository baseline investigation or reread facts already captured in `docs/CODEX_GOAL_CHECKPOINT.md`.
+
+`architecture_reviewer` is normally invoked once after a completed functional batch, not after every small Blueprint edit. Review only the final saved batch diff/graph and affected invariants. P0/P1 findings block; P2 findings stay concise and do not block unrelated progress unless they represent a concrete near-term risk.
+
+`test_runner` is normally invoked once after a meaningful functional batch, not after every Blueprint edit. For Blueprint-only slices, Compile/Save and meaningful PIE are the first validation tools. Run focused Automation at batch boundaries when useful. Run Phase6R and Shipping exclusion at final sealing unless Sol explicitly needs an earlier diagnostic run.
+
+### Blueprint-first priority
+
+During UI-A2E implementation, prioritize work in this order:
+
+```text
+actual Blueprint / UMG wiring
+>
+Compile / Save
+>
+meaningful local PIE at an acceptance boundary
+>
+continue the next already-unlocked Blueprint slice
+>
+batch-level architecture review
+>
+batch-level focused Automation
+>
+documentation consolidation
+```
+
+Do not spend most of a Goal run repeatedly reading documentation, rediscovering the repository baseline, rerunning unchanged Automation, or re-reviewing already accepted paths.
+
+When a contract is already explicit in current phase docs/checkpoint and the saved repository state matches it, Sol should assign the edit boundary directly to `implementation_worker` instead of launching a new explorer pass.
+
+### Batch-oriented UI-A2E execution
+
+Use the documented predecessor order, but group work into functional batches to reduce repeated overhead:
+
+```text
+Batch 1 — Status
+StatusChanged update/reduction acceptance
+→ StatusChanged removal implementation + acceptance
+
+Batch 2 — EndTurn / deck presentation
+EnergyChanged
+→ remaining CardZoneChanged paths
+→ DeckShuffled
+
+Batch 3 — Terminal
+Victory
+→ Defeat
+→ ResolutionFault
+
+Batch 4 — Closure
+Global Cancel / Reconcile
+→ Scenario A-E
+→ final saved Blueprint snapshot
+→ final-head Automation / Shipping exclusion
+→ documentation closure
+→ UI-A2E seal
+→ UI-A2 seal
+```
+
+Explicit predecessor gates still apply. Do not skip a gate merely to preserve a batch. However, once a predecessor is actually accepted, continue immediately into the next unlocked slice instead of re-running broad investigation/review/test work.
+
+### Validation cadence
+
+Ordinary Blueprint slice:
+
+```text
+implement
+→ Compile
+→ Save
+→ smallest useful sanity check
+→ continue if the next slice is unlocked
+```
+
+Functional batch boundary:
+
+```text
+meaningful PIE acceptance
+→ one architecture review
+→ one focused validation run when useful
+→ consolidate validation documentation once
+```
+
+Final seal:
+
+```text
+final-head focused tests
+→ required aggregate regression
+→ Shipping exclusion
+→ final snapshot/docs
+→ seal only with real evidence
+```
+
+Subagent completion is not acceptance. Sol remains responsible for deciding whether the real acceptance evidence satisfies the phase contract.
+
+### Resume and checkpoint policy
+
+On Goal resume, default to reading only:
+
+```text
+AGENTS.md
+docs/CODEX_GOAL_CHECKPOINT.md
+git status
+current HEAD
+current Blueprint / relevant contract section
+```
+
+Do not reread the entire detailed implementation manual or repeat the full repository baseline investigation unless the checkpoint is missing, stale, contradictory, or a concrete unknown requires it.
+
+During ordinary node-level work, avoid updating multiple documentation files repeatedly. Update `docs/CODEX_GOAL_CHECKPOINT.md` only when needed for a durable interruption point. Consolidate `UIA2EBlueprintValidationLog.md`, `Validation.md`, and `WBPSavedBlueprintSnapshot.md` at a functional batch acceptance boundary, USER ACTION REQUIRED boundary, or final seal.
+
+If quota/session interruption is approaching:
+
+```text
+finish the smallest coherent edit
+→ Compile/Save if applicable
+→ leave the working tree resumable
+→ update CODEX_GOAL_CHECKPOINT.md with exact next action
+→ stop before starting another dependent large edit
+```
+
+A subagent does not own architecture. If its task requires changing authoritative state ownership, `BattleActionQueue` semantics, Modifier/Event/Trigger contracts, Gameplay/Presentation boundaries, Presentation Record/Envelope semantics, or phase ordering, return the issue to Sol instead of redesigning independently.
