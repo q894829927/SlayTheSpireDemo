@@ -1,6 +1,6 @@
 # Phase 6UI-A2N — R5 Native Playback Kernel
 
-Status: **SOURCE IMPLEMENTED / FOCUSED AUTOMATION PASS / REMAINING UE GATES PENDING**
+Status: **COMPLETE / VALIDATED**
 
 Branch: `a2n/r5-native-playback-kernel`
 Base: `main@1978e1d3abe831dedef95b8bd431a7717def573b`
@@ -96,7 +96,7 @@ clear Native visual timer
 
 It does not historical-restore, dispatch the visual Cancel override, or notify normal completion. The base `NotifyWidgetLost` path remains authoritative for catch-up/fail-safe behavior.
 
-## Focused Editor-only Automation added
+## Focused Editor-only Automation
 
 Prefix:
 
@@ -131,6 +131,61 @@ exact Finish clears local state before base deferred Notify
 NativeDestruct clears local timer/ownership without visual Cancel
 ```
 
+## Build-failure correction retained as evidence
+
+The first local UE5.8 Editor Build attempt failed at the Native finish-timer delegate binding. `FTimerDelegate::CreateUObject` decayed the bound payload by value while the callback accepted `const FPresentationPlaybackToken&`, so the generated delegate signature could not match the member-function pointer.
+
+The fix remained local to R5:
+
+```text
+old:
+FTimerDelegate::CreateUObject(this, &UBattleHUDWidget::FinishNativePresentation, ExpectedToken)
+
+new:
+FTimerDelegate::CreateWeakLambda(this, [this, ExpectedToken]()
+{
+    FinishNativePresentation(ExpectedToken);
+})
+```
+
+`ExpectedToken` remains captured by value, preserving exact-token isolation.
+
+Fix commit:
+
+```text
+21e3f7dca0d72c8687465fce10892e205774f893
+fix(ui-a2n): bind native finish timer with value-captured token
+```
+
+## Final R5 validation evidence — PASS
+
+The user completed the required UE5.8 R5 gates on the corrected branch:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleHUD_Native targeted compile: PASS
+3. SlayTheSpireDemo.Phase6UIA2N.R5 focused Automation: PASS
+4. L_BattleTest_Native minimal PIE smoke: PASS
+```
+
+Focused Automation was run only once after the correction and passed. No R3/R4 or aggregate regression rerun was required.
+
+The manual PIE smoke confirmed:
+
+```text
+battle starts normally
+Native HUD and Hand are present
+card selection -> Cancel returns to an operable state
+EndTurn remains usable
+no crash
+no permanent input lock
+no duplicate Hand
+no blank/abandoned HUD
+immediate fallback remains operable because real Record visuals are still unmigrated
+```
+
+This R5 acceptance does not claim Damage, Energy, Block, Shuffle, CardPlayed, CardZoneChanged, StatusChanged or Terminal Record animation parity. Those Record-specific visuals remain later-phase work.
+
 ## Explicit R6+ exclusion
 
 R5 does not implement:
@@ -153,124 +208,16 @@ Legacy WBP edits
 UI-A3
 ```
 
-## Validation attempt — build fix
-
-The first local UE5.8 Editor Build attempt failed in `BattleHUDWidget.cpp` at the Native finish-timer delegate binding. UE's `FTimerDelegate::CreateUObject` decays bound payload arguments by value, while the callback was declared as `FinishNativePresentation(const FPresentationPlaybackToken&)`; the generated delegate signature therefore could not match the member-function pointer.
-
-The fix is intentionally local to the R5 timer boundary:
-
-```text
-old:
-FTimerDelegate::CreateUObject(this, &UBattleHUDWidget::FinishNativePresentation, ExpectedToken)
-
-new:
-FTimerDelegate::CreateWeakLambda(this, [this, ExpectedToken]()
-{
-    FinishNativePresentation(ExpectedToken);
-})
-```
-
-`ExpectedToken` is still captured by value, preserving the exact-token R5 contract. No R6+ behavior, Record semantics, Controller ownership, Gameplay code or Legacy asset was changed.
-
-Fix commit:
-
-```text
-21e3f7dca0d72c8687465fce10892e205774f893
-fix(ui-a2n): bind native finish timer with value-captured token
-```
-
-The focused R5 Automation was subsequently reported PASS by the user. This records only that actual evidence; the corrected Editor Build result and targeted `WBP_BattleHUD_Native` compile are not separately inferred here.
-
-## AUTOMATED GATES
-
-### Gate A — Editor Build
-
-Status: **NOT SEPARATELY CONFIRMED IN THE CURRENT EVIDENCE**
-
-```powershell
-& "E:\Unreal engine\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
-  SlayTheSpireDemoEditor Win64 Development `
-  -Project="E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
-  -WaitMutex -NoHotReload
-```
-
-Expected: `Result: Succeeded`.
-
-### Gate B — targeted Native Blueprint compile
-
-Status: **NOT YET CONFIRMED**
-
-Compile only:
-
-```text
-WBP_BattleHUD_Native
-```
-
-Expected:
-
-```text
-no inherited member collision
-no BindWidget error
-no Blueprint compile error
-```
-
-Do not run `CompileAllBlueprints` for this ordinary R5 gate.
-
-### Gate C — focused R5 Automation
-
-Status: **PASS — user-confirmed**
-
-Command:
-
-```powershell
-& "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" `
-  "E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
-  -ExecCmds="Automation RunTests SlayTheSpireDemo.Phase6UIA2N.R5; Quit" `
-  -unattended -nopause `
-  -testexit="Automation Test Queue Empty" `
-  -log
-```
-
-Accepted evidence:
-
-```text
-SlayTheSpireDemo.Phase6UIA2N.R5: PASS
-```
-
-No R3/R4 or aggregate regression rerun is required. Passing Gates are sticky.
-
-## MANUAL PIE GATE — PENDING
-
-After the remaining required UE gates are confirmed, run one minimal smoke only:
-
-```text
-Map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
-
-1. Start PIE.
-2. Confirm the battle HUD and Hand appear normally.
-3. Select one card, then Cancel.
-4. If convenient, perform one normal EndTurn.
-5. Confirm:
-   - no crash;
-   - no permanent input lock;
-   - no duplicate Hand;
-   - no blank/abandoned HUD;
-   - immediate fallback still permits continued interaction.
-```
-
-Do not test R6+ visuals as R5 acceptance. Missing Damage/CardPlayed/Energy/Block/Status/Terminal animations are expected at this stage.
-
 ## Acceptance state
 
-Current:
-
 ```text
-R5 SOURCE IMPLEMENTED
-R5 FOCUSED AUTOMATION PASS
-EDITOR BUILD RESULT NOT SEPARATELY CONFIRMED
-WBP_BattleHUD_Native COMPILE PENDING
-MANUAL PIE PENDING
+R0 COMPLETE / VALIDATED
+R1 COMPLETE / VALIDATED
+R2 COMPLETE / VALIDATED
+R3-A COMPLETE / VALIDATED
+R4 COMPLETE / VALIDATED
+R5 COMPLETE / VALIDATED
 R6 NOT STARTED
 ```
 
-Only after the remaining required local gates actually pass may the repository checkpoint and trusted validation evidence be advanced to `R5 COMPLETE / VALIDATED`.
+R5 is closed. The next phase, when explicitly started, is R6 — Energy / Block / Shuffle committed-presentation visuals.
