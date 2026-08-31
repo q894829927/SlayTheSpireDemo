@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A COMPLETE AND VALIDATED; R4+ NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A / R4 COMPLETE AND VALIDATED; R5+ NOT STARTED**.
 
 ## Current Repository State
 
@@ -28,12 +28,15 @@ R3-A starting HEAD: e0ac820245e8ea93128507f058316e32c5aaf427
 R3-A validation result: PASS
 R3-A review-fix branch: a2n/r3-review-fix
 R3-A review-fix focused result: 4/4 PASS
+R4 working branch: a2n/r4-native-card-hand
+R4 base main: 9981dcebda27ae5be46be608177084412e78b1fb
+R4 validation result: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
-R3-A: COMPLETE / VALIDATED
-R4 and later: NOT STARTED
+R4: COMPLETE / VALIDATED
+R5 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -429,11 +432,68 @@ The review-fix diff does not add Hand/Card ownership, Damage playback, formal St
 
 **R3-A is COMPLETE / VALIDATED.**
 
-## Next Exact Action — R4 Native Card Widget, Hand and Card Input
+## R4 Implementation
 
-The next phase is R4: create the Native Card Widget contract, then migrate Hand
-rebuild and card input. Do not start R4 automatically from this checkpoint.
+R4 moves only formal Hand/Card display and input ownership into the Native stack.
+
+`UBattleCardWidget` now owns only its supplied `FBattleHUDCardView` and the UI request event:
+
+```text
+SetCardView(FBattleHUDCardView)
+GetRuntimeId()
+GetCardId()
+GetCardView()
+OnBattleCardRequested(RuntimeId)
+```
+
+`UBattleHUDWidget::RefreshHand` now rebuilds `HB_Hand` exclusively from `ViewModel.HandCards`, creates `CardWidgetClass` instances, assigns the DTO, binds each formal Card request exactly once, and forwards only the exact RuntimeId through `UBattleHUDWidgetBase::SelectCard`.
+
+The Native Card has no HUD, ViewModel, Gameplay card instance, BattleManager, PresentationController, Record or Envelope reference. The Legacy `OwnerHUD : WBP_BattleHUD` dependency is not reintroduced.
+
+R4 intentionally does not create presentation-only cards and does not migrate any committed Record playback. `BeginPresentationRecordPlayback_Implementation` remains the false/immediate-fallback boundary.
+
+## R4 Validation Evidence — PASS
+
+The user completed the requested UE5.8 R4 acceptance gate on the saved R4 branch:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleCard_Native compile: PASS
+3. WBP_BattleHUD_Native compile: PASS
+4. SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation: PASS
+5. L_BattleTest_Native initial Hand rebuild/display parity: PASS
+6. Card Name / Cost / Type / Description / Art surfaces: PASS
+7. exact RuntimeId formal SelectCard request path: PASS
+8. ChoosingTarget / legal-target highlight / Cancel behavior: PASS
+9. accepted legal-target submission occurs once: PASS
+10. no duplicate dynamic Card callback after refresh/rebuild: PASS
+11. R3 zero-Block badge behavior remains correct: PASS
+12. production L_BattleTest remains on WBP_BattleHUD_C: PASS
+13. Legacy WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus remain unchanged: PASS
+14. BeginPresentationRecordPlayback remains false / unmigrated: PASS
+15. R5 and later remain NOT STARTED: PASS
+```
+
+Focused Editor-only coverage includes:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R4.CardWidget.DTOAndRequest
+```
+
+Detailed R4 implementation and acceptance evidence is recorded in:
+
+```text
+docs/R4NativeCardHandValidation.md
+```
+
+**R4 is COMPLETE / VALIDATED.**
+
+## Next Exact Action — R5 Native Playback Kernel
+
+The next phase is R5. Do not start R5 automatically from this checkpoint.
+
+R5 must establish only the native playback ownership kernel defined by `docs/Phase6UIA2NNativeHUDRefactor.md`; do not implicitly pull R6/R7/R8/R9 Record-specific migration into it.
 
 ## Blockers
 
-No R3-A blocker remains. R4 and all later phases remain NOT STARTED.
+No R4 blocker remains. R5 and all later phases remain NOT STARTED.

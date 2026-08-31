@@ -18,11 +18,11 @@ class UWrapBox;
 class UWidget;
 
 /**
- * Native HUD shell for the A2N migration.
+ * Native HUD ownership boundary for the A2N migration.
  *
- * R3-A owns the frozen static HUD refresh and long-lived input delegate
- * contract. Presentation Record playback remains deliberately unimplemented
- * until the later playback phases.
+ * R3-A owns frozen static HUD refresh and long-lived input delegates. R4 adds
+ * formal Hand rebuild and card-request ownership. Presentation Record playback
+ * remains deliberately unimplemented until R5 and the later per-Record phases.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -47,6 +47,7 @@ protected:
 	) override;
 
 	void RefreshHUDFromViewModel();
+	void RefreshHand();
 	void RefreshCombatants();
 	void RefreshEnergy();
 	void RefreshPileCounts();
@@ -57,6 +58,9 @@ protected:
 	bool RefreshStatusTooltip(
 		UWidget* StatusTooltip,
 		const TArray<FBattleHUDStatusView>& Statuses);
+
+	UFUNCTION()
+	void HandleCardRequested(int32 RuntimeId);
 
 	UFUNCTION()
 	void HandleEndTurnClicked();

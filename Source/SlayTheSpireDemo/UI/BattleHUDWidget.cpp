@@ -146,6 +146,22 @@ void UBattleHUDWidget::NativeDestruct()
 		bNativeDelegatesBound = false;
 	}
 
+	// Dynamic Hand-card delegates are owned by the cards. Remove our bindings
+	// before the panel releases them so no externally retained formal card can
+	// issue a stale request during teardown.
+	if (IsValid(HB_Hand))
+	{
+		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+		{
+			if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
+			{
+				CardWidget->OnBattleCardRequested.RemoveDynamic(
+					this,
+					&UBattleHUDWidget::HandleCardRequested);
+			}
+		}
+	}
+
 	Super::NativeDestruct();
 }
 
@@ -163,6 +179,7 @@ void UBattleHUDWidget::RefreshHUDFromViewModel()
 		return;
 	}
 
+	RefreshHand();
 	RefreshCombatants();
 	RefreshEnergy();
 	RefreshPileCounts();
@@ -170,6 +187,51 @@ void UBattleHUDWidget::RefreshHUDFromViewModel()
 	RefreshFeedback();
 	RefreshEnemyIntent();
 	RefreshTerminalFromViewModel();
+}
+
+void UBattleHUDWidget::RefreshHand()
+{
+	if (!IsValid(ViewModel) || !IsValid(HB_Hand) || CardWidgetClass == nullptr)
+	{
+		return;
+	}
+
+	// Formal Hand cards own one dynamic request binding for exactly their Widget
+	// lifetime. Explicitly detach old children before rebuild so a stale retained
+	// Widget cannot call back into the HUD after it leaves the formal Hand.
+	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+	{
+		if (UBattleCardWidget* ExistingCard = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
+		{
+			ExistingCard->OnBattleCardRequested.RemoveDynamic(
+				this,
+				&UBattleHUDWidget::HandleCardRequested);
+		}
+	}
+	HB_Hand->ClearChildren();
+
+	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
+	{
+		UBattleCardWidget* CardWidget = CreateWidget<UBattleCardWidget>(
+			GetOwningPlayer(),
+			CardWidgetClass);
+		if (!IsValid(CardWidget))
+		{
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("[BattleHUD][Native] Failed to create formal Hand card RuntimeId=%d CardId=%s."),
+				CardView.RuntimeId,
+				*CardView.CardId.ToString());
+			continue;
+		}
+
+		CardWidget->SetCardView(CardView);
+		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
+			this,
+			&UBattleHUDWidget::HandleCardRequested);
+		HB_Hand->AddChildToHorizontalBox(CardWidget);
+	}
 }
 
 void UBattleHUDWidget::RefreshCombatants()
@@ -421,6 +483,14 @@ void UBattleHUDWidget::RefreshTerminalFromViewModel()
 	}
 }
 
+void UBattleHUDWidget::HandleCardRequested(int32 RuntimeId)
+{
+	if (bNativeBindingsValid && RuntimeId != INDEX_NONE)
+	{
+		SelectCard(RuntimeId);
+	}
+}
+
 void UBattleHUDWidget::HandleEndTurnClicked()
 {
 	if (bNativeBindingsValid)
@@ -560,9 +630,9 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	const FPresentationPlaybackToken& /*Token*/
 )
 {
-	// R2 intentionally has no migrated presentation behavior. Returning false
-	// keeps the existing controller immediate-fallback contract. A broken shell
-	// also cannot accidentally claim an asynchronous playback path.
+	// R4 still owns no committed presentation behavior. Returning false keeps
+	// the existing Controller immediate-fallback contract until R5+ migrates the
+	// playback kernel and individual Record types.
 	return false;
 }
 
