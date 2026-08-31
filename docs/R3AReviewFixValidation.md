@@ -1,6 +1,6 @@
 # Phase 6UI-A2N — R3-A Review Fix Validation
 
-Status: **IMPLEMENTED / VALIDATION PENDING**
+Status: **COMPLETE / VALIDATED**
 
 Branch: `a2n/r3-review-fix`
 Base: `main` at `41ca570edf820b418a900c8826d4c424538325d4`
@@ -36,7 +36,7 @@ No new BindWidget member was added, so the R2 23-required / 6-optional binding c
 
 ## Focused Editor-only Automation
 
-A permanent Editor-only focused suite now exercises the four R3 review contracts without requiring Hand/Card migration, real combat completion, Damage playback, or formal Status-row lifecycle:
+A permanent Editor-only focused suite exercises the four R3 review contracts without requiring Hand/Card migration, real combat completion, Damage playback, or formal Status-row lifecycle:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge
@@ -47,61 +47,59 @@ SlayTheSpireDemo.Phase6UIA2N.R3.PresentationUnavailable
 
 The test probes live only in `SlayTheSpireDemoTests` and production runtime does not depend on them.
 
-Run the whole focused prefix with:
-
-```powershell
-& "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" `
-  "E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
-  -ExecCmds="Automation RunTests SlayTheSpireDemo.Phase6UIA2N.R3; Quit" `
-  -unattended -nopause `
-  -testexit="Automation Test Queue Empty" `
-  -log
-```
-
-This suite is newly added and has **not yet been executed on the user's UE5.8 machine**. Do not mark the gates PASS until the actual run reports all four tests successful.
-
-## Review gates still required
-
-The earlier R3-A evidence did not independently close all acceptance items from `docs/Phase6UIA2NNativeHUDRefactor.md`. Do not merge this branch or treat the review fix as validated until the following focused checks pass on the saved branch head:
-
-1. **Frozen status tooltip parity**
-   - the automation injects an identifiable frozen `FBattleHUDStatusView`;
-   - confirm the tooltip bridge receives the exact frozen StatusId, RuntimeSequence, display name and Amount;
-   - confirm inspect shows the optional tooltip and inspect-clear collapses it;
-   - no formal `WB_PlayerStatuses` / `WB_EnemyStatuses` lifecycle behavior is touched.
-
-2. **Terminal historical surface parity**
-   - automation drives the Native HUD from ViewModel state only;
-   - `Outcome=None` => terminal overlay collapsed and outcome text empty;
-   - `Outcome=Victory` => terminal overlay visible with `胜利`;
-   - `Outcome=Defeat` => terminal overlay visible with `战斗失败`;
-   - `Outcome=ResolutionFaulted` => terminal overlay visible with `战斗结算异常`.
-
-3. **PresentationUnavailable rendering parity**
-   - automation enters PresentationUnavailable through `UBattleHUDViewModel::EnterPresentationUnavailable`;
-   - confirm `bInputLocked=true`, `bCanEndTurn=false`, and EndTurn/Confirm/Cancel are disabled or collapsed;
-   - confirm `Txt_Feedback` shows the supplied ViewModel failure reason;
-   - confirm `Outcome` remains `None`, terminal overlay stays collapsed, and no ResolutionFault terminal text is rendered.
-
-4. **Block badge parity**
-   - automation starts Player and Enemy at frozen Block `0` and confirms both complete badge surfaces collapse;
-   - frozen positive Block shows the badge with the exact value;
-   - returning Block to `0` collapses the badge again;
-   - no Damage or BlockChanged Record playback is required.
-
-## Minimal regression boundary
-
-After the focused Automation passes, also confirm:
+The user ran the saved branch head locally on UE 5.8 after rebuilding `SlayTheSpireDemoEditor`. The build completed successfully and the full prefix:
 
 ```text
-Editor build PASS
-WBP_BattleHUD_Native compile PASS
-production L_BattleTest still uses WBP_BattleHUD_C
-Legacy WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus unchanged
-R4 and later still NOT STARTED
+SlayTheSpireDemo.Phase6UIA2N.R3
 ```
 
-Expected incomplete Native behavior at this stage is not a failure:
+completed with all four focused tests passing.
+
+## Review gate evidence — PASS
+
+```text
+Editor build: PASS
+
+SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.StatusTooltip: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.Terminal: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.PresentationUnavailable: PASS
+
+Focused result: 4/4 PASS
+```
+
+The focused suite closes the previously missing R3 review evidence:
+
+1. **Frozen status tooltip parity — PASS**
+   - an identifiable frozen `FBattleHUDStatusView` is forwarded through the existing `RebuildTooltip` bridge;
+   - StatusId, RuntimeSequence, display name and Amount are preserved;
+   - inspect shows the optional tooltip and inspect-clear collapses it;
+   - no formal `WB_PlayerStatuses` / `WB_EnemyStatuses` lifecycle behavior is touched.
+
+2. **Terminal historical surface parity — PASS**
+   - Native rendering is driven from ViewModel state only;
+   - `Outcome=None` keeps the terminal surface collapsed and clears outcome text;
+   - `Victory`, `Defeat`, and `ResolutionFaulted` render `胜利`, `战斗失败`, and `战斗结算异常` respectively.
+
+3. **PresentationUnavailable rendering parity — PASS**
+   - the test enters the state through `UBattleHUDViewModel::EnterPresentationUnavailable`;
+   - input is locked and EndTurn/Confirm/Cancel cannot submit input;
+   - the supplied ViewModel failure reason is rendered on the feedback surface;
+   - `Outcome` remains `None`, the terminal overlay remains collapsed, and the state is not rendered as `ResolutionFaulted`.
+
+4. **Block badge parity — PASS**
+   - Player and Enemy Block `0` collapse the complete shield badge;
+   - positive frozen Block restores the badge with the exact number;
+   - returning Block to `0` collapses the whole badge again;
+   - no Damage or BlockChanged Record playback is required.
+
+## Regression boundary
+
+The review-fix diff remains limited to the Native HUD implementation, Editor-only focused tests, and this validation documentation. It does not modify production `L_BattleTest`, the Legacy WBP assets, Controller/Reducer/Record/Envelope behavior, Gameplay authority, or R4+ implementation.
+
+The earlier R3-A acceptance already established the Native WBP compile / PIE and production Legacy boundary. This review-fix run adds the focused C++ build and 4/4 Automation evidence required to close the two review findings.
+
+Expected incomplete Native behavior at this stage remains intentional:
 
 ```text
 Hand remains unmigrated until R4.
@@ -109,4 +107,8 @@ Committed Damage number/animation remains unmigrated until R7.
 Formal status-row lifecycle remains unmigrated until R9.
 ```
 
-After all checks pass, update `docs/CODEX_GOAL_CHECKPOINT.md` and `docs/Validation.md` with the actual evidence, then merge this branch. Until then, this branch is explicitly **VALIDATION PENDING**.
+## Acceptance
+
+**R3-A remains COMPLETE / VALIDATED after the review fixes.**
+
+The review findings are closed. R4 remains NOT STARTED until explicitly begun.
