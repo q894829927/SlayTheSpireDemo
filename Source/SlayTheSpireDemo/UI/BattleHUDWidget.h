@@ -54,6 +54,9 @@ protected:
 	void RefreshFeedback();
 	void RefreshTerminalFromViewModel();
 	void RefreshEnemyIntent();
+	bool RefreshStatusTooltip(
+		UWidget* StatusTooltip,
+		const TArray<FBattleHUDStatusView>& Statuses);
 
 	UFUNCTION()
 	void HandleEndTurnClicked();

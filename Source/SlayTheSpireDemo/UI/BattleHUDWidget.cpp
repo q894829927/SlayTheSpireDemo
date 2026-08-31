@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
+#include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -233,6 +234,26 @@ void UBattleHUDWidget::RefreshCombatants()
 			if (IsValid(BlockText))
 			{
 				BlockText->SetText(FText::AsNumber(Combatant.Block));
+
+				// The sealed Designer hierarchy is:
+				// Txt_*Block -> OV_*Block -> SB_*BlockBadge. Collapse the whole
+				// badge at zero so neither the shield image nor its number remains
+				// visible. Reuse the existing hierarchy instead of expanding the
+				// R2 BindWidget contract with two Designer-only controls.
+				UWidget* BlockBadgeSurface = BlockText;
+				if (UPanelWidget* BlockOverlay = BlockText->GetParent())
+				{
+					BlockBadgeSurface = BlockOverlay;
+					if (UPanelWidget* BlockBadge = BlockOverlay->GetParent())
+					{
+						BlockBadgeSurface = BlockBadge;
+					}
+				}
+
+				BlockBadgeSurface->SetVisibility(
+					Combatant.Block > 0
+						? ESlateVisibility::SelfHitTestInvisible
+						: ESlateVisibility::Collapsed);
 			}
 		};
 
@@ -432,6 +453,39 @@ void UBattleHUDWidget::HandleCombatantTargetRequested(int32 TargetId)
 	}
 }
 
+bool UBattleHUDWidget::RefreshStatusTooltip(
+	UWidget* StatusTooltip,
+	const TArray<FBattleHUDStatusView>& Statuses)
+{
+	if (!IsValid(StatusTooltip))
+	{
+		return false;
+	}
+
+	// StatusTooltip_Player/Enemy are optional Designer surfaces. Their existing
+	// Blueprint contract is RebuildTooltip(TArray<FBattleHUDStatusView>), so the
+	// Native HUD forwards the frozen ViewModel array through that single bridge.
+	// This does not create, update or remove formal status rows; that lifecycle
+	// remains owned by the later R9 migration.
+	static const FName RebuildTooltipFunctionName(TEXT("RebuildTooltip"));
+	UFunction* RebuildTooltipFunction =
+		StatusTooltip->FindFunction(RebuildTooltipFunctionName);
+	if (RebuildTooltipFunction == nullptr)
+	{
+		return false;
+	}
+
+	struct FRebuildTooltipParams
+	{
+		TArray<FBattleHUDStatusView> Statuses;
+	};
+
+	FRebuildTooltipParams Params;
+	Params.Statuses = Statuses;
+	StatusTooltip->ProcessEvent(RebuildTooltipFunction, &Params);
+	return true;
+}
+
 void UBattleHUDWidget::HandleCombatantInspectRequested(
 	UBattleHUDCombatantPresentationWidgetBase* Presentation)
 {
@@ -461,12 +515,12 @@ void UBattleHUDWidget::HandleCombatantInspectRequested(
 		NameText->SetText(CombatantView->DisplayName);
 		NameText->SetVisibility(ESlateVisibility::Visible);
 	}
-	if (IsValid(StatusTooltip))
+	if (IsValid(StatusTooltip) && CombatantView != nullptr)
 	{
-		// The status row/widget lifecycle remains a later phase. R3-A only
-		// preserves the Legacy inspection surface visibility and consumes the
-		// already-frozen combatant view; it does not create or mutate status rows.
-		StatusTooltip->SetVisibility(ESlateVisibility::Visible);
+		const bool bTooltipRefreshed =
+			RefreshStatusTooltip(StatusTooltip, CombatantView->Statuses);
+		StatusTooltip->SetVisibility(
+			bTooltipRefreshed ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
 }
 

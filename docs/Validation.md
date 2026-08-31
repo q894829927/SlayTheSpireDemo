@@ -40,6 +40,7 @@ Phase 6UI-A2D4   6/6 PASS
 Phase 6UI-A2D5 focused 6/6 PASS
 Phase6R expanded aggregate 100/100 PASS
 Shipping exclusion PASS
+Phase 6UI-A2N R3 review 4/4 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -216,6 +217,34 @@ Phase6R or Shipping. R3-A is **COMPLETE / VALIDATED**; R4 remains NOT STARTED.
 After the final PIE, the Editor returned to formal `L_BattleTest`; its Presenter and
 the `BP_BattleHUDPresenter` default still resolve to `WBP_BattleHUD_C`. The three
 Legacy WBP hashes remain the sealed R0 values.
+
+### Phase 6UI-A2N R3-A review fixes — focused validation — 2026-08-31
+
+The R3 review found two parity gaps: combatant inspect did not rebuild the optional
+status tooltip from frozen `CombatantView.Statuses`, and Block `0` left the Designer
+shield badge visible. The review-fix branch corrected only those Native static HUD
+surfaces and added permanent Editor-only probes; it did not enter R4 Hand/Card,
+R7 Damage playback, or R9 formal Status-row lifecycle.
+
+The user rebuilt the saved branch head with UE 5.8 and ran the focused prefix:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge                 PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.StatusTooltip              PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.Terminal                   PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.PresentationUnavailable    PASS
+
+4/4 PASS
+```
+
+The focused evidence proves that zero/positive/zero Block toggles the complete
+Designer badge, inspect receives the frozen Status DTO and clears cleanly, all four
+Terminal outcomes render from ViewModel state, and PresentationUnavailable remains
+input-locked and visually distinct from ResolutionFaulted. The Editor build for this
+saved review-fix head also passed.
+
+This closes the R3 review findings. It does not replace the earlier Native WBP/PIE
+acceptance; together they keep R3-A **COMPLETE / VALIDATED**. R4 remains NOT STARTED.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 

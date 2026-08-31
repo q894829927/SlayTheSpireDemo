@@ -26,6 +26,8 @@ R2 source subject: refactor(ui-a2n): add native HUD shell
 R2 validation result: PASS
 R3-A starting HEAD: e0ac820245e8ea93128507f058316e32c5aaf427
 R3-A validation result: PASS
+R3-A review-fix branch: a2n/r3-review-fix
+R3-A review-fix focused result: 4/4 PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -391,7 +393,41 @@ WBP_BattleStatus
 ```
 
 A2D5, Phase6R and Shipping were not rerun; their sealed evidence remains the
-R0/R1/R2 baseline evidence. R3-A is **COMPLETE / VALIDATED**.
+R0/R1/R2 baseline evidence.
+
+## R3-A Review Fix Validation Evidence — PASS
+
+The review fix preserves the R3 boundary while closing the two missing parity items:
+frozen combatant Status tooltip rebuilding and complete zero-Block badge visibility.
+Permanent Editor-only tests were added under the `SlayTheSpireDemoTests` module.
+
+The user rebuilt the saved review-fix branch on UE 5.8 and then ran:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R3
+```
+
+with the following result:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.StatusTooltip: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.Terminal: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3.PresentationUnavailable: PASS
+
+4/4 PASS
+```
+
+This closes the formal R3-A review gaps:
+
+- Block `0` collapses the full shield badge; positive Block restores the exact value;
+- inspect tooltip consumes the frozen `CombatantView.Statuses` DTO and clears on inspect end;
+- terminal None/Victory/Defeat/ResolutionFaulted surfaces render from ViewModel state;
+- PresentationUnavailable locks input and renders feedback while remaining distinct from ResolutionFaulted.
+
+The review-fix diff does not add Hand/Card ownership, Damage playback, formal Status-row lifecycle, Controller/Reducer/Record changes, production cutover, or UI-A3 work.
+
+**R3-A is COMPLETE / VALIDATED.**
 
 ## Next Exact Action — R4 Native Card Widget, Hand and Card Input
 
