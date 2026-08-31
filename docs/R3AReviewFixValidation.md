@@ -34,41 +34,64 @@ Txt_EnemyBlock  -> OV_EnemyBlock  -> SB_EnemyBlockBadge
 
 No new BindWidget member was added, so the R2 23-required / 6-optional binding contract is unchanged. The badge visibility is driven only from the frozen `FBattleHUDCombatantView::Block` value.
 
+## Focused Editor-only Automation
+
+A permanent Editor-only focused suite now exercises the four R3 review contracts without requiring Hand/Card migration, real combat completion, Damage playback, or formal Status-row lifecycle:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge
+SlayTheSpireDemo.Phase6UIA2N.R3.StatusTooltip
+SlayTheSpireDemo.Phase6UIA2N.R3.Terminal
+SlayTheSpireDemo.Phase6UIA2N.R3.PresentationUnavailable
+```
+
+The test probes live only in `SlayTheSpireDemoTests` and production runtime does not depend on them.
+
+Run the whole focused prefix with:
+
+```powershell
+& "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" `
+  "E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
+  -ExecCmds="Automation RunTests SlayTheSpireDemo.Phase6UIA2N.R3; Quit" `
+  -unattended -nopause `
+  -testexit="Automation Test Queue Empty" `
+  -log
+```
+
+This suite is newly added and has **not yet been executed on the user's UE5.8 machine**. Do not mark the gates PASS until the actual run reports all four tests successful.
+
 ## Review gates still required
 
 The earlier R3-A evidence did not independently close all acceptance items from `docs/Phase6UIA2NNativeHUDRefactor.md`. Do not merge this branch or treat the review fix as validated until the following focused checks pass on the saved branch head:
 
 1. **Frozen status tooltip parity**
-   - use a combatant whose frozen `CombatantView.Statuses` contains at least one identifiable status;
-   - hover/focus the corresponding combatant presentation;
-   - confirm the tooltip is rebuilt from that frozen array and displays the expected status content;
-   - clear hover/focus and confirm the tooltip collapses;
-   - no formal `WB_PlayerStatuses` / `WB_EnemyStatuses` lifecycle behavior is changed by this check.
+   - the automation injects an identifiable frozen `FBattleHUDStatusView`;
+   - confirm the tooltip bridge receives the exact frozen StatusId, RuntimeSequence, display name and Amount;
+   - confirm inspect shows the optional tooltip and inspect-clear collapses it;
+   - no formal `WB_PlayerStatuses` / `WB_EnemyStatuses` lifecycle behavior is touched.
 
 2. **Terminal historical surface parity**
-   - drive the Native HUD from frozen/ViewModel state only;
+   - automation drives the Native HUD from ViewModel state only;
    - `Outcome=None` => terminal overlay collapsed and outcome text empty;
    - `Outcome=Victory` => terminal overlay visible with `胜利`;
    - `Outcome=Defeat` => terminal overlay visible with `战斗失败`;
-   - `Outcome=ResolutionFaulted` => terminal overlay visible with `战斗结算异常`;
-   - do not read mutable Gameplay to construct these surfaces.
+   - `Outcome=ResolutionFaulted` => terminal overlay visible with `战斗结算异常`.
 
 3. **PresentationUnavailable rendering parity**
-   - enter `InteractionState=PresentationUnavailable` through the existing ViewModel boundary;
-   - confirm `bInputLocked=true` and EndTurn/Confirm/Cancel cannot submit input;
-   - confirm `Txt_Feedback` shows the ViewModel `LastFeedback` reason;
-   - confirm `Outcome` remains `None` and the terminal overlay remains collapsed;
-   - confirm the state is not rendered or reported as `ResolutionFaulted`.
+   - automation enters PresentationUnavailable through `UBattleHUDViewModel::EnterPresentationUnavailable`;
+   - confirm `bInputLocked=true`, `bCanEndTurn=false`, and EndTurn/Confirm/Cancel are disabled or collapsed;
+   - confirm `Txt_Feedback` shows the supplied ViewModel failure reason;
+   - confirm `Outcome` remains `None`, terminal overlay stays collapsed, and no ResolutionFault terminal text is rendered.
 
 4. **Block badge parity**
-   - start with Player and Enemy frozen Block equal to `0` and confirm both shield badges are collapsed (no shield icon and no `0` text);
-   - apply a frozen/ViewModel state with Block `> 0` and confirm the corresponding shield badge becomes visible with the exact Block value;
-   - return that combatant to Block `0` and confirm the whole badge collapses again;
-   - this check is static ViewModel rendering only and must not require Damage or BlockChanged Record playback.
+   - automation starts Player and Enemy at frozen Block `0` and confirms both complete badge surfaces collapse;
+   - frozen positive Block shows the badge with the exact value;
+   - returning Block to `0` collapses the badge again;
+   - no Damage or BlockChanged Record playback is required.
 
 ## Minimal regression boundary
 
-Also confirm after those focused checks:
+After the focused Automation passes, also confirm:
 
 ```text
 Editor build PASS
