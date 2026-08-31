@@ -129,6 +129,9 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
+- A2N Native HUD ownership migration — **PLANNED / NOT STARTED**. This is a
+  maintenance refactor of sealed UI behavior, not UI-A3 work; Legacy remains the
+  production path until an independently validated cutover.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 
@@ -139,6 +142,7 @@ Read:
 - `docs/Phase6UIA2D5SourceReview.md`
 - `docs/Phase6UIA2EImplementation.md`
 - `docs/UIA2ERemainingSteps.zh-CN.md`
+- `docs/Phase6UIA2NNativeHUDRefactor.md`
 
 ### UI-A3 — Deterministic Immediate Preview
 
