@@ -215,7 +215,7 @@ StatusChanged creation Blueprint Playback = VALIDATED
 
 ### StatusChanged — update/reduction and removal
 
-Status: **WIRED / COMPILED / SAVED / PIE PENDING**
+Status: **VALIDATED**
 
 The current saved HUD routes both non-creation lifecycles by the exact identity
 `TargetPresentationId + StatusId + RuntimeSequence`:
@@ -233,8 +233,24 @@ The removal playback reuses the found widget and sets it to `Collapsed`; it does
 create a second status row or call `RemoveFromParent`. The update path uses the frozen
 `StatusView` and the single `ActiveStatusPresentationWidget` output for `SetStatusView.self`.
 The exact-token completion and StatusChanged Cancel rebuild remain shared with the
-creation path. These are saved-asset facts only; real PIE observation of update,
-reduction and removal is still required.
+creation path.
+
+Visible floating PIE acceptance on saved HUD SHA-256 `574FF058...` used the real
+`TestApplyPhase5AStatuses` Gameplay path and two real EndTurn requests:
+
+```text
+Strength#1 Amount=2 Created=true
+Strength#1 Amount=3 Created=false
+Weak#3 Amount=2 Created=true
+Weak#3 Amount 2 -> 1 Reason=3
+Weak#3 Amount 1 -> 0 Reason=3
+```
+
+The HUD showed one Player Strength widget at amount `3`, one Enemy Weak widget at
+amount `2` and then `1`, and no duplicate or A→B→A flashback. After the removal
+Record the exact Weak widget disappeared and stayed absent. Later Records completed
+and the controller returned to the ready/Idle state. Therefore update/reduction and
+removal are both validated on the unchanged saved asset.
 
 ## Shared async / cancellation contract
 
@@ -266,23 +282,127 @@ Rules to preserve:
 CardPlayed              VALIDATED
 Damage                  VALIDATED
 BlockChanged            VALIDATED
-CardZoneChanged         VALIDATED (PlayArea -> Destination slice)
+CardZoneChanged         VALIDATED (current producer set)
 StatusChanged creation  VALIDATED
 
-StatusChanged update    WIRED / COMPILED / SAVED / PIE PENDING
-StatusChanged removal   WIRED / COMPILED / SAVED / PIE PENDING
-EnergyChanged           NOT WIRED
-DeckShuffled            NOT WIRED
-Victory                 NOT WIRED
-Defeat                  NOT WIRED
-ResolutionFault         NOT WIRED
+StatusChanged update    VALIDATED
+StatusChanged removal   VALIDATED
+EnergyChanged           VALIDATED
+DeckShuffled            VALIDATED
+Victory                 VALIDATED
+Defeat                  VALIDATED
+ResolutionFault         VALIDATED
+PresentationUnavailable separation VALIDATED
+Global Cancel/Reconcile VALIDATED
+Scenario A-E PIE        VALIDATED
+Active Skip/Input Unlock VALIDATED
 ```
 
-A2E remains **PARTIAL** and must not be marked COMPLETE/SEALED yet.
+A2E implementation is **VALIDATED**, but remains **UNSEALED** until the final-head
+A2D5, Phase6R, and Shipping-exclusion gates pass.
 
 ## Locked next step
 
-Immediate next work: **StatusChanged update/reduction PIE acceptance, then removal**.
+Immediate next work: **final saved Blueprint snapshot, local implementation commit,
+then the final-head seal gates**.
+
+## Batch 2 — Energy / CardZone / Shuffle acceptance (2026-08-31)
+
+Status: **VALIDATED** on saved HUD SHA-256
+`7BF7488DC97F5A1E22CDB12BF8A29E9D9EBC4C166476BFEFCC24C326EACDCB55`.
+
+Real PIE used the committed Gameplay producers rather than handmade payloads:
+
+```text
+CardPlayed: Energy 5/5 -> 4/5, CostPaid=1, no duplicate EnergyChanged
+EndTurn: 4 Hand -> Discard records in order
+Draw: 5 DrawPile -> Hand operations in order, no duplicate card
+DeckShuffled: Moved=5, Draw 0->5, Discard 5->0, exactly once
+Post-shuffle Draw continued; final Draw=4
+ActionQueue empty -> ReadStateReady / State=2; input usable
+```
+
+The Batch 2 architecture review found and blocked on five P1 wiring defects. The
+saved graph was corrected for the formal Energy format, Energy Cancel restoration,
+CardZone identity/ToZone gates, both shuffled-count comparisons, and
+`PlayedCardWidget` cleanup. The corrected HUD compiled with zero errors, was saved,
+and passed the minimal real PIE regression above.
+
+Focused validation ran `SlayTheSpireDemo.Phase6UIA2C`: 8 total, 5 succeeded,
+3 succeededWithWarnings, 0 failed, 0 notRun. The warning-bearing cases are the
+expected rollback/fail-soft paths. Final-head A2D5, Phase6R, and Shipping exclusion
+were intentionally not run at this batch boundary.
+
+## Batch 3 — Terminal acceptance (2026-08-31)
+
+Status: **VALIDATED** on saved HUD SHA-256
+`24BA3F8B9F24DF9713BB29A6DB8F64EAAD38607630AEE968DC47C33F746983D5`.
+
+Real terminal evidence:
+
+```text
+Victory: enemy 29/100 -> 0/100; formal Overlay showed 胜利
+Defeat: player 2/80 -> 0/80; formal Overlay showed 战斗失败
+ResolutionFault: real EndTurn queue fault; 7 Records; exactly one final fault;
+                 formal Overlay Visible with 战斗结算异常
+PresentationUnavailable: real freeze failure; no fault Envelope; Gameplay stayed
+                         PlayerTurn / Outcome=None; terminal Overlay Collapsed
+```
+
+Victory and Defeat followed their preceding committed Records. The fault and
+unavailable cases ran in separate real `UEDPIE` worlds through existing authoritative
+testing producers; the temporary Editor-only harness constructed no Record or Payload
+and was deleted afterward. A standard Editor build then succeeded with no C++ diff.
+
+The one Batch 3 architecture review reported no P0/P1/P2 finding. The one focused
+`SlayTheSpireDemo.Phase6UIA2C` run completed 8 total: 5 succeeded,
+3 succeededWithWarnings, 0 failed, 0 notRun. This was not a final-head gate.
+
+## Batch 4 — Global Cancel / Reconcile and full PIE acceptance (2026-08-31)
+
+Status: **VALIDATED** on saved HUD SHA-256
+`990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A`.
+
+The final Cancel graph is single-direction:
+
+```text
+clear active timer
+-> switch ActivePresentationType
+-> type-specific historical ViewModel restore
+-> clear Played/Hidden/Drawn/Status transient references
+-> clear Damage/Block target flags
+-> ActivePresentationType=None
+-> ActivePresentationToken=default
+-> end without Notify
+```
+
+The independent Batch 4 review initially blocked four P1 issues: a cleanup loop,
+disconnected cleanup fields, reversed Damage Cancel visibility/opacity values, and
+missing Hand-discard restoration. The saved graph was corrected, compiled, saved,
+reloaded, and the final directed review passed with no remaining P0/P1.
+
+Real PIE acceptance used real Gameplay/UI request paths rather than constructed
+presentation data:
+
+```text
+Scenario A: Strike -> Energy 5/5 to 4/5; Enemy 100/100 to 94/100; input returned
+Scenario B: Uppercut -> Enemy 100 to 87; Weak/Vulnerable 2 -> 1 -> 0; no duplicate
+Scenario C: discard x5 -> TurnEnded -> enemy Damage -> draw x5 -> shuffle -> draw;
+            final PlayerTurn, Energy 5/5, queue caught up
+Scenario D: Victory and Defeat terminal surfaces PASS
+Scenario E: ResolutionFault and PresentationUnavailable isolation PASS
+```
+
+A temporary Editor-only PIE Automation harness then used the formal
+`ViewModel->RequestEndTurn()` path, waited for a real active playback token, and
+called public `WidgetInstance->SkipPresentation()`. It confirmed resolving/input
+locked before Skip, no waiting/backlog after catch-up, all Blueprint transient/type/
+token fields cleared, stale-token rejection after the timer window, a subsequent
+real request completing normally, and final Idle/input unlocked. The harness created
+no Record/Payload, was removed, and the standard Editor build succeeded with no
+Source diff. This run supersedes an earlier discarded harness assertion that used
+the debug `TestAttack()` producer and incorrectly required it to set ViewModel
+`Resolving`.
 
 The saved Blueprint now preserves the exact status identity:
 
@@ -292,7 +412,7 @@ TargetPresentationId
 + RuntimeSequence
 ```
 
-Wired behavior (saved as HUD SHA-256 `574FF058...`, awaiting PIE):
+Validated behavior (saved as HUD SHA-256 `574FF058...`):
 
 ```text
 existing formal status row is located by exact identity

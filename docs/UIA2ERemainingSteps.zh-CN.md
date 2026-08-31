@@ -1,6 +1,6 @@
 # UI-A2E 后续完整实施与验收步骤
 
-日期：**2026-08-30**
+日期：**2026-08-31**
 
 用途：记录从当前进度到 **UI-A2E COMPLETE / SEALED** 的全部剩余步骤，后续实现严格按本文顺序推进，避免遗漏、跳步或提前进入 UI-A3。
 
@@ -16,30 +16,29 @@
 CardPlayed              VALIDATED
 Damage                  VALIDATED
 BlockChanged            VALIDATED
-CardZoneChanged         VALIDATED（当前仅 PlayArea -> Destination 切片）
-StatusChanged creation  VALIDATED
+CardZoneChanged         VALIDATED（当前 producer 全路径）
+StatusChanged           FULLY VALIDATED
+EnergyChanged           VALIDATED
+DeckShuffled            VALIDATED
+Victory                 VALIDATED
+Defeat                  VALIDATED
+ResolutionFault         VALIDATED
+PresentationUnavailable 与 ResolutionFault 分离 VALIDATED
 ```
 
 尚未正式封闭：
 
 ```text
-StatusChanged update / reduction
-StatusChanged removal
-EnergyChanged
-CardZoneChanged 剩余 EndTurn / Draw 相关转区表现
-DeckShuffled
-Victory
-Defeat
-ResolutionFault
-全局 Cancel / Reconcile 收尾
-UI-A2E 全链 PIE 验收
+final-head A2D5 exactly 6
+Phase6R 100/100
+Shipping exclusion
 UI-A2 COMPLETE / SEALED 文档收口
 ```
 
 当前正在实现的子阶段：
 
 ```text
-StatusChanged amount update / increase / reduction
+Batch 4 implementation/PIE 已通过 -> final-head seal gates
 ```
 
 当前已经完成的前置结构：
@@ -177,8 +176,8 @@ PresentationUnavailable
 
 ```text
 StatusChanged creation          VALIDATED
-StatusChanged update/reduction  WIRED / COMPILED / SAVED / PIE PENDING
-StatusChanged removal           WIRED / COMPILED / SAVED / PIE PENDING
+StatusChanged update/reduction  VALIDATED
+StatusChanged removal           VALIDATED
 ```
 
 `WBP_BattleHUD` 已经落地本节的 Blueprint 接线；下面的步骤保留为连线复核和
@@ -516,8 +515,8 @@ StatusChanged update/reduction = VALIDATED
 
 只有 Update/Reduction PIE 通过后进入。
 
-当前 HUD 已保存本节的最小 Removal 实现；本节剩余工作是按下述身份规则完成 PIE
-验收，除非验收发现缺陷，不要重复添加 Router 或播放节点。
+当前 HUD 已保存本节的最小 Removal 实现，并已按下述身份规则完成可视 PIE
+验收。除非后续回归证明缺陷，不要重复添加 Router 或播放节点。
 
 ## 3.1 Router 接管 bRemoved=true
 
@@ -987,6 +986,10 @@ ResolutionFault VALIDATED
 
 这是 A2E Seal 前必须做的架构检查。
 
+当前最终保存 HUD SHA-256 `990125C9...` 已完成本节接线、Compile/Save、重载核对
+和一次独立架构审查。审查最初发现的 cleanup 回环、尾部断链、Damage 默认值反向、
+Hand discard 未恢复四个 P1 均已修复；定向复审无剩余 P0/P1。
+
 所有已经直接覆盖 HUD 控件的 Record 都要检查取消后不会留下“未来值”。
 
 ## 8.1 Card transient
@@ -1084,6 +1087,12 @@ Cancel
 ---
 
 # 9. UI-A2E PIE 全链验收
+
+Scenario A-E 已在真实 PIE 中通过。额外的 Editor-only Automation PIE 使用正式
+`ViewModel->RequestEndTurn()` 产生真实 Envelope，在 Controller 已持有有效 active
+token 后调用正式 `WidgetInstance->SkipPresentation()`，验证了 Cancel 无正常 Notify、
+stale token 拒绝、FinalSnapshot reconcile、后续真实请求正常完成，以及 catch-up 后
+Idle/input unlock。临时 harness 已删除，标准 Editor build 成功且 Source 无 diff。
 
 所有单切片通过后，运行完整真实 WBP/PIE 场景。
 
@@ -1236,37 +1245,37 @@ Target submit
 只有以下全部成立才能封闭 A2E：
 
 ```text
-[ ] CardPlayed validated
-[ ] Damage validated
-[ ] BlockChanged validated
-[ ] CardZoneChanged 所有当前可见必要转区 validated
-[ ] StatusChanged creation validated
-[ ] StatusChanged update/reduction validated
-[ ] StatusChanged removal validated
-[ ] EnergyChanged validated
-[ ] DeckShuffled validated
-[ ] Victory validated
-[ ] Defeat validated
-[ ] ResolutionFault validated
+[x] CardPlayed validated
+[x] Damage validated
+[x] BlockChanged validated
+[x] CardZoneChanged 所有当前可见必要转区 validated
+[x] StatusChanged creation validated
+[x] StatusChanged update/reduction validated
+[x] StatusChanged removal validated
+[x] EnergyChanged validated
+[x] DeckShuffled validated
+[x] Victory validated
+[x] Defeat validated
+[x] ResolutionFault validated
 
-[ ] Blueprint 只消费 frozen Record
-[ ] Blueprint 不查询 mutable historical Gameplay
-[ ] Blueprint 不修改 authoritative ViewModel truth
-[ ] 所有异步接管都只完成精确 Token
-[ ] invalid/unsupported case 正确 Return false fallback
-[ ] Cancel 不 Notify
-[ ] Cancel 后无 future visual 残留
-[ ] producer Record order 保持
-[ ] WorkingSnapshot 只在 Record 完成后推进
-[ ] Envelope.FinalSnapshot 精确 reconcile
-[ ] input 仅在 Controller catch-up + live binding refresh 后解锁
-[ ] PresentationUnavailable 与 ResolutionFault 分离
+[x] Blueprint 只消费 frozen Record
+[x] Blueprint 不查询 mutable historical Gameplay
+[x] Blueprint 不修改 authoritative ViewModel truth
+[x] 所有异步接管都只完成精确 Token
+[x] invalid/unsupported case 正确 Return false fallback
+[x] Cancel 不 Notify
+[x] Cancel 后无 future visual 残留
+[x] producer Record order 保持
+[x] WorkingSnapshot 只在 Record 完成后推进
+[x] Envelope.FinalSnapshot 精确 reconcile
+[x] input 仅在 Controller catch-up + live binding refresh 后解锁
+[x] PresentationUnavailable 与 ResolutionFault 分离
 
-[ ] Scenario A 普通卡 PIE PASS
-[ ] Scenario B 状态卡 PIE PASS
-[ ] Scenario C EndTurn macro PIE PASS
-[ ] Scenario D Victory/Defeat PIE PASS
-[ ] Scenario E ResolutionFault/PresentationUnavailable PIE PASS
+[x] Scenario A 普通卡 PIE PASS
+[x] Scenario B 状态卡 PIE PASS
+[x] Scenario C EndTurn macro PIE PASS
+[x] Scenario D Victory/Defeat PIE PASS
+[x] Scenario E ResolutionFault/PresentationUnavailable PIE PASS
 ```
 
 全部通过后：

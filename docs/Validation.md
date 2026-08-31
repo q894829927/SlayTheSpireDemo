@@ -42,7 +42,85 @@ Phase6R expanded aggregate 100/100 PASS
 Shipping exclusion PASS
 ```
 
-## Current UI-A2E Goal-Run Evidence — 2026-08-30
+## Current UI-A2E Goal-Run Evidence — 2026-08-31
+
+### StatusChanged visible Blueprint/PIE acceptance
+
+On `main@8af9487`, the saved `WBP_BattleHUD` at SHA-256 `574FF058...` was exercised
+in a capturable floating PIE session through the real Gameplay status and EndTurn
+paths. `Strength#1` committed `2` as creation and `3` as a same-identity update while
+remaining a single visible widget. Enemy `Weak#3` committed `2`, reduced to `1` on
+the first real EndTurn using the same widget, then reduced `1 -> 0` on the second
+EndTurn and disappeared without reappearing after completion. No duplicate or
+A→B→A flashback was observed, later Records completed, and the controller returned
+to the ready/Idle state. StatusChanged creation, update/reduction, and removal are
+therefore fully validated on that saved asset.
+
+### Batch 2 visible Blueprint/PIE acceptance — 2026-08-31
+
+On the saved `WBP_BattleHUD` at SHA-256 `7BF7488D...`, a real one-cost card changed
+Energy from `5/5` to `4/5` exactly once, with no duplicate same-cost
+`EnergyChanged`. A real EndTurn produced four ordered Hand discard records and five
+ordered Draw operations. The real shuffle producer then committed
+`MovedCardCount=5`, Draw `0 -> 5`, Discard `5 -> 0` exactly once, after which Draw
+continued to a final Draw count of `4`. The queue emptied, the controller returned
+to `ReadStateReady / State=2`, and input remained usable.
+
+After the one Batch 2 architecture review, five P1 Blueprint wiring findings were
+fixed and the HUD was recompiled/saved: Energy text format, Energy Cancel restore,
+CardZone card/ToZone validation, two DeckShuffled count comparisons, and PlayArea
+transient-reference cleanup. The corrected graph passed the same focused real PIE
+regression.
+
+The batch-level `SlayTheSpireDemo.Phase6UIA2C` Automation run completed 8 tests with
+5 succeeded, 3 succeededWithWarnings, 0 failed, and 0 notRun. The warnings were the
+expected rollback/fail-soft cases. This was not a final-head A2D5, Phase6R, or
+Shipping-exclusion run.
+
+### Batch 3 terminal Blueprint/PIE acceptance — 2026-08-31
+
+On saved `WBP_BattleHUD` SHA-256 `24BA3F8B...`, real gameplay produced Victory
+(enemy `29/100 -> 0/100`) and Defeat (player `2/80 -> 0/80`); the formal terminal
+surface showed `胜利` and `战斗失败` only after preceding committed Records.
+
+Two isolated real `UEDPIE` scenarios then used existing authoritative testing
+producers through a temporary Editor-only harness. The EndTurn structural failure
+produced seven ordered Records with exactly one final ResolutionFault, entered the
+faulted State/Outcome, and showed the formal Overlay with `战斗结算异常`. A forced
+presentation freeze failure instead published no ResolutionFault Envelope, left
+Gameplay in PlayerTurn with `Outcome=None`, and kept the terminal Overlay collapsed.
+The harness constructed no Record/Payload, was removed afterward, and the standard
+Editor build succeeded with no C++ diff.
+
+The one Batch 3 architecture review found no P0/P1/P2 issue. The one focused
+`SlayTheSpireDemo.Phase6UIA2C` run completed 8 tests with 5 succeeded,
+3 succeededWithWarnings, 0 failed, and 0 notRun. It is not final-head evidence.
+
+### Batch 4 Cancel/Reconcile and full PIE acceptance — 2026-08-31
+
+On saved `WBP_BattleHUD` SHA-256 `990125C9...`, Cancel now clears the active timer,
+restores the type-specific historical ViewModel surface, and enters one single-
+direction local cleanup tail. The tail clears card/status transient references,
+Damage/Block target flags, active type, and active token, and never calls normal
+completion Notify. One independent architecture review initially blocked four P1
+wiring errors; all were corrected, recompiled/saved/reloaded, and the directed final
+review passed with no remaining P0/P1.
+
+Real PIE Scenario A used Strike (`Energy 5/5 -> 4/5`, Enemy `100/100 -> 94/100`),
+Scenario B used Uppercut and two real EndTurn requests (Weak/Vulnerable `2 -> 1 -> 0`
+with no duplicate), and Scenario C exercised the full discard/draw/shuffle EndTurn
+macro before returning to PlayerTurn. The accepted Victory/Defeat and isolated
+ResolutionFault/PresentationUnavailable runs supply Scenario D/E evidence.
+
+A temporary Editor-only PIE Automation harness used the formal
+`ViewModel->RequestEndTurn()` request, waited until the Controller owned a real active
+token, then called public `WidgetInstance->SkipPresentation()`. It verified input
+locked/Resolving before Skip, no waiting or backlog after reconcile, cleared Blueprint
+transient/type/token fields, rejection of the stale token beyond the timer window,
+a subsequent real request completing normally, and final Idle/input unlocked. It
+constructed no Record/Payload, was deleted afterward, and the standard Editor build
+succeeded with no Source diff. Final-head A2D5, Phase6R, and Shipping exclusion have
+not yet run.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -58,7 +136,9 @@ TurnCycleOrdering          PASS
 total duration 0.108884 s
 ```
 
-This is current-working-tree focused regression evidence only. It is not `final-head`, does not validate Blueprint/UMG playback, and does not replace the required StatusChanged PIE evidence.
+This historical run was current-working-tree focused regression evidence only. It is
+not `final-head`; the current Status and Scenario A-E Blueprint/PIE evidence is
+recorded above, and a new final-head A2D5 run remains required.
 
 ## Trusted Manual Evidence
 
@@ -70,9 +150,13 @@ These manual results predate unified UI-A2 committed-record playback and therefo
 
 ## Current Acceptance Boundary
 
-UI-A2A/A2B/A2C/A2D C++ committed-presentation contracts are sealed by focused and aggregate Automation evidence. UI-A2E still requires unified Blueprint/UMG routing and actual PIE acceptance.
+UI-A2A/A2B/A2C/A2D C++ committed-presentation contracts are sealed by focused and
+aggregate Automation evidence. UI-A2E unified Blueprint/UMG routing and actual PIE
+Scenario A-E/Cancel acceptance are now validated on HUD hash `990125C9...`.
+UI-A2E and UI-A2 remain unsealed only until the final implementation commit passes
+A2D5 exactly 6, Phase6R 100/100, and Shipping exclusion.
 
-Required A2E scenarios include:
+Validated A2E scenarios include:
 
 - ordinary card Damage;
 - card plus Status creation/update/reduction/removal;

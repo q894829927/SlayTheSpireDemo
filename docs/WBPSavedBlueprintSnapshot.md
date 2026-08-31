@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-08-30
+快照日期：2026-08-31
 
 ## 1. 用途与边界
 
@@ -16,7 +16,7 @@ PLANNED / NOT WIRED
 = 已确定的下一步方案，但当前 .uasset 尚未完成
 ```
 
-本快照的基础结构由 UE5.8 Python Commandlet 只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。当前版本依据 2026-08-30 读取到的磁盘资产更新；此前通过 Unreal MCP Editor 写入并保存的 Damage、BlockChanged、StatusChanged 等接线及其既有编译/PIE证据仍保留。本轮同步了当前工作区最新保存的 `WBP_BattleHUD` 与 `WBP_BattleCard`：HUD 的 `BeginPresentationRecordPlayback` 现为 91 节点（原 83）、`EventGraph` 现为 413 节点（原 409），且 **StatusChanged 移除（`bRemoved=true`）已被 Router 与 `PlayStatusChangedPresentation` 接管**（复用精确身份 Widget 并 Collapse）；卡牌初始化已由 `PreConstruct` 改为 `Construct` 驱动。随后通过 Unreal MCP Editor 清理了 `ExistingStatusWidget → SetStatusView.self` 的重复直连，保留经 `ActiveStatusPresentationWidget` 输出的唯一数据路径，并重新编译、保存 HUD；当前 HUD SHA-256 为 `574FF058...`。本轮仍不构成任何 PIE acceptance。其余未涉及的 WBP 仍沿用原只读快照状态。
+本快照的基础结构由 UE5.8 工具只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。2026-08-31 最终只读采集确认：`WBP_BattleHUD` 有 75 个 Designer 控件、9 个 Blueprint 变量，`EventGraph` 531 节点、`BeginPresentationRecordPlayback` 206 节点；Energy、完整 CardZone、DeckShuffled、Terminal 与 Global Cancel/Reconcile 均已保存。当前 HUD SHA-256 为 `990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A`，长度 2,517,122 bytes，保存时间 2026-08-31 09:52:06。该资产已 Compile/Save、重载核对，并通过 Scenario A-E 与 active Skip/Cancel PIE；最终 seal 的 Automation/Shipping 证据另记于 `Validation.md`。
 
 `.uasset` 始终是最终事实来源；本文是便于阅读的人工快照。若编辑器中存在尚未保存的改动，它们不属于本快照。
 
@@ -24,7 +24,7 @@ PLANNED / NOT WIRED
 
 | WBP | 保存时间 | Designer 控件数 | Graph |
 |---|---:|---:|---|
-| `WBP_BattleHUD` | 2026-08-30 21:50:03 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`BeginPresentationRecordPlayback` 91 nodes；`FindStatusWidgetByIdentity` 47 nodes；`EventGraph` 413 nodes |
+| `WBP_BattleHUD` | 2026-08-31 09:52:06 | 75 | `RefreshCombatantPresentations` 73 nodes；`RebuildStatusIcons` 10 nodes；`RefreshOneCombatantPresentation` 18 nodes；`RefreshTerminalSurfaceFromViewModel` 15 nodes；`BeginPresentationRecordPlayback` 206 nodes；`FindStatusWidgetByIdentity` 47 nodes；`EventGraph` 531 nodes |
 | `WBP_BattleCard` | 2026-08-30 19:55:27 | 20 | `EventGraph` 28 nodes |
 | `WBP_BattleStatus` | 2026-08-30 16:38:23 | 4 | `SetStatusView` 19 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 | `WBP_BattleTargetButton` | 2026-08-30 20:50:06 | 3 | `EventGraph` 12 nodes |
@@ -191,7 +191,7 @@ Combatant_EnemyPresentation.OnTargetRequested(TargetId)
 
 HUD `EventGraph` 中旧的 `ClearChildren → ForEach LegalTargets → Create WBP_BattleTargetButton` 组已经不存在；独立的 `WBP_BattleTargetButton` 资产仍保留，但 HUD 当前不再实例化它。上述历史节点不会运行，也不会影响当前目标选择；不要把 Sequence `Then 12` 重新接回旧路径。
 
-### 3.5 UI-A2E committed-presentation 连线 — CURRENT SAVED / PARTIAL
+### 3.5 UI-A2E committed-presentation 连线 — CURRENT SAVED / IMPLEMENTATION VALIDATED
 
 当前保存的资产已经把 `BeginPresentationRecordPlayback` 的入口接入 Record Type Switch，并完成了 `CardPlayed`、`CardZoneChanged (PlayArea → destination)`、`Damage`、`BlockChanged` 与 `StatusChanged`（创建 + 更新/减少 + 移除）的异步播放骨架；其余 Record 类型仍保留 C++ immediate fallback，因此尚不能认定为完整可运行的 A2E Router。
 
@@ -610,9 +610,9 @@ NotifyPresentationRecordFinished
 → ActivePresentationToken = default
 ```
 
-`CardPlayed`、`CardZoneChanged`、`Damage` 和 `BlockChanged` 的完成计时都最终写入 `ActivePresentationTimer`，因此完成/取消路径可以清理当前 Timer。
+所有异步接管类型都通过公共 Timer/Finish 路径持有 `ActivePresentationTimer`；正常完成以精确 token Notify，Cancel 则只清理 Timer 与本地表现，不调用正常完成 Notify。
 
-当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。它会先清理 Timer，再恢复 `HiddenHandCardWidget` 的可见性、移除有效的 `PlayedCardWidget`，隐藏 `Txt_DamagePresentation`，将 Player/Enemy 两个角色的 RenderOpacity 恢复为 `1.0`。当 `ActivePresentationType == StatusChanged` 且 `ViewModel` 有效时，执行链依次调用 `RebuildStatusIcons(ViewModel.Player.Statuses, WB_PlayerStatuses)` 与 `RebuildStatusIcons(ViewModel.Enemy.Statuses, WB_EnemyStatuses)`，然后与其他类型一样经统一尾部清空 `HiddenHandCardWidget`、`PlayedCardWidget`、`ActiveStatusPresentationWidget`、Active Type 和 Active Token。Status Cancel 路径不再对 `ActiveStatusPresentationWidget` 调用 `RemoveFromParent`；取消路径不调用 `NotifyPresentationFinished`。事件收到的 Token 未在 Blueprint 内再次比较；调用边界仍由基类 Controller 的当前 Token 校验负责。
+当前已保存 `Cancel Presentation Record Playback` 的 Blueprint override。执行顺序是 `ClearAndInvalidateTimerByHandle -> Switch ActivePresentationType -> 类型专用历史恢复 -> 统一 cleanup`。CardPlayed/CardZoneChanged 恢复隐藏手牌并删除未成立 transient；Damage 隐藏伤害文本、恢复双方 opacity 为 1.0 并刷新历史 HP/Block；Block/Energy/Status/Deck 分别从当前历史 ViewModel 恢复正式控件；Victory/Defeat/ResolutionFault 调用 `RefreshTerminalSurfaceFromViewModel`。统一尾部单向清空 `PlayedCardWidget -> HiddenHandCardWidget -> ZoneChangedDrawnCardWidget -> ActiveStatusPresentationWidget -> bDamageTargetIsPlayer -> bBlockTargetIsPlayer -> ActivePresentationType -> ActivePresentationToken`，无回环、无 Notify。调用边界仍由基类 Controller 的当前 Token 校验负责。
 
 #### 当前 A2E 状态结论
 
@@ -623,7 +623,10 @@ A1 Hand / HUD / target selection wiring
 A2E PlayPresentationRecord Router
 = Entry 已连接 Record Switch
 = CardPlayed 已接入异步播放骨架
-= CardZoneChanged（仅 FromZone=PlayArea）已接入异步清理骨架
+= EnergyChanged 已用冻结 EnergyAfter 更新正式能量文本，并校验 Before/After/Delta
+= CardZoneChanged 已接入 PlayArea destination、Hand -> DiscardPile、DrawPile -> Hand 当前 producer 全路径
+= Draw transient 使用冻结 Card snapshot，强制不可 Gameplay 交互并保留到正常 Finish
+= DeckShuffled 已校验冻结 pile counts 与历史 Before counts，并更新正式牌堆计数
 = Damage 已接入目标校验、异步播放和完成回调
 = Damage IncomingDamage 已接入 `Txt_DamagePresentation` 动态显示
 = Damage HPAfter/BlockAfter 已按目标写入 HP 文本、血条百分比和格挡文本
@@ -634,13 +637,14 @@ A2E PlayPresentationRecord Router
 = StatusChanged 移除（bRemoved=true）同样通过 FindStatusWidgetByIdentity 精确身份定位现有 Widget，复用并 SetVisibility(Collapsed)，不新建图标、不 RemoveFromParent
 = StatusChanged Router 采用 TargetKnown → bRemoved → bCreated → Found 的生命周期分流；创建/更新/移除均已在 Blueprint 接管
 = StatusChanged 正常完成通知后清空 ActiveStatusPresentationWidget；取消时从 ViewModel 当前历史状态依次重建 Player/Enemy 状态列表，再经统一尾部清空引用，且不 Notify
+= Victory / Defeat / ResolutionFault 已复用正式 terminal overlay 与 `RefreshTerminalSurfaceFromViewModel`
+= PresentationUnavailable 保持与 Gameplay ResolutionFault 分离，不进入 fault Event
 = HP 百分比使用 `ToFloat(HPAfter) / Max(ToFloat(MaxHP), 1.0)`，未重算伤害或修改 ViewModel
 = Player/Enemy 共用 `StartPresentationFinishTimer`（0.5 秒，非循环，完成事件为 `FinishPresentationRecord`）
-= CardPlayed / CardZoneChanged / Damage / BlockChanged / StatusChanged Timer Handle 已保存
-= Cancel Playback 清理骨架已保存
-= Energy / Shuffle / Terminal 仍未接入 Blueprint 播放
-= 尚未完成全部 Record routing
-= 已完成 Blueprint compile 与资产保存（WBP_BattleStatus 2026-08-30 16:38、WBP_BattleHUD 2026-08-30 21:50，HUD SHA-256 `574FF058...`；WBP_BattleCard 2026-08-30 19:55）；本轮清理了 StatusChanged 更新路径的重复 `self` 数据线并重新保存 HUD，不计为 PIE acceptance（既有 Strike/Damage/BlockChanged PIE 记录仍保留；StatusChanged 更新/减少/移除的 PIE 待验证）
+= 所有异步类型的 Timer Handle、exact-token Finish 与 invalid-target false fallback 已保存
+= Global Cancel/Reconcile 已按类型恢复历史 ViewModel surface，并进入无 Notify 的统一 cleanup tail
+= 全部当前 Record routing 已实现；Scenario A-E 与 active Skip/Cancel/Input Unlock 已通过真实 PIE
+= 已完成 Blueprint compile、资产保存与关闭/重载核对（WBP_BattleHUD 2026-08-31 09:52:06，HUD SHA-256 `990125C9...`）
 ```
 
 普通 Strike 的浮动 PIE 验证记录（2026-08-29）：
@@ -986,7 +990,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将 Damage、BlockChanged 与 `StatusChanged`（创建 + 更新/减少 + 移除）播放路径、`Txt_DamagePresentation` 动态伤害文本、Player/Enemy 格挡文本、WBP_BattleStatus 创建表现、`ExistingStatusWidget` 更新/移除表现，以及 Status Cancel 的双侧 `RebuildStatusIcons` 恢复链记录为 `CURRENT SAVED`。A2E 整体仍是 `CURRENT SAVED / PARTIAL`：Record Switch 入口、CardPlayed、CardZoneChanged、Damage、BlockChanged、StatusChanged 创建/更新/减少/移除、Timer Handle 和当前 Status Cancel 恢复已保存，但 Energy/Shuffle/Terminal 和最终全局 Cancel/Reconcile 等完整 Record routing 仍未完成。当前 `WBP_BattleHUD`（2026-08-30 21:50，SHA-256 `574FF058...`）、`WBP_BattleStatus`（2026-08-30 16:38）与 `WBP_BattleCard`（2026-08-30 19:55）为磁盘最新保存状态；本轮已通过 UE 编辑器接口重新编译并保存 HUD，但没有 PIE 运行，不能认定 StatusChanged 更新/减少/移除通过 PIE。文中此前 Strike/Damage 验证记录仍为 Enemy HP `100 → 94`、Energy `5 → 4`、播放完成后 RenderOpacity 恢复为 `1.0`。本文记录磁盘上的真实节点、数据线和执行线，不替代后续完整 A2E acceptance。
+本次最终更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将当前 producer 的全部 UI-A2E Record Router、冻结数据播放、exact-token Finish、Terminal 以及 Global Cancel/Reconcile 记录为 `CURRENT SAVED`。`WBP_BattleHUD`（2026-08-31 09:52:06，SHA-256 `990125C9...`）是最终实现候选；Status、Batch 2、Terminal、Scenario A-E 与 active Skip/Cancel/Input Unlock 都有真实 PIE 证据。本文记录磁盘上的真实节点、数据线和执行线，不替代 final-head A2D5、Phase6R 与 Shipping exclusion 的 Seal 证据。
 
 ## 12. 后续修改时的同步清单
 
@@ -1000,4 +1004,4 @@ No-target card
 6. 旧 `VB_LegalTargets` 是否仍是正式目标入口（当前：否；Designer 已删除，旧节点入口已断开）。
 7. Player/Enemy 名称和状态说明是否已经接入实际 ViewModel 数据。
 
-下一步具体接线方案见 [Phase6UIA1CombatantInspectionSetup.md](Phase6UIA1CombatantInspectionSetup.md)。该文件描述目标方案；本文描述当前已保存状态，二者不可混用。
+最终 Seal 顺序与证据要求见 [UIA2ERemainingSteps.zh-CN.md](UIA2ERemainingSteps.zh-CN.md) 和 [Validation.md](Validation.md)。本文只描述当前已保存 Blueprint 状态。
