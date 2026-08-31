@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **PLANNED / NOT STARTED**
+Status: **IN PROGRESS — R0 COMPLETE / R1 NOT STARTED**
 
 ## 1. Purpose
 
