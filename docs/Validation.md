@@ -44,6 +44,7 @@ Phase 6UI-A2N R3 review 4/4 PASS
 Phase 6UI-A2N R4 focused PASS
 Phase 6UI-A2N R5 focused 4/4 PASS
 Phase 6UI-A2N R6 focused 5/5 PASS
+Phase 6UI-A2N R7 focused 5/5 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -312,8 +313,36 @@ NativeDestruct cleanup. The manual PIE confirmed Energy, Block and real Shuffle 
 values with no visible flashback, duplicate display, permanent Input Lock or abnormal
 HUD state.
 
-R6 is **COMPLETE / VALIDATED**. R7 and later remain **NOT STARTED**. Detailed evidence
-is in `docs/R6NativeEnergyBlockShuffleValidation.md`.
+R6 is **COMPLETE / VALIDATED**. Detailed evidence is in
+`docs/R6NativeEnergyBlockShuffleValidation.md`.
+
+### Phase 6UI-A2N R7 Native Damage — 2026-08-31
+
+R7 migrated only the committed `Damage` Record into the Native HUD. The handler
+resolves the exact frozen `TargetPresentationId`, validates historical HP/Block Before
+against the frozen ViewModel, consumes the Record's `IncomingDamage`, `HPBefore /
+HPAfter` and `BlockBefore / BlockAfter` directly, and never derives committed HP or
+Block outcomes from IncomingDamage.
+
+Validation evidence:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+WBP_BattleHUD_Native targeted compile: NOT REQUIRED
+  (no runtime reflected binding/API contract changed)
+SlayTheSpireDemo.Phase6UIA2N.R7: 5/5 PASS
+L_BattleTest_Native minimal R7 Damage PIE: PASS
+```
+
+Focused coverage includes Player and Enemy targets, ordinary Damage, full Block
+absorption with unchanged HP, lethal overkill, exact Cancel historical restore,
+wrong-token Cancel, stale/duplicate Finish, next-Record isolation, invalid target /
+payload / Before / Token zero-side-effect Begin, and NativeDestruct cleanup. The
+manual PIE confirmed one correctly targeted Damage number/feedback, correct final
+HP/Block, no duplicate/flashback, and no permanent Input Lock.
+
+R7 is **COMPLETE / VALIDATED**. R8 and later remain **NOT STARTED**. Detailed evidence
+is in `docs/R7NativeDamageValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -353,8 +382,8 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R6 COMPLETE / VALIDATED
-R7+ NOT STARTED
+R0-R7 COMPLETE / VALIDATED
+R8+ NOT STARTED
 ```
 
 Validated A2E scenarios include:
