@@ -1692,6 +1692,17 @@ void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
 	const EBattlePresentationRecordType CancelledType = ActiveNativePresentationType;
 	ClearNativePresentationFinishTimer();
 	CancelNativePresentationVisual(CancelledType);
+
+	// Exact cancellation abandons the current playback chain. CardPlayed is the
+	// only R8 transient intentionally retained across Record boundaries, so a
+	// Skip/fail-safe Cancel during a later Damage/Draw/etc. must retire it here
+	// instead of leaving a stale card in OV_PlayArea after Controller collapse.
+	if (UBattleCardWidget* RetainedPlayedCard = NativePlayedCardWidget.Get())
+	{
+		RetainedPlayedCard->RemoveFromParent();
+	}
+	NativePlayedCardWidget.Reset();
+
 	ResetNativePresentationOwnership();
 	// Cancellation never notifies normal completion.
 }
