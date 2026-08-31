@@ -881,7 +881,7 @@ Visual behavior:
 ```text
 hide exact formal Hand Widget
 → create frozen presentation-only Card
-→ place it in PlayArea
+→ move/transition it from the exact Hand position into PlayArea
 ```
 
 CardPlayed already includes the paid card cost. It must not generate or simulate an
@@ -890,9 +890,9 @@ additional EnergyChanged visual.
 ### 13.2 Hand to DiscardPile
 
 ```text
-Begin  → hide exact Hand Widget
-Finish → do not restore and do not proactively rebuild Hand
-Cancel → restore the historical exact Hand Widget to Visible
+Begin  → hide exact Hand Widget and move one frozen presentation Card to DiscardPile
+Finish → retire the transient; do not restore or proactively rebuild Hand
+Cancel → retire the transient and restore the historical exact Hand Widget
 ```
 
 The reducer/ViewModel refresh owns the formal committed removal after Finish.
@@ -930,7 +930,10 @@ PlayArea → ExhaustPile
 PlayArea → RemovedPile
 ```
 
-Unknown zone pairs return false. Do not mutate unrelated pile display early.
+`PlayArea -> DiscardPile` moves/fades the exact PlayedCard transient toward the
+DiscardPile anchor. Exhaust/Removed retire by scaling/fading at PlayArea instead of
+pretending to enter another pile. Unknown zone pairs return false. Do not mutate
+unrelated pile display early.
 
 ### R8 acceptance
 
@@ -947,6 +950,9 @@ no later draw appears before the preceding exact-token Finish
 Finish does not roll back committed visual
 Cancel restores historical Hand
 CardPlayed does not duplicate EnergyChanged
+Hand card visibly transitions to PlayArea
+Hand discard visibly transitions to DiscardPile
+PlayedCard visibly transitions to DiscardPile; Exhaust/Removed disappear at PlayArea
 ```
 
 ---

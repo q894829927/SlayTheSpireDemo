@@ -706,6 +706,12 @@ the Draw count visual anchor to the final Hand slot, and exact-token Finish rele
 Controller to apply only that Record's snapshot before the next Draw begins. Later
 drawn cards cannot appear through an early all-at-once Hand refresh.
 
+The first Manual PIE pass found that the non-Draw lifecycle paths still changed
+visibility without actual motion. The corrective source now moves CardPlayed from
+its exact Hand anchor into centered PlayArea, moves Hand discard and PlayedCard
+discard toward `Txt_DiscardCount`, and scales/fades Exhaust/Removed at PlayArea.
+All moving cards remain frozen, presentation-only and noninteractive.
+
 Changed source/test/design files:
 
 ```text
@@ -746,7 +752,7 @@ Evidence is recorded in:
 
 ```text
 docs/R8NativeCardLifecycleValidation.md
-Saved/AutomationReports/R8FocusedPhase6UIA2N/index.json
+Saved/AutomationReports/R8FocusedPhase6UIA2NManualFix/index.json
 ```
 
 No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
@@ -754,7 +760,9 @@ run.
 
 ## R8 Manual PIE Validation — PENDING
 
-User action is required in
+The first user pass on **2026-09-01** exposed missing non-Draw movement and did not
+close the Gate. After the corrective implementation and affected-Gate rerun, user
+action is required again in
 `/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`: verify Hand-to-PlayArea-to-
 Discard, optional Exhaust, strict one-card-at-a-time DrawPile-to-Hand movement with
 no future-card early reveal, noninteractive transients, correct final formal Hand,

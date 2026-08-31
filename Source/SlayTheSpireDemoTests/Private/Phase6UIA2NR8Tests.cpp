@@ -288,6 +288,15 @@ bool FNativeR8CardPlayedLifecycleTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("CardPlayed does not synthesize EnergyChanged state"), Fixture.ViewModel->Energy, 3);
 	TestEqual(TEXT("CardPlayed does not mutate the Energy surface"), Fixture.Energy->GetText().ToString(), FString(TEXT("3/3")));
+	Fixture.Probe->InvokeNativeTickForTesting(0.25f);
+	TestTrue(TEXT("CardPlayed initializes Hand-to-PlayArea movement"),
+		Fixture.Probe->DrawAnimationInitializedForTesting());
+	if (IsValid(PlayedCard))
+	{
+		TestTrue(TEXT("Hand-to-PlayArea movement fades the frozen card toward the PlayArea"),
+			PlayedCard->GetRenderOpacity() > 0.0f
+				&& PlayedCard->GetRenderOpacity() < 1.0f);
+	}
 
 	Fixture.Probe->InvokeFinishForTesting(StaleToken);
 	TestTrue(TEXT("Stale CardPlayed Finish is a no-op"), Fixture.Probe->IsLocalPresentationActive());
@@ -381,17 +390,39 @@ bool FNativeR8HandDiscardTest::RunTest(const FString& Parameters)
 	const FPresentationPlaybackToken Token = MakeToken(1);
 	TestTrue(TEXT("Hand->Discard Begin accepts exact card/index"),
 		Fixture.Probe->PlayPresentationRecord(Record, Token));
-	TestTrue(TEXT("Hand->Discard Begin collapses exact historical Widget"),
-		FormalCard->GetVisibility() == ESlateVisibility::Collapsed);
+	TestTrue(TEXT("Hand->Discard Begin hides exact historical Widget while preserving its slot"),
+		FormalCard->GetVisibility() == ESlateVisibility::Hidden);
+	UBattleCardWidget* MovingDiscardCard = Fixture.Probe->ZoneCardForTesting();
+	TestNotNull(TEXT("Hand->Discard owns one presentation-only moving card"), MovingDiscardCard);
+	if (IsValid(MovingDiscardCard))
+	{
+		TestTrue(TEXT("Hand->Discard moving card is noninteractive"),
+			MovingDiscardCard->GetVisibility() == ESlateVisibility::HitTestInvisible
+				&& !MovingDiscardCard->GetCardView().bGameplayPlayable
+				&& !MovingDiscardCard->OnBattleCardRequested.IsBound());
+	}
+	Fixture.Probe->InvokeNativeTickForTesting(0.25f);
+	TestTrue(TEXT("Hand->Discard initializes Hand-to-pile movement"),
+		Fixture.Probe->DrawAnimationInitializedForTesting());
+	if (IsValid(MovingDiscardCard))
+	{
+		TestTrue(TEXT("Hand->Discard card is moving/fading toward the discard anchor"),
+			!MovingDiscardCard->GetRenderTransform().Translation.IsNearlyZero()
+				&& MovingDiscardCard->GetRenderOpacity() < 1.0f);
+	}
 	Fixture.Probe->InvokeCancelForTesting(Token);
 	TestTrue(TEXT("Hand->Discard Cancel restores exact historical visibility"),
 		FormalCard->GetVisibility() == ESlateVisibility::SelfHitTestInvisible);
+	TestEqual(TEXT("Hand->Discard Cancel removes the moving transient"),
+		Fixture.PlayArea->GetChildrenCount(), 0);
 
 	TestTrue(TEXT("Hand->Discard may start again after exact Cancel"),
 		Fixture.Probe->PlayPresentationRecord(Record, Token));
 	Fixture.Probe->InvokeFinishForTesting(Token);
 	TestTrue(TEXT("Hand->Discard Finish preserves committed hidden After"),
 		FormalCard->GetVisibility() == ESlateVisibility::Collapsed);
+	TestEqual(TEXT("Hand->Discard Finish retires the moving transient"),
+		Fixture.PlayArea->GetChildrenCount(), 0);
 	TestEqual(TEXT("Hand->Discard Finish does not proactively RefreshHand"),
 		Fixture.Hand->GetChildrenCount(), 1);
 	TestEqual(TEXT("Hand->Discard Begin/Finish does not mutate pile count early"),
@@ -547,6 +578,22 @@ bool FNativeR8PlayAreaDestinationsAndCleanupTest::RunTest(const FString& Paramet
 			Fixture.Probe->PlayPresentationRecord(Zone, Token));
 		TestNotNull(TEXT("PlayArea transient remains until exact Finish"),
 			Fixture.Probe->PlayedCardForTesting());
+		UBattleCardWidget* MovingPlayedCard = Fixture.Probe->PlayedCardForTesting();
+		Fixture.Probe->InvokeNativeTickForTesting(0.25f);
+		TestTrue(TEXT("PlayArea destination initializes its visual retirement"),
+			Fixture.Probe->DrawAnimationInitializedForTesting());
+		if (Destinations[Index] == ECardZone::DiscardPile)
+		{
+			TestTrue(TEXT("PlayArea->Discard moves/fades toward the pile anchor"),
+				!MovingPlayedCard->GetRenderTransform().Translation.IsNearlyZero()
+					&& MovingPlayedCard->GetRenderOpacity() < 1.0f);
+		}
+		else
+		{
+			TestTrue(TEXT("Exhaust/Removed disappears in the PlayArea"),
+				MovingPlayedCard->GetRenderTransform().Translation.IsNearlyZero()
+					&& MovingPlayedCard->GetRenderOpacity() < 1.0f);
+		}
 		Fixture.Probe->InvokeFinishForTesting(Token);
 		TestNull(TEXT("Exact destination Finish retires PlayedCard transient"),
 			Fixture.Probe->PlayedCardForTesting());

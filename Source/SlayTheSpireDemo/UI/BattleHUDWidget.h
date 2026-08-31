@@ -108,7 +108,18 @@ protected:
 	bool IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const;
 	UBattleCardWidget* CreateNativePresentationCard(
 		const FPresentationCardSnapshot& Snapshot) const;
-	void UpdateNativeDrawToHandAnimation(float DeltaSeconds);
+	void ConfigureNativeCardAnimation(
+		UBattleCardWidget* MovingCard,
+		UWidget* StartAnchor,
+		UWidget* EndAnchor,
+		const FVector2D& FallbackStartTranslation,
+		const FVector2D& FallbackEndTranslation,
+		float StartScale,
+		float EndScale,
+		float StartOpacity,
+		float EndOpacity);
+	void UpdateNativeCardAnimation(float DeltaSeconds);
+	void NormalizeNativeCardTransform(UBattleCardWidget* CardWidget) const;
 	void FinishNativeCardPresentation(EBattlePresentationRecordType RecordType);
 	void CancelNativeCardPresentation(EBattlePresentationRecordType RecordType);
 	void CleanupNativeCardPresentationOnDestruct();
@@ -161,13 +172,17 @@ protected:
 	{
 		return ActiveNativeDrawnCardWidget.Get();
 	}
+	UBattleCardWidget* GetNativeZoneCardWidget() const
+	{
+		return ActiveNativeZoneCardWidget.Get();
+	}
 	UBattleCardWidget* GetNativeHistoricalHandCardWidget() const
 	{
 		return ActiveNativeHistoricalHandCardWidget.Get();
 	}
-	bool IsNativeDrawAnimationInitialized() const
+	bool IsNativeCardAnimationInitialized() const
 	{
-		return bNativeDrawAnimationInitialized;
+		return bNativeCardAnimationInitialized;
 	}
 
 	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
@@ -349,11 +364,22 @@ private:
 	TWeakObjectPtr<UBattleCardWidget> NativePlayedCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeHistoricalHandCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeDrawnCardWidget;
+	TWeakObjectPtr<UBattleCardWidget> ActiveNativeZoneCardWidget;
+	TWeakObjectPtr<UBattleCardWidget> ActiveNativeMovingCardWidget;
+	TWeakObjectPtr<UWidget> ActiveNativeCardAnimationStartAnchor;
+	TWeakObjectPtr<UWidget> ActiveNativeCardAnimationEndAnchor;
 	ESlateVisibility ActiveNativeHistoricalHandVisibility = ESlateVisibility::Visible;
 	int32 ActiveNativeDrawCountBefore = 0;
 	int32 ActiveNativeDrawCountAfter = 0;
 	int32 ActiveNativeCardDestinationIndex = INDEX_NONE;
-	float ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
-	FVector2D ActiveNativeDrawStartTranslation = FVector2D::ZeroVector;
-	bool bNativeDrawAnimationInitialized = false;
+	float ActiveNativeCardAnimationElapsedSeconds = 0.0f;
+	FVector2D ActiveNativeCardAnimationStartTranslation = FVector2D::ZeroVector;
+	FVector2D ActiveNativeCardAnimationEndTranslation = FVector2D::ZeroVector;
+	FVector2D ActiveNativeCardAnimationFallbackStart = FVector2D::ZeroVector;
+	FVector2D ActiveNativeCardAnimationFallbackEnd = FVector2D::ZeroVector;
+	float ActiveNativeCardAnimationStartScale = 1.0f;
+	float ActiveNativeCardAnimationEndScale = 1.0f;
+	float ActiveNativeCardAnimationStartOpacity = 1.0f;
+	float ActiveNativeCardAnimationEndOpacity = 1.0f;
+	bool bNativeCardAnimationInitialized = false;
 };

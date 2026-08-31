@@ -67,13 +67,14 @@ public:
 	}
 	UBattleCardWidget* PlayedCardForTesting() const { return GetNativePlayedCardWidget(); }
 	UBattleCardWidget* DrawnCardForTesting() const { return GetNativeDrawnCardWidget(); }
+	UBattleCardWidget* ZoneCardForTesting() const { return GetNativeZoneCardWidget(); }
 	UBattleCardWidget* HistoricalCardForTesting() const
 	{
 		return GetNativeHistoricalHandCardWidget();
 	}
 	bool DrawAnimationInitializedForTesting() const
 	{
-		return IsNativeDrawAnimationInitialized();
+		return IsNativeCardAnimationInitialized();
 	}
 
 	bool InvokeBeginDirectForTesting(

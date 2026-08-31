@@ -45,6 +45,10 @@ Before state, paid cost, and the current producer's PlayArea index. Begin hides 
 exact formal Hand Widget and creates one frozen presentation-only `UBattleCardWidget`
 in `OV_PlayArea`.
 
+The created card uses the exact historical Hand Widget as its visual start anchor
+and eases into the centered PlayArea position. This preserves the distinct
+CardPlayed fact before the later destination Record begins.
+
 The presentation card is `HitTestInvisible`, has `bGameplayPlayable=false`, and has
 no HUD request delegate. CardPlayed does not synthesize an `EnergyChanged` visual.
 Exact Finish keeps the PlayedCard transient for its later PlayArea destination
@@ -63,13 +67,17 @@ PlayArea -> ExhaustPile
 PlayArea -> RemovedPile
 ```
 
-Hand-to-Discard hides the exact historical card on Begin, leaves it hidden on
-Finish without proactive `RefreshHand`, and restores its exact prior visibility on
-Cancel.
+Hand-to-Discard hides the exact historical card while preserving its layout slot,
+creates one frozen noninteractive transient, and moves/fades that transient from
+the Hand anchor toward `Txt_DiscardCount`. Finish retires the moving transient and
+leaves the historical card collapsed without proactive `RefreshHand`; Cancel
+retires the transient and restores the exact prior visibility.
 
 PlayArea-to-destination requires the exact frozen PlayedCard identity. Exact Finish
-retires it without changing unrelated pile counts early. Cancellation/destruction
-performs local transient cleanup without normal completion Notify.
+retires it without changing unrelated pile counts early. Discard moves/fades the
+PlayedCard toward `Txt_DiscardCount`; Exhaust/Removed scale and fade it out at the
+PlayArea. Cancellation/destruction performs local transient cleanup without normal
+completion Notify.
 
 ### Strict per-Record DrawPile-to-Hand presentation
 
@@ -146,7 +154,7 @@ Zone.PlayAreaDestinationsAndDestruct:           PASS
 Evidence:
 
 ```text
-Saved/AutomationReports/R8FocusedPhase6UIA2N/index.json
+Saved/AutomationReports/R8FocusedPhase6UIA2NManualFix/index.json
 ```
 
 Coverage includes exact RuntimeId/CardId/HandIndex identity, duplicate RuntimeId and
@@ -157,10 +165,21 @@ Draw Cancel, all three PlayArea destinations, invalid zone/index zero-side-effec
 false, stale/duplicate Finish, wrong/exact Cancel, next-Record isolation, transient
 cleanup and NativeDestruct local cleanup.
 
+The post-PIE correction rerun additionally asserts real transform/opacity progress
+for Hand-to-PlayArea, Hand-to-Discard, PlayArea-to-Discard, and PlayArea
+Exhaust/Removed disappearance. The earlier automated result was invalidated by the
+visual source changes; only the affected Editor Build and R8 focused suite were
+rerun.
+
 No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
 run.
 
 ## Manual PIE Gate — USER ACTION REQUIRED
+
+The first user pass on **2026-09-01** found that only DrawPile-to-Hand animated;
+CardPlayed, Hand discard, PlayedCard discard and Exhaust were still immediate state
+changes. Those missing visual transitions are now implemented and the affected
+automated Gates pass. Manual visual revalidation is therefore required.
 
 Run one minimal PIE pass in:
 

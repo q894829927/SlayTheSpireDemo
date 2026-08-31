@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
@@ -23,6 +24,8 @@ namespace
 	constexpr float NativePresentationDurationSeconds = 0.5f;
 	constexpr float NativeDrawCardStartScale = 0.82f;
 	const FVector2D NativeDrawCardFallbackTranslation(-420.0f, 90.0f);
+	const FVector2D NativeHandCardFallbackTranslation(-300.0f, 120.0f);
+	const FVector2D NativeDiscardCardFallbackTranslation(420.0f, 90.0f);
 }
 
 void UBattleHUDWidget::NativeOnInitialized()
@@ -184,7 +187,7 @@ void UBattleHUDWidget::NativeDestruct()
 void UBattleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
-	UpdateNativeDrawToHandAnimation(InDeltaTime);
+	UpdateNativeCardAnimation(InDeltaTime);
 }
 
 void UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()
@@ -694,13 +697,26 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
 	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
 	NativePlayedCardWidget = PresentationCard;
-	if (OV_PlayArea->AddChild(PresentationCard) == nullptr)
+	UOverlaySlot* PlayAreaSlot = OV_PlayArea->AddChildToOverlay(PresentationCard);
+	if (!IsValid(PlayAreaSlot))
 	{
 		NativePlayedCardWidget.Reset();
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
 	}
+	PlayAreaSlot->SetHorizontalAlignment(HAlign_Center);
+	PlayAreaSlot->SetVerticalAlignment(VAlign_Center);
+	ConfigureNativeCardAnimation(
+		PresentationCard,
+		HistoricalHandCard,
+		nullptr,
+		NativeHandCardFallbackTranslation,
+		FVector2D::ZeroVector,
+		0.88f,
+		1.0f,
+		0.0f,
+		1.0f);
 	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
 
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
@@ -754,8 +770,19 @@ bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
 	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
 	UBattleCardWidget* HistoricalHandCard = nullptr;
 	if (!IsValid(ViewModel)
+		|| !IsValid(OV_PlayArea)
+		|| !IsValid(Txt_DiscardCount)
+		|| CardWidgetClass == nullptr
 		|| Payload.ToIndex != ViewModel->DiscardCount
+		|| NativePlayedCardWidget.IsValid()
+		|| ActiveNativeZoneCardWidget.IsValid()
 		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
+	{
+		return false;
+	}
+
+	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
+	if (!IsValid(PresentationCard))
 	{
 		return false;
 	}
@@ -768,10 +795,32 @@ bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::HandToDiscard;
 	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
 	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
-	HistoricalHandCard->SetVisibility(ESlateVisibility::Collapsed);
+	ActiveNativeZoneCardWidget = PresentationCard;
+	UOverlaySlot* DiscardMotionSlot = OV_PlayArea->AddChildToOverlay(PresentationCard);
+	if (!IsValid(DiscardMotionSlot))
+	{
+		ActiveNativeZoneCardWidget.Reset();
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+	DiscardMotionSlot->SetHorizontalAlignment(HAlign_Center);
+	DiscardMotionSlot->SetVerticalAlignment(VAlign_Center);
+	ConfigureNativeCardAnimation(
+		PresentationCard,
+		HistoricalHandCard,
+		Txt_DiscardCount,
+		NativeHandCardFallbackTranslation,
+		NativeDiscardCardFallbackTranslation,
+		1.0f,
+		0.72f,
+		1.0f,
+		0.15f);
+	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		HistoricalHandCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+		PresentationCard->RemoveFromParent();
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -816,14 +865,6 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 	ActiveNativeDrawCountBefore = ViewModel->DrawCount;
 	ActiveNativeDrawCountAfter = ViewModel->DrawCount - 1;
 	ActiveNativeCardDestinationIndex = Payload.ToIndex;
-	ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
-	ActiveNativeDrawStartTranslation = NativeDrawCardFallbackTranslation;
-	bNativeDrawAnimationInitialized = false;
-	PresentationCard->SetRenderOpacity(0.0f);
-	PresentationCard->SetRenderScale(FVector2D(
-		NativeDrawCardStartScale,
-		NativeDrawCardStartScale));
-	PresentationCard->SetRenderTranslation(FVector2D::ZeroVector);
 	if (HB_Hand->AddChild(PresentationCard) == nullptr)
 	{
 		PresentationCard->RemoveFromParent();
@@ -831,6 +872,16 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	ConfigureNativeCardAnimation(
+		PresentationCard,
+		Txt_DrawCount,
+		nullptr,
+		NativeDrawCardFallbackTranslation,
+		FVector2D::ZeroVector,
+		NativeDrawCardStartScale,
+		1.0f,
+		0.0f,
+		1.0f);
 	ApplyNativePileCounts(ActiveNativeDrawCountAfter, ViewModel->DiscardCount);
 
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
@@ -885,8 +936,37 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
 	}
 
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::PlayAreaToDestination;
+	if (Payload.ToZone == ECardZone::DiscardPile)
+	{
+		ConfigureNativeCardAnimation(
+			PlayedCard,
+			nullptr,
+			Txt_DiscardCount,
+			FVector2D::ZeroVector,
+			NativeDiscardCardFallbackTranslation,
+			1.0f,
+			0.72f,
+			1.0f,
+			0.15f);
+	}
+	else
+	{
+		// Exhaust/Removed retire at the PlayArea instead of pretending to enter
+		// an unrelated pile. Scale/fade provides the sealed disappearance cue.
+		ConfigureNativeCardAnimation(
+			PlayedCard,
+			nullptr,
+			nullptr,
+			FVector2D::ZeroVector,
+			FVector2D::ZeroVector,
+			1.0f,
+			0.72f,
+			1.0f,
+			0.0f);
+	}
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
+		NormalizeNativeCardTransform(PlayedCard);
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -980,7 +1060,9 @@ bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) c
 		|| (NativePlayedCardWidget.IsValid()
 			&& NativePlayedCardWidget->GetRuntimeId() == RuntimeId)
 		|| (ActiveNativeDrawnCardWidget.IsValid()
-			&& ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId))
+			&& ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId)
+		|| (ActiveNativeZoneCardWidget.IsValid()
+			&& ActiveNativeZoneCardWidget->GetRuntimeId() == RuntimeId))
 	{
 		return false;
 	}
@@ -1039,58 +1121,122 @@ UBattleCardWidget* UBattleHUDWidget::CreateNativePresentationCard(
 	return CardWidget;
 }
 
-void UBattleHUDWidget::UpdateNativeDrawToHandAnimation(float DeltaSeconds)
+void UBattleHUDWidget::ConfigureNativeCardAnimation(
+	UBattleCardWidget* MovingCard,
+	UWidget* StartAnchor,
+	UWidget* EndAnchor,
+	const FVector2D& FallbackStartTranslation,
+	const FVector2D& FallbackEndTranslation,
+	float StartScale,
+	float EndScale,
+	float StartOpacity,
+	float EndOpacity)
 {
-	if (!bHasActiveNativePresentation
-		|| ActiveNativePresentationType != EBattlePresentationRecordType::CardZoneChanged
-		|| ActiveNativeCardPresentationKind != ENativeCardPresentationKind::DrawToHand)
+	ActiveNativeMovingCardWidget = MovingCard;
+	ActiveNativeCardAnimationStartAnchor = StartAnchor;
+	ActiveNativeCardAnimationEndAnchor = EndAnchor;
+	ActiveNativeCardAnimationFallbackStart = FallbackStartTranslation;
+	ActiveNativeCardAnimationFallbackEnd = FallbackEndTranslation;
+	ActiveNativeCardAnimationStartTranslation = FallbackStartTranslation;
+	ActiveNativeCardAnimationEndTranslation = FallbackEndTranslation;
+	ActiveNativeCardAnimationStartScale = StartScale;
+	ActiveNativeCardAnimationEndScale = EndScale;
+	ActiveNativeCardAnimationStartOpacity = StartOpacity;
+	ActiveNativeCardAnimationEndOpacity = EndOpacity;
+	ActiveNativeCardAnimationElapsedSeconds = 0.0f;
+	bNativeCardAnimationInitialized = false;
+
+	if (IsValid(MovingCard))
+	{
+		MovingCard->SetRenderTranslation(FallbackStartTranslation);
+		MovingCard->SetRenderScale(FVector2D(StartScale, StartScale));
+		MovingCard->SetRenderOpacity(StartOpacity);
+	}
+}
+
+void UBattleHUDWidget::UpdateNativeCardAnimation(float DeltaSeconds)
+{
+	if (!bHasActiveNativePresentation)
 	{
 		return;
 	}
 
-	UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get();
-	if (!IsValid(DrawnCard))
+	UBattleCardWidget* MovingCard = ActiveNativeMovingCardWidget.Get();
+	if (!IsValid(MovingCard))
 	{
 		return;
 	}
 
-	if (!bNativeDrawAnimationInitialized)
-	{
-		ActiveNativeDrawStartTranslation = NativeDrawCardFallbackTranslation;
-		if (IsValid(Txt_DrawCount))
+	auto ResolveAnchorTranslation =
+		[MovingCard](UWidget* Anchor, const FVector2D& Fallback) -> FVector2D
 		{
-			const FGeometry& DrawGeometry = Txt_DrawCount->GetCachedGeometry();
-			const FGeometry& CardGeometry = DrawnCard->GetCachedGeometry();
-			if (DrawGeometry.GetLocalSize().SizeSquared() > 0.0f
-				&& CardGeometry.GetLocalSize().SizeSquared() > 0.0f)
+			if (!IsValid(Anchor))
 			{
-				const FVector2D DrawAnchorAbsolute = DrawGeometry.LocalToAbsolute(
-					DrawGeometry.GetLocalSize() * 0.5f);
-				const FVector2D CardAnchorAbsolute = CardGeometry.LocalToAbsolute(
-					CardGeometry.GetLocalSize() * 0.5f);
-				ActiveNativeDrawStartTranslation =
-					CardGeometry.AbsoluteToLocal(DrawAnchorAbsolute)
-					- CardGeometry.AbsoluteToLocal(CardAnchorAbsolute);
+				return Fallback;
 			}
-		}
-		DrawnCard->SetRenderTranslation(ActiveNativeDrawStartTranslation);
-		bNativeDrawAnimationInitialized = true;
+
+			const FGeometry& AnchorGeometry = Anchor->GetCachedGeometry();
+			const FGeometry& CardGeometry = MovingCard->GetCachedGeometry();
+			if (AnchorGeometry.GetLocalSize().SizeSquared() <= 0.0f
+				|| CardGeometry.GetLocalSize().SizeSquared() <= 0.0f)
+			{
+				return Fallback;
+			}
+
+			const FVector2D AnchorAbsolute = AnchorGeometry.LocalToAbsolute(
+				AnchorGeometry.GetLocalSize() * 0.5f);
+			const FVector2D CardAbsolute = CardGeometry.LocalToAbsolute(
+				CardGeometry.GetLocalSize() * 0.5f);
+			const FVector2D AnchorLocal = FVector2D(
+				CardGeometry.AbsoluteToLocal(AnchorAbsolute));
+			const FVector2D CardLocal = FVector2D(
+				CardGeometry.AbsoluteToLocal(CardAbsolute));
+			return AnchorLocal - CardLocal;
+		};
+
+	if (!bNativeCardAnimationInitialized)
+	{
+		ActiveNativeCardAnimationStartTranslation = ResolveAnchorTranslation(
+			ActiveNativeCardAnimationStartAnchor.Get(),
+			ActiveNativeCardAnimationFallbackStart);
+		ActiveNativeCardAnimationEndTranslation = ResolveAnchorTranslation(
+			ActiveNativeCardAnimationEndAnchor.Get(),
+			ActiveNativeCardAnimationFallbackEnd);
+		MovingCard->SetRenderTranslation(ActiveNativeCardAnimationStartTranslation);
+		bNativeCardAnimationInitialized = true;
 	}
 
-	ActiveNativeDrawAnimationElapsedSeconds += FMath::Max(DeltaSeconds, 0.0f);
+	ActiveNativeCardAnimationElapsedSeconds += FMath::Max(DeltaSeconds, 0.0f);
 	const float LinearAlpha = FMath::Clamp(
-		ActiveNativeDrawAnimationElapsedSeconds / NativePresentationDurationSeconds,
+		ActiveNativeCardAnimationElapsedSeconds / NativePresentationDurationSeconds,
 		0.0f,
 		1.0f);
 	const float EasedAlpha = FMath::InterpEaseOut(0.0f, 1.0f, LinearAlpha, 3.0f);
-	DrawnCard->SetRenderTranslation(
-		FMath::Lerp(ActiveNativeDrawStartTranslation, FVector2D::ZeroVector, EasedAlpha));
-	const float DrawScale = FMath::Lerp(
-		NativeDrawCardStartScale,
-		1.0f,
+	MovingCard->SetRenderTranslation(FMath::Lerp(
+		ActiveNativeCardAnimationStartTranslation,
+		ActiveNativeCardAnimationEndTranslation,
+		EasedAlpha));
+	const float CardScale = FMath::Lerp(
+		ActiveNativeCardAnimationStartScale,
+		ActiveNativeCardAnimationEndScale,
 		EasedAlpha);
-	DrawnCard->SetRenderScale(FVector2D(DrawScale, DrawScale));
-	DrawnCard->SetRenderOpacity(EasedAlpha);
+	MovingCard->SetRenderScale(FVector2D(CardScale, CardScale));
+	MovingCard->SetRenderOpacity(FMath::Lerp(
+		ActiveNativeCardAnimationStartOpacity,
+		ActiveNativeCardAnimationEndOpacity,
+		EasedAlpha));
+}
+
+void UBattleHUDWidget::NormalizeNativeCardTransform(UBattleCardWidget* CardWidget) const
+{
+	if (!IsValid(CardWidget))
+	{
+		return;
+	}
+
+	CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
+	CardWidget->SetRenderScale(FVector2D(1.0f, 1.0f));
+	CardWidget->SetRenderOpacity(1.0f);
 }
 
 bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
@@ -1759,6 +1905,7 @@ void UBattleHUDWidget::FinishNativeCardPresentation(
 		// The frozen PlayArea Widget is deliberately retained for the later
 		// PlayArea-to-destination Record. The formal historical Hand reference is
 		// no longer needed after exact completion.
+		NormalizeNativeCardTransform(NativePlayedCardWidget.Get());
 		ActiveNativeHistoricalHandCardWidget.Reset();
 		ResetNativeCardRecordState();
 		return;
@@ -1775,15 +1922,18 @@ void UBattleHUDWidget::FinishNativeCardPresentation(
 	case ENativeCardPresentationKind::HandToDiscard:
 		// Preserve the hidden committed After until the Controller applies this
 		// Record's snapshot. Do not proactively rebuild the Hand.
+		if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
+		{
+			HistoricalCard->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (UBattleCardWidget* ZoneCard = ActiveNativeZoneCardWidget.Get())
+		{
+			ZoneCard->RemoveFromParent();
+		}
 		ActiveNativeHistoricalHandCardWidget.Reset();
 		break;
 	case ENativeCardPresentationKind::DrawToHand:
-		if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
-		{
-			DrawnCard->SetRenderTranslation(FVector2D::ZeroVector);
-			DrawnCard->SetRenderScale(FVector2D(1.0f, 1.0f));
-			DrawnCard->SetRenderOpacity(1.0f);
-		}
+		NormalizeNativeCardTransform(ActiveNativeDrawnCardWidget.Get());
 		// Keep this one presentation-only card in the Hand panel until the
 		// Controller applies this exact Record and RefreshHand replaces it with a
 		// formal card. No later draw can begin before the exact Notify boundary.
@@ -1830,6 +1980,10 @@ void UBattleHUDWidget::CancelNativeCardPresentation(
 			{
 				HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
 			}
+			if (UBattleCardWidget* ZoneCard = ActiveNativeZoneCardWidget.Get())
+			{
+				ZoneCard->RemoveFromParent();
+			}
 			break;
 		case ENativeCardPresentationKind::DrawToHand:
 			if (IsValid(ViewModel))
@@ -1866,6 +2020,10 @@ void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 	{
 		DrawnCard->RemoveFromParent();
 	}
+	if (UBattleCardWidget* ZoneCard = ActiveNativeZoneCardWidget.Get())
+	{
+		ZoneCard->RemoveFromParent();
+	}
 	if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
 	{
 		PlayedCard->RemoveFromParent();
@@ -1879,13 +2037,24 @@ void UBattleHUDWidget::ResetNativeCardRecordState()
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::None;
 	ActiveNativeHistoricalHandCardWidget.Reset();
 	ActiveNativeDrawnCardWidget.Reset();
+	ActiveNativeZoneCardWidget.Reset();
+	ActiveNativeMovingCardWidget.Reset();
+	ActiveNativeCardAnimationStartAnchor.Reset();
+	ActiveNativeCardAnimationEndAnchor.Reset();
 	ActiveNativeHistoricalHandVisibility = ESlateVisibility::Visible;
 	ActiveNativeDrawCountBefore = 0;
 	ActiveNativeDrawCountAfter = 0;
 	ActiveNativeCardDestinationIndex = INDEX_NONE;
-	ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
-	ActiveNativeDrawStartTranslation = FVector2D::ZeroVector;
-	bNativeDrawAnimationInitialized = false;
+	ActiveNativeCardAnimationElapsedSeconds = 0.0f;
+	ActiveNativeCardAnimationStartTranslation = FVector2D::ZeroVector;
+	ActiveNativeCardAnimationEndTranslation = FVector2D::ZeroVector;
+	ActiveNativeCardAnimationFallbackStart = FVector2D::ZeroVector;
+	ActiveNativeCardAnimationFallbackEnd = FVector2D::ZeroVector;
+	ActiveNativeCardAnimationStartScale = 1.0f;
+	ActiveNativeCardAnimationEndScale = 1.0f;
+	ActiveNativeCardAnimationStartOpacity = 1.0f;
+	ActiveNativeCardAnimationEndOpacity = 1.0f;
+	bNativeCardAnimationInitialized = false;
 }
 
 void UBattleHUDWidget::ResetNativeSimplePresentationState()
