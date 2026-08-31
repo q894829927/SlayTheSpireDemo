@@ -24,7 +24,9 @@ class UWidget;
  * R3-A owns frozen static HUD refresh and long-lived input delegates. R4 adds
  * formal Hand rebuild and card-request ownership. R5 adds the local Native
  * committed-presentation playback kernel. R6 adds EnergyChanged, BlockChanged
- * and DeckShuffled frozen Record visuals. R7 adds only Damage playback.
+ * and DeckShuffled frozen Record visuals. R7 adds only Damage playback. R8
+ * adds the committed CardPlayed/CardZoneChanged lifecycle, including one-card-
+ * per-Record DrawPile-to-Hand movement.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -42,6 +44,7 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
@@ -79,6 +82,37 @@ protected:
 	bool BeginNativeDamagePresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeCardPlayedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeCardZoneChangedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeHandToDiscardPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeDrawToHandPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativePlayAreaToDestinationPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const;
+	bool DoesNativeCardViewMatchSnapshot(
+		const FBattleHUDCardView& View,
+		const FPresentationCardSnapshot& Snapshot) const;
+	bool FindExactHistoricalHandCard(
+		const FPresentationCardSnapshot& Snapshot,
+		int32 RequiredIndex,
+		UBattleCardWidget*& OutCardWidget) const;
+	bool IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const;
+	UBattleCardWidget* CreateNativePresentationCard(
+		const FPresentationCardSnapshot& Snapshot) const;
+	void UpdateNativeDrawToHandAnimation(float DeltaSeconds);
+	void FinishNativeCardPresentation(EBattlePresentationRecordType RecordType);
+	void CancelNativeCardPresentation(EBattlePresentationRecordType RecordType);
+	void CleanupNativeCardPresentationOnDestruct();
+	void ResetNativeCardRecordState();
 	bool IsNativeRecordTokenConsistent(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) const;
@@ -105,6 +139,36 @@ protected:
 		int32 Block);
 	void CleanupNativeDamageTransientVisuals();
 	void ResetNativeDamagePresentationState();
+
+	enum class ENativeCardPresentationKind : uint8
+	{
+		None,
+		CardPlayed,
+		HandToDiscard,
+		DrawToHand,
+		PlayAreaToDestination
+	};
+
+	ENativeCardPresentationKind GetActiveNativeCardPresentationKind() const
+	{
+		return ActiveNativeCardPresentationKind;
+	}
+	UBattleCardWidget* GetNativePlayedCardWidget() const
+	{
+		return NativePlayedCardWidget.Get();
+	}
+	UBattleCardWidget* GetNativeDrawnCardWidget() const
+	{
+		return ActiveNativeDrawnCardWidget.Get();
+	}
+	UBattleCardWidget* GetNativeHistoricalHandCardWidget() const
+	{
+		return ActiveNativeHistoricalHandCardWidget.Get();
+	}
+	bool IsNativeDrawAnimationInitialized() const
+	{
+		return bNativeDrawAnimationInitialized;
+	}
 
 	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
 	bool HasNativePresentationFinishTimer() const { return NativePresentationFinishTimer.IsValid(); }
@@ -274,4 +338,22 @@ private:
 	int32 ActiveDamageBlockBefore = 0;
 	int32 ActiveDamageBlockAfter = 0;
 	int32 ActiveDamageMaxHP = 0;
+
+	// R8 owns only presentation Widgets. NativePlayedCardWidget intentionally
+	// survives CardPlayed Finish so the later PlayArea zone Record can retire the
+	// same frozen transient. Draw-to-Hand owns exactly one transient until its
+	// exact Token finishes; the Controller's per-Record snapshot refresh then
+	// replaces it with the formal Hand Widget before starting the next draw.
+	ENativeCardPresentationKind ActiveNativeCardPresentationKind =
+		ENativeCardPresentationKind::None;
+	TWeakObjectPtr<UBattleCardWidget> NativePlayedCardWidget;
+	TWeakObjectPtr<UBattleCardWidget> ActiveNativeHistoricalHandCardWidget;
+	TWeakObjectPtr<UBattleCardWidget> ActiveNativeDrawnCardWidget;
+	ESlateVisibility ActiveNativeHistoricalHandVisibility = ESlateVisibility::Visible;
+	int32 ActiveNativeDrawCountBefore = 0;
+	int32 ActiveNativeDrawCountAfter = 0;
+	int32 ActiveNativeCardDestinationIndex = INDEX_NONE;
+	float ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
+	FVector2D ActiveNativeDrawStartTranslation = FVector2D::ZeroVector;
+	bool bNativeDrawAnimationInitialized = false;
 };

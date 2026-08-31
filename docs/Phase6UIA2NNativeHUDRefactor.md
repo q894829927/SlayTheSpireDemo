@@ -902,17 +902,23 @@ The reducer/ViewModel refresh owns the formal committed removal after Finish.
 ```text
 Begin
 → validate RuntimeId, CardId, count and ToIndex
-→ create frozen noninteractive presentation Card
+→ create exactly one frozen noninteractive presentation Card owned by this Record
+→ move/transition it from the DrawPile visual anchor to Hand ToIndex
 
 Finish
 → do not proactively remove it
 → do not convert it into Gameplay-playable state
 → reducer/ViewModel catch-up and formal Hand refresh take ownership
+→ exact-token completion releases the Controller to start the next Draw Record
 
 Cancel
 → remove the presentation-only Card
 → restore historical display
 ```
+
+Consecutive draws remain strictly Record-serial. A draw Record may expose only its
+own one-card transient. The formal Hand refresh after that exact Record may include
+the just-finished card, but must not reveal any later draw whose Record has not begun.
 
 ### 13.4 PlayArea destination
 
@@ -936,6 +942,8 @@ wrong CardId / FromIndex / ToIndex
 unknown zone pair false fallback
 no transient leak
 Draw presentation Card cannot receive input
+N consecutive draws display one card at a time in exact Record order
+no later draw appears before the preceding exact-token Finish
 Finish does not roll back committed visual
 Cancel restores historical Hand
 CardPlayed does not duplicate EnergyChanged

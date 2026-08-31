@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Phase 6UI-A2N
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 ## Goal
 
@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 AUTOMATED PASS / MANUAL PIE PENDING; R9 NOT STARTED**.
 
 ## Current Repository State
 
@@ -46,6 +46,11 @@ R7 source implementation commit: c3a345413a87197de8328eb94e6b849d365f5442
 R7 Editor build: PASS
 R7 focused Automation: 5/5 PASS
 R7 Manual PIE: PASS (user confirmed 2026-08-31)
+R8 working branch: a2n/r8-native-card-lifecycle
+R8 starting main HEAD: 22f0955787551b0c5a3201f9ca45cf35e5167cbf
+R8 Editor build: PASS
+R8 focused Automation: 5/5 PASS
+R8 Manual PIE: PENDING
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -53,7 +58,8 @@ Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.
 R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
 R7: COMPLETE / VALIDATED
-R8 and later: NOT STARTED
+R8: SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R9 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -686,11 +692,87 @@ no-flashback, no-duplicate-Damage and no-permanent-Input-Lock observations.
 
 **R7 is COMPLETE / VALIDATED.**
 
+## R8 Implementation
+
+R8 migrates only `CardPlayed` and `CardZoneChanged` in the Native HUD. It validates
+the exact frozen card snapshot, RuntimeId/CardId/index/count/energy contract and
+uses presentation-only, HitTestInvisible cards with no HUD request delegate.
+CardPlayed owns the Hand-to-PlayArea transient boundary; the five supported current
+producer zone pairs own Hand discard, Draw to Hand, and PlayedCard retirement.
+
+The user-added Draw acceptance contract is implemented without Controller changes:
+each Draw Record creates exactly one transient at its exact `ToIndex`, moves it from
+the Draw count visual anchor to the final Hand slot, and exact-token Finish releases
+Controller to apply only that Record's snapshot before the next Draw begins. Later
+drawn cards cannot appear through an early all-at-once Hand refresh.
+
+Changed source/test/design files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8TestTypes.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8TestTypes.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8Tests.cpp
+docs/Phase6UIA2NNativeHUDRefactor.md
+docs/R8NativeCardLifecycleValidation.md
+```
+
+R8 does not modify Gameplay, Controller, reducer, Record/Envelope, Legacy WBP,
+production WidgetClass, Status/terminal visuals, UI-A3, or R9+ behavior.
+
+## R8 Automated Validation Evidence — PASS
+
+```text
+1. UE5.8 project-file generation: PASS
+2. SlayTheSpireDemoEditor Win64 Development build: PASS
+3. WBP_BattleHUD_Native / WBP_BattleCard_Native targeted compile: NOT REQUIRED
+   (no production reflected binding/API contract changed)
+4. SlayTheSpireDemo.Phase6UIA2N.R8 focused Automation: 5/5 PASS
+```
+
+Focused results:
+
+```text
+CardPlayed.ExactIdentityFinishAndCancel:        PASS
+CardPlayed.InvalidIdentityZeroSideEffects:      PASS
+Zone.DrawToHandSequentialPresentation:          PASS
+Zone.HandToDiscardFinishCancelAndInvalid:       PASS
+Zone.PlayAreaDestinationsAndDestruct:           PASS
+0 failed / 0 notRun
+```
+
+Evidence is recorded in:
+
+```text
+docs/R8NativeCardLifecycleValidation.md
+Saved/AutomationReports/R8FocusedPhase6UIA2N/index.json
+```
+
+No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
+run.
+
+## R8 Manual PIE Validation — PENDING
+
+User action is required in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`: verify Hand-to-PlayArea-to-
+Discard, optional Exhaust, strict one-card-at-a-time DrawPile-to-Hand movement with
+no future-card early reveal, noninteractive transients, correct final formal Hand,
+and no flashback, duplicate, transient leak, abnormal HUD, or permanent Input Lock.
+
+```text
+R8 SOURCE IMPLEMENTED
+AUTOMATED VALIDATION PASS
+MANUAL PIE PENDING
+R9 NOT STARTED
+```
+
 ## Next Exact Action — STOP
 
-Wait for explicit user authorization before starting R8 Card lifecycle. Do not enter
-R8 or any later phase automatically.
+Wait for the user's explicit R8 Manual PIE result. Only after a PASS confirmation
+may R8 be marked `COMPLETE / VALIDATED`. Do not start R9 automatically.
 
 ## Blockers
 
-No R7 blocker remains. R8 and all later phases remain NOT STARTED.
+No automated R8 blocker remains. The required Manual PIE Gate is pending user
+confirmation. R9 and all later phases remain NOT STARTED.

@@ -14,12 +14,15 @@
 #include "Components/Widget.h"
 #include "Components/WrapBox.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 
 #define LOCTEXT_NAMESPACE "BattleHUDWidget"
 
 namespace
 {
 	constexpr float NativePresentationDurationSeconds = 0.5f;
+	constexpr float NativeDrawCardStartScale = 0.82f;
+	const FVector2D NativeDrawCardFallbackTranslation(-420.0f, 90.0f);
 }
 
 void UBattleHUDWidget::NativeOnInitialized()
@@ -176,6 +179,12 @@ void UBattleHUDWidget::NativeDestruct()
 	}
 
 	Super::NativeDestruct();
+}
+
+void UBattleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	UpdateNativeDrawToHandAnimation(InDeltaTime);
 }
 
 void UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()
@@ -614,6 +623,10 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 
 	switch (Record.Type)
 	{
+	case EBattlePresentationRecordType::CardPlayed:
+		return BeginNativeCardPlayedPresentation(Record, Token);
+	case EBattlePresentationRecordType::CardZoneChanged:
+		return BeginNativeCardZoneChangedPresentation(Record, Token);
 	case EBattlePresentationRecordType::Damage:
 		return BeginNativeDamagePresentation(Record, Token);
 	case EBattlePresentationRecordType::EnergyChanged:
@@ -623,9 +636,461 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	case EBattlePresentationRecordType::DeckShuffled:
 		return BeginNativeDeckShuffledPresentation(Record, Token);
 	default:
-		// R8+ Records remain on the Controller's immediate-fallback path.
+		// R9+ Records remain on the Controller's immediate-fallback path.
 		return false;
 	}
+}
+
+bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FCardPlayedPresentationPayload& Payload = Record.CardPlayed;
+	UBattleCardWidget* HistoricalHandCard = nullptr;
+	const bool bSourceValid = IsKnownCombatantPresentationId(Payload.SourcePresentationId);
+	const bool bTargetValid = Payload.TargetPresentationId.IsNone()
+		|| IsKnownCombatantPresentationId(Payload.TargetPresentationId);
+	const bool bPayloadValid =
+		IsValid(ViewModel)
+		&& IsValid(HB_Hand)
+		&& IsValid(OV_PlayArea)
+		&& CardWidgetClass != nullptr
+		&& IsNativeCardSnapshotValid(Payload.Card)
+		&& bSourceValid
+		&& bTargetValid
+		&& Payload.HandIndexBefore >= 0
+		&& Payload.PlayAreaIndexAfter == 0
+		&& Payload.EnergyBefore >= 0
+		&& Payload.EnergyAfter >= 0
+		&& Payload.EnergyAfter <= Payload.EnergyBefore
+		&& Payload.CostPaid >= 0
+		&& Payload.CostPaid == Payload.EnergyBefore - Payload.EnergyAfter
+		&& Payload.CostPaid == Payload.Card.Cost
+		&& ViewModel->Energy == Payload.EnergyBefore
+		&& !NativePlayedCardWidget.IsValid()
+		&& !ActiveNativeDrawnCardWidget.IsValid()
+		&& OV_PlayArea->GetChildrenCount() == Payload.PlayAreaIndexAfter
+		&& FindExactHistoricalHandCard(
+			Payload.Card,
+			Payload.HandIndexBefore,
+			HistoricalHandCard);
+	if (!bPayloadValid)
+	{
+		return false;
+	}
+
+	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
+	if (!IsValid(PresentationCard))
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::CardPlayed;
+	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
+	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
+	NativePlayedCardWidget = PresentationCard;
+	if (OV_PlayArea->AddChild(PresentationCard) == nullptr)
+	{
+		NativePlayedCardWidget.Reset();
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
+
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		HistoricalHandCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+		PresentationCard->RemoveFromParent();
+		NativePlayedCardWidget.Reset();
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativeCardZoneChangedPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
+	if (!IsNativeCardSnapshotValid(Payload.Card))
+	{
+		return false;
+	}
+
+	if (Payload.FromZone == ECardZone::Hand
+		&& Payload.ToZone == ECardZone::DiscardPile)
+	{
+		return BeginNativeHandToDiscardPresentation(Record, Token);
+	}
+	if (Payload.FromZone == ECardZone::DrawPile
+		&& Payload.ToZone == ECardZone::Hand)
+	{
+		return BeginNativeDrawToHandPresentation(Record, Token);
+	}
+	if (Payload.FromZone == ECardZone::PlayArea
+		&& (Payload.ToZone == ECardZone::DiscardPile
+			|| Payload.ToZone == ECardZone::ExhaustPile
+			|| Payload.ToZone == ECardZone::RemovedPile))
+	{
+		return BeginNativePlayAreaToDestinationPresentation(Record, Token);
+	}
+
+	return false;
+}
+
+bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
+	UBattleCardWidget* HistoricalHandCard = nullptr;
+	if (!IsValid(ViewModel)
+		|| Payload.ToIndex != ViewModel->DiscardCount
+		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::HandToDiscard;
+	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
+	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
+	HistoricalHandCard->SetVisibility(ESlateVisibility::Collapsed);
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		HistoricalHandCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
+	const bool bPayloadValid =
+		IsValid(ViewModel)
+		&& IsValid(HB_Hand)
+		&& IsValid(Txt_DrawCount)
+		&& CardWidgetClass != nullptr
+		&& ViewModel->DrawCount > 0
+		&& Payload.FromIndex == ViewModel->DrawCount - 1
+		&& Payload.ToIndex == ViewModel->HandCards.Num()
+		&& HB_Hand->GetChildrenCount() == ViewModel->HandCards.Num()
+		&& IsRuntimeIdAbsentFromNativeCardVisuals(Payload.Card.RuntimeId);
+	if (!bPayloadValid)
+	{
+		return false;
+	}
+
+	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
+	if (!IsValid(PresentationCard))
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::DrawToHand;
+	ActiveNativeDrawnCardWidget = PresentationCard;
+	ActiveNativeDrawCountBefore = ViewModel->DrawCount;
+	ActiveNativeDrawCountAfter = ViewModel->DrawCount - 1;
+	ActiveNativeCardDestinationIndex = Payload.ToIndex;
+	ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
+	ActiveNativeDrawStartTranslation = NativeDrawCardFallbackTranslation;
+	bNativeDrawAnimationInitialized = false;
+	PresentationCard->SetRenderOpacity(0.0f);
+	PresentationCard->SetRenderScale(FVector2D(
+		NativeDrawCardStartScale,
+		NativeDrawCardStartScale));
+	PresentationCard->SetRenderTranslation(FVector2D::ZeroVector);
+	if (HB_Hand->AddChild(PresentationCard) == nullptr)
+	{
+		PresentationCard->RemoveFromParent();
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+	ApplyNativePileCounts(ActiveNativeDrawCountAfter, ViewModel->DiscardCount);
+
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		ApplyNativePileCounts(ActiveNativeDrawCountBefore, ViewModel->DiscardCount);
+		PresentationCard->RemoveFromParent();
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
+	UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get();
+	bool bDestinationIndexValid = false;
+	if (IsValid(ViewModel))
+	{
+		switch (Payload.ToZone)
+		{
+		case ECardZone::DiscardPile:
+			bDestinationIndexValid = Payload.ToIndex == ViewModel->DiscardCount;
+			break;
+		case ECardZone::ExhaustPile:
+			bDestinationIndexValid = Payload.ToIndex == ViewModel->ExhaustCount;
+			break;
+		case ECardZone::RemovedPile:
+			bDestinationIndexValid = Payload.ToIndex >= 0;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (!IsValid(PlayedCard)
+		|| PlayedCard->GetParent() != OV_PlayArea
+		|| Payload.FromIndex != 0
+		|| !bDestinationIndexValid
+		|| !DoesNativeCardViewMatchSnapshot(PlayedCard->GetCardView(), Payload.Card))
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::PlayAreaToDestination;
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		ResetNativeCardRecordState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::IsNativeCardSnapshotValid(
+	const FPresentationCardSnapshot& Snapshot) const
+{
+	const bool bCardTypeValid = Snapshot.CardType == ECardType::Attack
+		|| Snapshot.CardType == ECardType::Skill
+		|| Snapshot.CardType == ECardType::Power
+		|| Snapshot.CardType == ECardType::Status
+		|| Snapshot.CardType == ECardType::Curse;
+	const bool bTargetTypeValid = Snapshot.TargetType == ECardTargetType::None
+		|| Snapshot.TargetType == ECardTargetType::Self
+		|| Snapshot.TargetType == ECardTargetType::Enemy;
+	return Snapshot.RuntimeId != INDEX_NONE
+		&& !Snapshot.CardId.IsNone()
+		&& !Snapshot.DisplayName.IsEmpty()
+		&& Snapshot.Cost >= 0
+		&& bCardTypeValid
+		&& bTargetTypeValid;
+}
+
+bool UBattleHUDWidget::DoesNativeCardViewMatchSnapshot(
+	const FBattleHUDCardView& View,
+	const FPresentationCardSnapshot& Snapshot) const
+{
+	return View.RuntimeId == Snapshot.RuntimeId
+		&& View.CardId == Snapshot.CardId
+		&& View.DisplayName.EqualTo(Snapshot.DisplayName)
+		&& View.Cost == Snapshot.Cost
+		&& View.CardType == Snapshot.CardType
+		&& View.TargetType == Snapshot.TargetType
+		&& View.Description.EqualTo(Snapshot.Description)
+		&& View.CardArt.Get() == Snapshot.CardArt.Get();
+}
+
+bool UBattleHUDWidget::FindExactHistoricalHandCard(
+	const FPresentationCardSnapshot& Snapshot,
+	int32 RequiredIndex,
+	UBattleCardWidget*& OutCardWidget) const
+{
+	OutCardWidget = nullptr;
+	if (!IsValid(ViewModel)
+		|| !IsValid(HB_Hand)
+		|| !ViewModel->HandCards.IsValidIndex(RequiredIndex)
+		|| ViewModel->HandCards.Num() != HB_Hand->GetChildrenCount()
+		|| !IsValid(HB_Hand->GetChildAt(RequiredIndex)))
+	{
+		return false;
+	}
+
+	int32 ViewModelRuntimeMatches = 0;
+	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
+	{
+		ViewModelRuntimeMatches += CardView.RuntimeId == Snapshot.RuntimeId ? 1 : 0;
+	}
+
+	int32 WidgetRuntimeMatches = 0;
+	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+	{
+		const UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
+		if (!IsValid(CardWidget))
+		{
+			return false;
+		}
+		WidgetRuntimeMatches += CardWidget->GetRuntimeId() == Snapshot.RuntimeId ? 1 : 0;
+	}
+
+	UBattleCardWidget* RequiredCard = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(RequiredIndex));
+	if (ViewModelRuntimeMatches != 1
+		|| WidgetRuntimeMatches != 1
+		|| !IsValid(RequiredCard)
+		|| !DoesNativeCardViewMatchSnapshot(ViewModel->HandCards[RequiredIndex], Snapshot)
+		|| !DoesNativeCardViewMatchSnapshot(RequiredCard->GetCardView(), Snapshot))
+	{
+		return false;
+	}
+
+	OutCardWidget = RequiredCard;
+	return true;
+}
+
+bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const
+{
+	if (RuntimeId == INDEX_NONE
+		|| (NativePlayedCardWidget.IsValid()
+			&& NativePlayedCardWidget->GetRuntimeId() == RuntimeId)
+		|| (ActiveNativeDrawnCardWidget.IsValid()
+			&& ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId))
+	{
+		return false;
+	}
+
+	if (IsValid(HB_Hand))
+	{
+		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+		{
+			const UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
+			if (!IsValid(CardWidget) || CardWidget->GetRuntimeId() == RuntimeId)
+			{
+				return false;
+			}
+		}
+	}
+
+	if (IsValid(ViewModel))
+	{
+		for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
+		{
+			if (CardView.RuntimeId == RuntimeId)
+			{
+				return false;
+			}
+		}
+	}
+
+	return true;
+}
+
+UBattleCardWidget* UBattleHUDWidget::CreateNativePresentationCard(
+	const FPresentationCardSnapshot& Snapshot) const
+{
+	if (CardWidgetClass == nullptr)
+	{
+		return nullptr;
+	}
+
+	UBattleCardWidget* CardWidget = nullptr;
+	if (APlayerController* OwningPlayer = GetOwningPlayer())
+	{
+		CardWidget = CreateWidget<UBattleCardWidget>(OwningPlayer, CardWidgetClass);
+	}
+	else if (UWorld* World = GetWorld(); IsValid(World))
+	{
+		CardWidget = CreateWidget<UBattleCardWidget>(World, CardWidgetClass);
+	}
+
+	if (!IsValid(CardWidget))
+	{
+		return nullptr;
+	}
+
+	CardWidget->SetCardView(MakePresentationCardView(Snapshot));
+	CardWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+	return CardWidget;
+}
+
+void UBattleHUDWidget::UpdateNativeDrawToHandAnimation(float DeltaSeconds)
+{
+	if (!bHasActiveNativePresentation
+		|| ActiveNativePresentationType != EBattlePresentationRecordType::CardZoneChanged
+		|| ActiveNativeCardPresentationKind != ENativeCardPresentationKind::DrawToHand)
+	{
+		return;
+	}
+
+	UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get();
+	if (!IsValid(DrawnCard))
+	{
+		return;
+	}
+
+	if (!bNativeDrawAnimationInitialized)
+	{
+		ActiveNativeDrawStartTranslation = NativeDrawCardFallbackTranslation;
+		if (IsValid(Txt_DrawCount))
+		{
+			const FGeometry& DrawGeometry = Txt_DrawCount->GetCachedGeometry();
+			const FGeometry& CardGeometry = DrawnCard->GetCachedGeometry();
+			if (DrawGeometry.GetLocalSize().SizeSquared() > 0.0f
+				&& CardGeometry.GetLocalSize().SizeSquared() > 0.0f)
+			{
+				const FVector2D DrawAnchorAbsolute = DrawGeometry.LocalToAbsolute(
+					DrawGeometry.GetLocalSize() * 0.5f);
+				const FVector2D CardAnchorAbsolute = CardGeometry.LocalToAbsolute(
+					CardGeometry.GetLocalSize() * 0.5f);
+				ActiveNativeDrawStartTranslation =
+					CardGeometry.AbsoluteToLocal(DrawAnchorAbsolute)
+					- CardGeometry.AbsoluteToLocal(CardAnchorAbsolute);
+			}
+		}
+		DrawnCard->SetRenderTranslation(ActiveNativeDrawStartTranslation);
+		bNativeDrawAnimationInitialized = true;
+	}
+
+	ActiveNativeDrawAnimationElapsedSeconds += FMath::Max(DeltaSeconds, 0.0f);
+	const float LinearAlpha = FMath::Clamp(
+		ActiveNativeDrawAnimationElapsedSeconds / NativePresentationDurationSeconds,
+		0.0f,
+		1.0f);
+	const float EasedAlpha = FMath::InterpEaseOut(0.0f, 1.0f, LinearAlpha, 3.0f);
+	DrawnCard->SetRenderTranslation(
+		FMath::Lerp(ActiveNativeDrawStartTranslation, FVector2D::ZeroVector, EasedAlpha));
+	const float DrawScale = FMath::Lerp(
+		NativeDrawCardStartScale,
+		1.0f,
+		EasedAlpha);
+	DrawnCard->SetRenderScale(FVector2D(DrawScale, DrawScale));
+	DrawnCard->SetRenderOpacity(EasedAlpha);
 }
 
 bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
@@ -1192,6 +1657,13 @@ void UBattleHUDWidget::FinishNativePresentationVisual(
 	EBattlePresentationRecordType RecordType
 )
 {
+	if (RecordType == EBattlePresentationRecordType::CardPlayed
+		|| RecordType == EBattlePresentationRecordType::CardZoneChanged)
+	{
+		FinishNativeCardPresentation(RecordType);
+		return;
+	}
+
 	switch (RecordType)
 	{
 	case EBattlePresentationRecordType::Damage:
@@ -1228,6 +1700,13 @@ void UBattleHUDWidget::CancelNativePresentationVisual(
 	EBattlePresentationRecordType RecordType
 )
 {
+	if (RecordType == EBattlePresentationRecordType::CardPlayed
+		|| RecordType == EBattlePresentationRecordType::CardZoneChanged)
+	{
+		CancelNativeCardPresentation(RecordType);
+		return;
+	}
+
 	switch (RecordType)
 	{
 	case EBattlePresentationRecordType::Damage:
@@ -1267,7 +1746,146 @@ void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 	// restored and normal completion is not notified.
 	CleanupNativeDamageTransientVisuals();
 	ResetNativeDamagePresentationState();
+	CleanupNativeCardPresentationOnDestruct();
 	ResetNativeSimplePresentationState();
+}
+
+void UBattleHUDWidget::FinishNativeCardPresentation(
+	EBattlePresentationRecordType RecordType)
+{
+	if (RecordType == EBattlePresentationRecordType::CardPlayed
+		&& ActiveNativeCardPresentationKind == ENativeCardPresentationKind::CardPlayed)
+	{
+		// The frozen PlayArea Widget is deliberately retained for the later
+		// PlayArea-to-destination Record. The formal historical Hand reference is
+		// no longer needed after exact completion.
+		ActiveNativeHistoricalHandCardWidget.Reset();
+		ResetNativeCardRecordState();
+		return;
+	}
+
+	if (RecordType != EBattlePresentationRecordType::CardZoneChanged)
+	{
+		ResetNativeCardRecordState();
+		return;
+	}
+
+	switch (ActiveNativeCardPresentationKind)
+	{
+	case ENativeCardPresentationKind::HandToDiscard:
+		// Preserve the hidden committed After until the Controller applies this
+		// Record's snapshot. Do not proactively rebuild the Hand.
+		ActiveNativeHistoricalHandCardWidget.Reset();
+		break;
+	case ENativeCardPresentationKind::DrawToHand:
+		if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
+		{
+			DrawnCard->SetRenderTranslation(FVector2D::ZeroVector);
+			DrawnCard->SetRenderScale(FVector2D(1.0f, 1.0f));
+			DrawnCard->SetRenderOpacity(1.0f);
+		}
+		// Keep this one presentation-only card in the Hand panel until the
+		// Controller applies this exact Record and RefreshHand replaces it with a
+		// formal card. No later draw can begin before the exact Notify boundary.
+		ActiveNativeDrawnCardWidget.Reset();
+		break;
+	case ENativeCardPresentationKind::PlayAreaToDestination:
+		if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+		{
+			PlayedCard->RemoveFromParent();
+		}
+		NativePlayedCardWidget.Reset();
+		break;
+	default:
+		break;
+	}
+	ResetNativeCardRecordState();
+}
+
+void UBattleHUDWidget::CancelNativeCardPresentation(
+	EBattlePresentationRecordType RecordType)
+{
+	if (RecordType == EBattlePresentationRecordType::CardPlayed
+		&& ActiveNativeCardPresentationKind == ENativeCardPresentationKind::CardPlayed)
+	{
+		if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
+		{
+			HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+		}
+		if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+		{
+			PlayedCard->RemoveFromParent();
+		}
+		NativePlayedCardWidget.Reset();
+		ResetNativeCardRecordState();
+		return;
+	}
+
+	if (RecordType == EBattlePresentationRecordType::CardZoneChanged)
+	{
+		switch (ActiveNativeCardPresentationKind)
+		{
+		case ENativeCardPresentationKind::HandToDiscard:
+			if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
+			{
+				HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+			}
+			break;
+		case ENativeCardPresentationKind::DrawToHand:
+			if (IsValid(ViewModel))
+			{
+				ApplyNativePileCounts(ActiveNativeDrawCountBefore, ViewModel->DiscardCount);
+			}
+			if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
+			{
+				DrawnCard->RemoveFromParent();
+			}
+			break;
+		case ENativeCardPresentationKind::PlayAreaToDestination:
+			// A collapse/skip cancellation owns local transient cleanup. It never
+			// notifies completion and must not leak the prior CardPlayed visual.
+			if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+			{
+				PlayedCard->RemoveFromParent();
+			}
+			NativePlayedCardWidget.Reset();
+			break;
+		default:
+			break;
+		}
+	}
+	ResetNativeCardRecordState();
+}
+
+void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
+{
+	// NativeDestruct is local cleanup only: presentation transients are removed,
+	// but a hidden/collapsed historical formal Hand Widget is never restored and
+	// normal completion is never notified.
+	if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
+	{
+		DrawnCard->RemoveFromParent();
+	}
+	if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+	{
+		PlayedCard->RemoveFromParent();
+	}
+	NativePlayedCardWidget.Reset();
+	ResetNativeCardRecordState();
+}
+
+void UBattleHUDWidget::ResetNativeCardRecordState()
+{
+	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::None;
+	ActiveNativeHistoricalHandCardWidget.Reset();
+	ActiveNativeDrawnCardWidget.Reset();
+	ActiveNativeHistoricalHandVisibility = ESlateVisibility::Visible;
+	ActiveNativeDrawCountBefore = 0;
+	ActiveNativeDrawCountAfter = 0;
+	ActiveNativeCardDestinationIndex = INDEX_NONE;
+	ActiveNativeDrawAnimationElapsedSeconds = 0.0f;
+	ActiveNativeDrawStartTranslation = FVector2D::ZeroVector;
+	bNativeDrawAnimationInitialized = false;
 }
 
 void UBattleHUDWidget::ResetNativeSimplePresentationState()
