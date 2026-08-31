@@ -26,7 +26,7 @@ CardData / CardInstance
 
 ## Documentation Sources and Priority
 
-Project status and phase dependencies live in `docs/DevelopmentPhases.md`. Architectural background and durable design decisions live in `docs/Architecture.md`. Validation evidence lives in `docs/Validation.md`.
+Project status and phase dependencies live in `docs/DevelopmentPhases.md`. Architectural background and durable design decisions live in `docs/Architecture.md`. Validation execution policy lives in `docs/ValidationExecutionPolicy.md`; trusted validation evidence lives in `docs/Validation.md`.
 
 Use a dedicated design or implementation document for the goals, migration plan, ordering, fallback strategy and acceptance criteria of a specific initiative. Use `docs/CODEX_GOAL_CHECKPOINT.md` only as the resumable execution state of one Goal, including the current HEAD, completed work, next action and tests already run. A checkpoint records progress; it does not define global rules or override durable project documents.
 
@@ -146,9 +146,38 @@ Never claim:
 - Blueprint correctness from C++ Automation alone;
 - PIE or packaged-game validation without actually performing it.
 
-When UE Editor work cannot be performed with available tools, label it `USER ACTION REQUIRED` and provide the exact asset, graph/function, nodes, pins, values, compile/save order, expected result and PIE evidence required.
+Validation must be proportional to the current changed contract and must follow `docs/ValidationExecutionPolicy.md`.
 
-See `docs/Validation.md` and the directory-specific test rules in `Source/SlayTheSpireDemoTests/AGENTS.md`.
+The default validation budget for an ordinary phase is:
+
+```text
+Build once
+-> smallest focused Automation suite once
+-> one focused manual PIE pass only when the phase has a genuine visual/manual Gate
+-> record evidence
+-> STOP
+```
+
+Passing Gates are sticky. Do not rerun a Gate that already passed unless later edits invalidate it, the proving test/fixture changed, an explicit final-head requirement applies, or the user asks for a rerun.
+
+Do not perform validation-of-validation loops: no repeated screenshot inspection, repeated passing PIE, repeated log rereads, extra synthetic fixtures, unrelated historical suites, or architecture review merely to reconfirm a Gate that already passed.
+
+If a Gate fails, investigate and fix that Gate, rebuild when required by the changed code, and rerun only the Gate(s) invalidated by the fix. Do not restart the entire acceptance sequence by default.
+
+Deterministic state/contracts should be automated. Manual PIE is reserved for genuinely visual/player-facing behavior such as animation appearance, movement, layout, hover/mouse interaction, flicker/flashback, visible duplicate instances, or Legacy-vs-Native visual parity.
+
+Each phase acceptance should explicitly separate:
+
+```text
+AUTOMATED GATES
+MANUAL PIE GATES
+```
+
+Do not silently replace a manual Gate with repeated agent screenshots. When manual UE Editor work cannot be performed with available tools, label it `USER ACTION REQUIRED` and provide the exact minimal asset/map, actions, expected observations and evidence required.
+
+Completed phases are sealed execution history for normal forward work. Do not re-audit their detailed evidence unless a current failure directly implicates that contract.
+
+See `docs/ValidationExecutionPolicy.md`, `docs/Validation.md` and the directory-specific test rules in `Source/SlayTheSpireDemoTests/AGENTS.md`.
 
 ### UE 5.8 PowerShell Project and Build Commands
 
