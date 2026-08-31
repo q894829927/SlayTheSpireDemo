@@ -60,7 +60,7 @@ void UBattleCardWidget::NativeDestruct()
 
 void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
 {
-	CardView = View;
+	CurrentCardView = View;
 	RefreshFromCardView();
 }
 
@@ -71,21 +71,21 @@ void UBattleCardWidget::RefreshFromCardView()
 		return;
 	}
 
-	Txt_CardName->SetText(CardView.DisplayName);
-	Txt_Cost->SetText(FText::AsNumber(CardView.Cost));
-	Txt_CardDescription->SetText(CardView.Description);
+	Txt_CardName->SetText(CurrentCardView.DisplayName);
+	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
+	Txt_CardDescription->SetText(CurrentCardView.Description);
 
 	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
 	{
 		Txt_CardType->SetText(
-			CardTypeEnum->GetDisplayNameTextByValue(static_cast<int64>(CardView.CardType)));
+			CardTypeEnum->GetDisplayNameTextByValue(static_cast<int64>(CurrentCardView.CardType)));
 	}
 	else
 	{
 		Txt_CardType->SetText(FText::GetEmpty());
 	}
 
-	Img_CardArt->SetBrushFromTexture(CardView.CardArt);
+	Img_CardArt->SetBrushFromTexture(CurrentCardView.CardArt.Get());
 }
 
 void UBattleCardWidget::HandleCardClicked()
@@ -95,8 +95,8 @@ void UBattleCardWidget::HandleCardClicked()
 	// owns the authoritative playability check and feedback. Presentation-only
 	// cards are instead never bound by the HUD and are HitTestInvisible when they
 	// are introduced by later playback phases.
-	if (bNativeBindingsValid && CardView.RuntimeId != INDEX_NONE)
+	if (bNativeBindingsValid && CurrentCardView.RuntimeId != INDEX_NONE)
 	{
-		OnBattleCardRequested.Broadcast(CardView.RuntimeId);
+		OnBattleCardRequested.Broadcast(CurrentCardView.RuntimeId);
 	}
 }
