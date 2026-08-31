@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A / R4 / R5 COMPLETE AND VALIDATED; R6+ NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R5 COMPLETE / VALIDATED; R6 SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R7 NOT STARTED**.
 
 ## Current Repository State
 
@@ -35,12 +35,18 @@ R5 working branch: a2n/r5-native-playback-kernel
 R5 base main: 1978e1d3abe831dedef95b8bd431a7717def573b
 R5 timer-binding fix: 21e3f7dca0d72c8687465fce10892e205774f893
 R5 validation result: PASS
+R6 starting HEAD: 778073be41ffa0c003cdab5fde9ca1d1ac996cb8
+R6 source implementation commit: 1250cb411afe640802d7b70239a51228a94ed369
+R6 Editor build: PASS
+R6 focused Automation: 5/5 PASS
+R6 Manual PIE: PENDING
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 R5: COMPLETE / VALIDATED
-R6 and later: NOT STARTED
+R6: SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R7 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -538,15 +544,84 @@ Card lifecycle, Status lifecycle and terminal Record visuals remain NOT STARTED.
 
 **R5 is COMPLETE / VALIDATED.**
 
-## Next Exact Action — R6 Energy / Block / Shuffle
+## R6 Implementation
 
-The next phase is R6. Do not start R6 automatically from this checkpoint.
+R6 migrates only `EnergyChanged`, `BlockChanged` and `DeckShuffled` in the Native
+HUD. All three handlers validate their frozen payload and required historical
+Before state before ownership, reuse the R5 exact-token timer kernel, display frozen
+After on Begin/Finish, and restore frozen Before on exact Cancel without normal
+completion Notify.
 
-R6 may migrate only the EnergyChanged, BlockChanged and DeckShuffled committed-
-presentation visuals defined by `docs/Phase6UIA2NNativeHUDRefactor.md`, reusing the
-sealed R5 kernel. It must not implicitly enter R7 Damage, R8 Card lifecycle, R9
-Status, R10 Terminal, production cutover, Legacy cleanup, or UI-A3.
+`BlockChanged` resolves the Record's exact `TargetPresentationId` for both Player
+and Enemy and preserves the complete zero-Block badge collapse rule. `DeckShuffled`
+uses only its frozen Draw/Discard transition and does not inspect live Deck zones.
+Invalid payload, target or Record/Token metadata returns false with zero local visual
+side effects, preserving Controller immediate fallback.
+
+Changed implementation/test files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR6TestTypes.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR6TestTypes.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR6Tests.cpp
+```
+
+R6 does not modify Controller, Reducer, Record, Envelope, Gameplay, production map
+selection, Legacy WBP assets or UI-A3. Damage and every R7+ visual remain unstarted.
+
+## R6 Automated Validation Evidence — PASS
+
+```text
+1. UE5.8 project-file generation: PASS
+2. SlayTheSpireDemoEditor Win64 Development build: PASS
+3. WBP_BattleHUD_Native targeted compile: NOT REQUIRED
+   (no runtime reflected binding/API contract changed)
+4. SlayTheSpireDemo.Phase6UIA2N.R6 focused Automation: 5/5 PASS
+```
+
+Focused results:
+
+```text
+Block:           PASS
+DestructCleanup: PASS
+Energy:          PASS
+InvalidBegin:    PASS
+Shuffle:         PASS
+0 failed / 0 notRun
+```
+
+Evidence is recorded in:
+
+```text
+docs/R6NativeEnergyBlockShuffleValidation.md
+Saved/AutomationReports/R6FocusedPhase6UIA2N/index.json
+```
+
+No R3/R4/R5, A2D5, Phase6R, Shipping or aggregate regression suite was run.
+
+## Next Exact Action — R6 Manual PIE
+
+**USER ACTION REQUIRED.** Run one minimal PIE pass in:
+
+```text
+/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+```
+
+Verify exactly:
+
+```text
+play one Energy-costing card -> final Energy correct
+play one Block-producing card -> Block display correct
+EndTurn until a real shuffle -> final Draw / Discard counts correct
+no flashback, duplicate display, permanent Input Lock or abnormal HUD
+```
+
+After the user confirms this Gate, update R6 to `COMPLETE / VALIDATED`. Do not start
+R7 automatically.
 
 ## Blockers
 
-No R5 blocker remains. R6 and all later phases remain NOT STARTED.
+R6 has no automated blocker. Manual PIE confirmation is pending. R7 and all later
+phases remain NOT STARTED.
