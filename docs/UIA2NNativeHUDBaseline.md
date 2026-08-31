@@ -1,6 +1,6 @@
 # Phase 6UI-A2N — Native HUD R0 Baseline
 
-状态：**R0 BASELINE COMPLETE / VALIDATED；当前迁移进度 R1 / R2 COMPLETE AND VALIDATED；R3-A NOT STARTED**
+状态：**R0 BASELINE COMPLETE / VALIDATED；当前迁移进度 R1 / R2 / R3-A COMPLETE AND VALIDATED；R4 NOT STARTED**
 记录日期：2026-08-31（Asia/Shanghai）
 
 本文件只记录 Native HUD 迁移的可恢复基线。它不改变 Legacy Blueprint、生产配置、Gameplay、Presentation Record/Envelope、Controller、Reducer 或 UI-A3。
@@ -215,4 +215,4 @@ R2 迁移测试 L_BattleTest_Native / 该地图 Presenter 实例
 | R1 | COMPLETE / VALIDATED |
 | R2 | COMPLETE / VALIDATED；执行证据见 `docs/CODEX_GOAL_CHECKPOINT.md` 与 `docs/Validation.md` |
 
-R0 的资产基线仍是 Legacy 回退契约。R1/R2 已在不修改三个 Legacy WBP 和生产注入配置的前提下完成。下一精确动作是 R3-A：只迁移静态 HUD 刷新与长生命周期输入委托；不得提前迁移 Hand/Card input 或任何 Presentation Record。
+R0 的资产基线仍是 Legacy 回退契约。R1/R2/R3-A 已在不修改三个 Legacy WBP 和生产注入配置的前提下完成。R3-A 只迁移了静态 HUD 刷新与长生命周期输入委托；下一精确动作是 R4 Native Card Widget、Hand rebuild 与 Card input。不得把 R4 之后的 Playback、Status 或 Terminal Record 行为提前并入 R3-A。

@@ -129,8 +129,8 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
-- A2N Native HUD ownership migration — **IN PROGRESS — R0 / R1 / R2 COMPLETE AND
-  VALIDATED; R3-A NOT STARTED**. The locked baseline, complete Designer binding
+- A2N Native HUD ownership migration — **IN PROGRESS — R0 / R1 / R2 / R3-A COMPLETE AND
+  VALIDATED; R4 NOT STARTED**. The locked baseline, complete Designer binding
   inventory, Legacy PIE smoke, Native HUD/Card/Status shells, and the validated
   non-production `L_BattleTest_Native` injection path are recorded in
   `docs/UIA2NNativeHUDBaseline.md` and `docs/CODEX_GOAL_CHECKPOINT.md`. This is a

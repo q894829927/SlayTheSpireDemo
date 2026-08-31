@@ -186,6 +186,33 @@ member variables even though their business graphs are empty. Those variables mu
 be taken over or removed in the applicable later ownership phase; R2 does not expand
 into the R4/R5/R9 behavior or the R14 cleanup boundary.
 
+### Phase 6UI-A2N R3-A Static HUD and long-lived delegates — 2026-08-31
+
+R3-A implementation commit is based on `e0ac820245e8ea93128507f058316e32c5aaf427`
+and changes only `UBattleHUDWidget` static refresh and long-lived input ownership.
+Production remains on `L_BattleTest` / `WBP_BattleHUD_C`; the Native checks use only
+`L_BattleTest_Native` / `WBP_BattleHUD_Native_C`.
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS (Result: Succeeded)
+CompileAllBlueprints: PASS (0 errors, 0 warnings, 0 failed blueprints)
+Native PIE: PASS
+  initial Player 80/80, Enemy 100/100, Energy 5/5
+  TestAttack -> Enemy 94/100, Energy 4/5
+  EndTurn -> real turn-ending commit, next ReadStateReady, Player 74/80, Energy 5/5
+  Draw / Discard / Exhaust count surfaces remained ViewModel-consistent
+  target handler -> frozen "Choose a legal target." feedback
+  Confirm and Cancel handlers each invoked once on Native instance
+  enemy inspection surfaced frozen name and cleared cleanly
+NativeOnBattleHUDViewModelChanged: Native refresh only; no Legacy BP refresh
+delegates: one NativeConstruct AddUniqueDynamic boundary, matching NativeDestruct removal
+Legacy HUD/Card/Status hashes: unchanged from sealed baseline
+```
+
+Runtime log evidence is in `Saved/Logs/SlayTheSpireDemo.log`; local PIE captures are
+under `Saved/Screenshots/WindowsEditor/`. R3-A deliberately did not rerun A2D5,
+Phase6R or Shipping. R3-A is **COMPLETE / VALIDATED**; R4 remains NOT STARTED.
+
 After the final PIE, the Editor returned to formal `L_BattleTest`; its Presenter and
 the `BP_BattleHUDPresenter` default still resolve to `WBP_BattleHUD_C`. The three
 Legacy WBP hashes remain the sealed R0 values.

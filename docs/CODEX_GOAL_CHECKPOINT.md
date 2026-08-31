@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 / R1 / R2 COMPLETE AND VALIDATED; R3-A NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A COMPLETE AND VALIDATED; R4+ NOT STARTED**.
 
 ## Current Repository State
 
@@ -24,11 +24,14 @@ R2 starting HEAD: ad37b0e668a624c827c747f5c8c1166a70c6e109
 R2 source implementation commit: d15287ec068f699390a4f64cfab824dcbe53980b
 R2 source subject: refactor(ui-a2n): add native HUD shell
 R2 validation result: PASS
+R3-A starting HEAD: e0ac820245e8ea93128507f058316e32c5aaf427
+R3-A validation result: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
-R3-A: not started
+R3-A: COMPLETE / VALIDATED
+R4 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -297,31 +300,104 @@ must take over or remove its residue; do not turn this into an unscheduled R2 cl
 
 **R2 is COMPLETE / VALIDATED.**
 
-## Next Exact Action — R3-A Static HUD and Long-Lived Delegates
+## R3-A Implementation
 
-Implement only the R3-A scope in `UBattleHUDWidget`:
+R3-A moved only static HUD refresh and long-lived input ownership into
+`UBattleHUDWidget`; no Hand/Card behavior or Presentation Record playback was
+added. The implementation consumes only the frozen `UBattleHUDViewModel` fields:
 
 ```text
 RefreshHUDFromViewModel
-RefreshCombatants
-RefreshEnergy
-RefreshPileCounts
-RefreshInputState
-RefreshFeedback
-RefreshTerminalFromViewModel
-
-EndTurn / Confirm / Cancel
-Combatant target / inspect long-lived delegates
+→ RefreshCombatants / RefreshEnergy / RefreshPileCounts
+→ RefreshInputState / RefreshFeedback / RefreshEnemyIntent
+→ RefreshTerminalFromViewModel
 ```
 
-Bind long-lived delegates once in `NativeConstruct`, unbind in `NativeDestruct`, and
-continue through the formal `UBattleHUDWidgetBase` request APIs. Production remains
-Legacy and R3-A uses only `L_BattleTest_Native`.
+`NativeOnBattleHUDViewModelChanged()` calls the Native refresh directly and does
+not call `Super`, so the Native stack cannot enter Legacy `BP_OnViewModelChanged`.
+Required bindings remain fail-closed. EndTurn, Confirm, Cancel, combatant target,
+inspect and inspect-cleared delegates use `AddUniqueDynamic` once in
+`NativeConstruct`, matching `RemoveDynamic` calls in `NativeDestruct`; ViewModel
+refresh never binds delegates. All requests continue through the existing
+`UBattleHUDWidgetBase` APIs.
 
-Do not implement `RefreshHand`, Native Card input, the playback kernel, any
-Presentation Record, Card/Status lifecycle, terminal Record sequencing, UI-A3, or
-production cutover in R3-A.
+Changed source files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+```
+
+R3-A intentionally did not implement `RefreshHand`, Native Card input,
+`UBattleCardWidget` behavior, Playback Kernel, Presentation Records, Status
+lifecycle, Terminal Record sequencing, Controller/Reducer/Record changes,
+production cutover or UI-A3.
+
+## R3-A Validation Evidence — PASS
+
+The required R3-A checks were run against the Native test stack only:
+
+```text
+1. UE 5.8 SlayTheSpireDemoEditor Development build: PASS
+   Build.bat ... SlayTheSpireDemoEditor Win64 Development
+   Result: Succeeded
+2. CompileAllBlueprints: PASS
+   WBP_BattleHUD_Native compiled successfully;
+   final commandlet summary: 0 errors, 0 warnings, 0 failed blueprints.
+3. Native PIE map /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native: PASS
+   UEDPIE_0_L_BattleTest_Native was created and the Native HUD was visible.
+4. Frozen static refresh: PASS
+   initial Player 80/80, Enemy 100/100, Energy 5/5;
+   TestAttack refreshed Enemy 94/100 and Energy 4/5;
+   after EndTurn and enemy resolution Player 74/80 and Energy 5/5;
+   pile count surfaces remained consistent with the ViewModel.
+5. Input handlers: PASS
+   EndTurn produced the real Player turn-ending commit and next ReadStateReady;
+   Native target handler produced the frozen invalid-target feedback;
+   Confirm and Cancel handlers were each invoked once on the Native instance.
+6. Combatant inspection: PASS
+   hovering the enemy presentation surfaced its frozen display name and clearing
+   the inspection restored the optional surface.
+7. Native-only ownership / delegate audit: PASS
+   no Super call from NativeOnBattleHUDViewModelChanged; no refresh-time binding;
+   one AddUniqueDynamic binding boundary and one NativeDestruct removal boundary.
+8. Teardown: PASS
+   PIE stopped cleanly after the Native run.
+```
+
+Runtime evidence is retained in `Saved/Logs/SlayTheSpireDemo.log` (Native PIE
+start, `TestAttack`, EndTurn commit, handler calls and teardown) and the local
+inspection captures under `Saved/Screenshots/WindowsEditor/`.
+
+The production boundary remained untouched:
+
+```text
+Config/DefaultEngine.ini: EditorStartupMap and GameDefaultMap = L_BattleTest
+production WidgetClass = WBP_BattleHUD_C
+Legacy WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus: no diff
+```
+
+Legacy asset hashes after the R3-A run remain exactly the sealed values:
+
+```text
+WBP_BattleHUD
+990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A
+
+WBP_BattleCard
+1E7579EAFE8BF49AEB953B521604CDE4C442E6580BDEB3E071C210846BC6631F
+
+WBP_BattleStatus
+205180C8DF03DAE5D825AB4428ADD4B90EDFBBBB54F9BFEFE76AF07412DA52D2
+```
+
+A2D5, Phase6R and Shipping were not rerun; their sealed evidence remains the
+R0/R1/R2 baseline evidence. R3-A is **COMPLETE / VALIDATED**.
+
+## Next Exact Action — R4 Native Card Widget, Hand and Card Input
+
+The next phase is R4: create the Native Card Widget contract, then migrate Hand
+rebuild and card input. Do not start R4 automatically from this checkpoint.
 
 ## Blockers
 
-No R2 blocker remains. R3-A has not started.
+No R3-A blocker remains. R4 and all later phases remain NOT STARTED.

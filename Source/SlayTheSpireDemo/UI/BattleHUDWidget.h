@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "BattleHUDWidgetBase.h"
+#include "BattleHUDTypes.h"
 #include "BattleHUDWidget.generated.h"
 
 class UBattleCardWidget;
@@ -19,9 +20,9 @@ class UWidget;
 /**
  * Native HUD shell for the A2N migration.
  *
- * R2 owns only the Designer binding contract and runtime binding validation.
- * Static refresh, input delegates and Presentation Record playback remain
- * deliberately unimplemented until their later migration phases.
+ * R3-A owns the frozen static HUD refresh and long-lived input delegate
+ * contract. Presentation Record playback remains deliberately unimplemented
+ * until the later playback phases.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -37,11 +38,40 @@ public:
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	) override;
+
+	void RefreshHUDFromViewModel();
+	void RefreshCombatants();
+	void RefreshEnergy();
+	void RefreshPileCounts();
+	void RefreshInputState();
+	void RefreshFeedback();
+	void RefreshTerminalFromViewModel();
+	void RefreshEnemyIntent();
+
+	UFUNCTION()
+	void HandleEndTurnClicked();
+
+	UFUNCTION()
+	void HandleConfirmClicked();
+
+	UFUNCTION()
+	void HandleCancelClicked();
+
+	UFUNCTION()
+	void HandleCombatantTargetRequested(int32 TargetId);
+
+	UFUNCTION()
+	void HandleCombatantInspectRequested(UBattleHUDCombatantPresentationWidgetBase* Presentation);
+
+	UFUNCTION()
+	void HandleCombatantInspectCleared(UBattleHUDCombatantPresentationWidgetBase* Presentation);
 
 	bool AreNativeBindingsValid() const { return bNativeBindingsValid; }
 
@@ -136,4 +166,5 @@ protected:
 
 private:
 	bool bNativeBindingsValid = false;
+	bool bNativeDelegatesBound = false;
 };
