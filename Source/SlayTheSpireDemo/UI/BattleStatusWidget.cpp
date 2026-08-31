@@ -22,18 +22,28 @@ void UBattleStatusWidget::NativeOnInitialized()
 	}
 }
 
+void UBattleStatusWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	RefreshFromStatusView();
+}
+
 void UBattleStatusWidget::SetStatusView(const FBattleHUDStatusView& View)
 {
 	NativeStatusView = View;
+	RefreshFromStatusView();
+}
 
+void UBattleStatusWidget::RefreshFromStatusView()
+{
 	if (!bNativeBindingsValid)
 	{
 		return;
 	}
 
-	Txt_StatusAmount->SetText(FText::AsNumber(View.Amount));
+	Txt_StatusAmount->SetText(FText::AsNumber(NativeStatusView.Amount));
 
-	if (!View.bUseAtlasIcon)
+	if (!NativeStatusView.bUseAtlasIcon)
 	{
 		Img_StatusIcon->SetVisibility(ESlateVisibility::Collapsed);
 		NativeStatusIconMID = nullptr;
@@ -47,10 +57,10 @@ void UBattleStatusWidget::SetStatusView(const FBattleHUDStatusView& View)
 		return;
 	}
 
-	SetAtlasVector2D(TEXT("UVOffset"), View.UVOffset);
-	SetAtlasVector2D(TEXT("UVScale"), View.UVScale);
-	SetAtlasVector2D(TEXT("TrimOffset"), View.TrimOffset);
-	SetAtlasVector2D(TEXT("TrimScale"), View.TrimScale);
+	SetAtlasVector2D(TEXT("UVOffset"), NativeStatusView.UVOffset);
+	SetAtlasVector2D(TEXT("UVScale"), NativeStatusView.UVScale);
+	SetAtlasVector2D(TEXT("TrimOffset"), NativeStatusView.TrimOffset);
+	SetAtlasVector2D(TEXT("TrimScale"), NativeStatusView.TrimScale);
 }
 
 void UBattleStatusWidget::SetAtlasVector2D(FName ParameterName, const FVector2D& Value)
