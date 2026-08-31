@@ -4,7 +4,7 @@ Status:
 
 ```text
 R7 COMPLETE / VALIDATED
-R8 P1 FIX IMPLEMENTED / AUTOMATED REVALIDATION PENDING
+R8 COMPLETE / VALIDATED
 R9 NOT STARTED
 ```
 
@@ -38,20 +38,16 @@ effects.
 ### CardPlayed
 
 The Native HUD validates the frozen card snapshot, unique RuntimeId, exact CardId
-and `HandIndexBefore`, source/optional target PresentationIds, the frozen Energy
-Before state, paid cost, and the current producer's PlayArea index. Begin hides the
-exact formal Hand Widget and creates one frozen presentation-only `UBattleCardWidget`
-in `OV_PlayArea`.
-
-The created card uses the exact historical Hand Widget as its visual start anchor
-and eases into the centered PlayArea position. This preserves the distinct
-CardPlayed fact before the later destination Record begins.
+and `HandIndexBefore`, source/optional target PresentationIds, frozen Energy Before,
+paid cost, and the current producer's PlayArea index. Begin hides the exact formal
+Hand Widget and creates one frozen presentation-only `UBattleCardWidget` in
+`OV_PlayArea`.
 
 The presentation card is `HitTestInvisible`, has `bGameplayPlayable=false`, and has
-no HUD request delegate. CardPlayed does not synthesize an `EnergyChanged` visual.
-Exact Finish keeps the PlayedCard transient for its later PlayArea destination
-Record. Exact Cancel removes that transient and restores the exact historical Hand
-Widget visibility.
+no HUD request delegate. It transitions from the exact historical Hand position into
+centered PlayArea. CardPlayed does not synthesize an `EnergyChanged` visual. Exact
+Finish keeps the PlayedCard transient for the later PlayArea destination Record.
+Exact Cancel removes it and restores the exact historical Hand Widget visibility.
 
 ### CardZoneChanged
 
@@ -66,35 +62,30 @@ PlayArea -> RemovedPile
 ```
 
 Hand-to-Discard hides the exact historical card while preserving its layout slot,
-creates one frozen noninteractive transient, and moves/fades that transient from
-the Hand anchor toward `Txt_DiscardCount`. Finish retires the moving transient and
-leaves the historical card collapsed without proactive `RefreshHand`; Cancel
-retires the transient and restores the exact prior visibility.
+creates one frozen noninteractive transient, and moves/fades it toward
+`Txt_DiscardCount`. Finish retires the transient without proactive `RefreshHand`;
+Cancel retires it and restores the exact prior visibility.
 
-PlayArea-to-destination requires the exact frozen PlayedCard identity. Exact Finish
-retires it without changing unrelated pile counts early. Discard moves/fades the
-PlayedCard toward `Txt_DiscardCount`; Exhaust/Removed scale and fade it out at the
-PlayArea. Cancellation/destruction performs local transient cleanup without normal
-completion Notify.
+PlayArea-to-destination requires the exact frozen PlayedCard identity. Discard moves
+and fades the PlayedCard toward `Txt_DiscardCount`; Exhaust/Removed scale and fade it
+out at PlayArea. Finish retires the transient without changing unrelated pile counts
+early.
 
 ### Strict per-Record DrawPile-to-Hand presentation
 
 Each Draw Record owns exactly one frozen, noninteractive card. The handler validates
-that `FromIndex` is the frozen DrawPile top, that `ToIndex` is the current Hand
-append position produced by Gameplay, and that RuntimeId does not already exist in
-the formal or transient Hand.
+that `FromIndex` is the frozen DrawPile top, `ToIndex` is the current Hand append
+position produced by Gameplay, and RuntimeId does not already exist in formal or
+transient Hand.
 
 Begin inserts only this Record's card at `HB_Hand[ToIndex]`, updates the frozen Draw
-count for this transition, and drives a Native ease-out movement/scale/fade from the
-`Txt_DrawCount` cached geometry anchor to the card's final Hand slot. The draw card
-remains presentation-only for its complete lifetime.
+count for this transition, and moves/scales/fades it from the DrawPile visual anchor
+to the final Hand slot. Exact Finish releases only the current Token; Controller then
+applies only that completed Record's working snapshot before the next Draw Record may
+begin. Therefore consecutive draws remain strictly one Record/card at a time.
 
-Exact Finish normalizes the card at the target slot and notifies only the current
-Token. Controller then applies only this completed Record's working snapshot and
-the formal Hand refresh replaces that one transient before the next Draw Record may
-begin. Therefore an N-card draw is displayed strictly one Record/card at a time;
-later cards cannot appear through an early all-at-once Hand refresh. Exact Cancel
-removes only the active draw transient and restores the frozen Draw count Before.
+Exact Cancel removes only the active draw transient and restores the frozen Draw
+count Before.
 
 ## Exact-token and cleanup semantics
 
@@ -102,114 +93,21 @@ removes only the active draw transient and restores the frozen Draw count Before
 stale / duplicate Finish -> no-op
 wrong-token Cancel -> no-op
 exact Finish -> committed visual cleanup, exact Notify once
-exact Cancel -> historical/local restore as defined above, never Notify
+exact Cancel -> historical/local restore, never Notify
 NativeDestruct -> timer/transient/local-reference cleanup only
 ```
 
-`NativePlayedCardWidget` is the only cross-Record local reference, surviving an
-exact CardPlayed Finish until the matching PlayArea destination Record. It is never
-Gameplay authority and is removed on destination Finish/Cancel or NativeDestruct.
+`NativePlayedCardWidget` is the only cross-Record local reference. It intentionally
+survives exact CardPlayed Finish until the matching PlayArea destination Record.
 
-## Previously accepted Automated Gates
+## Post-review P1 cleanup fix
 
-### Editor Build
+Review found one cross-Record cleanup gap: if `CardPlayed` had finished and retained
+`NativePlayedCardWidget`, then a later Record was abandoned by `SkipPresentation` /
+fail-safe exact Cancel, the current Record cleanup could leave the earlier PlayedCard
+inside `OV_PlayArea`.
 
-```text
-SlayTheSpireDemoEditor Win64 Development: PASS
-Result: Succeeded
-```
-
-The first invocations were rejected before compilation because the open Editor held
-an active Live Coding session. After a normal Editor close, only the affected Build
-Gate was rerun and passed. No source correction or unrelated Gate rerun was needed.
-
-No production reflected binding/API contract changed. The new reflected probes are
-Editor-only test types, so targeted compile of `WBP_BattleHUD_Native` or
-`WBP_BattleCard_Native` was not required.
-
-### Focused Automation
-
-Prefix:
-
-```text
-SlayTheSpireDemo.Phase6UIA2N.R8
-```
-
-Previously accepted result before the post-review P1 fix:
-
-```text
-CardPlayed.ExactIdentityFinishAndCancel:        PASS
-CardPlayed.InvalidIdentityZeroSideEffects:      PASS
-Zone.DrawToHandSequentialPresentation:          PASS
-Zone.HandToDiscardFinishCancelAndInvalid:       PASS
-Zone.PlayAreaDestinationsAndDestruct:           PASS
-
-5 succeeded
-0 failed
-0 notRun
-```
-
-Evidence:
-
-```text
-Saved/AutomationReports/R8FocusedPhase6UIA2NManualFix/index.json
-```
-
-Coverage includes exact RuntimeId/CardId/HandIndex identity, duplicate RuntimeId and
-wrong CardId rejection, no duplicate Energy visual, Hand-to-Discard Finish/Cancel,
-one-card-at-a-time Draw sequencing, noninteractive draw transients, rejection of a
-second Begin before exact Finish, per-Record formalization before the next draw,
-Draw Cancel, all three PlayArea destinations, invalid zone/index zero-side-effect
-false, stale/duplicate Finish, wrong/exact Cancel, next-Record isolation, transient
-cleanup and NativeDestruct local cleanup.
-
-The post-PIE correction rerun additionally asserts real transform/opacity progress
-for Hand-to-PlayArea, Hand-to-Discard, PlayArea-to-Discard, and PlayArea
-Exhaust/Removed disappearance. The earlier automated result was invalidated by the
-visual source changes; only the affected Editor Build and R8 focused suite were
-rerun.
-
-No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
-run.
-
-## Manual PIE Gate — PASS / STICKY
-
-The first user pass on **2026-09-01** found that only DrawPile-to-Hand animated;
-CardPlayed, Hand discard, PlayedCard discard and Exhaust were still immediate state
-changes. Those missing visual transitions were then implemented and the affected
-automated Gates passed.
-
-The user completed the corrected minimal PIE pass on **2026-09-01** in:
-
-```text
-/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
-```
-
-Accepted observations:
-
-1. Played cards visibly transition from Hand into PlayArea and then toward
-   DiscardPile, without duplicate cards or flashback.
-2. Exhaust cards disappear correctly at PlayArea.
-3. End-turn/manual discard cards visibly transition toward DiscardPile.
-4. DrawPile-to-Hand remains strictly one Record/card at a time, with no later card
-   appearing before the preceding card finishes.
-5. Final Hand/HUD state remains correct with no permanent Input Lock, transient
-   leak, duplicate card, or abnormal HUD.
-
-This manual Gate remains valid after the P1 cleanup fix below because the fix changes
-only abandoned/Skip cleanup and does not change the already accepted normal visual
-paths. Do not rerun PIE unless a later edit changes those visuals.
-
-## Post-review P1 fix — automated revalidation pending
-
-A narrow review found one cross-Record cleanup gap: after an exact `CardPlayed`
-Finish, `NativePlayedCardWidget` intentionally survives for a later
-PlayArea-to-destination Record. If a later native Record (for example Damage or
-DrawPile-to-Hand) was then abandoned through `SkipPresentation` / fail-safe exact
-Cancel, the current Record cleanup did not necessarily retire that earlier retained
-PlayedCard. Controller collapse could therefore leave a stale card in `OV_PlayArea`.
-
-The fix is intentionally centralized at the exact native Cancel boundary:
+The fix centralizes cleanup at the exact native Cancel boundary:
 
 ```text
 exact current Token required
@@ -220,8 +118,8 @@ exact current Token required
 -> never Notify normal completion
 ```
 
-Wrong/stale Token cancellation still returns before this cleanup and therefore cannot
-remove a valid current PlayedCard.
+Wrong/stale Token cancellation returns before this cleanup, so it cannot remove a
+valid current PlayedCard.
 
 Fix commits:
 
@@ -233,36 +131,84 @@ d1a48d486ea80cf759e6556396df4124805cd06f
   test(ui-a2n): cover R8 skip transient cleanup
 ```
 
-A new focused case was added:
+New focused case:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2N.R8.Zone.SkipClearsRetainedPlayedCard
 ```
 
-It establishes `CardPlayed Finish -> retained PlayedCard -> Draw Begin ->
-SkipPresentation` and requires both the active Draw transient and the prior retained
-PlayedCard to be removed, with local ownership/timer cleared and no stale PlayArea
-child.
-
-Because this is a runtime source edit plus a new Editor-only Automation source file,
-only these Gates are invalidated and must be rerun:
+It establishes:
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development build
-2. SlayTheSpireDemo.Phase6UIA2N.R8 focused Automation
-   expected discovery after the added test: 6 tests
+CardPlayed Finish
+-> retained PlayedCard
+-> Draw Begin
+-> SkipPresentation
+-> active Draw transient removed
+-> retained PlayedCard removed
+-> local timer/ownership cleared
+-> OV_PlayArea empty
 ```
 
-Do not rerun R3-R7, A2D5, Phase6R, Shipping or the already accepted manual PIE.
+## Automated Gates — PASS
+
+The P1 runtime edit invalidated only the Editor Build and focused R8 Automation
+results. The user reran both against the corrected branch head on **2026-09-01** and
+confirmed both passed.
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+Result: Succeeded
+
+SlayTheSpireDemo.Phase6UIA2N.R8: 6/6 PASS
+0 failed
+0 notRun
+```
+
+Focused coverage now includes:
+
+```text
+CardPlayed.ExactIdentityFinishAndCancel
+CardPlayed.InvalidIdentityZeroSideEffects
+Zone.DrawToHandSequentialPresentation
+Zone.HandToDiscardFinishCancelAndInvalid
+Zone.PlayAreaDestinationsAndDestruct
+Zone.SkipClearsRetainedPlayedCard
+```
+
+No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
+rerun.
+
+## Manual PIE Gate — PASS / STICKY
+
+The first user pass on **2026-09-01** found that only DrawPile-to-Hand animated;
+CardPlayed, Hand discard, PlayedCard discard and Exhaust were still immediate state
+changes. Those missing visual transitions were corrected and the user then completed
+the corrected minimal PIE pass in:
+
+```text
+/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+```
+
+Accepted observations:
+
+1. Played cards visibly transition from Hand into PlayArea and then toward
+   DiscardPile, without duplicate cards or flashback.
+2. Exhaust cards disappear correctly at PlayArea.
+3. End-turn/manual discard cards visibly transition toward DiscardPile.
+4. DrawPile-to-Hand remains strictly one Record/card at a time.
+5. Final Hand/HUD state remains correct with no permanent Input Lock, transient
+   leak, duplicate card, or abnormal HUD.
+
+This manual Gate remained valid after the P1 cleanup fix because that fix changes
+only abandoned/Skip cleanup and does not change normal visual paths.
 
 ## Current acceptance state
 
 ```text
-R8 P1 FIX IMPLEMENTED
-AUTOMATED REVALIDATION PENDING
-MANUAL PIE PASS / STICKY
+R8 COMPLETE / VALIDATED
 R9 NOT STARTED
 ```
 
-Do not merge R8 to `main` or start R9 until the corrected Editor Build and the R8
-focused suite pass on this branch head.
+The corrected Editor Build, focused R8 6/6 Automation, and the sticky corrected
+manual PIE evidence close R8. Do not start R9 automatically.
