@@ -17,6 +17,11 @@
 
 #define LOCTEXT_NAMESPACE "BattleHUDWidget"
 
+namespace
+{
+	constexpr float SimpleNativePresentationDurationSeconds = 0.5f;
+}
+
 void UBattleHUDWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -301,30 +306,7 @@ void UBattleHUDWidget::RefreshCombatants()
 				HPProgress->SetPercent(Percent);
 			}
 
-			if (IsValid(BlockText))
-			{
-				BlockText->SetText(FText::AsNumber(Combatant.Block));
-
-				// The sealed Designer hierarchy is:
-				// Txt_*Block -> OV_*Block -> SB_*BlockBadge. Collapse the whole
-				// badge at zero so neither the shield image nor its number remains
-				// visible. Reuse the existing hierarchy instead of expanding the
-				// R2 BindWidget contract with two Designer-only controls.
-				UWidget* BlockBadgeSurface = BlockText;
-				if (UPanelWidget* BlockOverlay = BlockText->GetParent())
-				{
-					BlockBadgeSurface = BlockOverlay;
-					if (UPanelWidget* BlockBadge = BlockOverlay->GetParent())
-					{
-						BlockBadgeSurface = BlockBadge;
-					}
-				}
-
-				BlockBadgeSurface->SetVisibility(
-					Combatant.Block > 0
-						? ESlateVisibility::SelfHitTestInvisible
-						: ESlateVisibility::Collapsed);
-			}
+			ApplyNativeBlockValue(BlockText, Combatant.Block);
 		};
 
 	RefreshOneCombatant(
@@ -634,14 +616,283 @@ void UBattleHUDWidget::HandleCombatantInspectCleared(
 }
 
 bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
-	const FPresentationRecord& /*Record*/,
-	const FPresentationPlaybackToken& /*Token*/
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token
 )
 {
-	// R5 establishes only the ownership/timer/cancel/finish kernel. No real
-	// Record type is migrated in this phase, so every production Record still
-	// returns false and uses the Controller's existing immediate fallback.
-	return false;
+	if (!IsNativeRecordTokenConsistent(Record, Token))
+	{
+		return false;
+	}
+
+	switch (Record.Type)
+	{
+	case EBattlePresentationRecordType::EnergyChanged:
+		return BeginNativeEnergyChangedPresentation(Record, Token);
+	case EBattlePresentationRecordType::BlockChanged:
+		return BeginNativeBlockChangedPresentation(Record, Token);
+	case EBattlePresentationRecordType::DeckShuffled:
+		return BeginNativeDeckShuffledPresentation(Record, Token);
+	default:
+		// R7+ Records remain on the Controller's immediate-fallback path.
+		return false;
+	}
+}
+
+bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FEnergyChangedPresentationPayload& Payload = Record.EnergyChanged;
+	if (!IsValid(ViewModel)
+		|| !IsValid(Txt_Energy)
+		|| ViewModel->MaxEnergy < 0
+		|| Payload.EnergyBefore < 0
+		|| Payload.EnergyAfter < 0
+		|| Payload.EnergyBefore > ViewModel->MaxEnergy
+		|| Payload.EnergyAfter > ViewModel->MaxEnergy
+		|| Payload.EnergyBefore == Payload.EnergyAfter
+		|| Payload.Delta != Payload.EnergyAfter - Payload.EnergyBefore
+		|| ViewModel->Energy != Payload.EnergyBefore)
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeSimplePrimaryBefore = Payload.EnergyBefore;
+	ActiveNativeSimplePrimaryAfter = Payload.EnergyAfter;
+	ActiveNativeSimpleEnergyMax = ViewModel->MaxEnergy;
+	ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
+
+	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	{
+		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
+		ResetNativeSimplePresentationState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FBlockChangedPresentationPayload& Payload = Record.BlockChanged;
+	int32 HistoricalBlock = 0;
+	UTextBlock* BlockText = ResolveBlockTextForPresentationId(
+		Payload.TargetPresentationId,
+		HistoricalBlock);
+	const bool bSourceIsValid = Payload.SourcePresentationId.IsNone()
+		|| IsKnownCombatantPresentationId(Payload.SourcePresentationId);
+	const bool bCommonPayloadValid =
+		IsValid(BlockText)
+		&& bSourceIsValid
+		&& Payload.BlockBefore >= 0
+		&& Payload.BlockAfter >= 0
+		&& Payload.BlockBefore != Payload.BlockAfter
+		&& Payload.BlockDelta == Payload.BlockAfter - Payload.BlockBefore
+		&& HistoricalBlock == Payload.BlockBefore;
+
+	bool bReasonValid = false;
+	if (bCommonPayloadValid)
+	{
+		switch (Payload.Reason)
+		{
+		case EBlockPresentationReason::Gain:
+			bReasonValid = Payload.BlockDelta > 0;
+			break;
+		case EBlockPresentationReason::TurnStartClear:
+			bReasonValid = Payload.SourcePresentationId.IsNone()
+				&& Payload.BlockBefore > 0
+				&& Payload.BlockAfter == 0
+				&& Payload.BlockDelta == -Payload.BlockBefore;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (!bCommonPayloadValid || !bReasonValid)
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeSimpleBlockText = BlockText;
+	ActiveNativeSimplePrimaryBefore = Payload.BlockBefore;
+	ActiveNativeSimplePrimaryAfter = Payload.BlockAfter;
+	ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryAfter);
+
+	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	{
+		ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryBefore);
+		ResetNativeSimplePresentationState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativeDeckShuffledPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FDeckShuffledPresentationPayload& Payload = Record.DeckShuffled;
+	const bool bCountsValid =
+		IsValid(ViewModel)
+		&& IsValid(Txt_DrawCount)
+		&& IsValid(Txt_DiscardCount)
+		&& Payload.MovedCardCount > 0
+		&& Payload.DrawCountBefore == 0
+		&& Payload.DiscardCountBefore == Payload.MovedCardCount
+		&& Payload.DrawCountAfter == Payload.MovedCardCount
+		&& Payload.DiscardCountAfter == 0
+		&& Payload.DrawCountBefore + Payload.DiscardCountBefore
+			== Payload.DrawCountAfter + Payload.DiscardCountAfter
+		&& ViewModel->DrawCount == Payload.DrawCountBefore
+		&& ViewModel->DiscardCount == Payload.DiscardCountBefore;
+	if (!bCountsValid)
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveNativeSimplePrimaryBefore = Payload.DrawCountBefore;
+	ActiveNativeSimplePrimaryAfter = Payload.DrawCountAfter;
+	ActiveNativeSimpleSecondaryBefore = Payload.DiscardCountBefore;
+	ActiveNativeSimpleSecondaryAfter = Payload.DiscardCountAfter;
+	ApplyNativePileCounts(
+		ActiveNativeSimplePrimaryAfter,
+		ActiveNativeSimpleSecondaryAfter);
+
+	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	{
+		ApplyNativePileCounts(
+			ActiveNativeSimplePrimaryBefore,
+			ActiveNativeSimpleSecondaryBefore);
+		ResetNativeSimplePresentationState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::IsNativeRecordTokenConsistent(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token) const
+{
+	return Record.BattleId > 0
+		&& Record.ResolutionId > 0
+		&& Record.PresentationSequence > 0
+		&& Token.LocalPlaybackGeneration > 0
+		&& Token.BattleId == Record.BattleId
+		&& Token.ResolutionId == Record.ResolutionId
+		&& Token.PresentationSequence == Record.PresentationSequence;
+}
+
+bool UBattleHUDWidget::IsKnownCombatantPresentationId(FName PresentationId) const
+{
+	if (!IsValid(ViewModel) || PresentationId.IsNone())
+	{
+		return false;
+	}
+
+	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
+	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
+	return bMatchesPlayer != bMatchesEnemy;
+}
+
+UTextBlock* UBattleHUDWidget::ResolveBlockTextForPresentationId(
+	FName PresentationId,
+	int32& OutHistoricalBlock) const
+{
+	OutHistoricalBlock = 0;
+	if (!IsValid(ViewModel) || PresentationId.IsNone())
+	{
+		return nullptr;
+	}
+
+	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
+	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
+	if (bMatchesPlayer == bMatchesEnemy)
+	{
+		return nullptr;
+	}
+
+	if (bMatchesPlayer)
+	{
+		OutHistoricalBlock = ViewModel->Player.Block;
+		return Txt_PlayerBlock;
+	}
+
+	OutHistoricalBlock = ViewModel->Enemy.Block;
+	return Txt_EnemyBlock;
+}
+
+void UBattleHUDWidget::ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy)
+{
+	if (IsValid(Txt_Energy))
+	{
+		Txt_Energy->SetText(FText::Format(
+			LOCTEXT("BattleHUDEnergyFormat", "{0}/{1}"),
+			FText::AsNumber(Energy),
+			FText::AsNumber(MaxEnergy)));
+	}
+}
+
+void UBattleHUDWidget::ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block)
+{
+	if (!IsValid(BlockText))
+	{
+		return;
+	}
+
+	BlockText->SetText(FText::AsNumber(Block));
+
+	// The sealed Designer hierarchy is Txt_*Block -> OV_*Block ->
+	// SB_*BlockBadge. Always collapse the complete badge at zero.
+	UWidget* BlockBadgeSurface = BlockText;
+	if (UPanelWidget* BlockOverlay = BlockText->GetParent())
+	{
+		BlockBadgeSurface = BlockOverlay;
+		if (UPanelWidget* BlockBadge = BlockOverlay->GetParent())
+		{
+			BlockBadgeSurface = BlockBadge;
+		}
+	}
+
+	BlockBadgeSurface->SetVisibility(
+		Block > 0
+			? ESlateVisibility::SelfHitTestInvisible
+			: ESlateVisibility::Collapsed);
+}
+
+void UBattleHUDWidget::ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount)
+{
+	if (IsValid(Txt_DrawCount))
+	{
+		Txt_DrawCount->SetText(FText::AsNumber(DrawCount));
+	}
+	if (IsValid(Txt_DiscardCount))
+	{
+		Txt_DiscardCount->SetText(FText::AsNumber(DiscardCount));
+	}
 }
 
 void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
@@ -764,25 +1015,70 @@ void UBattleHUDWidget::ResetNativePresentationOwnership()
 }
 
 void UBattleHUDWidget::FinishNativePresentationVisual(
-	EBattlePresentationRecordType /*RecordType*/
+	EBattlePresentationRecordType RecordType
 )
 {
-	// R5 owns no Record-specific Finish behavior. R6+ extends this boundary only
-	// for the Record types migrated by that phase.
+	switch (RecordType)
+	{
+	case EBattlePresentationRecordType::EnergyChanged:
+		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
+		break;
+	case EBattlePresentationRecordType::BlockChanged:
+		ApplyNativeBlockValue(
+			ActiveNativeSimpleBlockText.Get(),
+			ActiveNativeSimplePrimaryAfter);
+		break;
+	case EBattlePresentationRecordType::DeckShuffled:
+		ApplyNativePileCounts(
+			ActiveNativeSimplePrimaryAfter,
+			ActiveNativeSimpleSecondaryAfter);
+		break;
+	default:
+		break;
+	}
+	ResetNativeSimplePresentationState();
 }
 
 void UBattleHUDWidget::CancelNativePresentationVisual(
-	EBattlePresentationRecordType /*RecordType*/
+	EBattlePresentationRecordType RecordType
 )
 {
-	// R5 owns no Record-specific historical restore or transient cleanup. R6+
-	// extends this boundary for exact active-token cancellation only.
+	switch (RecordType)
+	{
+	case EBattlePresentationRecordType::EnergyChanged:
+		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
+		break;
+	case EBattlePresentationRecordType::BlockChanged:
+		ApplyNativeBlockValue(
+			ActiveNativeSimpleBlockText.Get(),
+			ActiveNativeSimplePrimaryBefore);
+		break;
+	case EBattlePresentationRecordType::DeckShuffled:
+		ApplyNativePileCounts(
+			ActiveNativeSimplePrimaryBefore,
+			ActiveNativeSimpleSecondaryBefore);
+		break;
+	default:
+		break;
+	}
+	ResetNativeSimplePresentationState();
 }
 
 void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 {
-	// No presentation-only UObject/transient visual is created in R5. Later
-	// phases add typed local cleanup here without historical restore or Notify.
+	// Destruction is local cleanup only: discard frozen visual context without
+	// restoring history or notifying normal completion.
+	ResetNativeSimplePresentationState();
+}
+
+void UBattleHUDWidget::ResetNativeSimplePresentationState()
+{
+	ActiveNativeSimpleBlockText.Reset();
+	ActiveNativeSimplePrimaryBefore = 0;
+	ActiveNativeSimplePrimaryAfter = 0;
+	ActiveNativeSimpleSecondaryBefore = 0;
+	ActiveNativeSimpleSecondaryAfter = 0;
+	ActiveNativeSimpleEnergyMax = 0;
 }
 
 #undef LOCTEXT_NAMESPACE

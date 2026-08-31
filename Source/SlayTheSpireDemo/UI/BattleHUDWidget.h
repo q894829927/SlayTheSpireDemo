@@ -22,9 +22,9 @@ class UWidget;
  * Native HUD ownership boundary for the A2N migration.
  *
  * R3-A owns frozen static HUD refresh and long-lived input delegates. R4 adds
- * formal Hand rebuild and card-request ownership. R5 adds only the local Native
- * committed-presentation playback kernel; individual Record visuals remain owned
- * by their later migration phases.
+ * formal Hand rebuild and card-request ownership. R5 adds the local Native
+ * committed-presentation playback kernel. R6 adds only EnergyChanged,
+ * BlockChanged and DeckShuffled frozen Record visuals.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -65,6 +65,27 @@ protected:
 	void FinishNativePresentationVisual(EBattlePresentationRecordType RecordType);
 	void CancelNativePresentationVisual(EBattlePresentationRecordType RecordType);
 	void CleanupNativePresentationVisualsOnDestruct();
+	void ResetNativeSimplePresentationState();
+
+	bool BeginNativeEnergyChangedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeBlockChangedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeDeckShuffledPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool IsNativeRecordTokenConsistent(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token) const;
+	bool IsKnownCombatantPresentationId(FName PresentationId) const;
+	UTextBlock* ResolveBlockTextForPresentationId(
+		FName PresentationId,
+		int32& OutHistoricalBlock) const;
+	void ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy);
+	void ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block);
+	void ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount);
 
 	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
 	bool HasNativePresentationFinishTimer() const { return NativePresentationFinishTimer.IsValid(); }
@@ -212,4 +233,14 @@ private:
 	EBattlePresentationRecordType ActiveNativePresentationType = EBattlePresentationRecordType::None;
 	FPresentationPlaybackToken ActiveNativePresentationToken;
 	FTimerHandle NativePresentationFinishTimer;
+
+	// Frozen R6 visual state only. These values are copied from the accepted
+	// Record (plus frozen MaxEnergy, which is not carried by EnergyChanged) so
+	// Finish/Cancel never query mutable Gameplay or infer historical values.
+	TWeakObjectPtr<UTextBlock> ActiveNativeSimpleBlockText;
+	int32 ActiveNativeSimplePrimaryBefore = 0;
+	int32 ActiveNativeSimplePrimaryAfter = 0;
+	int32 ActiveNativeSimpleSecondaryBefore = 0;
+	int32 ActiveNativeSimpleSecondaryAfter = 0;
+	int32 ActiveNativeSimpleEnergyMax = 0;
 };
