@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R6 COMPLETE / VALIDATED; R7 SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R8 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 NOT STARTED**.
 
 ## Current Repository State
 
@@ -45,14 +45,14 @@ R7 starting main HEAD: 2264b9e5ba8b6505fffcef5abed21d2d6bdc7611
 R7 source implementation commit: c3a345413a87197de8328eb94e6b849d365f5442
 R7 Editor build: PASS
 R7 focused Automation: 5/5 PASS
-R7 Manual PIE: PENDING
+R7 Manual PIE: PASS (user confirmed 2026-08-31)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
-R7: SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R7: COMPLETE / VALIDATED
 R8 and later: NOT STARTED
 ```
 
@@ -677,28 +677,20 @@ Saved/AutomationReports/R7FocusedPhase6UIA2N/index.json
 No R3-R6, A2D5, Phase6R, Shipping, aggregate regression or architecture reviewer was
 run.
 
-## Next Exact Action — R7 Manual PIE
+## R7 Manual PIE Validation Evidence — PASS
 
-**USER ACTION REQUIRED.** Run one minimal PIE pass in:
+The user confirmed the required minimal PIE pass on **2026-08-31** in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`, closing the single-display Damage
+number, correct target/location, transient feedback cleanup, final HP/Block,
+no-flashback, no-duplicate-Damage and no-permanent-Input-Lock observations.
 
-```text
-/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
-```
+**R7 is COMPLETE / VALIDATED.**
 
-Verify exactly:
+## Next Exact Action — STOP
 
-```text
-Strike -> Enemy
-Damage number appears exactly once at the correct target/location
-target receives one short feedback and returns to normal
-final HP / Block values are correct
-no flashback, duplicate Damage or permanent Input Lock
-```
-
-If convenient, also observe one Enemy-to-Player Damage. After the user confirms the
-Gate, update R7 to `COMPLETE / VALIDATED`. Do not start R8 automatically.
+Wait for explicit user authorization before starting R8 Card lifecycle. Do not enter
+R8 or any later phase automatically.
 
 ## Blockers
 
-R7 has no automated blocker. Manual PIE confirmation is pending. R8 and all later
-phases remain NOT STARTED.
+No R7 blocker remains. R8 and all later phases remain NOT STARTED.

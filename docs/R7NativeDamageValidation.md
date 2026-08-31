@@ -3,9 +3,7 @@
 Status:
 
 ```text
-R7 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R7 COMPLETE / VALIDATED
 R8 NOT STARTED
 ```
 
@@ -138,15 +136,15 @@ Record/Token mismatch, zero-side-effect false Begin and NativeDestruct cleanup.
 No R3-R6, A2D5, Phase6R, Shipping, aggregate regression or architecture reviewer was
 run.
 
-## Manual PIE Gate — USER ACTION REQUIRED
+## Manual PIE Gate — PASS
 
-Run one minimal PIE pass in:
+The user confirmed the required minimal PIE pass on **2026-08-31** in:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 ```
 
-Required observation:
+Accepted observations:
 
 1. Play `Strike` and select the Enemy.
 2. Confirm the Damage number appears exactly once and at the correct target/location.
@@ -154,21 +152,16 @@ Required observation:
 4. Confirm final Enemy HP/Block values are correct.
 5. Confirm no flashback, duplicate Damage or permanent Input Lock occurs.
 
-If convenient, also observe one Enemy-to-Player Damage playback with the same target,
-cleanup and final-vitals expectations.
-
-This manual Gate is intentionally not replaced with screenshots or additional
-Automation.
+The user confirmation closes the required single-display Damage number, correct
+target/location, transient feedback cleanup, final HP/Block, no-flashback,
+no-duplicate-Damage and no-permanent-Input-Lock checks. No screenshots or additional
+Automation were substituted for this manual Gate.
 
 ## Current acceptance state
 
 ```text
-R0-R6 COMPLETE / VALIDATED
-R7 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R0-R7 COMPLETE / VALIDATED
 R8 NOT STARTED
 ```
 
-R7 must not be marked `COMPLETE / VALIDATED` until the user confirms Manual PIE
-PASS. Do not start R8 automatically.
+R7 is sealed. Do not start R8 automatically.
