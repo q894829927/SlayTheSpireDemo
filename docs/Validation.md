@@ -45,6 +45,7 @@ Phase 6UI-A2N R4 focused PASS
 Phase 6UI-A2N R5 focused 4/4 PASS
 Phase 6UI-A2N R6 focused 5/5 PASS
 Phase 6UI-A2N R7 focused 5/5 PASS
+Phase 6UI-A2N R8 focused 6/6 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -341,8 +342,64 @@ payload / Before / Token zero-side-effect Begin, and NativeDestruct cleanup. The
 manual PIE confirmed one correctly targeted Damage number/feedback, correct final
 HP/Block, no duplicate/flashback, and no permanent Input Lock.
 
-R7 is **COMPLETE / VALIDATED**. R8 and later remain **NOT STARTED**. Detailed evidence
-is in `docs/R7NativeDamageValidation.md`.
+R7 is **COMPLETE / VALIDATED**. Detailed evidence is in
+`docs/R7NativeDamageValidation.md`.
+
+### Phase 6UI-A2N R8 Native Card Lifecycle — 2026-09-01
+
+R8 migrated the committed `CardPlayed` and `CardZoneChanged` facts together while
+keeping them independent exact-token playback units. All card visuals consume only
+the frozen card snapshot, Record indices/counts and frozen ViewModel Before state.
+Presentation cards are noninteractive, `HitTestInvisible`, and never become formal
+Gameplay-playable Hand cards.
+
+The initial implementation correctly serialized one-card-at-a-time DrawPile-to-Hand
+presentation, but the first manual pass found that the non-Draw paths still used
+immediate visibility changes. The correction added the required Slay-the-Spire-like
+movement/retirement cues:
+
+```text
+Hand -> PlayArea:                  move / scale / fade into centered PlayArea
+Hand -> DiscardPile:               move / fade toward DiscardPile
+PlayArea -> DiscardPile:           move / fade toward DiscardPile
+PlayArea -> Exhaust/RemovedPile:   scale / fade out at PlayArea
+DrawPile -> Hand:                  exactly one Record/card moves to exact ToIndex
+```
+
+A later narrow review found one P1 cleanup gap: after exact `CardPlayed` Finish, the
+cross-Record `NativePlayedCardWidget` intentionally survives for a later PlayArea
+destination. If a subsequent Record was abandoned through `SkipPresentation` /
+fail-safe exact Cancel, that retained PlayedCard could survive Controller collapse.
+The exact native Cancel boundary now retires any retained PlayedCard after the
+current Record type-specific Cancel and before local ownership is cleared. Wrong or
+stale Token cancellation still returns before this cleanup.
+
+Validation evidence after the P1 fix:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+WBP_BattleHUD_Native / WBP_BattleCard_Native targeted compile: NOT REQUIRED
+  (no production reflected binding/API contract changed)
+SlayTheSpireDemo.Phase6UIA2N.R8: 6/6 PASS
+L_BattleTest_Native corrected minimal R8 Card lifecycle PIE: PASS / sticky
+```
+
+Focused coverage includes exact RuntimeId/CardId/HandIndex identity, duplicate
+RuntimeId/wrong CardId rejection, no duplicate Energy visual, supported/unsupported
+zone pairs, exact/stale Token behavior, Finish/Cancel historical cleanup,
+noninteractive presentation cards, strict per-Record consecutive draws,
+transform/opacity progress for every migrated lifecycle path, NativeDestruct cleanup,
+and the new `Zone.SkipClearsRetainedPlayedCard` regression proving Skip clears both
+the active Draw transient and the previously retained PlayedCard.
+
+The corrected manual PIE confirmed Hand-to-PlayArea-to-Discard movement, Exhaust
+disappearance at PlayArea, end-turn/manual discard movement, strictly serial draws,
+correct final Hand/HUD state, and no flashback, duplicate card, transient leak,
+abnormal HUD, or permanent Input Lock. It remained valid after the P1 fix because
+normal visual paths did not change.
+
+R8 is **COMPLETE / VALIDATED**. R9 and later remain **NOT STARTED**. Detailed
+evidence is in `docs/R8NativeCardLifecycleValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -382,8 +439,8 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R7 COMPLETE / VALIDATED
-R8+ NOT STARTED
+R0-R8 COMPLETE / VALIDATED
+R9+ NOT STARTED
 ```
 
 Validated A2E scenarios include:

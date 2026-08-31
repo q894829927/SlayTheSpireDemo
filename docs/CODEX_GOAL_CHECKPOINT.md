@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Phase 6UI-A2N
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 ## Goal
 
@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R8 COMPLETE / VALIDATED; R9 NOT STARTED**.
 
 ## Current Repository State
 
@@ -46,6 +46,15 @@ R7 source implementation commit: c3a345413a87197de8328eb94e6b849d365f5442
 R7 Editor build: PASS
 R7 focused Automation: 5/5 PASS
 R7 Manual PIE: PASS (user confirmed 2026-08-31)
+R8 working branch: a2n/r8-native-card-lifecycle
+R8 starting main HEAD: 22f0955787551b0c5a3201f9ca45cf35e5167cbf
+R8 source implementation commit: c1d621b01e5d5cfc8b680181e9f191edb300373c
+R8 lifecycle-animation correction commit: c929e6b3961b36b004bfcd224fe4a02421577e80
+R8 P1 cross-Record cleanup fix: ec361b0ea67a96b423e0c710399e18080779e1e7
+R8 P1 cleanup regression test: d1a48d486ea80cf759e6556396df4124805cd06f
+R8 Editor build: PASS (final P1-revalidated head; user confirmed 2026-09-01)
+R8 focused Automation: 6/6 PASS (user confirmed 2026-09-01)
+R8 Manual PIE: PASS / sticky (user confirmed 2026-09-01)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -53,7 +62,8 @@ Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.
 R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
 R7: COMPLETE / VALIDATED
-R8 and later: NOT STARTED
+R8: COMPLETE / VALIDATED
+R9 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -686,11 +696,122 @@ no-flashback, no-duplicate-Damage and no-permanent-Input-Lock observations.
 
 **R7 is COMPLETE / VALIDATED.**
 
+## R8 Implementation
+
+R8 migrates only `CardPlayed` and `CardZoneChanged` in the Native HUD. It validates
+the exact frozen card snapshot, RuntimeId/CardId/index/count/energy contract and
+uses presentation-only, HitTestInvisible cards with no HUD request delegate.
+CardPlayed owns the Hand-to-PlayArea transient boundary; the five supported current
+producer zone pairs own Hand discard, Draw to Hand, and PlayedCard retirement.
+
+The user-added Draw acceptance contract is implemented without Controller changes:
+each Draw Record creates exactly one transient at its exact `ToIndex`, moves it from
+the Draw count visual anchor to the final Hand slot, and exact-token Finish releases
+Controller to apply only that Record's snapshot before the next Draw begins. Later
+drawn cards cannot appear through an early all-at-once Hand refresh.
+
+The first Manual PIE pass found that the non-Draw lifecycle paths still changed
+visibility without actual motion. The corrective source now moves CardPlayed from
+its exact Hand anchor into centered PlayArea, moves Hand discard and PlayedCard
+discard toward `Txt_DiscardCount`, and scales/fades Exhaust/Removed at PlayArea.
+All moving cards remain frozen, presentation-only and noninteractive.
+
+A later narrow review found one P1 cross-Record cleanup gap. After exact CardPlayed
+Finish, `NativePlayedCardWidget` intentionally survives for the later PlayArea
+destination. If a later Record was abandoned through Skip/fail-safe exact Cancel,
+that retained PlayedCard could survive Controller collapse. The exact native Cancel
+boundary now retires any retained PlayedCard after current Record type-specific
+Cancel and before local ownership is cleared; wrong/stale Token Cancel returns before
+this cleanup.
+
+P1 fix/test commits:
+
+```text
+ec361b0ea67a96b423e0c710399e18080779e1e7
+  fix(ui-a2n): clear retained played card on cancel
+
+d1a48d486ea80cf759e6556396df4124805cd06f
+  test(ui-a2n): cover R8 skip transient cleanup
+```
+
+Changed source/test/design files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8TestTypes.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8TestTypes.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8Tests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR8SkipCleanupTests.cpp
+docs/Phase6UIA2NNativeHUDRefactor.md
+docs/R8NativeCardLifecycleValidation.md
+```
+
+R8 does not modify Gameplay, Controller, reducer, Record/Envelope, Legacy WBP,
+production WidgetClass, Status/terminal visuals, UI-A3, or R9+ behavior.
+
+## R8 Final Automated Validation Evidence — PASS
+
+The P1 runtime fix invalidated only Editor Build and the focused R8 Automation gate.
+The user reran both on **2026-09-01** and confirmed:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleHUD_Native / WBP_BattleCard_Native targeted compile: NOT REQUIRED
+   (no production reflected binding/API contract changed)
+3. SlayTheSpireDemo.Phase6UIA2N.R8 focused Automation: 6/6 PASS
+   0 failed / 0 notRun
+```
+
+Focused results:
+
+```text
+CardPlayed.ExactIdentityFinishAndCancel:        PASS
+CardPlayed.InvalidIdentityZeroSideEffects:      PASS
+Zone.DrawToHandSequentialPresentation:          PASS
+Zone.HandToDiscardFinishCancelAndInvalid:       PASS
+Zone.PlayAreaDestinationsAndDestruct:           PASS
+Zone.SkipClearsRetainedPlayedCard:               PASS
+```
+
+The added Skip regression proves:
+
+```text
+CardPlayed Finish -> retained PlayedCard
+-> later Draw Begin
+-> SkipPresentation
+-> active Draw transient removed
+-> retained PlayedCard removed
+-> timer/ownership cleared
+-> PlayArea empty
+```
+
+No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
+rerun.
+
+## R8 Manual PIE Validation — PASS / STICKY
+
+The first user pass on **2026-09-01** exposed missing non-Draw movement and did not
+close the Gate. After the corrective implementation and affected-Gate rerun, the
+user completed the corrected pass in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`. Hand-to-PlayArea-to-Discard,
+Exhaust disappearance, end-turn/manual Hand discard and strict one-card-at-a-time
+DrawPile-to-Hand presentation were accepted, with correct final Hand/HUD state and
+no flashback, duplicate, transient leak, abnormal HUD, or permanent Input Lock.
+
+The P1 cleanup fix changed only abandoned/Skip cleanup, so this normal visual Gate
+remained sticky and did not require another PIE run.
+
+```text
+R8 COMPLETE / VALIDATED
+R9 NOT STARTED
+```
+
 ## Next Exact Action — STOP
 
-Wait for explicit user authorization before starting R8 Card lifecycle. Do not enter
-R8 or any later phase automatically.
+Wait for explicit user authorization before starting R9. Do not enter R9 or any
+later phase automatically.
 
 ## Blockers
 
-No R7 blocker remains. R8 and all later phases remain NOT STARTED.
+No R8 blocker remains. R9 and all later phases remain NOT STARTED.

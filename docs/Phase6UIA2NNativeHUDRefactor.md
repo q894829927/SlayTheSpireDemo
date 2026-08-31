@@ -881,7 +881,7 @@ Visual behavior:
 ```text
 hide exact formal Hand Widget
 → create frozen presentation-only Card
-→ place it in PlayArea
+→ move/transition it from the exact Hand position into PlayArea
 ```
 
 CardPlayed already includes the paid card cost. It must not generate or simulate an
@@ -890,9 +890,9 @@ additional EnergyChanged visual.
 ### 13.2 Hand to DiscardPile
 
 ```text
-Begin  → hide exact Hand Widget
-Finish → do not restore and do not proactively rebuild Hand
-Cancel → restore the historical exact Hand Widget to Visible
+Begin  → hide exact Hand Widget and move one frozen presentation Card to DiscardPile
+Finish → retire the transient; do not restore or proactively rebuild Hand
+Cancel → retire the transient and restore the historical exact Hand Widget
 ```
 
 The reducer/ViewModel refresh owns the formal committed removal after Finish.
@@ -902,17 +902,23 @@ The reducer/ViewModel refresh owns the formal committed removal after Finish.
 ```text
 Begin
 → validate RuntimeId, CardId, count and ToIndex
-→ create frozen noninteractive presentation Card
+→ create exactly one frozen noninteractive presentation Card owned by this Record
+→ move/transition it from the DrawPile visual anchor to Hand ToIndex
 
 Finish
 → do not proactively remove it
 → do not convert it into Gameplay-playable state
 → reducer/ViewModel catch-up and formal Hand refresh take ownership
+→ exact-token completion releases the Controller to start the next Draw Record
 
 Cancel
 → remove the presentation-only Card
 → restore historical display
 ```
+
+Consecutive draws remain strictly Record-serial. A draw Record may expose only its
+own one-card transient. The formal Hand refresh after that exact Record may include
+the just-finished card, but must not reveal any later draw whose Record has not begun.
 
 ### 13.4 PlayArea destination
 
@@ -924,7 +930,10 @@ PlayArea → ExhaustPile
 PlayArea → RemovedPile
 ```
 
-Unknown zone pairs return false. Do not mutate unrelated pile display early.
+`PlayArea -> DiscardPile` moves/fades the exact PlayedCard transient toward the
+DiscardPile anchor. Exhaust/Removed retire by scaling/fading at PlayArea instead of
+pretending to enter another pile. Unknown zone pairs return false. Do not mutate
+unrelated pile display early.
 
 ### R8 acceptance
 
@@ -936,9 +945,14 @@ wrong CardId / FromIndex / ToIndex
 unknown zone pair false fallback
 no transient leak
 Draw presentation Card cannot receive input
+N consecutive draws display one card at a time in exact Record order
+no later draw appears before the preceding exact-token Finish
 Finish does not roll back committed visual
 Cancel restores historical Hand
 CardPlayed does not duplicate EnergyChanged
+Hand card visibly transitions to PlayArea
+Hand discard visibly transitions to DiscardPile
+PlayedCard visibly transitions to DiscardPile; Exhaust/Removed disappear at PlayArea
 ```
 
 ---
