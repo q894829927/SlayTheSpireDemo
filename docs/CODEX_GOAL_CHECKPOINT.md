@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A / R4 COMPLETE AND VALIDATED; R5+ NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0 / R1 / R2 / R3-A / R4 / R5 COMPLETE AND VALIDATED; R6+ NOT STARTED**.
 
 ## Current Repository State
 
@@ -31,12 +31,16 @@ R3-A review-fix focused result: 4/4 PASS
 R4 working branch: a2n/r4-native-card-hand
 R4 base main: 9981dcebda27ae5be46be608177084412e78b1fb
 R4 validation result: PASS
+R5 working branch: a2n/r5-native-playback-kernel
+R5 base main: 1978e1d3abe831dedef95b8bd431a7717def573b
+R5 timer-binding fix: 21e3f7dca0d72c8687465fce10892e205774f893
+R5 validation result: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
-R4: COMPLETE / VALIDATED
-R5 and later: NOT STARTED
+R5: COMPLETE / VALIDATED
+R6 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -488,12 +492,61 @@ docs/R4NativeCardHandValidation.md
 
 **R4 is COMPLETE / VALIDATED.**
 
-## Next Exact Action — R5 Native Playback Kernel
+## R5 Implementation
 
-The next phase is R5. Do not start R5 automatically from this checkpoint.
+R5 establishes the Native HUD's local committed-presentation playback kernel only.
+It owns exact local Token/type/timer state and the safe Begin/Finish/Cancel/destruction
+boundaries that later Record-specific phases will reuse. Production Native playback
+still accepts no real Record in R5, so every real Record continues through the
+Controller's existing immediate-fallback path.
 
-R5 must establish only the native playback ownership kernel defined by `docs/Phase6UIA2NNativeHUDRefactor.md`; do not implicitly pull R6/R7/R8/R9 Record-specific migration into it.
+The kernel does not copy Controller queue/reducer/WorkingSnapshot/generation/timeout
+authority into the HUD and does not change Gameplay, Record or Envelope semantics.
+
+The first local build exposed a UE5.8 timer-delegate payload signature mismatch. The
+fix changed only the finish timer binding to a weak lambda that captures the exact
+`FPresentationPlaybackToken` by value and forwards it to the existing exact-token
+finish handler.
+
+## R5 Validation Evidence — PASS
+
+The user completed the corrected R5 acceptance gates:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleHUD_Native targeted compile: PASS
+3. SlayTheSpireDemo.Phase6UIA2N.R5 focused Automation: PASS
+4. L_BattleTest_Native minimal PIE smoke: PASS
+```
+
+The focused suite covers unsupported/failed Begin zero-side-effect behavior,
+exact/wrong-token Cancel, Cancel-without-normal-Notify, duplicate/stale Finish,
+old/new Token isolation, timer ownership, and NativeDestruct cleanup.
+
+The minimal PIE smoke confirmed the Native HUD/Hand appear normally, card selection
+can be cancelled back to an operable state, EndTurn remains usable, and there is no
+crash, permanent input lock, duplicate Hand, blank HUD, or broken immediate fallback.
+
+Detailed R5 implementation and acceptance evidence is recorded in:
+
+```text
+docs/R5NativePlaybackKernelValidation.md
+```
+
+R5 does not claim any R6+ Record visual migration: Energy/Block/Shuffle, Damage,
+Card lifecycle, Status lifecycle and terminal Record visuals remain NOT STARTED.
+
+**R5 is COMPLETE / VALIDATED.**
+
+## Next Exact Action — R6 Energy / Block / Shuffle
+
+The next phase is R6. Do not start R6 automatically from this checkpoint.
+
+R6 may migrate only the EnergyChanged, BlockChanged and DeckShuffled committed-
+presentation visuals defined by `docs/Phase6UIA2NNativeHUDRefactor.md`, reusing the
+sealed R5 kernel. It must not implicitly enter R7 Damage, R8 Card lifecycle, R9
+Status, R10 Terminal, production cutover, Legacy cleanup, or UI-A3.
 
 ## Blockers
 
-No R4 blocker remains. R5 and all later phases remain NOT STARTED.
+No R5 blocker remains. R6 and all later phases remain NOT STARTED.

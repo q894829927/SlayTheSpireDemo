@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "BattleHUDWidgetBase.h"
 #include "BattleHUDTypes.h"
+#include "TimerManager.h"
 #include "BattleHUDWidget.generated.h"
 
 class UBattleCardWidget;
@@ -21,8 +22,9 @@ class UWidget;
  * Native HUD ownership boundary for the A2N migration.
  *
  * R3-A owns frozen static HUD refresh and long-lived input delegates. R4 adds
- * formal Hand rebuild and card-request ownership. Presentation Record playback
- * remains deliberately unimplemented until R5 and the later per-Record phases.
+ * formal Hand rebuild and card-request ownership. R5 adds only the local Native
+ * committed-presentation playback kernel; individual Record visuals remain owned
+ * by their later migration phases.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -45,6 +47,35 @@ protected:
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
 	) override;
+	virtual void CancelPresentationRecordPlayback_Implementation(
+		const FPresentationPlaybackToken& Token
+	) override;
+
+	// R5 playback-kernel primitives. Later per-Record handlers validate and
+	// prepare their own resources, then use these helpers to establish exact local
+	// visual ownership and the token-captured finish boundary.
+	bool CommitNativePresentationOwnership(
+		EBattlePresentationRecordType RecordType,
+		const FPresentationPlaybackToken& Token);
+	bool StartNativePresentationFinishTimer(float DurationSeconds);
+	void AbortNativePresentationStart();
+	void FinishNativePresentation(const FPresentationPlaybackToken& ExpectedToken);
+	void ClearNativePresentationFinishTimer();
+	void ResetNativePresentationOwnership();
+	void FinishNativePresentationVisual(EBattlePresentationRecordType RecordType);
+	void CancelNativePresentationVisual(EBattlePresentationRecordType RecordType);
+	void CleanupNativePresentationVisualsOnDestruct();
+
+	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
+	bool HasNativePresentationFinishTimer() const { return NativePresentationFinishTimer.IsValid(); }
+	EBattlePresentationRecordType GetActiveNativePresentationType() const
+	{
+		return ActiveNativePresentationType;
+	}
+	const FPresentationPlaybackToken& GetActiveNativePresentationToken() const
+	{
+		return ActiveNativePresentationToken;
+	}
 
 	void RefreshHUDFromViewModel();
 	void RefreshHand();
@@ -174,4 +205,11 @@ protected:
 private:
 	bool bNativeBindingsValid = false;
 	bool bNativeDelegatesBound = false;
+
+	// Controller/reducer state never lives here. These fields describe only the
+	// one local visual currently owned by this HUD.
+	bool bHasActiveNativePresentation = false;
+	EBattlePresentationRecordType ActiveNativePresentationType = EBattlePresentationRecordType::None;
+	FPresentationPlaybackToken ActiveNativePresentationToken;
+	FTimerHandle NativePresentationFinishTimer;
 };

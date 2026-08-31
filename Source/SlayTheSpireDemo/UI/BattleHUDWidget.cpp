@@ -13,6 +13,7 @@
 #include "Components/VerticalBox.h"
 #include "Components/Widget.h"
 #include "Components/WrapBox.h"
+#include "Engine/World.h"
 
 #define LOCTEXT_NAMESPACE "BattleHUDWidget"
 
@@ -105,6 +106,13 @@ void UBattleHUDWidget::NativeConstruct()
 
 void UBattleHUDWidget::NativeDestruct()
 {
+	// R5 owns only local visual state. Destruction must never historical-restore,
+	// dispatch the Cancel override, or Notify normal completion. The base class
+	// remains responsible for authoritative NotifyWidgetLost catch-up.
+	ClearNativePresentationFinishTimer();
+	CleanupNativePresentationVisualsOnDestruct();
+	ResetNativePresentationOwnership();
+
 	if (bNativeDelegatesBound)
 	{
 		if (IsValid(Btn_EndTurn))
@@ -630,10 +638,151 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	const FPresentationPlaybackToken& /*Token*/
 )
 {
-	// R4 still owns no committed presentation behavior. Returning false keeps
-	// the existing Controller immediate-fallback contract until R5+ migrates the
-	// playback kernel and individual Record types.
+	// R5 establishes only the ownership/timer/cancel/finish kernel. No real
+	// Record type is migrated in this phase, so every production Record still
+	// returns false and uses the Controller's existing immediate fallback.
 	return false;
+}
+
+void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
+	const FPresentationPlaybackToken& Token
+)
+{
+	if (!bHasActiveNativePresentation || Token != ActiveNativePresentationToken)
+	{
+		return;
+	}
+
+	const EBattlePresentationRecordType CancelledType = ActiveNativePresentationType;
+	ClearNativePresentationFinishTimer();
+	CancelNativePresentationVisual(CancelledType);
+	ResetNativePresentationOwnership();
+	// Cancellation never notifies normal completion.
+}
+
+bool UBattleHUDWidget::CommitNativePresentationOwnership(
+	EBattlePresentationRecordType RecordType,
+	const FPresentationPlaybackToken& Token
+)
+{
+	if (bHasActiveNativePresentation
+		|| NativePresentationFinishTimer.IsValid()
+		|| RecordType == EBattlePresentationRecordType::None)
+	{
+		return false;
+	}
+
+	bHasActiveNativePresentation = true;
+	ActiveNativePresentationType = RecordType;
+	ActiveNativePresentationToken = Token;
+	return true;
+}
+
+bool UBattleHUDWidget::StartNativePresentationFinishTimer(float DurationSeconds)
+{
+	if (!bHasActiveNativePresentation
+		|| NativePresentationFinishTimer.IsValid()
+		|| DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	UWorld* World = GetWorld();
+	if (!IsValid(World))
+	{
+		return false;
+	}
+
+	// Capture the exact Token by value. A callback from an older presentation
+	// can therefore never infer or finish whichever Token happens to be active
+	// when the timer eventually fires.
+	const FPresentationPlaybackToken ExpectedToken = ActiveNativePresentationToken;
+	TWeakObjectPtr<UBattleHUDWidget> WeakThis(this);
+	FTimerDelegate FinishDelegate = FTimerDelegate::CreateLambda(
+		[WeakThis, ExpectedToken]()
+		{
+			if (UBattleHUDWidget* Widget = WeakThis.Get())
+			{
+				Widget->FinishNativePresentation(ExpectedToken);
+			}
+		});
+	World->GetTimerManager().SetTimer(
+		NativePresentationFinishTimer,
+		FinishDelegate,
+		DurationSeconds,
+		false);
+
+	return NativePresentationFinishTimer.IsValid();
+}
+
+void UBattleHUDWidget::AbortNativePresentationStart()
+{
+	// A per-Record handler must undo any visible mutation it made before calling
+	// this helper. R5 itself creates no visual/transient state, so aborting the
+	// kernel leaves zero local side effects and never notifies completion.
+	ClearNativePresentationFinishTimer();
+	ResetNativePresentationOwnership();
+}
+
+void UBattleHUDWidget::FinishNativePresentation(
+	const FPresentationPlaybackToken& ExpectedToken
+)
+{
+	if (!bHasActiveNativePresentation
+		|| ExpectedToken != ActiveNativePresentationToken)
+	{
+		return;
+	}
+
+	FinishNativePresentationVisual(ActiveNativePresentationType);
+
+	const FPresentationPlaybackToken CompletedToken = ActiveNativePresentationToken;
+	ClearNativePresentationFinishTimer();
+	ResetNativePresentationOwnership();
+
+	// Keep the existing base deferred bridge. Never call the Controller directly.
+	NotifyPresentationFinished(CompletedToken);
+}
+
+void UBattleHUDWidget::ClearNativePresentationFinishTimer()
+{
+	if (NativePresentationFinishTimer.IsValid())
+	{
+		if (UWorld* World = GetWorld(); IsValid(World))
+		{
+			World->GetTimerManager().ClearTimer(NativePresentationFinishTimer);
+		}
+		NativePresentationFinishTimer.Invalidate();
+	}
+}
+
+void UBattleHUDWidget::ResetNativePresentationOwnership()
+{
+	bHasActiveNativePresentation = false;
+	ActiveNativePresentationType = EBattlePresentationRecordType::None;
+	ActiveNativePresentationToken = FPresentationPlaybackToken{};
+}
+
+void UBattleHUDWidget::FinishNativePresentationVisual(
+	EBattlePresentationRecordType /*RecordType*/
+)
+{
+	// R5 owns no Record-specific Finish behavior. R6+ extends this boundary only
+	// for the Record types migrated by that phase.
+}
+
+void UBattleHUDWidget::CancelNativePresentationVisual(
+	EBattlePresentationRecordType /*RecordType*/
+)
+{
+	// R5 owns no Record-specific historical restore or transient cleanup. R6+
+	// extends this boundary for exact active-token cancellation only.
+}
+
+void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
+{
+	// No presentation-only UObject/transient visual is created in R5. Later
+	// phases add typed local cleanup here without historical restore or Notify.
 }
 
 #undef LOCTEXT_NAMESPACE
