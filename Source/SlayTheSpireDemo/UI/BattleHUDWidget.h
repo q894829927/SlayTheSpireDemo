@@ -26,7 +26,8 @@ class UWidget;
  * committed-presentation playback kernel. R6 adds EnergyChanged, BlockChanged
  * and DeckShuffled frozen Record visuals. R7 adds only Damage playback. R8
  * adds the committed CardPlayed/CardZoneChanged lifecycle, including one-card-
- * per-Record DrawPile-to-Hand movement.
+ * per-Record DrawPile-to-Hand movement. R9 adds formal Native Status rows and
+ * exact-identity StatusChanged playback.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -97,6 +98,9 @@ protected:
 	bool BeginNativePlayAreaToDestinationPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeStatusChangedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
 	bool IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const;
 	bool DoesNativeCardViewMatchSnapshot(
 		const FBattleHUDCardView& View,
@@ -138,6 +142,37 @@ protected:
 		UTextBlock*& OutHPText,
 		UTextBlock*& OutBlockText,
 		const FBattleHUDCombatantView*& OutHistoricalView) const;
+	bool ResolveNativeStatusTarget(
+		FName PresentationId,
+		UWrapBox*& OutContainer,
+		const FBattleHUDCombatantView*& OutHistoricalView) const;
+	int32 CountHistoricalStatusIdentity(
+		const TArray<FBattleHUDStatusView>& Statuses,
+		FName StatusId,
+		int64 RuntimeSequence) const;
+	int32 CountNativeStatusWidgetIdentity(
+		UWrapBox* Container,
+		FName StatusId,
+		int64 RuntimeSequence) const;
+	bool FindHistoricalStatusByIdentity(
+		const TArray<FBattleHUDStatusView>& Statuses,
+		FName StatusId,
+		int64 RuntimeSequence,
+		const FBattleHUDStatusView*& OutStatus) const;
+	bool FindNativeStatusWidgetByIdentity(
+		UWrapBox* Container,
+		FName StatusId,
+		int64 RuntimeSequence,
+		UBattleStatusWidget*& OutWidget) const;
+	UBattleStatusWidget* CreateNativeStatusWidget(
+		const FBattleHUDStatusView& View) const;
+	bool RebuildNativeStatusRows(
+		UWrapBox* Container,
+		const TArray<FBattleHUDStatusView>& Statuses);
+	void FinishNativeStatusPresentation();
+	void CancelNativeStatusPresentation();
+	void CleanupNativeStatusPresentationOnDestruct();
+	void ResetNativeStatusPresentationState();
 	void ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy);
 	void ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block);
 	void ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount);
@@ -184,6 +219,14 @@ protected:
 	{
 		return bNativeCardAnimationInitialized;
 	}
+	UBattleStatusWidget* GetActiveNativeStatusPresentationWidget() const
+	{
+		return ActiveNativeStatusPresentationWidget.Get();
+	}
+	bool IsActiveNativeStatusCreatedTransient() const
+	{
+		return bActiveNativeStatusCreatedTransient;
+	}
 
 	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
 	bool HasNativePresentationFinishTimer() const { return NativePresentationFinishTimer.IsValid(); }
@@ -199,6 +242,7 @@ protected:
 	void RefreshHUDFromViewModel();
 	void RefreshHand();
 	void RefreshCombatants();
+	void RefreshStatusRows();
 	void RefreshEnergy();
 	void RefreshPileCounts();
 	void RefreshInputState();
@@ -382,4 +426,12 @@ private:
 	float ActiveNativeCardAnimationStartOpacity = 1.0f;
 	float ActiveNativeCardAnimationEndOpacity = 1.0f;
 	bool bNativeCardAnimationInitialized = false;
+
+	// R9 stores only the exact formal/transient Status Widget currently touched
+	// by StatusChanged. Before view/visibility are rollback data for a failed
+	// Begin; exact Cancel rebuilds both formal rows from the historical ViewModel.
+	TWeakObjectPtr<UBattleStatusWidget> ActiveNativeStatusPresentationWidget;
+	FBattleHUDStatusView ActiveNativeStatusBeforeView;
+	ESlateVisibility ActiveNativeStatusBeforeVisibility = ESlateVisibility::Visible;
+	bool bActiveNativeStatusCreatedTransient = false;
 };
