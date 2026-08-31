@@ -41,6 +41,8 @@ Phase 6UI-A2D5 focused 6/6 PASS
 Phase6R expanded aggregate 100/100 PASS
 Shipping exclusion PASS
 Phase 6UI-A2N R3 review 4/4 PASS
+Phase 6UI-A2N R4 focused PASS
+Phase 6UI-A2N R5 focused 4/4 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -244,7 +246,46 @@ input-locked and visually distinct from ResolutionFaulted. The Editor build for 
 saved review-fix head also passed.
 
 This closes the R3 review findings. It does not replace the earlier Native WBP/PIE
-acceptance; together they keep R3-A **COMPLETE / VALIDATED**. R4 remains NOT STARTED.
+acceptance; together they keep R3-A **COMPLETE / VALIDATED**.
+
+### Phase 6UI-A2N R4 Native Card / Hand — 2026-08-31
+
+R4 moved only formal Hand/Card display and request ownership into the Native stack.
+The user completed Editor Build, `WBP_BattleCard_Native` and `WBP_BattleHUD_Native`
+compile, focused R4 Automation, and Native PIE interaction acceptance. Exact
+RuntimeId selection, target/cancel behavior, accepted single submission, no duplicate
+card callback, and the R3 zero-Block regression all passed. Production remained on
+Legacy and committed Record playback remained immediate-fallback.
+
+R4 is **COMPLETE / VALIDATED**. Detailed evidence is in
+`docs/R4NativeCardHandValidation.md`.
+
+### Phase 6UI-A2N R5 Native Playback Kernel — 2026-08-31
+
+R5 added only the Native HUD local playback ownership kernel: exact active Token and
+Record type, local finish timer, exact-token Finish/Cancel, failed-Begin rollback,
+and destruction cleanup. It did not migrate any real Record visual or copy Controller
+queue/reducer/WorkingSnapshot/generation/timeout authority into the HUD.
+
+The first corrected-build cycle exposed and fixed one UE5.8 delegate-binding mismatch:
+the finish timer now uses a weak lambda that captures the exact Token by value. The
+user then completed the final R5 gates:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+WBP_BattleHUD_Native targeted compile: PASS
+SlayTheSpireDemo.Phase6UIA2N.R5: 4/4 PASS
+L_BattleTest_Native minimal PIE smoke: PASS
+```
+
+The focused suite validates unsupported/failed Begin zero side effects, exact and
+wrong-token Cancel, Cancel without normal completion Notify, duplicate/stale Finish,
+old/new Token isolation, local timer ownership, and NativeDestruct cleanup. The PIE
+smoke confirmed normal Native HUD/Hand startup, card-selection Cancel, EndTurn,
+continued interaction, and no crash, permanent lock, duplicate Hand or blank HUD.
+
+R5 is **COMPLETE / VALIDATED**. R6 and later remain **NOT STARTED**. Detailed evidence
+is in `docs/R5NativePlaybackKernelValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -281,6 +322,13 @@ UI-A2E and UI-A2 are **COMPLETE / VALIDATED / SEALED** on implementation commit
 `81cbfb6` after A2D5 exactly 6, Phase6R 100/100, and clean-worktree Shipping
 exclusion all passed.
 
+A2N migration status is now:
+
+```text
+R0-R5 COMPLETE / VALIDATED
+R6+ NOT STARTED
+```
+
 Validated A2E scenarios include:
 
 - ordinary card Damage;
@@ -290,7 +338,9 @@ Validated A2E scenarios include:
 - genuine ResolutionFault distinct from PresentationUnavailable;
 - input remains locked during playback and unlocks only after catch-up to the newest matching revision.
 
-Use `docs/UIA2ERemainingSteps.zh-CN.md` for exact execution and evidence steps.
+Use `docs/UIA2ERemainingSteps.zh-CN.md` for historical UI-A2E execution evidence and
+`docs/ValidationExecutionPolicy.md` for current A2N validation budgeting and manual/
+automated Gate ownership.
 
 ## User-Action Boundary
 
