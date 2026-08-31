@@ -66,7 +66,14 @@ void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
 
 void UBattleCardWidget::RefreshFromCardView()
 {
-	if (!bNativeBindingsValid)
+	// Keep SetCardView order-independent for tests and future presentation-only
+	// creation. NativeOnInitialized still owns the fail-closed runtime contract;
+	// this helper simply refuses to touch a partial Designer surface.
+	if (!IsValid(Txt_CardName)
+		|| !IsValid(Txt_Cost)
+		|| !IsValid(Txt_CardDescription)
+		|| !IsValid(Txt_CardType)
+		|| !IsValid(Img_CardArt))
 	{
 		return;
 	}
@@ -95,7 +102,7 @@ void UBattleCardWidget::HandleCardClicked()
 	// owns the authoritative playability check and feedback. Presentation-only
 	// cards are instead never bound by the HUD and are HitTestInvisible when they
 	// are introduced by later playback phases.
-	if (bNativeBindingsValid && CurrentCardView.RuntimeId != INDEX_NONE)
+	if (CurrentCardView.RuntimeId != INDEX_NONE)
 	{
 		OnBattleCardRequested.Broadcast(CurrentCardView.RuntimeId);
 	}
