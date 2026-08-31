@@ -19,7 +19,7 @@
 
 namespace
 {
-	constexpr float SimpleNativePresentationDurationSeconds = 0.5f;
+	constexpr float NativePresentationDurationSeconds = 0.5f;
 }
 
 void UBattleHUDWidget::NativeOnInitialized()
@@ -287,26 +287,13 @@ void UBattleHUDWidget::RefreshCombatants()
 				bFoundLegalTarget ? LegalTarget.TargetId : INDEX_NONE,
 				bFoundLegalTarget);
 
-			if (IsValid(HPText))
-			{
-				HPText->SetText(FText::Format(
-					LOCTEXT("BattleHUDHPFormat", "{0}/{1}"),
-					FText::AsNumber(Combatant.HP),
-					FText::AsNumber(Combatant.MaxHP)));
-			}
-
-			if (IsValid(HPProgress))
-			{
-				const float Percent = Combatant.MaxHP > 0
-					? FMath::Clamp(
-						static_cast<float>(Combatant.HP) / static_cast<float>(Combatant.MaxHP),
-						0.0f,
-						1.0f)
-					: 0.0f;
-				HPProgress->SetPercent(Percent);
-			}
-
-			ApplyNativeBlockValue(BlockText, Combatant.Block);
+			ApplyNativeCombatantVitals(
+				HPProgress,
+				HPText,
+				BlockText,
+				Combatant.HP,
+				Combatant.MaxHP,
+				Combatant.Block);
 		};
 
 	RefreshOneCombatant(
@@ -627,6 +614,8 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 
 	switch (Record.Type)
 	{
+	case EBattlePresentationRecordType::Damage:
+		return BeginNativeDamagePresentation(Record, Token);
 	case EBattlePresentationRecordType::EnergyChanged:
 		return BeginNativeEnergyChangedPresentation(Record, Token);
 	case EBattlePresentationRecordType::BlockChanged:
@@ -668,7 +657,7 @@ bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
 	ActiveNativeSimpleEnergyMax = ViewModel->MaxEnergy;
 	ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
 
-	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
 		ResetNativeSimplePresentationState();
@@ -733,7 +722,7 @@ bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
 	ActiveNativeSimplePrimaryAfter = Payload.BlockAfter;
 	ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryAfter);
 
-	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryBefore);
 		ResetNativeSimplePresentationState();
@@ -780,12 +769,107 @@ bool UBattleHUDWidget::BeginNativeDeckShuffledPresentation(
 		ActiveNativeSimplePrimaryAfter,
 		ActiveNativeSimpleSecondaryAfter);
 
-	if (!StartNativePresentationFinishTimer(SimpleNativePresentationDurationSeconds))
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativePileCounts(
 			ActiveNativeSimplePrimaryBefore,
 			ActiveNativeSimpleSecondaryBefore);
 		ResetNativeSimplePresentationState();
+		AbortNativePresentationStart();
+		return false;
+	}
+
+	return true;
+}
+
+bool UBattleHUDWidget::BeginNativeDamagePresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FDamagePresentationPayload& Payload = Record.Damage;
+	UBattleHUDCombatantPresentationWidgetBase* TargetPresentation = nullptr;
+	UProgressBar* TargetHPProgress = nullptr;
+	UTextBlock* TargetHPText = nullptr;
+	UTextBlock* TargetBlockText = nullptr;
+	const FBattleHUDCombatantView* HistoricalTarget = nullptr;
+	const bool bTargetResolved = ResolveDamageTarget(
+		Payload.TargetPresentationId,
+		TargetPresentation,
+		TargetHPProgress,
+		TargetHPText,
+		TargetBlockText,
+		HistoricalTarget);
+	const bool bSourceIsValid = Payload.SourcePresentationId.IsNone()
+		|| IsKnownCombatantPresentationId(Payload.SourcePresentationId);
+	const bool bDamageKindValid = Payload.DamageKind == EDamageKind::Attack
+		|| Payload.DamageKind == EDamageKind::Effect;
+	const int64 AccountedDamage = static_cast<int64>(Payload.BlockedDamage)
+		+ static_cast<int64>(Payload.HPDamage);
+	const bool bPayloadValid =
+		bTargetResolved
+		&& IsValid(Txt_DamagePresentation)
+		&& bSourceIsValid
+		&& bDamageKindValid
+		&& Payload.IncomingDamage > 0
+		&& Payload.HPBefore > 0
+		&& Payload.HPAfter >= 0
+		&& Payload.HPAfter <= Payload.HPBefore
+		&& Payload.BlockBefore >= 0
+		&& Payload.BlockAfter >= 0
+		&& Payload.BlockAfter <= Payload.BlockBefore
+		&& Payload.BlockedDamage >= 0
+		&& Payload.HPDamage >= 0
+		&& Payload.BlockedDamage == Payload.BlockBefore - Payload.BlockAfter
+		&& Payload.HPDamage == Payload.HPBefore - Payload.HPAfter
+		&& AccountedDamage > 0
+		&& AccountedDamage <= static_cast<int64>(Payload.IncomingDamage)
+		&& HistoricalTarget != nullptr
+		&& HistoricalTarget->MaxHP > 0
+		&& Payload.HPBefore <= HistoricalTarget->MaxHP
+		&& HistoricalTarget->HP == Payload.HPBefore
+		&& HistoricalTarget->Block == Payload.BlockBefore;
+	if (!bPayloadValid)
+	{
+		return false;
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ActiveDamageTargetWidget = TargetPresentation;
+	ActiveDamageTargetHPProgress = TargetHPProgress;
+	ActiveDamageTargetHPText = TargetHPText;
+	ActiveDamageTargetBlockText = TargetBlockText;
+	ActiveDamageHPBefore = Payload.HPBefore;
+	ActiveDamageHPAfter = Payload.HPAfter;
+	ActiveDamageBlockBefore = Payload.BlockBefore;
+	ActiveDamageBlockAfter = Payload.BlockAfter;
+	ActiveDamageMaxHP = HistoricalTarget->MaxHP;
+
+	ApplyNativeCombatantVitals(
+		TargetHPProgress,
+		TargetHPText,
+		TargetBlockText,
+		ActiveDamageHPAfter,
+		ActiveDamageMaxHP,
+		ActiveDamageBlockAfter);
+	Txt_DamagePresentation->SetText(FText::AsNumber(Payload.IncomingDamage));
+	Txt_DamagePresentation->SetVisibility(ESlateVisibility::HitTestInvisible);
+	TargetPresentation->SetRenderOpacity(0.45f);
+
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		ApplyNativeCombatantVitals(
+			TargetHPProgress,
+			TargetHPText,
+			TargetBlockText,
+			ActiveDamageHPBefore,
+			ActiveDamageMaxHP,
+			ActiveDamageBlockBefore);
+		CleanupNativeDamageTransientVisuals();
+		ResetNativeDamagePresentationState();
 		AbortNativePresentationStart();
 		return false;
 	}
@@ -845,6 +929,54 @@ UTextBlock* UBattleHUDWidget::ResolveBlockTextForPresentationId(
 	return Txt_EnemyBlock;
 }
 
+bool UBattleHUDWidget::ResolveDamageTarget(
+	FName PresentationId,
+	UBattleHUDCombatantPresentationWidgetBase*& OutPresentation,
+	UProgressBar*& OutHPProgress,
+	UTextBlock*& OutHPText,
+	UTextBlock*& OutBlockText,
+	const FBattleHUDCombatantView*& OutHistoricalView) const
+{
+	OutPresentation = nullptr;
+	OutHPProgress = nullptr;
+	OutHPText = nullptr;
+	OutBlockText = nullptr;
+	OutHistoricalView = nullptr;
+	if (!IsValid(ViewModel) || PresentationId.IsNone())
+	{
+		return false;
+	}
+
+	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
+	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
+	if (bMatchesPlayer == bMatchesEnemy)
+	{
+		return false;
+	}
+
+	if (bMatchesPlayer)
+	{
+		OutPresentation = Combatant_PlayerPresentation;
+		OutHPProgress = PB_PlayerHP;
+		OutHPText = Txt_PlayerHP;
+		OutBlockText = Txt_PlayerBlock;
+		OutHistoricalView = &ViewModel->Player;
+	}
+	else
+	{
+		OutPresentation = Combatant_EnemyPresentation;
+		OutHPProgress = PB_EnemyHP;
+		OutHPText = Txt_EnemyHP;
+		OutBlockText = Txt_EnemyBlock;
+		OutHistoricalView = &ViewModel->Enemy;
+	}
+
+	return IsValid(OutPresentation)
+		&& IsValid(OutHPProgress)
+		&& IsValid(OutHPText)
+		&& IsValid(OutBlockText);
+}
+
 void UBattleHUDWidget::ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy)
 {
 	if (IsValid(Txt_Energy))
@@ -892,6 +1024,48 @@ void UBattleHUDWidget::ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount
 	if (IsValid(Txt_DiscardCount))
 	{
 		Txt_DiscardCount->SetText(FText::AsNumber(DiscardCount));
+	}
+}
+
+void UBattleHUDWidget::ApplyNativeCombatantVitals(
+	UProgressBar* HPProgress,
+	UTextBlock* HPText,
+	UTextBlock* BlockText,
+	int32 HP,
+	int32 MaxHP,
+	int32 Block)
+{
+	if (IsValid(HPText))
+	{
+		HPText->SetText(FText::Format(
+			LOCTEXT("BattleHUDHPFormat", "{0}/{1}"),
+			FText::AsNumber(HP),
+			FText::AsNumber(MaxHP)));
+	}
+
+	if (IsValid(HPProgress))
+	{
+		const float Percent = MaxHP > 0
+			? FMath::Clamp(
+				static_cast<float>(HP) / static_cast<float>(MaxHP),
+				0.0f,
+				1.0f)
+			: 0.0f;
+		HPProgress->SetPercent(Percent);
+	}
+
+	ApplyNativeBlockValue(BlockText, Block);
+}
+
+void UBattleHUDWidget::CleanupNativeDamageTransientVisuals()
+{
+	if (IsValid(Txt_DamagePresentation))
+	{
+		Txt_DamagePresentation->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (UBattleHUDCombatantPresentationWidgetBase* Target = ActiveDamageTargetWidget.Get())
+	{
+		Target->SetRenderOpacity(1.0f);
 	}
 }
 
@@ -1020,6 +1194,17 @@ void UBattleHUDWidget::FinishNativePresentationVisual(
 {
 	switch (RecordType)
 	{
+	case EBattlePresentationRecordType::Damage:
+		ApplyNativeCombatantVitals(
+			ActiveDamageTargetHPProgress.Get(),
+			ActiveDamageTargetHPText.Get(),
+			ActiveDamageTargetBlockText.Get(),
+			ActiveDamageHPAfter,
+			ActiveDamageMaxHP,
+			ActiveDamageBlockAfter);
+		CleanupNativeDamageTransientVisuals();
+		ResetNativeDamagePresentationState();
+		break;
 	case EBattlePresentationRecordType::EnergyChanged:
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
 		break;
@@ -1045,6 +1230,17 @@ void UBattleHUDWidget::CancelNativePresentationVisual(
 {
 	switch (RecordType)
 	{
+	case EBattlePresentationRecordType::Damage:
+		ApplyNativeCombatantVitals(
+			ActiveDamageTargetHPProgress.Get(),
+			ActiveDamageTargetHPText.Get(),
+			ActiveDamageTargetBlockText.Get(),
+			ActiveDamageHPBefore,
+			ActiveDamageMaxHP,
+			ActiveDamageBlockBefore);
+		CleanupNativeDamageTransientVisuals();
+		ResetNativeDamagePresentationState();
+		break;
 	case EBattlePresentationRecordType::EnergyChanged:
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
 		break;
@@ -1066,8 +1262,11 @@ void UBattleHUDWidget::CancelNativePresentationVisual(
 
 void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 {
-	// Destruction is local cleanup only: discard frozen visual context without
-	// restoring history or notifying normal completion.
+	// Destruction is local cleanup only. Damage transient feedback is hidden and
+	// its target opacity is normalized, but committed/historical vitals are not
+	// restored and normal completion is not notified.
+	CleanupNativeDamageTransientVisuals();
+	ResetNativeDamagePresentationState();
 	ResetNativeSimplePresentationState();
 }
 
@@ -1079,6 +1278,19 @@ void UBattleHUDWidget::ResetNativeSimplePresentationState()
 	ActiveNativeSimpleSecondaryBefore = 0;
 	ActiveNativeSimpleSecondaryAfter = 0;
 	ActiveNativeSimpleEnergyMax = 0;
+}
+
+void UBattleHUDWidget::ResetNativeDamagePresentationState()
+{
+	ActiveDamageTargetWidget.Reset();
+	ActiveDamageTargetHPProgress.Reset();
+	ActiveDamageTargetHPText.Reset();
+	ActiveDamageTargetBlockText.Reset();
+	ActiveDamageHPBefore = 0;
+	ActiveDamageHPAfter = 0;
+	ActiveDamageBlockBefore = 0;
+	ActiveDamageBlockAfter = 0;
+	ActiveDamageMaxHP = 0;
 }
 
 #undef LOCTEXT_NAMESPACE

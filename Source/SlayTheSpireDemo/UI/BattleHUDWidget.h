@@ -23,8 +23,8 @@ class UWidget;
  *
  * R3-A owns frozen static HUD refresh and long-lived input delegates. R4 adds
  * formal Hand rebuild and card-request ownership. R5 adds the local Native
- * committed-presentation playback kernel. R6 adds only EnergyChanged,
- * BlockChanged and DeckShuffled frozen Record visuals.
+ * committed-presentation playback kernel. R6 adds EnergyChanged, BlockChanged
+ * and DeckShuffled frozen Record visuals. R7 adds only Damage playback.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -76,6 +76,9 @@ protected:
 	bool BeginNativeDeckShuffledPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeDamagePresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
 	bool IsNativeRecordTokenConsistent(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) const;
@@ -83,9 +86,25 @@ protected:
 	UTextBlock* ResolveBlockTextForPresentationId(
 		FName PresentationId,
 		int32& OutHistoricalBlock) const;
+	bool ResolveDamageTarget(
+		FName PresentationId,
+		UBattleHUDCombatantPresentationWidgetBase*& OutPresentation,
+		UProgressBar*& OutHPProgress,
+		UTextBlock*& OutHPText,
+		UTextBlock*& OutBlockText,
+		const FBattleHUDCombatantView*& OutHistoricalView) const;
 	void ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy);
 	void ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block);
 	void ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount);
+	void ApplyNativeCombatantVitals(
+		UProgressBar* HPProgress,
+		UTextBlock* HPText,
+		UTextBlock* BlockText,
+		int32 HP,
+		int32 MaxHP,
+		int32 Block);
+	void CleanupNativeDamageTransientVisuals();
+	void ResetNativeDamagePresentationState();
 
 	bool HasActiveNativePresentation() const { return bHasActiveNativePresentation; }
 	bool HasNativePresentationFinishTimer() const { return NativePresentationFinishTimer.IsValid(); }
@@ -243,4 +262,16 @@ private:
 	int32 ActiveNativeSimpleSecondaryBefore = 0;
 	int32 ActiveNativeSimpleSecondaryAfter = 0;
 	int32 ActiveNativeSimpleEnergyMax = 0;
+
+	// Frozen R7 Damage visual state. Target surfaces are weak local presentation
+	// references; all historical values are copied from the accepted Record.
+	TWeakObjectPtr<UBattleHUDCombatantPresentationWidgetBase> ActiveDamageTargetWidget;
+	TWeakObjectPtr<UProgressBar> ActiveDamageTargetHPProgress;
+	TWeakObjectPtr<UTextBlock> ActiveDamageTargetHPText;
+	TWeakObjectPtr<UTextBlock> ActiveDamageTargetBlockText;
+	int32 ActiveDamageHPBefore = 0;
+	int32 ActiveDamageHPAfter = 0;
+	int32 ActiveDamageBlockBefore = 0;
+	int32 ActiveDamageBlockAfter = 0;
+	int32 ActiveDamageMaxHP = 0;
 };

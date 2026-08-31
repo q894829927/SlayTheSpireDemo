@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R6 COMPLETE / VALIDATED; R7 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 NOT STARTED**.
 
 ## Current Repository State
 
@@ -40,13 +40,20 @@ R6 source implementation commit: 1250cb411afe640802d7b70239a51228a94ed369
 R6 Editor build: PASS
 R6 focused Automation: 5/5 PASS
 R6 Manual PIE: PASS (user confirmed 2026-08-31)
+R7 working branch: a2n/r7-native-damage
+R7 starting main HEAD: 2264b9e5ba8b6505fffcef5abed21d2d6bdc7611
+R7 source implementation commit: c3a345413a87197de8328eb94e6b849d365f5442
+R7 Editor build: PASS
+R7 focused Automation: 5/5 PASS
+R7 Manual PIE: PASS (user confirmed 2026-08-31)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
-R7 and later: NOT STARTED
+R7: COMPLETE / VALIDATED
+R8 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -610,11 +617,80 @@ duplicate / no-permanent-Input-Lock / normal-HUD observations.
 
 **R6 is COMPLETE / VALIDATED.**
 
+## R7 Implementation
+
+R7 migrates only `Damage` in the Native HUD. It resolves the Record's exact
+`TargetPresentationId` to Player or Enemy, validates frozen historical HP/Block
+Before state and the sealed Damage payload invariants, then displays the Record's
+`IncomingDamage`, `HPAfter` and `BlockAfter` directly. It does not derive HP/Block
+outcomes from IncomingDamage or query mutable Gameplay.
+
+The target receives the sealed Legacy-equivalent `RenderOpacity = 0.45` feedback.
+Exact Finish retains frozen After vitals, hides the Damage text, restores opacity,
+clears Damage local state and notifies once. Exact Cancel restores frozen Before,
+hides the text, restores opacity, clears local state and never notifies. Stale/
+duplicate Finish and wrong-token Cancel are no-ops; destruction performs local
+transient cleanup only without historical restore or Notify.
+
+Changed implementation/test files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR7TestTypes.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR7TestTypes.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR7Tests.cpp
+```
+
+R7 does not modify Controller, Reducer, Record, Envelope, Gameplay, production
+configuration, Legacy WBP assets or UI-A3. Card lifecycle and all R8+ visuals remain
+unstarted.
+
+## R7 Automated Validation Evidence — PASS
+
+```text
+1. UE5.8 project-file generation: PASS
+2. SlayTheSpireDemoEditor Win64 Development build: PASS
+3. WBP_BattleHUD_Native targeted compile: NOT REQUIRED
+   (no runtime reflected binding/API contract changed)
+4. SlayTheSpireDemo.Phase6UIA2N.R7 focused Automation: 5/5 PASS
+```
+
+Focused results:
+
+```text
+DestructCleanup:        PASS
+EnemyTarget:            PASS
+InvalidBegin:           PASS
+Lethal:                 PASS
+PlayerBlockedAndCancel: PASS
+0 failed / 0 notRun
+```
+
+Evidence is recorded in:
+
+```text
+docs/R7NativeDamageValidation.md
+Saved/AutomationReports/R7FocusedPhase6UIA2N/index.json
+```
+
+No R3-R6, A2D5, Phase6R, Shipping, aggregate regression or architecture reviewer was
+run.
+
+## R7 Manual PIE Validation Evidence — PASS
+
+The user confirmed the required minimal PIE pass on **2026-08-31** in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`, closing the single-display Damage
+number, correct target/location, transient feedback cleanup, final HP/Block,
+no-flashback, no-duplicate-Damage and no-permanent-Input-Lock observations.
+
+**R7 is COMPLETE / VALIDATED.**
+
 ## Next Exact Action — STOP
 
-Wait for explicit user authorization before starting R7 Damage. Do not enter R7 or
-any later phase automatically.
+Wait for explicit user authorization before starting R8 Card lifecycle. Do not enter
+R8 or any later phase automatically.
 
 ## Blockers
 
-No R6 blocker remains. R7 and all later phases remain NOT STARTED.
+No R7 blocker remains. R8 and all later phases remain NOT STARTED.
