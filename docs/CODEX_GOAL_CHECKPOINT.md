@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R5 COMPLETE / VALIDATED; R6 SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R7 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R6 COMPLETE / VALIDATED; R7 NOT STARTED**.
 
 ## Current Repository State
 
@@ -39,13 +39,13 @@ R6 starting HEAD: 778073be41ffa0c003cdab5fde9ca1d1ac996cb8
 R6 source implementation commit: 1250cb411afe640802d7b70239a51228a94ed369
 R6 Editor build: PASS
 R6 focused Automation: 5/5 PASS
-R6 Manual PIE: PENDING
+R6 Manual PIE: PASS (user confirmed 2026-08-31)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 R5: COMPLETE / VALIDATED
-R6: SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R6: COMPLETE / VALIDATED
 R7 and later: NOT STARTED
 ```
 
@@ -601,27 +601,20 @@ Saved/AutomationReports/R6FocusedPhase6UIA2N/index.json
 
 No R3/R4/R5, A2D5, Phase6R, Shipping or aggregate regression suite was run.
 
-## Next Exact Action — R6 Manual PIE
+## R6 Manual PIE Validation Evidence — PASS
 
-**USER ACTION REQUIRED.** Run one minimal PIE pass in:
+The user confirmed the required minimal PIE pass on **2026-08-31** in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`, closing the Energy final value,
+Block display, real Shuffle Draw/Discard final counts, and no-flashback / no-
+duplicate / no-permanent-Input-Lock / normal-HUD observations.
 
-```text
-/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
-```
+**R6 is COMPLETE / VALIDATED.**
 
-Verify exactly:
+## Next Exact Action — STOP
 
-```text
-play one Energy-costing card -> final Energy correct
-play one Block-producing card -> Block display correct
-EndTurn until a real shuffle -> final Draw / Discard counts correct
-no flashback, duplicate display, permanent Input Lock or abnormal HUD
-```
-
-After the user confirms this Gate, update R6 to `COMPLETE / VALIDATED`. Do not start
-R7 automatically.
+Wait for explicit user authorization before starting R7 Damage. Do not enter R7 or
+any later phase automatically.
 
 ## Blockers
 
-R6 has no automated blocker. Manual PIE confirmation is pending. R7 and all later
-phases remain NOT STARTED.
+No R6 blocker remains. R7 and all later phases remain NOT STARTED.

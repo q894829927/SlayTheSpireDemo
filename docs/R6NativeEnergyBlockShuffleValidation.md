@@ -3,9 +3,7 @@
 Status:
 
 ```text
-R6 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R6 COMPLETE / VALIDATED
 R7 NOT STARTED
 ```
 
@@ -153,15 +151,15 @@ without normal completion, timer cleanup and NativeDestruct local cleanup.
 
 No R3/R4/R5, A2D5, Phase6R, Shipping or aggregate regression suite was run.
 
-## Manual PIE Gate — USER ACTION REQUIRED
+## Manual PIE Gate — PASS
 
-Run one minimal PIE pass in:
+The user confirmed completion of the required minimal PIE pass on **2026-08-31** in:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 ```
 
-Actions and expected observations:
+Accepted observations:
 
 1. Play one card that costs Energy; confirm the final Energy value is correct.
 2. Play one card that grants Block; confirm the correct combatant Block value and
@@ -171,18 +169,15 @@ Actions and expected observations:
 4. Confirm there is no visible flashback, duplicate display, permanent Input Lock,
    or abnormal HUD state.
 
-This manual Gate is intentionally not replaced by screenshots or additional
-Automation.
+The user confirmation closes the required Energy, Block, Shuffle and HUD-stability
+visual checks. No screenshots or additional Automation were substituted for this
+manual Gate.
 
 ## Current acceptance state
 
 ```text
-R0-R5 COMPLETE / VALIDATED
-R6 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R0-R6 COMPLETE / VALIDATED
 R7 NOT STARTED
 ```
 
-R6 must not be marked `COMPLETE / VALIDATED` until the user confirms this Manual
-PIE Gate. Do not start R7 automatically.
+R6 is sealed. Do not start R7 automatically.
