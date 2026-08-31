@@ -224,6 +224,13 @@ void UBattleHUDWidgetBase::HandleViewModelChanged()
 		CancelTrackedPresentationPlayback();
 	}
 
+	NativeOnBattleHUDViewModelChanged();
+}
+
+void UBattleHUDWidgetBase::NativeOnBattleHUDViewModelChanged()
+{
+	// Preserve the sealed Legacy Blueprint contract by default. Native concrete
+	// HUD classes may override this hook and intentionally omit Super to own refresh.
 	BP_OnViewModelChanged();
 }
 

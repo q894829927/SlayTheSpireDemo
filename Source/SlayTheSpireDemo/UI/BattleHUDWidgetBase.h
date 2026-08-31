@@ -98,6 +98,10 @@ public:
 protected:
 	virtual void NativeDestruct() override;
 
+	// Native extension point for concrete HUD implementations. The base default
+	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
+	virtual void NativeOnBattleHUDViewModelChanged();
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle HUD", meta = (DisplayName = "Battle HUD View Model Changed"))
 	void BP_OnViewModelChanged();
 
