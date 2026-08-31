@@ -1,1 +1,102 @@
 #include "BattleCardWidget.h"
+
+#include "Components/Button.h"
+#include "Components/Image.h"
+#include "Components/TextBlock.h"
+
+void UBattleCardWidget::NativeOnInitialized()
+{
+	Super::NativeOnInitialized();
+
+	bNativeBindingsValid =
+		IsValid(Btn_Card)
+		&& IsValid(Txt_CardName)
+		&& IsValid(Txt_Cost)
+		&& IsValid(Txt_CardDescription)
+		&& IsValid(Txt_CardType)
+		&& IsValid(Img_CardArt);
+
+	if (!ensureMsgf(
+		bNativeBindingsValid,
+		TEXT("Native Battle Card '%s' has a missing required BindWidget control."),
+		*GetName()))
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[BattleCard][Native] Invalid required bindings on '%s'; card input is disabled."),
+			*GetPathName());
+	}
+}
+
+void UBattleCardWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	if (!bNativeBindingsValid)
+	{
+		return;
+	}
+
+	Btn_Card->OnClicked.AddUniqueDynamic(this, &UBattleCardWidget::HandleCardClicked);
+	bCardDelegateBound = true;
+
+	// CreateWidget constructs the Designer before the HUD supplies its DTO. Keep
+	// Construct order irrelevant by refreshing again here; SetCardView also
+	// refreshes immediately when the real frozen/current view arrives later.
+	RefreshFromCardView();
+}
+
+void UBattleCardWidget::NativeDestruct()
+{
+	if (bCardDelegateBound && IsValid(Btn_Card))
+	{
+		Btn_Card->OnClicked.RemoveDynamic(this, &UBattleCardWidget::HandleCardClicked);
+		bCardDelegateBound = false;
+	}
+
+	Super::NativeDestruct();
+}
+
+void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
+{
+	CardView = View;
+	RefreshFromCardView();
+}
+
+void UBattleCardWidget::RefreshFromCardView()
+{
+	if (!bNativeBindingsValid)
+	{
+		return;
+	}
+
+	Txt_CardName->SetText(CardView.DisplayName);
+	Txt_Cost->SetText(FText::AsNumber(CardView.Cost));
+	Txt_CardDescription->SetText(CardView.Description);
+
+	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
+	{
+		Txt_CardType->SetText(
+			CardTypeEnum->GetDisplayNameTextByValue(static_cast<int64>(CardView.CardType)));
+	}
+	else
+	{
+		Txt_CardType->SetText(FText::GetEmpty());
+	}
+
+	Img_CardArt->SetBrushFromTexture(CardView.CardArt);
+}
+
+void UBattleCardWidget::HandleCardClicked()
+{
+	// Formal Hand cards are allowed to request selection even when their current
+	// frozen bGameplayPlayable value is false; the formal ViewModel request path
+	// owns the authoritative playability check and feedback. Presentation-only
+	// cards are instead never bound by the HUD and are HitTestInvisible when they
+	// are introduced by later playback phases.
+	if (bNativeBindingsValid && CardView.RuntimeId != INDEX_NONE)
+	{
+		OnBattleCardRequested.Broadcast(CardView.RuntimeId);
+	}
+}
