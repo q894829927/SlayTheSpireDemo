@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Phase 6UI-A2N
 
-Last updated: **2026-08-31 12:52 (Asia/Shanghai)**
+Last updated: **2026-08-31**
 
 ## Goal
 
@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 COMPLETE / VALIDATED; R1 SOURCE IMPLEMENTED / UE VALIDATION PENDING**.
+Goal execution status: **IN PROGRESS — R0 COMPLETE / VALIDATED; R1 COMPLETE / VALIDATED; R2 NOT STARTED**.
 
 ## Current Repository State
 
@@ -19,6 +19,7 @@ R0 checkpoint HEAD: de30f278b405f2cab6f96fb4e88a84acc53cfd49
 R1 working branch: a2n/r1-native-hook
 R1 source implementation commit: 496224de8fa549e7ac3563adf04e58743f072b85
 R1 source subject: refactor(ui-a2n): add native HUD refresh hook
+R1 validation result: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native classes/assets/test map: not created
@@ -103,46 +104,93 @@ suppression, Controller calls, ViewModel ownership, or any Record/Envelope type.
 No `UBattleHUDWidget`, Native WBP, Native Card/Status Widget, test map, Record handler,
 or UI-A3 implementation was created.
 
-## R1 Validation Status
+## R1 Validation Evidence — PASS
 
-Not yet accepted. The GitHub-only execution surface cannot run the repository's local
-UE5.8 project-file generation, Editor build, Blueprint/PIE regression or inspect the
-runtime Legacy Widget instance after this source change.
-
-Required R1 validation remains exactly:
+The complete R1 UE5.8 acceptance gate was executed locally and all required checks
+passed:
 
 ```text
-1. Regenerate project files with the bundled UE 5.8 .NET runtime.
-2. Build SlayTheSpireDemoEditor Win64 Development.
-3. Open/compile the existing Legacy WBP_BattleHUD without modifying or saving
-   unrelated asset state.
-4. PIE /Game/SlayTheSpireDemo/Maps/L_BattleTest using the production
-   WidgetClass = WBP_BattleHUD.
-5. Verify the Legacy Blueprint still receives Battle HUD View Model Changed and
-   refreshes the initial HUD normally.
-6. Exercise a normal committed presentation completion and explicit Skip path;
-   neither may be interpreted as visual Cancel during the synchronous ViewModel
-   update.
-7. Exercise or reuse the smallest valid fail-safe path that causes a non-suppressed
-   ViewModel change while a tracked visual is active; the abandoned visual must
-   still be cancelled before the Legacy Blueprint refresh.
-8. Confirm WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus hashes remain unchanged
-   if no intentional asset save is required.
+1. Project-file regeneration: PASS
+2. SlayTheSpireDemoEditor Win64 Development build: PASS
+3. Existing WBP_BattleHUD compile: PASS
+4. Initial Legacy HUD PIE on /Game/SlayTheSpireDemo/Maps/L_BattleTest: PASS
+5. Strike -> Enemy committed presentation / Legacy refresh path: PASS
+6. Normal Finish / explicit Skip / cancellation-suppression behavior: PASS
+7. Fail-safe active Cancel with exact abandoned Token: PASS
+8. Git status / Legacy HUD-Card-Status hash stability: PASS
 ```
 
-Do not mark R1 COMPLETE / VALIDATED and do not enter R2 until this evidence exists.
+The fail-safe cancellation evidence reused the existing automation test:
 
-## Next Exact Action — Finish R1 Validation
+```text
+SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
+```
 
-Run the R1 UE5.8 build/Legacy regression gate above on commit
-`496224de8fa549e7ac3563adf04e58743f072b85` (branch `a2n/r1-native-hook`).
+This test verifies both sides of the R1 cancellation boundary:
 
-If all evidence passes, record it and merge/fast-forward the reviewed R1 source into
-the intended integration branch before beginning R2. If validation fails, fix only
-the R1 shared-base hook boundary; do not expand into R2.
+```text
+Controller timeout while a tracked visual is active
+→ ViewModel advances
+→ exact abandoned visual is cancelled once with the exact Token
+
+Normal deferred completion
+→ ViewModel advances under suppression
+→ no fail-safe visual Cancel is issued
+```
+
+The local Legacy PIE checks additionally confirmed that the real production
+`WBP_BattleHUD` still refreshes through the existing Blueprint event contract after
+routing through `NativeOnBattleHUDViewModelChanged`, and that the production
+WidgetClass remains Legacy.
+
+Legacy assets remained unchanged after the R1 validation pass. The sealed R0 hashes
+remain the expected values:
+
+```text
+WBP_BattleHUD
+990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A
+
+WBP_BattleCard
+1E7579EAFE8BF49AEB953B521604CDE4C442E6580BDEB3E071C210846BC6631F
+
+WBP_BattleStatus
+205180C8DF03DAE5D825AB4428ADD4B90EDFBBBB54F9BFEFE76AF07412DA52D2
+```
+
+## R1 Acceptance
+
+**R1 is COMPLETE / VALIDATED.**
+
+Accepted properties:
+
+- the Legacy Blueprint refresh contract is preserved;
+- non-suppressed ViewModel changes still cancel the exact tracked visual first;
+- normal completion / Skip suppression does not create a false Cancel;
+- no Legacy WBP asset was reparented or modified;
+- production still uses `WBP_BattleHUD`;
+- no R2 implementation was started as part of R1.
+
+## Next Exact Action — R2 Native HUD Shell
+
+R2 may now begin under `docs/Phase6UIA2NNativeHUDRefactor.md`.
+
+The next phase must preserve the dual-asset stack:
+
+```text
+Legacy WBP_BattleHUD
+→ remains frozen on UBattleHUDWidgetBase
+
+WBP_BattleHUD_Native
+→ duplicate Legacy asset
+→ reparent only the duplicate to UBattleHUDWidget
+→ retain Designer hierarchy / Slots / animations / resources / Widget names
+→ remove only the duplicate's Legacy runtime Graph ownership
+```
+
+Production must remain on the Legacy `WBP_BattleHUD` throughout R2. The Native stack
+must use the locked non-production test injection path; do not add a player-visible
+Legacy/Native runtime toggle.
 
 ## Blockers
 
-R1 source implementation itself has no known code blocker. R1 acceptance is pending
-because the required UE5.8 Editor/build/PIE environment is outside this GitHub-only
-execution surface.
+No R1 blocker remains. R2 has not started.
