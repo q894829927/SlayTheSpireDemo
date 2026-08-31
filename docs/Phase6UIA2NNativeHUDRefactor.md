@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **IN PROGRESS — R0 COMPLETE / R1 NOT STARTED**
+Status: **IN PROGRESS — R0 / R1 / R2 COMPLETE AND VALIDATED; R3-A NOT STARTED**
 
 ## 1. Purpose
 

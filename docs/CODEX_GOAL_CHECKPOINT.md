@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0 COMPLETE / VALIDATED; R1 COMPLETE / VALIDATED; R2 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0 / R1 / R2 COMPLETE AND VALIDATED; R3-A NOT STARTED**.
 
 ## Current Repository State
 
@@ -20,10 +20,15 @@ R1 working branch: a2n/r1-native-hook
 R1 source implementation commit: 496224de8fa549e7ac3563adf04e58743f072b85
 R1 source subject: refactor(ui-a2n): add native HUD refresh hook
 R1 validation result: PASS
+R2 starting HEAD: ad37b0e668a624c827c747f5c8c1166a70c6e109
+R2 source implementation commit: d15287ec068f699390a4f64cfab824dcbe53980b
+R2 source subject: refactor(ui-a2n): add native HUD shell
+R2 validation result: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
-Native classes/assets/test map: not created
-R2: not started
+Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
+R3-A: not started
 ```
 
 ## Completed R0 Boundary
@@ -170,27 +175,153 @@ Accepted properties:
 - production still uses `WBP_BattleHUD`;
 - no R2 implementation was started as part of R1.
 
-## Next Exact Action — R2 Native HUD Shell
+## R2 Implementation
 
-R2 may now begin under `docs/Phase6UIA2NNativeHUDRefactor.md`.
-
-The next phase must preserve the dual-asset stack:
+R2 created the minimal Native ownership shells required by the dedicated plan:
 
 ```text
-Legacy WBP_BattleHUD
-→ remains frozen on UBattleHUDWidgetBase
+UBattleHUDWidget
+UBattleCardWidget shell only
+UBattleStatusWidget shell only
 
 WBP_BattleHUD_Native
-→ duplicate Legacy asset
-→ reparent only the duplicate to UBattleHUDWidget
-→ retain Designer hierarchy / Slots / animations / resources / Widget names
-→ remove only the duplicate's Legacy runtime Graph ownership
+WBP_BattleCard_Native
+WBP_BattleStatus_Native
+L_BattleTest_Native
 ```
 
-Production must remain on the Legacy `WBP_BattleHUD` throughout R2. The Native stack
-must use the locked non-production test injection path; do not add a player-visible
-Legacy/Native runtime toggle.
+`UBattleHUDWidget` owns only the R2 Designer binding contract and runtime validation:
+
+- 23 required `BindWidget` controls and 6 `BindWidgetOptional` controls;
+- `CardWidgetClass` and `StatusWidgetClass` typed selectors with no hard-coded WBP
+  object path in C++;
+- fail-closed runtime validation using `ensureMsgf` and `UE_LOG(Error)`;
+- a Native ViewModel hook that deliberately does not call the Legacy Blueprint
+  refresh;
+- an unmigrated playback implementation that returns `false` and starts no async
+  state.
+
+The Card/Status native classes are type-only R2 shells. They contain no R4 Card view,
+delegate or input behavior and no R9 frozen Status view, identity or lifecycle rule.
+
+All three Native WBP assets were produced by duplicating the Legacy Designer assets,
+reparenting only the duplicates, and removing business graph ownership from the
+duplicates. Reloaded UE5.8 asset inspection confirmed:
+
+```text
+WBP_BattleHUD_Native
+parent=/Script/SlayTheSpireDemo.BattleHUDWidget
+widgetCount=75, graphCount=1, EventGraph nodes=0
+
+WBP_BattleCard_Native
+parent=/Script/SlayTheSpireDemo.BattleCardWidget
+widgetCount=20, graphCount=1, EventGraph nodes=0
+
+WBP_BattleStatus_Native
+parent=/Script/SlayTheSpireDemo.BattleStatusWidget
+widgetCount=4, graphCount=1, EventGraph nodes=0
+```
+
+The Native HUD defaults resolve to `WBP_BattleCard_Native_C` and
+`WBP_BattleStatus_Native_C`. Only the Presenter instance in `L_BattleTest_Native`
+overrides `WidgetClass` to `WBP_BattleHUD_Native_C`.
+
+## R2 Validation Evidence — PASS
+
+The complete R2 gate was executed on the saved final implementation:
+
+```text
+1. UE 5.8 bundled project-file regeneration: PASS
+2. SlayTheSpireDemoEditor Win64 Development build: PASS
+3. Native HUD/Card/Status Blueprint compile and save: PASS
+4. Reloaded parent / graph / Designer-count inspection: PASS
+5. Native L_BattleTest_Native floating PIE: PASS
+6. Existing Presenter created Native Widget + ViewModel + Controller: PASS
+7. Required binding fail-closed log check: PASS, zero errors
+8. Focused SlayTheSpireDemo.Phase6UIA2A: PASS
+9. Production Legacy configuration and hashes: PASS
+10. Independent architecture review: PASS, no P0/P1 blocker
+```
+
+Native PIE runtime inspection returned:
+
+```text
+WidgetClass = WBP_BattleHUD_Native_C
+WidgetInstance = WBP_BattleHUD_Native_C_0
+ViewModel = BattleHUDViewModel_0
+PresentationController = BattlePresentationController_0
+```
+
+The final PIE log records `No blueprints needed recompiling`, creation of
+`UEDPIE_0_L_BattleTest_Native`, successful server login, and no
+`[BattleHUD][Native]`, ensure, BindWidget, Blueprint or UMG error.
+
+Focused regression evidence:
+
+```text
+SlayTheSpireDemo.Phase6UIA2A
+8 total
+3 succeeded
+5 succeededWithWarnings
+0 failed
+0 notRun
+
+Saved/AutomationReports/R2FocusedPhase6UIA2A/index.json
+Saved/Logs/R2FocusedPhase6UIA2A.log
+```
+
+Legacy asset hashes after R2 remain:
+
+```text
+WBP_BattleHUD
+990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A
+
+WBP_BattleCard
+1E7579EAFE8BF49AEB953B521604CDE4C442E6580BDEB3E071C210846BC6631F
+
+WBP_BattleStatus
+205180C8DF03DAE5D825AB4428ADD4B90EDFBBBB54F9BFEFE76AF07412DA52D2
+```
+
+After PIE the Editor returned to formal `L_BattleTest`; both its Presenter instance
+and `BP_BattleHUDPresenter` default still use `WBP_BattleHUD_C`. `DefaultEngine.ini`
+still uses `L_BattleTest` for Editor and Game maps. No production or Legacy asset was
+modified.
+
+The architecture review recorded one non-blocking migration residue: the duplicated
+assets still retain unexecuted Legacy member variables. Their business graphs are
+empty, so they own no runtime behavior in R2. Each applicable later ownership phase
+must take over or remove its residue; do not turn this into an unscheduled R2 cleanup.
+
+## R2 Acceptance
+
+**R2 is COMPLETE / VALIDATED.**
+
+## Next Exact Action — R3-A Static HUD and Long-Lived Delegates
+
+Implement only the R3-A scope in `UBattleHUDWidget`:
+
+```text
+RefreshHUDFromViewModel
+RefreshCombatants
+RefreshEnergy
+RefreshPileCounts
+RefreshInputState
+RefreshFeedback
+RefreshTerminalFromViewModel
+
+EndTurn / Confirm / Cancel
+Combatant target / inspect long-lived delegates
+```
+
+Bind long-lived delegates once in `NativeConstruct`, unbind in `NativeDestruct`, and
+continue through the formal `UBattleHUDWidgetBase` request APIs. Production remains
+Legacy and R3-A uses only `L_BattleTest_Native`.
+
+Do not implement `RefreshHand`, Native Card input, the playback kernel, any
+Presentation Record, Card/Status lifecycle, terminal Record sequencing, UI-A3, or
+production cutover in R3-A.
 
 ## Blockers
 
-No R1 blocker remains. R2 has not started.
+No R2 blocker remains. R3-A has not started.

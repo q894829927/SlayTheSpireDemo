@@ -1,6 +1,6 @@
 # Phase 6UI-A2N — Native HUD R0 Baseline
 
-状态：**R0 COMPLETE / VALIDATED；R1 NOT STARTED**  
+状态：**R0 BASELINE COMPLETE / VALIDATED；当前迁移进度 R1 / R2 COMPLETE AND VALIDATED；R3-A NOT STARTED**
 记录日期：2026-08-31（Asia/Shanghai）
 
 本文件只记录 Native HUD 迁移的可恢复基线。它不改变 Legacy Blueprint、生产配置、Gameplay、Presentation Record/Envelope、Controller、Reducer 或 UI-A3。
@@ -210,8 +210,9 @@ R2 迁移测试 L_BattleTest_Native / 该地图 Presenter 实例
 | Legacy 三资产 hash 只读核验 | PASS；文档写入后重复核验仍与冻结值一致 |
 | Legacy PIE smoke | PASS；正式 `L_BattleTest` / `WBP_BattleHUD_C` / Strike `5→4` Energy、Enemy `100→94`、Idle、输入解锁 |
 | Designer 清单 75/75、真实类型、Is Variable 与 RefPath | PASS；UE5.8 MCP UMGToolSet `GetWidgets` 只读导出，true=33 / false=42 |
-| Native 测试注入方案锁定 | PASS（专用 `L_BattleTest_Native`，R2 创建） |
+| Native 测试注入方案锁定 | PASS（专用 `L_BattleTest_Native` 已由 R2 创建并通过真实 PIE） |
 | 正式生产配置仍为 Legacy | PASS（未修改） |
-| R1 | NOT STARTED |
+| R1 | COMPLETE / VALIDATED |
+| R2 | COMPLETE / VALIDATED；执行证据见 `docs/CODEX_GOAL_CHECKPOINT.md` 与 `docs/Validation.md` |
 
-R0 的资产基线、75/75 控件盘点、生产注入核查与正式 Legacy PIE smoke 已完成并通过。下一精确动作是 R1：只建立向后兼容的 Native ViewModel changed extension hook，并先证明 Legacy `BP_OnViewModelChanged` 路径保持不变；不得修改 Legacy WBP 或提前进入 R2。
+R0 的资产基线仍是 Legacy 回退契约。R1/R2 已在不修改三个 Legacy WBP 和生产注入配置的前提下完成。下一精确动作是 R3-A：只迁移静态 HUD 刷新与长生命周期输入委托；不得提前迁移 Hand/Card input 或任何 Presentation Record。

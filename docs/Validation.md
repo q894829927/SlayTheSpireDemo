@@ -150,6 +150,46 @@ clean-checkout boundary. That worktree was removed after validation.
 With the saved Blueprint/PIE evidence plus these final-head gates, UI-A2E and UI-A2
 are **COMPLETE / VALIDATED / SEALED**.
 
+### Phase 6UI-A2N R2 Native HUD shell — 2026-08-31
+
+R2 implementation commit `d15287ec068f699390a4f64cfab824dcbe53980b`
+adds only the Native HUD/Card/Status shells, their Designer-backed duplicate assets,
+and the non-production `L_BattleTest_Native` map. Production remains on
+`L_BattleTest` and `WBP_BattleHUD_C`.
+
+```text
+UE 5.8 project-file regeneration: PASS
+SlayTheSpireDemoEditor Win64 Development build: PASS
+Native HUD/Card/Status Blueprint compile + save: PASS
+
+WBP_BattleHUD_Native: parent UBattleHUDWidget, 75 Designer Widgets,
+  one empty EventGraph, 23 required bindings, 6 optional bindings
+WBP_BattleCard_Native: parent UBattleCardWidget, 20 Designer Widgets,
+  one empty EventGraph
+WBP_BattleStatus_Native: parent UBattleStatusWidget, 4 Designer Widgets,
+  one empty EventGraph
+
+Native PIE map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+runtime WidgetClass: WBP_BattleHUD_Native_C
+runtime WidgetInstance: WBP_BattleHUD_Native_C_0
+ViewModel / PresentationController assembly: created through the existing Presenter
+Native binding / ensure / Blueprint / UMG errors: 0
+
+Focused SlayTheSpireDemo.Phase6UIA2A:
+8 total, 3 succeeded, 5 succeededWithWarnings, 0 failed, 0 notRun
+Report: Saved/AutomationReports/R2FocusedPhase6UIA2A/index.json
+```
+
+The independent R2 architecture review found no P0/P1 blocker. It recorded one
+non-blocking migration residue: duplicated assets still contain unexecuted Legacy
+member variables even though their business graphs are empty. Those variables must
+be taken over or removed in the applicable later ownership phase; R2 does not expand
+into the R4/R5/R9 behavior or the R14 cleanup boundary.
+
+After the final PIE, the Editor returned to formal `L_BattleTest`; its Presenter and
+the `BP_BattleHUDPresenter` default still resolve to `WBP_BattleHUD_C`. The three
+Legacy WBP hashes remain the sealed R0 values.
+
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
 ```text
