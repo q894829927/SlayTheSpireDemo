@@ -45,6 +45,7 @@ Phase 6UI-A2N R4 focused PASS
 Phase 6UI-A2N R5 focused 4/4 PASS
 Phase 6UI-A2N R6 focused 5/5 PASS
 Phase 6UI-A2N R7 focused 5/5 PASS
+Phase 6UI-A2N R8 focused 6/6 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -365,26 +366,37 @@ PlayArea -> Exhaust/RemovedPile:   scale / fade out at PlayArea
 DrawPile -> Hand:                  exactly one Record/card moves to exact ToIndex
 ```
 
-Validation evidence:
+A later narrow review found one P1 cleanup gap: after exact `CardPlayed` Finish, the
+cross-Record `NativePlayedCardWidget` intentionally survives for a later PlayArea
+destination. If a subsequent Record was abandoned through `SkipPresentation` /
+fail-safe exact Cancel, that retained PlayedCard could survive Controller collapse.
+The exact native Cancel boundary now retires any retained PlayedCard after the
+current Record type-specific Cancel and before local ownership is cleared. Wrong or
+stale Token cancellation still returns before this cleanup.
+
+Validation evidence after the P1 fix:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development build: PASS
 WBP_BattleHUD_Native / WBP_BattleCard_Native targeted compile: NOT REQUIRED
   (no production reflected binding/API contract changed)
-SlayTheSpireDemo.Phase6UIA2N.R8: 5/5 PASS
-L_BattleTest_Native corrected minimal R8 Card lifecycle PIE: PASS
+SlayTheSpireDemo.Phase6UIA2N.R8: 6/6 PASS
+L_BattleTest_Native corrected minimal R8 Card lifecycle PIE: PASS / sticky
 ```
 
 Focused coverage includes exact RuntimeId/CardId/HandIndex identity, duplicate
 RuntimeId/wrong CardId rejection, no duplicate Energy visual, supported/unsupported
-zone pairs, exact/stale Token behavior, Finish/Cancel historical cleanup, no
-transient leaks, noninteractive presentation cards, strict per-Record consecutive
-draws, and transform/opacity progress for every migrated lifecycle path.
+zone pairs, exact/stale Token behavior, Finish/Cancel historical cleanup,
+noninteractive presentation cards, strict per-Record consecutive draws,
+transform/opacity progress for every migrated lifecycle path, NativeDestruct cleanup,
+and the new `Zone.SkipClearsRetainedPlayedCard` regression proving Skip clears both
+the active Draw transient and the previously retained PlayedCard.
 
 The corrected manual PIE confirmed Hand-to-PlayArea-to-Discard movement, Exhaust
 disappearance at PlayArea, end-turn/manual discard movement, strictly serial draws,
 correct final Hand/HUD state, and no flashback, duplicate card, transient leak,
-abnormal HUD, or permanent Input Lock.
+abnormal HUD, or permanent Input Lock. It remained valid after the P1 fix because
+normal visual paths did not change.
 
 R8 is **COMPLETE / VALIDATED**. R9 and later remain **NOT STARTED**. Detailed
 evidence is in `docs/R8NativeCardLifecycleValidation.md`.
