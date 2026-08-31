@@ -153,9 +153,37 @@ Legacy WBP edits
 UI-A3
 ```
 
+## Validation attempt — build fix pending rerun
+
+The first local UE5.8 Editor Build attempt failed in `BattleHUDWidget.cpp` at the Native finish-timer delegate binding. UE's `FTimerDelegate::CreateUObject` decays bound payload arguments by value, while the callback was declared as `FinishNativePresentation(const FPresentationPlaybackToken&)`; the generated delegate signature therefore could not match the member-function pointer.
+
+The fix is intentionally local to the R5 timer boundary:
+
+```text
+old:
+FTimerDelegate::CreateUObject(this, &UBattleHUDWidget::FinishNativePresentation, ExpectedToken)
+
+new:
+FTimerDelegate::CreateWeakLambda(this, [this, ExpectedToken]()
+{
+    FinishNativePresentation(ExpectedToken);
+})
+```
+
+`ExpectedToken` is still captured by value, preserving the exact-token R5 contract. No R6+ behavior, Record semantics, Controller ownership, Gameplay code or Legacy asset was changed.
+
+Fix commit:
+
+```text
+21e3f7dca0d72c8687465fce10892e205774f893
+fix(ui-a2n): bind native finish timer with value-captured token
+```
+
+Gate A remains **PENDING** until the corrected branch is rebuilt locally. Per the validation policy, only the invalidated Build Gate should be rerun now; do not rerun unrelated passing historical gates.
+
 ## AUTOMATED GATES — USER ACTION REQUIRED
 
-These have **not** been run by this GitHub-only implementation session. Do not mark them PASS until executed locally in UE5.8.
+These have **not** been completed by this GitHub-only implementation session. Do not mark them PASS until executed locally in UE5.8.
 
 ### Gate A — Editor Build
 
