@@ -7,6 +7,7 @@
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
+#include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -233,6 +234,26 @@ void UBattleHUDWidget::RefreshCombatants()
 			if (IsValid(BlockText))
 			{
 				BlockText->SetText(FText::AsNumber(Combatant.Block));
+
+				// The sealed Designer hierarchy is:
+				// Txt_*Block -> OV_*Block -> SB_*BlockBadge. Collapse the whole
+				// badge at zero so neither the shield image nor its number remains
+				// visible. Reuse the existing hierarchy instead of expanding the
+				// R2 BindWidget contract with two Designer-only controls.
+				UWidget* BlockBadgeSurface = BlockText;
+				if (UPanelWidget* BlockOverlay = BlockText->GetParent())
+				{
+					BlockBadgeSurface = BlockOverlay;
+					if (UPanelWidget* BlockBadge = BlockOverlay->GetParent())
+					{
+						BlockBadgeSurface = BlockBadge;
+					}
+				}
+
+				BlockBadgeSurface->SetVisibility(
+					Combatant.Block > 0
+						? ESlateVisibility::SelfHitTestInvisible
+						: ESlateVisibility::Collapsed);
 			}
 		};
 
