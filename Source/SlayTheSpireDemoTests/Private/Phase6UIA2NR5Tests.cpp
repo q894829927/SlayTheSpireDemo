@@ -135,19 +135,33 @@ bool FNativePlaybackExactCancelTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Wrong-token Cancel cannot clear active ownership"), Fixture.Probe->IsLocalPresentationActive());
 	TestTrue(TEXT("Wrong-token Cancel cannot clear active timer"), Fixture.Probe->IsLocalFinishTimerSet());
 	TestTrue(TEXT("Wrong-token Cancel cannot replace active Token"), Fixture.Probe->ActiveLocalToken() == TokenA);
+	TestEqual(TEXT("Wrong-token direct Cancel is dispatched once"), Fixture.Probe->CancelDispatchCount, 1);
 
-	// Public replacement proves the base tracked-token wrapper dispatches exact A
-	// before the probe accepts B.
-	TestTrue(TEXT("Replacement synthetic Begin is accepted"), Fixture.Probe->PlayPresentationRecord(Record, TokenB));
-	TestEqual(TEXT("Wrong-token direct Cancel plus exact replacement Cancel were both dispatched"), Fixture.Probe->CancelDispatchCount, 2);
-	TestTrue(TEXT("Base replacement Cancel carries exact old Token"), Fixture.Probe->LastCancelDispatchToken == TokenA);
+	// Isolated exact handler check: local A is cleared, but this direct call does
+	// not touch the base wrapper's tracked Token. If Cancel incorrectly called
+	// NotifyPresentationFinished(A), the deferred tick below would clear that base
+	// tracked Token and the later B replacement would not dispatch A again.
+	Fixture.Probe->InvokeCancelForTesting(TokenA);
+	TestFalse(TEXT("Exact Cancel clears local active ownership"), Fixture.Probe->IsLocalPresentationActive());
+	TestFalse(TEXT("Exact Cancel clears local timer"), Fixture.Probe->IsLocalFinishTimerSet());
+	TestEqual(TEXT("Exact direct Cancel adds one dispatch"), Fixture.Probe->CancelDispatchCount, 2);
+	TestTrue(TEXT("Exact direct Cancel carries Token A"), Fixture.Probe->LastCancelDispatchToken == TokenA);
+
+	FTSTicker::GetCoreTicker().Tick(0.0f);
+
+	TestTrue(TEXT("Token B replacement is accepted"), Fixture.Probe->PlayPresentationRecord(Record, TokenB));
+	TestEqual(
+		TEXT("Token B replacement still dispatches tracked Token A, proving Cancel did not Notify"),
+		Fixture.Probe->CancelDispatchCount,
+		3);
+	TestTrue(TEXT("Base replacement Cancel carries exact old Token A"), Fixture.Probe->LastCancelDispatchToken == TokenA);
 	TestTrue(TEXT("Replacement establishes the new exact Token"), Fixture.Probe->ActiveLocalToken() == TokenB);
 	TestTrue(TEXT("Replacement owns exactly one local timer"), Fixture.Probe->IsLocalFinishTimerSet());
 
 	Fixture.Probe->SkipPresentation();
 	TestFalse(TEXT("Explicit Skip clears exact local ownership through Cancel"), Fixture.Probe->IsLocalPresentationActive());
 	TestFalse(TEXT("Explicit Skip clears local timer"), Fixture.Probe->IsLocalFinishTimerSet());
-	TestEqual(TEXT("Explicit Skip adds one exact Cancel dispatch"), Fixture.Probe->CancelDispatchCount, 3);
+	TestEqual(TEXT("Explicit Skip adds one exact Cancel dispatch"), Fixture.Probe->CancelDispatchCount, 4);
 	TestTrue(TEXT("Skip Cancel carries Token B"), Fixture.Probe->LastCancelDispatchToken == TokenB);
 	return true;
 }
