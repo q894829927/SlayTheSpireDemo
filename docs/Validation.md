@@ -43,6 +43,7 @@ Shipping exclusion PASS
 Phase 6UI-A2N R3 review 4/4 PASS
 Phase 6UI-A2N R4 focused PASS
 Phase 6UI-A2N R5 focused 4/4 PASS
+Phase 6UI-A2N R6 focused 5/5 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -228,7 +229,7 @@ shield badge visible. The review-fix branch corrected only those Native static H
 surfaces and added permanent Editor-only probes; it did not enter R4 Hand/Card,
 R7 Damage playback, or R9 formal Status-row lifecycle.
 
-The user rebuilt the saved branch head with UE 5.8 and ran the focused prefix:
+The user rebuilt the saved review-fix branch on UE 5.8 and ran the focused prefix:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2N.R3.BlockBadge                 PASS
@@ -284,8 +285,35 @@ old/new Token isolation, local timer ownership, and NativeDestruct cleanup. The 
 smoke confirmed normal Native HUD/Hand startup, card-selection Cancel, EndTurn,
 continued interaction, and no crash, permanent lock, duplicate Hand or blank HUD.
 
-R5 is **COMPLETE / VALIDATED**. R6 and later remain **NOT STARTED**. Detailed evidence
-is in `docs/R5NativePlaybackKernelValidation.md`.
+R5 is **COMPLETE / VALIDATED**. Detailed evidence is in
+`docs/R5NativePlaybackKernelValidation.md`.
+
+### Phase 6UI-A2N R6 Energy / Block / Shuffle — 2026-08-31
+
+R6 migrated only `EnergyChanged`, `BlockChanged` and `DeckShuffled` into the Native
+HUD. The handlers consume frozen Record payload plus the required frozen historical
+Before state, reuse the R5 exact-token kernel, render frozen After on Begin/Finish,
+and restore frozen Before on exact Cancel without normal completion Notify.
+
+Validation evidence:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+WBP_BattleHUD_Native targeted compile: NOT REQUIRED
+  (no runtime reflected binding/API contract changed)
+SlayTheSpireDemo.Phase6UIA2N.R6: 5/5 PASS
+L_BattleTest_Native minimal R6 PIE: PASS
+```
+
+Focused coverage includes Player/Enemy Block and zero-badge behavior, Energy and
+Shuffle Before/After/Cancel, invalid payload/target/token zero-side-effect Begin,
+stale/duplicate Finish, wrong/exact Cancel, exact completion ownership cleanup and
+NativeDestruct cleanup. The manual PIE confirmed Energy, Block and real Shuffle final
+values with no visible flashback, duplicate display, permanent Input Lock or abnormal
+HUD state.
+
+R6 is **COMPLETE / VALIDATED**. R7 and later remain **NOT STARTED**. Detailed evidence
+is in `docs/R6NativeEnergyBlockShuffleValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -325,8 +353,8 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R5 COMPLETE / VALIDATED
-R6+ NOT STARTED
+R0-R6 COMPLETE / VALIDATED
+R7+ NOT STARTED
 ```
 
 Validated A2E scenarios include:
