@@ -26,6 +26,85 @@ namespace
 	const FVector2D NativeDrawCardFallbackTranslation(-420.0f, 90.0f);
 	const FVector2D NativeHandCardFallbackTranslation(-300.0f, 120.0f);
 	const FVector2D NativeDiscardCardFallbackTranslation(420.0f, 90.0f);
+
+	bool AreNativeStatusViewsEqual(
+		const FBattleHUDStatusView& Left,
+		const FBattleHUDStatusView& Right)
+	{
+		return Left.StatusId == Right.StatusId
+			&& Left.RuntimeSequence == Right.RuntimeSequence
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.Description.EqualTo(Right.Description)
+			&& Left.Amount == Right.Amount
+			&& Left.bUseAtlasIcon == Right.bUseAtlasIcon
+			&& Left.UVOffset == Right.UVOffset
+			&& Left.UVScale == Right.UVScale
+			&& Left.TrimOffset == Right.TrimOffset
+			&& Left.TrimScale == Right.TrimScale;
+	}
+
+	bool DoesNativeStatusViewMatchBeforePayload(
+		const FBattleHUDStatusView& View,
+		const FStatusChangedPresentationPayload& Payload)
+	{
+		return View.StatusId == Payload.StatusId
+			&& View.RuntimeSequence == Payload.RuntimeSequence
+			&& View.DisplayName.EqualTo(Payload.DisplayName)
+			&& View.Description.EqualTo(Payload.DescriptionBefore)
+			&& View.Amount == Payload.AmountBefore
+			&& View.bUseAtlasIcon == Payload.bUseAtlasIcon
+			&& View.UVOffset == Payload.UVOffset
+			&& View.UVScale == Payload.UVScale
+			&& View.TrimOffset == Payload.TrimOffset
+			&& View.TrimScale == Payload.TrimScale;
+	}
+
+	FBattleHUDStatusView MakeNativeStatusAfterView(
+		const FStatusChangedPresentationPayload& Payload)
+	{
+		FBattleHUDStatusView View;
+		View.StatusId = Payload.StatusId;
+		View.RuntimeSequence = Payload.RuntimeSequence;
+		View.DisplayName = Payload.DisplayName;
+		View.Description = Payload.DescriptionAfter;
+		View.Amount = Payload.AmountAfter;
+		View.bUseAtlasIcon = Payload.bUseAtlasIcon;
+		View.UVOffset = Payload.UVOffset;
+		View.UVScale = Payload.UVScale;
+		View.TrimOffset = Payload.TrimOffset;
+		View.TrimScale = Payload.TrimScale;
+		return View;
+	}
+
+	bool IsNativeStatusReasonValid(const FStatusChangedPresentationPayload& Payload)
+	{
+		switch (Payload.Reason)
+		{
+		case EStatusChangeReason::Applied:
+			return Payload.bCreated
+				&& !Payload.bRemoved
+				&& Payload.AmountBefore == 0
+				&& Payload.AmountAfter > 0;
+		case EStatusChangeReason::Increased:
+			return !Payload.bCreated
+				&& !Payload.bRemoved
+				&& Payload.AmountBefore > 0
+				&& Payload.AmountAfter > Payload.AmountBefore;
+		case EStatusChangeReason::Reduced:
+		case EStatusChangeReason::TurnEndDecay:
+			return !Payload.bCreated
+				&& Payload.AmountBefore > Payload.AmountAfter
+				&& Payload.AmountAfter >= 0
+				&& Payload.bRemoved == (Payload.AmountAfter == 0);
+		case EStatusChangeReason::Removed:
+			return !Payload.bCreated
+				&& Payload.bRemoved
+				&& Payload.AmountBefore > 0
+				&& Payload.AmountAfter == 0;
+		default:
+			return false;
+		}
+	}
 }
 
 void UBattleHUDWidget::NativeOnInitialized()
@@ -81,9 +160,6 @@ void UBattleHUDWidget::NativeConstruct()
 		return;
 	}
 
-	// These are long-lived UI request bindings. AddUniqueDynamic keeps a
-	// repeated construct from accumulating callbacks, while NativeDestruct
-	// below owns the matching removal boundary.
 	Btn_EndTurn->OnClicked.AddUniqueDynamic(this, &UBattleHUDWidget::HandleEndTurnClicked);
 	Btn_Confirm->OnClicked.AddUniqueDynamic(this, &UBattleHUDWidget::HandleConfirmClicked);
 	Btn_Cancel->OnClicked.AddUniqueDynamic(this, &UBattleHUDWidget::HandleCancelClicked);
@@ -108,18 +184,11 @@ void UBattleHUDWidget::NativeConstruct()
 		&UBattleHUDWidget::HandleCombatantInspectCleared);
 
 	bNativeDelegatesBound = true;
-
-	// SetViewModel can arrive before NativeConstruct in the Presenter. Pull the
-	// current frozen state once after bindings are ready so the initial Native
-	// surface cannot depend on callback ordering.
 	RefreshHUDFromViewModel();
 }
 
 void UBattleHUDWidget::NativeDestruct()
 {
-	// R5 owns only local visual state. Destruction must never historical-restore,
-	// dispatch the Cancel override, or Notify normal completion. The base class
-	// remains responsible for authoritative NotifyWidgetLost catch-up.
 	ClearNativePresentationFinishTimer();
 	CleanupNativePresentationVisualsOnDestruct();
 	ResetNativePresentationOwnership();
@@ -165,9 +234,6 @@ void UBattleHUDWidget::NativeDestruct()
 		bNativeDelegatesBound = false;
 	}
 
-	// Dynamic Hand-card delegates are owned by the cards. Remove our bindings
-	// before the panel releases them so no externally retained formal card can
-	// issue a stale request during teardown.
 	if (IsValid(HB_Hand))
 	{
 		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
@@ -192,8 +258,6 @@ void UBattleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 void UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()
 {
-	// Do not call the base implementation: doing so would execute the Legacy
-	// BP_OnViewModelChanged graph on the Native stack.
 	RefreshHUDFromViewModel();
 }
 
@@ -206,6 +270,7 @@ void UBattleHUDWidget::RefreshHUDFromViewModel()
 
 	RefreshHand();
 	RefreshCombatants();
+	RefreshStatusRows();
 	RefreshEnergy();
 	RefreshPileCounts();
 	RefreshInputState();
@@ -221,9 +286,6 @@ void UBattleHUDWidget::RefreshHand()
 		return;
 	}
 
-	// Formal Hand cards own one dynamic request binding for exactly their Widget
-	// lifetime. Explicitly detach old children before rebuild so a stale retained
-	// Widget cannot call back into the HUD after it leaves the formal Hand.
 	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
 	{
 		if (UBattleCardWidget* ExistingCard = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
@@ -322,6 +384,196 @@ void UBattleHUDWidget::RefreshCombatants()
 		Txt_EnemyBlock);
 }
 
+void UBattleHUDWidget::RefreshStatusRows()
+{
+	if (!IsValid(ViewModel) || StatusWidgetClass == nullptr)
+	{
+		return;
+	}
+
+	const bool bPlayerOk = RebuildNativeStatusRows(WB_PlayerStatuses, ViewModel->Player.Statuses);
+	const bool bEnemyOk = RebuildNativeStatusRows(WB_EnemyStatuses, ViewModel->Enemy.Statuses);
+	if (!bPlayerOk || !bEnemyOk)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[BattleHUD][Native] Failed to rebuild formal Native Status rows from frozen ViewModel."));
+	}
+}
+
+bool UBattleHUDWidget::RebuildNativeStatusRows(
+	UWrapBox* Container,
+	const TArray<FBattleHUDStatusView>& Statuses)
+{
+	if (!IsValid(Container) || StatusWidgetClass == nullptr)
+	{
+		return false;
+	}
+
+	Container->ClearChildren();
+	for (const FBattleHUDStatusView& StatusView : Statuses)
+	{
+		UBattleStatusWidget* StatusWidget = CreateNativeStatusWidget(StatusView);
+		if (!IsValid(StatusWidget) || Container->AddChildToWrapBox(StatusWidget) == nullptr)
+		{
+			Container->ClearChildren();
+			return false;
+		}
+	}
+	return true;
+}
+
+UBattleStatusWidget* UBattleHUDWidget::CreateNativeStatusWidget(
+	const FBattleHUDStatusView& View) const
+{
+	if (StatusWidgetClass == nullptr)
+	{
+		return nullptr;
+	}
+
+	UBattleStatusWidget* StatusWidget = nullptr;
+	if (APlayerController* OwningPlayer = GetOwningPlayer())
+	{
+		StatusWidget = CreateWidget<UBattleStatusWidget>(OwningPlayer, StatusWidgetClass);
+	}
+	else if (UWorld* World = GetWorld(); IsValid(World))
+	{
+		StatusWidget = CreateWidget<UBattleStatusWidget>(World, StatusWidgetClass);
+	}
+
+	if (IsValid(StatusWidget))
+	{
+		StatusWidget->SetStatusView(View);
+	}
+	return StatusWidget;
+}
+
+bool UBattleHUDWidget::ResolveNativeStatusTarget(
+	FName PresentationId,
+	UWrapBox*& OutContainer,
+	const FBattleHUDCombatantView*& OutHistoricalView) const
+{
+	OutContainer = nullptr;
+	OutHistoricalView = nullptr;
+	if (!IsValid(ViewModel) || PresentationId.IsNone())
+	{
+		return false;
+	}
+
+	const bool bPlayer = ViewModel->Player.PresentationId == PresentationId;
+	const bool bEnemy = ViewModel->Enemy.PresentationId == PresentationId;
+	if (bPlayer == bEnemy)
+	{
+		return false;
+	}
+
+	if (bPlayer)
+	{
+		OutContainer = WB_PlayerStatuses;
+		OutHistoricalView = &ViewModel->Player;
+	}
+	else
+	{
+		OutContainer = WB_EnemyStatuses;
+		OutHistoricalView = &ViewModel->Enemy;
+	}
+
+	return IsValid(OutContainer) && OutHistoricalView != nullptr;
+}
+
+int32 UBattleHUDWidget::CountHistoricalStatusIdentity(
+	const TArray<FBattleHUDStatusView>& Statuses,
+	FName StatusId,
+	int64 RuntimeSequence) const
+{
+	int32 Count = 0;
+	for (const FBattleHUDStatusView& Status : Statuses)
+	{
+		if (Status.StatusId == StatusId && Status.RuntimeSequence == RuntimeSequence)
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+int32 UBattleHUDWidget::CountNativeStatusWidgetIdentity(
+	UWrapBox* Container,
+	FName StatusId,
+	int64 RuntimeSequence) const
+{
+	if (!IsValid(Container))
+	{
+		return 0;
+	}
+
+	int32 Count = 0;
+	for (int32 Index = 0; Index < Container->GetChildrenCount(); ++Index)
+	{
+		if (const UBattleStatusWidget* StatusWidget =
+			Cast<UBattleStatusWidget>(Container->GetChildAt(Index)))
+		{
+			if (StatusWidget->GetStatusId() == StatusId
+				&& StatusWidget->GetRuntimeSequence() == RuntimeSequence)
+			{
+				++Count;
+			}
+		}
+	}
+	return Count;
+}
+
+bool UBattleHUDWidget::FindHistoricalStatusByIdentity(
+	const TArray<FBattleHUDStatusView>& Statuses,
+	FName StatusId,
+	int64 RuntimeSequence,
+	const FBattleHUDStatusView*& OutStatus) const
+{
+	OutStatus = nullptr;
+	if (CountHistoricalStatusIdentity(Statuses, StatusId, RuntimeSequence) != 1)
+	{
+		return false;
+	}
+
+	for (const FBattleHUDStatusView& Status : Statuses)
+	{
+		if (Status.StatusId == StatusId && Status.RuntimeSequence == RuntimeSequence)
+		{
+			OutStatus = &Status;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool UBattleHUDWidget::FindNativeStatusWidgetByIdentity(
+	UWrapBox* Container,
+	FName StatusId,
+	int64 RuntimeSequence,
+	UBattleStatusWidget*& OutWidget) const
+{
+	OutWidget = nullptr;
+	if (!IsValid(Container)
+		|| CountNativeStatusWidgetIdentity(Container, StatusId, RuntimeSequence) != 1)
+	{
+		return false;
+	}
+
+	for (int32 Index = 0; Index < Container->GetChildrenCount(); ++Index)
+	{
+		UBattleStatusWidget* StatusWidget = Cast<UBattleStatusWidget>(Container->GetChildAt(Index));
+		if (IsValid(StatusWidget)
+			&& StatusWidget->GetStatusId() == StatusId
+			&& StatusWidget->GetRuntimeSequence() == RuntimeSequence)
+		{
+			OutWidget = StatusWidget;
+			return true;
+		}
+	}
+	return false;
+}
+
 void UBattleHUDWidget::RefreshEnergy()
 {
 	if (IsValid(ViewModel) && IsValid(Txt_Energy))
@@ -399,8 +651,6 @@ void UBattleHUDWidget::RefreshFeedback()
 	if (IsValid(ViewModel) && IsValid(Txt_Feedback))
 	{
 		Txt_Feedback->SetText(ViewModel->LastFeedback);
-		// Legacy keeps the feedback surface visible; an empty frozen message is
-		// still a valid idle state and should not alter Designer layout.
 		Txt_Feedback->SetVisibility(ESlateVisibility::Visible);
 	}
 }
@@ -521,14 +771,8 @@ bool UBattleHUDWidget::RefreshStatusTooltip(
 		return false;
 	}
 
-	// StatusTooltip_Player/Enemy are optional Designer surfaces. Their existing
-	// Blueprint contract is RebuildTooltip(TArray<FBattleHUDStatusView>), so the
-	// Native HUD forwards the frozen ViewModel array through that single bridge.
-	// This does not create, update or remove formal status rows; that lifecycle
-	// remains owned by the later R9 migration.
 	static const FName RebuildTooltipFunctionName(TEXT("RebuildTooltip"));
-	UFunction* RebuildTooltipFunction =
-		StatusTooltip->FindFunction(RebuildTooltipFunctionName);
+	UFunction* RebuildTooltipFunction = StatusTooltip->FindFunction(RebuildTooltipFunctionName);
 	if (RebuildTooltipFunction == nullptr)
 	{
 		return false;
@@ -576,8 +820,7 @@ void UBattleHUDWidget::HandleCombatantInspectRequested(
 	}
 	if (IsValid(StatusTooltip) && CombatantView != nullptr)
 	{
-		const bool bTooltipRefreshed =
-			RefreshStatusTooltip(StatusTooltip, CombatantView->Statuses);
+		const bool bTooltipRefreshed = RefreshStatusTooltip(StatusTooltip, CombatantView->Statuses);
 		StatusTooltip->SetVisibility(
 			bTooltipRefreshed ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 	}
@@ -616,8 +859,7 @@ void UBattleHUDWidget::HandleCombatantInspectCleared(
 
 bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	const FPresentationRecord& Record,
-	const FPresentationPlaybackToken& Token
-)
+	const FPresentationPlaybackToken& Token)
 {
 	if (!IsNativeRecordTokenConsistent(Record, Token))
 	{
@@ -638,8 +880,10 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 		return BeginNativeBlockChangedPresentation(Record, Token);
 	case EBattlePresentationRecordType::DeckShuffled:
 		return BeginNativeDeckShuffledPresentation(Record, Token);
+	case EBattlePresentationRecordType::StatusChanged:
+		return BeginNativeStatusChangedPresentation(Record, Token);
 	default:
-		// R9+ Records remain on the Controller's immediate-fallback path.
+		// R10+ Records remain on the Controller's immediate-fallback path.
 		return false;
 	}
 }
@@ -673,10 +917,7 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 		&& !NativePlayedCardWidget.IsValid()
 		&& !ActiveNativeDrawnCardWidget.IsValid()
 		&& OV_PlayArea->GetChildrenCount() == Payload.PlayAreaIndexAfter
-		&& FindExactHistoricalHandCard(
-			Payload.Card,
-			Payload.HandIndexBefore,
-			HistoricalHandCard);
+		&& FindExactHistoricalHandCard(Payload.Card, Payload.HandIndexBefore, HistoricalHandCard);
 	if (!bPayloadValid)
 	{
 		return false;
@@ -728,7 +969,6 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -742,13 +982,11 @@ bool UBattleHUDWidget::BeginNativeCardZoneChangedPresentation(
 		return false;
 	}
 
-	if (Payload.FromZone == ECardZone::Hand
-		&& Payload.ToZone == ECardZone::DiscardPile)
+	if (Payload.FromZone == ECardZone::Hand && Payload.ToZone == ECardZone::DiscardPile)
 	{
 		return BeginNativeHandToDiscardPresentation(Record, Token);
 	}
-	if (Payload.FromZone == ECardZone::DrawPile
-		&& Payload.ToZone == ECardZone::Hand)
+	if (Payload.FromZone == ECardZone::DrawPile && Payload.ToZone == ECardZone::Hand)
 	{
 		return BeginNativeDrawToHandPresentation(Record, Token);
 	}
@@ -759,7 +997,6 @@ bool UBattleHUDWidget::BeginNativeCardZoneChangedPresentation(
 	{
 		return BeginNativePlayAreaToDestinationPresentation(Record, Token);
 	}
-
 	return false;
 }
 
@@ -782,12 +1019,7 @@ bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
 	}
 
 	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(PresentationCard))
-	{
-		return false;
-	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	if (!IsValid(PresentationCard) || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -825,7 +1057,6 @@ bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -850,12 +1081,7 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 	}
 
 	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(PresentationCard))
-	{
-		return false;
-	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	if (!IsValid(PresentationCard) || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -883,7 +1109,6 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 		0.0f,
 		1.0f);
 	ApplyNativePileCounts(ActiveNativeDrawCountAfter, ViewModel->DiscardCount);
-
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativePileCounts(ActiveNativeDrawCountBefore, ViewModel->DiscardCount);
@@ -892,7 +1117,6 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -925,12 +1149,8 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
 		|| PlayedCard->GetParent() != OV_PlayArea
 		|| Payload.FromIndex != 0
 		|| !bDestinationIndexValid
-		|| !DoesNativeCardViewMatchSnapshot(PlayedCard->GetCardView(), Payload.Card))
-	{
-		return false;
-	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
+		|| !DoesNativeCardViewMatchSnapshot(PlayedCard->GetCardView(), Payload.Card)
+		|| !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -951,8 +1171,6 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
 	}
 	else
 	{
-		// Exhaust/Removed retire at the PlayArea instead of pretending to enter
-		// an unrelated pile. Scale/fade provides the sealed disappearance cue.
 		ConfigureNativeCardAnimation(
 			PlayedCard,
 			nullptr,
@@ -971,12 +1189,10 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
-bool UBattleHUDWidget::IsNativeCardSnapshotValid(
-	const FPresentationCardSnapshot& Snapshot) const
+bool UBattleHUDWidget::IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const
 {
 	const bool bCardTypeValid = Snapshot.CardType == ECardType::Attack
 		|| Snapshot.CardType == ECardType::Skill
@@ -1028,7 +1244,6 @@ bool UBattleHUDWidget::FindExactHistoricalHandCard(
 	{
 		ViewModelRuntimeMatches += CardView.RuntimeId == Snapshot.RuntimeId ? 1 : 0;
 	}
-
 	int32 WidgetRuntimeMatches = 0;
 	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
 	{
@@ -1049,7 +1264,6 @@ bool UBattleHUDWidget::FindExactHistoricalHandCard(
 	{
 		return false;
 	}
-
 	OutCardWidget = RequiredCard;
 	return true;
 }
@@ -1057,16 +1271,12 @@ bool UBattleHUDWidget::FindExactHistoricalHandCard(
 bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const
 {
 	if (RuntimeId == INDEX_NONE
-		|| (NativePlayedCardWidget.IsValid()
-			&& NativePlayedCardWidget->GetRuntimeId() == RuntimeId)
-		|| (ActiveNativeDrawnCardWidget.IsValid()
-			&& ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId)
-		|| (ActiveNativeZoneCardWidget.IsValid()
-			&& ActiveNativeZoneCardWidget->GetRuntimeId() == RuntimeId))
+		|| (NativePlayedCardWidget.IsValid() && NativePlayedCardWidget->GetRuntimeId() == RuntimeId)
+		|| (ActiveNativeDrawnCardWidget.IsValid() && ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId)
+		|| (ActiveNativeZoneCardWidget.IsValid() && ActiveNativeZoneCardWidget->GetRuntimeId() == RuntimeId))
 	{
 		return false;
 	}
-
 	if (IsValid(HB_Hand))
 	{
 		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
@@ -1078,7 +1288,6 @@ bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) c
 			}
 		}
 	}
-
 	if (IsValid(ViewModel))
 	{
 		for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
@@ -1089,7 +1298,6 @@ bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) c
 			}
 		}
 	}
-
 	return true;
 }
 
@@ -1100,7 +1308,6 @@ UBattleCardWidget* UBattleHUDWidget::CreateNativePresentationCard(
 	{
 		return nullptr;
 	}
-
 	UBattleCardWidget* CardWidget = nullptr;
 	if (APlayerController* OwningPlayer = GetOwningPlayer())
 	{
@@ -1110,12 +1317,10 @@ UBattleCardWidget* UBattleHUDWidget::CreateNativePresentationCard(
 	{
 		CardWidget = CreateWidget<UBattleCardWidget>(World, CardWidgetClass);
 	}
-
 	if (!IsValid(CardWidget))
 	{
 		return nullptr;
 	}
-
 	CardWidget->SetCardView(MakePresentationCardView(Snapshot));
 	CardWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	return CardWidget;
@@ -1145,7 +1350,6 @@ void UBattleHUDWidget::ConfigureNativeCardAnimation(
 	ActiveNativeCardAnimationEndOpacity = EndOpacity;
 	ActiveNativeCardAnimationElapsedSeconds = 0.0f;
 	bNativeCardAnimationInitialized = false;
-
 	if (IsValid(MovingCard))
 	{
 		MovingCard->SetRenderTranslation(FallbackStartTranslation);
@@ -1160,39 +1364,31 @@ void UBattleHUDWidget::UpdateNativeCardAnimation(float DeltaSeconds)
 	{
 		return;
 	}
-
 	UBattleCardWidget* MovingCard = ActiveNativeMovingCardWidget.Get();
 	if (!IsValid(MovingCard))
 	{
 		return;
 	}
 
-	auto ResolveAnchorTranslation =
-		[MovingCard](UWidget* Anchor, const FVector2D& Fallback) -> FVector2D
+	auto ResolveAnchorTranslation = [MovingCard](UWidget* Anchor, const FVector2D& Fallback) -> FVector2D
+	{
+		if (!IsValid(Anchor))
 		{
-			if (!IsValid(Anchor))
-			{
-				return Fallback;
-			}
-
-			const FGeometry& AnchorGeometry = Anchor->GetCachedGeometry();
-			const FGeometry& CardGeometry = MovingCard->GetCachedGeometry();
-			if (AnchorGeometry.GetLocalSize().SizeSquared() <= 0.0f
-				|| CardGeometry.GetLocalSize().SizeSquared() <= 0.0f)
-			{
-				return Fallback;
-			}
-
-			const FVector2D AnchorAbsolute = AnchorGeometry.LocalToAbsolute(
-				AnchorGeometry.GetLocalSize() * 0.5f);
-			const FVector2D CardAbsolute = CardGeometry.LocalToAbsolute(
-				CardGeometry.GetLocalSize() * 0.5f);
-			const FVector2D AnchorLocal = FVector2D(
-				CardGeometry.AbsoluteToLocal(AnchorAbsolute));
-			const FVector2D CardLocal = FVector2D(
-				CardGeometry.AbsoluteToLocal(CardAbsolute));
-			return AnchorLocal - CardLocal;
-		};
+			return Fallback;
+		}
+		const FGeometry& AnchorGeometry = Anchor->GetCachedGeometry();
+		const FGeometry& CardGeometry = MovingCard->GetCachedGeometry();
+		if (AnchorGeometry.GetLocalSize().SizeSquared() <= 0.0f
+			|| CardGeometry.GetLocalSize().SizeSquared() <= 0.0f)
+		{
+			return Fallback;
+		}
+		const FVector2D AnchorAbsolute = AnchorGeometry.LocalToAbsolute(AnchorGeometry.GetLocalSize() * 0.5f);
+		const FVector2D CardAbsolute = CardGeometry.LocalToAbsolute(CardGeometry.GetLocalSize() * 0.5f);
+		const FVector2D AnchorLocal = FVector2D(CardGeometry.AbsoluteToLocal(AnchorAbsolute));
+		const FVector2D CardLocal = FVector2D(CardGeometry.AbsoluteToLocal(CardAbsolute));
+		return AnchorLocal - CardLocal;
+	};
 
 	if (!bNativeCardAnimationInitialized)
 	{
@@ -1233,7 +1429,6 @@ void UBattleHUDWidget::NormalizeNativeCardTransform(UBattleCardWidget* CardWidge
 	{
 		return;
 	}
-
 	CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
 	CardWidget->SetRenderScale(FVector2D(1.0f, 1.0f));
 	CardWidget->SetRenderOpacity(1.0f);
@@ -1257,17 +1452,14 @@ bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
 	{
 		return false;
 	}
-
 	if (!CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
-
 	ActiveNativeSimplePrimaryBefore = Payload.EnergyBefore;
 	ActiveNativeSimplePrimaryAfter = Payload.EnergyAfter;
 	ActiveNativeSimpleEnergyMax = ViewModel->MaxEnergy;
 	ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
-
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
@@ -1275,7 +1467,6 @@ bool UBattleHUDWidget::BeginNativeEnergyChangedPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -1285,9 +1476,7 @@ bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
 {
 	const FBlockChangedPresentationPayload& Payload = Record.BlockChanged;
 	int32 HistoricalBlock = 0;
-	UTextBlock* BlockText = ResolveBlockTextForPresentationId(
-		Payload.TargetPresentationId,
-		HistoricalBlock);
+	UTextBlock* BlockText = ResolveBlockTextForPresentationId(Payload.TargetPresentationId, HistoricalBlock);
 	const bool bSourceIsValid = Payload.SourcePresentationId.IsNone()
 		|| IsKnownCombatantPresentationId(Payload.SourcePresentationId);
 	const bool bCommonPayloadValid =
@@ -1298,7 +1487,6 @@ bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
 		&& Payload.BlockBefore != Payload.BlockAfter
 		&& Payload.BlockDelta == Payload.BlockAfter - Payload.BlockBefore
 		&& HistoricalBlock == Payload.BlockBefore;
-
 	bool bReasonValid = false;
 	if (bCommonPayloadValid)
 	{
@@ -1317,22 +1505,14 @@ bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
 			break;
 		}
 	}
-
-	if (!bCommonPayloadValid || !bReasonValid)
+	if (!bCommonPayloadValid || !bReasonValid || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
-	{
-		return false;
-	}
-
 	ActiveNativeSimpleBlockText = BlockText;
 	ActiveNativeSimplePrimaryBefore = Payload.BlockBefore;
 	ActiveNativeSimplePrimaryAfter = Payload.BlockAfter;
 	ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryAfter);
-
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativeBlockValue(BlockText, ActiveNativeSimplePrimaryBefore);
@@ -1340,7 +1520,6 @@ bool UBattleHUDWidget::BeginNativeBlockChangedPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -1362,34 +1541,22 @@ bool UBattleHUDWidget::BeginNativeDeckShuffledPresentation(
 			== Payload.DrawCountAfter + Payload.DiscardCountAfter
 		&& ViewModel->DrawCount == Payload.DrawCountBefore
 		&& ViewModel->DiscardCount == Payload.DiscardCountBefore;
-	if (!bCountsValid)
+	if (!bCountsValid || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
-	{
-		return false;
-	}
-
 	ActiveNativeSimplePrimaryBefore = Payload.DrawCountBefore;
 	ActiveNativeSimplePrimaryAfter = Payload.DrawCountAfter;
 	ActiveNativeSimpleSecondaryBefore = Payload.DiscardCountBefore;
 	ActiveNativeSimpleSecondaryAfter = Payload.DiscardCountAfter;
-	ApplyNativePileCounts(
-		ActiveNativeSimplePrimaryAfter,
-		ActiveNativeSimpleSecondaryAfter);
-
+	ApplyNativePileCounts(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleSecondaryAfter);
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
-		ApplyNativePileCounts(
-			ActiveNativeSimplePrimaryBefore,
-			ActiveNativeSimpleSecondaryBefore);
+		ApplyNativePileCounts(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleSecondaryBefore);
 		ResetNativeSimplePresentationState();
 		AbortNativePresentationStart();
 		return false;
 	}
-
 	return true;
 }
 
@@ -1439,12 +1606,7 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 		&& Payload.HPBefore <= HistoricalTarget->MaxHP
 		&& HistoricalTarget->HP == Payload.HPBefore
 		&& HistoricalTarget->Block == Payload.BlockBefore;
-	if (!bPayloadValid)
-	{
-		return false;
-	}
-
-	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	if (!bPayloadValid || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -1458,7 +1620,6 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 	ActiveDamageBlockBefore = Payload.BlockBefore;
 	ActiveDamageBlockAfter = Payload.BlockAfter;
 	ActiveDamageMaxHP = HistoricalTarget->MaxHP;
-
 	ApplyNativeCombatantVitals(
 		TargetHPProgress,
 		TargetHPText,
@@ -1469,7 +1630,6 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 	Txt_DamagePresentation->SetText(FText::AsNumber(Payload.IncomingDamage));
 	Txt_DamagePresentation->SetVisibility(ESlateVisibility::HitTestInvisible);
 	TargetPresentation->SetRenderOpacity(0.45f);
-
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativeCombatantVitals(
@@ -1484,7 +1644,138 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	return true;
+}
 
+bool UBattleHUDWidget::BeginNativeStatusChangedPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	const FStatusChangedPresentationPayload& Payload = Record.StatusChanged;
+	UWrapBox* TargetContainer = nullptr;
+	const FBattleHUDCombatantView* HistoricalTarget = nullptr;
+	const bool bTargetValid = ResolveNativeStatusTarget(
+		Payload.TargetPresentationId,
+		TargetContainer,
+		HistoricalTarget);
+	const bool bSourceValid = Payload.SourcePresentationId.IsNone()
+		|| IsKnownCombatantPresentationId(Payload.SourcePresentationId);
+	const bool bCommonPayloadValid =
+		bTargetValid
+		&& StatusWidgetClass != nullptr
+		&& bSourceValid
+		&& !Payload.StatusId.IsNone()
+		&& Payload.RuntimeSequence > 0
+		&& Payload.AmountBefore >= 0
+		&& Payload.AmountAfter >= 0
+		&& !Payload.DisplayName.IsEmpty()
+		&& !(Payload.bCreated && Payload.bRemoved)
+		&& (!Payload.bCreated || Payload.DescriptionBefore.IsEmpty())
+		&& (!Payload.bRemoved || Payload.DescriptionAfter.IsEmpty())
+		&& IsNativeStatusReasonValid(Payload);
+	if (!bCommonPayloadValid || HistoricalTarget == nullptr)
+	{
+		return false;
+	}
+
+	const int32 HistoricalMatchCount = CountHistoricalStatusIdentity(
+		HistoricalTarget->Statuses,
+		Payload.StatusId,
+		Payload.RuntimeSequence);
+	const int32 WidgetMatchCount = CountNativeStatusWidgetIdentity(
+		TargetContainer,
+		Payload.StatusId,
+		Payload.RuntimeSequence);
+	const FBattleHUDStatusView* HistoricalStatus = nullptr;
+	UBattleStatusWidget* ExistingWidget = nullptr;
+
+	if (Payload.bCreated)
+	{
+		if (HistoricalMatchCount != 0 || WidgetMatchCount != 0)
+		{
+			return false;
+		}
+	}
+	else
+	{
+		if (HistoricalMatchCount != 1
+			|| WidgetMatchCount != 1
+			|| !FindHistoricalStatusByIdentity(
+				HistoricalTarget->Statuses,
+				Payload.StatusId,
+				Payload.RuntimeSequence,
+				HistoricalStatus)
+			|| !FindNativeStatusWidgetByIdentity(
+				TargetContainer,
+				Payload.StatusId,
+				Payload.RuntimeSequence,
+				ExistingWidget)
+			|| HistoricalStatus == nullptr
+			|| !DoesNativeStatusViewMatchBeforePayload(*HistoricalStatus, Payload)
+			|| !AreNativeStatusViewsEqual(ExistingWidget->GetStatusView(), *HistoricalStatus)
+			|| ExistingWidget->GetVisibility() == ESlateVisibility::Collapsed)
+		{
+			return false;
+		}
+	}
+
+	const FBattleHUDStatusView AfterView = MakeNativeStatusAfterView(Payload);
+	UBattleStatusWidget* PreparedCreatedWidget = nullptr;
+	if (Payload.bCreated)
+	{
+		PreparedCreatedWidget = CreateNativeStatusWidget(AfterView);
+		if (!IsValid(PreparedCreatedWidget))
+		{
+			return false;
+		}
+	}
+
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	bActiveNativeStatusCreatedTransient = Payload.bCreated;
+	if (Payload.bCreated)
+	{
+		if (TargetContainer->AddChildToWrapBox(PreparedCreatedWidget) == nullptr)
+		{
+			ResetNativeStatusPresentationState();
+			AbortNativePresentationStart();
+			return false;
+		}
+		ActiveNativeStatusPresentationWidget = PreparedCreatedWidget;
+	}
+	else
+	{
+		ActiveNativeStatusPresentationWidget = ExistingWidget;
+		ActiveNativeStatusBeforeView = ExistingWidget->GetStatusView();
+		ActiveNativeStatusBeforeVisibility = ExistingWidget->GetVisibility();
+		ExistingWidget->SetStatusView(AfterView);
+		if (Payload.bRemoved)
+		{
+			ExistingWidget->SetVisibility(ESlateVisibility::Collapsed);
+		}
+	}
+
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		if (bActiveNativeStatusCreatedTransient)
+		{
+			if (UBattleStatusWidget* StatusWidget = ActiveNativeStatusPresentationWidget.Get())
+			{
+				StatusWidget->RemoveFromParent();
+			}
+		}
+		else if (UBattleStatusWidget* StatusWidget = ActiveNativeStatusPresentationWidget.Get())
+		{
+			StatusWidget->SetStatusView(ActiveNativeStatusBeforeView);
+			StatusWidget->SetVisibility(ActiveNativeStatusBeforeVisibility);
+		}
+		ResetNativeStatusPresentationState();
+		AbortNativePresentationStart();
+		return false;
+	}
 	return true;
 }
 
@@ -1507,7 +1798,6 @@ bool UBattleHUDWidget::IsKnownCombatantPresentationId(FName PresentationId) cons
 	{
 		return false;
 	}
-
 	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
 	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
 	return bMatchesPlayer != bMatchesEnemy;
@@ -1522,20 +1812,17 @@ UTextBlock* UBattleHUDWidget::ResolveBlockTextForPresentationId(
 	{
 		return nullptr;
 	}
-
 	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
 	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
 	if (bMatchesPlayer == bMatchesEnemy)
 	{
 		return nullptr;
 	}
-
 	if (bMatchesPlayer)
 	{
 		OutHistoricalBlock = ViewModel->Player.Block;
 		return Txt_PlayerBlock;
 	}
-
 	OutHistoricalBlock = ViewModel->Enemy.Block;
 	return Txt_EnemyBlock;
 }
@@ -1557,14 +1844,12 @@ bool UBattleHUDWidget::ResolveDamageTarget(
 	{
 		return false;
 	}
-
 	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
 	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
 	if (bMatchesPlayer == bMatchesEnemy)
 	{
 		return false;
 	}
-
 	if (bMatchesPlayer)
 	{
 		OutPresentation = Combatant_PlayerPresentation;
@@ -1581,7 +1866,6 @@ bool UBattleHUDWidget::ResolveDamageTarget(
 		OutBlockText = Txt_EnemyBlock;
 		OutHistoricalView = &ViewModel->Enemy;
 	}
-
 	return IsValid(OutPresentation)
 		&& IsValid(OutHPProgress)
 		&& IsValid(OutHPText)
@@ -1605,11 +1889,7 @@ void UBattleHUDWidget::ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block)
 	{
 		return;
 	}
-
 	BlockText->SetText(FText::AsNumber(Block));
-
-	// The sealed Designer hierarchy is Txt_*Block -> OV_*Block ->
-	// SB_*BlockBadge. Always collapse the complete badge at zero.
 	UWidget* BlockBadgeSurface = BlockText;
 	if (UPanelWidget* BlockOverlay = BlockText->GetParent())
 	{
@@ -1619,11 +1899,8 @@ void UBattleHUDWidget::ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block)
 			BlockBadgeSurface = BlockBadge;
 		}
 	}
-
 	BlockBadgeSurface->SetVisibility(
-		Block > 0
-			? ESlateVisibility::SelfHitTestInvisible
-			: ESlateVisibility::Collapsed);
+		Block > 0 ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
 }
 
 void UBattleHUDWidget::ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount)
@@ -1653,18 +1930,13 @@ void UBattleHUDWidget::ApplyNativeCombatantVitals(
 			FText::AsNumber(HP),
 			FText::AsNumber(MaxHP)));
 	}
-
 	if (IsValid(HPProgress))
 	{
 		const float Percent = MaxHP > 0
-			? FMath::Clamp(
-				static_cast<float>(HP) / static_cast<float>(MaxHP),
-				0.0f,
-				1.0f)
+			? FMath::Clamp(static_cast<float>(HP) / static_cast<float>(MaxHP), 0.0f, 1.0f)
 			: 0.0f;
 		HPProgress->SetPercent(Percent);
 	}
-
 	ApplyNativeBlockValue(BlockText, Block);
 }
 
@@ -1681,8 +1953,7 @@ void UBattleHUDWidget::CleanupNativeDamageTransientVisuals()
 }
 
 void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
-	const FPresentationPlaybackToken& Token
-)
+	const FPresentationPlaybackToken& Token)
 {
 	if (!bHasActiveNativePresentation || Token != ActiveNativePresentationToken)
 	{
@@ -1693,24 +1964,17 @@ void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
 	ClearNativePresentationFinishTimer();
 	CancelNativePresentationVisual(CancelledType);
 
-	// Exact cancellation abandons the current playback chain. CardPlayed is the
-	// only R8 transient intentionally retained across Record boundaries, so a
-	// Skip/fail-safe Cancel during a later Damage/Draw/etc. must retire it here
-	// instead of leaving a stale card in OV_PlayArea after Controller collapse.
 	if (UBattleCardWidget* RetainedPlayedCard = NativePlayedCardWidget.Get())
 	{
 		RetainedPlayedCard->RemoveFromParent();
 	}
 	NativePlayedCardWidget.Reset();
-
 	ResetNativePresentationOwnership();
-	// Cancellation never notifies normal completion.
 }
 
 bool UBattleHUDWidget::CommitNativePresentationOwnership(
 	EBattlePresentationRecordType RecordType,
-	const FPresentationPlaybackToken& Token
-)
+	const FPresentationPlaybackToken& Token)
 {
 	if (bHasActiveNativePresentation
 		|| NativePresentationFinishTimer.IsValid()
@@ -1718,7 +1982,6 @@ bool UBattleHUDWidget::CommitNativePresentationOwnership(
 	{
 		return false;
 	}
-
 	bHasActiveNativePresentation = true;
 	ActiveNativePresentationType = RecordType;
 	ActiveNativePresentationToken = Token;
@@ -1733,16 +1996,11 @@ bool UBattleHUDWidget::StartNativePresentationFinishTimer(float DurationSeconds)
 	{
 		return false;
 	}
-
 	UWorld* World = GetWorld();
 	if (!IsValid(World))
 	{
 		return false;
 	}
-
-	// Capture the exact Token by value. A callback from an older presentation
-	// can therefore never infer or finish whichever Token happens to be active
-	// when the timer eventually fires.
 	const FPresentationPlaybackToken ExpectedToken = ActiveNativePresentationToken;
 	TWeakObjectPtr<UBattleHUDWidget> WeakThis(this);
 	FTimerDelegate FinishDelegate = FTimerDelegate::CreateLambda(
@@ -1758,36 +2016,26 @@ bool UBattleHUDWidget::StartNativePresentationFinishTimer(float DurationSeconds)
 		FinishDelegate,
 		DurationSeconds,
 		false);
-
 	return NativePresentationFinishTimer.IsValid();
 }
 
 void UBattleHUDWidget::AbortNativePresentationStart()
 {
-	// A per-Record handler must undo any visible mutation it made before calling
-	// this helper. R5 itself creates no visual/transient state, so aborting the
-	// kernel leaves zero local side effects and never notifies completion.
 	ClearNativePresentationFinishTimer();
 	ResetNativePresentationOwnership();
 }
 
 void UBattleHUDWidget::FinishNativePresentation(
-	const FPresentationPlaybackToken& ExpectedToken
-)
+	const FPresentationPlaybackToken& ExpectedToken)
 {
-	if (!bHasActiveNativePresentation
-		|| ExpectedToken != ActiveNativePresentationToken)
+	if (!bHasActiveNativePresentation || ExpectedToken != ActiveNativePresentationToken)
 	{
 		return;
 	}
-
 	FinishNativePresentationVisual(ActiveNativePresentationType);
-
 	const FPresentationPlaybackToken CompletedToken = ActiveNativePresentationToken;
 	ClearNativePresentationFinishTimer();
 	ResetNativePresentationOwnership();
-
-	// Keep the existing base deferred bridge. Never call the Controller directly.
 	NotifyPresentationFinished(CompletedToken);
 }
 
@@ -1810,14 +2058,17 @@ void UBattleHUDWidget::ResetNativePresentationOwnership()
 	ActiveNativePresentationToken = FPresentationPlaybackToken{};
 }
 
-void UBattleHUDWidget::FinishNativePresentationVisual(
-	EBattlePresentationRecordType RecordType
-)
+void UBattleHUDWidget::FinishNativePresentationVisual(EBattlePresentationRecordType RecordType)
 {
 	if (RecordType == EBattlePresentationRecordType::CardPlayed
 		|| RecordType == EBattlePresentationRecordType::CardZoneChanged)
 	{
 		FinishNativeCardPresentation(RecordType);
+		return;
+	}
+	if (RecordType == EBattlePresentationRecordType::StatusChanged)
+	{
+		FinishNativeStatusPresentation();
 		return;
 	}
 
@@ -1838,14 +2089,10 @@ void UBattleHUDWidget::FinishNativePresentationVisual(
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleEnergyMax);
 		break;
 	case EBattlePresentationRecordType::BlockChanged:
-		ApplyNativeBlockValue(
-			ActiveNativeSimpleBlockText.Get(),
-			ActiveNativeSimplePrimaryAfter);
+		ApplyNativeBlockValue(ActiveNativeSimpleBlockText.Get(), ActiveNativeSimplePrimaryAfter);
 		break;
 	case EBattlePresentationRecordType::DeckShuffled:
-		ApplyNativePileCounts(
-			ActiveNativeSimplePrimaryAfter,
-			ActiveNativeSimpleSecondaryAfter);
+		ApplyNativePileCounts(ActiveNativeSimplePrimaryAfter, ActiveNativeSimpleSecondaryAfter);
 		break;
 	default:
 		break;
@@ -1853,14 +2100,17 @@ void UBattleHUDWidget::FinishNativePresentationVisual(
 	ResetNativeSimplePresentationState();
 }
 
-void UBattleHUDWidget::CancelNativePresentationVisual(
-	EBattlePresentationRecordType RecordType
-)
+void UBattleHUDWidget::CancelNativePresentationVisual(EBattlePresentationRecordType RecordType)
 {
 	if (RecordType == EBattlePresentationRecordType::CardPlayed
 		|| RecordType == EBattlePresentationRecordType::CardZoneChanged)
 	{
 		CancelNativeCardPresentation(RecordType);
+		return;
+	}
+	if (RecordType == EBattlePresentationRecordType::StatusChanged)
+	{
+		CancelNativeStatusPresentation();
 		return;
 	}
 
@@ -1881,14 +2131,10 @@ void UBattleHUDWidget::CancelNativePresentationVisual(
 		ApplyNativeEnergyValue(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleEnergyMax);
 		break;
 	case EBattlePresentationRecordType::BlockChanged:
-		ApplyNativeBlockValue(
-			ActiveNativeSimpleBlockText.Get(),
-			ActiveNativeSimplePrimaryBefore);
+		ApplyNativeBlockValue(ActiveNativeSimpleBlockText.Get(), ActiveNativeSimplePrimaryBefore);
 		break;
 	case EBattlePresentationRecordType::DeckShuffled:
-		ApplyNativePileCounts(
-			ActiveNativeSimplePrimaryBefore,
-			ActiveNativeSimpleSecondaryBefore);
+		ApplyNativePileCounts(ActiveNativeSimplePrimaryBefore, ActiveNativeSimpleSecondaryBefore);
 		break;
 	default:
 		break;
@@ -1898,41 +2144,67 @@ void UBattleHUDWidget::CancelNativePresentationVisual(
 
 void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 {
-	// Destruction is local cleanup only. Damage transient feedback is hidden and
-	// its target opacity is normalized, but committed/historical vitals are not
-	// restored and normal completion is not notified.
 	CleanupNativeDamageTransientVisuals();
 	ResetNativeDamagePresentationState();
 	CleanupNativeCardPresentationOnDestruct();
+	CleanupNativeStatusPresentationOnDestruct();
 	ResetNativeSimplePresentationState();
 }
 
-void UBattleHUDWidget::FinishNativeCardPresentation(
-	EBattlePresentationRecordType RecordType)
+void UBattleHUDWidget::FinishNativeStatusPresentation()
+{
+	// Begin already applied the frozen committed After. Normal completion keeps
+	// that visual until Controller reduction/refresh takes formal ownership.
+	ResetNativeStatusPresentationState();
+}
+
+void UBattleHUDWidget::CancelNativeStatusPresentation()
+{
+	// Never reverse-compute B -> A. The current ViewModel still represents the
+	// historical snapshot for the active Record, so rebuild both formal rows from
+	// it exactly and discard any presentation-only create/update/remove residue.
+	RefreshStatusRows();
+	ResetNativeStatusPresentationState();
+}
+
+void UBattleHUDWidget::CleanupNativeStatusPresentationOnDestruct()
+{
+	if (bActiveNativeStatusCreatedTransient)
+	{
+		if (UBattleStatusWidget* StatusWidget = ActiveNativeStatusPresentationWidget.Get())
+		{
+			StatusWidget->RemoveFromParent();
+		}
+	}
+	ResetNativeStatusPresentationState();
+}
+
+void UBattleHUDWidget::ResetNativeStatusPresentationState()
+{
+	ActiveNativeStatusPresentationWidget.Reset();
+	ActiveNativeStatusBeforeView = FBattleHUDStatusView{};
+	ActiveNativeStatusBeforeVisibility = ESlateVisibility::Visible;
+	bActiveNativeStatusCreatedTransient = false;
+}
+
+void UBattleHUDWidget::FinishNativeCardPresentation(EBattlePresentationRecordType RecordType)
 {
 	if (RecordType == EBattlePresentationRecordType::CardPlayed
 		&& ActiveNativeCardPresentationKind == ENativeCardPresentationKind::CardPlayed)
 	{
-		// The frozen PlayArea Widget is deliberately retained for the later
-		// PlayArea-to-destination Record. The formal historical Hand reference is
-		// no longer needed after exact completion.
 		NormalizeNativeCardTransform(NativePlayedCardWidget.Get());
 		ActiveNativeHistoricalHandCardWidget.Reset();
 		ResetNativeCardRecordState();
 		return;
 	}
-
 	if (RecordType != EBattlePresentationRecordType::CardZoneChanged)
 	{
 		ResetNativeCardRecordState();
 		return;
 	}
-
 	switch (ActiveNativeCardPresentationKind)
 	{
 	case ENativeCardPresentationKind::HandToDiscard:
-		// Preserve the hidden committed After until the Controller applies this
-		// Record's snapshot. Do not proactively rebuild the Hand.
 		if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
 		{
 			HistoricalCard->SetVisibility(ESlateVisibility::Collapsed);
@@ -1945,9 +2217,6 @@ void UBattleHUDWidget::FinishNativeCardPresentation(
 		break;
 	case ENativeCardPresentationKind::DrawToHand:
 		NormalizeNativeCardTransform(ActiveNativeDrawnCardWidget.Get());
-		// Keep this one presentation-only card in the Hand panel until the
-		// Controller applies this exact Record and RefreshHand replaces it with a
-		// formal card. No later draw can begin before the exact Notify boundary.
 		ActiveNativeDrawnCardWidget.Reset();
 		break;
 	case ENativeCardPresentationKind::PlayAreaToDestination:
@@ -1963,8 +2232,7 @@ void UBattleHUDWidget::FinishNativeCardPresentation(
 	ResetNativeCardRecordState();
 }
 
-void UBattleHUDWidget::CancelNativeCardPresentation(
-	EBattlePresentationRecordType RecordType)
+void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordType RecordType)
 {
 	if (RecordType == EBattlePresentationRecordType::CardPlayed
 		&& ActiveNativeCardPresentationKind == ENativeCardPresentationKind::CardPlayed)
@@ -1981,7 +2249,6 @@ void UBattleHUDWidget::CancelNativeCardPresentation(
 		ResetNativeCardRecordState();
 		return;
 	}
-
 	if (RecordType == EBattlePresentationRecordType::CardZoneChanged)
 	{
 		switch (ActiveNativeCardPresentationKind)
@@ -2007,8 +2274,6 @@ void UBattleHUDWidget::CancelNativeCardPresentation(
 			}
 			break;
 		case ENativeCardPresentationKind::PlayAreaToDestination:
-			// A collapse/skip cancellation owns local transient cleanup. It never
-			// notifies completion and must not leak the prior CardPlayed visual.
 			if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
 			{
 				PlayedCard->RemoveFromParent();
@@ -2024,9 +2289,6 @@ void UBattleHUDWidget::CancelNativeCardPresentation(
 
 void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 {
-	// NativeDestruct is local cleanup only: presentation transients are removed,
-	// but a hidden/collapsed historical formal Hand Widget is never restored and
-	// normal completion is never notified.
 	if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
 	{
 		DrawnCard->RemoveFromParent();
