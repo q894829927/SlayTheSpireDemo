@@ -623,7 +623,7 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	case EBattlePresentationRecordType::DeckShuffled:
 		return BeginNativeDeckShuffledPresentation(Record, Token);
 	default:
-		// R7+ Records remain on the Controller's immediate-fallback path.
+		// R8+ Records remain on the Controller's immediate-fallback path.
 		return false;
 	}
 }
