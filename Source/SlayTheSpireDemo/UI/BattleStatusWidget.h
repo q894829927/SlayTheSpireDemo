@@ -26,13 +26,13 @@ public:
 	void SetStatusView(const FBattleHUDStatusView& View);
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Status")
-	FBattleHUDStatusView GetStatusView() const { return CurrentStatusView; }
+	FBattleHUDStatusView GetStatusView() const { return NativeStatusView; }
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Status")
-	FName GetStatusId() const { return CurrentStatusView.StatusId; }
+	FName GetStatusId() const { return NativeStatusView.StatusId; }
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Status")
-	int64 GetRuntimeSequence() const { return CurrentStatusView.RuntimeSequence; }
+	int64 GetRuntimeSequence() const { return NativeStatusView.RuntimeSequence; }
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -46,11 +46,13 @@ protected:
 private:
 	void SetAtlasVector2D(FName ParameterName, const FVector2D& Value);
 
+	// Native-only names intentionally avoid the duplicated Legacy Blueprint's
+	// retained StatusView / CurrentStatusView / MID_StatusIcon migration residue.
 	UPROPERTY(Transient)
-	FBattleHUDStatusView CurrentStatusView;
+	FBattleHUDStatusView NativeStatusView;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInstanceDynamic> MID_StatusIcon = nullptr;
+	TObjectPtr<UMaterialInstanceDynamic> NativeStatusIconMID = nullptr;
 
 	bool bNativeBindingsValid = false;
 };
