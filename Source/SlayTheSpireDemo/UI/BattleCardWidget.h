@@ -32,13 +32,13 @@ public:
 	void SetCardView(const FBattleHUDCardView& View);
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Card")
-	int32 GetRuntimeId() const { return CardView.RuntimeId; }
+	int32 GetRuntimeId() const { return CurrentCardView.RuntimeId; }
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Card")
-	FName GetCardId() const { return CardView.CardId; }
+	FName GetCardId() const { return CurrentCardView.CardId; }
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Card")
-	FBattleHUDCardView GetCardView() const { return CardView; }
+	FBattleHUDCardView GetCardView() const { return CurrentCardView; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Card")
 	FOnBattleCardRequested OnBattleCardRequested;
@@ -74,8 +74,11 @@ protected:
 	bool AreNativeBindingsValid() const { return bNativeBindingsValid; }
 
 private:
+	// Use a native-only name distinct from the duplicated Legacy Blueprint's
+	// retained `CardView` member variable. R4 takes runtime ownership without
+	// requiring a binary asset edit solely to remove that inert migration residue.
 	UPROPERTY(Transient)
-	FBattleHUDCardView CardView;
+	FBattleHUDCardView CurrentCardView;
 
 	bool bNativeBindingsValid = false;
 	bool bCardDelegateBound = false;
