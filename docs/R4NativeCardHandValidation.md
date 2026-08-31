@@ -1,9 +1,10 @@
 # Phase 6UI-A2N — R4 Native Card Widget, Hand and Card Input
 
-Status: **SOURCE IMPLEMENTED / UE VALIDATION PENDING**
+Status: **COMPLETE / VALIDATED**
 
 Branch: `a2n/r4-native-card-hand`
 Base: `main@9981dcebda27ae5be46be608177084412e78b1fb`
+Validation date: **2026-08-31**
 
 R4 migrates only formal Hand-card display and input ownership. It does not migrate committed Presentation playback; `UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation` still returns `false` for every Record.
 
@@ -11,7 +12,7 @@ R4 migrates only formal Hand-card display and input ownership. It does not migra
 
 ### `UBattleCardWidget`
 
-The Native Card class now owns:
+The Native Card class owns:
 
 ```text
 SetCardView(FBattleHUDCardView)
@@ -66,32 +67,15 @@ A formal card request forwards only its `RuntimeId` to the existing `UBattleHUDW
 
 A formal Hand card with `bGameplayPlayable=false` is still allowed to make the formal request so the existing ViewModel path can show authoritative rejection feedback such as insufficient Energy. Later presentation-only cards remain a separate path: they must not bind this HUD request delegate and must be `HitTestInvisible`; R4 does not create presentation-only cards.
 
-### R5+ boundary retained
-
-R4 does not implement:
-
-```text
-CardPlayed playback
-CardZoneChanged playback
-PlayArea transient cards
-HiddenHandCardWidget ownership
-Presentation Token/timer state
-Damage / Block / Energy / Shuffle playback
-Status lifecycle
-Terminal Record sequencing
-Controller / Reducer / Record / Envelope changes
-production cutover
-```
-
 ## Focused Editor-only Automation
 
-One focused source-level contract test was added:
+Permanent R4 source-level contract coverage:
 
 ```text
 SlayTheSpireDemo.Phase6UIA2N.R4.CardWidget.DTOAndRequest
 ```
 
-It checks:
+It covers:
 
 ```text
 SetCardView immediate field refresh
@@ -103,136 +87,73 @@ formal unplayable-card request remains available for ViewModel feedback
 INDEX_NONE emits no card request
 ```
 
-This Automation test does not replace real Designer-backed WBP or PIE acceptance.
+## UE5.8 validation evidence — PASS
 
-## Required UE5.8 validation
-
-Do not mark R4 COMPLETE / VALIDATED until the following pass on this branch.
-
-### 1. Editor build
-
-```powershell
-& "E:\Unreal engine\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
-  SlayTheSpireDemoEditor Win64 Development `
-  -Project="E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
-  -WaitMutex -NoHotReload
-```
-
-Expected: `Result: Succeeded`.
-
-### 2. Blueprint compile
-
-Compile `WBP_BattleCard_Native` and `WBP_BattleHUD_Native`.
-
-Expected:
+The saved R4 branch was validated locally in UE5.8. The user reports the complete requested R4 acceptance gate passed.
 
 ```text
-no missing BindWidget
-no inherited member collision
-no Blueprint compile error
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleCard_Native compile: PASS
+3. WBP_BattleHUD_Native compile: PASS
+4. SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation: PASS
+5. L_BattleTest_Native initial Hand parity: PASS
+6. Card Name / Cost / Type / Description / Art rendering: PASS
+7. Formal card SelectCard(RuntimeId) request path: PASS
+8. ChoosingTarget / legal-target highlight / Cancel behavior: PASS
+9. Accepted legal-target submission occurs once; no duplicate card callback: PASS
+10. Hand rebuild remains one Widget per ViewModel.HandCards entry: PASS
+11. Existing R3 zero-Block badge behavior remains correct: PASS
+12. production L_BattleTest remains on WBP_BattleHUD_C: PASS
+13. Legacy WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus remain unchanged: PASS
+14. BeginPresentationRecordPlayback remains unmigrated / false fallback: PASS
+15. R5 and later remain NOT STARTED: PASS
 ```
 
-Do not modify or save the three Legacy WBP assets.
+The focused Automation supplements but does not replace the real Designer-backed Native WBP and PIE acceptance above.
 
-### 3. Focused Automation
+## Accepted R4 behavior
 
-```powershell
-& "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" `
-  "E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
-  -ExecCmds="Automation RunTests SlayTheSpireDemo.Phase6UIA2N.R4; Quit" `
-  -unattended -nopause `
-  -testexit="Automation Test Queue Empty" `
-  -log
-```
-
-Expected: the R4 focused test passes with 0 failed / 0 notRun.
-
-### 4. Native PIE — initial Hand parity
-
-Open:
+R4 now closes the formal static/input Hand boundary:
 
 ```text
-/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+ViewModel.HandCards
+-> Native formal UBattleCardWidget instances
+-> frozen/current Card DTO rendering
+-> exact RuntimeId request
+-> UBattleHUDWidgetBase::SelectCard
+-> existing ViewModel / Gameplay authority
 ```
 
-Confirm:
+The accepted implementation does not restore the Legacy `OwnerHUD : WBP_BattleHUD` dependency and does not query mutable Gameplay from the Card Widget.
+
+## R5+ boundary retained
+
+The following are explicitly not R4 acceptance requirements and remain unmigrated:
 
 ```text
-initial Hand count equals ViewModel.HandCards
-normally 5 cards in the existing battle fixture
-Name / Cost / Type / Description / Art are populated
-RuntimeId and CardId are stable when inspected
-no duplicate Hand cards
+CardPlayed committed visual playback
+CardZoneChanged committed visual playback
+PlayArea presentation-only transient cards
+HiddenHandCardWidget presentation ownership
+Presentation Token / visual timer state
+Damage number / animation
+BlockChanged / EnergyChanged / DeckShuffled playback
+formal Status-row lifecycle
+Terminal Record sequencing
+Controller / Reducer / Record / Envelope changes
+production cutover
 ```
 
-### 5. Formal Card request / target flow
+Therefore absence of Native CardPlayed or Damage animation at this stage is expected and is not an R4 failure.
 
-Use a normal enemy-target card such as Strike:
+## Acceptance
+
+**R4 is COMPLETE / VALIDATED.**
+
+Next phase:
 
 ```text
-click Strike once
--> ViewModel.SelectedCardRuntimeId becomes that exact card RuntimeId
--> InteractionState becomes ChoosingTarget
--> Enemy legal-target highlight appears
--> Confirm remains hidden
--> Cancel appears
+R5 — Native playback kernel
 ```
 
-Click the same selected card again or use Cancel:
-
-```text
-selection clears
-InteractionState returns Idle
-legal-target highlight clears
-Cancel hides
-Hand remains exactly one Widget per ViewModel.HandCards entry
-```
-
-Then select Strike and click the legal Enemy target:
-
-```text
-formal request is accepted once
-no duplicate card callback / duplicate resolution
-```
-
-Committed presentation visuals are still immediate-fallback in R4; absence of Native Damage/CardPlayed animation is not an R4 failure.
-
-### 6. ReadyToConfirm / Confirm flow
-
-If the current fixture contains a `TargetType=None` card, use it and confirm:
-
-```text
-click card -> ReadyToConfirm
-Confirm visible/enabled
-Cancel visible/enabled
-Confirm submits exactly once
-```
-
-If the standard battle fixture contains no `TargetType=None` card, record this item as not exercisable in that fixture rather than inventing a production asset change; the existing ViewModel contract remains covered by prior tests.
-
-### 7. Unplayable formal card
-
-Use a card whose current cost exceeds available Energy, or reduce Energy through an existing legitimate test path. Confirm:
-
-```text
-card remains present in Hand
-click still enters the formal SelectCard request path
-ViewModel rejects it authoritatively
-Txt_Feedback shows the existing rejection reason
-no Gameplay resolution starts
-```
-
-### 8. Regression boundary
-
-Confirm:
-
-```text
-production L_BattleTest still uses WBP_BattleHUD_C
-Legacy WBP_BattleHUD / WBP_BattleCard / WBP_BattleStatus unchanged
-R3 static HUD remains correct
-zero-Block badge remains collapsed
-R5 is NOT STARTED
-BeginPresentationRecordPlayback still returns false
-```
-
-After these gates pass, update `docs/CODEX_GOAL_CHECKPOINT.md`, `docs/Validation.md`, and the A2N plan status to `R4 COMPLETE / VALIDATED`; then merge this branch. Until then this branch remains **VALIDATION PENDING**.
+R5 is **NOT STARTED** and must not be entered implicitly by this acceptance record.
