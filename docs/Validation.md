@@ -119,8 +119,36 @@ locked/Resolving before Skip, no waiting or backlog after reconcile, cleared Blu
 transient/type/token fields, rejection of the stale token beyond the timer window,
 a subsequent real request completing normally, and final Idle/input unlocked. It
 constructed no Record/Payload, was deleted afterward, and the standard Editor build
-succeeded with no Source diff. Final-head A2D5, Phase6R, and Shipping exclusion have
-not yet run.
+succeeded with no Source diff. At this batch boundary the final-head gates had not
+yet run; their later seal evidence follows.
+
+### Final-head UI-A2E / UI-A2 seal gates — 2026-08-31
+
+```text
+Implementation commit 81cbfb6af09a52f96ececff597491c5bfcc3665f
+WBP_BattleHUD SHA-256 990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A
+
+Phase6UIA2D5: exactly 6/6 successful, 0 failed, 0 notRun
+Report: Saved/AutomationReports/FinalA2D5/index.json
+
+Phase6R prefixes: 13+23+12+5+8+8+8+3+4+4+6+6 = 100/100 successful
+0 failed, 0 notRun, all Editor exits 0
+Reports: Saved/AutomationReports/FinalSeal_Phase5 through FinalSeal_Phase6UIA2D5
+
+Clean-worktree Win64 Shipping build: exit 0
+Forbidden SlayTheSpireDemoTests / Phase6ATest artifact hits: 0
+Runtime UPhase6ATest hits: 0
+```
+
+An earlier nonexistent single prefix `SlayTheSpireDemo.Phase6R` matched zero tests
+and is not aggregate evidence. The valid aggregate is the formal twelve-prefix
+workflow above. Likewise, a first Shipping scan in the main workspace was rejected
+because it saw pre-existing Editor-test artifacts; the valid Shipping gate used a
+clean detached worktree at the same implementation commit, matching the workflow's
+clean-checkout boundary. That worktree was removed after validation.
+
+With the saved Blueprint/PIE evidence plus these final-head gates, UI-A2E and UI-A2
+are **COMPLETE / VALIDATED / SEALED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -138,7 +166,7 @@ total duration 0.108884 s
 
 This historical run was current-working-tree focused regression evidence only. It is
 not `final-head`; the current Status and Scenario A-E Blueprint/PIE evidence is
-recorded above, and a new final-head A2D5 run remains required.
+recorded above, and the valid final-head A2D5 run is recorded in the seal section.
 
 ## Trusted Manual Evidence
 
@@ -153,8 +181,9 @@ These manual results predate unified UI-A2 committed-record playback and therefo
 UI-A2A/A2B/A2C/A2D C++ committed-presentation contracts are sealed by focused and
 aggregate Automation evidence. UI-A2E unified Blueprint/UMG routing and actual PIE
 Scenario A-E/Cancel acceptance are now validated on HUD hash `990125C9...`.
-UI-A2E and UI-A2 remain unsealed only until the final implementation commit passes
-A2D5 exactly 6, Phase6R 100/100, and Shipping exclusion.
+UI-A2E and UI-A2 are **COMPLETE / VALIDATED / SEALED** on implementation commit
+`81cbfb6` after A2D5 exactly 6, Phase6R 100/100, and clean-worktree Shipping
+exclusion all passed.
 
 Validated A2E scenarios include:
 

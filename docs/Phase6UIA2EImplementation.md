@@ -1,8 +1,8 @@
 # Phase 6UI-A2E — Unified Blueprint Playback & PIE Acceptance
 
-Date: **2026-08-22**
+Date: **2026-08-31**
 
-Status: **READY TO IMPLEMENT / A2D5 C++ GATE SEALED**.
+Status: **COMPLETE / VALIDATED / SEALED**.
 
 UI-A2E closes the remaining player-visible gap in UI-A2. UI-A2A through UI-A2D establish the committed-presentation transport, reducers, status identity, terminal semantics and combined C++ acceptance. A2E is the unified Blueprint/UMG integration and PIE acceptance step that proves those committed historical facts are actually shown to the player in the intended order.
 
@@ -15,9 +15,9 @@ A2D5 C++ / Automation closure     COMPLETE / SEALED
 ↓
 synchronize AGENTS + A2/A2D validation evidence
 ↓
-UI-A2E Unified Blueprint Playback NEXT
+UI-A2E Unified Blueprint Playback COMPLETE / SEALED
 ↓
-UI-A2E PIE end-to-end acceptance
+UI-A2E PIE end-to-end acceptance COMPLETE
 ↓
 UI-A2 COMPLETE / SEALED
 ↓
@@ -41,7 +41,10 @@ Phase6R aggregate               PASS 100/100
 Shipping exclusion              PASS
 ```
 
-The C++ committed-presentation path is therefore closed. A2 itself remains open only because unified Blueprint/UMG historical playback and PIE acceptance have not yet been completed.
+The C++ path and unified Blueprint/UMG historical playback are both closed. Final
+implementation commit `81cbfb6` retains HUD SHA-256 `990125C9...`; Scenario A-E,
+active Skip/Cancel/Input Unlock, final-head A2D5 6/6, formal Phase6R 100/100, and
+clean-worktree Shipping exclusion all passed.
 
 ---
 
@@ -330,7 +333,9 @@ PresentationUnavailable remains distinct from ResolutionFault
 PIE ordinary card/status/turn-cycle/terminal scenarios pass
 ```
 
-Only then mark `UI-A2 COMPLETE / SEALED` and resume unfinished UI-A3 work.
+All criteria above are satisfied. `UI-A2E` and `UI-A2` are
+**COMPLETE / VALIDATED / SEALED**. UI-A3 remains a separately authorized follow-up
+and was not entered by this closure.
 
 ---
 

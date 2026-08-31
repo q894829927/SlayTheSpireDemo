@@ -8,8 +8,10 @@ This document records project progress, implementation history and durable phase
 - Phases 1–6C and the Phase 6R test-module extraction are complete.
 - UI-A0 and UI-A1 are complete.
 - UI-A2A/A2B/A2C/A2D C++ committed-presentation work is sealed.
-- **UI-A2E Unified Blueprint/UMG Playback & PIE Acceptance is the active phase.**
-- UI-A3 A3-1 Dynamic Text is sealed; unfinished A3 Preview work waits for A2E.
+- **UI-A2E Unified Blueprint/UMG Playback & PIE Acceptance is complete, validated and sealed.**
+- **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
+- UI-A3 A3-1 Dynamic Text is sealed; unfinished A3 Preview work was not resumed by
+  the UI-A2E closure and awaits an explicit follow-up scope.
 - Phase 7 Relics follows completion of playable Phase 6UI-A.
 
 ## Phase 1 — Minimal Combat Loop
@@ -120,13 +122,13 @@ Implemented the concrete HUD and formal Enemy/Self-target interaction. Defend re
 
 ### UI-A2 — Basic Committed Presentation
 
-Status: **C++ path sealed; Blueprint/UMG closure in progress**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 - A2A committed-presentation infrastructure — C++ validated.
 - A2B Damage + Block — C++ validated.
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
-- A2E unified Blueprint/UMG playback and PIE — **ACTIVE / required to complete A2**.
+- A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 
@@ -140,7 +142,7 @@ Read:
 
 ### UI-A3 — Deterministic Immediate Preview
 
-Status: **PARTIAL / PAUSED UNTIL A2E COMPLETES**
+Status: **PARTIAL / NOT RESUMED IN THE UI-A2E CLOSURE**
 
 - A3-1 Dynamic Text — sealed.
 - A3-2 Target-Specific Current-State Preview — pending.

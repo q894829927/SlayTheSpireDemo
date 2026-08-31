@@ -16,7 +16,7 @@ PLANNED / NOT WIRED
 = 已确定的下一步方案，但当前 .uasset 尚未完成
 ```
 
-本快照的基础结构由 UE5.8 工具只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。2026-08-31 最终只读采集确认：`WBP_BattleHUD` 有 75 个 Designer 控件、9 个 Blueprint 变量，`EventGraph` 531 节点、`BeginPresentationRecordPlayback` 206 节点；Energy、完整 CardZone、DeckShuffled、Terminal 与 Global Cancel/Reconcile 均已保存。当前 HUD SHA-256 为 `990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A`，长度 2,517,122 bytes，保存时间 2026-08-31 09:52:06。该资产已 Compile/Save、重载核对，并通过 Scenario A-E 与 active Skip/Cancel PIE；最终 seal 的 Automation/Shipping 证据另记于 `Validation.md`。
+本快照的基础结构由 UE5.8 工具只读加载资产并导出 Graph、Designer 层级和 Canvas Slot 数据。2026-08-31 最终只读采集确认：`WBP_BattleHUD` 有 75 个 Designer 控件、9 个 Blueprint 变量，`EventGraph` 531 节点、`BeginPresentationRecordPlayback` 206 节点；Energy、完整 CardZone、DeckShuffled、Terminal 与 Global Cancel/Reconcile 均已保存。当前 HUD SHA-256 为 `990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A`，长度 2,517,122 bytes，保存时间 2026-08-31 09:52:06。该资产已 Compile/Save、重载核对，并通过 Scenario A-E 与 active Skip/Cancel PIE；implementation HEAD `81cbfb6` 的 final-head A2D5、Phase6R 与 Shipping exclusion 也已通过。
 
 `.uasset` 始终是最终事实来源；本文是便于阅读的人工快照。若编辑器中存在尚未保存的改动，它们不属于本快照。
 
@@ -990,7 +990,7 @@ No-target card
 
 `None` 仍使用确认按钮；`Self` 与 `Enemy` 均使用角色本体选择。HUD 不硬编码 Player/Enemy 的 `TargetId`，只使用 ViewModel 当前 public legal set 中的映射结果。
 
-本次最终更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将当前 producer 的全部 UI-A2E Record Router、冻结数据播放、exact-token Finish、Terminal 以及 Global Cancel/Reconcile 记录为 `CURRENT SAVED`。`WBP_BattleHUD`（2026-08-31 09:52:06，SHA-256 `990125C9...`）是最终实现候选；Status、Batch 2、Terminal、Scenario A-E 与 active Skip/Cancel/Input Unlock 都有真实 PIE 证据。本文记录磁盘上的真实节点、数据线和执行线，不替代 final-head A2D5、Phase6R 与 Shipping exclusion 的 Seal 证据。
+本次最终更新确认原有 A1 HUD/目标选择线路仍保存在资产中，并将当前 producer 的全部 UI-A2E Record Router、冻结数据播放、exact-token Finish、Terminal 以及 Global Cancel/Reconcile 记录为 `CURRENT SAVED`。`WBP_BattleHUD`（2026-08-31 09:52:06，SHA-256 `990125C9...`）是已封存实现；Scenario A-E、active Skip/Cancel/Input Unlock、final-head A2D5 6/6、Phase6R 100/100 与 clean-worktree Shipping exclusion 均已通过。UI-A2E 与 UI-A2 均为 `COMPLETE / VALIDATED / SEALED`。
 
 ## 12. 后续修改时的同步清单
 

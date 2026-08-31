@@ -127,7 +127,7 @@ BlockChanged Blueprint Playback = VALIDATED
 
 ### CardZoneChanged
 
-Status: **VALIDATED** for the currently implemented `FromZone = PlayArea` playback slice.
+Status: **VALIDATED** for the current producer set.
 
 Validated behavior:
 
@@ -137,6 +137,11 @@ CardZoneChanged(PlayArea -> Destination)
 → async completion path runs
 → transient PlayedCardWidget is removed in FinishPresentationRecord
 → controller advances the historical zone state
+
+Hand -> DiscardPile uses exact RuntimeId/CardId/FromIndex and hides the exact formal
+widget. DrawPile -> Hand validates frozen identity/count/index and creates a
+non-gameplay-playable, hit-test-invisible presentation card; normal Finish keeps the
+committed Hand card while Cancel removes the transient.
 ```
 
 ### StatusChanged — creation (`bCreated = true`)
@@ -298,13 +303,12 @@ Scenario A-E PIE        VALIDATED
 Active Skip/Input Unlock VALIDATED
 ```
 
-A2E implementation is **VALIDATED**, but remains **UNSEALED** until the final-head
-A2D5, Phase6R, and Shipping-exclusion gates pass.
+UI-A2E is **COMPLETE / VALIDATED / SEALED** on implementation commit `81cbfb6`.
+UI-A2 is also **COMPLETE / VALIDATED / SEALED**.
 
 ## Locked next step
 
-Immediate next work: **final saved Blueprint snapshot, local implementation commit,
-then the final-head seal gates**.
+No remaining UI-A2E work. Do not enter A3 in this task.
 
 ## Batch 2 — Energy / CardZone / Shuffle acceptance (2026-08-31)
 
@@ -404,6 +408,25 @@ Source diff. This run supersedes an earlier discarded harness assertion that use
 the debug `TestAttack()` producer and incorrectly required it to set ViewModel
 `Resolving`.
 
+## Final seal gates (2026-08-31)
+
+Implementation commit `81cbfb6af09a52f96ececff597491c5bfcc3665f` retained HUD
+SHA-256 `990125C9...` and passed:
+
+```text
+Final-head Phase6UIA2D5: exactly 6/6 successful, 0 failed, 0 notRun
+Formal Phase6R aggregate: exactly 100/100 successful, 0 failed, 0 notRun
+Clean-worktree Win64 Shipping build: exit 0
+Shipping forbidden test artifacts: 0
+Runtime UPhase6ATest hits: 0
+```
+
+Reports are `Saved/AutomationReports/FinalA2D5/index.json` and the directories
+`Saved/AutomationReports/FinalSeal_Phase5` through
+`Saved/AutomationReports/FinalSeal_Phase6UIA2D5`. The clean detached Shipping
+worktree was removed after validation. These gates, together with the saved graph
+and real PIE evidence above, seal both UI-A2E and UI-A2.
+
 The saved Blueprint now preserves the exact status identity:
 
 ```text
@@ -449,22 +472,6 @@ SHA-256 574FF05882D4876831B373D60D23CA3DFF564AE19E4AD143B77CE4724E48EAA3
 
 The earlier independent architecture review reported P0=0 and behavior-architecture P1=0. This turn changed only the redundant Blueprint data link described above; after the edit the saved HUD was re-read, `WBP_BattleHUD is_dirty=false`, and the disk hash is `574FF058...`.
 
-Remaining predecessor evidence before `update/reduction` can be marked VALIDATED:
-
-```text
-Real PIE: creation regression; reapply/increase (same identity, one widget,
-no flashback); non-removing reduction/TurnEndDecay (AmountAfter > 0, same widget).
-```
-
-The 2026-08-30 MCP PIE run reached `ReadStateReady` only. The Editor had no capturable Slate window and produced no current-run Status commit, so this is explicitly **not PIE acceptance evidence**. Earlier Gameplay logs are not evidence for the current saved Blueprint.
-
-Cancellation of an update/reduction presentation must restore the formal status list from the current historical ViewModel state rather than leaving the temporary `AmountAfter` visible.
-
-After update/reduction is validated, perform PIE acceptance for the already-saved removal path using the same exact identity. Only after full `StatusChanged` validation should mainline proceed to:
-
-```text
-EnergyChanged + EndTurn
-→ shuffle / remaining zone transitions
-→ terminal records
-→ full A2E PIE acceptance
-```
+The 2026-08-30 compile/save and non-capturable PIE notes above are retained as
+historical provenance only. They were superseded by the visible Status predecessor
+gate, later Batch 2/3/4 saved hashes, full Scenario A-E PIE, and final seal evidence.

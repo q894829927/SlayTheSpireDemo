@@ -1,6 +1,6 @@
 # Phase 6UI-A2 — Basic Committed Presentation
 
-Status: **C++ COMMITTED-PRESENTATION COMPLETE / VALIDATED / SEALED; BLUEPRINT/PIE NEXT IN A2E**.
+Status: **COMPLETE / VALIDATED / SEALED — C++ + BLUEPRINT/UMG + PIE**.
 
 UI-A2 replaces the UI-A0/UI-A1 immediate/no-op presentation catch-up boundary with deterministic playback of already-committed gameplay facts. It does not make `BattleActionQueue`, `BattleState` or authoritative gameplay wait for animation.
 
@@ -21,11 +21,14 @@ UI-A2D4                             PASSED 6/6
 UI-A2D5 focused                     PASSED 6/6
 Phase6R expanded aggregate          PASSED 100/100
 Shipping exclusion                  PASS
-Unified Blueprint/UMG playback      NEXT — UI-A2E
-PIE committed-presentation smoke    NEXT — UI-A2E
+Unified Blueprint/UMG playback      PASSED / SEALED — UI-A2E
+PIE committed-presentation smoke    PASSED / SEALED — UI-A2E
 ```
 
-The exact discovered totals are run evidence, not permanent architecture constants. C++/Automation validation does not claim the remaining Blueprint/UMG or PIE work.
+The exact totals are run evidence, not permanent architecture constants. Final UI-A2E
+evidence is on implementation commit `81cbfb6`, HUD SHA-256 `990125C9...`, with
+Scenario A-E plus active Skip/Cancel/Input Unlock PIE, final-head A2D5 6/6, formal
+Phase6R 100/100, and clean-worktree Shipping exclusion.
 
 ---
 
@@ -602,7 +605,7 @@ Phase6R aggregate 100/100 PASS
 Shipping          PASS
 ```
 
-### UI-A2E — Unified Blueprint Playback & PIE Acceptance — NEXT
+### UI-A2E — Unified Blueprint Playback & PIE Acceptance — COMPLETE / SEALED
 
 Owns the concrete WBP route for all visible A2 Record types, token completion wiring, minimal diagnostic playback, exact FinalSnapshot catch-up, input unlock timing, terminal surfaces, PresentationUnavailable separation and PIE end-to-end acceptance.
 
@@ -672,15 +675,19 @@ Phase6R expanded aggregate 100/100 PASS
 Shipping exclusion PASS
 ```
 
-This closes the C++ committed-presentation contract. It does not claim real Blueprint/UMG animation or PIE historical playback.
+This closes the C++ contract. Real Blueprint/UMG historical playback and PIE closure
+are recorded by the sealed UI-A2E validation log.
 
 ---
 
-## 15. USER ACTION REQUIRED boundary
+## 15. Blueprint/PIE closure boundary
 
-UI-A2E requires real UE Editor work for the concrete Widget Blueprint/UMG surface. Text-only source tooling must not claim to create or edit `.uasset` / `.umap` assets.
+UI-A2E required real UE Editor work for the concrete Widget Blueprint/UMG surface.
+That work is now saved and validated; text-only evidence was not substituted for
+Blueprint Compile/Save or PIE.
 
-When A2E begins, instructions must specify exact Widget assets/events, Record routing, token callback wiring, minimum visible behavior and PIE scenarios.
+The exact assets/events, routing, token wiring, visible behavior and PIE scenarios are
+recorded in `UIA2EBlueprintValidationLog.md` and `WBPSavedBlueprintSnapshot.md`.
 
 ---
 
@@ -688,7 +695,8 @@ When A2E begins, instructions must specify exact Widget assets/events, Record ro
 
 UI-A2 is successful when presentation is a deterministic, bounded, fail-safe explanation of facts that Gameplay already committed.
 
-The C++ contract is sealed. UI-A2 as a whole is **not yet complete** because A2E player-visible Blueprint/PIE acceptance remains.
+The C++ contract and A2E player-visible Blueprint/PIE acceptance are sealed. UI-A2
+as a whole is **COMPLETE / VALIDATED / SEALED**.
 
 Final invariant:
 
@@ -712,11 +720,11 @@ Current input identity
 = refreshed only after display catches up to newest matching BattleId/Revision
 ```
 
-Next stage:
+Sealed stage and deferred follow-up:
 
 ```text
-UI-A2E Unified Blueprint Playback
-→ UI-A2E PIE end-to-end acceptance
+UI-A2E Unified Blueprint Playback COMPLETE / SEALED
+→ UI-A2E PIE end-to-end acceptance COMPLETE
 → UI-A2 COMPLETE / SEALED
-→ resume UI-A3-2 Target-Specific Current-State Preview
+→ UI-A3-2 only under a new explicit scope
 ```

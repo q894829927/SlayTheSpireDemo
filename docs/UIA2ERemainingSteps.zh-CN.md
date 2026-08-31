@@ -26,19 +26,20 @@ ResolutionFault         VALIDATED
 PresentationUnavailable 与 ResolutionFault 分离 VALIDATED
 ```
 
-尚未正式封闭：
+正式封闭状态：
 
 ```text
-final-head A2D5 exactly 6
-Phase6R 100/100
-Shipping exclusion
-UI-A2 COMPLETE / SEALED 文档收口
+final-head A2D5 exactly 6 PASS
+Phase6R 100/100 PASS
+Shipping exclusion PASS
+UI-A2E COMPLETE / VALIDATED / SEALED
+UI-A2 COMPLETE / VALIDATED / SEALED
 ```
 
 当前正在实现的子阶段：
 
 ```text
-Batch 4 implementation/PIE 已通过 -> final-head seal gates
+无。UI-A2E / UI-A2 已 SEALED；本任务禁止进入 A3。
 ```
 
 当前已经完成的前置结构：
@@ -1276,16 +1277,20 @@ Target submit
 [x] Scenario C EndTurn macro PIE PASS
 [x] Scenario D Victory/Defeat PIE PASS
 [x] Scenario E ResolutionFault/PresentationUnavailable PIE PASS
+
+[x] final-head A2D5 exactly 6/6 PASS
+[x] formal Phase6R aggregate 100/100 PASS
+[x] clean-worktree Shipping exclusion PASS
 ```
 
-全部通过后：
+全部已通过，当前封闭状态：
 
 ```text
 UI-A2E Unified Blueprint Playback = COMPLETE / SEALED
 UI-A2 = COMPLETE / SEALED
 ```
 
-然后才允许继续：
+后续若用户另行明确授权，才允许继续：
 
 ```text
 A3-1 Dynamic Text SEALED
@@ -1301,9 +1306,9 @@ A3-5 Minimal UMG + A2/A3 Combined PIE
 
 ---
 
-# 12. 后续执行顺序速查
+# 12. 已完成执行顺序速查
 
-后续每次只推进一个可验收切片：
+以下切片已按顺序全部完成：
 
 ```text
 ① PlayStatusChangedPresentation 支持 ExistingStatusWidget

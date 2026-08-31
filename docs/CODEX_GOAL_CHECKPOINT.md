@@ -1,29 +1,30 @@
 # Codex Goal Checkpoint — Phase 6UI-A2E
 
-Last updated: **2026-08-31 10:03 (Asia/Shanghai)**
+Last updated: **2026-08-31 10:38 (Asia/Shanghai)**
 
 ## Goal
 
 Continue from the real repository baseline until UI-A2E is `COMPLETE / VALIDATED / SEALED`, then seal UI-A2 only after every required predecessor and final-head gate has current evidence. Do not enter UI-A3 or Phase 7. Do not push.
 
-Goal execution status: **IN PROGRESS — UI-A2E BLUEPRINT IMPLEMENTATION AND SCENARIO A-E PIE VALIDATED; FINAL-HEAD SEAL GATES PENDING**.
+Goal execution status: **COMPLETE — UI-A2E COMPLETE / VALIDATED / SEALED; UI-A2 COMPLETE / VALIDATED / SEALED**.
 
 ## Current Repository State
 
 ```text
 Branch: main
-Current HEAD: 8af9487782b906fa500c782293d627b8e8d185be
-HEAD subject: chore(ui-a2e): sync saved blueprint assets and docs
+Current implementation HEAD: 81cbfb6af09a52f96ececff597491c5bfcc3665f
+HEAD subject: feat(ui-a2e): complete unified blueprint playback
 WBP_BattleHUD disk SHA-256: 990125C951D52D5F23194D9EB7C079C2F3C514C78A285DF0DDE273B6B1C0F94A
 Unreal PIE: stopped after Batch 4 Scenario A-E and active-window Skip/Cancel acceptance
 Temporary Editor bridges/harnesses: removed; standard Editor build succeeded; no Source diff remains
 ```
 
-The Blueprint is intentionally modified on disk and is the current authoritative final UI-A2E implementation candidate. MCP read-only inspection must not be saved.
+The committed Blueprint at this HEAD is the authoritative sealed UI-A2E implementation.
 
 ## Last Completed Acceptance Boundary
 
-Batch 4 — Global Cancel / Reconcile plus Scenario A-E and active-window Skip/Input Unlock — is **VALIDATED** on the saved HUD hash `990125C9...`.
+Final seal — implementation commit `81cbfb6`, HUD hash `990125C9...`, final-head
+A2D5 6/6, Phase6R 100/100, and clean-worktree Shipping exclusion — is **PASS**.
 
 ## Current Validation Matrix
 
@@ -40,9 +41,9 @@ Batch 4 — Global Cancel / Reconcile plus Scenario A-E and active-window Skip/I
 | PresentationUnavailable separation | VALIDATED |
 | Global Cancel / Reconcile | VALIDATED |
 | Scenario A-E final PIE | VALIDATED |
-| A2D5 final-head exactly 6 tests | PENDING on final implementation head |
-| Phase6R final-head 100/100 | PENDING |
-| Shipping exclusion final-head | PENDING |
+| A2D5 final-head exactly 6 tests | PASS 6/6 |
+| Phase6R final-head 100/100 | PASS 100/100 |
+| Shipping exclusion final-head | PASS on clean detached worktree |
 
 ## Batch 2 Acceptance Evidence
 
@@ -92,34 +93,33 @@ This was not the final-head A2D5, Phase6R, or Shipping-exclusion gate.
 - A temporary Editor-only PIE Automation harness used the formal `ViewModel->RequestEndTurn()` request, waited for a real active token, then called the public `WidgetInstance->SkipPresentation()` path. It verified `Resolving`/input locked before Skip, no waiting/backlog afterward, historical reconcile, cleared Blueprint transient/type/token fields, stale-token rejection beyond the timer window, a later real request completing normally, and final Idle/input unlocked.
 - The harness constructed no Record or Payload, was deleted afterward, and a standard Editor build succeeded with no Source diff. HUD hash remained `990125C9...`.
 
-This closes the Blueprint/PIE implementation boundary only. Final-head A2D5, Phase6R, and Shipping exclusion remain mandatory before either seal.
+This closes the Blueprint/PIE implementation boundary.
+
+## Final Seal Evidence
+
+- Final implementation commit: `81cbfb6af09a52f96ececff597491c5bfcc3665f`.
+- Final-head `SlayTheSpireDemo.Phase6UIA2D5`: exactly 6 discovered, 6 completed successfully, 0 failed, 0 notRun. Report: `Saved/AutomationReports/FinalA2D5/index.json`.
+- Formal Phase6R prefixes ran in repository order with exact counts `13+23+12+5+8+8+8+3+4+4+6+6 = 100`; all 100 completed successfully, 0 failed, 0 notRun. Reports: `Saved/AutomationReports/FinalSeal_Phase5` through `FinalSeal_Phase6UIA2D5`.
+- A clean detached worktree at the same commit built `SlayTheSpireDemo Win64 Shipping` successfully. Its `Binaries`/`Intermediate` contained zero `SlayTheSpireDemoTests` or `Phase6ATest` artifacts, and Runtime source contained zero `UPhase6ATest` hits. The temporary worktree was removed.
+- Main HUD hash remained `990125C9...`; no production or test source changed during final validation.
+
+All UI-A2E completion criteria and UI-A2 predecessors now have current evidence. UI-A2E and UI-A2 are sealed.
 
 ## Next Exact Action
 
-Create the final saved Blueprint snapshot and local implementation commit, then run the final-head gates in this exact order:
+Goal complete. Do not continue into A3 in this task.
 
 ```text
-final saved Blueprint snapshot
--> local final implementation commit
--> SlayTheSpireDemo.Phase6UIA2D5 (must discover exactly 6 tests)
--> Phase6R aggregate (must pass 100/100)
--> Shipping exclusion
--> consolidate final evidence and seal UI-A2E, then UI-A2
+UI-A2E COMPLETE / VALIDATED / SEALED
+UI-A2  COMPLETE / VALIDATED / SEALED
 ```
 
-Do not modify the final HUD unless a final-head gate proves a concrete defect. Do not enter A3 and do not push.
+Do not modify the sealed HUD without a new explicit scope. Do not enter A3 and do not push.
 
 ## Remaining Ordered Slices
 
 ```text
-final saved Blueprint snapshot
-local final implementation commit
-final-head A2D5 exactly 6
-Phase6R 100/100
-Shipping exclusion
-documentation closure
-UI-A2E seal
-UI-A2 seal
+None for UI-A2E/UI-A2. A3 remains outside this goal.
 ```
 
 ## Do Not Repeat
@@ -127,6 +127,5 @@ UI-A2 seal
 - Do not rerun accepted Status or Batch 2 scenarios unless a later change causes a concrete regression.
 - Do not rewrite the saved Status/Energy/CardZone/Shuffle paths.
 - Do not restore any temporary Editor bridge or Automation harness to the final source tree.
-- Do not run A2D5 after each node group; reserve the exactly-six final-head run for final sealing.
-- Do not treat historical Automation as final-head evidence.
+- Do not rerun the accepted final-head gates without a concrete regression or new implementation head.
 - Do not enter UI-A3 or Phase 7 and do not push.
