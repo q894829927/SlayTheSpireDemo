@@ -36,6 +36,7 @@ public:
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_StatusIcon;
@@ -44,6 +45,7 @@ protected:
 	TObjectPtr<UTextBlock> Txt_StatusAmount;
 
 private:
+	void RefreshFromStatusView();
 	void SetAtlasVector2D(FName ParameterName, const FVector2D& Value);
 
 	// Native-only names intentionally avoid the duplicated Legacy Blueprint's
