@@ -697,10 +697,15 @@ bool UBattleHUDWidget::StartNativePresentationFinishTimer(float DurationSeconds)
 	// can therefore never infer or finish whichever Token happens to be active
 	// when the timer eventually fires.
 	const FPresentationPlaybackToken ExpectedToken = ActiveNativePresentationToken;
-	FTimerDelegate FinishDelegate = FTimerDelegate::CreateUObject(
-		this,
-		&UBattleHUDWidget::FinishNativePresentation,
-		ExpectedToken);
+	TWeakObjectPtr<UBattleHUDWidget> WeakThis(this);
+	FTimerDelegate FinishDelegate = FTimerDelegate::CreateLambda(
+		[WeakThis, ExpectedToken]()
+		{
+			if (UBattleHUDWidget* Widget = WeakThis.Get())
+			{
+				Widget->FinishNativePresentation(ExpectedToken);
+			}
+		});
 	World->GetTimerManager().SetTimer(
 		NativePresentationFinishTimer,
 		FinishDelegate,
