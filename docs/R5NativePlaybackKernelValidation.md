@@ -1,6 +1,6 @@
 # Phase 6UI-A2N — R5 Native Playback Kernel
 
-Status: **SOURCE IMPLEMENTED / UE VALIDATION PENDING**
+Status: **SOURCE IMPLEMENTED / FOCUSED AUTOMATION PASS / REMAINING UE GATES PENDING**
 
 Branch: `a2n/r5-native-playback-kernel`
 Base: `main@1978e1d3abe831dedef95b8bd431a7717def573b`
@@ -153,7 +153,7 @@ Legacy WBP edits
 UI-A3
 ```
 
-## Validation attempt — build fix pending rerun
+## Validation attempt — build fix
 
 The first local UE5.8 Editor Build attempt failed in `BattleHUDWidget.cpp` at the Native finish-timer delegate binding. UE's `FTimerDelegate::CreateUObject` decays bound payload arguments by value, while the callback was declared as `FinishNativePresentation(const FPresentationPlaybackToken&)`; the generated delegate signature therefore could not match the member-function pointer.
 
@@ -179,13 +179,13 @@ Fix commit:
 fix(ui-a2n): bind native finish timer with value-captured token
 ```
 
-Gate A remains **PENDING** until the corrected branch is rebuilt locally. Per the validation policy, only the invalidated Build Gate should be rerun now; do not rerun unrelated passing historical gates.
+The focused R5 Automation was subsequently reported PASS by the user. This records only that actual evidence; the corrected Editor Build result and targeted `WBP_BattleHUD_Native` compile are not separately inferred here.
 
-## AUTOMATED GATES — USER ACTION REQUIRED
-
-These have **not** been completed by this GitHub-only implementation session. Do not mark them PASS until executed locally in UE5.8.
+## AUTOMATED GATES
 
 ### Gate A — Editor Build
+
+Status: **NOT SEPARATELY CONFIRMED IN THE CURRENT EVIDENCE**
 
 ```powershell
 & "E:\Unreal engine\UE_5.8\Engine\Build\BatchFiles\Build.bat" `
@@ -198,7 +198,9 @@ Expected: `Result: Succeeded`.
 
 ### Gate B — targeted Native Blueprint compile
 
-Because R5 changes the inherited Native HUD C++ contract, compile only:
+Status: **NOT YET CONFIRMED**
+
+Compile only:
 
 ```text
 WBP_BattleHUD_Native
@@ -216,6 +218,10 @@ Do not run `CompileAllBlueprints` for this ordinary R5 gate.
 
 ### Gate C — focused R5 Automation
 
+Status: **PASS — user-confirmed**
+
+Command:
+
 ```powershell
 & "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" `
   "E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" `
@@ -225,20 +231,17 @@ Do not run `CompileAllBlueprints` for this ordinary R5 gate.
   -log
 ```
 
-Expected:
+Accepted evidence:
 
 ```text
-4 tests discovered
-4 PASS
-0 failed
-0 notRun
+SlayTheSpireDemo.Phase6UIA2N.R5: PASS
 ```
 
-Passing Gates are sticky. If one Gate fails, fix and rerun only the Gate(s) invalidated by that fix according to `docs/ValidationExecutionPolicy.md`.
+No R3/R4 or aggregate regression rerun is required. Passing Gates are sticky.
 
 ## MANUAL PIE GATE — PENDING
 
-After A/B/C pass, run one minimal smoke only:
+After the remaining required UE gates are confirmed, run one minimal smoke only:
 
 ```text
 Map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -263,9 +266,11 @@ Current:
 
 ```text
 R5 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PENDING
+R5 FOCUSED AUTOMATION PASS
+EDITOR BUILD RESULT NOT SEPARATELY CONFIRMED
+WBP_BattleHUD_Native COMPILE PENDING
 MANUAL PIE PENDING
 R6 NOT STARTED
 ```
 
-Only after the required local gates actually pass may the repository checkpoint and trusted validation evidence be advanced to `R5 COMPLETE / VALIDATED`.
+Only after the remaining required local gates actually pass may the repository checkpoint and trusted validation evidence be advanced to `R5 COMPLETE / VALIDATED`.
