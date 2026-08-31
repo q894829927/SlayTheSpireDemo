@@ -24,7 +24,7 @@ void UBattleStatusWidget::NativeOnInitialized()
 
 void UBattleStatusWidget::SetStatusView(const FBattleHUDStatusView& View)
 {
-	CurrentStatusView = View;
+	NativeStatusView = View;
 
 	if (!bNativeBindingsValid)
 	{
@@ -36,13 +36,13 @@ void UBattleStatusWidget::SetStatusView(const FBattleHUDStatusView& View)
 	if (!View.bUseAtlasIcon)
 	{
 		Img_StatusIcon->SetVisibility(ESlateVisibility::Collapsed);
-		MID_StatusIcon = nullptr;
+		NativeStatusIconMID = nullptr;
 		return;
 	}
 
 	Img_StatusIcon->SetVisibility(ESlateVisibility::Visible);
-	MID_StatusIcon = Img_StatusIcon->GetDynamicMaterial();
-	if (!IsValid(MID_StatusIcon))
+	NativeStatusIconMID = Img_StatusIcon->GetDynamicMaterial();
+	if (!IsValid(NativeStatusIconMID))
 	{
 		return;
 	}
@@ -55,9 +55,9 @@ void UBattleStatusWidget::SetStatusView(const FBattleHUDStatusView& View)
 
 void UBattleStatusWidget::SetAtlasVector2D(FName ParameterName, const FVector2D& Value)
 {
-	if (IsValid(MID_StatusIcon))
+	if (IsValid(NativeStatusIconMID))
 	{
-		MID_StatusIcon->SetVectorParameterValue(
+		NativeStatusIconMID->SetVectorParameterValue(
 			ParameterName,
 			FLinearColor(Value.X, Value.Y, 0.0f, 0.0f));
 	}
