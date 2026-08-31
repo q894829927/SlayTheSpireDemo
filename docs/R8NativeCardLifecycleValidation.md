@@ -4,9 +4,7 @@ Status:
 
 ```text
 R7 COMPLETE / VALIDATED
-R8 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R8 COMPLETE / VALIDATED
 R9 NOT STARTED
 ```
 
@@ -174,39 +172,38 @@ rerun.
 No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
 run.
 
-## Manual PIE Gate — USER ACTION REQUIRED
+## Manual PIE Gate — PASS
 
 The first user pass on **2026-09-01** found that only DrawPile-to-Hand animated;
 CardPlayed, Hand discard, PlayedCard discard and Exhaust were still immediate state
 changes. Those missing visual transitions are now implemented and the affected
 automated Gates pass. Manual visual revalidation is therefore required.
 
-Run one minimal PIE pass in:
+The user completed the corrected minimal PIE pass on **2026-09-01** in:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 ```
 
-1. Play one card and observe `Hand -> PlayArea -> DiscardPile`; confirm no duplicate
-   card or flashback.
-2. If an Exhaust card is conveniently available, observe one
-   `PlayArea -> ExhaustPile` transition.
-3. End Turn / draw enough cards to observe consecutive draws. Confirm every card
-   visibly travels from the DrawPile start to its Hand slot strictly one at a time,
-   and no later card appears before the preceding card finishes.
-4. Confirm draw transients cannot be clicked, the final formal Hand is correct, and
-   there is no permanent Input Lock, transient leak, duplicate card, or abnormal HUD.
+Accepted observations:
+
+1. Played cards visibly transition from Hand into PlayArea and then toward
+   DiscardPile, without duplicate cards or flashback.
+2. Exhaust cards disappear correctly at PlayArea.
+3. End-turn/manual discard cards visibly transition toward DiscardPile.
+4. DrawPile-to-Hand remains strictly one Record/card at a time, with no later card
+   appearing before the preceding card finishes.
+5. Final Hand/HUD state remains correct with no permanent Input Lock, transient
+   leak, duplicate card, or abnormal HUD.
 
 Do not replace this visual acceptance with screenshots or additional Automation.
 
 ## Current acceptance state
 
 ```text
-R8 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R8 COMPLETE / VALIDATED
 R9 NOT STARTED
 ```
 
-R8 is not `COMPLETE / VALIDATED` until the user explicitly confirms this Manual PIE
-Gate. Do not start R9 automatically.
+The corrected automated Gates and the user-confirmed visual Gate close R8. Do not
+start R9 automatically.

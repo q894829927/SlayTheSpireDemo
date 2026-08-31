@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R7 COMPLETE / VALIDATED; R8 AUTOMATED PASS / MANUAL PIE PENDING; R9 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R8 COMPLETE / VALIDATED; R9 NOT STARTED**.
 
 ## Current Repository State
 
@@ -48,9 +48,11 @@ R7 focused Automation: 5/5 PASS
 R7 Manual PIE: PASS (user confirmed 2026-08-31)
 R8 working branch: a2n/r8-native-card-lifecycle
 R8 starting main HEAD: 22f0955787551b0c5a3201f9ca45cf35e5167cbf
+R8 source implementation commit: c1d621b01e5d5cfc8b680181e9f191edb300373c
+R8 lifecycle-animation correction commit: c929e6b3961b36b004bfcd224fe4a02421577e80
 R8 Editor build: PASS
 R8 focused Automation: 5/5 PASS
-R8 Manual PIE: PENDING
+R8 Manual PIE: PASS (user confirmed 2026-09-01)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -58,7 +60,7 @@ Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.
 R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
 R7: COMPLETE / VALIDATED
-R8: SOURCE IMPLEMENTED / AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R8: COMPLETE / VALIDATED
 R9 and later: NOT STARTED
 ```
 
@@ -758,29 +760,26 @@ Saved/AutomationReports/R8FocusedPhase6UIA2NManualFix/index.json
 No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
 run.
 
-## R8 Manual PIE Validation — PENDING
+## R8 Manual PIE Validation — PASS
 
 The first user pass on **2026-09-01** exposed missing non-Draw movement and did not
-close the Gate. After the corrective implementation and affected-Gate rerun, user
-action is required again in
-`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`: verify Hand-to-PlayArea-to-
-Discard, optional Exhaust, strict one-card-at-a-time DrawPile-to-Hand movement with
-no future-card early reveal, noninteractive transients, correct final formal Hand,
-and no flashback, duplicate, transient leak, abnormal HUD, or permanent Input Lock.
+close the Gate. After the corrective implementation and affected-Gate rerun, the
+user completed the corrected pass in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native`. Hand-to-PlayArea-to-Discard,
+Exhaust disappearance, end-turn/manual Hand discard and strict one-card-at-a-time
+DrawPile-to-Hand presentation were accepted, with correct final Hand/HUD state and
+no flashback, duplicate, transient leak, abnormal HUD, or permanent Input Lock.
 
 ```text
-R8 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PASS
-MANUAL PIE PENDING
+R8 COMPLETE / VALIDATED
 R9 NOT STARTED
 ```
 
 ## Next Exact Action — STOP
 
-Wait for the user's explicit R8 Manual PIE result. Only after a PASS confirmation
-may R8 be marked `COMPLETE / VALIDATED`. Do not start R9 automatically.
+Wait for explicit user authorization before starting R9. Do not enter R9 or any
+later phase automatically.
 
 ## Blockers
 
-No automated R8 blocker remains. The required Manual PIE Gate is pending user
-confirmation. R9 and all later phases remain NOT STARTED.
+No R8 blocker remains. R9 and all later phases remain NOT STARTED.
