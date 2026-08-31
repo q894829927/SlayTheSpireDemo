@@ -4,7 +4,7 @@ Status:
 
 ```text
 R7 COMPLETE / VALIDATED
-R8 COMPLETE / VALIDATED
+R8 P1 FIX IMPLEMENTED / AUTOMATED REVALIDATION PENDING
 R9 NOT STARTED
 ```
 
@@ -110,7 +110,7 @@ NativeDestruct -> timer/transient/local-reference cleanup only
 exact CardPlayed Finish until the matching PlayArea destination Record. It is never
 Gameplay authority and is removed on destination Finish/Cancel or NativeDestruct.
 
-## Automated Gates — PASS
+## Previously accepted Automated Gates
 
 ### Editor Build
 
@@ -135,7 +135,7 @@ Prefix:
 SlayTheSpireDemo.Phase6UIA2N.R8
 ```
 
-Result:
+Previously accepted result before the post-review P1 fix:
 
 ```text
 CardPlayed.ExactIdentityFinishAndCancel:        PASS
@@ -172,12 +172,12 @@ rerun.
 No R3-R7, A2D5, Phase6R, Shipping, aggregate regression, reviewer, or R9+ suite was
 run.
 
-## Manual PIE Gate — PASS
+## Manual PIE Gate — PASS / STICKY
 
 The first user pass on **2026-09-01** found that only DrawPile-to-Hand animated;
 CardPlayed, Hand discard, PlayedCard discard and Exhaust were still immediate state
-changes. Those missing visual transitions are now implemented and the affected
-automated Gates pass. Manual visual revalidation is therefore required.
+changes. Those missing visual transitions were then implemented and the affected
+automated Gates passed.
 
 The user completed the corrected minimal PIE pass on **2026-09-01** in:
 
@@ -196,14 +196,73 @@ Accepted observations:
 5. Final Hand/HUD state remains correct with no permanent Input Lock, transient
    leak, duplicate card, or abnormal HUD.
 
-Do not replace this visual acceptance with screenshots or additional Automation.
+This manual Gate remains valid after the P1 cleanup fix below because the fix changes
+only abandoned/Skip cleanup and does not change the already accepted normal visual
+paths. Do not rerun PIE unless a later edit changes those visuals.
+
+## Post-review P1 fix — automated revalidation pending
+
+A narrow review found one cross-Record cleanup gap: after an exact `CardPlayed`
+Finish, `NativePlayedCardWidget` intentionally survives for a later
+PlayArea-to-destination Record. If a later native Record (for example Damage or
+DrawPile-to-Hand) was then abandoned through `SkipPresentation` / fail-safe exact
+Cancel, the current Record cleanup did not necessarily retire that earlier retained
+PlayedCard. Controller collapse could therefore leave a stale card in `OV_PlayArea`.
+
+The fix is intentionally centralized at the exact native Cancel boundary:
+
+```text
+exact current Token required
+-> clear current timer
+-> run current Record type-specific Cancel
+-> remove/reset any retained NativePlayedCardWidget
+-> clear local ownership
+-> never Notify normal completion
+```
+
+Wrong/stale Token cancellation still returns before this cleanup and therefore cannot
+remove a valid current PlayedCard.
+
+Fix commits:
+
+```text
+ec361b0ea67a96b423e0c710399e18080779e1e7
+  fix(ui-a2n): clear retained played card on cancel
+
+d1a48d486ea80cf759e6556396df4124805cd06f
+  test(ui-a2n): cover R8 skip transient cleanup
+```
+
+A new focused case was added:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R8.Zone.SkipClearsRetainedPlayedCard
+```
+
+It establishes `CardPlayed Finish -> retained PlayedCard -> Draw Begin ->
+SkipPresentation` and requires both the active Draw transient and the prior retained
+PlayedCard to be removed, with local ownership/timer cleared and no stale PlayArea
+child.
+
+Because this is a runtime source edit plus a new Editor-only Automation source file,
+only these Gates are invalidated and must be rerun:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build
+2. SlayTheSpireDemo.Phase6UIA2N.R8 focused Automation
+   expected discovery after the added test: 6 tests
+```
+
+Do not rerun R3-R7, A2D5, Phase6R, Shipping or the already accepted manual PIE.
 
 ## Current acceptance state
 
 ```text
-R8 COMPLETE / VALIDATED
+R8 P1 FIX IMPLEMENTED
+AUTOMATED REVALIDATION PENDING
+MANUAL PIE PASS / STICKY
 R9 NOT STARTED
 ```
 
-The corrected automated Gates and the user-confirmed visual Gate close R8. Do not
-start R9 automatically.
+Do not merge R8 to `main` or start R9 until the corrected Editor Build and the R8
+focused suite pass on this branch head.
