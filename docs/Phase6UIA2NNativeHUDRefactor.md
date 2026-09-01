@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **IN PROGRESS — R0 / R1 / R2 / R3-A COMPLETE AND VALIDATED; R4 NOT STARTED**
+Status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13 NOT STARTED**
 
 ## 1. Purpose
 
@@ -36,9 +36,10 @@ Controller = committed-history playback authority
 Gameplay   = authoritative truth
 ```
 
-Starting A2N does not reopen the sealed Legacy UI-A2E implementation. Until the
-production cutover passes on its own final head, the Legacy stack remains the formal
-production fallback and the Native stack remains an experimental parallel path.
+Starting A2N did not reopen the sealed Legacy UI-A2E implementation. R12 has now
+passed its isolated production cutover and cutover-head acceptance Gates, so the
+Native stack is the production default. Legacy assets remain retained for the R13
+stabilization boundary; no Legacy cleanup or deletion has started.
 
 UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
 behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly

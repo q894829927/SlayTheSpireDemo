@@ -129,13 +129,14 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
-- A2N Native HUD ownership migration — **IN PROGRESS — R0 / R1 / R2 / R3-A COMPLETE AND
-  VALIDATED; R4 NOT STARTED**. The locked baseline, complete Designer binding
-  inventory, Legacy PIE smoke, Native HUD/Card/Status shells, and the validated
-  non-production `L_BattleTest_Native` injection path are recorded in
-  `docs/UIA2NNativeHUDBaseline.md` and `docs/CODEX_GOAL_CHECKPOINT.md`. This is a
-  maintenance refactor of sealed UI behavior, not UI-A3 work; Legacy remains the
-  production path until an independently validated cutover.
+- A2N Native HUD ownership migration — **IN PROGRESS — R0-R12 COMPLETE / VALIDATED;
+  R13 NOT STARTED**. R12 cut production `L_BattleTest` over to
+  `WBP_BattleHUD_Native` in isolated commit `de788c5`, then passed cutover-head WBP,
+  A2D5 6/6, Phase6R 100/100, clean Shipping and production-map manual PIE Gates.
+  Native HUD is now the production default; Legacy HUD/Card/Status assets remain
+  retained. Detailed evidence is recorded in
+  `docs/R12NativeProductionCutoverValidation.md`. This remains a maintenance
+  refactor of sealed UI behavior, not UI-A3 work.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 

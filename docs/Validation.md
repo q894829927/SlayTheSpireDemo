@@ -49,6 +49,7 @@ Phase 6UI-A2N R8 focused 6/6 PASS
 Phase 6UI-A2N R9 focused 5/5 PASS
 Phase 6UI-A2N R10 focused 5/5 PASS
 Phase 6UI-A2N R11 candidate: A2D5 6/6, Native 35/35, WBP 3/3 PASS
+Phase 6UI-A2N R12 cutover: A2D5 6/6, Phase6R 100/100, WBP 3/3, Shipping and PIE PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -488,7 +489,44 @@ After closure, the temporary R11 PIE command source and its sole Editor-test
 it passed. No Runtime source, existing Automation fixture, Blueprint asset, map or
 production configuration changed, so the other passing Gates remain sticky.
 
-R11 is **COMPLETE / VALIDATED**. R12 remains **NOT STARTED**.
+R11 is **COMPLETE / VALIDATED**.
+
+### Phase 6UI-A2N R12 production cutover — 2026-09-01
+
+R12-A changed only the unique production-map Presenter `WidgetClass` from
+`WBP_BattleHUD_C` to `WBP_BattleHUD_Native_C`. The isolated cutover commit is
+`de788c5b68e06827f8fdba3b83858f86a385bdeb`; no Runtime/C++, Native implementation,
+Legacy asset or unrelated production asset was included.
+
+AUTOMATED GATES:
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+Native WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE, 0 errors
+SlayTheSpireDemo.Phase6UIA2D5: exactly 6/6 PASS, 0 failed, 0 notRun
+Formal current-head Phase6R workflow: exactly 100/100 PASS, 0 failed, 0 notRun
+Clean-worktree Win64 Shipping: PASS
+Forbidden Shipping test artifacts: 0
+Runtime testing/harness hits: 0
+```
+
+MANUAL PIE GATES:
+
+The user completed the formal production-map `L_BattleTest` acceptance on
+2026-09-01 and confirmed Scenario A-E, Victory, Defeat, active Skip, active timeout
+Cancel, stale callback rejection and Input Unlock all PASS. The temporal checks
+used real Widget EndTurn requests, real Controller waiting Tokens, the formal
+timeout path and a deliberately late Token A callback; both commands reported PASS
+and the user confirmed no flashback, duplicate, transient return, terminal rollback,
+premature unlock or permanent Input Lock.
+
+The temporary Editor-test-only R12 PIE command source was never committed and was
+deleted after manual acceptance. The affected Editor build and clean-worktree
+Shipping exclusion Gate were rerun on the no-harness tree and passed. Complete R12
+evidence is recorded in `docs/R12NativeProductionCutoverValidation.md`.
+
+R12-A is **COMPLETE** and R12-B is **COMPLETE / VALIDATED**. Native HUD is the
+production default, Legacy assets remain retained, and R13 is **NOT STARTED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -528,8 +566,10 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R11 COMPLETE / VALIDATED
-R12 NOT STARTED
+R0-R12 COMPLETE / VALIDATED
+Native HUD = production default
+Legacy assets retained
+R13 NOT STARTED
 ```
 
 Validated A2E scenarios include:

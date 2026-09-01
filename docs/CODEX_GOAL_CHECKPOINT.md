@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R11 COMPLETE / VALIDATED; R12 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13 NOT STARTED**.
 
 ## Current Repository State
 
@@ -72,8 +72,17 @@ R11 A2D5 aggregate: 6/6 PASS (user confirmed 2026-09-01)
 R11 Native aggregate: 35/35 PASS (user confirmed 2026-09-01)
 R11 Native WBP compile/save: 3/3 PASS (user confirmed 2026-09-01)
 R11 temporary harness cleanup Editor build: PASS (Codex, 2026-09-01)
+R12-A cutover commit: de788c5b68e06827f8fdba3b83858f86a385bdeb
+R12-A production map-only cutover: PASS
+R12-B Editor build: PASS
+R12-B Native WBP compile/save/reopen: 3/3 PASS
+R12-B Phase6UIA2D5: exactly 6/6 PASS
+R12-B formal Phase6R: exactly 100/100 PASS
+R12-B production-map manual PIE: PASS (user confirmed 2026-09-01)
+R12-B post-harness-cleanup Editor build: PASS
+R12-B post-harness-cleanup clean Shipping exclusion: PASS
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
-Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
+Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 Native test WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 R5: COMPLETE / VALIDATED
@@ -83,7 +92,9 @@ R8: COMPLETE / VALIDATED
 R9: COMPLETE / VALIDATED
 R10: COMPLETE / VALIDATED
 R11: COMPLETE / VALIDATED
-R12: NOT STARTED
+R12-A: COMPLETE
+R12-B: COMPLETE / VALIDATED
+R13: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -938,13 +949,33 @@ compile/save Gates PASS.
 
 The temporary R11 PIE command source and its sole test-module `UnrealEd` dependency
 were removed at closure. The affected Editor build was rerun and passed. R11 is
-COMPLETE / VALIDATED; production remains Legacy.
+COMPLETE / VALIDATED.
+
+## R12 Completion
+
+R12-A changed only the unique `L_BattleTest` Presenter `WidgetClass` from Legacy to
+`WBP_BattleHUD_Native_C`. The isolated production cutover commit is
+`de788c5b68e06827f8fdba3b83858f86a385bdeb`.
+
+R12-B ran fresh cutover configuration evidence: Editor build PASS; all three Native
+WBP compile/save/reopen PASS; A2D5 exactly 6/6 PASS; the formal twelve-prefix
+Phase6R workflow exactly 100/100 PASS; and clean-worktree Shipping exclusion PASS.
+The user completed all production-map Scenario A-E, Victory/Defeat, active Skip,
+active Cancel, stale callback and Input Unlock manual Gates on 2026-09-01.
+
+The temporary Editor-only R12 PIE harness was never committed. It was deleted after
+manual acceptance, after which the affected Editor build and clean-worktree Shipping
+Gate passed again on no-harness HEAD
+`2fc9f7703bb8bb45e2f75b8f740e646137af0d57`. Native HUD is now the production
+default; Legacy HUD/Card/Status assets remain retained.
+
+Detailed evidence: `docs/R12NativeProductionCutoverValidation.md`.
 
 ## Next Exact Action — STOP
 
-Wait for explicit authorization before starting R12. Do not cut production over
-automatically.
+Wait for explicit authorization before starting R13. Do not delete Legacy assets,
+start R14 cleanup, or resume UI-A3 automatically.
 
 ## Blockers
 
-No R11 blocker remains. R12 remains NOT STARTED.
+No R12 blocker remains. R13 remains NOT STARTED.
