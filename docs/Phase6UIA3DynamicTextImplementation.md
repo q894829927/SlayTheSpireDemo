@@ -11,7 +11,7 @@ PIE REVALIDATION PASS
 PACKAGE REVALIDATION PASS
 ```
 
-This slice is the completed first part of UI-A3. It remains intentionally separate from the unfinished target-specific/current-state Preview work.
+This slice is the completed first part of UI-A3. It remains intentionally separate from the target-specific/current-state Preview work.
 
 ## Boundary
 
@@ -99,17 +99,23 @@ Phase6UIA3 = 8/8 PASS
 
 The historical combined UI owner run that included this slice passed 92/92. Exact totals are evidence for that run, not permanent architecture constants.
 
-## Next A3 work — only after UI-A2E
+## Current A3 continuation authority
 
-The mainline does **not** proceed directly from A2D5 to A3-2. First complete `UI-A2E — Unified Blueprint Playback & PIE Acceptance` and seal the post-commit A2 presentation surface.
+UI-A2E is now complete and sealed, and UI-A3 has been explicitly resumed.
 
-Then continue:
+Continue under:
+
+```text
+docs/Phase6UIA3Implementation.md
+```
+
+Current order:
 
 ```text
 A3-2 Target-Specific Current-State Preview
 A3-3 Energy + Target-Aware Legality
 A3-4 ViewModel Transient Preview Lifecycle
-A3-5 Minimal UMG + A2/A3 Combined PIE
+A3-5 Minimal Native UMG + A2/A3 Combined PIE
 ```
 
-The locked detailed route is `docs/Phase6UIA2EImplementation.md`.
+This document remains the sealed A3-1 source/evidence record. Do not rewrite its historical validation evidence as later A3 work proceeds.
