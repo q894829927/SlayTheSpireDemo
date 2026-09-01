@@ -2,7 +2,23 @@
 
 Applies to `Source/SlayTheSpireDemo/UI/**`.
 
-Read `docs/Phase6UIA2EImplementation.md` and `docs/UIA2ERemainingSteps.zh-CN.md` before current UI-A2E work.
+Read `docs/Phase6UIA2EImplementation.md`, `docs/UIA2ERemainingSteps.zh-CN.md`, and `docs/LegacyUIPreservationPolicy.md` before battle-UI work.
+
+## Legacy UI Preservation
+
+The retained Legacy battle UI assets are deprecated reference/recovery artifacts only:
+
+```text
+WBP_BattleHUD
+WBP_BattleCard
+WBP_BattleStatus
+```
+
+Normal forward development must use only the Native battle UI stack. Do not add new runtime references to the Legacy assets, restore a Legacy Presenter/default, dual-write behavior into Legacy, use Legacy as a new test execution target, or copy new Native behavior back into Legacy for parity.
+
+Production runtime Legacy HUD/Card/Status dependency count must remain `0`. Opening the Legacy assets for inspection or referring to them in historical documentation is allowed and is not runtime fallback.
+
+R14-B destructive removal is not required under the current project decision and remains not authorized. Do not delete, rename, move, or fix redirectors for the retained Legacy assets without a new explicit user authorization. An emergency Legacy recovery is also a new explicit user decision; asset existence alone is never authorization to restore the Legacy path.
 
 ## Authority Boundary
 
