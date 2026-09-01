@@ -240,7 +240,7 @@ bool FNativeR10ResolutionFaultTest::RunTest(const FString& Parameters)
 	}
 
 	FPresentationRecord Invalid = MakeTerminalRecord(3, EBattlePresentationRecordType::ResolutionFault);
-	Invalid.ResolutionFault.Reason = FText::GetEmpty();
+	Invalid.ResolutionFault.Reason.Reset();
 	TestFalse(TEXT("Empty ResolutionFault reason is rejected"),
 		Fixture.Probe->InvokeBeginDirectForTesting(Invalid, MakeToken(3)));
 	TestFalse(TEXT("Invalid fault owns no timer"), Fixture.Probe->IsLocalFinishTimerSet());
