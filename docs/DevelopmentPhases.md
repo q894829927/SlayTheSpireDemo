@@ -129,22 +129,23 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
-- A2N Native HUD ownership migration — **R0-R13 COMPLETE / VALIDATED; R14-A NOT
-  STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**. R12 cut production `L_BattleTest` over to
-  `WBP_BattleHUD_Native` in isolated commit `de788c5`, then passed cutover-head WBP,
-  A2D5 6/6, Phase6R 100/100, clean Shipping and production-map manual PIE Gates.
-  Native HUD is now the production default; Legacy HUD/Card/Status assets remain
-  retained. Detailed evidence is recorded in
-  `docs/R12NativeProductionCutoverValidation.md`. This remains a maintenance
-  refactor of sealed UI behavior, not UI-A3 work. R13-M1 now contains the real
-  post-cutover Native-only dependency stabilization change `fe7fe4e`; its focused
-  test passes and the production Legacy HUD/Card/Status dependency count is zero.
-  Formal Phase6R passes exactly 100/100. Final production Scenario A-E, active Skip,
-  active timeout Cancel, stale callback and Input Unlock passed. The temporary PIE
-  harness was removed, and the final no-harness Editor build and clean Shipping
-  exclusion passed. Native remained production default throughout R13-M1, Legacy
-  runtime fallback was `NO`, and Legacy assets remain retained. See
-  `docs/R13NativeHUDStabilization.md`.
+- A2N Native HUD ownership migration — **R0-R13 COMPLETE / VALIDATED; R14-A
+  COMPLETE / VALIDATED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**. R12 cut
+  production `L_BattleTest` over to `WBP_BattleHUD_Native` in isolated commit
+  `de788c5`, then passed cutover-head WBP, A2D5 6/6, Phase6R 100/100, clean Shipping
+  and production-map manual PIE Gates. Native HUD is the production default; Legacy
+  HUD/Card/Status assets remain retained. R13-M1 completed the post-cutover Native-only
+  dependency stabilization change `fe7fe4e`, retained zero production Legacy
+  HUD/Card/Status dependencies, and passed its formal stabilization gates. R14-A then
+  removed confirmed-unreferenced Native C++ helpers and zero-reference Blueprint
+  migration residue; `WBP_BattleCard_Native`, `WBP_BattleStatus_Native`, and
+  `WBP_BattleHUD_Native` passed compile/save/reopen, focused R4/R9 and R13 asset
+  reference Automation, Editor Build, and production-map PIE smoke. Commit
+  `8a609659ba138c922fe64bbfd08bca44b05ca8d6` is the Native Blueprint residue cleanup.
+  `L_BattleTest_Native` is intentionally retained as a non-production
+  migration/regression map. R14-B remains a separately authorized destructive Legacy
+  removal boundary. See `docs/R13NativeHUDStabilization.md` and
+  `docs/R14ASafeCleanupValidation.md`.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 
