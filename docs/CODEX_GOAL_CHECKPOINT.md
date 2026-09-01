@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R10 COMPLETE / VALIDATED; R11 VALIDATION IN PROGRESS; R12 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R11 COMPLETE / VALIDATED; R12 NOT STARTED**.
 
 ## Current Repository State
 
@@ -68,6 +68,10 @@ R11 Scenario A-E Legacy/Native parity: PASS (user confirmed 2026-09-01)
 R11 temporal Skip deterministic PIE: PASS (Legacy + Native, 2026-09-01)
 R11 temporal Cancel/stale deterministic PIE: PASS (Legacy + Native, 2026-09-01)
 R11 temporal visual observation: PASS (Legacy + Native; user confirmed 2026-09-01)
+R11 A2D5 aggregate: 6/6 PASS (user confirmed 2026-09-01)
+R11 Native aggregate: 35/35 PASS (user confirmed 2026-09-01)
+R11 Native WBP compile/save: 3/3 PASS (user confirmed 2026-09-01)
+R11 temporary harness cleanup Editor build: PASS (Codex, 2026-09-01)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -78,7 +82,7 @@ R7: COMPLETE / VALIDATED
 R8: COMPLETE / VALIDATED
 R9: COMPLETE / VALIDATED
 R10: COMPLETE / VALIDATED
-R11: VALIDATION IN PROGRESS
+R11: COMPLETE / VALIDATED
 R12: NOT STARTED
 ```
 
@@ -918,25 +922,29 @@ Detailed R9 evidence is recorded in:
 docs/R9NativeStatusLifecycleValidation.md
 ```
 
-## R11 Current Validation State
+## R11 Completion
 
 R11 Scenario A-E manual Legacy/Native parity is PASS. The temporary Editor-only PIE
-harness now provides stable `A2N.R11.TestSkip` and
-`A2N.R11.TestCancelStale` entry points. Isolated in-process PIE runs proved real
-active playback, exact timeout Cancel, stale callback isolation, FinalSnapshot and
-queue catch-up, and post-catch-up Widget input acceptance for both formal maps.
+harness provided stable `A2N.R11.TestSkip` and `A2N.R11.TestCancelStale` entry
+points during validation. Isolated in-process PIE runs proved real active playback,
+exact timeout Cancel, stale callback isolation, FinalSnapshot and queue catch-up,
+and post-catch-up Widget input acceptance for both formal maps.
 
 The user completed both temporal commands on Legacy and Native PIE and confirmed no
 visible flashback, abandoned-visual return, duplicate Hand/Status or later-playback
-disturbance. The complete temporal parity scope is PASS. Aggregate R11 Automation
-and Native WBP compile/save gates remain pending unless separately confirmed.
+disturbance. The complete temporal parity scope is PASS. The user also confirmed
+A2D5 exactly 6/6, the Native R3-R10 aggregate exactly 35/35, and all three Native WBP
+compile/save Gates PASS.
 
-## Next Exact Action — REMAINING R11 AUTOMATED GATES / STOP
+The temporary R11 PIE command source and its sole test-module `UnrealEd` dependency
+were removed at closure. The affected Editor build was rerun and passed. R11 is
+COMPLETE / VALIDATED; production remains Legacy.
 
-Run only the still-pending R11 aggregate Automation and Native WBP compile/save gates
-when explicitly requested or confirmed. Do not enter R12 automatically.
+## Next Exact Action — STOP
+
+Wait for explicit authorization before starting R12. Do not cut production over
+automatically.
 
 ## Blockers
 
-No temporal R11 blocker remains. R11 cannot close until the other documented R11
-candidate gates are confirmed. R12 remains NOT STARTED.
+No R11 blocker remains. R12 remains NOT STARTED.

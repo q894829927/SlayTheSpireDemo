@@ -48,6 +48,7 @@ Phase 6UI-A2N R7 focused 5/5 PASS
 Phase 6UI-A2N R8 focused 6/6 PASS
 Phase 6UI-A2N R9 focused 5/5 PASS
 Phase 6UI-A2N R10 focused 5/5 PASS
+Phase 6UI-A2N R11 candidate: A2D5 6/6, Native 35/35, WBP 3/3 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -470,9 +471,24 @@ confirmed the remaining visual parity on 2026-09-01: active Skip produced no
 abandoned-visual return, duplicate visual or disturbance of later playback.
 
 Therefore the complete R11 active Skip, active Cancel, stale callback, catch-up and
-Input Unlock parity scope is PASS on both stacks. R11 remains **VALIDATION IN
-PROGRESS** only because its aggregate Automation and Native WBP compile/save gates
-are still pending unless separately confirmed. R12 remains **NOT STARTED**.
+Input Unlock parity scope is PASS on both stacks. The user also confirmed the full
+R11 candidate gates on 2026-09-01:
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+SlayTheSpireDemo.Phase6UIA2D5: exactly 6/6 PASS
+SlayTheSpireDemo.Phase6UIA2N: exactly 35/35 PASS
+WBP_BattleHUD_Native compile/save: PASS
+WBP_BattleCard_Native compile/save: PASS
+WBP_BattleStatus_Native compile/save: PASS
+```
+
+After closure, the temporary R11 PIE command source and its sole Editor-test
+`UnrealEd` dependency were removed. Codex reran the Editor build after that cleanup;
+it passed. No Runtime source, existing Automation fixture, Blueprint asset, map or
+production configuration changed, so the other passing Gates remain sticky.
+
+R11 is **COMPLETE / VALIDATED**. R12 remains **NOT STARTED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -512,8 +528,7 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R10 COMPLETE / VALIDATED
-R11 VALIDATION IN PROGRESS
+R0-R11 COMPLETE / VALIDATED
 R12 NOT STARTED
 ```
 

@@ -4,13 +4,14 @@ Status:
 
 ```text
 R0-R10 COMPLETE / VALIDATED
-R11 VALIDATION IN PROGRESS
+R11 COMPLETE / VALIDATED
 R12 NOT STARTED
 ```
 
 Branch: `main`
 R11 starting HEAD: `08d6fc003701e485ef37414d2ac79ba8a436d3cb`
 Start date: **2026-09-01**
+Validation completed: **2026-09-01**
 
 ## Purpose
 
@@ -151,9 +152,9 @@ Legacy-vs-Native observable Scenario A-E parity: PASS
 This evidence is manual PIE evidence confirmed by the user; it is not inferred from
 Automation.
 
-## Temporary R11 PIE validation harness
+## Temporary R11 PIE validation harness — REMOVED AT CLOSURE
 
-R11 keeps all temporary execution code inside the Editor-only test module:
+R11 used temporary execution code only inside the Editor-only test module:
 
 ```text
 Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR11PIECommands.cpp
@@ -191,17 +192,18 @@ distinct Token B, and deliberately calls `Widget->NotifyPresentationFinished(A)`
 It asserts that B remains the exact active owner, then waits for natural catch-up
 and proves the same FinalSnapshot, queue and post-catch-up input contract.
 
-The same harness has an optional command-line bootstrap used only for isolated,
+The same harness had an optional command-line bootstrap used only for isolated,
 unattended in-process PIE validation. `R11TemporalMap` requests the chosen Legacy or
 Native test map after the Editor module is loaded; `R11TemporalTest=Skip` or
 `CancelStale` runs the corresponding formal Widget path. The added `UnrealEd`
 dependency exists only to start that in-process PIE session from this Editor-only
 module; no Runtime module depends on it.
 
-The harness changes no Runtime module, reflected Gameplay API, Blueprint asset,
-production map, or production WidgetClass. It is temporary R11 validation
-infrastructure and must be deleted after R11 parity closes and before R12 production
-cutover validation begins.
+The harness changed no Runtime module, reflected Gameplay API, Blueprint asset,
+production map, or production WidgetClass. After all R11 candidate Gates passed, the
+temporary source file and its sole test-module `UnrealEd` dependency were removed.
+The four `A2N.R11.*` commands are therefore no longer registered on the sealed R11
+head, and no temporary R11 execution code carries into R12.
 
 ## Temporal protocol validation — PASS
 
@@ -239,28 +241,35 @@ genuinely visual checks for visible flashback, duplicate Hand/Status widgets, or
 appearance of the interrupted animation. Those observations remain a minimal user
 PIE action and are not replaced by log assertions.
 
-## AUTOMATED GATES — PENDING UNLESS SEPARATELY CONFIRMED
+## AUTOMATED GATES — PASS
 
-Run once on the R11 candidate head:
+The user confirmed the complete R11 candidate validation on 2026-09-01:
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development build: PASS
 
 2. Legacy/final-history regression:
    SlayTheSpireDemo.Phase6UIA2D5
-   expected discovery: exactly 6 top-level tests
-   required: 6/6 PASS, 0 failed, 0 notRun
+   exactly 6 top-level tests discovered
+   6/6 PASS, 0 failed, 0 notRun
 
 3. Native focused-handler regression:
    SlayTheSpireDemo.Phase6UIA2N
-   required: every discovered R3-R10 Native test PASS, 0 failed, 0 notRun
+   exactly 35 R3-R10 tests discovered
+   35/35 PASS, 0 failed, 0 notRun
 
 4. Native Designer assets compile/save:
-   WBP_BattleHUD_Native
-   WBP_BattleCard_Native
-   WBP_BattleStatus_Native
-   required: all three compile/save with no errors
+   WBP_BattleHUD_Native: PASS
+   WBP_BattleCard_Native: PASS
+   WBP_BattleStatus_Native: PASS
+   3/3 compile/save with no errors
 ```
+
+Removal of the temporary Editor-only harness invalidated only the build artifact, so
+Codex reran `SlayTheSpireDemoEditor Win64 Development` after cleanup and it passed.
+The passing aggregate Automation, Native WBP compile/save and manual PIE Gates remain
+sticky because cleanup changed no Runtime source, existing test fixture, Blueprint
+asset, map or production configuration.
 
 Do not run Phase6R, Shipping exclusion, production cutover, or R12 acceptance in R11.
 
@@ -302,17 +311,19 @@ is not inferred from the unattended runs.
 R11 may be marked `COMPLETE / VALIDATED` only when all of the following are confirmed:
 
 ```text
-Legacy regression PASS
+Legacy regression PASS                         [PASS — 6/6]
 Native Scenario A-E PASS                         [PASS]
 Legacy-vs-Native observable Scenario A-E parity [PASS]
 active Skip/Cancel deterministic protocol PASS   [PASS — Legacy + Native]
 stale callback rejection PASS                    [PASS — Legacy + Native]
 input-unlock after catch-up PASS                  [PASS — Legacy + Native]
 temporal visual no-flashback/no-duplicate parity [PASS — Legacy + Native]
-focused Native handler tests PASS                [PENDING unless confirmed]
+focused Native handler tests PASS                [PASS — 35/35]
 Editor build PASS                                [PASS]
-Blueprint compile/save PASS for all Native WBP   [PENDING unless confirmed]
+Blueprint compile/save PASS for all Native WBP   [PASS — 3/3]
 ```
+
+**R11 is COMPLETE / VALIDATED.**
 
 R11 completion does not authorize production cutover by itself. R12-A remains a
 separate next phase and must not start automatically.
