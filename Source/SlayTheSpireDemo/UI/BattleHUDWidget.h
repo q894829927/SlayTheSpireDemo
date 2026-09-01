@@ -27,7 +27,8 @@ class UWidget;
  * and DeckShuffled frozen Record visuals. R7 adds only Damage playback. R8
  * adds the committed CardPlayed/CardZoneChanged lifecycle, including one-card-
  * per-Record DrawPile-to-Hand movement. R9 adds formal Native Status rows and
- * exact-identity StatusChanged playback.
+ * exact-identity StatusChanged playback. R10 adds terminal Record rendering and
+ * keeps PresentationUnavailable as a separate ViewModel-driven UI state.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -99,6 +100,9 @@ protected:
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
 	bool BeginNativeStatusChangedPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
+	bool BeginNativeTerminalPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
 	bool IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const;
@@ -173,6 +177,10 @@ protected:
 	void CancelNativeStatusPresentation();
 	void CleanupNativeStatusPresentationOnDestruct();
 	void ResetNativeStatusPresentationState();
+	void ApplyNativeTerminalOutcome(EBattleHUDOutcome Outcome);
+	void FinishNativeTerminalPresentation();
+	void CancelNativeTerminalPresentation();
+	void CleanupNativeTerminalPresentationOnDestruct();
 	void ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy);
 	void ApplyNativeBlockValue(UTextBlock* BlockText, int32 Block);
 	void ApplyNativePileCounts(int32 DrawCount, int32 DiscardCount);
@@ -248,6 +256,7 @@ protected:
 	void RefreshInputState();
 	void RefreshFeedback();
 	void RefreshTerminalFromViewModel();
+	void RefreshPresentationAvailabilityFromViewModel();
 	void RefreshEnemyIntent();
 	bool RefreshStatusTooltip(
 		UWidget* StatusTooltip,
