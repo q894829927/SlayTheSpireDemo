@@ -563,8 +563,8 @@ removed and never committed. The final no-harness Editor and Shipping builds pas
 Native remained the production default throughout R13-M1 and Legacy runtime fallback
 was `NO`.
 
-R13 is **COMPLETE / VALIDATED**. R14-A is **IN PROGRESS**, R14-A1 is **COMPLETE /
-VALIDATED**, R14-A2 has **AUTOMATED VALIDATION PASS / MANUAL PIE PENDING**, R14-B is
+R13 is **COMPLETE / VALIDATED**. R14-A is **IN PROGRESS**, R14-A1 and R14-A2 are
+**COMPLETE / VALIDATED**, R14-B is
 **NOT AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
 
 ### Phase 6UI-A2N R14-A safe cleanup — 2026-09-01
@@ -591,8 +591,13 @@ Production runtime Legacy HUD/Card/Status dependency count: 0
 MANUAL PIE GATE:
 
 ```text
-/Game/SlayTheSpireDemo/Maps/L_BattleTest production smoke: PENDING USER ACTION
+/Game/SlayTheSpireDemo/Maps/L_BattleTest production smoke: PASS
 ```
+
+The user confirmed the production smoke on **2026-09-01**: Native HUD/Hand/Energy/
+HP/pile surfaces, one ordinary attack Card/Damage presentation, final Card zone, and
+post-catch-up input recovery were correct, with no duplicate, flashback, Native
+binding error, or Blueprint runtime error.
 
 Detailed evidence: `docs/R14ASafeCleanupValidation.md`.
 
@@ -639,7 +644,7 @@ Native HUD = production default
 Legacy assets retained
 R14-A IN PROGRESS
 R14-A1 COMPLETE / VALIDATED
-R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R14-A2 COMPLETE / VALIDATED
 R14-B NOT AUTHORIZED
 UI-A3 NOT STARTED
 ```

@@ -2,7 +2,7 @@
 
 Date: **2026-09-01**
 
-Status: **R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R14-B NOT AUTHORIZED**
+Status: **R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 COMPLETE / VALIDATED; R14-B NOT AUTHORIZED**
 
 ## Scope
 
@@ -111,7 +111,7 @@ architecture review was run for R14-A2.
 
 ### Manual PIE gate
 
-One production-map smoke remains required:
+The user completed the production-map smoke on **2026-09-01**:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest
@@ -129,7 +129,12 @@ no duplicate or A -> B -> A flashback
 no Native binding or Blueprint runtime error in Output Log
 ```
 
-Result: **USER ACTION REQUIRED / PENDING**
+Result: **PASS**
+
+The user confirmed normal Native HUD creation; correct Hand, Energy, HP, and pile
+surfaces; normal Card and Damage presentation for one ordinary attack; the correct
+final Card zone; input recovery after catch-up; and no duplicate, flashback, Native
+binding error, or Blueprint runtime error.
 
 ## Current phase state
 
@@ -137,7 +142,7 @@ Result: **USER ACTION REQUIRED / PENDING**
 R0-R13 COMPLETE / VALIDATED
 R14-A IN PROGRESS
 R14-A1 COMPLETE / VALIDATED
-R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
+R14-A2 COMPLETE / VALIDATED
 R14-B NOT AUTHORIZED
 Legacy assets retained
 UI-A3 NOT STARTED

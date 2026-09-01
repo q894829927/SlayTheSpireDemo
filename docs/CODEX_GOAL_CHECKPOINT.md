@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **R0-R13 COMPLETE / VALIDATED; Native HUD is the production default; Legacy assets retained; R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**.
+Goal execution status: **R0-R13 COMPLETE / VALIDATED; Native HUD is the production default; Legacy assets retained; R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 COMPLETE / VALIDATED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**.
 
 ## Current Repository State
 
@@ -120,7 +120,9 @@ R14-A2 R4 focused Automation: exactly 1/1 PASS, 0 failed, 0 notRun
 R14-A2 R9 focused Automation: exactly 5/5 PASS, 0 failed, 0 notRun
 R14-A2 R13 AssetReferences: exactly 1/1 PASS, 0 failed, 0 notRun
 R14-A2 production Legacy HUD/Card/Status dependency count: 0
-R14-A2 production PIE smoke: PENDING USER ACTION
+R14-A2 production PIE smoke: PASS (user confirmed 2026-09-01)
+R14-A2 modification commit: 8a609659ba138c922fe64bbfd08bca44b05ca8d6
+R14-A2: COMPLETE / VALIDATED
 R14-A: IN PROGRESS
 R14-B: NOT AUTHORIZED
 UI-A3: NOT STARTED
@@ -1041,15 +1043,12 @@ from `WBP_BattleCard_Native`, `WBP_BattleStatus_Native`, and
 compile. Editor Build, R4, R9, and R13 AssetReferences passed; the production Legacy
 HUD/Card/Status dependency count remains zero. Legacy asset hashes remain unchanged.
 
-## Next Exact Action — USER ACTION REQUIRED
+## Next Exact Action — STOP
 
-Run one minimal production-map PIE smoke on
-`/Game/SlayTheSpireDemo/Maps/L_BattleTest`: confirm normal Native HUD/Hand/Energy/HP/
-pile display, play one ordinary attack, observe normal Card/Damage/final zone, and
-confirm input returns with no duplicate, flashback, or Native binding/Blueprint
-runtime error. After user confirmation, record R14-A2 COMPLETE / VALIDATED and seal
-the documentation. Do not start R14-B or delete `L_BattleTest_Native`.
+R14-A2 is complete. The remaining R14-A cleanup inventory decision is whether
+`L_BattleTest_Native` should be retained. Do not delete or modify it without a
+separate explicit decision. Do not start R14-B or resume UI-A3.
 
 ## Blockers
 
-R14-A2 manual production PIE smoke is pending user confirmation.
+None for R14-A2.
