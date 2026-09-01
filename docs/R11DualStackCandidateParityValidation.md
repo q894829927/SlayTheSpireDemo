@@ -35,6 +35,18 @@ No Runtime source, Gameplay, Controller, reducer, Record/Envelope schema, Legacy
 production map/configuration, or UI-A3 change is required by R11 unless a concrete
 parity failure proves a defect that must be fixed.
 
+## Production-freeze preflight — PASS
+
+A repository compare from the sealed Legacy implementation
+`81cbfb6af09a52f96ececff597491c5bfcc3665f` through the R10 completion head
+`08d6fc003701e485ef37414d2ac79ba8a436d3cb` shows the expected Native additions and
+shared-base/test/document changes only. The compare does not list the production
+`L_BattleTest.umap`, `WBP_BattleHUD.uasset`, `WBP_BattleCard.uasset`,
+`WBP_BattleStatus.uasset`, or production config files as changed.
+
+This is a static repository preflight only. It does not replace local asset hash,
+Blueprint compile/save, Automation, or PIE evidence.
+
 ## Formal parity contract
 
 Run the Legacy and Native candidate configurations with the same real Gameplay/UI
