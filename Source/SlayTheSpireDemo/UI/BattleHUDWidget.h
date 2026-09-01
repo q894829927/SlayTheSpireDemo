@@ -290,8 +290,6 @@ protected:
 	UFUNCTION()
 	void HandleCombatantInspectCleared(UBattleHUDCombatantPresentationWidgetBase* Presentation);
 
-	bool AreNativeBindingsValid() const { return bNativeBindingsValid; }
-
 	// Required Designer-backed controls.
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UBattleHUDCombatantPresentationWidgetBase> Combatant_PlayerPresentation;
