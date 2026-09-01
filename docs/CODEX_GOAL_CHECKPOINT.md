@@ -13,9 +13,10 @@ Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 ```text
 R0-R13: COMPLETE / VALIDATED
 R14-A: COMPLETE / VALIDATED
-R14-B: NOT AUTHORIZED
+R14-B: NOT REQUIRED / NOT AUTHORIZED
 Native HUD: production default
-Legacy HUD/Card/Status assets: retained
+Legacy HUD/Card/Status assets: retained / deprecated / do not use
+Legacy retained location: /Game/SlayTheSpireDemo/UI/Out/Legacy/
 Production runtime Legacy HUD/Card/Status dependency count: 0
 L_BattleTest_Native: retained intentionally as non-production migration/regression map
 UI-A3: NOT STARTED
@@ -121,17 +122,49 @@ Documentation-only seal commits after the tested implementation/asset head do no
 claim any additional Build, Automation, Blueprint compile, PIE, Phase6R, or Shipping
 run.
 
+## Current work — Legacy asset relocation
+
+This separately authorized relocation is not R14-B. Unreal AssetTools moved:
+
+```text
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
+
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+```
+
+Completed before the remaining Gates:
+
+```text
+pre-move current production/default/dependency check: PASS
+old paths absent / new paths present: PASS
+scoped ObjectRedirector count: 0
+relocated Legacy WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE
+Legacy HUD Card/Status references use relocated packages: PASS
+R13 permanent Legacy package constants: updated to /UI/Out/Legacy/
+relocated Legacy package existence assertions: added
+Editor Build: PASS
+R13 AssetReferences: exactly 1/1 Success, 0 failed, 0 notRun
+production runtime relocated Legacy dependency count: 0
+production L_BattleTest PIE smoke: PASS (user confirmed 2026-09-02)
+```
+
 ## Next exact action — STOP
 
-Do not automatically start R14-B.
+The separately authorized Legacy asset relocation is complete and validated. Do not
+start R14-B, reactivate Legacy, or begin UI-A3.
 
 R14-B is destructive Legacy removal and requires a separate explicit user
 authorization before any of these assets may be deleted or renamed:
 
 ```text
-WBP_BattleHUD
-WBP_BattleCard
-WBP_BattleStatus
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
 ```
 
 If R14-B is later authorized, first perform its required Reference Audit, Redirector

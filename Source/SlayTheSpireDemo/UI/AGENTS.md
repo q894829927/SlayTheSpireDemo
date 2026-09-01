@@ -9,9 +9,9 @@ Read `docs/Phase6UIA2EImplementation.md`, `docs/UIA2ERemainingSteps.zh-CN.md`, a
 The retained Legacy battle UI assets are deprecated reference/recovery artifacts only:
 
 ```text
-WBP_BattleHUD
-WBP_BattleCard
-WBP_BattleStatus
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
 ```
 
 Normal forward development must use only the Native battle UI stack. Do not add new runtime references to the Legacy assets, restore a Legacy Presenter/default, dual-write behavior into Legacy, use Legacy as a new test execution target, or copy new Native behavior back into Legacy for parity.

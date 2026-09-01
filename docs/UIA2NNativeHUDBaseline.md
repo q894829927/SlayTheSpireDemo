@@ -3,6 +3,10 @@
 状态：**R0 BASELINE COMPLETE / VALIDATED；当前迁移进度 R1 / R2 / R3-A COMPLETE AND VALIDATED；R4 NOT STARTED**
 记录日期：2026-08-31（Asia/Shanghai）
 
+> **Path relocation note:** On 2026-09-01 the retained deprecated Legacy assets
+> were moved to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. Historical paths below
+> describe the validated repository state at that time.
+
 本文件只记录 Native HUD 迁移的可恢复基线。它不改变 Legacy Blueprint、生产配置、Gameplay、Presentation Record/Envelope、Controller、Reducer 或 UI-A3。
 
 ## 1. 起点与冻结资产

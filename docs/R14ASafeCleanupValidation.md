@@ -142,12 +142,14 @@ binding error, or Blueprint runtime error.
 ## Post-R14-A Legacy retention decision
 
 The retained Legacy assets are intentionally kept as historical/reference and
-emergency-recovery artifacts:
+emergency-recovery artifacts. After R14-A validation, they were relocated through
+Unreal AssetTools to the deprecated archive without changing their names or business
+implementation:
 
 ```text
-WBP_BattleHUD
-WBP_BattleCard
-WBP_BattleStatus
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
 ```
 
 They are now **DEPRECATED / DO NOT USE** for normal forward development.
@@ -162,8 +164,8 @@ Legacy recovery requires a new explicit user authorization; asset existence alon
 not authorization to restore the Legacy runtime path.
 
 R14-B destructive removal is **NOT REQUIRED under the current project decision and
-remains NOT AUTHORIZED**. Do not delete, rename, move or Fix Redirectors for the
-retained Legacy assets unless the user later gives a separate explicit request.
+remains NOT AUTHORIZED**. The relocation is not R14-B. Do not delete or reactivate
+the retained Legacy assets unless the user later gives a separate explicit request.
 
 Production runtime Legacy HUD/Card/Status dependency count must remain:
 
@@ -185,3 +187,54 @@ Production runtime Legacy HUD/Card/Status dependency = 0
 L_BattleTest_Native retained intentionally as non-production migration/regression map
 UI-A3 NOT STARTED
 ```
+
+## Post-R14-A Legacy asset relocation
+
+This separately authorized relocation moved only the three retained deprecated
+Legacy Widget Blueprints through Unreal AssetTools. It did not delete them, restore
+Legacy runtime usage, alter Native behavior, or reopen R14-B.
+
+```text
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
+
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD
+-> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+```
+
+UE Asset Registry inspection of `/UI/Widgets` and `/UI/Out` found the three new
+assets, no old-path asset, and zero retained `ObjectRedirector` assets. The relocated
+HUD's saved references resolve to the relocated Card and Status packages.
+
+Relocation automated validation:
+
+```text
+Relocated Legacy WBP load/compile/save/fresh-reopen: 3/3 PASS, BS_UP_TO_DATE
+SlayTheSpireDemoEditor Win64 Development: PASS (Result: Succeeded)
+SlayTheSpireDemo.Phase6UIA2N.R13.AssetReferences.NativeProductionClosure:
+  exactly 1/1 Success, 0 warnings, 0 failed, 0 notRun
+Production runtime relocated Legacy HUD/Card/Status dependency count: 0
+Native HUD direct relocated Legacy Card/Status dependency count: 0
+```
+
+The permanent R13 test constants now name the relocated packages and the test also
+asserts that all three relocated packages exist, preventing an absent old path from
+creating a false-zero dependency result.
+
+Production manual PIE:
+
+```text
+Map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
+Native HUD and Hand: PASS
+ordinary Card presentation: PASS
+post-catch-up input recovery: PASS
+Blueprint runtime error: none observed
+missing asset/package warning: none observed
+```
+
+The user confirmed this Gate on **2026-09-02**.
+
+Validation status: **COMPLETE / VALIDATED**.

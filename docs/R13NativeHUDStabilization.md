@@ -14,6 +14,10 @@ UI-A3 NOT STARTED
 Date opened: **2026-09-01**
 Starting HEAD: `76d411a21c042a86d1e7a4c608a67ae10c724ea2`
 
+> **Path relocation note:** On 2026-09-01 the retained deprecated Legacy assets
+> were moved to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. Historical paths below
+> describe the validated repository state at that time.
+
 ## R13-M1 — Native Production Stabilization
 
 R13-M1 is a finite objective milestone. It closes only when every listed completion

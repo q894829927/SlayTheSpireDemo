@@ -563,9 +563,9 @@ removed and never committed. The final no-harness Editor and Shipping builds pas
 Native remained the production default throughout R13-M1 and Legacy runtime fallback
 was `NO`.
 
-R13 is **COMPLETE / VALIDATED**. R14-A is **IN PROGRESS**, R14-A1 and R14-A2 are
+R13 is **COMPLETE / VALIDATED**. R14-A is **COMPLETE / VALIDATED**; R14-A1 and R14-A2 are
 **COMPLETE / VALIDATED**, R14-B is
-**NOT AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
+**NOT REQUIRED / NOT AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
 
 ### Phase 6UI-A2N R14-A safe cleanup — 2026-09-01
 
@@ -600,6 +600,41 @@ post-catch-up input recovery were correct, with no duplicate, flashback, Native
 binding error, or Blueprint runtime error.
 
 Detailed evidence: `docs/R14ASafeCleanupValidation.md`.
+
+### Deprecated Legacy battle-UI asset relocation — 2026-09-01
+
+The retained deprecated Legacy assets were moved through Unreal AssetTools, without
+deletion or runtime reactivation, from `/Game/SlayTheSpireDemo/UI/Widgets/` to:
+
+```text
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
+```
+
+The old package paths are absent, the new packages load, scoped Redirector count is
+zero, and all three relocated Legacy WBP assets passed compile/save/fresh-reopen
+compile as `BS_UP_TO_DATE`. The relocated Legacy HUD's Card/Status references point
+to the relocated packages.
+
+AUTOMATED GATES:
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+SlayTheSpireDemo.Phase6UIA2N.R13.AssetReferences.NativeProductionClosure:
+  exactly 1/1 Success, 0 failed, 0 notRun
+Production runtime relocated Legacy HUD/Card/Status dependency count: 0
+```
+
+The permanent test uses the new `/UI/Out/Legacy/` package constants and asserts all
+three relocated packages exist.
+
+MANUAL PIE GATE:
+
+The user confirmed the production `/Game/SlayTheSpireDemo/Maps/L_BattleTest` smoke
+on **2026-09-02**. Native HUD and Hand creation, one ordinary Card presentation, and
+post-catch-up input recovery passed. No Blueprint runtime error or missing
+asset/package warning was observed.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -642,10 +677,10 @@ A2N migration status is now:
 R0-R13 COMPLETE / VALIDATED
 Native HUD = production default
 Legacy assets retained
-R14-A IN PROGRESS
+R14-A COMPLETE / VALIDATED
 R14-A1 COMPLETE / VALIDATED
 R14-A2 COMPLETE / VALIDATED
-R14-B NOT AUTHORIZED
+R14-B NOT REQUIRED / NOT AUTHORIZED
 UI-A3 NOT STARTED
 ```
 

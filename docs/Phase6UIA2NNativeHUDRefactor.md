@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained; R14-A COMPLETE / VALIDATED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**
+Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained in `/Game/SlayTheSpireDemo/UI/Out/Legacy/`; R14-A COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED; UI-A3 NOT STARTED**
 
 ## 1. Purpose
 
@@ -50,6 +50,12 @@ unreferenced Native C++ helpers and zero-reference migration residue from the Na
 WBP duplicates; Legacy HUD/Card/Status assets remain intact. `L_BattleTest_Native` is
 intentionally retained as a non-production migration/regression map. Destructive
 Legacy removal remains outside R14-A and requires separate R14-B authorization.
+
+Post-R14-A relocation note: on **2026-09-01**, the retained deprecated Legacy
+HUD/Card/Status assets were moved through Unreal AssetTools, without deletion or
+runtime reactivation, to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. Historical paths
+below continue to describe the repository state at the time of the corresponding
+validated phase. The relocation is not R14-B.
 
 UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
 behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly
@@ -1233,7 +1239,13 @@ update AGENTS and durable documentation
 
 Every cleanup slice keeps Editor build, focused Automation and PIE smoke evidence.
 
-Legacy WBP assets remain intact.
+Legacy WBP assets remain intact at their retained deprecated location:
+
+```text
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
+```
 
 Execution status: **R14-A COMPLETE / VALIDATED**.
 
@@ -1267,6 +1279,9 @@ cleanup is required. Detailed evidence is in `docs/R14ASafeCleanupValidation.md`
 ## 21. R14-B — Separately authorized Legacy removal
 
 Legacy asset removal is destructive and requires a separate explicit user request.
+
+Execution status: **NOT REQUIRED / NOT AUTHORIZED**. Relocating the retained assets
+to the deprecated archive did not start or complete R14-B.
 
 Before removal:
 

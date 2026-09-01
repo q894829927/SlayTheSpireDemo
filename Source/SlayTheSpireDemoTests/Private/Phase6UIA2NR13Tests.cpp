@@ -6,6 +6,7 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/Level.h"
 #include "Engine/World.h"
+#include "Misc/PackageName.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "Modules/ModuleManager.h"
 #include "UI/BattleCardWidget.h"
@@ -20,9 +21,9 @@ namespace Phase6UIA2NR13Test
 	const FName ProductionMapPackage(TEXT("/Game/SlayTheSpireDemo/Maps/L_BattleTest"));
 	const FName PresenterPackage(TEXT("/Game/SlayTheSpireDemo/Blueprints/Battle/BP_BattleHUDPresenter"));
 	const FName NativeHUDPackage(TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native"));
-	const FName LegacyHUDPackage(TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD"));
-	const FName LegacyCardPackage(TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard"));
-	const FName LegacyStatusPackage(TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus"));
+	const FName LegacyHUDPackage(TEXT("/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD"));
+	const FName LegacyCardPackage(TEXT("/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard"));
+	const FName LegacyStatusPackage(TEXT("/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus"));
 
 	UClass* LoadWidgetClass(const TCHAR* ClassPath, UClass* RequiredBaseClass)
 	{
@@ -145,6 +146,12 @@ bool FNativeProductionAssetReferencesTest::RunTest(const FString& Parameters)
 	AssetRegistry.ScanPathsSynchronous({TEXT("/Game/SlayTheSpireDemo")}, true);
 	const TSet<FName> ProductionDependencies = GatherHardProductionDependencies(AssetRegistry);
 	const TSet<FName> LegacyPackages{LegacyHUDPackage, LegacyCardPackage, LegacyStatusPackage};
+	for (const FName LegacyPackage : LegacyPackages)
+	{
+		TestTrue(
+			*FString::Printf(TEXT("Relocated Legacy package exists: %s"), *LegacyPackage.ToString()),
+			FPackageName::DoesPackageExist(LegacyPackage.ToString()));
+	}
 
 	int32 LegacyDependencyCount = 0;
 	for (const FName LegacyPackage : LegacyPackages)

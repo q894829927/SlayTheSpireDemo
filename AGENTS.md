@@ -114,12 +114,12 @@ Directory-specific Presentation and UI contracts live in:
 
 ## Retained Legacy Battle UI
 
-The following former Legacy battle UI assets are intentionally retained only for historical/reference inspection and explicitly authorized emergency recovery:
+The following former Legacy battle UI assets are intentionally retained in the deprecated archive only for historical/reference inspection and explicitly authorized emergency recovery:
 
 ```text
-WBP_BattleHUD
-WBP_BattleCard
-WBP_BattleStatus
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
 ```
 
 They are permanently deprecated for normal forward development. The Native battle UI is the sole active implementation stack. Follow `docs/LegacyUIPreservationPolicy.md` and the UI-directory `AGENTS.md` rules.

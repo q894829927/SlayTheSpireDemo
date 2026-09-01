@@ -11,9 +11,22 @@ The former Legacy battle UI assets are intentionally retained for historical ref
 Retained Legacy assets:
 
 ```text
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
+/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
+```
+
+On **2026-09-01**, Unreal AssetTools relocated these retained deprecated assets from
+`/Game/SlayTheSpireDemo/UI/Widgets/` to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`.
+Their asset names and Legacy business implementation remain unchanged. The
+relocation is not R14-B and does not authorize deletion or runtime reactivation.
+
+They remain:
+
+```text
+RETAINED
+DEPRECATED
+DO NOT USE
 ```
 
 They are not part of the active runtime UI stack.
@@ -62,7 +75,6 @@ The retained assets may be used only for:
 historical/reference inspection
 migration archaeology
 explicitly authorized emergency recovery
-explicitly authorized R14-B Legacy removal/reference audit
 ```
 
 Emergency recovery must be a new explicit user decision. The existence of these assets alone is never authorization to restore them to production or tests.
@@ -81,7 +93,7 @@ Gameplay, Presentation, ViewModel and Controller authority remain governed by th
 
 ## R14-B Status
 
-R14-B destructive Legacy removal is **NOT REQUIRED under the current project decision and remains NOT AUTHORIZED**.
+R14-B destructive Legacy removal is **NOT REQUIRED under the current project decision and remains NOT AUTHORIZED**. The archive relocation is not R14-B.
 
 Do not delete, rename or move the retained Legacy assets, and do not Fix Redirectors for their removal, unless the user later gives a separate explicit authorization.
 

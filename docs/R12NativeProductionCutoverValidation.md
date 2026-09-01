@@ -14,6 +14,10 @@ R13 NOT STARTED
 Date: **2026-09-01**
 Branch: `main`
 
+> **Path relocation note:** On 2026-09-01 the retained deprecated Legacy assets
+> were moved to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. Historical paths below
+> describe the validated repository state at that time.
+
 ## Preconditions and cleanup
 
 R11 was formally `COMPLETE / VALIDATED` before R12 began. The temporary R11 PIE
