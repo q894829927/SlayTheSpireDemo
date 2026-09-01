@@ -4,7 +4,7 @@ Status:
 
 ```text
 R0-R9 COMPLETE / VALIDATED
-R10 SOURCE IMPLEMENTED / AUTOMATED VALIDATION PENDING
+R10 SOURCE IMPLEMENTED / FOCUSED AUTOMATION 5/5 PASS / MANUAL PIE PENDING
 R11 NOT STARTED
 ```
 
@@ -103,7 +103,7 @@ relies on the existing ViewModel input-lock state / RefreshInputState
 This explicitly prevents a Presentation failure from being rendered as the Gameplay
 `战斗结算异常` terminal outcome.
 
-## Focused Automation authored
+## Focused Automation — PASS
 
 Prefix:
 
@@ -111,7 +111,7 @@ Prefix:
 SlayTheSpireDemo.Phase6UIA2N.R10
 ```
 
-Five Editor-only tests are authored:
+Five Editor-only tests:
 
 ```text
 Terminal.VictoryOrderingAndFinish
@@ -132,21 +132,45 @@ Deterministic coverage includes:
 - exact Cancel historical terminal restore;
 - ResolutionFault reason/count validation;
 - PresentationUnavailable is not ResolutionFault and keeps input disabled;
-- PresentationUnavailable hides any terminal overlay and renders ViewModel feedback;
+- PresentationUnavailable hides any stale terminal overlay and renders ViewModel feedback;
 - terminal Record playback is rejected while PresentationUnavailable is active;
 - NativeDestruct clears local terminal ownership/timer without historical restore.
 
-These tests are source only until actually run on UE5.8.
+The first focused run after the R10 source implementation found one fixture/precondition
+error in `PresentationUnavailable.SeparateAndLocked`: the test manufactured a stale
+`ResolutionFaulted` terminal visual and then incorrectly expected
+`EnterPresentationUnavailable()` itself to clear the pre-existing ViewModel Outcome.
+The sealed ViewModel contract does not mutate Outcome in that method. The test was
+corrected to restore `Outcome=None` before entering PresentationUnavailable while
+intentionally leaving the stale visual on screen, so the test now proves both that
+PresentationUnavailable does not manufacture a Gameplay fault and that the Native HUD
+hides the stale terminal surface.
 
-## AUTOMATED GATES — PENDING
+The corrected focused suite was then rerun locally on UE5.8 and the user confirmed:
 
-Run only:
+```text
+SlayTheSpireDemo.Phase6UIA2N.R10: 5/5 PASS
+```
+
+The uploaded failed-run log is retained only as correction history; it showed the
+other four tests already passing and the single fixture assertion failure that led to
+the correction. It is not the final focused Gate.
+
+## AUTOMATED GATES
+
+Required closed-scope gates are:
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development build
 2. SlayTheSpireDemo.Phase6UIA2N.R10 focused Automation
-   expected discovery: 5 tests
 ```
+
+Focused Automation: **5/5 PASS** (user confirmed 2026-09-01 after the corrected test
+fixture).
+
+Final Build evidence after the last test-source correction is not newly claimed by
+this document until explicitly confirmed. Do not infer an unreported Build result
+from the Automation result.
 
 Targeted `WBP_BattleHUD_Native` compile is **NOT REQUIRED** for this R10 source head
 because R10 adds no new `UPROPERTY`, `UFUNCTION`, `BindWidget`, class selector, or
@@ -158,7 +182,7 @@ compilation, or an architecture reviewer.
 
 ## MANUAL PIE GATE — PENDING
 
-After the two automated Gates pass, use:
+Use:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -192,10 +216,11 @@ the broad Scenario A-E parity matrix; that belongs to R11.
 
 ```text
 R10 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PENDING
+FOCUSED AUTOMATION 5/5 PASS
+FINAL BUILD CONFIRMATION NOT YET RECORDED AFTER LAST TEST-SOURCE CORRECTION
 MANUAL PIE PENDING
 R11 NOT STARTED
 ```
 
-Do not mark R10 `COMPLETE / VALIDATED` or start R11 until the required automated and
-manual Gates are actually confirmed.
+Do not mark R10 `COMPLETE / VALIDATED` or start R11 until the remaining required
+Build evidence and manual Gate are actually confirmed.
