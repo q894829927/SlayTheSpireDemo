@@ -123,6 +123,40 @@ The Legacy and Native runs do not need identical RuntimeIds between separate PIE
 sessions. Each run must preserve its own exact frozen identities and observable
 result/order contract.
 
+## Temporary R11 PIE fault harness
+
+R11 adds one temporary source file only inside the Editor-only test module:
+
+```text
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR11PIECommands.cpp
+```
+
+It registers two PIE console commands:
+
+```text
+A2N.R11.ForceResolutionFault
+A2N.R11.ForcePresentationUnavailable
+```
+
+`A2N.R11.ForceResolutionFault` finds the active PIE `ABattleManager`, verifies that a
+real EndTurn request is currently legal, arms the existing
+`SetForceInvalidEnemyTurnBatchForTesting(true)` seam, and then calls the real
+`RequestEndPlayerTurn()` producer. It does not construct a synthetic Record or
+Payload.
+
+`A2N.R11.ForcePresentationUnavailable` begins an isolated system Presentation
+resolution, enables the existing forced snapshot-freeze failure seam, seals the
+resolution, then immediately clears the force flag. It must enter the existing
+PresentationUnavailable path without producing a ResolutionFault terminal.
+
+The harness changes no Runtime module, reflected Gameplay API, Blueprint asset,
+production map, or production WidgetClass. It exists only because R11 requires the
+same real failure producers to be exercised manually on both Legacy and Native PIE
+surfaces.
+
+This harness is temporary R11 validation infrastructure. Delete it after R11 parity is
+closed and before R12 production cutover validation begins.
+
 ## AUTOMATED GATES — PENDING
 
 R11 is a Level-3 parity phase, so these broader gates are intentional here.
