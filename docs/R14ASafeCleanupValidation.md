@@ -66,40 +66,60 @@ The underlying `bNativeBindingsValid` state remains unchanged and continues to b
 
 ### Automated gates
 
+User-confirmed on **2026-09-01**:
+
 ```text
-Editor Build: PENDING
-Focused Native Automation: PENDING
-Reference/source scan: helper definitions removed; GitHub code-search index may lag current HEAD
+Editor Build: PASS
+SlayTheSpireDemo.Phase6UIA2N.R3 focused Automation: PASS
+SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation: PASS
+Reference/source scan: helper definitions removed; no known production/test call sites
 ```
+
+No exact Automation discovery count is claimed here because the user reported the gate result as PASS rather than an exact count.
 
 ### Manual PIE gate
 
-One production-map smoke is required after the source slice:
+Production map:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest
 ```
 
-Required observation:
+User-confirmed on **2026-09-01**:
 
 ```text
 Native HUD opens normally
 Hand is visible
 one ordinary card play resolves and displays normally
 input returns after catch-up
-no binding/runtime errors
+no binding/runtime error observed
 ```
 
-Result: **PENDING**
+Result: **PASS**
 
-## Deferred cleanup inventory
+### R14-A1 result
 
-The following candidates are not part of R14-A1 and must not be removed without an asset-level reference/Blueprint-variable audit:
+**R14-A1 COMPLETE / VALIDATED.**
+
+## R14-A2 — Native Blueprint migration residue audit
+
+Candidate residue identified during the migration:
 
 ```text
 WBP_BattleCard_Native retained Legacy CardView variable
 WBP_BattleStatus_Native retained Legacy StatusView / CurrentStatusView / MID_StatusIcon variables
 other duplicated Native-WBP migration residue
+```
+
+The Native C++ classes already own the active Card/Status frozen presentation state under different native-only member names. However, R14-A requires asset-level confirmation that the duplicated Blueprint variables have no remaining execution/reference use before they may be removed.
+
+Status: **AUDIT IN PROGRESS; NO ASSET DELETION YET**
+
+## Deferred cleanup inventory
+
+The following candidate remains outside R14-A2 until a separate asset-reference decision:
+
+```text
 L_BattleTest_Native
 ```
 
@@ -110,7 +130,8 @@ Shared Legacy compatibility surfaces and permanent Automation seams remain retai
 ```text
 R0-R13 COMPLETE / VALIDATED
 R14-A IN PROGRESS
-R14-A1 implementation complete / validation pending
+R14-A1 COMPLETE / VALIDATED
+R14-A2 AUDIT IN PROGRESS
 R14-B NOT AUTHORIZED
 Legacy assets retained
 UI-A3 NOT STARTED
