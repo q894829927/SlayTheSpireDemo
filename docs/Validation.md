@@ -46,6 +46,7 @@ Phase 6UI-A2N R5 focused 4/4 PASS
 Phase 6UI-A2N R6 focused 5/5 PASS
 Phase 6UI-A2N R7 focused 5/5 PASS
 Phase 6UI-A2N R8 focused 6/6 PASS
+Phase 6UI-A2N R9 focused 5/5 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -247,7 +248,6 @@ Designer badge, inspect receives the frozen Status DTO and clears cleanly, all f
 Terminal outcomes render from ViewModel state, and PresentationUnavailable remains
 input-locked and visually distinct from ResolutionFaulted. The Editor build for this
 saved review-fix head also passed.
-
 This closes the R3 review findings. It does not replace the earlier Native WBP/PIE
 acceptance; together they keep R3-A **COMPLETE / VALIDATED**.
 
@@ -398,8 +398,45 @@ correct final Hand/HUD state, and no flashback, duplicate card, transient leak,
 abnormal HUD, or permanent Input Lock. It remained valid after the P1 fix because
 normal visual paths did not change.
 
-R8 is **COMPLETE / VALIDATED**. R9 and later remain **NOT STARTED**. Detailed
-evidence is in `docs/R8NativeCardLifecycleValidation.md`.
+R8 is **COMPLETE / VALIDATED**. Detailed evidence is in
+`docs/R8NativeCardLifecycleValidation.md`.
+
+### Phase 6UI-A2N R9 Native Status Lifecycle — 2026-09-01
+
+R9 migrated formal Native Status-row ownership and committed `StatusChanged`
+presentation only. `UBattleStatusWidget` owns a frozen `FBattleHUDStatusView` and
+Designer-backed amount/icon rendering. HUD lookup uses the sealed identity:
+
+```text
+TargetPresentationId + StatusId + RuntimeSequence
+```
+
+Create requires the exact identity to be absent. Increase/reduction/removal require
+one exact historical ViewModel status and one exact formal Widget; update/reduction
+reuse the same Widget and removal collapses only that exact identity. Exact Cancel
+rebuilds both Player and Enemy formal Status rows from the historical ViewModel and
+never reverse-computes `B -> A`.
+
+Validation evidence:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+WBP_BattleStatus_Native targeted compile: PASS
+SlayTheSpireDemo.Phase6UIA2N.R9: 5/5 PASS
+L_BattleTest_Native minimal R9 Status lifecycle PIE: PASS
+```
+
+Focused coverage includes frozen DTO/identity, create, increase, exact Widget reuse,
+`2 -> 1` reduction, `1 -> 0` removal, same `StatusId` with new `RuntimeSequence`,
+invalid target/identity/flags/reason zero-side-effect fallback, Player+Enemy historical
+Cancel rebuild, wrong-token Cancel, stale/duplicate Finish, next-Record isolation and
+NativeDestruct cleanup. The manual PIE accepted the real Status lifecycle with one
+correct row/icon/amount, exact-identity reuse, disappearance at zero, coherent
+row/icon/tooltip presentation, no `A -> B -> A` flashback, no duplicate Status, no
+abnormal HUD and no permanent Input Lock.
+
+R9 is **COMPLETE / VALIDATED**. R10 remains **NOT STARTED**. Detailed evidence is in
+`docs/R9NativeStatusLifecycleValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -439,8 +476,8 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R8 COMPLETE / VALIDATED
-R9+ NOT STARTED
+R0-R9 COMPLETE / VALIDATED
+R10+ NOT STARTED
 ```
 
 Validated A2E scenarios include:
