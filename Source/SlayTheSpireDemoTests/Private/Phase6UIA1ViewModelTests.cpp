@@ -145,6 +145,7 @@ bool FIntentCurrentValueIsCopiedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Committed BaseAmount remains available"), Fixture.ViewModel->EnemyIntent.BaseAmount, 5);
 	TestTrue(TEXT("Gameplay-derived current damage value is available"), Fixture.ViewModel->EnemyIntent.bHasCurrentResolvedDamageAmount);
 	TestEqual(TEXT("HUD copies gameplay-derived current value without recomputing rules"), Fixture.ViewModel->EnemyIntent.CurrentResolvedDamageAmount, 5);
+	TestEqual(TEXT("HUD Intent display includes the gameplay-derived current damage value"), Fixture.ViewModel->EnemyIntent.DisplayName.ToString(), FString(TEXT("Attack 5")));
 	return true;
 }
 
