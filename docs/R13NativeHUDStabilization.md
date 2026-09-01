@@ -65,7 +65,7 @@ R13-M1 remains open until all conditions are true:
 [ ] Scenario A-E final production PIE PASS
 [ ] active Skip final production PIE PASS
 [ ] active Cancel final production PIE PASS
-[ ] formal current-head Phase6R PASS
+[x] formal current-head Phase6R PASS
 [ ] clean-worktree Shipping exclusion PASS
 [x] production runtime Legacy HUD/Card/Status dependency = 0
 ```
@@ -234,10 +234,33 @@ Current evidence:
 ```text
 A. SlayTheSpireDemoEditor Win64 Development: PASS
 B. focused SlayTheSpireDemo.Phase6UIA2N.R13: exactly 1/1 PASS
-C. formal current-head Phase6R: NOT RUN
-D. clean-worktree SlayTheSpireDemo Win64 Shipping exclusion: NOT RUN
+C. formal current-head Phase6R:
+   Phase5 13/13
+   Phase6A 23/23
+   Phase6B 12/12
+   Phase6C 5/5
+   Phase6UIA2A 8/8
+   Phase6UIA2B 8/8
+   Phase6UIA2C 8/8
+   Phase6UIA2D1 3/3
+   Phase6UIA2D2 4/4
+   Phase6UIA2D3 4/4
+   Phase6UIA2D4 6/6
+   Phase6UIA2D5 6/6
+   Aggregate: exactly 100/100 test state Success, 0 failed, 0 notRun — PASS
+D. clean-worktree SlayTheSpireDemo Win64 Shipping exclusion:
+   Pre-manual-harness Shipping build: PASS
+   Shipping forbidden artifact hits: 0
+   Runtime temporary harness hits: 0
+   Final post-harness-cleanup confirmation: PENDING
 E. production runtime Legacy HUD/Card/Status dependency: 0 — PASS
 ```
+
+The reports retain existing expected-warning-path output: 51 of the 100 successful
+tests are categorized by the report writer as `succeededWithWarnings`, but every
+individual test state is `Success`; failed and notRun are both zero. The warnings
+come from tests that intentionally exercise rejected/fail-soft paths and are not
+treated as missing discovery or failure.
 
 ## R13 final manual PIE gates
 
@@ -255,7 +278,9 @@ acceptance criteria.
 ## Remaining closure gates and stop boundary
 
 The two opening blockers are closed by the real Native-only change and dependency
-audit above. R13 remains `STABILIZATION IN PROGRESS` until the formal current-head
-Phase6R and clean Shipping Gates pass and the user completes the single final
-production-map Scenario A-E plus active Skip/Cancel PIE pass. R14-A, R14-B, Legacy
-deletion/renaming, redirector cleanup and UI-A3 remain not started and unauthorized.
+audit above, and formal Phase6R passes on the current committed candidate. R13
+remains `STABILIZATION IN PROGRESS` until the user completes the single final
+production-map Scenario A-E plus active Skip/Cancel PIE pass, after which the
+temporary Editor-only PIE commands must be removed and Build/Shipping exclusion
+reconfirmed. R14-A, R14-B, Legacy deletion/renaming, redirector cleanup and UI-A3
+remain not started and unauthorized.

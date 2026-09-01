@@ -88,7 +88,11 @@ R13 Legacy runtime fallback occurred: NO
 R13 production Legacy HUD/Card/Status dependencies: 0 — PASS
 R13 Editor build after Native-only change: PASS
 R13 objective tests: exactly 1/1 PASS, 0 failed, 0 notRun
-R13 final Phase6R / Shipping / manual PIE Gates: NOT RUN
+R13 formal Phase6R: exactly 100/100 test state Success, 0 failed, 0 notRun — PASS
+R13 pre-manual-harness clean Shipping: PASS; forbidden artifact hits 0
+R13 final manual PIE: PENDING
+R13 temporary Editor-only PIE commands: PRESENT / UNCOMMITTED; remove after user PASS
+R13 final post-harness-cleanup Editor build / Shipping exclusion: PENDING
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native

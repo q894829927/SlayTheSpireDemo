@@ -41,8 +41,9 @@ passed its isolated production cutover and cutover-head acceptance Gates, so the
 Native stack is the production default. Legacy assets remain retained for the R13
 stabilization boundary; no Legacy cleanup or deletion has started. R13-M1 has a real
 post-cutover Native-only dependency stabilization change with focused validation
-PASS and zero production Legacy HUD/Card/Status dependencies; final Phase6R,
-Shipping and production PIE closure Gates remain pending.
+PASS and zero production Legacy HUD/Card/Status dependencies. Formal Phase6R passes
+100/100 and clean Shipping exclusion passes before the temporary manual harness;
+final production PIE and post-harness-cleanup confirmation remain pending.
 
 UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
 behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly

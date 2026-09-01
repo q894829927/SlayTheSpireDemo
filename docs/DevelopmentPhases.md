@@ -139,8 +139,9 @@ Status: **COMPLETE / VALIDATED / SEALED**
   refactor of sealed UI behavior, not UI-A3 work. R13-M1 now contains the real
   post-cutover Native-only dependency stabilization change `fe7fe4e`; its focused
   test passes and the production Legacy HUD/Card/Status dependency count is zero.
-  Final Phase6R, Shipping and production PIE closure Gates remain pending; see
-  `docs/R13NativeHUDStabilization.md`.
+  Formal Phase6R now passes exactly 100/100 and the pre-manual-harness clean Shipping
+  exclusion passes. Final production PIE and post-harness-cleanup Build/Shipping
+  confirmation remain pending; see `docs/R13NativeHUDStabilization.md`.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 
