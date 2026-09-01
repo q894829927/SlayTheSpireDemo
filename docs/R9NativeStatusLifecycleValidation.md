@@ -4,13 +4,14 @@ Status:
 
 ```text
 R8 COMPLETE / VALIDATED
-R9 SOURCE IMPLEMENTED / AUTOMATED VALIDATION PENDING
+R9 COMPLETE / VALIDATED
 R10 NOT STARTED
 ```
 
 Implementation branch: `main` (explicitly authorized; no R9 working branch)
 Starting main HEAD: `b05a7d1281e921eed2bbb4bf5238842fa16421f7`
 Implementation date: **2026-09-01**
+Validation confirmed by user: **2026-09-01**
 
 R9 migrates only formal Native Status-row ownership and committed
 `StatusChanged` presentation. It does not modify Gameplay, Controller, reducer,
@@ -19,7 +20,7 @@ Terminal/PresentationUnavailable behavior, UI-A3, or R10+ behavior.
 
 ## Implemented boundary
 
-`UBattleStatusWidget` now owns only one supplied frozen `FBattleHUDStatusView` and
+`UBattleStatusWidget` owns only one supplied frozen `FBattleHUDStatusView` and
 its Designer-backed amount/icon rendering. It exposes native `StatusId` and
 `RuntimeSequence` getters and never queries Gameplay or owns merge/decay/remove
 rules.
@@ -109,7 +110,7 @@ Cancel never reverse-calculates `B -> A`.
 The R8 exact-Cancel tail that retires a retained cross-Record PlayedCard remains in
 place, so a Status Cancel/Skip cannot reintroduce the R8 PlayArea leak.
 
-## Focused Automation authored
+## Focused Automation
 
 Prefix:
 
@@ -117,7 +118,7 @@ Prefix:
 SlayTheSpireDemo.Phase6UIA2N.R9
 ```
 
-Five focused Editor-only tests are authored:
+Five focused Editor-only tests:
 
 ```text
 StatusWidget.DTOAndIdentity
@@ -133,55 +134,49 @@ wrong-token Cancel, same StatusId with a later new RuntimeSequence, wrong target
 wrong RuntimeSequence, invalid flags/reason zero-side-effect fallback, stale Finish
 and destruction-local cleanup.
 
-These tests are source only at this point. No PASS claim is made until UE5.8 runs
-them.
+## AUTOMATED GATES — PASS
 
-## AUTOMATED GATES — PENDING
-
-Run only the R9 closed-scope gates:
+The user ran the closed-scope R9 validation on UE5.8 and confirmed all required
+automated gates passed:
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development build
-2. Compile WBP_BattleStatus_Native
-   - required because R9 adds reflected Native Status API / BindWidget ownership
-3. SlayTheSpireDemo.Phase6UIA2N.R9 focused Automation
-   - expected discovery: 5 tests
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleStatus_Native compile: PASS
+3. SlayTheSpireDemo.Phase6UIA2N.R9 focused Automation: 5/5 PASS
+   0 failed / 0 notRun
 ```
 
-Do not automatically run R3-R8, A2D5, Phase6R, Shipping, Scenario A-E, full
-Blueprint compilation or an architecture reviewer.
+No R3-R8, A2D5, Phase6R, Shipping, Scenario A-E, full Blueprint suite or
+architecture reviewer was required for this closed-scope phase.
 
-If a Gate fails, fix only the failed contract and rerun only the Gate(s) invalidated
-by that fix.
+## MANUAL PIE GATE — PASS
 
-## MANUAL PIE GATE — PENDING
-
-After all automated Gates pass, perform one focused visual pass in:
+The user confirmed the required focused visual pass in:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 ```
 
-Use existing real Status producers and verify:
-
-1. Status creation displays one correct row/icon/amount.
-2. Same exact identity update/reduction reuses one row; no duplicate icon.
-3. Observe a reduction such as `2 -> 1`.
-4. At `1 -> 0`, the exact Status disappears.
-5. Row/icon and existing Status tooltip appearance remain coherent.
-6. No `A -> B -> A` flashback, duplicate Status, abnormal HUD or permanent input lock.
-
-Do not replace this visual Gate with repeated screenshots.
-
-## Current acceptance state
+The accepted R9 manual gate covers the real Status lifecycle through existing
+producers:
 
 ```text
-R9 SOURCE IMPLEMENTED
-AUTOMATED VALIDATION PENDING
-MANUAL PIE PENDING
+Status creation -> one correct row/icon/amount
+same exact identity update/reduction -> same Widget reused, no duplicate icon
+reduction such as 2 -> 1 -> correct amount
+1 -> 0 -> exact Status disappears
+row/icon/tooltip appearance remains coherent
+no A -> B -> A flashback
+no duplicate Status
+no abnormal HUD
+no permanent Input Lock
+```
+
+## Final acceptance state
+
+```text
+R0-R9 COMPLETE / VALIDATED
 R10 NOT STARTED
 ```
 
-R9 must not be marked `COMPLETE / VALIDATED` until the required Build,
-`WBP_BattleStatus_Native` compile, focused R9 Automation and user-confirmed minimal
-PIE all pass. Do not start R10 automatically.
+R9 is **COMPLETE / VALIDATED**. Do not start R10 automatically.
