@@ -151,12 +151,13 @@ Legacy-vs-Native observable Scenario A-E parity: PASS
 This evidence is manual PIE evidence confirmed by the user; it is not inferred from
 Automation.
 
-## Temporary R11 PIE fault harness
+## Temporary R11 PIE validation harness
 
-R11 adds one temporary source file only inside the Editor-only test module:
+R11 keeps all temporary execution code inside the Editor-only test module:
 
 ```text
 Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR11PIECommands.cpp
+Source/SlayTheSpireDemoTests/SlayTheSpireDemoTests.Build.cs
 ```
 
 It registers:
@@ -164,6 +165,8 @@ It registers:
 ```text
 A2N.R11.ForceResolutionFault
 A2N.R11.ForcePresentationUnavailable
+A2N.R11.TestSkip
+A2N.R11.TestCancelStale
 ```
 
 `A2N.R11.ForceResolutionFault` finds the active PIE `ABattleManager`, verifies a real
@@ -176,17 +179,72 @@ resolution, enables the existing forced snapshot-freeze failure seam, seals the
 resolution, then clears the force flag. It enters the existing
 PresentationUnavailable path without manufacturing a ResolutionFault.
 
+`A2N.R11.TestSkip` issues a real `Widget->EndTurn()` request, waits until the
+Controller owns a valid active Token, calls the formal `Widget->SkipPresentation()`
+path, and asserts synchronous playback/backlog collapse, exact FinalSnapshot HUD
+state, Controller watermark catch-up, unlocked Idle input, and acceptance of a
+second real Widget EndTurn request.
+
+`A2N.R11.TestCancelStale` issues the same real request, captures Token A, enters the
+formal `ExpireActivePlaybackForTesting() -> HandleActiveTimeout()` path, waits for
+distinct Token B, and deliberately calls `Widget->NotifyPresentationFinished(A)`.
+It asserts that B remains the exact active owner, then waits for natural catch-up
+and proves the same FinalSnapshot, queue and post-catch-up input contract.
+
+The same harness has an optional command-line bootstrap used only for isolated,
+unattended in-process PIE validation. `R11TemporalMap` requests the chosen Legacy or
+Native test map after the Editor module is loaded; `R11TemporalTest=Skip` or
+`CancelStale` runs the corresponding formal Widget path. The added `UnrealEd`
+dependency exists only to start that in-process PIE session from this Editor-only
+module; no Runtime module depends on it.
+
 The harness changes no Runtime module, reflected Gameplay API, Blueprint asset,
 production map, or production WidgetClass. It is temporary R11 validation
 infrastructure and must be deleted after R11 parity closes and before R12 production
 cutover validation begins.
+
+## Temporal protocol validation — PASS
+
+On 2026-09-01, the two temporal tests were executed once on each formal map as
+unattended in-process PIE. All four runs passed:
+
+```text
+Legacy / L_BattleTest / WBP_BattleHUD_C
+  active Skip + FinalSnapshot catch-up + Input Unlock: PASS
+  active timeout Cancel + stale Token A + natural catch-up + Input Unlock: PASS
+
+Native / L_BattleTest_Native / WBP_BattleHUD_Native_C
+  active Skip + FinalSnapshot catch-up + Input Unlock: PASS
+  active timeout Cancel + stale Token A + natural catch-up + Input Unlock: PASS
+```
+
+Both stacks captured a real Token A at `Resolution=2, Sequence=1, Generation=3`.
+Both Cancel/stale runs advanced to a distinct Token B, delivered the abandoned A
+callback after B became active, and observed B remain active. All runs ended with:
+
+```text
+Controller waiting=false
+Controller backlog=0
+completion watermark caught up
+ViewModel exactly equals latest frozen FinalSnapshot
+InteractionState=Idle
+bInputLocked=false
+bCanEndTurn=true
+real post-catch-up Widget EndTurn accepted
+```
+
+This is deterministic state/protocol evidence from real PIE producers. Because the
+runs used an unattended no-rendering configuration, they do **not** claim the
+genuinely visual checks for visible flashback, duplicate Hand/Status widgets, or the
+appearance of the interrupted animation. Those observations remain a minimal user
+PIE action and are not replaced by log assertions.
 
 ## AUTOMATED GATES — PENDING UNLESS SEPARATELY CONFIRMED
 
 Run once on the R11 candidate head:
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development build
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
 
 2. Legacy/final-history regression:
    SlayTheSpireDemo.Phase6UIA2D5
@@ -206,38 +264,30 @@ Run once on the R11 candidate head:
 
 Do not run Phase6R, Shipping exclusion, production cutover, or R12 acceptance in R11.
 
-## Remaining manual R11 catch-up gates
+## Remaining manual R11 catch-up gate
 
-Scenario A-E are complete. The remaining manual parity scope is:
+Scenario A-E and the deterministic temporal protocol are complete. The remaining
+manual parity scope is only the visible part of the two temporal flows:
 
 ```text
-active Skip
-active Cancel
-stale callback rejection
-Input Unlock after catch-up
+Legacy active Skip: no A -> B -> A flashback or duplicate visual
+Legacy active Cancel/stale: no abandoned visual returns or duplicate visual
+Native active Skip: no A -> B -> A flashback or duplicate visual
+Native active Cancel/stale: no abandoned visual returns or duplicate visual
 ```
 
 These checks must operate on real active playback produced through formal Gameplay/UI
 requests. Do not construct a synthetic Presentation Record merely to satisfy R11.
 
-The observable requirements are:
+The commands are now stable manual entry points; run each once while observing PIE:
 
 ```text
-active Skip:
-  real active playback is skipped/caught up without flashback or duplicate visual
-
-active Cancel:
-  abandoned real active playback restores the historical ViewModel surface and does
-  not execute the normal Finish/Notify path
-
-stale callback:
-  callback from an abandoned/older Token is ignored and cannot finish or clear the
-  newer playback
-
-Input Unlock:
-  input stays locked while catch-up is incomplete and becomes usable again after the
-  non-terminal catch-up reaches Idle
+A2N.R11.TestSkip
+A2N.R11.TestCancelStale
 ```
+
+The harness log must also end in `PASS`; the user observation closes only the visual
+portion that deterministic assertions cannot own.
 
 ## Candidate acceptance
 
@@ -247,11 +297,12 @@ R11 may be marked `COMPLETE / VALIDATED` only when all of the following are conf
 Legacy regression PASS
 Native Scenario A-E PASS                         [PASS]
 Legacy-vs-Native observable Scenario A-E parity [PASS]
-active Skip/Cancel PASS                          [PENDING]
-stale callback PASS                              [PENDING]
-input-unlock PASS                                [PENDING]
+active Skip/Cancel deterministic protocol PASS   [PASS — Legacy + Native]
+stale callback rejection PASS                    [PASS — Legacy + Native]
+input-unlock after catch-up PASS                  [PASS — Legacy + Native]
+temporal visual no-flashback/no-duplicate parity [PENDING USER PIE]
 focused Native handler tests PASS                [PENDING unless confirmed]
-Editor build PASS                                [PENDING unless confirmed]
+Editor build PASS                                [PASS]
 Blueprint compile/save PASS for all Native WBP   [PENDING unless confirmed]
 ```
 

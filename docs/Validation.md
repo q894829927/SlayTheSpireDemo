@@ -47,6 +47,7 @@ Phase 6UI-A2N R6 focused 5/5 PASS
 Phase 6UI-A2N R7 focused 5/5 PASS
 Phase 6UI-A2N R8 focused 6/6 PASS
 Phase 6UI-A2N R9 focused 5/5 PASS
+Phase 6UI-A2N R10 focused 5/5 PASS
 ```
 
 ## Current UI-A2E Goal-Run Evidence — 2026-08-31
@@ -435,8 +436,37 @@ correct row/icon/amount, exact-identity reuse, disappearance at zero, coherent
 row/icon/tooltip presentation, no `A -> B -> A` flashback, no duplicate Status, no
 abnormal HUD and no permanent Input Lock.
 
-R9 is **COMPLETE / VALIDATED**. R10 remains **NOT STARTED**. Detailed evidence is in
+R9 is **COMPLETE / VALIDATED**. Detailed evidence is in
 `docs/R9NativeStatusLifecycleValidation.md`.
+
+### Phase 6UI-A2N R11 temporal protocol parity — 2026-09-01
+
+The temporary Editor-only R11 PIE harness executed the two formal temporal paths on
+both production Legacy `L_BattleTest / WBP_BattleHUD_C` and isolated Native
+`L_BattleTest_Native / WBP_BattleHUD_Native_C`:
+
+```text
+Legacy active Skip + catch-up + Input Unlock: PASS
+Legacy active Cancel + stale callback + Input Unlock: PASS
+Native active Skip + catch-up + Input Unlock: PASS
+Native active Cancel + stale callback + Input Unlock: PASS
+```
+
+Every run began with a real `Widget->EndTurn()` request and observed a real active
+Controller Token. Skip used `Widget->SkipPresentation()`. Cancel used the formal
+`ExpireActivePlaybackForTesting() -> HandleActiveTimeout()` path; after distinct
+Token B became active, the harness deliberately delivered Token A through
+`Widget->NotifyPresentationFinished(A)` and proved that B remained active.
+
+Final assertions proved zero Controller backlog/waiting, completion-watermark
+catch-up, exact ViewModel equality with the latest frozen FinalSnapshot, Idle and
+unlocked input, and acceptance of a second real Widget EndTurn request. The Editor
+build for the test-only harness passed.
+
+These were unattended no-rendering in-process PIE runs, so their PASS owns only
+deterministic state, ownership, stale-token and input contracts. Visible
+no-flashback/no-duplicate parity for these two temporal flows remains a user-observed
+PIE Gate. R11 remains **VALIDATION IN PROGRESS**; R12 remains **NOT STARTED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -476,8 +506,9 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R9 COMPLETE / VALIDATED
-R10+ NOT STARTED
+R0-R10 COMPLETE / VALIDATED
+R11 VALIDATION IN PROGRESS
+R12 NOT STARTED
 ```
 
 Validated A2E scenarios include:

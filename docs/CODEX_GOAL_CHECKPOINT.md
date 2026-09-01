@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R9 COMPLETE / VALIDATED; R10 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R10 COMPLETE / VALIDATED; R11 VALIDATION IN PROGRESS; R12 NOT STARTED**.
 
 ## Current Repository State
 
@@ -62,6 +62,12 @@ R9 Editor build: PASS (user confirmed 2026-09-01)
 R9 WBP_BattleStatus_Native compile: PASS (user confirmed 2026-09-01)
 R9 focused Automation: 5/5 PASS (user confirmed 2026-09-01)
 R9 Manual PIE: PASS (user confirmed 2026-09-01)
+R10 validation result: COMPLETE / VALIDATED (see R10 validation document)
+R11 starting HEAD: 08d6fc003701e485ef37414d2ac79ba8a436d3cb
+R11 Scenario A-E Legacy/Native parity: PASS (user confirmed 2026-09-01)
+R11 temporal Skip deterministic PIE: PASS (Legacy + Native, 2026-09-01)
+R11 temporal Cancel/stale deterministic PIE: PASS (Legacy + Native, 2026-09-01)
+R11 temporal visual observation: PENDING USER PIE
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -71,7 +77,9 @@ R6: COMPLETE / VALIDATED
 R7: COMPLETE / VALIDATED
 R8: COMPLETE / VALIDATED
 R9: COMPLETE / VALIDATED
-R10 and later: NOT STARTED
+R10: COMPLETE / VALIDATED
+R11: VALIDATION IN PROGRESS
+R12: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -910,11 +918,26 @@ Detailed R9 evidence is recorded in:
 docs/R9NativeStatusLifecycleValidation.md
 ```
 
-## Next Exact Action — STOP
+## R11 Current Validation State
 
-Wait for explicit user authorization before starting R10. Do not enter R10 or any
-later phase automatically.
+R11 Scenario A-E manual Legacy/Native parity is PASS. The temporary Editor-only PIE
+harness now provides stable `A2N.R11.TestSkip` and
+`A2N.R11.TestCancelStale` entry points. Isolated in-process PIE runs proved real
+active playback, exact timeout Cancel, stale callback isolation, FinalSnapshot and
+queue catch-up, and post-catch-up Widget input acceptance for both formal maps.
+
+The remaining temporal Gate is the user-observed visual portion only: no visible
+flashback, abandoned visual return, or duplicate Hand/Status while each command runs
+once on Legacy and once on Native. Aggregate R11 Automation and Native WBP
+compile/save gates remain pending unless separately confirmed.
+
+## Next Exact Action — USER PIE / STOP
+
+Run the two temporal commands once on Legacy and once on Native while observing the
+remaining visual criteria. Do not enter R12 automatically.
 
 ## Blockers
 
-No R9 blocker remains. R10 and all later phases remain NOT STARTED.
+No deterministic R11 temporal blocker remains. R11 cannot close until the remaining
+visual observation and the other documented R11 candidate gates are confirmed.
+R12 remains NOT STARTED.
