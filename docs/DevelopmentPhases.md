@@ -129,8 +129,8 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
-- A2N Native HUD ownership migration — **IN PROGRESS — R0-R12 COMPLETE / VALIDATED;
-  R13-M1 STABILIZATION IN PROGRESS; R14 NOT STARTED**. R12 cut production `L_BattleTest` over to
+- A2N Native HUD ownership migration — **R0-R13 COMPLETE / VALIDATED; R14-A NOT
+  STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**. R12 cut production `L_BattleTest` over to
   `WBP_BattleHUD_Native` in isolated commit `de788c5`, then passed cutover-head WBP,
   A2D5 6/6, Phase6R 100/100, clean Shipping and production-map manual PIE Gates.
   Native HUD is now the production default; Legacy HUD/Card/Status assets remain
@@ -139,9 +139,12 @@ Status: **COMPLETE / VALIDATED / SEALED**
   refactor of sealed UI behavior, not UI-A3 work. R13-M1 now contains the real
   post-cutover Native-only dependency stabilization change `fe7fe4e`; its focused
   test passes and the production Legacy HUD/Card/Status dependency count is zero.
-  Formal Phase6R now passes exactly 100/100 and the pre-manual-harness clean Shipping
-  exclusion passes. Final production PIE and post-harness-cleanup Build/Shipping
-  confirmation remain pending; see `docs/R13NativeHUDStabilization.md`.
+  Formal Phase6R passes exactly 100/100. Final production Scenario A-E, active Skip,
+  active timeout Cancel, stale callback and Input Unlock passed. The temporary PIE
+  harness was removed, and the final no-harness Editor build and clean Shipping
+  exclusion passed. Native remained production default throughout R13-M1, Legacy
+  runtime fallback was `NO`, and Legacy assets remain retained. See
+  `docs/R13NativeHUDStabilization.md`.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 

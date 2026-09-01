@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13-M1 STABILIZATION IN PROGRESS; R14 NOT STARTED**
+Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained; R14-A NOT STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**
 
 ## 1. Purpose
 
@@ -39,11 +39,12 @@ Gameplay   = authoritative truth
 Starting A2N did not reopen the sealed Legacy UI-A2E implementation. R12 has now
 passed its isolated production cutover and cutover-head acceptance Gates, so the
 Native stack is the production default. Legacy assets remain retained for the R13
-stabilization boundary; no Legacy cleanup or deletion has started. R13-M1 has a real
-post-cutover Native-only dependency stabilization change with focused validation
-PASS and zero production Legacy HUD/Card/Status dependencies. Formal Phase6R passes
-100/100 and clean Shipping exclusion passes before the temporary manual harness;
-final production PIE and post-harness-cleanup confirmation remain pending.
+stabilization boundary; no Legacy cleanup or deletion has started. R13-M1 completed
+with the real post-cutover Native-only dependency stabilization change `fe7fe4e`,
+focused validation PASS and zero production Legacy HUD/Card/Status dependencies.
+Formal Phase6R passed exactly 100/100; final production Scenario A-E, active Skip,
+active timeout Cancel, stale callback and Input Unlock passed; the temporary harness
+was removed; and the final no-harness Editor and clean Shipping builds passed.
 
 UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
 behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly
@@ -1206,6 +1207,11 @@ asset-reference audit finds no formal runtime Legacy HUD/Card/Status dependency
 
 The milestone and its evidence must be named before R13 begins; “one stable cycle” is
 not a sufficient acceptance statement.
+
+Execution status: **R13-M1 COMPLETE / VALIDATED**. Native remained production
+default throughout the milestone, Legacy runtime fallback was `NO`, and Legacy
+assets remain retained. Detailed evidence is in
+`docs/R13NativeHUDStabilization.md`.
 
 ---
 

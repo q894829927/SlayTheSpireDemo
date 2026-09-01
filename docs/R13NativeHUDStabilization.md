@@ -3,9 +3,12 @@
 Status:
 
 ```text
-R0-R12 COMPLETE / VALIDATED
-R13 STABILIZATION IN PROGRESS
-R14 NOT STARTED
+R0-R13 COMPLETE / VALIDATED
+Native HUD = production default
+Legacy assets retained
+R14-A NOT STARTED
+R14-B NOT AUTHORIZED
+UI-A3 NOT STARTED
 ```
 
 Date opened: **2026-09-01**
@@ -54,25 +57,25 @@ Legacy stack during this milestone.
 
 ## Objective completion conditions
 
-R13-M1 remains open until all conditions are true:
+R13-M1 closed after all conditions obtained current-head evidence:
 
 ```text
-[ ] Native remained production default throughout R13-M1
+[x] Native remained production default throughout R13-M1
 [x] Legacy runtime fallback occurred = NO
 [x] At least one real post-cutover Native-only UI implementation change exists
 [x] That change has focused validation PASS
 [x] Objective R13 stabilization tests PASS
-[ ] Scenario A-E final production PIE PASS
-[ ] active Skip final production PIE PASS
-[ ] active Cancel final production PIE PASS
+[x] Scenario A-E final production PIE PASS
+[x] active Skip final production PIE PASS
+[x] active Cancel final production PIE PASS
 [x] formal current-head Phase6R PASS
-[ ] clean-worktree Shipping exclusion PASS
+[x] clean-worktree Shipping exclusion PASS
 [x] production runtime Legacy HUD/Card/Status dependency = 0
 ```
 
-The first condition is still being tracked and is not checked until milestone
-closure. R12 evidence is a prerequisite, not a substitute for the R13 final-head
-Gates.
+Native remained the production default for the entire milestone and no Legacy
+runtime fallback occurred. R12 evidence was treated only as a prerequisite; the
+closure Gates below were executed again for R13.
 
 ## Post-cutover Native-only UI change
 
@@ -252,7 +255,12 @@ D. clean-worktree SlayTheSpireDemo Win64 Shipping exclusion:
    Pre-manual-harness Shipping build: PASS
    Shipping forbidden artifact hits: 0
    Runtime temporary harness hits: 0
-   Final post-harness-cleanup confirmation: PENDING
+   Final post-harness-cleanup Editor build: PASS
+   Final post-harness-cleanup Shipping build: PASS
+   Final forbidden artifact hits: 0
+   Final Runtime temporary harness hits: 0
+   Final Editor-test temporary harness hits: 0
+   Shipping target lists SlayTheSpireDemoTests: false
 E. production runtime Legacy HUD/Card/Status dependency: 0 — PASS
 ```
 
@@ -264,23 +272,33 @@ treated as missing discovery or failure.
 
 ## R13 final manual PIE gates
 
-These are defined but intentionally **NOT RUN** before a valid R13 final candidate:
+The user completed the single final production-map pass on 2026-09-01:
 
 ```text
-Production L_BattleTest Scenario A-E
-active Skip
-active Cancel
+Production L_BattleTest Scenario A-E: PASS
+active Skip: PASS
+active timeout Cancel: PASS
+stale callback rejection: PASS
+Input Unlock after catch-up: PASS
 ```
 
 The observable contract remains the frozen R12 contract; R13 adds no new visual
-acceptance criteria.
+acceptance criteria. The temporary Editor-only commands used real Widget EndTurn
+requests, real Controller active Tokens and the formal timeout path. They were
+removed before the final Editor and Shipping builds and were never committed.
+
+The Skip log shows HP `80 -> 74 -> 68` because the harness deliberately issues a
+second real EndTurn after the first Skip/catch-up completes to prove that input is
+unlocked. Each turn contains one distinct committed Enemy Damage action; this is not
+duplicate playback of one Damage Record.
 
 ## Remaining closure gates and stop boundary
 
-The two opening blockers are closed by the real Native-only change and dependency
-audit above, and formal Phase6R passes on the current committed candidate. R13
-remains `STABILIZATION IN PROGRESS` until the user completes the single final
-production-map Scenario A-E plus active Skip/Cancel PIE pass, after which the
-temporary Editor-only PIE commands must be removed and Build/Shipping exclusion
-reconfirmed. R14-A, R14-B, Legacy deletion/renaming, redirector cleanup and UI-A3
-remain not started and unauthorized.
+R13-M1 is **COMPLETE / VALIDATED**. The two opening blockers were closed by the real
+Native-only change and the zero-dependency audit; the objective test, formal
+Phase6R, production-map manual Gates, final no-harness Editor build and clean
+Shipping exclusion all passed. Native remained the production default and Legacy
+runtime fallback remained `NO` throughout the milestone.
+
+R14-A is not started. R14-B is not authorized. Legacy deletion/renaming, redirector
+cleanup and UI-A3 remain outside this completed milestone.

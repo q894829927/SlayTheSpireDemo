@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13-M1 STABILIZATION IN PROGRESS; R14 NOT STARTED**.
+Goal execution status: **R0-R13 COMPLETE / VALIDATED; Native HUD is the production default; Legacy assets retained; R14-A NOT STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**.
 
 ## Current Repository State
 
@@ -90,9 +90,13 @@ R13 Editor build after Native-only change: PASS
 R13 objective tests: exactly 1/1 PASS, 0 failed, 0 notRun
 R13 formal Phase6R: exactly 100/100 test state Success, 0 failed, 0 notRun — PASS
 R13 pre-manual-harness clean Shipping: PASS; forbidden artifact hits 0
-R13 final manual PIE: PENDING
-R13 temporary Editor-only PIE commands: PRESENT / UNCOMMITTED; remove after user PASS
-R13 final post-harness-cleanup Editor build / Shipping exclusion: PENDING
+R13 final production-map Scenario A-E: PASS (user confirmed 2026-09-01)
+R13 active Skip: PASS
+R13 active timeout Cancel + stale callback rejection: PASS
+R13 Input Unlock after catch-up: PASS
+R13 temporary Editor-only PIE commands: REMOVED / NEVER COMMITTED
+R13 final post-harness-cleanup Editor build: PASS
+R13 final post-harness-cleanup clean Shipping exclusion: PASS; forbidden artifact hits 0
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -106,8 +110,10 @@ R10: COMPLETE / VALIDATED
 R11: COMPLETE / VALIDATED
 R12-A: COMPLETE
 R12-B: COMPLETE / VALIDATED
-R13: STABILIZATION IN PROGRESS — FINAL CLOSURE GATES PENDING
-R14: NOT STARTED
+R13: COMPLETE / VALIDATED
+R14-A: NOT STARTED
+R14-B: NOT AUTHORIZED
+UI-A3: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -984,20 +990,19 @@ default; Legacy HUD/Card/Status assets remain retained.
 
 Detailed evidence: `docs/R12NativeProductionCutoverValidation.md`.
 
-## R13-M1 Opening Audit
+## R13-M1 — Native Production Stabilization
 
 R13-M1 — Native Production Stabilization opened at
 `76d411a21c042a86d1e7a4c608a67ae10c724ea2`. The production map instance remains
 on `WBP_BattleHUD_Native_C`, all Legacy assets remain retained, and no Legacy runtime
 fallback occurred.
 
-The post-cutover Git audit found only documentation commits between `de788c5` and
-the starting HEAD. There is no qualifying Native HUD/Card/Status implementation or
-asset change, so the mandatory post-cutover Native-only UI change condition is not
-met.
+The opening post-cutover Git audit found no qualifying change. R13 then implemented
+the authorized Native-only production dependency stabilization in commit `fe7fe4e`:
+the Presenter default now selects the Native HUD and the Native HUD transient Card/
+Status variables use Native concrete types. No Legacy asset was changed.
 
-The UE Asset Registry audit also failed the zero-Legacy-dependency condition with
-three exact hard-package paths:
+The opening UE Asset Registry audit found three exact hard-package paths:
 
 ```text
 L_BattleTest -> BP_BattleHUDPresenter -> WBP_BattleHUD
@@ -1005,25 +1010,24 @@ L_BattleTest -> WBP_BattleHUD_Native -> WBP_BattleCard
 L_BattleTest -> WBP_BattleHUD_Native -> WBP_BattleStatus
 ```
 
-The production map instance and Native Card/Status class defaults are correctly
-Native, but `BP_BattleHUDPresenter` CDO still defaults to Legacy and the Native HUD
-package retains the two direct Legacy package dependencies. No asset was modified.
+After `fe7fe4e`, loaded-property and Asset Registry inspection reported production
+runtime Legacy HUD/Card/Status dependency count `0`. The focused R13 test passed
+exactly 1/1, formal Phase6R passed exactly 100/100, and the final production-map
+Scenario A-E, active Skip, active timeout Cancel, stale callback and Input Unlock
+Gates passed.
 
-Existing R5-R10/A2D4/A2D5/R11-R12 coverage was audited. The only justified future
-R13 tests are one combined repeated Skip/timeout Cancel/stale/later-request sequence
-and one production asset-dependency contract test. Neither was added while the
-asset contract is known to fail and the required real Native-only change is absent.
+The temporary Editor-only PIE commands were removed and never committed. The final
+no-harness Editor and Shipping builds passed with zero forbidden Shipping artifacts.
+The Skip sequence's HP `80 -> 74 -> 68` is two distinct real EndTurns: the second is
+the deliberate post-catch-up input-unlock probe, not duplicate Damage playback.
 
 Detailed milestone state: `docs/R13NativeHUDStabilization.md`.
 
 ## Next Exact Action — STOP
 
-Do not manufacture a cosmetic/no-op UI change. Resume R13 only when a real
-post-cutover Native-only UI change exists or the user explicitly authorizes work on
-the exact failed asset-reference owners. Do not delete Legacy assets, start R14
-cleanup, or resume UI-A3.
+R13-M1 is complete. Do not start R14-A, authorize R14-B, delete or rename Legacy
+assets, fix redirectors, or resume UI-A3 without a new explicit user request.
 
 ## Blockers
 
-R13 cannot close because no real post-cutover Native-only UI change exists and the
-production runtime Legacy HUD/Card/Status dependency audit is `3`, not `0`.
+None for R13.

@@ -526,7 +526,45 @@ Shipping exclusion Gate were rerun on the no-harness tree and passed. Complete R
 evidence is recorded in `docs/R12NativeProductionCutoverValidation.md`.
 
 R12-A is **COMPLETE** and R12-B is **COMPLETE / VALIDATED**. Native HUD is the
-production default, Legacy assets remain retained, and R13 is **NOT STARTED**.
+production default and Legacy assets remain retained.
+
+### Phase 6UI-A2N R13 objective stabilization — 2026-09-01
+
+R13-M1 — Native Production Stabilization began at
+`76d411a21c042a86d1e7a4c608a67ae10c724ea2`. Commit `fe7fe4e` supplied the required
+real post-cutover Native-only UI change: the Presenter default now selects
+`WBP_BattleHUD_Native_C`, and Native HUD transient Card/Status ownership no longer
+uses Legacy concrete widget types. Legacy assets were not modified.
+
+AUTOMATED GATES:
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+SlayTheSpireDemo.Phase6UIA2N.R13: exactly 1/1 PASS, 0 failed, 0 notRun
+Formal current-head Phase6R: exactly 100/100 Success, 0 failed, 0 notRun
+Final post-harness-cleanup SlayTheSpireDemo Win64 Shipping: PASS
+Shipping forbidden artifact hits: 0
+Runtime temporary harness hits: 0
+Editor-test temporary harness hits: 0
+Production runtime Legacy HUD/Card/Status dependency: 0 — PASS
+```
+
+MANUAL PIE GATES:
+
+The user completed the final production-map `L_BattleTest` pass on 2026-09-01 and
+confirmed Scenario A-E PASS. The active Skip and active timeout Cancel commands used
+real Widget EndTurn requests and real active Tokens; logs confirmed Skip catch-up,
+exact Cancel, stale Token A rejection, queue catch-up and a successful real EndTurn
+after input unlock. The apparent second HP loss in the Skip log came from this
+deliberate second EndTurn input probe, not duplicate playback of one Damage Record.
+
+The temporary Editor-only R13 PIE source and temporary test-module dependency were
+removed and never committed. The final no-harness Editor and Shipping builds passed.
+Native remained the production default throughout R13-M1 and Legacy runtime fallback
+was `NO`.
+
+R13 is **COMPLETE / VALIDATED**. R14-A is **NOT STARTED**, R14-B is **NOT
+AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -566,10 +604,12 @@ exclusion all passed.
 A2N migration status is now:
 
 ```text
-R0-R12 COMPLETE / VALIDATED
+R0-R13 COMPLETE / VALIDATED
 Native HUD = production default
 Legacy assets retained
-R13 NOT STARTED
+R14-A NOT STARTED
+R14-B NOT AUTHORIZED
+UI-A3 NOT STARTED
 ```
 
 Validated A2E scenarios include:
