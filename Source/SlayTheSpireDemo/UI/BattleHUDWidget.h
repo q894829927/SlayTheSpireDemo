@@ -3,6 +3,8 @@
 #include "CoreMinimal.h"
 #include "BattleHUDWidgetBase.h"
 #include "BattleHUDTypes.h"
+#include "BattleHUDViewModel.h"
+#include "Containers/Ticker.h"
 #include "TimerManager.h"
 #include "BattleHUDWidget.generated.h"
 
@@ -41,6 +43,65 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
 	TSubclassOf<UBattleStatusWidget> StatusWidgetClass;
+
+	// Native card-request call sites intentionally use this C++ overload instead
+	// of the inherited one-parameter UFUNCTION. Slow input preserves the sealed
+	// path. A click that lands during an actually active Native presentation
+	// catches the presentation up through the formal Skip path, then retries that
+	// exact latest card request on the next CoreTicker turn. Gameplay-side
+	// ResolutionBusy validation remains authoritative on the retry.
+	bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true)
+	{
+		if (!bAllowFastPresentationCatchUp
+			|| RuntimeId == INDEX_NONE
+			|| !IsValid(ViewModel))
+		{
+			return UBattleHUDWidgetBase::SelectCard(RuntimeId);
+		}
+
+		// While one retry is already queued, rapid additional clicks simply replace
+		// the pending RuntimeId. This keeps the UI latest-click-wins without creating
+		// a second Gameplay command queue.
+		if (bFastCardSelectionRetryScheduled)
+		{
+			PendingFastCardRuntimeId = RuntimeId;
+			return true;
+		}
+
+		const bool bCanFastCatchUpPresentation =
+			HasActiveNativePresentation()
+			&& ViewModel->Outcome == EBattleHUDOutcome::None
+			&& ViewModel->InteractionState == EBattleHUDInteractionState::Resolving
+			&& ViewModel->bInputLocked;
+		if (!bCanFastCatchUpPresentation)
+		{
+			// No Native visual owns the delay. This is the normal path, including a
+			// genuine Gameplay ActionQueue busy rejection.
+			return UBattleHUDWidgetBase::SelectCard(RuntimeId);
+		}
+
+		PendingFastCardRuntimeId = RuntimeId;
+		bFastCardSelectionRetryScheduled = true;
+
+		// This is the already-sealed exact-token catch-up path. It synchronously
+		// cancels only the active presentation visual and collapses Controller state
+		// to the newest frozen FinalSnapshot; it does not mutate Gameplay truth.
+		SkipPresentation();
+
+		const TWeakObjectPtr<UBattleHUDWidget> WeakThis(this);
+		FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda(
+				[WeakThis](float /*DeltaTime*/)
+				{
+					if (UBattleHUDWidget* Widget = WeakThis.Get())
+					{
+						Widget->RetryPendingFastCardSelection();
+					}
+					return false;
+				}),
+			0.0f);
+		return true;
+	}
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -375,8 +436,39 @@ protected:
 	TObjectPtr<UTextBlock> Txt_EnemyIntent;
 
 private:
+	void RetryPendingFastCardSelection()
+	{
+		if (!bFastCardSelectionRetryScheduled)
+		{
+			return;
+		}
+
+		const int32 RuntimeId = PendingFastCardRuntimeId;
+		PendingFastCardRuntimeId = INDEX_NONE;
+		bFastCardSelectionRetryScheduled = false;
+
+		if (RuntimeId == INDEX_NONE || !IsValid(ViewModel))
+		{
+			return;
+		}
+
+		// A fast click must not turn a terminal/unavailable surface into a generic
+		// ResolutionBusy feedback. For every non-terminal state, retry exactly once
+		// through the unchanged authoritative ViewModel/Battle request boundary.
+		if (ViewModel->Outcome != EBattleHUDOutcome::None
+			|| ViewModel->InteractionState == EBattleHUDInteractionState::Terminal
+			|| ViewModel->InteractionState == EBattleHUDInteractionState::PresentationUnavailable)
+		{
+			return;
+		}
+
+		UBattleHUDWidgetBase::SelectCard(RuntimeId);
+	}
+
 	bool bNativeBindingsValid = false;
 	bool bNativeDelegatesBound = false;
+	int32 PendingFastCardRuntimeId = INDEX_NONE;
+	bool bFastCardSelectionRetryScheduled = false;
 
 	// Controller/reducer state never lives here. These fields describe only the
 	// one local visual currently owned by this HUD.
