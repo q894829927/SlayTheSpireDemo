@@ -199,16 +199,21 @@ void UBattleHUDWidgetBase::NativeDestruct()
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackToken = FPresentationPlaybackToken{};
 
+	// Stop observing ViewModel changes before NotifyWidgetLost. That controller
+	// callback may synchronously SkipPresentation/collapse to a newer historical
+	// snapshot and broadcast OnChanged; a Widget already leaving the tree must not
+	// redraw Hand/Status/other UMG children during that teardown catch-up.
+	if (IsValid(ViewModel))
+	{
+		ViewModel->OnChanged.RemoveDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
+	}
+
 	if (IsValid(PresentationController))
 	{
 		PresentationController->NotifyWidgetLost(this);
 	}
 	PresentationController = nullptr;
 
-	if (IsValid(ViewModel))
-	{
-		ViewModel->OnChanged.RemoveDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
-	}
 	Super::NativeDestruct();
 }
 
