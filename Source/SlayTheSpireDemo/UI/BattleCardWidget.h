@@ -71,8 +71,6 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_CardArt;
 
-	bool AreNativeBindingsValid() const { return bNativeBindingsValid; }
-
 private:
 	// Use a native-only name distinct from the duplicated Legacy Blueprint's
 	// retained `CardView` member variable. R4 takes runtime ownership without
