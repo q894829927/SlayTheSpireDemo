@@ -264,30 +264,38 @@ Run once on the R11 candidate head:
 
 Do not run Phase6R, Shipping exclusion, production cutover, or R12 acceptance in R11.
 
-## Remaining manual R11 catch-up gate
+## Manual temporal visual parity — PASS
 
-Scenario A-E and the deterministic temporal protocol are complete. The remaining
-manual parity scope is only the visible part of the two temporal flows:
-
-```text
-Legacy active Skip: no A -> B -> A flashback or duplicate visual
-Legacy active Cancel/stale: no abandoned visual returns or duplicate visual
-Native active Skip: no A -> B -> A flashback or duplicate visual
-Native active Cancel/stale: no abandoned visual returns or duplicate visual
-```
-
-These checks must operate on real active playback produced through formal Gameplay/UI
-requests. Do not construct a synthetic Presentation Record merely to satisfy R11.
-
-The commands are now stable manual entry points; run each once while observing PIE:
+The user completed the remaining temporal visual checks on 2026-09-01 using the
+stable commands on both formal maps:
 
 ```text
 A2N.R11.TestSkip
 A2N.R11.TestCancelStale
 ```
 
-The harness log must also end in `PASS`; the user observation closes only the visual
-portion that deterministic assertions cannot own.
+```text
+Legacy active Skip: PASS
+  current active animation stopped/collapsed without A -> B -> A flashback
+  no duplicate Hand or Status visual
+
+Legacy active Cancel/stale: PASS
+  abandoned visual did not return
+  no duplicate visual or later-playback disturbance
+
+Native active Skip: PASS
+  current active animation stopped/collapsed without A -> B -> A flashback
+  no duplicate Hand or Status visual
+
+Native active Cancel/stale: PASS
+  abandoned visual did not return
+  no duplicate visual or later-playback disturbance
+```
+
+Together with the already-passing harness assertions, this closes the active Skip,
+active Cancel, stale callback, catch-up, visible stability and post-catch-up Input
+Unlock parity scope for both stacks. This is user-confirmed manual PIE evidence; it
+is not inferred from the unattended runs.
 
 ## Candidate acceptance
 
@@ -300,7 +308,7 @@ Legacy-vs-Native observable Scenario A-E parity [PASS]
 active Skip/Cancel deterministic protocol PASS   [PASS — Legacy + Native]
 stale callback rejection PASS                    [PASS — Legacy + Native]
 input-unlock after catch-up PASS                  [PASS — Legacy + Native]
-temporal visual no-flashback/no-duplicate parity [PENDING USER PIE]
+temporal visual no-flashback/no-duplicate parity [PASS — Legacy + Native]
 focused Native handler tests PASS                [PENDING unless confirmed]
 Editor build PASS                                [PASS]
 Blueprint compile/save PASS for all Native WBP   [PENDING unless confirmed]

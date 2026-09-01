@@ -463,10 +463,16 @@ catch-up, exact ViewModel equality with the latest frozen FinalSnapshot, Idle an
 unlocked input, and acceptance of a second real Widget EndTurn request. The Editor
 build for the test-only harness passed.
 
-These were unattended no-rendering in-process PIE runs, so their PASS owns only
-deterministic state, ownership, stale-token and input contracts. Visible
-no-flashback/no-duplicate parity for these two temporal flows remains a user-observed
-PIE Gate. R11 remains **VALIDATION IN PROGRESS**; R12 remains **NOT STARTED**.
+The unattended no-rendering runs own the deterministic state, ownership, stale-token
+and input contracts. The user then ran both commands on Legacy and Native PIE and
+confirmed the remaining visual parity on 2026-09-01: active Skip produced no
+`A -> B -> A` flashback or duplicate Hand/Status; active Cancel/stale produced no
+abandoned-visual return, duplicate visual or disturbance of later playback.
+
+Therefore the complete R11 active Skip, active Cancel, stale callback, catch-up and
+Input Unlock parity scope is PASS on both stacks. R11 remains **VALIDATION IN
+PROGRESS** only because its aggregate Automation and Native WBP compile/save gates
+are still pending unless separately confirmed. R12 remains **NOT STARTED**.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 

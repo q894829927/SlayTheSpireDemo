@@ -67,7 +67,7 @@ R11 starting HEAD: 08d6fc003701e485ef37414d2ac79ba8a436d3cb
 R11 Scenario A-E Legacy/Native parity: PASS (user confirmed 2026-09-01)
 R11 temporal Skip deterministic PIE: PASS (Legacy + Native, 2026-09-01)
 R11 temporal Cancel/stale deterministic PIE: PASS (Legacy + Native, 2026-09-01)
-R11 temporal visual observation: PENDING USER PIE
+R11 temporal visual observation: PASS (Legacy + Native; user confirmed 2026-09-01)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -926,18 +926,17 @@ harness now provides stable `A2N.R11.TestSkip` and
 active playback, exact timeout Cancel, stale callback isolation, FinalSnapshot and
 queue catch-up, and post-catch-up Widget input acceptance for both formal maps.
 
-The remaining temporal Gate is the user-observed visual portion only: no visible
-flashback, abandoned visual return, or duplicate Hand/Status while each command runs
-once on Legacy and once on Native. Aggregate R11 Automation and Native WBP
-compile/save gates remain pending unless separately confirmed.
+The user completed both temporal commands on Legacy and Native PIE and confirmed no
+visible flashback, abandoned-visual return, duplicate Hand/Status or later-playback
+disturbance. The complete temporal parity scope is PASS. Aggregate R11 Automation
+and Native WBP compile/save gates remain pending unless separately confirmed.
 
-## Next Exact Action — USER PIE / STOP
+## Next Exact Action — REMAINING R11 AUTOMATED GATES / STOP
 
-Run the two temporal commands once on Legacy and once on Native while observing the
-remaining visual criteria. Do not enter R12 automatically.
+Run only the still-pending R11 aggregate Automation and Native WBP compile/save gates
+when explicitly requested or confirmed. Do not enter R12 automatically.
 
 ## Blockers
 
-No deterministic R11 temporal blocker remains. R11 cannot close until the remaining
-visual observation and the other documented R11 candidate gates are confirmed.
-R12 remains NOT STARTED.
+No temporal R11 blocker remains. R11 cannot close until the other documented R11
+candidate gates are confirmed. R12 remains NOT STARTED.
