@@ -4,7 +4,7 @@ Status:
 
 ```text
 R0-R9 COMPLETE / VALIDATED
-R10 SOURCE IMPLEMENTED / FOCUSED AUTOMATION 5/5 PASS / MANUAL PIE PENDING
+R10 SOURCE IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE PENDING
 R11 NOT STARTED
 ```
 
@@ -156,21 +156,63 @@ The uploaded failed-run log is retained only as correction history; it showed th
 other four tests already passing and the single fixture assertion failure that led to
 the correction. It is not the final focused Gate.
 
-## AUTOMATED GATES
+## Base teardown correction and targeted revalidation — PASS
 
-Required closed-scope gates are:
+Stopping PIE exposed a teardown-order bug inherited from the shared HUD base. During
+`UBattleHUDWidgetBase::NativeDestruct()`, `PresentationController->NotifyWidgetLost()`
+could synchronously collapse/catch up presentation state and broadcast ViewModel
+`OnChanged` while the departing Native HUD was still subscribed. The Native HUD then
+attempted to rebuild formal Hand widgets while its PIE owning-player/world was already
+leaving the UI lifecycle, producing one `Failed to create formal Hand card` error per
+historical Hand entry.
+
+The correction is intentionally limited to teardown ordering:
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development build
-2. SlayTheSpireDemo.Phase6UIA2N.R10 focused Automation
+clear tracked playback
+-> remove ViewModel.OnChanged binding
+-> PresentationController.NotifyWidgetLost(this)
+-> clear controller reference
+-> Super::NativeDestruct
 ```
 
-Focused Automation: **5/5 PASS** (user confirmed 2026-09-01 after the corrected test
-fixture).
+Fix commit:
 
-Final Build evidence after the last test-source correction is not newly claimed by
-this document until explicitly confirmed. Do not infer an unreported Build result
-from the Automation result.
+```text
+0f876a3ca46e54e02eaa3480307dee05bfffb5ff
+fix(ui-a2n): unbind HUD refresh before widget-loss catch-up
+```
+
+The Controller still owns authoritative widget-loss catch-up; the departing HUD simply
+stops observing ViewModel redraws before that catch-up occurs. No Gameplay, Controller,
+Record/Envelope, reducer, Finish, Cancel, or normal Notify semantics were changed.
+
+Because this shared Base change invalidated only teardown-sensitive evidence, the
+smallest affected gates were rerun and the user confirmed on 2026-09-01:
+
+```text
+SlayTheSpireDemoEditor Win64 Development build: PASS
+SlayTheSpireDemo.Phase6UIA2N.R5.DestructCleanup: 1/1 PASS
+SlayTheSpireDemo.Phase6UIA2N.R10.Terminal.InvalidIdentityAndDestruct: 1/1 PASS
+```
+
+The previously passing non-teardown R10 focused tests remain sticky because this
+change touches only the order of ViewModel unsubscription versus widget-loss catch-up
+inside `NativeDestruct`.
+
+A clean Stop-PIE log with no `Failed to create formal Hand card` lines is still a
+manual observation and is not inferred from the targeted Automation result.
+
+## AUTOMATED GATES — PASS
+
+Required closed-scope gates:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. SlayTheSpireDemo.Phase6UIA2N.R10 focused Automation: 5/5 PASS
+3. Post-teardown-fix targeted R5 DestructCleanup: 1/1 PASS
+4. Post-teardown-fix targeted R10 InvalidIdentityAndDestruct: 1/1 PASS
+```
 
 Targeted `WBP_BattleHUD_Native` compile is **NOT REQUIRED** for this R10 source head
 because R10 adds no new `UPROPERTY`, `UFUNCTION`, `BindWidget`, class selector, or
@@ -209,18 +251,19 @@ PresentationUnavailable:
   input remains locked
 ```
 
-Also confirm no terminal flashback/duplicate and no early input unlock. Do not replay
-the broad Scenario A-E parity matrix; that belongs to R11.
+Also confirm no terminal flashback/duplicate, no early input unlock, and after a
+normal Native PIE session Stop PIE does not emit the teardown-only
+`[BattleHUD][Native] Failed to create formal Hand card` errors. Do not replay the
+broad Scenario A-E parity matrix; that belongs to R11.
 
 ## Current acceptance state
 
 ```text
 R10 SOURCE IMPLEMENTED
-FOCUSED AUTOMATION 5/5 PASS
-FINAL BUILD CONFIRMATION NOT YET RECORDED AFTER LAST TEST-SOURCE CORRECTION
+AUTOMATED GATES PASS
 MANUAL PIE PENDING
 R11 NOT STARTED
 ```
 
-Do not mark R10 `COMPLETE / VALIDATED` or start R11 until the remaining required
-Build evidence and manual Gate are actually confirmed.
+Do not mark R10 `COMPLETE / VALIDATED` or start R11 until the required manual Gate is
+actually confirmed.
