@@ -299,9 +299,7 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 		OutSnapshot.EnemyIntent.Type = EBattleHUDIntentType::Attack;
 		OutSnapshot.EnemyIntent.DisplayName =
 			OutSnapshot.EnemyIntent.bHasCurrentResolvedDamageAmount
-			? FText::Format(
-				FText::FromString(TEXT("Attack {0}")),
-				FText::AsNumber(OutSnapshot.EnemyIntent.CurrentResolvedDamageAmount))
+			? FText::AsNumber(OutSnapshot.EnemyIntent.CurrentResolvedDamageAmount)
 			: FText::FromString(TEXT("Attack"));
 	}
 
