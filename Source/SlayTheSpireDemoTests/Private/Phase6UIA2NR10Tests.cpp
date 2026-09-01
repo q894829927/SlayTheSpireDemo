@@ -158,7 +158,7 @@ bool FNativeR10VictoryOrderingTest::RunTest(const FString& Parameters)
 		Fixture.Probe->InvokeBeginDirectForTesting(Victory, Token));
 	TestEqual(TEXT("Victory owns exact Record type"),
 		Fixture.Probe->ActiveLocalType(), EBattlePresentationRecordType::Victory);
-	TestEqual(TEXT("Victory owns exact token"), Fixture.Probe->ActiveLocalToken(), Token);
+	TestTrue(TEXT("Victory owns exact token"), Fixture.Probe->ActiveLocalToken() == Token);
 	TestEqual(TEXT("Victory terminal is visible"),
 		Fixture.TerminalOverlay->GetVisibility(), ESlateVisibility::Visible);
 	TestEqual(TEXT("Victory text is frozen formal surface"),
@@ -240,7 +240,7 @@ bool FNativeR10ResolutionFaultTest::RunTest(const FString& Parameters)
 	}
 
 	FPresentationRecord Invalid = MakeTerminalRecord(3, EBattlePresentationRecordType::ResolutionFault);
-	Invalid.ResolutionFault.Reason.Reset();
+	Invalid.ResolutionFault.Reason = FText::GetEmpty();
 	TestFalse(TEXT("Empty ResolutionFault reason is rejected"),
 		Fixture.Probe->InvokeBeginDirectForTesting(Invalid, MakeToken(3)));
 	TestFalse(TEXT("Invalid fault owns no timer"), Fixture.Probe->IsLocalFinishTimerSet());
