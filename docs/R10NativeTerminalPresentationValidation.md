@@ -3,14 +3,14 @@
 Status:
 
 ```text
-R0-R9 COMPLETE / VALIDATED
-R10 SOURCE IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE PENDING
+R0-R10 COMPLETE / VALIDATED
 R11 NOT STARTED
 ```
 
 Implementation branch: `main` (continuing the explicitly authorized direct-main A2N workflow)
 Starting main HEAD: `bab10acdfd9939e7122506391e73488584e7bb71`
 Implementation date: **2026-09-01**
+Validation completed: **2026-09-01**
 
 R10 migrates only the formal Native HUD rendering of committed terminal Records:
 
@@ -200,9 +200,6 @@ The previously passing non-teardown R10 focused tests remain sticky because this
 change touches only the order of ViewModel unsubscription versus widget-loss catch-up
 inside `NativeDestruct`.
 
-A clean Stop-PIE log with no `Failed to create formal Hand card` lines is still a
-manual observation and is not inferred from the targeted Automation result.
-
 ## AUTOMATED GATES — PASS
 
 Required closed-scope gates:
@@ -222,48 +219,54 @@ already validated in earlier Native phases.
 Do not automatically run R3-R9, A2D5, Phase6R, Shipping, Scenario A-E, all-Blueprint
 compilation, or an architecture reviewer.
 
-## MANUAL PIE GATE — PENDING
+## MANUAL PIE GATE — PASS
 
-Use:
+Map:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 ```
 
-R10 explicitly requires one focused visual check per genuinely distinct terminal
-surface. Use the existing real producers/harnesses and verify only:
+The user completed the focused R10 Native PIE acceptance on 2026-09-01 and confirmed
+all required visual surfaces and teardown behavior:
 
 ```text
-Victory:
-  lethal Enemy Damage reaches visible 0 HP first
-  then formal overlay shows 胜利
+Victory: PASS
+  lethal Enemy Damage reached visible 0 HP first
+  then the formal overlay showed 胜利
 
-Defeat:
-  lethal Player Damage reaches visible 0 HP first
-  then formal overlay shows 战斗失败
+Defeat: PASS
+  lethal Player Damage reached visible 0 HP first
+  then the formal overlay showed 战斗失败
 
-ResolutionFault:
-  isolated real resolution fault shows 战斗结算异常
+ResolutionFault: PASS
+  the isolated real framework fault showed 战斗结算异常
 
-PresentationUnavailable:
-  presentation failure shows its ViewModel feedback/error state
-  does NOT show 战斗结算异常 terminal overlay
-  input remains locked
+PresentationUnavailable: PASS
+  presentation failure rendered the ViewModel feedback/error state
+  did not show 战斗结算异常 terminal overlay
+  input remained locked
+
+Terminal stability: PASS
+  no terminal flashback or duplicate
+  no early input unlock
+
+Stop PIE teardown: PASS
+  no [BattleHUD][Native] Failed to create formal Hand card errors
 ```
 
-Also confirm no terminal flashback/duplicate, no early input unlock, and after a
-normal Native PIE session Stop PIE does not emit the teardown-only
-`[BattleHUD][Native] Failed to create formal Hand card` errors. Do not replay the
-broad Scenario A-E parity matrix; that belongs to R11.
+This manual evidence is user-confirmed; it is not inferred from Automation.
+The broad Scenario A-E parity matrix was not replayed because that belongs to R11.
 
 ## Current acceptance state
 
 ```text
-R10 SOURCE IMPLEMENTED
-AUTOMATED GATES PASS
-MANUAL PIE PENDING
+R0-R10 COMPLETE / VALIDATED
+R10 AUTOMATED GATES PASS
+R10 MANUAL PIE PASS
 R11 NOT STARTED
 ```
 
-Do not mark R10 `COMPLETE / VALIDATED` or start R11 until the required manual Gate is
-actually confirmed.
+**R10 is COMPLETE / VALIDATED.**
+
+Do not start R11 automatically. R11 may begin only when explicitly authorized.
