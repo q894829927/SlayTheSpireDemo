@@ -130,13 +130,15 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
 - A2N Native HUD ownership migration — **IN PROGRESS — R0-R12 COMPLETE / VALIDATED;
-  R13 NOT STARTED**. R12 cut production `L_BattleTest` over to
+  R13-M1 STABILIZATION IN PROGRESS; R14 NOT STARTED**. R12 cut production `L_BattleTest` over to
   `WBP_BattleHUD_Native` in isolated commit `de788c5`, then passed cutover-head WBP,
   A2D5 6/6, Phase6R 100/100, clean Shipping and production-map manual PIE Gates.
   Native HUD is now the production default; Legacy HUD/Card/Status assets remain
   retained. Detailed evidence is recorded in
   `docs/R12NativeProductionCutoverValidation.md`. This remains a maintenance
-  refactor of sealed UI behavior, not UI-A3 work.
+  refactor of sealed UI behavior, not UI-A3 work. R13-M1 is currently blocked on a
+  real post-cutover Native-only UI change and on removal of three formal production
+  Legacy asset dependencies; see `docs/R13NativeHUDStabilization.md`.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 

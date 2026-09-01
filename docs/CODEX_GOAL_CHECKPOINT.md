@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R12 COMPLETE / VALIDATED; R13-M1 STABILIZATION IN PROGRESS; R14 NOT STARTED**.
 
 ## Current Repository State
 
@@ -81,6 +81,13 @@ R12-B formal Phase6R: exactly 100/100 PASS
 R12-B production-map manual PIE: PASS (user confirmed 2026-09-01)
 R12-B post-harness-cleanup Editor build: PASS
 R12-B post-harness-cleanup clean Shipping exclusion: PASS
+R13 starting HEAD: 76d411a21c042a86d1e7a4c608a67ae10c724ea2
+R13 milestone: R13-M1 — Native Production Stabilization
+R13 post-cutover Native-only UI change: NONE
+R13 Legacy runtime fallback occurred: NO
+R13 production Legacy HUD/Card/Status dependencies: 3 — FAIL (required 0)
+R13 objective tests: NOT ADDED / NOT RUN
+R13 final broad Gates: NOT RUN
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -94,7 +101,8 @@ R10: COMPLETE / VALIDATED
 R11: COMPLETE / VALIDATED
 R12-A: COMPLETE
 R12-B: COMPLETE / VALIDATED
-R13: NOT STARTED
+R13: STABILIZATION IN PROGRESS — BLOCKED
+R14: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -971,11 +979,46 @@ default; Legacy HUD/Card/Status assets remain retained.
 
 Detailed evidence: `docs/R12NativeProductionCutoverValidation.md`.
 
+## R13-M1 Opening Audit
+
+R13-M1 — Native Production Stabilization opened at
+`76d411a21c042a86d1e7a4c608a67ae10c724ea2`. The production map instance remains
+on `WBP_BattleHUD_Native_C`, all Legacy assets remain retained, and no Legacy runtime
+fallback occurred.
+
+The post-cutover Git audit found only documentation commits between `de788c5` and
+the starting HEAD. There is no qualifying Native HUD/Card/Status implementation or
+asset change, so the mandatory post-cutover Native-only UI change condition is not
+met.
+
+The UE Asset Registry audit also failed the zero-Legacy-dependency condition with
+three exact hard-package paths:
+
+```text
+L_BattleTest -> BP_BattleHUDPresenter -> WBP_BattleHUD
+L_BattleTest -> WBP_BattleHUD_Native -> WBP_BattleCard
+L_BattleTest -> WBP_BattleHUD_Native -> WBP_BattleStatus
+```
+
+The production map instance and Native Card/Status class defaults are correctly
+Native, but `BP_BattleHUDPresenter` CDO still defaults to Legacy and the Native HUD
+package retains the two direct Legacy package dependencies. No asset was modified.
+
+Existing R5-R10/A2D4/A2D5/R11-R12 coverage was audited. The only justified future
+R13 tests are one combined repeated Skip/timeout Cancel/stale/later-request sequence
+and one production asset-dependency contract test. Neither was added while the
+asset contract is known to fail and the required real Native-only change is absent.
+
+Detailed milestone state: `docs/R13NativeHUDStabilization.md`.
+
 ## Next Exact Action — STOP
 
-Wait for explicit authorization before starting R13. Do not delete Legacy assets,
-start R14 cleanup, or resume UI-A3 automatically.
+Do not manufacture a cosmetic/no-op UI change. Resume R13 only when a real
+post-cutover Native-only UI change exists or the user explicitly authorizes work on
+the exact failed asset-reference owners. Do not delete Legacy assets, start R14
+cleanup, or resume UI-A3.
 
 ## Blockers
 
-No R12 blocker remains. R13 remains NOT STARTED.
+R13 cannot close because no real post-cutover Native-only UI change exists and the
+production runtime Legacy HUD/Card/Status dependency audit is `3`, not `0`.
