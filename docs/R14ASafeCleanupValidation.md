@@ -2,7 +2,7 @@
 
 Date: **2026-09-01**
 
-Status: **R14-A COMPLETE / VALIDATED; R14-B NOT AUTHORIZED**
+Status: **R14-A COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED**
 
 ## Scope
 
@@ -10,6 +10,9 @@ R14-A is limited to non-destructive cleanup after the validated Native productio
 cutover and stabilization milestone. Legacy HUD/Card/Status assets remain retained
 and unchanged. R14-A does not authorize Legacy deletion, redirector cleanup,
 Gameplay/Presentation redesign, production WidgetClass changes, or UI-A3 work.
+
+The durable post-R14-A Legacy-retention policy is defined in
+`docs/LegacyUIPreservationPolicy.md`.
 
 ## Starting point
 
@@ -136,62 +139,49 @@ surfaces; normal Card and Damage presentation for one ordinary attack; the corre
 final Card zone; input recovery after catch-up; and no duplicate, flashback, Native
 binding error, or Blueprint runtime error.
 
-R14-A2 is **COMPLETE / VALIDATED**. The implementation commit is:
+## Post-R14-A Legacy retention decision
+
+The retained Legacy assets are intentionally kept as historical/reference and
+emergency-recovery artifacts:
 
 ```text
-8a609659ba138c922fe64bbfd08bca44b05ca8d6
-refactor(ui-a2n): remove native blueprint migration residue
+WBP_BattleHUD
+WBP_BattleCard
+WBP_BattleStatus
 ```
 
-## L_BattleTest_Native retention decision
+They are now **DEPRECATED / DO NOT USE** for normal forward development.
 
-`L_BattleTest_Native` is intentionally retained as a non-production migration and
-regression map. Production already uses `L_BattleTest` with
-`WBP_BattleHUD_Native_C`, and the current production runtime Legacy HUD/Card/Status
-dependency count is zero.
+The Native stack is the sole active battle-UI implementation. Future production,
+Presenter defaults, Native WBP defaults, runtime dependencies, new UI features and
+new regression-test execution targets must not point back to the retained Legacy
+assets. New Native behavior must not be dual-written into Legacy.
 
-The remaining references to `L_BattleTest_Native` are primarily historical A2N
-validation/checkpoint documentation. Deleting the map provides no concrete current
-maintenance or packaging benefit and would introduce a separate asset-deletion,
-reference-audit, and smoke-validation slice. Therefore its retention is an explicit
-R14-A decision, not an unfinished cleanup blocker.
+Historical documentation references and manual inspection are allowed. Emergency
+Legacy recovery requires a new explicit user authorization; asset existence alone is
+not authorization to restore the Legacy runtime path.
 
-No redirector cleanup is required because the map was not renamed or deleted.
+R14-B destructive removal is **NOT REQUIRED under the current project decision and
+remains NOT AUTHORIZED**. Do not delete, rename, move or Fix Redirectors for the
+retained Legacy assets unless the user later gives a separate explicit request.
 
-## R14-A closure
-
-R14-A is **COMPLETE / VALIDATED**.
-
-Completed safe-cleanup slices:
+Production runtime Legacy HUD/Card/Status dependency count must remain:
 
 ```text
-R14-A1 confirmed-unreferenced C++ helper cleanup: COMPLETE / VALIDATED
-R14-A2 Native Blueprint migration-residue cleanup: COMPLETE / VALIDATED
-L_BattleTest_Native retention decision: RETAINED INTENTIONALLY
+0
 ```
 
-R14-A changed no Gameplay authority, Presentation Record/Envelope semantics,
-Controller/reducer ownership, production WidgetClass, or Legacy WBP asset. Legacy
-HUD/Card/Status assets remain available for the separately authorized R14-B boundary.
-
-No additional Build, Automation, Blueprint compile, or PIE run is claimed for this
-pure documentation seal; the implementation/asset evidence above remains the
-accepted R14-A evidence.
-
-## Final phase state
+## Current phase state
 
 ```text
 R0-R13 COMPLETE / VALIDATED
 R14-A COMPLETE / VALIDATED
-R14-B NOT AUTHORIZED
-Native HUD = production default
-Production runtime Legacy HUD/Card/Status dependency count = 0
-Legacy assets retained
+R14-A1 COMPLETE / VALIDATED
+R14-A2 COMPLETE / VALIDATED
+R14-B NOT REQUIRED / NOT AUTHORIZED
+Native HUD = sole active implementation
+Legacy assets retained / deprecated / do not use
+Production runtime Legacy HUD/Card/Status dependency = 0
 L_BattleTest_Native retained intentionally as non-production migration/regression map
 UI-A3 NOT STARTED
 ```
-
-R14-B remains destructive and may begin only after a separate explicit user
-authorization. Until then, do not delete or rename `WBP_BattleHUD`,
-`WBP_BattleCard`, or `WBP_BattleStatus`, and do not run deletion-related Fix
-Redirectors.
