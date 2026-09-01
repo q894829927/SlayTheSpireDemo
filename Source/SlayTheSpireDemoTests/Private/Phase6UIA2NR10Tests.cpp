@@ -286,6 +286,11 @@ bool FNativeR10PresentationUnavailableTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Precondition: fault terminal is visible"),
 		Fixture.TerminalOverlay->GetVisibility(), ESlateVisibility::Visible);
 
+	// Restore the authoritative non-terminal precondition without redrawing the
+	// terminal surface. The stale visible Fault overlay is intentionally retained
+	// so PresentationUnavailable rendering must hide it without manufacturing a
+	// Gameplay ResolutionFault outcome.
+	Fixture.ViewModel->Outcome = EBattleHUDOutcome::None;
 	Fixture.ViewModel->EnterPresentationUnavailable(
 		FText::FromString(TEXT("TEST_PRESENTATION_UNAVAILABLE")));
 	Fixture.Probe->RefreshAvailabilityForTesting();
