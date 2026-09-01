@@ -18,7 +18,8 @@ A2 = post-commit playback of immutable facts that actually committed
 ```text
 UI-A3: IN PROGRESS / AUTHORIZED
 A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
-A3-2 Target-Specific Current-State Preview: NEXT IMPLEMENTATION SLICE
+A3-2 Target-Specific Current-State Preview: IN PROGRESS
+A3-2A Immediate Preview DTO + Effect contribution: IMPLEMENTED / VALIDATION PENDING
 A3-3 Energy + Target-Aware Legality: NOT STARTED
 A3-4 ViewModel Transient Preview Lifecycle: NOT STARTED
 A3-5 Minimal Native UMG + A2/A3 Combined PIE: NOT STARTED
@@ -59,7 +60,7 @@ docs/Phase6UIA3DynamicTextImplementation.md
 docs/ValidationExecutionPolicy.md
 ```
 
-`docs/Phase6UIA2EImplementation.md` remains sealed A2 history and the original A3 follow-up design basis. `docs/Phase6UIA3Implementation.md` is now the dedicated implementation/ordering/acceptance authority for active A3 work.
+`docs/Phase6UIA2EImplementation.md` remains sealed A2 history and the original A3 follow-up design basis. `docs/Phase6UIA3Implementation.md` is the dedicated implementation/ordering/acceptance authority for active A3 work.
 
 ## A3-1 sealed predecessor
 
@@ -86,52 +87,87 @@ Target-Specific Current-State Preview
   at one current BattleId/StateRevision
 ```
 
-## Next exact action
+## A3-2A implementation state
 
-Implement only:
+Implementation commit:
 
 ```text
-A3-2A — Immediate Preview DTO + read-only Effect contribution contract
+08f878e9f4f74b438985d187884c877d613617af
+feat(ui-a3): add immediate preview effect contributions
 ```
 
-Initial edit boundary:
+Implemented boundary:
+
+```text
+Source/SlayTheSpireDemo/Battle/BattleImmediatePreview.h
+Source/SlayTheSpireDemo/Cards/Effects/CardEffect.h
+Source/SlayTheSpireDemo/Cards/Effects/DamageCardEffect.h
+Source/SlayTheSpireDemo/Cards/Effects/DamageCardEffect.cpp
+Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.h
+Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA3ImmediatePreviewTests.cpp
+```
+
+The implementation establishes:
 
 ```text
 FImmediateCardPreview
 FImmediatePreviewOperation
 Damage / Block operation type
-UCardEffect narrow read-only Preview-operation contribution hook
-UDamageCardEffect contribution
-UGainBlockCardEffect contribution
-focused A3-2A read-only Automation
+UCardEffect default no-op read-only contribution hook
+UDamageCardEffect target-specific Damage contribution through FDamageModifierPipeline
+UGainBlockCardEffect Self Block contribution through FBlockModifierPipeline
+fixed multi-hit per-hit ResolvedAmount + authored HitCount semantics
+unsupported effects omitted from Operations[]
+focused Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
 ```
 
-Do not touch ViewModel or UMG in A3-2A.
-
-Do not implement Energy/legality lifecycle yet beyond what is structurally required by the DTO; that belongs to A3-3.
-
-Do not add Trigger/Relic simulation, final HP prediction, HP ghost bars, Status merge prediction, draw/shuffle prediction, multi-enemy architecture or cross-revision retained selection.
-
-## A3-2A validation scope
-
-Validation is closed-scope.
-
-AUTOMATED GATES
+A3-2A still does not touch:
 
 ```text
-1. Editor Build once.
-2. Run the smallest A3-2A focused Automation prefix once.
-3. Prove supported Damage/Block operation resolution is deterministic and read-only.
-4. Prove fixed multi-hit retains per-hit ResolvedAmount + HitCount semantics.
-5. Prove no Gameplay mutation / Action enqueue / Event emission / RNG consumption.
+BattleManager public Preview query construction
+ViewModel
+UMG
+Energy / legality evaluation
+PreviewTarget lifecycle
+Trigger / Relic prediction
+final HP prediction
+HP ghost bars
+Status merge prediction
+draw / shuffle prediction
+multi-enemy architecture
+cross-revision retained selection
 ```
 
-MANUAL PIE GATES
+## Validation actually performed
+
+No new UE validation has been claimed for A3-2A yet.
+
+The GitHub-connected implementation session could inspect and commit repository source, but it could not execute the project's local UE5.8 Editor Build or Unreal Automation command. Therefore:
 
 ```text
-none required for A3-2A
+Editor Build: NOT RUN
+SlayTheSpireDemo.UIA3.ImmediatePreview Automation: NOT RUN
+Manual PIE: NOT REQUIRED for A3-2A
+Phase6R / A2D5 / Shipping / broad Scenario suites: intentionally NOT RUN
 ```
+
+Do not treat the implementation commit as validated or sealed until the focused Gate below passes.
+
+## Next exact action
+
+Run only the closed-scope A3-2A validation Gate:
+
+```text
+1. Regenerate project files only if required by the local build environment.
+2. Editor Build once.
+3. Run Automation prefix exactly once:
+   SlayTheSpireDemo.UIA3.ImmediatePreview
+4. Confirm all focused tests pass and no compile/UHT issue exists.
+5. Record the exact Build + Automation evidence.
+6. Mark A3-2A COMPLETE / VALIDATED / SEALED and STOP before the next A3 slice.
+```
+
+Do not begin the BattleManager public Preview query / identity-stamping slice until A3-2A passes this Gate.
 
 Do not run Phase6R, A2D5, Shipping, broad Scenario A-E, Legacy parity or unrelated historical suites unless a concrete shared-contract failure invalidates them.
-
-After the A3-2A automated Gate passes, record evidence, commit, and STOP before the next A3 slice unless the user explicitly requests continuation.
