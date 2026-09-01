@@ -26,4 +26,9 @@ public:
 		FPreviewTextArgumentBuilder& OutArguments
 	) const override;
 	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const override;
+	virtual void BuildImmediatePreviewOperations(
+		const FCardEffectPreviewContext& Context,
+		int32 EffectIndex,
+		TArray<FImmediatePreviewOperation>& OutOperations
+	) const override;
 };

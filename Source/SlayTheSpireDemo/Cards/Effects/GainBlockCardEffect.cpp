@@ -62,3 +62,31 @@ void UGainBlockCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors
 		OutErrors.Add(FText::FromString(TEXT("GainBlockCardEffect BaseAmount cannot be negative.")));
 	}
 }
+
+void UGainBlockCardEffect::BuildImmediatePreviewOperations(
+	const FCardEffectPreviewContext& Context,
+	int32 EffectIndex,
+	TArray<FImmediatePreviewOperation>& OutOperations
+) const
+{
+	if (!IsValid(Context.Source)
+		|| DescriptionArgumentName.IsNone()
+		|| BaseAmount < 0)
+	{
+		return;
+	}
+
+	FBlockSpec Spec;
+	Spec.Source = Context.Source;
+	Spec.Target = Context.Source;
+	Spec.BaseAmount = BaseAmount;
+	FBlockModifierPipeline::Resolve(Spec);
+
+	FImmediatePreviewOperation Operation;
+	Operation.EffectIndex = EffectIndex;
+	Operation.SemanticArgumentName = DescriptionArgumentName;
+	Operation.Type = EImmediatePreviewOperationType::Block;
+	Operation.ResolvedAmount = Spec.ResolvedAmount;
+	Operation.HitCount = 1;
+	OutOperations.Add(Operation);
+}

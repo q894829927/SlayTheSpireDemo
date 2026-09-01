@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "../../Battle/BattleImmediatePreview.h"
 #include "CardEffect.generated.h"
 
 class UBattleAction;
@@ -31,4 +32,15 @@ public:
 	) const PURE_VIRTUAL(UCardEffect::BuildPreviewArguments, );
 	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 		PURE_VIRTUAL(UCardEffect::ValidatePreviewConfiguration, );
+
+	// A3 target-specific numeric preview contribution. Unsupported effects are
+	// intentionally absent from Operations rather than fabricating an outcome.
+	// This read-only hook must never call BuildActions or mutate Gameplay state.
+	virtual void BuildImmediatePreviewOperations(
+		const FCardEffectPreviewContext& Context,
+		int32 EffectIndex,
+		TArray<FImmediatePreviewOperation>& OutOperations
+	) const
+	{
+	}
 };

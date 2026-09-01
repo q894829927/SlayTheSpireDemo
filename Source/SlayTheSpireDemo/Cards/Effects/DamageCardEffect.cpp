@@ -76,3 +76,34 @@ void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) c
 		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect HitCount must be greater than zero.")));
 	}
 }
+
+void UDamageCardEffect::BuildImmediatePreviewOperations(
+	const FCardEffectPreviewContext& Context,
+	int32 EffectIndex,
+	TArray<FImmediatePreviewOperation>& OutOperations
+) const
+{
+	if (!IsValid(Context.Source)
+		|| !IsValid(Context.Target)
+		|| DescriptionArgumentName.IsNone()
+		|| BaseAmount < 0
+		|| HitCount <= 0)
+	{
+		return;
+	}
+
+	FDamageSpec Spec;
+	Spec.Source = Context.Source;
+	Spec.Target = Context.Target;
+	Spec.DamageKind = DamageKind;
+	Spec.BaseAmount = BaseAmount;
+	FDamageModifierPipeline::Resolve(Spec);
+
+	FImmediatePreviewOperation Operation;
+	Operation.EffectIndex = EffectIndex;
+	Operation.SemanticArgumentName = DescriptionArgumentName;
+	Operation.Type = EImmediatePreviewOperationType::Damage;
+	Operation.ResolvedAmount = Spec.ResolvedAmount;
+	Operation.HitCount = HitCount;
+	OutOperations.Add(Operation);
+}
