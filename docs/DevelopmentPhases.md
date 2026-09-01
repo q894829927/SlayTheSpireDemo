@@ -10,8 +10,7 @@ This document records project progress, implementation history and durable phase
 - UI-A2A/A2B/A2C/A2D C++ committed-presentation work is sealed.
 - **UI-A2E Unified Blueprint/UMG Playback & PIE Acceptance is complete, validated and sealed.**
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
-- UI-A3 A3-1 Dynamic Text is sealed; unfinished A3 Preview work was not resumed by
-  the UI-A2E closure and awaits an explicit follow-up scope.
+- **UI-A3 is now authorized and in progress.** A3-1 Dynamic Text is sealed; A3-2 Target-Specific Current-State Preview is the next implementation slice under `docs/Phase6UIA3Implementation.md`.
 - Phase 7 Relics follows completion of playable Phase 6UI-A.
 
 ## Phase 1 — Minimal Combat Loop
@@ -129,25 +128,7 @@ Status: **COMPLETE / VALIDATED / SEALED**
 - A2C Card + Energy + Zone + Shuffle — C++ validated.
 - A2D Status + Terminal — C++/Automation sealed.
 - A2E unified Blueprint/UMG playback and PIE — **COMPLETE / VALIDATED / SEALED**.
-- A2N Native HUD ownership migration — **R0-R13 COMPLETE / VALIDATED; R14-A
-  COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED; UI-A3 NOT STARTED**. R12 cut
-  production `L_BattleTest` over to `WBP_BattleHUD_Native` in isolated commit
-  `de788c5`, then passed cutover-head WBP, A2D5 6/6, Phase6R 100/100, clean Shipping
-  and production-map manual PIE Gates. Native HUD is the production default; Legacy
-  HUD/Card/Status assets remain retained. The deprecated Legacy assets were later
-  relocated, without deletion or runtime reactivation, to
-  `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. R13-M1 completed the post-cutover Native-only
-  dependency stabilization change `fe7fe4e`, retained zero production Legacy
-  HUD/Card/Status dependencies, and passed its formal stabilization gates. R14-A then
-  removed confirmed-unreferenced Native C++ helpers and zero-reference Blueprint
-  migration residue; `WBP_BattleCard_Native`, `WBP_BattleStatus_Native`, and
-  `WBP_BattleHUD_Native` passed compile/save/reopen, focused R4/R9 and R13 asset
-  reference Automation, Editor Build, and production-map PIE smoke. Commit
-  `8a609659ba138c922fe64bbfd08bca44b05ca8d6` is the Native Blueprint residue cleanup.
-  `L_BattleTest_Native` is intentionally retained as a non-production
-  migration/regression map. R14-B remains a separately authorized destructive Legacy
-  removal boundary. See `docs/R13NativeHUDStabilization.md` and
-  `docs/R14ASafeCleanupValidation.md`.
+- A2N Native HUD ownership migration — **R0-R13 COMPLETE / VALIDATED; R14-A COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED**. R12 cut production `L_BattleTest` over to `WBP_BattleHUD_Native` in isolated commit `de788c5`, then passed cutover-head WBP, A2D5 6/6, Phase6R 100/100, clean Shipping and production-map manual PIE Gates. Native HUD is the production default; Legacy HUD/Card/Status assets remain retained. The deprecated Legacy assets were later relocated, without deletion or runtime reactivation, to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. R13-M1 completed the post-cutover Native-only dependency stabilization change `fe7fe4e`, retained zero production Legacy HUD/Card/Status dependencies, and passed its formal stabilization gates. R14-A then removed confirmed-unreferenced Native C++ helpers and zero-reference Blueprint migration residue; `WBP_BattleCard_Native`, `WBP_BattleStatus_Native`, and `WBP_BattleHUD_Native` passed compile/save/reopen, focused R4/R9 and R13 asset reference Automation, Editor Build, and production-map PIE smoke. Commit `8a609659ba138c922fe64bbfd08bca44b05ca8d6` is the Native Blueprint residue cleanup. `L_BattleTest_Native` is intentionally retained as a non-production migration/regression map. R14-B remains a separately authorized destructive Legacy removal boundary. See `docs/R13NativeHUDStabilization.md` and `docs/R14ASafeCleanupValidation.md`.
 
 The sealed C++ path includes immutable Records/Envelopes, exact frozen snapshots, explicit optional RecordWriter propagation, bounded FIFO delivery/backlog, PlaybackToken fail-safety, exact Status identity and formal terminal/fault history.
 
@@ -162,13 +143,24 @@ Read:
 
 ### UI-A3 — Deterministic Immediate Preview
 
-Status: **PARTIAL / NOT RESUMED IN THE UI-A2E CLOSURE**
+Status: **IN PROGRESS / AUTHORIZED**
 
-- A3-1 Dynamic Text — sealed.
-- A3-2 Target-Specific Current-State Preview — pending.
-- A3-3 Energy + target-aware legality — pending.
-- A3-4 transient Preview lifecycle — pending.
-- A3-5 minimal UMG + combined A2/A3 PIE — pending.
+Active authority: `docs/Phase6UIA3Implementation.md`.
+
+- A3-1 Dynamic Text — **COMPLETE / VALIDATED / SEALED**.
+- A3-2 Target-Specific Current-State Preview — **NEXT IMPLEMENTATION SLICE**.
+- A3-3 Energy + target-aware legality — not started.
+- A3-4 transient Preview lifecycle — not started.
+- A3-5 minimal Native UMG + combined A2/A3 PIE — not started.
+
+Locked boundary:
+
+```text
+A3 = pre-commit read-only current-state supported Operation values
+A2 = post-commit playback of immutable committed facts
+```
+
+First-version target-specific Preview covers current Damage, Self Block, Energy and legality without predicting final HP, Trigger/Relic reactions, draw/shuffle outcomes or terminal state.
 
 ## Phase 7 — Relics
 
