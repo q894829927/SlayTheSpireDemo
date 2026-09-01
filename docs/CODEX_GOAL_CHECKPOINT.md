@@ -83,11 +83,12 @@ R12-B post-harness-cleanup Editor build: PASS
 R12-B post-harness-cleanup clean Shipping exclusion: PASS
 R13 starting HEAD: 76d411a21c042a86d1e7a4c608a67ae10c724ea2
 R13 milestone: R13-M1 — Native Production Stabilization
-R13 post-cutover Native-only UI change: NONE
+R13 post-cutover Native-only UI change: fe7fe4e (production Native dependency stabilization)
 R13 Legacy runtime fallback occurred: NO
-R13 production Legacy HUD/Card/Status dependencies: 3 — FAIL (required 0)
-R13 objective tests: NOT ADDED / NOT RUN
-R13 final broad Gates: NOT RUN
+R13 production Legacy HUD/Card/Status dependencies: 0 — PASS
+R13 Editor build after Native-only change: PASS
+R13 objective tests: exactly 1/1 PASS, 0 failed, 0 notRun
+R13 final Phase6R / Shipping / manual PIE Gates: NOT RUN
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -101,7 +102,7 @@ R10: COMPLETE / VALIDATED
 R11: COMPLETE / VALIDATED
 R12-A: COMPLETE
 R12-B: COMPLETE / VALIDATED
-R13: STABILIZATION IN PROGRESS — BLOCKED
+R13: STABILIZATION IN PROGRESS — FINAL CLOSURE GATES PENDING
 R14: NOT STARTED
 ```
 
