@@ -103,17 +103,75 @@ Result: **PASS**
 
 ## R14-A2 — Native Blueprint migration residue audit
 
-Candidate residue identified during the migration:
+The migration documents and source establish these Native-duplicate residues:
 
 ```text
-WBP_BattleCard_Native retained Legacy CardView variable
-WBP_BattleStatus_Native retained Legacy StatusView / CurrentStatusView / MID_StatusIcon variables
-other duplicated Native-WBP migration residue
+WBP_BattleCard_Native
+- CardView
+
+WBP_BattleStatus_Native
+- StatusView
+- CurrentStatusView
+- MID_StatusIcon
 ```
 
-The Native C++ classes already own the active Card/Status frozen presentation state under different native-only member names. However, R14-A requires asset-level confirmation that the duplicated Blueprint variables have no remaining execution/reference use before they may be removed.
+`UBattleCardWidget` owns the active frozen Card DTO in native `CurrentCardView`, and the R4 validation record explicitly describes the duplicated Blueprint `CardView` as inert migration residue. `UBattleStatusWidget` owns the active frozen Status DTO/material state in `NativeStatusView` / `NativeStatusIconMID`; the R9 validation record explicitly describes the three duplicated Blueprint variables as retained migration residue.
 
-Status: **AUDIT IN PROGRESS; NO ASSET DELETION YET**
+The Native duplicate business graphs were removed during migration (`EventGraph nodes=0` in the recorded Native asset inspection), so these variables do not own the migrated runtime behavior.
+
+The HUD duplicate also inherited the Legacy presentation-local Blueprint variable set. The Legacy saved snapshot records the presentation locals used by the old business graphs, including:
+
+```text
+ActivePresentationToken
+ActivePresentationType
+ActivePresentationTimer
+PlayedCardWidget
+HiddenHandCardWidget
+ZoneChangedDrawnCardWidget
+ActiveStatusPresentationWidget
+bDamageTargetIsPlayer
+bBlockTargetIsPlayer
+```
+
+R13 independently confirmed that four transient Widget-reference variables still existed in `WBP_BattleHUD_Native` and changed their concrete types from Legacy Card/Status classes to Native Card/Status classes solely to remove production Legacy package dependencies. Because the Native HUD business graph is empty and C++ owns the active Token/timer/card/status presentation state, these inherited HUD variables are cleanup candidates as well.
+
+### Asset-level confirmation boundary
+
+The repository stores the `.uasset` files as Git LFS pointer entries, so the GitHub-side audit cannot inspect the current serialized Blueprint variable-reference graph directly. R14-A therefore requires an Editor-side `Find References` / Blueprint-variable inspection before deleting any of the above variables.
+
+Required asset check:
+
+```text
+WBP_BattleCard_Native
+- CardView: Find References -> zero executable/property-binding uses
+
+WBP_BattleStatus_Native
+- StatusView: Find References -> zero executable/property-binding uses
+- CurrentStatusView: Find References -> zero executable/property-binding uses
+- MID_StatusIcon: Find References -> zero executable/property-binding uses
+
+WBP_BattleHUD_Native
+- inspect the nine inherited presentation-local variables listed above
+- delete only variables whose Find References result is zero and which are not required by Designer/property bindings
+```
+
+Do not delete any Designer `BindWidget` variable or any Legacy WBP variable.
+
+Status: **USER ACTION REQUIRED FOR ASSET-LEVEL CONFIRMATION / EDIT**
+
+### R14-A2 validation after asset edit
+
+If the Editor-side reference check is zero and the residue is deleted from Native duplicates only:
+
+```text
+1. Compile / Save / close / reopen affected Native WBP assets
+2. Editor Build
+3. SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation
+4. SlayTheSpireDemo.Phase6UIA2N.R9 focused Automation
+5. one production /Game/SlayTheSpireDemo/Maps/L_BattleTest PIE smoke
+```
+
+No Phase6R, Shipping or Scenario A-E rerun is required for this non-destructive cleanup slice unless a concrete failure invalidates a broader Gate.
 
 ## Deferred cleanup inventory
 
@@ -131,7 +189,7 @@ Shared Legacy compatibility surfaces and permanent Automation seams remain retai
 R0-R13 COMPLETE / VALIDATED
 R14-A IN PROGRESS
 R14-A1 COMPLETE / VALIDATED
-R14-A2 AUDIT IN PROGRESS
+R14-A2 USER ACTION REQUIRED
 R14-B NOT AUTHORIZED
 Legacy assets retained
 UI-A3 NOT STARTED
