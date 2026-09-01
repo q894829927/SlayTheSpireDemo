@@ -112,6 +112,22 @@ Directory-specific Presentation and UI contracts live in:
 - `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
 - `Source/SlayTheSpireDemo/UI/AGENTS.md`
 
+## Retained Legacy Battle UI
+
+The following former Legacy battle UI assets are intentionally retained only for historical/reference inspection and explicitly authorized emergency recovery:
+
+```text
+WBP_BattleHUD
+WBP_BattleCard
+WBP_BattleStatus
+```
+
+They are permanently deprecated for normal forward development. The Native battle UI is the sole active implementation stack. Follow `docs/LegacyUIPreservationPolicy.md` and the UI-directory `AGENTS.md` rules.
+
+Do not add new production/test runtime references to the retained Legacy assets, restore a Legacy Presenter/default, implement new behavior in Legacy, dual-write Native changes into Legacy, or use Legacy as a new regression-test execution target. Production runtime Legacy HUD/Card/Status dependency count must remain `0`.
+
+R14-B destructive removal is not required under the current project decision and remains not authorized. Do not delete, rename, move, or fix redirectors for those Legacy assets without a separate explicit user request. Likewise, do not restore Legacy runtime fallback for recovery without a new explicit user authorization.
+
 ## Development Order and Scope
 
 Respect explicit phase dependencies. Do not skip ahead unless the user explicitly requests it.
