@@ -563,8 +563,38 @@ removed and never committed. The final no-harness Editor and Shipping builds pas
 Native remained the production default throughout R13-M1 and Legacy runtime fallback
 was `NO`.
 
-R13 is **COMPLETE / VALIDATED**. R14-A is **NOT STARTED**, R14-B is **NOT
-AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
+R13 is **COMPLETE / VALIDATED**. R14-A is **IN PROGRESS**, R14-A1 is **COMPLETE /
+VALIDATED**, R14-A2 has **AUTOMATED VALIDATION PASS / MANUAL PIE PENDING**, R14-B is
+**NOT AUTHORIZED**, Legacy assets remain retained, and UI-A3 is **NOT STARTED**.
+
+### Phase 6UI-A2N R14-A safe cleanup — 2026-09-01
+
+R14-A1 removed the confirmed-unreferenced Native Card/HUD binding helper accessors;
+its Editor Build, focused R3/R4 Automation, and production-map PIE smoke passed.
+
+R14-A2 removed thirteen zero-reference migration-only member variables from the
+three Native Blueprint duplicates. UE asset-level inspection found empty business
+graphs, zero serialized property bindings/animations, and no Designer dependency for
+the candidates. Each Native asset passed compile/save/fresh-reopen compile with
+`BS_UP_TO_DATE` and zero errors. Legacy assets were not modified.
+
+AUTOMATED GATES:
+
+```text
+SlayTheSpireDemoEditor Win64 Development: PASS
+SlayTheSpireDemo.Phase6UIA2N.R4: exactly 1/1 PASS, 0 failed, 0 notRun
+SlayTheSpireDemo.Phase6UIA2N.R9: exactly 5/5 PASS, 0 failed, 0 notRun
+R13.AssetReferences.NativeProductionClosure: exactly 1/1 PASS, 0 failed, 0 notRun
+Production runtime Legacy HUD/Card/Status dependency count: 0
+```
+
+MANUAL PIE GATE:
+
+```text
+/Game/SlayTheSpireDemo/Maps/L_BattleTest production smoke: PENDING USER ACTION
+```
+
+Detailed evidence: `docs/R14ASafeCleanupValidation.md`.
 
 On local branch `codex/A2E-continue`, with the saved StatusChanged update/reduction and Cancel-restoration HUD asset plus uncommitted documentation changes, the focused `SlayTheSpireDemo.Phase6UIA2D5` suite was rediscovered as exactly six tests and actually run:
 
@@ -607,7 +637,9 @@ A2N migration status is now:
 R0-R13 COMPLETE / VALIDATED
 Native HUD = production default
 Legacy assets retained
-R14-A NOT STARTED
+R14-A IN PROGRESS
+R14-A1 COMPLETE / VALIDATED
+R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
 R14-B NOT AUTHORIZED
 UI-A3 NOT STARTED
 ```

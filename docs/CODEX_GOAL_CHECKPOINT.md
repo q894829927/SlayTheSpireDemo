@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **R0-R13 COMPLETE / VALIDATED; Native HUD is the production default; Legacy assets retained; R14-A NOT STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**.
+Goal execution status: **R0-R13 COMPLETE / VALIDATED; Native HUD is the production default; Legacy assets retained; R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**.
 
 ## Current Repository State
 
@@ -111,7 +111,17 @@ R11: COMPLETE / VALIDATED
 R12-A: COMPLETE
 R12-B: COMPLETE / VALIDATED
 R13: COMPLETE / VALIDATED
-R14-A: NOT STARTED
+R14-A starting HEAD: e1b60480807ae1a140acc637a5873990d2937722
+R14-A1: COMPLETE / VALIDATED
+R14-A2 starting HEAD: 2ee470e
+R14-A2 Native WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE, 0 errors
+R14-A2 Editor Build: PASS
+R14-A2 R4 focused Automation: exactly 1/1 PASS, 0 failed, 0 notRun
+R14-A2 R9 focused Automation: exactly 5/5 PASS, 0 failed, 0 notRun
+R14-A2 R13 AssetReferences: exactly 1/1 PASS, 0 failed, 0 notRun
+R14-A2 production Legacy HUD/Card/Status dependency count: 0
+R14-A2 production PIE smoke: PENDING USER ACTION
+R14-A: IN PROGRESS
 R14-B: NOT AUTHORIZED
 UI-A3: NOT STARTED
 ```
@@ -1023,11 +1033,23 @@ the deliberate post-catch-up input-unlock probe, not duplicate Damage playback.
 
 Detailed milestone state: `docs/R13NativeHUDStabilization.md`.
 
-## Next Exact Action — STOP
+## R14-A2 Current Slice
 
-R13-M1 is complete. Do not start R14-A, authorize R14-B, delete or rename Legacy
-assets, fix redirectors, or resume UI-A3 without a new explicit user request.
+The thirteen zero-reference Native Blueprint migration variables were removed only
+from `WBP_BattleCard_Native`, `WBP_BattleStatus_Native`, and
+`WBP_BattleHUD_Native`. All three Native assets passed compile/save/fresh-reopen
+compile. Editor Build, R4, R9, and R13 AssetReferences passed; the production Legacy
+HUD/Card/Status dependency count remains zero. Legacy asset hashes remain unchanged.
+
+## Next Exact Action — USER ACTION REQUIRED
+
+Run one minimal production-map PIE smoke on
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest`: confirm normal Native HUD/Hand/Energy/HP/
+pile display, play one ordinary attack, observe normal Card/Damage/final zone, and
+confirm input returns with no duplicate, flashback, or Native binding/Blueprint
+runtime error. After user confirmation, record R14-A2 COMPLETE / VALIDATED and seal
+the documentation. Do not start R14-B or delete `L_BattleTest_Native`.
 
 ## Blockers
 
-None for R13.
+R14-A2 manual production PIE smoke is pending user confirmation.

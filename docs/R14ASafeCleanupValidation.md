@@ -2,42 +2,20 @@
 
 Date: **2026-09-01**
 
-Status: **R14-A IN PROGRESS; R14-B NOT AUTHORIZED**
+Status: **R14-A IN PROGRESS; R14-A1 COMPLETE / VALIDATED; R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING; R14-B NOT AUTHORIZED**
 
 ## Scope
 
-R14-A is limited to non-destructive cleanup after the validated Native production cutover and stabilization milestone.
-
-Allowed cleanup:
-
-```text
-migration-only compatibility code
-confirmed-unreferenced helpers
-abandoned Native-stack code
-durable documentation updates
-```
-
-Not allowed in R14-A:
-
-```text
-Legacy WBP deletion or rename
-redirector cleanup associated with Legacy deletion
-Gameplay/Presentation semantic redesign
-UI-A3 work
-```
-
-Legacy assets remain intact:
-
-```text
-WBP_BattleHUD
-WBP_BattleCard
-WBP_BattleStatus
-```
+R14-A is limited to non-destructive cleanup after the validated Native production
+cutover and stabilization milestone. Legacy HUD/Card/Status assets remain retained
+and unchanged. R14-A does not authorize Legacy deletion, redirector cleanup,
+Gameplay/Presentation redesign, production WidgetClass changes, or UI-A3 work.
 
 ## Starting point
 
 ```text
-Starting HEAD: e1b60480807ae1a140acc637a5873990d2937722
+R14-A starting HEAD: e1b60480807ae1a140acc637a5873990d2937722
+R14-A2 starting HEAD: 2ee470e
 Native HUD: production default
 R0-R13: COMPLETE / VALIDATED
 R14-B: NOT AUTHORIZED
@@ -45,143 +23,113 @@ R14-B: NOT AUTHORIZED
 
 ## R14-A1 — Confirmed-unreferenced C++ helpers
 
-Inventory found two protected helper accessors with no production or test call sites:
-
-```text
-UBattleHUDWidget::AreNativeBindingsValid()
-UBattleCardWidget::AreNativeBindingsValid()
-```
-
-Removed in two isolated source commits:
+Removed in isolated commits:
 
 ```text
 5e5dded7f28780a036d71ff91db0fcd45da18071
-refactor(ui-a2n): remove unused native card binding helper
+UBattleCardWidget::AreNativeBindingsValid()
 
 d8674d91588c3d7b98c964647d22f80218841189
-refactor(ui-a2n): remove unused native HUD binding helper
+UBattleHUDWidget::AreNativeBindingsValid()
 ```
 
-The underlying `bNativeBindingsValid` state remains unchanged and continues to be used internally. No reflected property/function, Gameplay contract, Presentation contract, Controller behavior, WidgetClass, WBP asset, or Legacy asset was changed.
+The internal `bNativeBindingsValid` state remains unchanged. R14-A1 Editor Build,
+R3 focused Automation, R4 focused Automation, and the production `L_BattleTest` PIE
+smoke passed. R14-A1 is **COMPLETE / VALIDATED**.
+
+## R14-A2 — Native Blueprint migration residue
+
+### Asset-level reference audit
+
+Each candidate was audited against the current saved Blueprint asset using UE Editor
+Blueprint graph/member inspection and full UE object text export. The audit checked
+EventGraph, functions, macros, serialized property bindings, animations, and
+Designer/default dependencies. All three Native assets contained only an empty
+`EventGraph`; serialized property-binding and animation entries were both zero.
+Every candidate appeared only as its member-variable declaration and had zero
+executable, binding, or required Designer references.
+
+| Asset | Variable | References | Result | Reason |
+|---|---|---:|---|---|
+| `WBP_BattleCard_Native` | `CardView` | 0 | DELETED | C++ `CurrentCardView` owns the formal DTO. |
+| `WBP_BattleStatus_Native` | `StatusView` | 0 | DELETED | C++ `NativeStatusView` owns the formal state. |
+| `WBP_BattleStatus_Native` | `CurrentStatusView` | 0 | DELETED | C++ `NativeStatusView` owns the formal state. |
+| `WBP_BattleStatus_Native` | `MID_StatusIcon` | 0 | DELETED | C++ `NativeStatusIconMID` owns the formal MID. |
+| `WBP_BattleHUD_Native` | `ActivePresentationToken` | 0 | DELETED | Native playback kernel owns the token. |
+| `WBP_BattleHUD_Native` | `ActivePresentationType` | 0 | DELETED | Native playback kernel owns the type. |
+| `WBP_BattleHUD_Native` | `ActivePresentationTimer` | 0 | DELETED | Native playback kernel owns the timer. |
+| `WBP_BattleHUD_Native` | `PlayedCardWidget` | 0 | DELETED | Native Card lifecycle owns its transient. |
+| `WBP_BattleHUD_Native` | `HiddenHandCardWidget` | 0 | DELETED | Native Card lifecycle owns its transient. |
+| `WBP_BattleHUD_Native` | `ZoneChangedDrawnCardWidget` | 0 | DELETED | Native Card lifecycle owns its transient. |
+| `WBP_BattleHUD_Native` | `ActiveStatusPresentationWidget` | 0 | DELETED | Native Status lifecycle owns its transient. |
+| `WBP_BattleHUD_Native` | `bDamageTargetIsPlayer` | 0 | DELETED | Native Damage presentation owns target state. |
+| `WBP_BattleHUD_Native` | `bBlockTargetIsPlayer` | 0 | DELETED | Native Block presentation owns target state. |
+
+`CardWidgetClass`, `StatusWidgetClass`, all Designer Widgets, and all C++
+`BindWidget`/`BindWidgetOptional` surfaces were retained unchanged. No Legacy asset
+was edited; the three Legacy SHA-256 hashes remain the sealed R13 values.
+
+### Native Blueprint compile/save/reopen
+
+Assets were processed one at a time. Each asset compiled and saved immediately after
+its deletions, then was loaded and compiled again in a fresh UE Editor process.
+
+```text
+WBP_BattleCard_Native:   PASS, BS_UP_TO_DATE, CardView absent after reopen
+WBP_BattleStatus_Native: PASS, BS_UP_TO_DATE, all three candidates absent after reopen
+WBP_BattleHUD_Native:    PASS, BS_UP_TO_DATE, all nine candidates absent after reopen
+Blueprint compile errors: 0
+```
 
 ### Automated gates
 
-User-confirmed on **2026-09-01**:
-
 ```text
-Editor Build: PASS
-SlayTheSpireDemo.Phase6UIA2N.R3 focused Automation: PASS
-SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation: PASS
-Reference/source scan: helper definitions removed; no known production/test call sites
+SlayTheSpireDemoEditor Win64 Development: PASS (Result: Succeeded)
+
+SlayTheSpireDemo.Phase6UIA2N.R4:
+  exactly 1/1 Success, 0 warnings, 0 failed, 0 notRun
+
+SlayTheSpireDemo.Phase6UIA2N.R9:
+  exactly 5/5 Success, 0 warnings, 0 failed, 0 notRun
+
+SlayTheSpireDemo.Phase6UIA2N.R13.AssetReferences.NativeProductionClosure:
+  exactly 1/1 Success, 0 warnings, 0 failed, 0 notRun
 ```
 
-No exact Automation discovery count is claimed here because the user reported the gate result as PASS rather than an exact count.
+The R13 Asset Registry/loaded-property Gate reconfirmed:
+
+```text
+L_BattleTest Presenter WidgetClass = WBP_BattleHUD_Native_C
+WBP_BattleHUD_Native CardWidgetClass = WBP_BattleCard_Native_C
+WBP_BattleHUD_Native StatusWidgetClass = WBP_BattleStatus_Native_C
+Production runtime Legacy HUD/Card/Status dependency count = 0
+Native HUD direct Legacy Card/Status dependency count = 0
+```
+
+No Phase6R, A2D5, Shipping, Scenario A-E, parity, broad historical suite, or
+architecture review was run for R14-A2.
 
 ### Manual PIE gate
 
-Production map:
+One production-map smoke remains required:
 
 ```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest
 ```
 
-User-confirmed on **2026-09-01**:
+Required observation:
 
 ```text
-Native HUD opens normally
-Hand is visible
-one ordinary card play resolves and displays normally
+Native HUD creates normally
+Hand, Energy, HP, and pile counts display normally
+one ordinary attack card has normal Card and Damage presentation
+the Card reaches its correct final zone
 input returns after catch-up
-no binding/runtime error observed
+no duplicate or A -> B -> A flashback
+no Native binding or Blueprint runtime error in Output Log
 ```
 
-Result: **PASS**
-
-### R14-A1 result
-
-**R14-A1 COMPLETE / VALIDATED.**
-
-## R14-A2 — Native Blueprint migration residue audit
-
-The migration documents and source establish these Native-duplicate residues:
-
-```text
-WBP_BattleCard_Native
-- CardView
-
-WBP_BattleStatus_Native
-- StatusView
-- CurrentStatusView
-- MID_StatusIcon
-```
-
-`UBattleCardWidget` owns the active frozen Card DTO in native `CurrentCardView`, and the R4 validation record explicitly describes the duplicated Blueprint `CardView` as inert migration residue. `UBattleStatusWidget` owns the active frozen Status DTO/material state in `NativeStatusView` / `NativeStatusIconMID`; the R9 validation record explicitly describes the three duplicated Blueprint variables as retained migration residue.
-
-The Native duplicate business graphs were removed during migration (`EventGraph nodes=0` in the recorded Native asset inspection), so these variables do not own the migrated runtime behavior.
-
-The HUD duplicate also inherited the Legacy presentation-local Blueprint variable set. The Legacy saved snapshot records the presentation locals used by the old business graphs, including:
-
-```text
-ActivePresentationToken
-ActivePresentationType
-ActivePresentationTimer
-PlayedCardWidget
-HiddenHandCardWidget
-ZoneChangedDrawnCardWidget
-ActiveStatusPresentationWidget
-bDamageTargetIsPlayer
-bBlockTargetIsPlayer
-```
-
-R13 independently confirmed that four transient Widget-reference variables still existed in `WBP_BattleHUD_Native` and changed their concrete types from Legacy Card/Status classes to Native Card/Status classes solely to remove production Legacy package dependencies. Because the Native HUD business graph is empty and C++ owns the active Token/timer/card/status presentation state, these inherited HUD variables are cleanup candidates as well.
-
-### Asset-level confirmation boundary
-
-The repository stores the `.uasset` files as Git LFS pointer entries, so the GitHub-side audit cannot inspect the current serialized Blueprint variable-reference graph directly. R14-A therefore requires an Editor-side `Find References` / Blueprint-variable inspection before deleting any of the above variables.
-
-Required asset check:
-
-```text
-WBP_BattleCard_Native
-- CardView: Find References -> zero executable/property-binding uses
-
-WBP_BattleStatus_Native
-- StatusView: Find References -> zero executable/property-binding uses
-- CurrentStatusView: Find References -> zero executable/property-binding uses
-- MID_StatusIcon: Find References -> zero executable/property-binding uses
-
-WBP_BattleHUD_Native
-- inspect the nine inherited presentation-local variables listed above
-- delete only variables whose Find References result is zero and which are not required by Designer/property bindings
-```
-
-Do not delete any Designer `BindWidget` variable or any Legacy WBP variable.
-
-Status: **USER ACTION REQUIRED FOR ASSET-LEVEL CONFIRMATION / EDIT**
-
-### R14-A2 validation after asset edit
-
-If the Editor-side reference check is zero and the residue is deleted from Native duplicates only:
-
-```text
-1. Compile / Save / close / reopen affected Native WBP assets
-2. Editor Build
-3. SlayTheSpireDemo.Phase6UIA2N.R4 focused Automation
-4. SlayTheSpireDemo.Phase6UIA2N.R9 focused Automation
-5. one production /Game/SlayTheSpireDemo/Maps/L_BattleTest PIE smoke
-```
-
-No Phase6R, Shipping or Scenario A-E rerun is required for this non-destructive cleanup slice unless a concrete failure invalidates a broader Gate.
-
-## Deferred cleanup inventory
-
-The following candidate remains outside R14-A2 until a separate asset-reference decision:
-
-```text
-L_BattleTest_Native
-```
-
-Shared Legacy compatibility surfaces and permanent Automation seams remain retained unless a later R14-A slice proves they are genuinely unreferenced.
+Result: **USER ACTION REQUIRED / PENDING**
 
 ## Current phase state
 
@@ -189,8 +137,12 @@ Shared Legacy compatibility surfaces and permanent Automation seams remain retai
 R0-R13 COMPLETE / VALIDATED
 R14-A IN PROGRESS
 R14-A1 COMPLETE / VALIDATED
-R14-A2 USER ACTION REQUIRED
+R14-A2 AUTOMATED VALIDATION PASS / MANUAL PIE PENDING
 R14-B NOT AUTHORIZED
 Legacy assets retained
 UI-A3 NOT STARTED
 ```
+
+The only remaining cleanup candidate after R14-A2 is whether
+`L_BattleTest_Native` should be retained. That is a separate cleanup decision; this
+slice does not delete or modify it.
