@@ -8,7 +8,7 @@ Migrate the sealed Legacy HUD behavior to the Native HUD stack under
 `docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
 Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
 
-Goal execution status: **IN PROGRESS — R0-R8 COMPLETE / VALIDATED; R9 NOT STARTED**.
+Goal execution status: **IN PROGRESS — R0-R9 COMPLETE / VALIDATED; R10 NOT STARTED**.
 
 ## Current Repository State
 
@@ -55,6 +55,13 @@ R8 P1 cleanup regression test: d1a48d486ea80cf759e6556396df4124805cd06f
 R8 Editor build: PASS (final P1-revalidated head; user confirmed 2026-09-01)
 R8 focused Automation: 6/6 PASS (user confirmed 2026-09-01)
 R8 Manual PIE: PASS / sticky (user confirmed 2026-09-01)
+R9 implementation branch: main (explicitly authorized; no working branch)
+R9 starting main HEAD: b05a7d1281e921eed2bbb4bf5238842fa16421f7
+R9 source implementation head: ea209d1aea58210b26057017ba13aa6e8e84385a
+R9 Editor build: PASS (user confirmed 2026-09-01)
+R9 WBP_BattleStatus_Native compile: PASS (user confirmed 2026-09-01)
+R9 focused Automation: 5/5 PASS (user confirmed 2026-09-01)
+R9 Manual PIE: PASS (user confirmed 2026-09-01)
 Production map: /Game/SlayTheSpireDemo/Maps/L_BattleTest
 Production WidgetClass: /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD.WBP_BattleHUD_C
 Native test map: /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
@@ -63,7 +70,8 @@ R5: COMPLETE / VALIDATED
 R6: COMPLETE / VALIDATED
 R7: COMPLETE / VALIDATED
 R8: COMPLETE / VALIDATED
-R9 and later: NOT STARTED
+R9: COMPLETE / VALIDATED
+R10 and later: NOT STARTED
 ```
 
 ## Completed R0 Boundary
@@ -227,7 +235,8 @@ L_BattleTest_Native
 
 `UBattleHUDWidget` owns only the R2 Designer binding contract and runtime validation:
 
-- 23 required `BindWidget` controls and 6 `BindWidgetOptional` controls;
+- 23 required `BindWidget` controls and 6
+  `BindWidgetOptional` controls;
 - `CardWidgetClass` and `StatusWidgetClass` typed selectors with no hard-coded WBP
   object path in C++;
 - fail-closed runtime validation using `ensureMsgf` and `UE_LOG(Error)`;
@@ -771,7 +780,7 @@ CardPlayed.InvalidIdentityZeroSideEffects:      PASS
 Zone.DrawToHandSequentialPresentation:          PASS
 Zone.HandToDiscardFinishCancelAndInvalid:       PASS
 Zone.PlayAreaDestinationsAndDestruct:           PASS
-Zone.SkipClearsRetainedPlayedCard:               PASS
+Zone.SkipClearsRetainedPlayedCard:              PASS
 ```
 
 The added Skip regression proves:
@@ -804,14 +813,108 @@ remained sticky and did not require another PIE run.
 
 ```text
 R8 COMPLETE / VALIDATED
-R9 NOT STARTED
+R9 COMPLETE / VALIDATED
+R10 NOT STARTED
+```
+
+## R9 Implementation
+
+R9 migrates only formal Native Status-row ownership and committed `StatusChanged`
+presentation. `UBattleStatusWidget` stores only the frozen `FBattleHUDStatusView`
+and renders Designer-backed amount/icon state. Native-only member names avoid
+colliding with retained Legacy duplicate variables without editing Legacy assets.
+
+The HUD rebuilds formal Player and Enemy Status rows from historical ViewModel data
+and resolves lifecycle identity only as:
+
+```text
+TargetPresentationId
++ StatusId
++ RuntimeSequence
+```
+
+Create requires that exact identity to be absent. Increase, reduction and removal
+require one matching historical ViewModel Status and one exact formal Widget with a
+matching frozen Before view. Update/reduction reuse that Widget; removal collapses
+only that exact Widget. Invalid target, identity, reason/flags or historical Before
+mismatch returns false with zero local visual side effects.
+
+Exact Finish keeps committed After and notifies through the sealed R5 exact-token
+kernel. Wrong/stale Cancel is a no-op. Exact Cancel never reverse-calculates
+`B -> A`; it rebuilds both Player and Enemy formal Status rows from the historical
+ViewModel and never performs normal completion Notify. Destruction performs only
+local transient/reference cleanup.
+
+Changed source/test files:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp
+Source/SlayTheSpireDemo/UI/BattleStatusWidget.h
+Source/SlayTheSpireDemo/UI/BattleStatusWidget.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR9TestTypes.h
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR9TestTypes.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR9Tests.cpp
+```
+
+R9 does not modify Gameplay, Controller, reducer, Record/Envelope, Legacy WBP,
+production WidgetClass, terminal behavior, UI-A3, or R10+ behavior.
+
+## R9 Automated Validation Evidence — PASS
+
+The user ran the required closed-scope R9 gates on **2026-09-01** and confirmed:
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development build: PASS
+2. WBP_BattleStatus_Native targeted compile: PASS
+3. SlayTheSpireDemo.Phase6UIA2N.R9 focused Automation: 5/5 PASS
+   0 failed / 0 notRun
+```
+
+Focused coverage:
+
+```text
+StatusWidget.DTOAndIdentity:                  PASS
+Lifecycle.CreateIncreaseReuse:              PASS
+Lifecycle.ReductionRemovalAndCancel:        PASS
+Identity.NewSequenceAndInvalidFallback:     PASS
+Token.StaleAndDestructCleanup:              PASS
+```
+
+This covers frozen DTO/identity, create, increase, exact Widget reuse, `2 -> 1`
+reduction, `1 -> 0` removal, same StatusId with a later RuntimeSequence, invalid
+identity/target/flags/reason zero-side-effect fallback, Player+Enemy historical
+Cancel rebuild, wrong-token Cancel, stale Finish and destruction-local cleanup.
+
+No R3-R8, A2D5, Phase6R, Shipping, aggregate regression, reviewer or R10+ suite was
+run.
+
+## R9 Manual PIE Validation — PASS
+
+The user confirmed the required minimal visual pass on **2026-09-01** in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest_Native` using existing real Status
+producers. Status creation displayed one correct row/icon/amount; same-identity
+update/reduction reused one row; reduction such as `2 -> 1` displayed correctly;
+`1 -> 0` removed the exact Status. Row/icon/tooltip presentation remained coherent
+with no `A -> B -> A` flashback, duplicate Status, abnormal HUD or permanent Input
+Lock.
+
+```text
+R9 COMPLETE / VALIDATED
+R10 NOT STARTED
+```
+
+Detailed R9 evidence is recorded in:
+
+```text
+docs/R9NativeStatusLifecycleValidation.md
 ```
 
 ## Next Exact Action — STOP
 
-Wait for explicit user authorization before starting R9. Do not enter R9 or any
+Wait for explicit user authorization before starting R10. Do not enter R10 or any
 later phase automatically.
 
 ## Blockers
 
-No R8 blocker remains. R9 and all later phases remain NOT STARTED.
+No R9 blocker remains. R10 and all later phases remain NOT STARTED.
