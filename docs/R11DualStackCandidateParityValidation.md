@@ -157,6 +157,28 @@ surfaces.
 This harness is temporary R11 validation infrastructure. Delete it after R11 parity is
 closed and before R12 production cutover validation begins.
 
+## Scenario E manual parity — PASS
+
+The user confirmed the Scenario E visual result on both Legacy and Native PIE on
+2026-09-01 using the temporary real-producer harness.
+
+```text
+A2N.R11.ForceResolutionFault
+-> real framework ResolutionFault
+-> terminal surface shows 战斗结算异常
+
+A2N.R11.ForcePresentationUnavailable
+-> forced player-facing snapshot freeze failure
+-> feedback shows:
+   Could not freeze the exact player-facing Presentation snapshot.
+-> does NOT show 战斗结算异常
+```
+
+Legacy and Native produced the same separation between Gameplay ResolutionFault and
+PresentationUnavailable. Scenario E observable dual-stack parity is therefore PASS.
+This evidence does not close Scenario A-D, Skip/Cancel/stale/Input Unlock, or the
+remaining automated R11 gates.
+
 ## AUTOMATED GATES — PENDING
 
 R11 is a Level-3 parity phase, so these broader gates are intentional here.
@@ -216,6 +238,9 @@ Input Unlock after catch-up
 The Skip/Cancel/stale checks must operate on a real active playback produced through
 formal Gameplay/UI requests. Do not construct a synthetic Presentation Record merely
 to satisfy R11.
+
+Scenario E is now PASS on both stacks. Scenario A-D and the Skip/Cancel/stale/Input
+Unlock checks remain pending unless separately confirmed.
 
 ## Candidate acceptance
 
