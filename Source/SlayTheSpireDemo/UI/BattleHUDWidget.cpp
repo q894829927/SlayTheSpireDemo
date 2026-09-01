@@ -105,6 +105,13 @@ namespace
 			return false;
 		}
 	}
+
+	bool IsNativeTerminalRecordType(EBattlePresentationRecordType Type)
+	{
+		return Type == EBattlePresentationRecordType::Victory
+			|| Type == EBattlePresentationRecordType::Defeat
+			|| Type == EBattlePresentationRecordType::ResolutionFault;
+	}
 }
 
 void UBattleHUDWidget::NativeOnInitialized()
@@ -277,6 +284,7 @@ void UBattleHUDWidget::RefreshHUDFromViewModel()
 	RefreshFeedback();
 	RefreshEnemyIntent();
 	RefreshTerminalFromViewModel();
+	RefreshPresentationAvailabilityFromViewModel();
 }
 
 void UBattleHUDWidget::RefreshHand()
@@ -682,43 +690,32 @@ void UBattleHUDWidget::RefreshTerminalFromViewModel()
 	{
 		return;
 	}
+	ApplyNativeTerminalOutcome(ViewModel->Outcome);
+}
 
-	if (ViewModel->Outcome == EBattleHUDOutcome::None)
+void UBattleHUDWidget::RefreshPresentationAvailabilityFromViewModel()
+{
+	if (!IsValid(ViewModel)
+		|| ViewModel->InteractionState != EBattleHUDInteractionState::PresentationUnavailable)
 	{
-		if (IsValid(Overlay_Terminal))
-		{
-			Overlay_Terminal->SetVisibility(ESlateVisibility::Collapsed);
-		}
-		if (IsValid(Txt_Outcome))
-		{
-			Txt_Outcome->SetText(FText::GetEmpty());
-		}
 		return;
 	}
 
-	if (IsValid(Txt_Outcome))
-	{
-		const FText OutcomeText = [&]()
-		{
-			switch (ViewModel->Outcome)
-			{
-			case EBattleHUDOutcome::Victory:
-				return LOCTEXT("BattleHUDVictory", "胜利");
-			case EBattleHUDOutcome::Defeat:
-				return LOCTEXT("BattleHUDDefeat", "战斗失败");
-			case EBattleHUDOutcome::ResolutionFaulted:
-				return LOCTEXT("BattleHUDResolutionFault", "战斗结算异常");
-			case EBattleHUDOutcome::None:
-			default:
-				return FText::GetEmpty();
-			}
-		}();
-		Txt_Outcome->SetText(OutcomeText);
-	}
-
+	// PresentationUnavailable is an independent ViewModel-driven UI state, not a
+	// terminal Record. It must never surface the ResolutionFault overlay merely
+	// because a stale/terminal outcome existed in an earlier displayed snapshot.
 	if (IsValid(Overlay_Terminal))
 	{
-		Overlay_Terminal->SetVisibility(ESlateVisibility::Visible);
+		Overlay_Terminal->SetVisibility(ESlateVisibility::Collapsed);
+	}
+	if (IsValid(Txt_Outcome))
+	{
+		Txt_Outcome->SetText(FText::GetEmpty());
+	}
+	if (IsValid(Txt_Feedback))
+	{
+		Txt_Feedback->SetText(ViewModel->LastFeedback);
+		Txt_Feedback->SetVisibility(ESlateVisibility::Visible);
 	}
 }
 
@@ -882,8 +879,12 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 		return BeginNativeDeckShuffledPresentation(Record, Token);
 	case EBattlePresentationRecordType::StatusChanged:
 		return BeginNativeStatusChangedPresentation(Record, Token);
+	case EBattlePresentationRecordType::Victory:
+	case EBattlePresentationRecordType::Defeat:
+	case EBattlePresentationRecordType::ResolutionFault:
+		return BeginNativeTerminalPresentation(Record, Token);
 	default:
-		// R10+ Records remain on the Controller's immediate-fallback path.
+		// R11+ Records remain on the Controller's immediate-fallback path.
 		return false;
 	}
 }
@@ -1779,6 +1780,69 @@ bool UBattleHUDWidget::BeginNativeStatusChangedPresentation(
 	return true;
 }
 
+bool UBattleHUDWidget::BeginNativeTerminalPresentation(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token)
+{
+	if (!IsNativeTerminalRecordType(Record.Type)
+		|| !IsValid(ViewModel)
+		|| !IsValid(Overlay_Terminal)
+		|| !IsValid(Txt_Outcome)
+		|| ViewModel->Outcome != EBattleHUDOutcome::None
+		|| ViewModel->InteractionState == EBattleHUDInteractionState::PresentationUnavailable)
+	{
+		return false;
+	}
+
+	EBattleHUDOutcome TerminalOutcome = EBattleHUDOutcome::None;
+	bool bPayloadValid = false;
+	switch (Record.Type)
+	{
+	case EBattlePresentationRecordType::Victory:
+		TerminalOutcome = EBattleHUDOutcome::Victory;
+		bPayloadValid =
+			!Record.Terminal.WinnerPresentationId.IsNone()
+			&& !Record.Terminal.DefeatedPresentationId.IsNone()
+			&& Record.Terminal.WinnerPresentationId != Record.Terminal.DefeatedPresentationId
+			&& Record.Terminal.WinnerPresentationId == ViewModel->Player.PresentationId
+			&& Record.Terminal.DefeatedPresentationId == ViewModel->Enemy.PresentationId
+			&& ViewModel->Enemy.bDead;
+		break;
+	case EBattlePresentationRecordType::Defeat:
+		TerminalOutcome = EBattleHUDOutcome::Defeat;
+		bPayloadValid =
+			!Record.Terminal.WinnerPresentationId.IsNone()
+			&& !Record.Terminal.DefeatedPresentationId.IsNone()
+			&& Record.Terminal.WinnerPresentationId != Record.Terminal.DefeatedPresentationId
+			&& Record.Terminal.WinnerPresentationId == ViewModel->Enemy.PresentationId
+			&& Record.Terminal.DefeatedPresentationId == ViewModel->Player.PresentationId
+			&& ViewModel->Player.bDead;
+		break;
+	case EBattlePresentationRecordType::ResolutionFault:
+		TerminalOutcome = EBattleHUDOutcome::ResolutionFaulted;
+		bPayloadValid = !Record.ResolutionFault.Reason.IsEmpty()
+			&& Record.ResolutionFault.ExecutedActionCount >= 0;
+		break;
+	default:
+		break;
+	}
+
+	if (!bPayloadValid || !CommitNativePresentationOwnership(Record.Type, Token))
+	{
+		return false;
+	}
+
+	ApplyNativeTerminalOutcome(TerminalOutcome);
+	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
+	{
+		RefreshTerminalFromViewModel();
+		RefreshPresentationAvailabilityFromViewModel();
+		AbortNativePresentationStart();
+		return false;
+	}
+	return true;
+}
+
 bool UBattleHUDWidget::IsNativeRecordTokenConsistent(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token) const
@@ -1870,6 +1934,62 @@ bool UBattleHUDWidget::ResolveDamageTarget(
 		&& IsValid(OutHPProgress)
 		&& IsValid(OutHPText)
 		&& IsValid(OutBlockText);
+}
+
+void UBattleHUDWidget::ApplyNativeTerminalOutcome(EBattleHUDOutcome Outcome)
+{
+	if (Outcome == EBattleHUDOutcome::None)
+	{
+		if (IsValid(Overlay_Terminal))
+		{
+			Overlay_Terminal->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (IsValid(Txt_Outcome))
+		{
+			Txt_Outcome->SetText(FText::GetEmpty());
+		}
+		return;
+	}
+
+	FText OutcomeText;
+	switch (Outcome)
+	{
+	case EBattleHUDOutcome::Victory:
+		OutcomeText = LOCTEXT("BattleHUDVictory", "胜利");
+		break;
+	case EBattleHUDOutcome::Defeat:
+		OutcomeText = LOCTEXT("BattleHUDDefeat", "战斗失败");
+		break;
+	case EBattleHUDOutcome::ResolutionFaulted:
+		OutcomeText = LOCTEXT("BattleHUDResolutionFault", "战斗结算异常");
+		break;
+	case EBattleHUDOutcome::None:
+	default:
+		OutcomeText = FText::GetEmpty();
+		break;
+	}
+
+	if (OutcomeText.IsEmpty())
+	{
+		if (IsValid(Overlay_Terminal))
+		{
+			Overlay_Terminal->SetVisibility(ESlateVisibility::Collapsed);
+		}
+		if (IsValid(Txt_Outcome))
+		{
+			Txt_Outcome->SetText(FText::GetEmpty());
+		}
+		return;
+	}
+
+	if (IsValid(Txt_Outcome))
+	{
+		Txt_Outcome->SetText(OutcomeText);
+	}
+	if (IsValid(Overlay_Terminal))
+	{
+		Overlay_Terminal->SetVisibility(ESlateVisibility::Visible);
+	}
 }
 
 void UBattleHUDWidget::ApplyNativeEnergyValue(int32 Energy, int32 MaxEnergy)
@@ -2071,6 +2191,11 @@ void UBattleHUDWidget::FinishNativePresentationVisual(EBattlePresentationRecordT
 		FinishNativeStatusPresentation();
 		return;
 	}
+	if (IsNativeTerminalRecordType(RecordType))
+	{
+		FinishNativeTerminalPresentation();
+		return;
+	}
 
 	switch (RecordType)
 	{
@@ -2113,6 +2238,11 @@ void UBattleHUDWidget::CancelNativePresentationVisual(EBattlePresentationRecordT
 		CancelNativeStatusPresentation();
 		return;
 	}
+	if (IsNativeTerminalRecordType(RecordType))
+	{
+		CancelNativeTerminalPresentation();
+		return;
+	}
 
 	switch (RecordType)
 	{
@@ -2148,7 +2278,30 @@ void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 	ResetNativeDamagePresentationState();
 	CleanupNativeCardPresentationOnDestruct();
 	CleanupNativeStatusPresentationOnDestruct();
+	CleanupNativeTerminalPresentationOnDestruct();
 	ResetNativeSimplePresentationState();
+}
+
+void UBattleHUDWidget::FinishNativeTerminalPresentation()
+{
+	// Begin already exposed the committed terminal visual. Keep it visible until
+	// the Controller reduces this exact terminal Record and the historical
+	// ViewModel refresh takes formal ownership of the same outcome.
+}
+
+void UBattleHUDWidget::CancelNativeTerminalPresentation()
+{
+	// The active terminal Record has not been reduced yet, so ViewModel still
+	// represents the historical surface. Restore from that state instead of
+	// inferring an inverse terminal transition.
+	RefreshTerminalFromViewModel();
+	RefreshPresentationAvailabilityFromViewModel();
+}
+
+void UBattleHUDWidget::CleanupNativeTerminalPresentationOnDestruct()
+{
+	// Local teardown only. Do not historical-restore or notify normal completion.
+	// The Widget is leaving the tree, so there is no terminal transient to retain.
 }
 
 void UBattleHUDWidget::FinishNativeStatusPresentation()
