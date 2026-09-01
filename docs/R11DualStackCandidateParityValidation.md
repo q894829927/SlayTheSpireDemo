@@ -20,14 +20,14 @@ type and it does not cut production over to the Native HUD.
 Production remains:
 
 ```text
-Map:        /Game/SlayTheSpireDemo/Maps/L_BattleTest
+Map:         /Game/SlayTheSpireDemo/Maps/L_BattleTest
 WidgetClass: WBP_BattleHUD_C
 ```
 
 Native candidate remains isolated to:
 
 ```text
-Map:        /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
+Map:         /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
 WidgetClass: WBP_BattleHUD_Native_C
 ```
 
@@ -50,23 +50,15 @@ Blueprint compile/save, Automation, or PIE evidence.
 ## Formal parity contract
 
 Run the Legacy and Native candidate configurations with the same real Gameplay/UI
-Request producers. Both configurations cover:
+Request producers. Compare observable contracts only:
 
 ```text
-Scenario A
-Scenario B
-Scenario C
-Scenario D
-Scenario E
+Scenario A-E
 active Skip
 active Cancel
-stale callback
-Input Unlock
-```
+stale callback rejection
+Input Unlock after catch-up
 
-Compare only observable contracts:
-
-```text
 Record acceptance/rejection
 frozen display facts
 visible Record order
@@ -83,8 +75,6 @@ construction, or internal call order. Final PIE parity must use real producers;
 synthetic Records cannot close the R11 parity Gate.
 
 ## Scenario matrix
-
-The sealed Legacy UI-A2E definitions are reused unchanged.
 
 ```text
 Scenario A — normal card/damage
@@ -123,6 +113,44 @@ The Legacy and Native runs do not need identical RuntimeIds between separate PIE
 sessions. Each run must preserve its own exact frozen identities and observable
 result/order contract.
 
+## Scenario A-E manual dual-stack parity — PASS
+
+The user completed the complete Scenario A-E matrix on both Legacy and Native PIE on
+2026-09-01 and confirmed all five scenarios successful.
+
+```text
+Scenario A: PASS
+  normal Strike/card/damage flow matched between Legacy and Native
+
+Scenario B: PASS
+  Uppercut/status lifecycle matched between Legacy and Native
+  no duplicate status row or visible lifecycle flashback was reported
+
+Scenario C: PASS
+  full EndTurn discard/enemy-turn/draw/shuffle/catch-up flow matched
+
+Scenario D: PASS
+  Victory and Defeat terminal ordering matched
+  lethal HP reached the visible terminal condition before the terminal surface
+
+Scenario E: PASS
+  ResolutionFault -> 战斗结算异常
+  PresentationUnavailable ->
+    Could not freeze the exact player-facing Presentation snapshot.
+  PresentationUnavailable did not render 战斗结算异常
+```
+
+Therefore:
+
+```text
+Legacy Scenario A-E: PASS
+Native Scenario A-E: PASS
+Legacy-vs-Native observable Scenario A-E parity: PASS
+```
+
+This evidence is manual PIE evidence confirmed by the user; it is not inferred from
+Automation.
+
 ## Temporary R11 PIE fault harness
 
 R11 adds one temporary source file only inside the Editor-only test module:
@@ -131,57 +159,30 @@ R11 adds one temporary source file only inside the Editor-only test module:
 Source/SlayTheSpireDemoTests/Private/Phase6UIA2NR11PIECommands.cpp
 ```
 
-It registers two PIE console commands:
+It registers:
 
 ```text
 A2N.R11.ForceResolutionFault
 A2N.R11.ForcePresentationUnavailable
 ```
 
-`A2N.R11.ForceResolutionFault` finds the active PIE `ABattleManager`, verifies that a
-real EndTurn request is currently legal, arms the existing
-`SetForceInvalidEnemyTurnBatchForTesting(true)` seam, and then calls the real
-`RequestEndPlayerTurn()` producer. It does not construct a synthetic Record or
-Payload.
+`A2N.R11.ForceResolutionFault` finds the active PIE `ABattleManager`, verifies a real
+EndTurn request is legal, arms the existing
+`SetForceInvalidEnemyTurnBatchForTesting(true)` seam, then calls the real
+`RequestEndPlayerTurn()` producer. It constructs no synthetic Record/Payload.
 
 `A2N.R11.ForcePresentationUnavailable` begins an isolated system Presentation
 resolution, enables the existing forced snapshot-freeze failure seam, seals the
-resolution, then immediately clears the force flag. It must enter the existing
-PresentationUnavailable path without producing a ResolutionFault terminal.
+resolution, then clears the force flag. It enters the existing
+PresentationUnavailable path without manufacturing a ResolutionFault.
 
 The harness changes no Runtime module, reflected Gameplay API, Blueprint asset,
-production map, or production WidgetClass. It exists only because R11 requires the
-same real failure producers to be exercised manually on both Legacy and Native PIE
-surfaces.
+production map, or production WidgetClass. It is temporary R11 validation
+infrastructure and must be deleted after R11 parity closes and before R12 production
+cutover validation begins.
 
-This harness is temporary R11 validation infrastructure. Delete it after R11 parity is
-closed and before R12 production cutover validation begins.
+## AUTOMATED GATES — PENDING UNLESS SEPARATELY CONFIRMED
 
-## Scenario E manual parity — PASS
-
-The user confirmed the Scenario E visual result on both Legacy and Native PIE on
-2026-09-01 using the temporary real-producer harness.
-
-```text
-A2N.R11.ForceResolutionFault
--> real framework ResolutionFault
--> terminal surface shows 战斗结算异常
-
-A2N.R11.ForcePresentationUnavailable
--> forced player-facing snapshot freeze failure
--> feedback shows:
-   Could not freeze the exact player-facing Presentation snapshot.
--> does NOT show 战斗结算异常
-```
-
-Legacy and Native produced the same separation between Gameplay ResolutionFault and
-PresentationUnavailable. Scenario E observable dual-stack parity is therefore PASS.
-This evidence does not close Scenario A-D, Skip/Cancel/stale/Input Unlock, or the
-remaining automated R11 gates.
-
-## AUTOMATED GATES — PENDING
-
-R11 is a Level-3 parity phase, so these broader gates are intentional here.
 Run once on the R11 candidate head:
 
 ```text
@@ -204,29 +205,10 @@ Run once on the R11 candidate head:
 ```
 
 Do not run Phase6R, Shipping exclusion, production cutover, or R12 acceptance in R11.
-Those belong to later cutover/seal boundaries unless a concrete failure explicitly
-invalidates a prerequisite.
 
-Passing R3-R10 historical gates remain sticky; the R11 Native prefix is run once here
-because the formal candidate Gate explicitly requires the complete focused Native
-handler set on the candidate head.
+## Remaining manual R11 catch-up gates
 
-## MANUAL PIE GATES — PENDING
-
-Run the same scenario matrix first on Legacy and then on Native candidate:
-
-```text
-Legacy:
-  /Game/SlayTheSpireDemo/Maps/L_BattleTest
-
-Native:
-  /Game/SlayTheSpireDemo/Maps/L_BattleTest_Native
-```
-
-For each matching scenario compare player-visible ordering and final surface/state,
-not implementation details.
-
-In addition to Scenario A-E, exercise the existing real-producer validation path for:
+Scenario A-E are complete. The remaining manual parity scope is:
 
 ```text
 active Skip
@@ -235,12 +217,27 @@ stale callback rejection
 Input Unlock after catch-up
 ```
 
-The Skip/Cancel/stale checks must operate on a real active playback produced through
-formal Gameplay/UI requests. Do not construct a synthetic Presentation Record merely
-to satisfy R11.
+These checks must operate on real active playback produced through formal Gameplay/UI
+requests. Do not construct a synthetic Presentation Record merely to satisfy R11.
 
-Scenario E is now PASS on both stacks. Scenario A-D and the Skip/Cancel/stale/Input
-Unlock checks remain pending unless separately confirmed.
+The observable requirements are:
+
+```text
+active Skip:
+  real active playback is skipped/caught up without flashback or duplicate visual
+
+active Cancel:
+  abandoned real active playback restores the historical ViewModel surface and does
+  not execute the normal Finish/Notify path
+
+stale callback:
+  callback from an abandoned/older Token is ignored and cannot finish or clear the
+  newer playback
+
+Input Unlock:
+  input stays locked while catch-up is incomplete and becomes usable again after the
+  non-terminal catch-up reaches Idle
+```
 
 ## Candidate acceptance
 
@@ -248,14 +245,14 @@ R11 may be marked `COMPLETE / VALIDATED` only when all of the following are conf
 
 ```text
 Legacy regression PASS
-Native Scenario A-E PASS
-Legacy-vs-Native observable parity PASS
-active Skip/Cancel PASS
-stale callback PASS
-input-unlock PASS
-focused Native handler tests PASS
-Editor build PASS
-Blueprint compile/save PASS for all Native WBP assets
+Native Scenario A-E PASS                         [PASS]
+Legacy-vs-Native observable Scenario A-E parity [PASS]
+active Skip/Cancel PASS                          [PENDING]
+stale callback PASS                              [PENDING]
+input-unlock PASS                                [PENDING]
+focused Native handler tests PASS                [PENDING unless confirmed]
+Editor build PASS                                [PENDING unless confirmed]
+Blueprint compile/save PASS for all Native WBP   [PENDING unless confirmed]
 ```
 
 R11 completion does not authorize production cutover by itself. R12-A remains a
