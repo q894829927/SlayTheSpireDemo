@@ -2,7 +2,7 @@
 
 Date: **2026-08-31**
 
-Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained; R14-A NOT STARTED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**
+Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained; R14-A COMPLETE / VALIDATED; R14-B NOT AUTHORIZED; UI-A3 NOT STARTED**
 
 ## 1. Purpose
 
@@ -38,13 +38,18 @@ Gameplay   = authoritative truth
 
 Starting A2N did not reopen the sealed Legacy UI-A2E implementation. R12 has now
 passed its isolated production cutover and cutover-head acceptance Gates, so the
-Native stack is the production default. Legacy assets remain retained for the R13
-stabilization boundary; no Legacy cleanup or deletion has started. R13-M1 completed
-with the real post-cutover Native-only dependency stabilization change `fe7fe4e`,
-focused validation PASS and zero production Legacy HUD/Card/Status dependencies.
-Formal Phase6R passed exactly 100/100; final production Scenario A-E, active Skip,
-active timeout Cancel, stale callback and Input Unlock passed; the temporary harness
-was removed; and the final no-harness Editor and clean Shipping builds passed.
+Native stack is the production default. R13-M1 completed with the real post-cutover
+Native-only dependency stabilization change `fe7fe4e`, focused validation PASS and
+zero production Legacy HUD/Card/Status dependencies. Formal Phase6R passed exactly
+100/100; final production Scenario A-E, active Skip, active timeout Cancel, stale
+callback and Input Unlock passed; the temporary harness was removed; and the final
+no-harness Editor and clean Shipping builds passed.
+
+R14-A safe cleanup is now complete and validated. It removed only confirmed-
+unreferenced Native C++ helpers and zero-reference migration residue from the Native
+WBP duplicates; Legacy HUD/Card/Status assets remain intact. `L_BattleTest_Native` is
+intentionally retained as a non-production migration/regression map. Destructive
+Legacy removal remains outside R14-A and requires separate R14-B authorization.
 
 UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
 behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly
@@ -1230,6 +1235,33 @@ Every cleanup slice keeps Editor build, focused Automation and PIE smoke evidenc
 
 Legacy WBP assets remain intact.
 
+Execution status: **R14-A COMPLETE / VALIDATED**.
+
+Completed cleanup:
+
+```text
+R14-A1: removed two confirmed-unreferenced Native C++ binding helper accessors
+R14-A2: removed thirteen zero-reference Blueprint migration variables from the
+         Native HUD/Card/Status duplicates
+```
+
+R14-A2 evidence:
+
+```text
+Native WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE, 0 errors
+Editor Build: PASS
+R4 focused Automation: exactly 1/1 Success, 0 failed, 0 notRun
+R9 focused Automation: exactly 5/5 Success, 0 failed, 0 notRun
+R13 AssetReferences: exactly 1/1 Success, 0 failed, 0 notRun
+Production runtime Legacy HUD/Card/Status dependency count: 0
+Production L_BattleTest PIE smoke: PASS
+Implementation commit: 8a609659ba138c922fe64bbfd08bca44b05ca8d6
+```
+
+`L_BattleTest_Native` is intentionally retained as a non-production
+migration/regression map. Its retention is not an R14-A blocker and no redirector
+cleanup is required. Detailed evidence is in `docs/R14ASafeCleanupValidation.md`.
+
 ---
 
 ## 21. R14-B — Separately authorized Legacy removal
@@ -1411,6 +1443,11 @@ production WidgetClass points to the Native WBP
 cutover-head validation passes
 Legacy remains recoverable through the agreed stabilization boundary
 ```
+
+The non-destructive migration and safe-cleanup path is now complete through R14-A.
+R14-B is an optional, separately authorized destructive Legacy-removal follow-up and
+is not required to keep the Native production path valid while Legacy assets remain
+retained.
 
 The migration changes only who implements the sealed UI behavior. It must not change
 what that behavior means.
