@@ -1,28 +1,43 @@
-# Codex Goal Checkpoint — Phase 6UI-A2N
+# Codex Goal Checkpoint — Phase 6UI-A3
 
-Last updated: **2026-09-01**
+Last updated: **2026-09-02**
 
 ## Goal
 
-Migrate the sealed Legacy HUD behavior to the Native HUD stack under
-`docs/Phase6UIA2NNativeHUDRefactor.md`, without changing Gameplay authority,
-Presentation Record/Envelope semantics, Controller/reducer ownership, or UI-A3.
+Complete Phase 6UI-A3 under `docs/Phase6UIA3Implementation.md` without changing Gameplay authority, A2 committed-presentation semantics, Native/Legacy ownership, or phase ordering.
+
+The locked A3 distinction is:
+
+```text
+A3 = pre-commit read-only current-state supported Operation values
+A2 = post-commit playback of immutable facts that actually committed
+```
 
 ## Current execution status
 
 ```text
-R0-R13: COMPLETE / VALIDATED
-R14-A: COMPLETE / VALIDATED
-R14-B: NOT REQUIRED / NOT AUTHORIZED
-Native HUD: production default
-Legacy HUD/Card/Status assets: retained / deprecated / do not use
-Legacy retained location: /Game/SlayTheSpireDemo/UI/Out/Legacy/
-Production runtime Legacy HUD/Card/Status dependency count: 0
-L_BattleTest_Native: retained intentionally as non-production migration/regression map
-UI-A3: NOT STARTED
+UI-A3: IN PROGRESS / AUTHORIZED
+A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
+A3-2 Target-Specific Current-State Preview: NEXT IMPLEMENTATION SLICE
+A3-3 Energy + Target-Aware Legality: NOT STARTED
+A3-4 ViewModel Transient Preview Lifecycle: NOT STARTED
+A3-5 Minimal Native UMG + A2/A3 Combined PIE: NOT STARTED
 ```
 
-Production configuration:
+Predecessor state remains closed:
+
+```text
+UI-A2: COMPLETE / VALIDATED / SEALED
+A2N R0-R13: COMPLETE / VALIDATED
+R14-A: COMPLETE / VALIDATED
+R14-B: NOT REQUIRED / NOT AUTHORIZED
+Native HUD: sole active production implementation
+Legacy HUD/Card/Status: retained / deprecated / do not use
+Legacy location: /Game/SlayTheSpireDemo/UI/Out/Legacy/
+Production runtime Legacy HUD/Card/Status dependency count: 0
+```
+
+Production configuration remains:
 
 ```text
 Map:
@@ -32,144 +47,91 @@ WidgetClass:
 /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C
 ```
 
-## Latest completed work — R14-A
+## Active authority
 
-R14-A starting HEAD:
-
-```text
-e1b60480807ae1a140acc637a5873990d2937722
-```
-
-R14-A1 removed two confirmed-unreferenced Native C++ helper accessors:
+Read before A3 implementation:
 
 ```text
-5e5dded7f28780a036d71ff91db0fcd45da18071
-UBattleCardWidget::AreNativeBindingsValid()
-
-d8674d91588c3d7b98c964647d22f80218841189
-UBattleHUDWidget::AreNativeBindingsValid()
+AGENTS.md
+Source/SlayTheSpireDemo/UI/AGENTS.md
+docs/Phase6UIA3Implementation.md
+docs/Phase6UIA3DynamicTextImplementation.md
+docs/ValidationExecutionPolicy.md
 ```
 
-R14-A1 validation:
+`docs/Phase6UIA2EImplementation.md` remains sealed A2 history and the original A3 follow-up design basis. `docs/Phase6UIA3Implementation.md` is now the dedicated implementation/ordering/acceptance authority for active A3 work.
+
+## A3-1 sealed predecessor
+
+A3-1 already established read-only Dynamic Text:
 
 ```text
-Editor Build: PASS
-SlayTheSpireDemo.Phase6UIA2N.R3: PASS
-SlayTheSpireDemo.Phase6UIA2N.R4: PASS
-production L_BattleTest PIE smoke: PASS
+CardEffect / Status Modifier
+-> named deterministic value
+-> DamageSpec / BlockSpec + existing Pipeline where applicable
+-> current description at BattleId + StateRevision
+-> ViewModel / Widget
 ```
 
-R14-A2 removed thirteen zero-reference migration variables from Native Blueprint
-duplicates only. Implementation/asset commit:
+Do not reopen A3-1 merely to implement target-specific Preview.
+
+The semantic distinction remains:
 
 ```text
-8a609659ba138c922fe64bbfd08bca44b05ca8d6
-refactor(ui-a2n): remove native blueprint migration residue
+Card-face Dynamic Text
+= current source-side/self presentation value
+
+Target-Specific Current-State Preview
+= supported Operation value for one concrete current Target
+  at one current BattleId/StateRevision
 ```
 
-Deleted zero-reference variables:
+## Next exact action
+
+Implement only:
 
 ```text
-WBP_BattleCard_Native
-- CardView
-
-WBP_BattleStatus_Native
-- StatusView
-- CurrentStatusView
-- MID_StatusIcon
-
-WBP_BattleHUD_Native
-- ActivePresentationToken
-- ActivePresentationType
-- ActivePresentationTimer
-- PlayedCardWidget
-- HiddenHandCardWidget
-- ZoneChangedDrawnCardWidget
-- ActiveStatusPresentationWidget
-- bDamageTargetIsPlayer
-- bBlockTargetIsPlayer
+A3-2A — Immediate Preview DTO + read-only Effect contribution contract
 ```
 
-R14-A2 validation:
+Initial edit boundary:
 
 ```text
-Native WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE, 0 errors
-Editor Build: PASS
-SlayTheSpireDemo.Phase6UIA2N.R4: exactly 1/1 Success, 0 failed, 0 notRun
-SlayTheSpireDemo.Phase6UIA2N.R9: exactly 5/5 Success, 0 failed, 0 notRun
-SlayTheSpireDemo.Phase6UIA2N.R13.AssetReferences.NativeProductionClosure:
-  exactly 1/1 Success, 0 failed, 0 notRun
-Production runtime Legacy HUD/Card/Status dependency count: 0
-Production L_BattleTest PIE smoke: PASS
+FImmediateCardPreview
+FImmediatePreviewOperation
+Damage / Block operation type
+UCardEffect narrow read-only Preview-operation contribution hook
+UDamageCardEffect contribution
+UGainBlockCardEffect contribution
+focused A3-2A read-only Automation
 ```
 
-`L_BattleTest_Native` was reviewed as the only remaining R14-A cleanup candidate and
-is intentionally retained. It has no production responsibility, deletion has no
-identified current maintenance/packaging benefit, and removing it would add an
-unnecessary destructive map/reference cleanup slice. This retention is not a blocker.
+Do not touch ViewModel or UMG in A3-2A.
 
-## Documentation seal
+Do not implement Energy/legality lifecycle yet beyond what is structurally required by the DTO; that belongs to A3-3.
 
-R14-A closure is recorded in:
+Do not add Trigger/Relic simulation, final HP prediction, HP ghost bars, Status merge prediction, draw/shuffle prediction, multi-enemy architecture or cross-revision retained selection.
+
+## A3-2A validation scope
+
+Validation is closed-scope.
+
+AUTOMATED GATES
 
 ```text
-docs/R14ASafeCleanupValidation.md
-docs/DevelopmentPhases.md
-docs/Phase6UIA2NNativeHUDRefactor.md
+1. Editor Build once.
+2. Run the smallest A3-2A focused Automation prefix once.
+3. Prove supported Damage/Block operation resolution is deterministic and read-only.
+4. Prove fixed multi-hit retains per-hit ResolvedAmount + HitCount semantics.
+5. Prove no Gameplay mutation / Action enqueue / Event emission / RNG consumption.
 ```
 
-Documentation-only seal commits after the tested implementation/asset head do not
-claim any additional Build, Automation, Blueprint compile, PIE, Phase6R, or Shipping
-run.
-
-## Current work — Legacy asset relocation
-
-This separately authorized relocation is not R14-B. Unreal AssetTools moved:
+MANUAL PIE GATES
 
 ```text
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard
--> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
-
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus
--> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
-
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD
--> /Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
+none required for A3-2A
 ```
 
-Completed before the remaining Gates:
+Do not run Phase6R, A2D5, Shipping, broad Scenario A-E, Legacy parity or unrelated historical suites unless a concrete shared-contract failure invalidates them.
 
-```text
-pre-move current production/default/dependency check: PASS
-old paths absent / new paths present: PASS
-scoped ObjectRedirector count: 0
-relocated Legacy WBP compile/save/reopen: 3/3 PASS, BS_UP_TO_DATE
-Legacy HUD Card/Status references use relocated packages: PASS
-R13 permanent Legacy package constants: updated to /UI/Out/Legacy/
-relocated Legacy package existence assertions: added
-Editor Build: PASS
-R13 AssetReferences: exactly 1/1 Success, 0 failed, 0 notRun
-production runtime relocated Legacy dependency count: 0
-production L_BattleTest PIE smoke: PASS (user confirmed 2026-09-02)
-```
-
-## Next exact action — STOP
-
-The separately authorized Legacy asset relocation is complete and validated. Do not
-start R14-B, reactivate Legacy, or begin UI-A3.
-
-R14-B is destructive Legacy removal and requires a separate explicit user
-authorization before any of these assets may be deleted or renamed:
-
-```text
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
-```
-
-If R14-B is later authorized, first perform its required Reference Audit, Redirector
-Audit, runtime asset dependency audit, and recovery-point preparation under
-`docs/Phase6UIA2NNativeHUDRefactor.md`.
-
-Do not start UI-A3 or unrelated Gameplay/Presentation redesign as part of this
-checkpoint.
+After the A3-2A automated Gate passes, record evidence, commit, and STOP before the next A3 slice unless the user explicitly requests continuation.
