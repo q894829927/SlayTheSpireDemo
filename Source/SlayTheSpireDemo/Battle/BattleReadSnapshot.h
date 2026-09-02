@@ -45,6 +45,11 @@ struct SLAYTHESPIREDEMO_API FCardReadView
 	// Source-side deterministic baseline populated by the player-facing read
 	// snapshot. Enemy target modifiers are intentionally excluded.
 	FText CurrentDescription;
+
+	// Same current-state facts as CurrentDescription, with comparison RichText
+	// tags attached only to Damage/Block values that differ from authored base.
+	// This is presentation markup, not a second Gameplay calculation.
+	FText CurrentRichDescription;
 };
 
 // Gameplay-derived player-facing data for the committed Enemy Intent at the
