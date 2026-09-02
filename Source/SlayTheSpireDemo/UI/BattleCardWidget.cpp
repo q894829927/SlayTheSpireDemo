@@ -25,6 +25,11 @@ namespace
 			return FText::GetEmpty();
 		}
 	}
+
+	const FText& GetVisibleCardDescription(const FBattleHUDCardView& View)
+	{
+		return View.RichDescription.IsEmpty() ? View.Description : View.RichDescription;
+	}
 }
 
 void UBattleCardWidget::NativeOnInitialized()
@@ -138,7 +143,7 @@ void UBattleCardWidget::ClearImmediatePreview()
 
 	if (IsValid(Txt_CardDescription))
 	{
-		Txt_CardDescription->SetText(CurrentCardView.Description);
+		Txt_CardDescription->SetText(GetVisibleCardDescription(CurrentCardView));
 	}
 }
 
@@ -158,7 +163,7 @@ void UBattleCardWidget::RefreshFromCardView()
 
 	Txt_CardName->SetText(CurrentCardView.DisplayName);
 	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
-	Txt_CardDescription->SetText(CurrentCardView.Description);
+	Txt_CardDescription->SetText(GetVisibleCardDescription(CurrentCardView));
 	ImmediatePreviewTone = 0;
 
 	// Card type is player-facing localized UI text. Do not expose the native enum
