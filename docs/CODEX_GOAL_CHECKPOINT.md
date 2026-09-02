@@ -20,11 +20,14 @@ A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
 A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / REVALIDATED / SEALED
 A3-5 Native card-face Preview + A2/A3 PIE: VALIDATED / SEAL PENDING
+A3-5 RichText per-value comparison styling: VALIDATED
 ```
 
 A production PIE regression was traced back to A3-4 revision invalidation rather than the sealed A2 CardPlayed implementation. A3-5 also exposed two real ownership problems during diagnosis (standalone Preview sharing `OV_PlayArea`, and Preview hover using structural `OnChanged`), both of which remain fixed, but neither was the final cause of the missing CardPlayed animation.
 
 The A3-4 regression fix has now been revalidated by both focused Automation suites and production PIE. CardPlayed animation is restored.
+
+The later RichText refinement is also validated: normal current-state Hand card faces and target-specific Preview both color only the affected numeric semantic value. Strength-modified Damage is confirmed in PIE. Dexterity manual PIE is currently unavailable because the project has no playable Dexterity-granting card; the Block behavior is accepted through the passing focused `BlockTracksDexterityAndFrailty` Automation coverage.
 
 ## Active authority
 
@@ -101,22 +104,24 @@ Uppercut: supported Damage may change while unsupported Weak/Vulnerable values k
 
 UI does not parse formatted text and does not rerun Damage/Block formulas.
 
-Each supported operation carries:
+Each supported Damage/Block value retains:
 
 ```text
-BaseAmount     = authored immutable effect amount
-ResolvedAmount = current Gameplay-pipeline result
+BaseAmount      = authored immutable effect amount
+Current/Resolved = current Gameplay-pipeline result
 ```
 
 Native comparison styling:
 
 ```text
-ResolvedAmount > BaseAmount  -> red emphasis
-ResolvedAmount < BaseAmount  -> blue emphasis
-ResolvedAmount == BaseAmount -> original description style
+Current/Resolved > BaseAmount  -> PreviewIncrease (red)
+Current/Resolved < BaseAmount  -> PreviewDecrease (blue)
+Current/Resolved == BaseAmount -> Default / original description style
 ```
 
-The current Native Designer uses a plain `UTextBlock` for the description, so this C++ slice colors that description surface as a whole. Exact per-number run coloring requires a later RichText Designer migration; it must not reintroduce a separate Preview overlay or Gameplay calculations in UMG.
+The Native card description is now a `URichTextBlock` backed by `DT_BattleCardTextStyles` rows `Default`, `PreviewIncrease` and `PreviewDecrease`. The resolver wraps only the exact semantic numeric argument, so surrounding authored/localized text keeps the normal style.
+
+Normal A3-1 Hand card faces use the same authored-base rule. Therefore Strength/Weak can color Damage and Dexterity/Frailty can color Block without requiring target hover. The target-specific Preview path still uses explicit `ImmediatePreview.Operations` Base/Resolved values, so it does not infer target styling by parsing the final string.
 
 ## Final CardPlayed regression root cause
 
@@ -212,17 +217,32 @@ SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported, 2026-09
 Production L_BattleTest PIE: PASS for restored CardPlayed animation (user-reported, 2026-09-02)
 ```
 
+Current RichText evidence:
+
+```text
+SlayTheSpireDemo.UIA3.RichCardTextBaseline: 2/2 PASS (user-reported, 2026-09-02)
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported, 2026-09-02)
+Production PIE: Strength-modified card-face Damage changes color correctly (user-reported, 2026-09-02)
+Dexterity manual PIE: NOT RUN — no playable Dexterity-granting card currently exists
+Dexterity/Frailty Block RichText behavior: covered by passing BlockTracksDexterityAndFrailty Automation and accepted for this slice
+```
+
 Result:
 
 ```text
 A3 transient Preview invalidation no longer cancels committed A2 CardPlayed playback.
 CardPlayed visible animation is restored in production PIE.
+RichText card faces color only changed semantic numeric values.
+Normal source/self modifier changes can color the card face without target hover.
+Dexterity manual PIE absence is not a blocker for the current RichText acceptance record because focused Block Automation passed.
 ```
 
 ## Next exact action
 
-Do not make further behavioral changes to A2 playback or A3 Preview ownership for this defect. The regression is fixed and revalidated.
+Do not make further behavioral changes to A2 playback, A3 Preview ownership or RichText comparison styling unless a new concrete defect is reported. The current regression and RichText slice are validated.
 
 The remaining A3 administrative action is to review the final A3-5 acceptance evidence and seal A3-5 / UI-A3 if no additional PIE acceptance defect is reported.
+
+A future playable Dexterity card may be used for an optional manual Block-color spot-check; it is not required to reopen this validated RichText slice.
 
 Do not run Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates a sealed shared contract. Do not start Phase 7 until A3-5 is sealed.
