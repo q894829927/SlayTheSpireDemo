@@ -71,6 +71,7 @@ void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
 {
 	CurrentCardView = View;
 	bImmediatePreviewApplied = false;
+	ImmediatePreviewTone = 0;
 	RefreshFromCardView();
 }
 
@@ -105,14 +106,17 @@ void UBattleCardWidget::ApplyImmediatePreview(const FImmediateCardPreview& Previ
 	{
 		// User-facing convention for this project: values above authored base are red.
 		Txt_CardDescription->SetColorAndOpacity(FSlateColor(IncreasedPreviewColor));
+		ImmediatePreviewTone = 1;
 	}
 	else if (bHasDecrease)
 	{
 		Txt_CardDescription->SetColorAndOpacity(FSlateColor(DecreasedPreviewColor));
+		ImmediatePreviewTone = -1;
 	}
 	else
 	{
 		Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
+		ImmediatePreviewTone = 0;
 	}
 	bImmediatePreviewApplied = true;
 }
@@ -121,9 +125,11 @@ void UBattleCardWidget::ClearImmediatePreview()
 {
 	if (!bImmediatePreviewApplied)
 	{
+		ImmediatePreviewTone = 0;
 		return;
 	}
 	bImmediatePreviewApplied = false;
+	ImmediatePreviewTone = 0;
 
 	if (IsValid(Txt_CardDescription))
 	{
@@ -150,6 +156,7 @@ void UBattleCardWidget::RefreshFromCardView()
 	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
 	Txt_CardDescription->SetText(CurrentCardView.Description);
 	Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
+	ImmediatePreviewTone = 0;
 
 	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
 	{
