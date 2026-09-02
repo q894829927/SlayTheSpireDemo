@@ -41,4 +41,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ACombatant> PresentationCardSource = nullptr;
+
+	// One authored draw attempt may cause at most one Shuffle -> RetryDraw cycle.
+	// This is required for source-game zero-card shuffle semantics without
+	// recursively shuffling forever when both DrawPile and DiscardPile stay empty.
+	bool bRetriedAfterShuffle = false;
 };
