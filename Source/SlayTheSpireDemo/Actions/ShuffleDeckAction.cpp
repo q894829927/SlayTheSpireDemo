@@ -38,9 +38,9 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	// A gameplay shuffle is only legal when DrawPile is empty. DiscardPile may
-	// also be empty: that zero-card shuffle is still a committed fact so each
-	// exhausted draw attempt can trigger shuffle-reactive mechanics exactly once.
+	// A gameplay ShuffleAction is legal only at an empty DrawPile boundary.
+	// DiscardPile may also be empty when this action was already planned by an
+	// earlier bulk-draw step before the available draw cards were consumed.
 	if (Deck->HasCardsInDrawPile())
 	{
 		Deck->ShuffleDiscardIntoDrawPileCommit();
