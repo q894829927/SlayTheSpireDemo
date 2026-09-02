@@ -13,7 +13,7 @@ void UBattleImmediatePreviewTextBlock::AttachToPreview(
 	{
 		if (UBattleHUDViewModel* PreviousViewModel = BoundViewModel.Get())
 		{
-			PreviousViewModel->OnChanged.RemoveDynamic(
+			PreviousViewModel->OnPreviewChanged.RemoveDynamic(
 				this,
 				&UBattleImmediatePreviewTextBlock::HandlePreviewChanged);
 		}
@@ -21,7 +21,7 @@ void UBattleImmediatePreviewTextBlock::AttachToPreview(
 		BoundViewModel = InViewModel;
 		if (IsValid(InViewModel))
 		{
-			InViewModel->OnChanged.AddUniqueDynamic(
+			InViewModel->OnPreviewChanged.AddUniqueDynamic(
 				this,
 				&UBattleImmediatePreviewTextBlock::HandlePreviewChanged);
 		}
@@ -35,7 +35,7 @@ void UBattleImmediatePreviewTextBlock::DetachFromPreview()
 {
 	if (UBattleHUDViewModel* ViewModel = BoundViewModel.Get())
 	{
-		ViewModel->OnChanged.RemoveDynamic(
+		ViewModel->OnPreviewChanged.RemoveDynamic(
 			this,
 			&UBattleImmediatePreviewTextBlock::HandlePreviewChanged);
 	}
