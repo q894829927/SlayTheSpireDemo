@@ -13,6 +13,9 @@
 
 namespace
 {
+	const TCHAR* IncreasedPreviewStyle = TEXT("PreviewIncrease");
+	const TCHAR* DecreasedPreviewStyle = TEXT("PreviewDecrease");
+
 	void ExtractNamedArgumentStrings(const FText& Format, TArray<FString>& OutNames)
 	{
 		OutNames.Reset();
@@ -75,7 +78,8 @@ namespace
 	FText FormatDescription(
 		const FText& Format,
 		FPreviewTextArgumentBuilder& Builder,
-		const FString& DebugOwner
+		const FString& DebugOwner,
+		const TMap<FName, FText>* RichOverrides = nullptr
 	)
 	{
 		if (Format.IsEmpty())
@@ -95,6 +99,17 @@ namespace
 					SemanticName,
 					FString::Printf(TEXT("%s description references unknown argument '%s'."), *DebugOwner, *RequiredKey)
 				);
+			}
+
+			if (RichOverrides != nullptr)
+			{
+				if (const FText* RichValue = RichOverrides->Find(SemanticName))
+				{
+					// RichText styling is attached to the semantic argument itself, not
+					// discovered by searching the already-formatted sentence for digits.
+					ExactArguments.Add(RequiredKey, FFormatArgumentValue(*RichValue));
+					continue;
+				}
 			}
 
 			if (const FFormatArgumentValue* Value = Builder.FindValue(SemanticName))
@@ -147,6 +162,36 @@ namespace
 			Effect->BuildPreviewArguments(Context, Builder);
 		}
 		return true;
+	}
+
+	void BuildRichPreviewOverrides(
+		const TArray<FImmediatePreviewOperation>& Operations,
+		TMap<FName, FText>& OutOverrides)
+	{
+		OutOverrides.Reset();
+		for (const FImmediatePreviewOperation& Operation : Operations)
+		{
+			const TCHAR* StyleName = nullptr;
+			if (Operation.ResolvedAmount > Operation.BaseAmount)
+			{
+				StyleName = IncreasedPreviewStyle;
+			}
+			else if (Operation.ResolvedAmount < Operation.BaseAmount)
+			{
+				StyleName = DecreasedPreviewStyle;
+			}
+
+			if (StyleName == nullptr || Operation.SemanticArgumentName.IsNone())
+			{
+				continue;
+			}
+
+			const FString ResolvedNumber = FText::AsNumber(Operation.ResolvedAmount).ToString();
+			OutOverrides.Add(
+				Operation.SemanticArgumentName,
+				FText::FromString(FString::Printf(TEXT("<%s>%s</>"), StyleName, *ResolvedNumber))
+			);
+		}
 	}
 
 	void AddValidationError(TArray<FText>& OutErrors, const FString& Error)
@@ -252,6 +297,36 @@ FText FBattleTextResolver::ResolveCardDescriptionForImmediatePreview(
 	}
 
 	return FormatDescription(Card->GetDefinition()->Description, Builder, Card->GetDebugLabel());
+}
+
+FText FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
+	const UCardInstance* Card,
+	ACombatant* Source,
+	const TArray<FImmediatePreviewOperation>& Operations)
+{
+	if (!IsValid(Card) || !IsValid(Card->GetDefinition()))
+	{
+		return FText::GetEmpty();
+	}
+
+	FPreviewTextArgumentBuilder Builder;
+	if (!BuildCardDescriptionArguments(Card, Source, Builder))
+	{
+		return FText::GetEmpty();
+	}
+
+	for (const FImmediatePreviewOperation& Operation : Operations)
+	{
+		Builder.OverrideInteger(Operation.SemanticArgumentName, Operation.ResolvedAmount);
+	}
+
+	TMap<FName, FText> RichOverrides;
+	BuildRichPreviewOverrides(Operations, RichOverrides);
+	return FormatDescription(
+		Card->GetDefinition()->Description,
+		Builder,
+		Card->GetDebugLabel(),
+		&RichOverrides);
 }
 
 FText FBattleTextResolver::ResolveStatusDescription(const UStatusInstance* StatusInstance)
