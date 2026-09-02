@@ -8,8 +8,27 @@
 class ABattleManager;
 class ACombatant;
 class UBattleAction;
+class URelicInstance;
 class UStatusInstance;
 struct FBattleEvent;
+
+enum class ETriggerRuntimeSourceKind : uint8
+{
+	Status,
+	Relic
+};
+
+struct SLAYTHESPIREDEMO_API FTriggerRuntimeSource
+{
+	ETriggerRuntimeSourceKind Kind = ETriggerRuntimeSourceKind::Status;
+	UObject* RuntimeObject = nullptr;
+	FName SourceId = NAME_None;
+	uint64 RuntimeSequence = 0;
+	ACombatant* CombatantOwner = nullptr;
+
+	static FTriggerRuntimeSource FromStatus(UStatusInstance* Instance);
+	static FTriggerRuntimeSource FromRelic(URelicInstance* Instance);
+};
 
 struct SLAYTHESPIREDEMO_API FTriggerContext
 {
@@ -27,15 +46,33 @@ public:
 		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
 	);
 
+	FTriggerContext(
+		URelicInstance* InRuntimeSource,
+		UObject* InActionOuter,
+		ABattleManager* InBattle,
+		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
+	);
+
+	FTriggerContext(
+		const FTriggerRuntimeSource& InRuntimeSource,
+		UObject* InActionOuter,
+		ABattleManager* InBattle,
+		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
+	);
+
+	UObject* GetRuntimeSourceObject() const;
 	UStatusInstance* GetRuntimeSource() const;
+	URelicInstance* GetRelicSource() const;
+	ETriggerRuntimeSourceKind GetSourceKind() const;
+	FName GetSourceId() const;
+	uint64 GetRuntimeSequence() const;
 	ACombatant* GetOwner() const;
 	UObject* GetActionOuter() const;
 	ABattleManager* GetBattle() const;
 	const FPresentationRecordWriter& GetPresentationRecordWriter() const;
 
 private:
-	UStatusInstance* RuntimeSource = nullptr;
-	ACombatant* Owner = nullptr;
+	FTriggerRuntimeSource RuntimeSource;
 	UObject* ActionOuter = nullptr;
 	ABattleManager* Battle = nullptr;
 	FPresentationRecordWriter PresentationRecordWriter;
