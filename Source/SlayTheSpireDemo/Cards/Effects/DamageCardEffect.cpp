@@ -58,7 +58,10 @@ void UDamageCardEffect::BuildPreviewArguments(
 	Spec.DamageKind = DamageKind;
 	Spec.BaseAmount = BaseAmount;
 	FDamageModifierPipeline::Resolve(Spec);
-	OutArguments.AddInteger(DescriptionArgumentName, Spec.ResolvedAmount);
+	OutArguments.AddIntegerWithAuthoredBase(
+		DescriptionArgumentName,
+		Spec.ResolvedAmount,
+		BaseAmount);
 }
 
 void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
