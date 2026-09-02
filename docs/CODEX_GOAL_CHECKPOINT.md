@@ -19,7 +19,7 @@ A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
 A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / VALIDATED / SEALED
-A3-5 Minimal Native UMG + A2/A3 Combined PIE: IMPLEMENTED / VALIDATION PENDING
+A3-5 Minimal Native UMG + A2/A3 Combined PIE: IMPLEMENTED / AUTOMATED GATE PASS / MANUAL GATE PENDING
 ```
 
 UI-A2 remains complete/sealed. Native HUD remains the sole active production implementation. Legacy HUD/Card/Status remain retained/deprecated with zero production runtime dependency.
@@ -72,6 +72,9 @@ bab2a1f31a10999de7b5b628722f46be15598809  feat(ui-a3): clear preview before targ
 8eae36f1b5077f02e96e575583ace2d355bcfbc5  test(ui-a3): add native preview integration probes
 03c52b76af82108a12eaf45d5d708dac0f971c90  test(ui-a3): implement native preview integration probes
 0b4b0e6406d598a5acdd0e4b70bf94c26457bdd0  test(ui-a3): cover native preview and a3 a2 handoff
+5b0522b3c96cef9e069d5cb85d7a1f71f4b8f071  fix(ui-a3): avoid preview overlay slot shadowing
+ e6e9d55bad20f790216cd5fbaf48b4169c7e12a9  fix(ui-a3): restore native energy presentation state name
+0ea1f50aa4d459f862b7415821077aee330a22ae  test(ui-a3): give handoff preview visible energy state
 ```
 
 Changed production boundary:
@@ -123,7 +126,7 @@ Prefix:
 SlayTheSpireDemo.UIA3.NativePreviewIntegration
 ```
 
-Expected tests:
+Tests:
 
 ```text
 DedicatedPreviewEventsStayIndependentFromInspection
@@ -135,31 +138,27 @@ The handoff test observes an intermediate ViewModel broadcast where the card is 
 
 ## Validation actually performed for A3-5
 
-No UE validation is claimed yet for the A3-5 code.
-
 ```text
-Editor Build: NOT RUN for A3-5
-Native WBP compile/save after parent C++ changes: NOT RUN
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: NOT RUN
-Production L_BattleTest combined A3/A2 PIE: NOT RUN
+Editor Build: PASS at latest A3-5/test-fix head (user-reported)
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 Success, exit 0 (user-reported)
+Native WBP compile/save after parent C++ changes: NOT YET CONFIRMED
+Production L_BattleTest combined A3/A2 PIE: NOT YET RUN / NOT YET CONFIRMED
 Legacy dependency regression: NOT RUN / not currently invalidated because no asset dependency was added
 Shipping / Phase6R / A2D5 / broad Scenario suites: intentionally NOT RUN
 ```
 
-## Next exact action — A3-5 validation
+The first A3-5 Automation run exposed one test-fixture defect rather than a production defect: `TargetSubmissionClearsPreviewBeforeAuthoritativeRequest` used an Enemy-target card with `Cost=0` and no supported Damage/Block effect, so the DTO could be valid while the minimal numeric Preview text was correctly empty. The fixture was changed to `Cost=1`, producing a deterministic `Energy 3 -> 2` visible surface. The rerun then passed all 3 tests.
 
-Closed-scope automated gate:
+## Remaining exact action — final A3-5 manual gate
+
+Compile/Save the two affected Native Blueprint assets once after the C++ parent changes if not already done:
 
 ```text
-1. Editor Build once at current head.
-2. Open/Compile/Save affected Native assets once after C++ parent changes:
-   WBP_BattleHUD_Native
-   WBP_CombatantPresentation
-   require compile success / 0 Blueprint errors (BS_UP_TO_DATE equivalent).
-3. Run exactly:
-   SlayTheSpireDemo.UIA3.NativePreviewIntegration
-   expected: 3 tests / all Success / exit 0.
+WBP_BattleHUD_Native
+WBP_CombatantPresentation
 ```
+
+Require compile success / 0 Blueprint errors.
 
 Then run one production `L_BattleTest` focused PIE session and verify:
 
@@ -180,4 +179,4 @@ new selection -> Preview reflects the current state
 No duplicate target highlight, stale Preview, Preview-over-A2 overlap or visible A3/A2 flashback.
 ```
 
-Do not run Phase6R, A2D5, Shipping, broad Scenario A-E or Legacy parity unless a concrete failure invalidates their sealed contracts. Do not start Phase 7 until A3-5 is validated and sealed.
+Do not rerun the automated A3-5 prefix unless this manual gate exposes a concrete defect. Do not run Phase6R, A2D5, Shipping, broad Scenario A-E or Legacy parity unless a concrete failure invalidates their sealed contracts. Do not start Phase 7 until A3-5 is validated and sealed.
