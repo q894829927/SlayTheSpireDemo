@@ -6,7 +6,7 @@
 #include "../Actions/BattleActionQueue.h"
 #include "../Actions/DamageAction.h"
 #include "../Actions/DiscardCardAction.h"
-#include "../Actions/DrawCardAction.h"
+#include "../Actions/DrawCardsAction.h"
 #include "../Actions/GainBlockAction.h"
 #include "../Actions/PlayCardAction.h"
 #include "../Actions/TurnEndedAction.h"
@@ -1079,7 +1079,7 @@ void ABattleManager::StartOpeningHand()
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Opening Hand resolution started. DrawAttempts=%d"), OpeningBatch.Num());
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Opening Hand resolution started. DrawCount=%d"), OpeningHandDrawCount);
 	if (!ActionQueue->StartProcessing())
 	{
 		ActionQueue->RequestResolutionFault(TEXT("Opening Hand batch was accepted but could not start processing."));
@@ -1143,10 +1143,10 @@ void ABattleManager::StartPlayerTurn()
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Battle] PlayerTurnStarting committed. Energy=%d/%d DrawAttempts=%d"),
+		TEXT("[Battle] PlayerTurnStarting committed. Energy=%d/%d DrawCount=%d"),
 		Energy,
 		MaxEnergy,
-		TurnStartBatch.Num()
+		PlayerTurnDrawCount
 	);
 
 	if (!ActionQueue->StartProcessing())
@@ -1646,6 +1646,11 @@ bool ABattleManager::BuildDrawActionBatch(int32 DrawCount, TArray<UBattleAction*
 		return false;
 	}
 
+	if (DrawCount == 0)
+	{
+		return true;
+	}
+
 	UBattleEventDispatcher* Dispatcher = nullptr;
 	TArray<ACombatant*> Combatants;
 	if (!TryBuildEventDispatchContext(Dispatcher, Combatants))
@@ -1653,13 +1658,9 @@ bool ABattleManager::BuildDrawActionBatch(int32 DrawCount, TArray<UBattleAction*
 		return false;
 	}
 
-	OutActions.Reserve(DrawCount);
-	for (int32 Index = 0; Index < DrawCount; ++Index)
-	{
-		UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
-		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants, Player.Get());
-		OutActions.Add(Action);
-	}
+	UDrawCardsAction* Action = NewObject<UDrawCardsAction>(ActionQueue.Get());
+	Action->Initialize(DeckRuntime.Get(), DrawCount, Dispatcher, Combatants, Player.Get());
+	OutActions.Add(Action);
 	return true;
 }
 
@@ -1749,16 +1750,16 @@ void ABattleManager::QueueDrawCardAction()
 		return;
 	}
 
-	UDrawCardAction* Action = NewObject<UDrawCardAction>(ActionQueue.Get());
+	UDrawCardsAction* Action = NewObject<UDrawCardsAction>(ActionQueue.Get());
 	UBattleEventDispatcher* Dispatcher = nullptr;
 	TArray<ACombatant*> Combatants;
 	if (TryBuildEventDispatchContext(Dispatcher, Combatants))
 	{
-		Action->Initialize(DeckRuntime.Get(), Dispatcher, Combatants, Player.Get());
+		Action->Initialize(DeckRuntime.Get(), 1, Dispatcher, Combatants, Player.Get());
 	}
 	else
 	{
-		Action->Initialize(DeckRuntime.Get(), Player.Get());
+		Action->Initialize(DeckRuntime.Get(), 1, Player.Get());
 	}
 	Action->SetPresentationRecordWriter(GetActivePresentationRecordWriter());
 	ActionQueue->AddToBack(Action);
