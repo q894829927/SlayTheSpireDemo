@@ -2,11 +2,11 @@
 
 Date: **2026-09-02**
 
-Status: **AUTHORIZED UX AMENDMENT / VALIDATION PENDING**
+Status: **AUTHORIZED UX AMENDMENT / REVALIDATION PENDING**
 
-This document records the explicit A3-5 UX/ownership change made after production PIE exposed a conflict between the first standalone Preview surface and sealed A2 `CardPlayed` playback.
+This document records the explicit A3-5 UX/ownership change made after production PIE exposed conflicts between the first standalone Preview surface and sealed A2 `CardPlayed` playback.
 
-Where this document conflicts with the A3-5 presentation details in `docs/Phase6UIA3Implementation.md`, this amendment controls. The underlying A3 Query/ViewModel semantics and all sealed A2 Presentation semantics remain unchanged.
+Where this document conflicts with the A3-5 presentation details in `docs/Phase6UIA3Implementation.md`, this amendment controls. The underlying A3 Query semantics and all sealed A2 Presentation semantics remain unchanged.
 
 ## Locked visible behavior
 
@@ -85,6 +85,37 @@ restore selected card face
 
 The A2 `CardPlayed` predicates, token ownership, reducers and FinalSnapshot semantics are not changed by this amendment.
 
+## Preview notification ownership
+
+Preview target nomination/clear is **not** structural HUD state and must not use the generic ViewModel `OnChanged` channel.
+
+The Native HUD structural channel rebuilds formal surfaces, including:
+
+```text
+OnChanged
+→ RefreshHUDFromViewModel
+→ RefreshHand
+→ HB_Hand.ClearChildren()
+→ recreate Hand card Widgets
+```
+
+Destroying/recreating Hand Widgets during target hover or immediately before submission invalidates the stable historical Hand Widget/geometry that A2 `CardPlayed` uses as its animation start anchor.
+
+Locked split:
+
+```text
+selection / frozen Presentation / interaction structure
+→ OnChanged
+→ normal Native HUD refresh may rebuild Hand
+
+PreviewTarget / ImmediatePreview only
+→ OnPreviewChanged
+→ update/restore selected card face only
+→ MUST NOT rebuild HB_Hand
+```
+
+`SetPreviewTargetById()` and `ClearPreviewTarget()` therefore publish only `OnPreviewChanged`. Selection cancel, accepted submission, revision invalidation and committed Presentation still use the normal structural `OnChanged` path as appropriate.
+
 ## CardPlayed rejection diagnostics
 
 Until the production PIE handoff is confirmed, a rejected Native `CardPlayed` playback logs precise read-only diagnostics with prefix:
@@ -107,12 +138,15 @@ After this amendment:
 3. Run one production L_BattleTest PIE session.
 ```
 
+Focused Automation must additionally prove Preview nomination/clear emits `OnPreviewChanged` without emitting structural `OnChanged`.
+
 PIE must prove:
 
 ```text
 Strike / Enemy:
 selected card face changes to target-specific Damage
 no standalone Damage/Energy preview appears
+hover/leave does not recreate formal Hand Widgets
 submit -> card-face Preview clears -> A2 played card visibly enters OV_PlayArea
 
 Defend / Player:
@@ -129,4 +163,4 @@ revision invalidation:
 old selection/Preview does not survive a new StateRevision
 ```
 
-If the played card still fails to appear, capture only the `[BattleHUD][CardPlayedReject]` log lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
+If the played card still fails to appear and `[BattleHUD][CardPlayedReject]` is present, capture those lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
