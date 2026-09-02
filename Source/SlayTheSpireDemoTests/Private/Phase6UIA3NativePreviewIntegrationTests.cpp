@@ -190,13 +190,22 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Native A3 surface is present before submission"), Overlay->GetChildrenCount(), 1);
 
 	Sink->ObserveViewModel(Fixture.ViewModel);
-	TestTrue(TEXT("Native target submission is accepted"), HUD->SelectTarget(TargetId));
 
+	// Production Combatant RequestLegalTarget emits OnPreviewCleared before
+	// OnTargetRequested. Exercise that exact HUD-side clear first so the test
+	// verifies physical PlayArea ownership, not only the ViewModel DTO state.
+	HUD->ClearPreviewAsCombatantWouldForTesting();
 	TestTrue(
 		TEXT("ViewModel broadcast exposes Preview-cleared state while selection is still pre-request"),
 		Sink->bObservedPreRequestPreviewClear);
 	TestEqual(
-		TEXT("A3 surface is removed before committed A2 PlayArea ownership"),
+		TEXT("Production Preview clear physically releases A3 PlayArea ownership before request"),
+		Overlay->GetChildrenCount(),
+		0);
+
+	TestTrue(TEXT("Native target submission is accepted"), HUD->SelectTarget(TargetId));
+	TestEqual(
+		TEXT("A3 surface remains absent before committed A2 PlayArea ownership"),
 		Overlay->GetChildrenCount(),
 		0);
 	TestFalse(TEXT("Accepted request leaves no A3 Preview DTO"), Fixture.ViewModel->bHasImmediatePreview);
