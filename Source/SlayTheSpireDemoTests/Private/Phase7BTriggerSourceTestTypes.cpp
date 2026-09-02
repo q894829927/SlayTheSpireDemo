@@ -1,5 +1,7 @@
 #include "Phase7BTriggerSourceTestTypes.h"
 
+#include "Battle/BattleManager.h"
+#include "Combat/Combatant.h"
 #include "Events/BattleEvent.h"
 #include "Relics/RelicInstance.h"
 #include "Status/StatusInstance.h"
