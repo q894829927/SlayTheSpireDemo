@@ -9,7 +9,7 @@ bool UBattleHUDViewModel::SetPreviewTargetById(int32 TargetId)
 	if (SelectedCardRuntimeId == INDEX_NONE || !IsLiveBindingCurrent())
 	{
 		ClearImmediatePreviewInternal();
-		BroadcastChanged();
+		BroadcastPreviewChanged();
 		return false;
 	}
 
@@ -17,17 +17,21 @@ bool UBattleHUDViewModel::SetPreviewTargetById(int32 TargetId)
 	if (!IsValid(Target))
 	{
 		ClearImmediatePreviewInternal();
-		BroadcastChanged();
+		BroadcastPreviewChanged();
 		return false;
 	}
 
 	if (!TryBuildImmediatePreviewForTarget(Target, TargetId))
 	{
-		BroadcastChanged();
+		BroadcastPreviewChanged();
 		return false;
 	}
 
-	BroadcastChanged();
+	// Preview is transient card-face presentation only. Never route target hover
+	// through the structural OnChanged channel: Native HUD rebuilds HB_Hand on
+	// that channel, which destroys the historical card Widget/geometry A2 needs
+	// as the CardPlayed animation start anchor.
+	BroadcastPreviewChanged();
 	return true;
 }
 
@@ -42,7 +46,7 @@ void UBattleHUDViewModel::ClearPreviewTarget()
 	ClearImmediatePreviewInternal();
 	if (bHadPreviewState)
 	{
-		BroadcastChanged();
+		BroadcastPreviewChanged();
 	}
 }
 
@@ -110,4 +114,9 @@ void UBattleHUDViewModel::ClearImmediatePreviewInternal()
 	PreviewTargetPresentationId = NAME_None;
 	bHasImmediatePreview = false;
 	ImmediatePreview = FImmediateCardPreview{};
+}
+
+void UBattleHUDViewModel::BroadcastPreviewChanged()
+{
+	OnPreviewChanged.Broadcast();
 }
