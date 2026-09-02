@@ -102,6 +102,13 @@ protected:
 	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
 	virtual void NativeOnBattleHUDViewModelChanged();
 
+	// Development diagnostic only. Called when a presentation Record is declined
+	// by the native/Blueprint playback surface before Controller immediate fallback.
+	// It must not mutate ViewModel, Gameplay, presentation state or Widget ownership.
+	virtual void LogPresentationRecordRejection(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token) const;
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "Battle HUD", meta = (DisplayName = "Battle HUD View Model Changed"))
 	void BP_OnViewModelChanged();
 
