@@ -12,7 +12,7 @@ This document records project progress, implementation history and durable phase
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
 - **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
-- **Phase 7 Relics is in progress.** The design is sealed; **7A Relic Runtime is complete, validated and sealed**. 7B Trigger-source integration is next. Active authority: `docs/Phase7RelicsImplementation.md`.
+- **Phase 7 Relics is in progress.** The design is sealed; **7A Relic Runtime and 7B Status + Relic Trigger Sources are complete, validated and sealed**. 7C Sundial + GainEnergyAction is next. Active authority: `docs/Phase7RelicsImplementation.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -174,15 +174,17 @@ Read:
 
 ## Phase 7 — Relics
 
-Status: **IN PROGRESS — 7A COMPLETE / VALIDATED / SEALED; 7B NEXT**
+Status: **IN PROGRESS — 7A + 7B COMPLETE / VALIDATED / SEALED; 7C NEXT**
 
 Active implementation authority: `docs/Phase7RelicsImplementation.md`.
 
-The Phase 7 design is sealed. First full gameplay validation remains Sundial; Abacus is optional. Phase 7 introduces the first non-Status Trigger source and therefore extracts only the smallest source-neutral boundary needed for Status and Relic triggers to coexist. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
+The Phase 7 design is sealed. First full gameplay validation remains Sundial; Abacus is optional. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
 
 Phase 7A contains `URelicData`, `URelicInstance`, `URelicContainer`, explicit `ABattleManager` ownership/setup, ordered configured starting Relics and focused RuntimeSequence lifecycle tests. Starting Relics are instantiated during `StartBattle()` after the battle RuntimeSequence allocator reset; the Relic getter is not a lazy initialization path. The accepted 7A gate is Development Editor Build PASS plus `SlayTheSpireDemo.Phase7.RelicRuntime` 5/5 PASS; no manual PIE was required. Formal evidence: `docs/Phase7AValidation.md`.
 
-7B Dispatcher source-neutralization is next. Sundial behavior, positive Energy gain and Relic UI have not started.
+Phase 7B introduced the smallest source-neutral Trigger boundary needed for Status and Relic triggers to coexist. `FTriggerRuntimeSource` carries source kind/id/runtime object/RuntimeSequence, `FTriggerContext` preserves historical Status compatibility while adding neutral/Relic accessors, `URelicData` can author Trigger definitions, and `BattleEventDispatcher` snapshots Status + Relic candidates into one deterministic ordering domain: `Priority → RuntimeSequence → LocalTriggerIndex`. There is still no persistent Trigger Registry and SourceKind is not an ordering key. Accepted validation: `SlayTheSpireDemo.Phase7.TriggerSources` 3/3 PASS and `SlayTheSpireDemo.Phase6A.Trigger` PASS; no manual PIE was required. Formal evidence: `docs/Phase7BValidation.md`.
+
+7C Sundial + GainEnergyAction is next. It may add the reusable positive-Energy primitive and the concrete Sundial counter/Trigger/Action vertical slice, but Relic Read/Frozen/Native UI remains 7D.
 
 The first full gameplay vertical slice remains Sundial driven by the already-committed `FDeckShuffledEvent`. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
 
