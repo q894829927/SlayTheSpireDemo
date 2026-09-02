@@ -225,7 +225,11 @@ namespace Phase7BTriggerSources
 		TestTrue(TEXT("Status source kind"), StatusContext.GetSourceKind() == ETriggerRuntimeSourceKind::Status);
 		TestTrue(TEXT("Status Battle context"), StatusContext.GetBattle() == Fixture.Battle);
 
-		const FTriggerContext RelicContext(Relic, Queue, Fixture.Battle);
+		const FTriggerContext RelicContext(
+			FTriggerRuntimeSource::FromRelic(Relic),
+			Queue,
+			Fixture.Battle
+		);
 		TestTrue(TEXT("Relic generic object"), RelicContext.GetRuntimeSourceObject() == Relic);
 		TestTrue(TEXT("Relic does not masquerade as Status"), RelicContext.GetRuntimeSource() == nullptr);
 		TestTrue(TEXT("Relic accessor"), RelicContext.GetRelicSource() == Relic);
