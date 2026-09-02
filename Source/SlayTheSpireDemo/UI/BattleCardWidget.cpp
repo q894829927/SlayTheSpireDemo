@@ -4,6 +4,12 @@
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 
+namespace
+{
+	const FLinearColor IncreasedPreviewColor(0.90f, 0.16f, 0.16f, 1.0f);
+	const FLinearColor DecreasedPreviewColor(0.20f, 0.52f, 1.0f, 1.0f);
+}
+
 void UBattleCardWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -26,7 +32,10 @@ void UBattleCardWidget::NativeOnInitialized()
 			Error,
 			TEXT("[BattleCard][Native] Invalid required bindings on '%s'; card input is disabled."),
 			*GetPathName());
+		return;
 	}
+
+	BaseDescriptionColor = Txt_CardDescription->GetColorAndOpacity();
 }
 
 void UBattleCardWidget::NativeConstruct()
@@ -61,7 +70,66 @@ void UBattleCardWidget::NativeDestruct()
 void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
 {
 	CurrentCardView = View;
+	bImmediatePreviewApplied = false;
 	RefreshFromCardView();
+}
+
+void UBattleCardWidget::ApplyImmediatePreview(const FImmediateCardPreview& Preview)
+{
+	if (!IsValid(Txt_CardDescription)
+		|| Preview.CardRuntimeId == INDEX_NONE
+		|| Preview.CardRuntimeId != CurrentCardView.RuntimeId
+		|| !Preview.Validation.bAllowed
+		|| Preview.CardFaceDescription.IsEmpty())
+	{
+		ClearImmediatePreview();
+		return;
+	}
+
+	bool bHasIncrease = false;
+	bool bHasDecrease = false;
+	for (const FImmediatePreviewOperation& Operation : Preview.Operations)
+	{
+		if (Operation.ResolvedAmount > Operation.BaseAmount)
+		{
+			bHasIncrease = true;
+		}
+		else if (Operation.ResolvedAmount < Operation.BaseAmount)
+		{
+			bHasDecrease = true;
+		}
+	}
+
+	Txt_CardDescription->SetText(Preview.CardFaceDescription);
+	if (bHasIncrease)
+	{
+		// User-facing convention for this project: values above authored base are red.
+		Txt_CardDescription->SetColorAndOpacity(FSlateColor(IncreasedPreviewColor));
+	}
+	else if (bHasDecrease)
+	{
+		Txt_CardDescription->SetColorAndOpacity(FSlateColor(DecreasedPreviewColor));
+	}
+	else
+	{
+		Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
+	}
+	bImmediatePreviewApplied = true;
+}
+
+void UBattleCardWidget::ClearImmediatePreview()
+{
+	if (!bImmediatePreviewApplied)
+	{
+		return;
+	}
+	bImmediatePreviewApplied = false;
+
+	if (IsValid(Txt_CardDescription))
+	{
+		Txt_CardDescription->SetText(CurrentCardView.Description);
+		Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
+	}
 }
 
 void UBattleCardWidget::RefreshFromCardView()
@@ -81,6 +149,7 @@ void UBattleCardWidget::RefreshFromCardView()
 	Txt_CardName->SetText(CurrentCardView.DisplayName);
 	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
 	Txt_CardDescription->SetText(CurrentCardView.Description);
+	Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
 
 	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
 	{
