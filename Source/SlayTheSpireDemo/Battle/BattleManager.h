@@ -148,6 +148,7 @@ public:
 
 	bool CanSpendEnergy(int32 Amount) const;
 	bool TrySpendEnergy(int32 Amount);
+	bool IsAuthoritativeDeckRuntime(const UDeckRuntime* Deck) const;
 	uint64 AllocateRuntimeSequence();
 	URelicContainer* GetPlayerRelicContainer();
 	const URelicContainer* GetPlayerRelicContainer() const;
