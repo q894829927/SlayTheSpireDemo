@@ -79,7 +79,8 @@ namespace
 		const FText& Format,
 		FPreviewTextArgumentBuilder& Builder,
 		const FString& DebugOwner,
-		bool bApplyComparisonRichStyles = false
+		bool bApplyComparisonRichStyles = false,
+		const TMap<FName, FText>* ExplicitRichOverrides = nullptr
 	)
 	{
 		if (Format.IsEmpty())
@@ -99,6 +100,18 @@ namespace
 					SemanticName,
 					FString::Printf(TEXT("%s description references unknown argument '%s'."), *DebugOwner, *RequiredKey)
 				);
+			}
+
+			if (ExplicitRichOverrides != nullptr)
+			{
+				if (const FText* ExplicitRichValue = ExplicitRichOverrides->Find(SemanticName))
+				{
+					// Target-specific Preview carries an explicit Gameplay-resolved
+					// Base/Resolved pair. Prefer that operation-owned presentation fact
+					// even when the normal source-side builder cannot style this semantic.
+					ExactArguments.Add(RequiredKey, FFormatArgumentValue(*ExplicitRichValue));
+					continue;
+				}
 			}
 
 			if (bApplyComparisonRichStyles)
@@ -170,6 +183,36 @@ namespace
 			Effect->BuildPreviewArguments(Context, Builder);
 		}
 		return true;
+	}
+
+	void BuildRichPreviewOverrides(
+		const TArray<FImmediatePreviewOperation>& Operations,
+		TMap<FName, FText>& OutOverrides)
+	{
+		OutOverrides.Reset();
+		for (const FImmediatePreviewOperation& Operation : Operations)
+		{
+			const TCHAR* StyleName = nullptr;
+			if (Operation.ResolvedAmount > Operation.BaseAmount)
+			{
+				StyleName = IncreasedPreviewStyle;
+			}
+			else if (Operation.ResolvedAmount < Operation.BaseAmount)
+			{
+				StyleName = DecreasedPreviewStyle;
+			}
+
+			if (StyleName == nullptr || Operation.SemanticArgumentName.IsNone())
+			{
+				continue;
+			}
+
+			const FString ResolvedNumber = FText::AsNumber(Operation.ResolvedAmount).ToString();
+			OutOverrides.Add(
+				Operation.SemanticArgumentName,
+				FText::FromString(FString::Printf(TEXT("<%s>%s</>"), StyleName, *ResolvedNumber))
+			);
+		}
 	}
 
 	void AddValidationError(TArray<FText>& OutErrors, const FString& Error)
@@ -317,11 +360,14 @@ FText FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
 		Builder.OverrideInteger(Operation.SemanticArgumentName, Operation.ResolvedAmount);
 	}
 
+	TMap<FName, FText> RichOverrides;
+	BuildRichPreviewOverrides(Operations, RichOverrides);
 	return FormatDescription(
 		Card->GetDefinition()->Description,
 		Builder,
 		Card->GetDebugLabel(),
-		true);
+		true,
+		&RichOverrides);
 }
 
 FText FBattleTextResolver::ResolveStatusDescription(const UStatusInstance* StatusInstance)
