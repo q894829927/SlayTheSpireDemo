@@ -497,13 +497,23 @@ void UBattleHUDViewModel::HandleReadStateReady(uint64 InBattleId, uint64 InState
 		|| StateRevision != static_cast<int64>(InStateRevision);
 	if (bIncomingRevisionChanged)
 	{
-		// A3 first-version policy is intentionally conservative: as soon as a new
-		// stable Gameplay revision is announced, stale interaction/Preview state is
-		// dropped even when the PresentationController still owns historical display.
+		// A3 invalidates old-revision input immediately, but a Presentation-owned
+		// ViewModel must not publish a structural OnChanged here. Public delivery is
+		// drained before this Ready edge, so CardPlayed may already be actively
+		// playing; structural OnChanged would make the HUD cancel that valid A2
+		// visual. Only the transient card-face Preview is allowed to refresh before
+		// the Controller advances historical display.
 		ClearSelectionInternal();
 		ClearLiveInputBindings();
 		SetResolving();
-		BroadcastChanged();
+		if (bPresentationDisplayOwned)
+		{
+			BroadcastPreviewChanged();
+		}
+		else
+		{
+			BroadcastChanged();
+		}
 	}
 
 	if (!Battle->IsPresentationAvailable())
