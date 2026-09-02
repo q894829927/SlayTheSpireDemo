@@ -1,12 +1,9 @@
 #include "DrawCardAction.h"
 
 #include "BattleActionQueue.h"
-#include "ShuffleDeckAction.h"
-#include "../Battle/BattleManager.h"
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Deck/DeckRuntime.h"
-#include "../Events/BattleEventDispatcher.h"
 #include "../Presentation/PresentationCardSnapshotBuilder.h"
 
 void UDrawCardAction::Initialize(UDeckRuntime* InDeck)
@@ -17,163 +14,61 @@ void UDrawCardAction::Initialize(UDeckRuntime* InDeck)
 void UDrawCardAction::Initialize(UDeckRuntime* InDeck, ACombatant* InPresentationCardSource)
 {
 	Deck = InDeck;
-	EventDispatcher = nullptr;
-	EventCombatants.Reset();
 	PresentationCardSource = InPresentationCardSource;
-	bRetriedAfterShuffle = false;
 }
 
-void UDrawCardAction::Initialize(
-	UDeckRuntime* InDeck,
-	UBattleEventDispatcher* InEventDispatcher,
-	const TArray<ACombatant*>& InEventCombatants
-)
+void UDrawCardAction::Execute(UBattleActionQueue* /*Queue*/)
 {
-	Initialize(InDeck, InEventDispatcher, InEventCombatants, nullptr);
-}
-
-void UDrawCardAction::Initialize(
-	UDeckRuntime* InDeck,
-	UBattleEventDispatcher* InEventDispatcher,
-	const TArray<ACombatant*>& InEventCombatants,
-	ACombatant* InPresentationCardSource
-)
-{
-	Deck = InDeck;
-	EventDispatcher = InEventDispatcher;
-	EventCombatants.Reset();
-	for (ACombatant* Combatant : InEventCombatants)
+	UDeckRuntime* RuntimeDeck = Deck.Get();
+	if (!IsValid(RuntimeDeck))
 	{
-		EventCombatants.Add(Combatant);
-	}
-	PresentationCardSource = InPresentationCardSource;
-	bRetriedAfterShuffle = false;
-}
-
-void UDrawCardAction::Execute(UBattleActionQueue* Queue)
-{
-	if (!IsValid(Deck.Get()) || !IsValid(Queue))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction skipped: invalid Deck or Queue."));
+		UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction skipped: invalid Deck."));
 		Finish();
 		return;
 	}
 
-	if (Deck->IsHandFull())
+	if (RuntimeDeck->IsHandFull())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction skipped: hand is full."));
+		UE_LOG(LogTemp, Log, TEXT("[Action] DrawCardAction skipped: Hand is full."));
 		Finish();
 		return;
 	}
 
-	if (Deck->HasCardsInDrawPile())
+	UCardInstance* DrawnCard = nullptr;
+	const FCardZoneMutationResult CommitResult = RuntimeDeck->TryDrawTopCardCommit(DrawnCard);
+	if (!CommitResult.bCommitted)
 	{
-		UCardInstance* DrawnCard = nullptr;
-		const FCardZoneMutationResult CommitResult = Deck->TryDrawTopCardCommit(DrawnCard);
-		if (!CommitResult.bCommitted)
+		UE_LOG(LogTemp, Log, TEXT("[Action] DrawCardAction ended without commit: DrawPile has no drawable card."));
+		Finish();
+		return;
+	}
+
+	const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
+	if (Writer.IsAvailable())
+	{
+		FPresentationCardSnapshot CardSnapshot;
+		if (!PresentationCardSnapshot::TryBuild(DrawnCard, PresentationCardSource.Get(), CardSnapshot)
+			|| CardSnapshot.RuntimeId != CommitResult.CardRuntimeId
+			|| CardSnapshot.CardId != CommitResult.CardId)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Action] DrawCardAction failed to draw despite a non-empty DrawPile."));
-			Finish();
-			return;
+			Writer.InvalidateCurrentResolution();
+			UE_LOG(LogTemp, Warning, TEXT("[Presentation] Draw commit could not freeze a trustworthy card payload."));
 		}
-
-		const FPresentationRecordWriter& Writer = GetPresentationRecordWriter();
-		if (Writer.IsAvailable())
+		else
 		{
-			FPresentationCardSnapshot CardSnapshot;
-			if (!PresentationCardSnapshot::TryBuild(DrawnCard, PresentationCardSource.Get(), CardSnapshot)
-				|| CardSnapshot.RuntimeId != CommitResult.CardRuntimeId
-				|| CardSnapshot.CardId != CommitResult.CardId)
+			FPresentationRecord Record;
+			Record.Type = EBattlePresentationRecordType::CardZoneChanged;
+			Record.CardZoneChanged.Card = MoveTemp(CardSnapshot);
+			Record.CardZoneChanged.FromZone = CommitResult.FromZone;
+			Record.CardZoneChanged.ToZone = CommitResult.ToZone;
+			Record.CardZoneChanged.FromIndex = CommitResult.FromIndex;
+			Record.CardZoneChanged.ToIndex = CommitResult.ToIndex;
+			if (!Writer.Append(MoveTemp(Record)))
 			{
-				Writer.InvalidateCurrentResolution();
-				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Draw commit could not freeze a trustworthy card payload."));
-			}
-			else
-			{
-				FPresentationRecord Record;
-				Record.Type = EBattlePresentationRecordType::CardZoneChanged;
-				Record.CardZoneChanged.Card = MoveTemp(CardSnapshot);
-				Record.CardZoneChanged.FromZone = CommitResult.FromZone;
-				Record.CardZoneChanged.ToZone = CommitResult.ToZone;
-				Record.CardZoneChanged.FromIndex = CommitResult.FromIndex;
-				Record.CardZoneChanged.ToIndex = CommitResult.ToIndex;
-				Writer.Append(MoveTemp(Record));
+				UE_LOG(LogTemp, Warning, TEXT("[Presentation] Draw CardZoneChanged append failed; Gameplay draw remains authoritative."));
 			}
 		}
-
-		Finish();
-		return;
 	}
-
-	// The RetryDraw produced by this same authored draw attempt gets exactly one
-	// chance after its shuffle. If the zero-card shuffle left DrawPile empty, stop
-	// here instead of recursively scheduling another shuffle forever.
-	if (bRetriedAfterShuffle)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[Action] RetryDraw ended: DrawPile is still empty after this draw attempt's single shuffle."));
-		Finish();
-		return;
-	}
-
-	UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
-	TArray<ACombatant*> RawCombatants;
-
-	if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
-	{
-		RawCombatants.Reserve(EventCombatants.Num());
-		for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
-		{
-			if (!IsValid(Combatant.Get()))
-			{
-				Queue->RequestResolutionFault(TEXT("DrawCardAction found an invalid authoritative combatant in its event-dispatch context."));
-				Finish();
-				return;
-			}
-			RawCombatants.Add(Combatant.Get());
-		}
-	}
-	else
-	{
-		ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
-		if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
-		{
-			Queue->RequestResolutionFault(TEXT("DrawCardAction requires valid battle-event wiring before scheduling Shuffle -> RetryDraw."));
-			Finish();
-			return;
-		}
-	}
-
-	UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
-	ShuffleAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
-	ShuffleAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
-
-	UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
-	RetryDrawAction->Initialize(
-		Deck.Get(),
-		ResolvedEventDispatcher,
-		RawCombatants,
-		PresentationCardSource.Get()
-	);
-	RetryDrawAction->bRetriedAfterShuffle = true;
-	RetryDrawAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
-
-	TArray<UBattleAction*> ContinuationBatch;
-	ContinuationBatch.Add(ShuffleAction);
-	ContinuationBatch.Add(RetryDrawAction);
-
-	if (!Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
-	{
-		Queue->RequestResolutionFault(TEXT("DrawCardAction failed to enqueue the atomic Shuffle -> RetryDraw continuation."));
-		Finish();
-		return;
-	}
-
-	UE_LOG(
-		LogTemp,
-		Log,
-		TEXT("[Action] DrawCardAction found an empty DrawPile. Queued exactly one ShuffleDeckAction -> RetryDraw continuation for this draw attempt. DiscardCount=%d"),
-		Deck->GetDiscardCount()
-	);
 
 	Finish();
 }
