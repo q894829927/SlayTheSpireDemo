@@ -3,7 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "../Actions/BattleActionQueue.h"
-#include "../Actions/DrawCardAction.h"
+#include "../Actions/DrawCardsAction.h"
 #include "../Actions/ShuffleDeckAction.h"
 #include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
@@ -202,7 +202,7 @@ namespace Phase6CRegression
 		TestTrue(TEXT("No-op shuffle action enqueued"), Fixture.Queue->AddToBack(Shuffle));
 		TestTrue(TEXT("No-op shuffle resolution started"), Fixture.Queue->StartProcessing());
 
-		TestEqual(TEXT("Empty Discard shuffle emits no reaction"), Fixture.Recorder->GetValues().Num(), 0);
+		TestEqual(TEXT("Non-empty DrawPile shuffle emits no reaction"), Fixture.Recorder->GetValues().Num(), 0);
 		TestEqual(TEXT("DrawPile remains unchanged"), Fixture.Deck->GetDrawCount(), 1);
 		TestEqual(TEXT("DiscardPile remains empty"), Fixture.Deck->GetDiscardCount(), 0);
 		TestFalse(TEXT("Expected shuffle no-op does not fault"), Fixture.Queue->IsResolutionFaulted());
@@ -239,6 +239,31 @@ namespace Phase6CRegression
 	}
 
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase6CEmptyBulkDrawDoesNotShuffleTest,
+		"SlayTheSpireDemo.Phase6C.Draw.EmptyBulkDoesNotShuffle",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase6CEmptyBulkDrawDoesNotShuffleTest::RunTest(const FString& Parameters)
+	{
+		FFixture Fixture;
+		if (!RequireReady(*this, Fixture)) return false;
+
+		InitializeDeck(Fixture.Deck, Fixture.World, 0);
+		TestTrue(TEXT("DeckShuffled observer status created"), AddDeckShuffledRecordStatus(Fixture));
+
+		UDrawCardsAction* Draw = NewObject<UDrawCardsAction>(Fixture.Queue);
+		Draw->Initialize(Fixture.Deck, 1, Fixture.Dispatcher, Fixture.Combatants);
+		TestTrue(TEXT("Empty bulk draw enqueued"), Fixture.Queue->AddToBack(Draw));
+		TestTrue(TEXT("Empty bulk draw resolution started"), Fixture.Queue->StartProcessing());
+
+		TestEqual(TEXT("Fresh empty bulk draw emits no shuffle reaction"), Fixture.Recorder->GetValues().Num(), 0);
+		TestEqual(TEXT("Hand remains empty"), Fixture.Deck->GetHandCount(), 0);
+		TestFalse(TEXT("Fresh empty bulk draw does not fault"), Fixture.Queue->IsResolutionFaulted());
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 		FPhase6CReactionBeforeRetryDrawTest,
 		"SlayTheSpireDemo.Phase6C.Draw.ShuffleReactionBeforeRetryDraw",
 		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
@@ -250,33 +275,33 @@ namespace Phase6CRegression
 		if (!RequireReady(*this, Fixture)) return false;
 
 		InitializeDeck(Fixture.Deck, Fixture.World, 1);
-		TestTrue(TEXT("Test card moved to Discard before draw retry flow"), MoveOneCardToDiscard(Fixture.Deck));
+		TestTrue(TEXT("Test card moved to Discard before draw continuation flow"), MoveOneCardToDiscard(Fixture.Deck));
 		TestTrue(TEXT("DeckShuffled observer status created"), AddDeckShuffledRecordStatus(Fixture));
 
 		int32 QueueEmptyCount = 0;
 		Fixture.Queue->OnQueueEmpty.AddLambda([&QueueEmptyCount]() { ++QueueEmptyCount; });
 
-		UDrawCardAction* Draw = NewObject<UDrawCardAction>(Fixture.Queue);
-		Draw->Initialize(Fixture.Deck, Fixture.Dispatcher, Fixture.Combatants);
+		UDrawCardsAction* Draw = NewObject<UDrawCardsAction>(Fixture.Queue);
+		Draw->Initialize(Fixture.Deck, 1, Fixture.Dispatcher, Fixture.Combatants);
 
 		UPhase6ATestRecordAction* Tail = NewObject<UPhase6ATestRecordAction>(Fixture.Queue);
 		Tail->InitializeDeckDrawCount(Fixture.Recorder, Fixture.Deck);
 
 		TArray<UBattleAction*> Batch{Draw, Tail};
-		TestTrue(TEXT("Draw plus tail batch enqueued"), Fixture.Queue->AddBatchToBackPreserveOrder(Batch));
-		TestTrue(TEXT("Draw retry resolution started"), Fixture.Queue->StartProcessing());
+		TestTrue(TEXT("Bulk draw plus tail batch enqueued"), Fixture.Queue->AddBatchToBackPreserveOrder(Batch));
+		TestTrue(TEXT("Bulk draw resolution started"), Fixture.Queue->StartProcessing());
 
 		const TArray<int32>& Values = Fixture.Recorder->GetValues();
-		TestEqual(TEXT("Reaction and post-retry tail both executed"), Values.Num(), 2);
+		TestEqual(TEXT("Reaction and post-draw tail both executed"), Values.Num(), 2);
 		if (Values.Num() == 2)
 		{
 			TestEqual(TEXT("DeckShuffled reaction runs after shuffle and sees one card in DrawPile"), Values[0], 1);
-			TestEqual(TEXT("Tail runs after RetryDraw and sees DrawPile consumed"), Values[1], 0);
+			TestEqual(TEXT("Tail runs after remaining bulk draw and sees DrawPile consumed"), Values[1], 0);
 		}
-		TestEqual(TEXT("RetryDraw moved shuffled card into Hand"), Fixture.Deck->GetHandCount(), 1);
-		TestEqual(TEXT("RetryDraw consumed DrawPile"), Fixture.Deck->GetDrawCount(), 0);
-		TestEqual(TEXT("Shuffle reactions and RetryDraw remain one resolution with one final QueueEmpty"), QueueEmptyCount, 1);
-		TestFalse(TEXT("Shuffle reaction/retry flow does not fault"), Fixture.Queue->IsResolutionFaulted());
+		TestEqual(TEXT("Bulk draw moved shuffled card into Hand"), Fixture.Deck->GetHandCount(), 1);
+		TestEqual(TEXT("Bulk draw consumed DrawPile"), Fixture.Deck->GetDrawCount(), 0);
+		TestEqual(TEXT("Shuffle reactions and remaining draw stay one resolution with one final QueueEmpty"), QueueEmptyCount, 1);
+		TestFalse(TEXT("Bulk shuffle/draw flow does not fault"), Fixture.Queue->IsResolutionFaulted());
 		return true;
 	}
 }
