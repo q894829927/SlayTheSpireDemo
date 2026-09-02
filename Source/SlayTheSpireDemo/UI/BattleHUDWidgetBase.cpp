@@ -1,8 +1,85 @@
 #include "BattleHUDWidgetBase.h"
 
+#include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
 #include "../Presentation/BattlePresentationController.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/HorizontalBox.h"
+#include "Components/Overlay.h"
+#include "Components/PanelWidget.h"
 #include "Containers/Ticker.h"
+
+namespace
+{
+	bool DoesDiagnosticCardViewMatchSnapshot(
+		const FBattleHUDCardView& View,
+		const FPresentationCardSnapshot& Snapshot)
+	{
+		return View.RuntimeId == Snapshot.RuntimeId
+			&& View.CardId == Snapshot.CardId
+			&& View.DisplayName.EqualTo(Snapshot.DisplayName)
+			&& View.Cost == Snapshot.Cost
+			&& View.CardType == Snapshot.CardType
+			&& View.TargetType == Snapshot.TargetType
+			&& View.Description.EqualTo(Snapshot.Description)
+			&& View.CardArt.Get() == Snapshot.CardArt.Get();
+	}
+
+	bool IsDiagnosticCardSnapshotValid(const FPresentationCardSnapshot& Snapshot)
+	{
+		const bool bCardTypeValid = Snapshot.CardType == ECardType::Attack
+			|| Snapshot.CardType == ECardType::Skill
+			|| Snapshot.CardType == ECardType::Power
+			|| Snapshot.CardType == ECardType::Status
+			|| Snapshot.CardType == ECardType::Curse;
+		const bool bTargetTypeValid = Snapshot.TargetType == ECardTargetType::None
+			|| Snapshot.TargetType == ECardTargetType::Self
+			|| Snapshot.TargetType == ECardTargetType::Enemy;
+		return Snapshot.RuntimeId != INDEX_NONE
+			&& !Snapshot.CardId.IsNone()
+			&& !Snapshot.DisplayName.IsEmpty()
+			&& Snapshot.Cost >= 0
+			&& bCardTypeValid
+			&& bTargetTypeValid;
+	}
+
+	bool IsDiagnosticKnownPresentationId(
+		const UBattleHUDViewModel* InViewModel,
+		FName PresentationId)
+	{
+		if (!IsValid(InViewModel) || PresentationId.IsNone())
+		{
+			return false;
+		}
+		const bool bPlayer = InViewModel->Player.PresentationId == PresentationId;
+		const bool bEnemy = InViewModel->Enemy.PresentationId == PresentationId;
+		return bPlayer != bEnemy;
+	}
+
+	FString BuildPanelChildSummary(const UPanelWidget* Panel)
+	{
+		if (!IsValid(Panel))
+		{
+			return TEXT("<invalid>");
+		}
+
+		FString Result;
+		for (int32 Index = 0; Index < Panel->GetChildrenCount(); ++Index)
+		{
+			const UWidget* Child = Panel->GetChildAt(Index);
+			if (!Result.IsEmpty())
+			{
+				Result += TEXT(", ");
+			}
+			Result += FString::Printf(
+				TEXT("%d:%s/%s"),
+				Index,
+				*GetNameSafe(IsValid(Child) ? Child->GetClass() : nullptr),
+				*GetNameSafe(Child));
+		}
+		return Result.IsEmpty() ? TEXT("<empty>") : Result;
+	}
+}
 
 void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 {
@@ -54,8 +131,6 @@ bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 	}
 
 	// A3 pre-commit ownership ends before the authoritative request is entered.
-	// This broadcast synchronously removes the Native Preview surface; Gameplay
-	// then revalidates the target through the unchanged SelectTargetById path.
 	ViewModel->ClearPreviewTarget();
 	return ViewModel->SelectTargetById(TargetId);
 }
@@ -125,6 +200,7 @@ bool UBattleHUDWidgetBase::PlayPresentationRecord(
 	const bool bAccepted = BeginPresentationRecordPlayback(Record, Token);
 	if (!bAccepted)
 	{
+		LogPresentationRecordRejection(Record, Token);
 		ClearTrackedPresentationPlayback(Token);
 	}
 	return bAccepted;
@@ -142,6 +218,138 @@ void UBattleHUDWidgetBase::CancelPresentationRecordPlayback_Implementation(
 	const FPresentationPlaybackToken& /*Token*/
 )
 {
+}
+
+void UBattleHUDWidgetBase::LogPresentationRecordRejection(
+	const FPresentationRecord& Record,
+	const FPresentationPlaybackToken& Token) const
+{
+	if (Record.Type != EBattlePresentationRecordType::CardPlayed)
+	{
+		return;
+	}
+
+	const FCardPlayedPresentationPayload& Payload = Record.CardPlayed;
+	const UBattleHUDViewModel* VM = ViewModel;
+	UHorizontalBox* Hand = nullptr;
+	UOverlay* PlayArea = nullptr;
+	if (IsValid(WidgetTree))
+	{
+		Hand = Cast<UHorizontalBox>(WidgetTree->FindWidget(TEXT("HB_Hand")));
+		PlayArea = Cast<UOverlay>(WidgetTree->FindWidget(TEXT("OV_PlayArea")));
+	}
+
+	const bool bViewModelValid = IsValid(VM);
+	const bool bHandValid = IsValid(Hand);
+	const bool bPlayAreaValid = IsValid(PlayArea);
+	const bool bCardSnapshotValid = IsDiagnosticCardSnapshotValid(Payload.Card);
+	const bool bSourceValid = IsDiagnosticKnownPresentationId(VM, Payload.SourcePresentationId);
+	const bool bTargetValid = Payload.TargetPresentationId.IsNone()
+		|| IsDiagnosticKnownPresentationId(VM, Payload.TargetPresentationId);
+	const bool bHandIndexValid = Payload.HandIndexBefore >= 0;
+	const bool bPlayAreaIndexValid = Payload.PlayAreaIndexAfter == 0;
+	const bool bEnergyBeforeValid = Payload.EnergyBefore >= 0;
+	const bool bEnergyAfterValid = Payload.EnergyAfter >= 0;
+	const bool bEnergyOrderValid = Payload.EnergyAfter <= Payload.EnergyBefore;
+	const bool bCostPaidNonNegative = Payload.CostPaid >= 0;
+	const bool bCostDeltaValid = Payload.CostPaid == Payload.EnergyBefore - Payload.EnergyAfter;
+	const bool bCostMatchesCard = Payload.CostPaid == Payload.Card.Cost;
+	const bool bViewModelEnergyMatches = bViewModelValid && VM->Energy == Payload.EnergyBefore;
+	const int32 PlayAreaChildren = bPlayAreaValid ? PlayArea->GetChildrenCount() : INDEX_NONE;
+	const bool bPlayAreaChildrenMatch = bPlayAreaValid
+		&& PlayAreaChildren == Payload.PlayAreaIndexAfter;
+
+	bool bViewModelHandIndexMatches = false;
+	bool bHandWidgetCountMatchesViewModel = false;
+	bool bRequiredHandWidgetMatches = false;
+	int32 ViewModelRuntimeMatches = 0;
+	int32 HandWidgetRuntimeMatches = 0;
+
+	if (bViewModelValid)
+	{
+		for (const FBattleHUDCardView& CardView : VM->HandCards)
+		{
+			ViewModelRuntimeMatches += CardView.RuntimeId == Payload.Card.RuntimeId ? 1 : 0;
+		}
+		if (VM->HandCards.IsValidIndex(Payload.HandIndexBefore))
+		{
+			bViewModelHandIndexMatches = DoesDiagnosticCardViewMatchSnapshot(
+				VM->HandCards[Payload.HandIndexBefore],
+				Payload.Card);
+		}
+	}
+
+	if (bHandValid)
+	{
+		bHandWidgetCountMatchesViewModel = bViewModelValid
+			&& Hand->GetChildrenCount() == VM->HandCards.Num();
+		for (int32 Index = 0; Index < Hand->GetChildrenCount(); ++Index)
+		{
+			const UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Hand->GetChildAt(Index));
+			if (IsValid(CardWidget))
+			{
+				HandWidgetRuntimeMatches += CardWidget->GetRuntimeId() == Payload.Card.RuntimeId ? 1 : 0;
+			}
+		}
+		if (Payload.HandIndexBefore >= 0 && Payload.HandIndexBefore < Hand->GetChildrenCount())
+		{
+			const UBattleCardWidget* RequiredWidget = Cast<UBattleCardWidget>(Hand->GetChildAt(Payload.HandIndexBefore));
+			bRequiredHandWidgetMatches = IsValid(RequiredWidget)
+				&& DoesDiagnosticCardViewMatchSnapshot(RequiredWidget->GetCardView(), Payload.Card);
+		}
+	}
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[BattleHUD][CardPlayedReject] Token(Battle=%lld Resolution=%lld Seq=%lld Gen=%lld) Record(Battle=%lld Resolution=%lld Seq=%lld) Card=%s#%d HandIndex=%d PlayAreaIndexAfter=%d | VM=%d Hand=%d PlayArea=%d CardSnapshot=%d Source=%d Target=%d HandIndexNonNegative=%d PlayAreaIndexZero=%d EnergyBeforeNonNegative=%d EnergyAfterNonNegative=%d EnergyOrder=%d CostPaidNonNegative=%d CostDelta=%d CostMatchesCard=%d VMEnergyMatches=%d PlayAreaChildrenMatch=%d VMHandIndexMatches=%d HandCountMatchesVM=%d RequiredHandWidgetMatches=%d VMRuntimeMatches=%d HandWidgetRuntimeMatches=%d | Energy VM=%d Before=%d After=%d CostPaid=%d CardCost=%d | HandChildren=%d VMHand=%d PlayAreaChildren=%d"),
+		static_cast<long long>(Token.BattleId),
+		static_cast<long long>(Token.ResolutionId),
+		static_cast<long long>(Token.PresentationSequence),
+		static_cast<long long>(Token.LocalPlaybackGeneration),
+		static_cast<long long>(Record.BattleId),
+		static_cast<long long>(Record.ResolutionId),
+		static_cast<long long>(Record.PresentationSequence),
+		*Payload.Card.CardId.ToString(),
+		Payload.Card.RuntimeId,
+		Payload.HandIndexBefore,
+		Payload.PlayAreaIndexAfter,
+		bViewModelValid ? 1 : 0,
+		bHandValid ? 1 : 0,
+		bPlayAreaValid ? 1 : 0,
+		bCardSnapshotValid ? 1 : 0,
+		bSourceValid ? 1 : 0,
+		bTargetValid ? 1 : 0,
+		bHandIndexValid ? 1 : 0,
+		bPlayAreaIndexValid ? 1 : 0,
+		bEnergyBeforeValid ? 1 : 0,
+		bEnergyAfterValid ? 1 : 0,
+		bEnergyOrderValid ? 1 : 0,
+		bCostPaidNonNegative ? 1 : 0,
+		bCostDeltaValid ? 1 : 0,
+		bCostMatchesCard ? 1 : 0,
+		bViewModelEnergyMatches ? 1 : 0,
+		bPlayAreaChildrenMatch ? 1 : 0,
+		bViewModelHandIndexMatches ? 1 : 0,
+		bHandWidgetCountMatchesViewModel ? 1 : 0,
+		bRequiredHandWidgetMatches ? 1 : 0,
+		ViewModelRuntimeMatches,
+		HandWidgetRuntimeMatches,
+		bViewModelValid ? VM->Energy : INDEX_NONE,
+		Payload.EnergyBefore,
+		Payload.EnergyAfter,
+		Payload.CostPaid,
+		Payload.Card.Cost,
+		bHandValid ? Hand->GetChildrenCount() : INDEX_NONE,
+		bViewModelValid ? VM->HandCards.Num() : INDEX_NONE,
+		PlayAreaChildren);
+
+	UE_LOG(
+		LogTemp,
+		Warning,
+		TEXT("[BattleHUD][CardPlayedReject] HandChildren=[%s] PlayAreaChildren=[%s]"),
+		*BuildPanelChildSummary(Hand),
+		*BuildPanelChildSummary(PlayArea));
 }
 
 void UBattleHUDWidgetBase::NotifyPresentationFinished(
