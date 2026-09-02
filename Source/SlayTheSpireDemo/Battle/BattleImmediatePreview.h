@@ -77,12 +77,16 @@ struct SLAYTHESPIREDEMO_API FImmediateCardPreview
 	UPROPERTY(BlueprintReadOnly, Category = "Battle|Preview|Energy")
 	int32 EnergyAfter = 0;
 
-	// Gameplay/read-side target-specific card-face text. It is generated from the
-	// same authored FText::Format pattern and Effect preview arguments as A3-1,
-	// with the concrete current target supplied for A3 target-aware resolution.
-	// Native HUD may temporarily display it on the selected Hand card only.
+	// Plain target-specific card-face text. This stays markup-free so the Preview
+	// DTO keeps a presentation-neutral text contract for diagnostics/tests/other UI.
 	UPROPERTY(BlueprintReadOnly, Category = "Battle|Preview")
 	FText CardFaceDescription;
+
+	// Native RichText presentation of the same resolved semantic values. Only
+	// changed numeric arguments are wrapped with PreviewIncrease/PreviewDecrease
+	// style tags; surrounding authored/localized description text remains normal.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle|Preview")
+	FText CardFaceRichDescription;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle|Preview")
 	TArray<FImmediatePreviewOperation> Operations;
