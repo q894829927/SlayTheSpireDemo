@@ -15,7 +15,7 @@ Phase 6UI-A3: COMPLETE / VALIDATED / SEALED
 Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
-7B Status + Relic Trigger Sources: NEXT / NOT STARTED
+7B Status + Relic Trigger Sources: IMPLEMENTED / VALIDATION PENDING
 7C Sundial + GainEnergyAction: NOT STARTED
 7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
@@ -32,114 +32,30 @@ docs/Phase7RelicsImplementation.md
 docs/Phase7AValidation.md
 ```
 
-Final Phase 6UI-A authority remains:
+## Locked Phase 7 boundaries
 
 ```text
-docs/Phase6UIA3Seal.md
+Relic != Status
+RelicData != RelicInstance
+Relics use the battle-wide ABattleManager RuntimeSequence allocator
+Status + Relic trigger order = Priority → RuntimeSequence → LocalTriggerIndex
+BattleEventDispatcher remains snapshot-based; no persistent Trigger Registry
+Trigger remains read-only eligibility + Action construction
+Sundial counter mutation will occur through an Action
+Sundial reward will use GainEnergyAction
+A3 does not predict Relic reactions
 ```
 
-## Phase 7 design review closure
-
-The 2026-09-02 pre-7A review was incorporated into the authority and the design is sealed for the first vertical slice.
-
-Locked clarifications:
+The design-review clarifications remain locked:
 
 ```text
-1. No first-version RelicCounterChanged / RelicTriggered Presentation Record.
-   During active A2 playback the Relic counter remains at the last completed historical snapshot.
-   Envelope completion reconciles Relic state to FinalSnapshot.
-
-2. Starting Relics are instantiated explicitly during StartBattle after the battle RuntimeSequence allocator reset.
-   GetPlayerRelicContainer() is not a lazy initialization boundary.
-   Configured Starting Relics therefore receive earlier RuntimeSequences than later runtime Status creation.
-
-3. Future HUD Relic DTO uses bShowCounter / Counter / CounterMax.
-   Native UI must not recognize Sundial by RelicId merely to decide counter visibility.
-
-4. USundialTrigger will freeze ShufflesRequired / EnergyGain into USundialAdvanceAction when building the reaction.
-   The Action does not rediscover/reinterpret Trigger configuration during Execute.
-
-5. Frozen/HUD Relic DTOs exclude mutable Gameplay runtime pointers but may retain immutable presentation asset references.
-
-6. GainEnergyAction receives its own focused primitive tests in 7C rather than being proved only through Sundial.
-```
-
-Design seal/update commit:
-
-```text
-d00ae6c7793291ca4dee4143c260043ec8544871
-docs(phase7): seal relic design boundaries before 7a
-```
-
-## phase7-relic-gameplay branch integration decision
-
-The historical `phase7-relic-gameplay` branch was not merged wholesale. At review time it was 28 commits ahead but 335 commits behind current `main`.
-
-Its Phase 7A runtime foundation was selectively ported because the core definition/runtime/container model remained compatible, while its old lazy `GetPlayerRelicContainer()` initialization was deliberately rejected.
-
-Not imported:
-
-```text
-old Phase 7 authority documents
-lazy BattleId/getter initialization
-7B/7C/Presentation work
-```
-
-## 7A implementation
-
-Runtime foundation:
-
-```text
-URelicData
-- RelicId
-- DisplayName
-- Description
-- editor validation for non-empty RelicId
-
-URelicInstance
-- Definition
-- explicit Battle context
-- RuntimeSequence
-- logical RelicId / exact runtime identity accessors
-
-URelicContainer
-- Initialize / Reset
-- Invalid / Duplicate / Added typed add result
-- one active member per RelicId
-- exact-instance membership query
-- deterministic ordered TArray membership
-- ABattleManager::AllocateRuntimeSequence()
-```
-
-Battle ownership/setup:
-
-```text
-ABattleManager owns transient PlayerRelicContainer
-DebugStartingRelics is the current demo setup input
-
-StartBattle
-→ reset NextRuntimeSequence = 1
-→ initialize Player / Enemy StatusContainers
-→ establish new BattleId/state
-→ InitializeRelicsForBattle()
-→ instantiate DebugStartingRelics in authored order
-→ later runtime Status creation receives later RuntimeSequence
-→ continue Presentation/opening-hand flow
-```
-
-`GetPlayerRelicContainer()` only returns the already-owned pointer and has no initialization side effects.
-
-Key implementation commits:
-
-```text
-348a1417ec366d2f6a83135547a624ebb47c00e3
-feat(phase7a): wire explicit relic runtime ownership
-
-e009cde85b9a339bb0001a02c29ff6d18aacab44
-feat(phase7a): initialize starting relics during battle setup
-
-51319c0a1d7387cfb3c8fa65fdbf2cdda2494a42
-test(phase7a): cover relic runtime and setup ordering
+- no first-version RelicTriggered / RelicCounterChanged Presentation Record
+- Relic counter catches up at Envelope FinalSnapshot reconciliation
+- Starting Relics are created explicitly during StartBattle, never lazily from a getter
+- future HUD Relic DTO uses bShowCounter / Counter / CounterMax
+- SundialAdvanceAction freezes ShufflesRequired / EnergyGain at reaction-build time
+- frozen HUD DTOs may hold immutable presentation asset references but not mutable RelicInstance truth
+- GainEnergyAction receives its own primitive tests in 7C
 ```
 
 ## 7A accepted validation
@@ -158,36 +74,119 @@ SlayTheSpireDemo.Phase7.RelicRuntime            5/5 PASS
 Manual PIE                                      NOT REQUIRED FOR 7A
 ```
 
-Focused tests:
+7A is sealed. Do not rerun it merely because 7B changes the Dispatcher boundary unless a concrete failure implicates Relic runtime ownership/setup.
+
+## 7B implementation now on main
+
+Implementation HEAD before this checkpoint update:
 
 ```text
-MembershipAndIdentity
-InvalidAndReset
-DefinitionIsolation
-BattleRestartLifecycle
-StartingRelicsPrecedeLaterStatus
+a1ec9e091d21a6f37c751bb0dca3f1a17b0a7e38
 ```
 
-This closes the 7A acceptance contract. No Phase6R, A2D5, Shipping, Legacy parity or manual PIE rerun is required because no concrete failure invalidated those sealed gates.
-
-Formal evidence:
+7B changes only the Trigger-source boundary:
 
 ```text
-docs/Phase7AValidation.md
+FTriggerRuntimeSource
+- SourceKind: Status / Relic
+- RuntimeObject
+- SourceId
+- RuntimeSequence
+- CombatantOwner (null for battle-owned Relic)
+
+FTriggerContext
+- keeps the historical Status constructors
+- keeps GetRuntimeSource() as the Status compatibility accessor
+- adds GetRuntimeSourceObject()
+- adds GetRelicSource()
+- adds GetSourceKind()
+- adds GetSourceId()
+- adds GetRuntimeSequence()
+- Relic contexts are created through the neutral descriptor, avoiding pointer-overload ambiguity
+
+URelicData
+- now authors Instanced Triggers[]
+
+BattleEventDispatcher
+- still snapshots candidates at dispatch time
+- collects Status candidates from supplied Combatants
+- collects Relic candidates from the bound BattleContext RelicContainer
+- deduplicates runtime source enumeration with TSet<UObject*>
+- combines both source kinds into one candidate array
+- sorts only by Priority → RuntimeSequence → LocalTriggerIndex
+- does not use SourceKind as an ordering key
+- preserves atomic final reaction insertion
+
+FTriggerEligibilityRecord
+- adds SourceKind + SourceId
+- preserves StatusId for historical Phase 6 tests
+- Relic records leave StatusId=None
 ```
+
+Explicit non-scope remains:
+
+```text
+no Sundial Trigger
+no Relic Counter
+no GainEnergyAction
+no Relic Presentation
+no Relic HUD
+no Modifier-source generalization
+no Trigger Registry
+```
+
+## 7B focused tests
+
+New prefix:
+
+```text
+SlayTheSpireDemo.Phase7.TriggerSources
+```
+
+Current tests:
+
+```text
+ContextCompatibility
+RelicReactionParticipation
+CombinedOrderingAndTrace
+```
+
+They prove:
+
+```text
+- historical Status GetRuntimeSource()/Owner behavior remains available
+- neutral Status/Relic context accessors report the correct source identity
+- a battle-owned Relic Trigger participates in the real Dispatcher and builds an Action
+- Relic eligibility trace uses SourceKind/SourceId and does not fake StatusId
+- Status + Relic candidates execute in one Priority → RuntimeSequence → LocalTriggerIndex domain
+- Starting Relics remain earlier than subsequently-created runtime Statuses when priority ties
+```
+
+## Required 7B validation gate
+
+No current-main Build or Automation result is claimed for the 7B implementation yet.
+
+Run only:
+
+```text
+1. Development Editor Build once.
+2. SlayTheSpireDemo.Phase7.TriggerSources once; expected 3/3.
+3. SlayTheSpireDemo.Phase6A.Trigger once as the smallest existing Dispatcher/ordering regression prefix directly invalidated by 7B.
+4. No manual PIE gate for 7B.
+5. Record evidence and STOP.
+```
+
+Do not run the full Phase6R aggregate, A2D5, Shipping, Legacy parity or unrelated UI suites without a concrete failure.
 
 ## Next exact action
 
-The next phase boundary is:
+USER ACTION REQUIRED:
+
+Run the 7B Build + focused Automation gate above. If both the new 7B prefix and the existing Phase6A Trigger regression prefix pass, record:
 
 ```text
-Phase 7B — Status + Relic Trigger Sources
+Phase 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
+Phase 7C Sundial + GainEnergyAction: NEXT / NOT STARTED
 ```
 
-7B must generalize only the existing Status-shaped Trigger runtime-source boundary so Status and Relic candidates can share one deterministic Dispatcher ordering domain:
-
-```text
-Priority → RuntimeSequence → LocalTriggerIndex
-```
-
-Do not begin Sundial behavior, positive Energy mutation, Relic UI, Abacus, Phase 8, Relic modifiers, run persistence or advanced Relic Presentation as part of the 7B refactor.
+Do not begin 7C code before 7B acceptance is recorded.
