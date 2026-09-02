@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Phase 7 Relics
 
-Last updated: **2026-09-02**
+Last updated: **2026-09-03**
 
 ## Goal
 
@@ -15,8 +15,8 @@ Phase 6UI-A3: COMPLETE / VALIDATED / SEALED
 Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
-7B Status + Relic Trigger Sources: IMPLEMENTED / VALIDATION PENDING
-7C Sundial + GainEnergyAction: NOT STARTED
+7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
+7C Sundial + GainEnergyAction: NEXT / NOT STARTED
 7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
 
@@ -26,10 +26,11 @@ Active authority:
 docs/Phase7RelicsImplementation.md
 ```
 
-7A validation authority:
+Validation authorities:
 
 ```text
 docs/Phase7AValidation.md
+docs/Phase7BValidation.md
 ```
 
 ## Locked Phase 7 boundaries
@@ -74,17 +75,11 @@ SlayTheSpireDemo.Phase7.RelicRuntime            5/5 PASS
 Manual PIE                                      NOT REQUIRED FOR 7A
 ```
 
-7A is sealed. Do not rerun it merely because 7B changes the Dispatcher boundary unless a concrete failure implicates Relic runtime ownership/setup.
+7A is sealed. Do not rerun it merely because later slices change unrelated boundaries.
 
-## 7B implementation now on main
+## 7B implementation and accepted validation
 
-Implementation HEAD before this checkpoint update:
-
-```text
-a1ec9e091d21a6f37c751bb0dca3f1a17b0a7e38
-```
-
-7B changes only the Trigger-source boundary:
+7B generalized only the Trigger-source boundary:
 
 ```text
 FTriggerRuntimeSource
@@ -95,14 +90,14 @@ FTriggerRuntimeSource
 - CombatantOwner (null for battle-owned Relic)
 
 FTriggerContext
-- keeps the historical Status constructors
-- keeps GetRuntimeSource() as the Status compatibility accessor
+- preserves historical Status constructors/accessor behavior
+- keeps GetRuntimeSource() as Status compatibility accessor
 - adds GetRuntimeSourceObject()
 - adds GetRelicSource()
 - adds GetSourceKind()
 - adds GetSourceId()
 - adds GetRuntimeSequence()
-- Relic contexts are created through the neutral descriptor, avoiding pointer-overload ambiguity
+- Relic contexts use the neutral descriptor rather than a pointer overload
 
 URelicData
 - now authors Instanced Triggers[]
@@ -118,75 +113,59 @@ BattleEventDispatcher
 - preserves atomic final reaction insertion
 
 FTriggerEligibilityRecord
-- adds SourceKind + SourceId
-- preserves StatusId for historical Phase 6 tests
+- SourceKind + SourceId are the neutral fields
+- StatusId remains as a Phase 6 compatibility field
 - Relic records leave StatusId=None
 ```
 
-Explicit non-scope remains:
+User-reported UE 5.8 validation on 2026-09-03:
 
 ```text
-no Sundial Trigger
-no Relic Counter
-no GainEnergyAction
-no Relic Presentation
-no Relic HUD
-no Modifier-source generalization
-no Trigger Registry
+SlayTheSpireDemo.Phase7.TriggerSources     3/3 PASS
+SlayTheSpireDemo.Phase6A.Trigger          PASS
+Manual PIE                                NOT REQUIRED FOR 7B
 ```
 
-## 7B focused tests
+The prescribed Development Editor build step produced a runnable current-main test binary; no build/runtime failure was reported.
 
-New prefix:
+Formal evidence:
 
 ```text
-SlayTheSpireDemo.Phase7.TriggerSources
+docs/Phase7BValidation.md
 ```
 
-Current tests:
-
-```text
-ContextCompatibility
-RelicReactionParticipation
-CombinedOrderingAndTrace
-```
-
-They prove:
-
-```text
-- historical Status GetRuntimeSource()/Owner behavior remains available
-- neutral Status/Relic context accessors report the correct source identity
-- a battle-owned Relic Trigger participates in the real Dispatcher and builds an Action
-- Relic eligibility trace uses SourceKind/SourceId and does not fake StatusId
-- Status + Relic candidates execute in one Priority → RuntimeSequence → LocalTriggerIndex domain
-- Starting Relics remain earlier than subsequently-created runtime Statuses when priority ties
-```
-
-## Required 7B validation gate
-
-No current-main Build or Automation result is claimed for the 7B implementation yet.
-
-Run only:
-
-```text
-1. Development Editor Build once.
-2. SlayTheSpireDemo.Phase7.TriggerSources once; expected 3/3.
-3. SlayTheSpireDemo.Phase6A.Trigger once as the smallest existing Dispatcher/ordering regression prefix directly invalidated by 7B.
-4. No manual PIE gate for 7B.
-5. Record evidence and STOP.
-```
-
-Do not run the full Phase6R aggregate, A2D5, Shipping, Legacy parity or unrelated UI suites without a concrete failure.
+7B is therefore **COMPLETE / VALIDATED / SEALED**. Do not run the full Phase6R aggregate, A2D5, Shipping, Legacy parity or unrelated UI suites merely because this source-neutral boundary is sealed.
 
 ## Next exact action
 
-USER ACTION REQUIRED:
-
-Run the 7B Build + focused Automation gate above. If both the new 7B prefix and the existing Phase6A Trigger regression prefix pass, record:
+The next phase boundary is:
 
 ```text
-Phase 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
-Phase 7C Sundial + GainEnergyAction: NEXT / NOT STARTED
+Phase 7C — Sundial + GainEnergyAction
 ```
 
-Do not begin 7C code before 7B acceptance is recorded.
+7C may now implement only:
+
+```text
+BattleEnergyMutation::TryGain
+UGainEnergyAction
+URelicInstance Sundial counter state required by the concrete vertical slice
+USundialTrigger
+USundialAdvanceAction
+focused primitive Energy tests
+focused Sundial gameplay tests
+```
+
+The locked behavior remains:
+
+```text
+initial setup shuffle: no FDeckShuffledEvent -> no Sundial progress
+1st gameplay shuffle: 0 -> 1
+2nd gameplay shuffle: 1 -> 2
+3rd gameplay shuffle: 2 -> 0 + enqueue GainEnergyAction(+2)
+4th gameplay shuffle: 0 -> 1
+```
+
+`USundialTrigger` is read-only and freezes `ShufflesRequired / EnergyGain` into the reaction Action at BuildReactions time. `USundialAdvanceAction` owns counter mutation and enqueues the reusable `UGainEnergyAction`; neither Trigger nor UI may mutate Gameplay truth directly.
+
+Do not begin 7D Relic Read/Frozen/Native UI, Abacus, Phase 8, Relic modifiers, run persistence or advanced Relic Presentation in the same change.
