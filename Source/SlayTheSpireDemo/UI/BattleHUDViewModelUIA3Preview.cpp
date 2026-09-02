@@ -46,6 +46,52 @@ void UBattleHUDViewModel::ClearPreviewTarget()
 	}
 }
 
+FText UBattleHUDViewModel::GetImmediatePreviewDisplayText() const
+{
+	if (!bHasImmediatePreview
+		|| ImmediatePreview.BattleId != BattleId
+		|| ImmediatePreview.StateRevision != StateRevision
+		|| ImmediatePreview.CardRuntimeId != SelectedCardRuntimeId
+		|| !ImmediatePreview.Validation.bAllowed)
+	{
+		return FText::GetEmpty();
+	}
+
+	TArray<FString> Segments;
+	Segments.Reserve(ImmediatePreview.Operations.Num() + 1);
+
+	for (const FImmediatePreviewOperation& Operation : ImmediatePreview.Operations)
+	{
+		switch (Operation.Type)
+		{
+		case EImmediatePreviewOperationType::Damage:
+			Segments.Add(Operation.HitCount > 1
+				? FString::Printf(TEXT("Damage %d x %d"), Operation.ResolvedAmount, Operation.HitCount)
+				: FString::Printf(TEXT("Damage %d"), Operation.ResolvedAmount));
+			break;
+
+		case EImmediatePreviewOperationType::Block:
+			Segments.Add(FString::Printf(TEXT("Block %d"), Operation.ResolvedAmount));
+			break;
+
+		default:
+			break;
+		}
+	}
+
+	if (ImmediatePreview.bHasEnergyAfter && ImmediatePreview.EffectiveCost > 0)
+	{
+		Segments.Add(FString::Printf(
+			TEXT("Energy %d -> %d"),
+			ImmediatePreview.EnergyBefore,
+			ImmediatePreview.EnergyAfter));
+	}
+
+	return Segments.IsEmpty()
+		? FText::GetEmpty()
+		: FText::FromString(FString::Join(Segments, TEXT("   |   ")));
+}
+
 bool UBattleHUDViewModel::TryBuildImmediatePreviewForTarget(
 	ACombatant* Target,
 	int32 TargetId
