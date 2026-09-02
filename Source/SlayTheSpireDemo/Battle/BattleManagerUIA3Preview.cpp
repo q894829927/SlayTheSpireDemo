@@ -20,8 +20,7 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 		|| BattleId > static_cast<uint64>(MAX_int64)
 		|| StateRevision > static_cast<uint64>(MAX_int64)
 		|| !IsValid(Player.Get())
-		|| !IsValid(Card)
-		|| !IsValid(Target))
+		|| !IsValid(Card))
 	{
 		return false;
 	}
@@ -33,13 +32,21 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 	}
 
 	FName SourcePresentationId = NAME_None;
-	FName TargetPresentationId = NAME_None;
 	if (!TryResolveCombatantPresentationId(Player.Get(), SourcePresentationId)
-		|| !TryResolveCombatantPresentationId(Target, TargetPresentationId)
-		|| SourcePresentationId.IsNone()
-		|| TargetPresentationId.IsNone())
+		|| SourcePresentationId.IsNone())
 	{
 		return false;
+	}
+
+	FName TargetPresentationId = NAME_None;
+	if (Target != nullptr)
+	{
+		if (!IsValid(Target)
+			|| !TryResolveCombatantPresentationId(Target, TargetPresentationId)
+			|| TargetPresentationId.IsNone())
+		{
+			return false;
+		}
 	}
 
 	FImmediateCardPreview Preview;
@@ -48,6 +55,22 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 	Preview.CardRuntimeId = Card->GetRuntimeId();
 	Preview.SourcePresentationId = SourcePresentationId;
 	Preview.TargetPresentationId = TargetPresentationId;
+
+	// A3-3 reuses the existing Gameplay validation vocabulary instead of
+	// reproducing target or Energy rules in UI code. A missing concrete target is
+	// a coherent pre-target state and therefore uses the target-agnostic query.
+	Preview.Validation = Target != nullptr
+		? QueryPlayCard(Card, Target)
+		: QueryCardPlayability(Card);
+
+	Preview.EnergyBefore = Energy;
+	Preview.EffectiveCost = Card->GetCurrentCost();
+	if (Preview.Validation.bAllowed && Preview.EnergyBefore >= Preview.EffectiveCost)
+	{
+		Preview.bHasEnergyAfter = true;
+		Preview.EnergyAfter = Preview.EnergyBefore - Preview.EffectiveCost;
+	}
+
 	Preview.Operations.Reserve(Definition->Effects.Num());
 
 	FCardEffectPreviewContext Context;
