@@ -418,7 +418,7 @@ private:
 	int32 ActiveNativeSimplePrimaryAfter = 0;
 	int32 ActiveNativeSimpleSecondaryBefore = 0;
 	int32 ActiveNativeSimpleSecondaryAfter = 0;
-	int32 ActiveNativeEnergyMax = 0;
+	int32 ActiveNativeSimpleEnergyMax = 0;
 
 	// Frozen R7 Damage visual state. Target surfaces are weak local presentation
 	// references; all historical values are copied from the accepted Record.
