@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "BattleHUDTypes.h"
+#include "../Battle/BattleImmediatePreview.h"
 #include "BattleCardWidget.generated.h"
 
 class UButton;
@@ -18,9 +19,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 /**
  * Native card presentation/input boundary for the A2N migration.
  *
- * The Widget owns only the supplied FBattleHUDCardView and emits a UI request
- * containing the frozen RuntimeId. It never owns or queries the HUD ViewModel,
- * Gameplay card instance, BattleManager or PresentationController.
+ * The Widget owns only the supplied FBattleHUDCardView and optional transient A3
+ * card-face Preview presentation. It never queries Gameplay, BattleManager or
+ * PresentationController and never treats Preview values as authoritative state.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleCardWidget : public UUserWidget
@@ -30,6 +31,11 @@ class SLAYTHESPIREDEMO_API UBattleCardWidget : public UUserWidget
 public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Card")
 	void SetCardView(const FBattleHUDCardView& View);
+
+	// A3 card-face presentation only. The DTO is already resolved by Gameplay.
+	// This changes only the visible description/value styling of this card.
+	void ApplyImmediatePreview(const FImmediateCardPreview& Preview);
+	void ClearImmediatePreview();
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Card")
 	int32 GetRuntimeId() const { return CurrentCardView.RuntimeId; }
@@ -78,6 +84,8 @@ private:
 	UPROPERTY(Transient)
 	FBattleHUDCardView CurrentCardView;
 
+	FSlateColor BaseDescriptionColor = FSlateColor(FLinearColor::White);
 	bool bNativeBindingsValid = false;
 	bool bCardDelegateBound = false;
+	bool bImmediatePreviewApplied = false;
 };
