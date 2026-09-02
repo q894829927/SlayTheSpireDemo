@@ -2,7 +2,7 @@
 
 Date: **2026-09-02**
 
-Status: **AUTHORIZED UX AMENDMENT / REVALIDATION PENDING**
+Status: **AUTHORIZED UX AMENDMENT / RICHTEXT VALIDATED / A3-5 SEAL PENDING**
 
 This document records the explicit A3-5 UX/ownership change made after production PIE exposed conflicts between the first standalone Preview surface and sealed A2 `CardPlayed` playback.
 
@@ -50,17 +50,37 @@ UI/UMG must not parse formatted text to recover numbers and must not rerun Damag
 
 ## Comparison color
 
-Each supported Immediate operation carries its immutable authored `BaseAmount` plus Gameplay-resolved `ResolvedAmount`.
+Each supported Damage/Block semantic value retains its immutable authored `BaseAmount` and current Gameplay-resolved amount.
 
-First Native convention:
+Native convention:
 
 ```text
-ResolvedAmount > BaseAmount  -> increased emphasis (red)
-ResolvedAmount < BaseAmount  -> decreased emphasis (blue)
-ResolvedAmount == BaseAmount -> normal card-face style
+current/resolved amount > authored BaseAmount  -> PreviewIncrease (red)
+current/resolved amount < authored BaseAmount  -> PreviewDecrease (blue)
+current/resolved amount == authored BaseAmount -> Default / normal card-face style
 ```
 
-The current Native card Designer exposes its description as a plain `UTextBlock`, so the first C++ implementation applies the comparison emphasis to that description text surface as a whole. Exact per-number run coloring requires a later `RichTextBlock`/rich-run Designer migration; that asset-level refinement must not reintroduce a standalone Preview overlay or Gameplay calculations in UMG.
+The Native card description is now a `URichTextBlock`. `DT_BattleCardTextStyles` owns the visible styles and must provide the rows:
+
+```text
+Default
+PreviewIncrease
+PreviewDecrease
+```
+
+All three rows use the same Chinese-capable font/size; only the comparison color differs. The resolver attaches the RichText tag to the exact semantic numeric argument, never to the whole sentence and never by searching the already-formatted text.
+
+Example:
+
+```text
+Deal {Damage} damage.
+Strength changes current Damage 6 -> 7
+→ Deal <PreviewIncrease>7</> damage.
+```
+
+Normal A3-1 Hand card faces also use this authored-base comparison. Therefore source/self modifiers such as Strength, Weak, Dexterity or Frailty may color the current Damage/Block number even when no target Preview is active. The target-specific A3 path continues to use explicit `ImmediatePreview.Operations` Base/Resolved values for its overrides, so normal current-state RichText and target-specific RichText remain separate authority paths.
+
+This RichText migration must not reintroduce a standalone Preview overlay or Gameplay calculations in UMG.
 
 ## A2 ownership boundary
 
@@ -118,7 +138,7 @@ PreviewTarget / ImmediatePreview only
 
 ## CardPlayed rejection diagnostics
 
-Until the production PIE handoff is confirmed, a rejected Native `CardPlayed` playback logs precise read-only diagnostics with prefix:
+A rejected Native `CardPlayed` playback logs precise read-only diagnostics with prefix:
 
 ```text
 [BattleHUD][CardPlayedReject]
@@ -130,17 +150,18 @@ Diagnostics must never mutate Gameplay, ViewModel, Widget ownership or Presentat
 
 ## Focused acceptance
 
-After this amendment:
+Focused acceptance for the card-face RichText slice is:
 
 ```text
-1. Editor Build once.
-2. Run SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expected 3/3 Success.
-3. Run one production L_BattleTest PIE session.
+1. Development Editor Build once.
+2. Run SlayTheSpireDemo.UIA3.RichCardTextBaseline once; expected 2/2 Success.
+3. Run SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expected 3/3 Success.
+4. Run one production L_BattleTest PIE session for available player-facing cases.
 ```
 
 Focused Automation must additionally prove Preview nomination/clear emits `OnPreviewChanged` without emitting structural `OnChanged`.
 
-PIE must prove:
+PIE acceptance remains:
 
 ```text
 Strike / Enemy:
@@ -155,12 +176,28 @@ no standalone Block/Energy preview appears
 submit -> card-face Preview clears -> committed A2 playback remains coherent
 
 comparison styling:
-value above authored base -> red emphasis
-value below authored base -> blue emphasis
+value above authored base -> only the numeric semantic value uses PreviewIncrease
+value below authored base -> only the numeric semantic value uses PreviewDecrease
 value equal to authored base -> normal style
+
+normal current-state card face:
+Strength/other source Damage modifiers update and color Damage without requiring target hover
+Dexterity/other self Block modifiers update and color Block through the same authored-base rule
 
 revision invalidation:
 old selection/Preview does not survive a new StateRevision
 ```
 
-If the played card still fails to appear and `[BattleHUD][CardPlayedReject]` is present, capture those lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
+## Validation evidence — 2026-09-02
+
+User-reported focused results:
+
+```text
+SlayTheSpireDemo.UIA3.RichCardTextBaseline: 2/2 PASS
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS
+Production PIE: Strength-modified card-face Damage changes color correctly
+```
+
+The current project does not yet contain a playable Dexterity-granting card, so a Dexterity-specific manual PIE spot-check was not run. This is **accepted for the current slice** because `SlayTheSpireDemo.UIA3.RichCardTextBaseline.BlockTracksDexterityAndFrailty` directly covers the Block authored-base RichText behavior in Automation and passed. A future playable Dexterity card may be used for an additional manual spot-check, but that absence is not a blocker for the current RichText acceptance record.
+
+If the played card later fails to appear and `[BattleHUD][CardPlayedReject]` is present, capture those lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
