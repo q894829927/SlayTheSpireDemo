@@ -2,13 +2,14 @@
 
 #include "Components/Button.h"
 #include "Components/Image.h"
+#include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 
 void UPhase6UIA2NR4CardProbe::ConfigureSurfaces(
 	UButton* InButton,
 	UTextBlock* InName,
 	UTextBlock* InCost,
-	UTextBlock* InDescription,
+	URichTextBlock* InDescription,
 	UTextBlock* InType,
 	UImage* InArt)
 {
