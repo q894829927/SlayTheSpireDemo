@@ -37,6 +37,27 @@ bool FPreviewTextArgumentBuilder::AddPercentMagnitude(FName Name, int32 Numerato
 	return AddText(Name, FText::AsNumber(Percent, &Options));
 }
 
+bool FPreviewTextArgumentBuilder::OverrideInteger(FName Name, int64 Value)
+{
+	if (Name.IsNone())
+	{
+		AddError(TEXT("A target-specific preview override has no semantic name."));
+		return false;
+	}
+
+	FFormatArgumentValue* Existing = ArgumentValues.Find(Name);
+	if (Existing == nullptr)
+	{
+		AddError(FString::Printf(
+			TEXT("Target-specific preview cannot override unknown argument '%s'."),
+			*Name.ToString()));
+		return false;
+	}
+
+	*Existing = FFormatArgumentValue(Value);
+	return true;
+}
+
 void FPreviewTextArgumentBuilder::AddUnknown(FName Name, const FString& Error)
 {
 	AddError(Error);
