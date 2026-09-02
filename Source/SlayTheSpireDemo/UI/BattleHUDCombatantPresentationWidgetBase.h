@@ -17,12 +17,19 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	int32, TargetId
 );
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
+	FBattleHUDCombatantPreviewRequested,
+	int32, TargetId
+);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDCombatantPreviewCleared);
+
 /**
  * Presentation-only interaction contract for one visible combatant.
  *
  * The widget never decides target legality and never submits gameplay requests.
  * Its owner supplies the current ViewModel snapshot plus legal-target mapping,
- * then handles the emitted inspection/target events.
+ * then handles the emitted inspection/preview/target events.
  */
 UCLASS(Abstract, Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDCombatantPresentationWidgetBase : public UUserWidget
@@ -84,6 +91,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Combatant Presentation")
 	FBattleHUDCombatantPresentationEvent OnInspectPinRequested;
 
+	// A3 PreviewTarget ownership is intentionally distinct from inspection even
+	// though the same pointer/focus state may nominate both transient surfaces.
+	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Combatant Presentation|Preview")
+	FBattleHUDCombatantPreviewRequested OnPreviewRequested;
+
+	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Combatant Presentation|Preview")
+	FBattleHUDCombatantPreviewCleared OnPreviewCleared;
+
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Combatant Presentation")
 	FBattleHUDCombatantTargetRequested OnTargetRequested;
 
@@ -98,9 +113,11 @@ protected:
 private:
 	void SetFocusInspectionActive(bool bActive);
 	void PublishTransientInspectionState(bool bWasActive);
+	void PublishTransientPreviewState();
 	void ClearTransientInspection();
 	bool RequestLegalTarget();
 
 	bool bPointerInspectionActive = false;
 	bool bFocusInspectionActive = false;
+	int32 PublishedPreviewTargetId = INDEX_NONE;
 };
