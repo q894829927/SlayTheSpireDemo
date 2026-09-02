@@ -23,6 +23,7 @@ namespace
 		for (FCardReadView& CardView : CardViews)
 		{
 			CardView.CurrentDescription = FBattleTextResolver::ResolveCardDescription(CardView.Card.Get(), Source);
+			CardView.CurrentRichDescription = FBattleTextResolver::ResolveCardRichDescription(CardView.Card.Get(), Source);
 		}
 	}
 }
