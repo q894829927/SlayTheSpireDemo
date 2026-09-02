@@ -25,6 +25,15 @@ public:
 		ACombatant* Source,
 		const TArray<FImmediatePreviewOperation>& Operations);
 
+	// Same target-specific values as the plain resolver, but changed numeric
+	// arguments are wrapped with Native RichText style tags. The resolver uses
+	// semantic argument identity and never searches the formatted sentence for a
+	// matching number.
+	static FText ResolveCardRichDescriptionForImmediatePreview(
+		const UCardInstance* Card,
+		ACombatant* Source,
+		const TArray<FImmediatePreviewOperation>& Operations);
+
 	static FText ResolveStatusDescription(const UStatusInstance* StatusInstance);
 
 	// Editor/DataAsset validation helpers. Runtime resolution remains fail-soft.
