@@ -10,6 +10,7 @@ class UImage;
 class UOverlay;
 class UButton;
 class UBattleHUDViewModel;
+class URichTextBlock;
 class UTextBlock;
 class UWorld;
 
@@ -32,7 +33,7 @@ private:
 	TObjectPtr<UTextBlock> TestCost = nullptr;
 
 	UPROPERTY(Transient)
-	TObjectPtr<UTextBlock> TestDescription = nullptr;
+	TObjectPtr<URichTextBlock> TestDescription = nullptr;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> TestType = nullptr;
