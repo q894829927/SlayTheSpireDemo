@@ -18,6 +18,11 @@ void UPhase6UIA3PreviewHUDProbe::ReleasePreviewSurfaceForTesting()
 	ReleaseImmediatePreviewSurface();
 }
 
+void UPhase6UIA3PreviewHUDProbe::ClearPreviewAsCombatantWouldForTesting()
+{
+	HandleCombatantPreviewCleared();
+}
+
 void UPhase6UIA3PreviewEventSink::ObserveViewModel(UBattleHUDViewModel* InViewModel)
 {
 	if (UBattleHUDViewModel* Previous = ObservedViewModel.Get())
