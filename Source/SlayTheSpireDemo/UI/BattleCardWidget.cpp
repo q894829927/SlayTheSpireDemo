@@ -5,6 +5,28 @@
 #include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 
+namespace
+{
+	FText GetCardTypeDisplayText(ECardType CardType)
+	{
+		switch (CardType)
+		{
+		case ECardType::Attack:
+			return NSLOCTEXT("BattleCardWidget", "CardType_Attack", "攻击");
+		case ECardType::Skill:
+			return NSLOCTEXT("BattleCardWidget", "CardType_Skill", "技能");
+		case ECardType::Power:
+			return NSLOCTEXT("BattleCardWidget", "CardType_Power", "能力");
+		case ECardType::Status:
+			return NSLOCTEXT("BattleCardWidget", "CardType_Status", "状态");
+		case ECardType::Curse:
+			return NSLOCTEXT("BattleCardWidget", "CardType_Curse", "诅咒");
+		default:
+			return FText::GetEmpty();
+		}
+	}
+}
+
 void UBattleCardWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -139,15 +161,10 @@ void UBattleCardWidget::RefreshFromCardView()
 	Txt_CardDescription->SetText(CurrentCardView.Description);
 	ImmediatePreviewTone = 0;
 
-	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
-	{
-		Txt_CardType->SetText(
-			CardTypeEnum->GetDisplayNameTextByValue(static_cast<int64>(CurrentCardView.CardType)));
-	}
-	else
-	{
-		Txt_CardType->SetText(FText::GetEmpty());
-	}
+	// Card type is player-facing localized UI text. Do not expose the native enum
+	// DisplayName (Attack/Skill/...) directly or overwrite Designer Chinese labels
+	// with editor-facing English metadata during a native refresh.
+	Txt_CardType->SetText(GetCardTypeDisplayText(CurrentCardView.CardType));
 
 	Img_CardArt->SetBrushFromTexture(CurrentCardView.CardArt.Get());
 }
