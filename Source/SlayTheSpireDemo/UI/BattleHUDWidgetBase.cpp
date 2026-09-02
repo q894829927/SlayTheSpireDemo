@@ -48,7 +48,16 @@ void UBattleHUDWidgetBase::CancelSelection()
 
 bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 {
-	return IsValid(ViewModel) && ViewModel->SelectTargetById(TargetId);
+	if (!IsValid(ViewModel))
+	{
+		return false;
+	}
+
+	// A3 pre-commit ownership ends before the authoritative request is entered.
+	// This broadcast synchronously removes the Native Preview surface; Gameplay
+	// then revalidates the target through the unchanged SelectTargetById path.
+	ViewModel->ClearPreviewTarget();
+	return ViewModel->SelectTargetById(TargetId);
 }
 
 bool UBattleHUDWidgetBase::ConfirmSelectedCard()
