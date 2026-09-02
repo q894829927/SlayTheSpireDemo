@@ -47,13 +47,6 @@ public:
 	);
 
 	FTriggerContext(
-		URelicInstance* InRuntimeSource,
-		UObject* InActionOuter,
-		ABattleManager* InBattle,
-		const FPresentationRecordWriter& InPresentationRecordWriter = FPresentationRecordWriter{}
-	);
-
-	FTriggerContext(
 		const FTriggerRuntimeSource& InRuntimeSource,
 		UObject* InActionOuter,
 		ABattleManager* InBattle,
