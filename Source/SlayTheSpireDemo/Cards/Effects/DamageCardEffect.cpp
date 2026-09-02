@@ -103,6 +103,7 @@ void UDamageCardEffect::BuildImmediatePreviewOperations(
 	Operation.EffectIndex = EffectIndex;
 	Operation.SemanticArgumentName = DescriptionArgumentName;
 	Operation.Type = EImmediatePreviewOperationType::Damage;
+	Operation.BaseAmount = BaseAmount;
 	Operation.ResolvedAmount = Spec.ResolvedAmount;
 	Operation.HitCount = HitCount;
 	OutOperations.Add(Operation);
