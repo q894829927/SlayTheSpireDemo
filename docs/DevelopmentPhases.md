@@ -10,8 +10,9 @@ This document records project progress, implementation history and durable phase
 - UI-A2A/A2B/A2C/A2D C++ committed-presentation work is sealed.
 - **UI-A2E Unified Blueprint/UMG Playback & PIE Acceptance is complete, validated and sealed.**
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
-- **UI-A3 is now authorized and in progress.** A3-1 Dynamic Text is sealed; A3-2 Target-Specific Current-State Preview is the next implementation slice under `docs/Phase6UIA3Implementation.md`.
-- Phase 7 Relics follows completion of playable Phase 6UI-A.
+- **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
+- **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
+- **Phase 7 Relics design is authorized; runtime implementation has not started.** Active design authority: `docs/Phase7RelicsImplementation.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -29,7 +30,7 @@ Durable decisions:
 
 - one authoritative action executes at a time;
 - actions may schedule dependencies but never advance the queue;
-- dependent batches for one logical chain are inserted before the current action finishes.
+- dependent batches required for one logical chain are inserted before the current action finishes.
 
 ## Phase 3 — Deck System
 
@@ -105,7 +106,7 @@ Durable decisions:
 
 ## Phase 6UI-A — Playable Battle UI
 
-Status: **IN PROGRESS**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 ### UI-A0 — Playable Gameplay Boundary
 
@@ -143,15 +144,16 @@ Read:
 
 ### UI-A3 — Deterministic Immediate Preview
 
-Status: **IN PROGRESS / AUTHORIZED**
+Status: **COMPLETE / VALIDATED / SEALED**
 
-Active authority: `docs/Phase6UIA3Implementation.md`.
+Final status authority: `docs/Phase6UIA3Seal.md`.
 
 - A3-1 Dynamic Text — **COMPLETE / VALIDATED / SEALED**.
-- A3-2 Target-Specific Current-State Preview — **NEXT IMPLEMENTATION SLICE**.
-- A3-3 Energy + target-aware legality — not started.
-- A3-4 transient Preview lifecycle — not started.
-- A3-5 minimal Native UMG + combined A2/A3 PIE — not started.
+- A3-2 Target-Specific Current-State Preview — **COMPLETE / VALIDATED / SEALED**.
+- A3-3 Energy + Target-Aware Legality — **COMPLETE / VALIDATED / SEALED**.
+- A3-4 ViewModel Transient Preview Lifecycle — **COMPLETE / REVALIDATED / SEALED**.
+- A3-5 Native card-face Preview + combined A2/A3 PIE — **COMPLETE / VALIDATED / SEALED**.
+- A3-5 RichText per-value comparison styling — **COMPLETE / VALIDATED / SEALED**.
 
 Locked boundary:
 
@@ -162,11 +164,23 @@ A2 = post-commit playback of immutable committed facts
 
 First-version target-specific Preview covers current Damage, Self Block, Energy and legality without predicting final HP, Trigger/Relic reactions, draw/shuffle outcomes or terminal state.
 
+Final acceptance includes restored production `CardPlayed` animation, Preview-only notification ownership, target-specific Native card-face Preview, and RichText comparison styling that colors only the affected numeric semantic value. Strength-modified Damage was manually confirmed in PIE; Dexterity/Frailty Block RichText is covered by passing focused Automation because no playable Dexterity-granting card currently exists.
+
+Read:
+
+- `docs/Phase6UIA3Implementation.md` — historical implementation plan and durable A3 contracts
+- `docs/Phase6UIA3CardFacePreviewAmendment.md` — final A3-5 UX/ownership amendment
+- `docs/Phase6UIA3Seal.md` — final acceptance/status authority
+
 ## Phase 7 — Relics
 
-Status: **PLANNED AFTER PHASE 6UI-A**
+Status: **DESIGN AUTHORIZED / IMPLEMENTATION NOT STARTED**
 
-First validation is Sundial; Abacus is optional. When the first non-Status modifier/trigger source arrives, extract only the smallest boundary required to combine Status and Relic sources. Never disguise a Relic as a Status.
+Active design authority: `docs/Phase7RelicsImplementation.md`.
+
+First validation is Sundial; Abacus remains optional. Phase 7 introduces the first non-Status Trigger source and therefore must extract only the smallest source-neutral boundary needed for Status and Relic triggers to coexist. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
+
+The first implementation target is a deterministic Sundial vertical slice driven by the already-committed `FDeckShuffledEvent`. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
 
 ## Phase 8 — Combo Architecture Validation
 
