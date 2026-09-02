@@ -6,6 +6,7 @@
 
 class UButton;
 class UImage;
+class URichTextBlock;
 class UTextBlock;
 
 UCLASS(Transient)
@@ -18,7 +19,7 @@ public:
 		UButton* InButton,
 		UTextBlock* InName,
 		UTextBlock* InCost,
-		UTextBlock* InDescription,
+		URichTextBlock* InDescription,
 		UTextBlock* InType,
 		UImage* InArt);
 
