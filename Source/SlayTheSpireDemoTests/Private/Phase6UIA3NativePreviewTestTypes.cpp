@@ -17,6 +17,11 @@ void UPhase6UIA3PreviewHUDProbe::RequestPreviewForTesting(int32 TargetId)
 	HandleCombatantPreviewRequested(TargetId);
 }
 
+void UPhase6UIA3PreviewHUDProbe::ApplyPreviewSurfaceForTesting()
+{
+	EnsureImmediatePreviewSurface();
+}
+
 void UPhase6UIA3PreviewHUDProbe::ReleasePreviewSurfaceForTesting()
 {
 	ReleaseImmediatePreviewSurface();
