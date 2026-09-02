@@ -112,9 +112,9 @@ void UBattleHUDWidget::HandleCombatantPreviewRequested(int32 TargetId)
 		return;
 	}
 
-	// SetPreviewTargetById may broadcast and rebuild the formal Hand. Apply the
-	// card-face override only after that broadcast returns so it lands on the
-	// current Hand widget instance rather than a stale pre-refresh card.
+	// PreviewTarget mutation now uses the dedicated Preview-only notification
+	// channel, so the formal Hand Widget instances remain stable. Apply the
+	// Gameplay-resolved DTO directly to the selected card face.
 	if (ViewModel->SetPreviewTargetById(TargetId))
 	{
 		EnsureImmediatePreviewSurface();
@@ -133,8 +133,8 @@ void UBattleHUDWidget::HandleCombatantPreviewCleared()
 	}
 
 	// Restore the selected card face before clearing transient Preview state.
-	// Neither step touches OV_PlayArea; committed A2 playback keeps exclusive
-	// ownership of that container.
+	// ClearPreviewTarget publishes only OnPreviewChanged, so this handoff cannot
+	// rebuild HB_Hand or replace the historical A2 CardPlayed start anchor.
 	ReleaseImmediatePreviewSurface();
 	ViewModel->ClearPreviewTarget();
 }
