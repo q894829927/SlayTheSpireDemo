@@ -3,13 +3,36 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Phase6UIA1TestFixture.h"
+#include "Phase6UIA2NR4TestTypes.h"
 #include "Phase6UIA3NativePreviewTestTypes.h"
 #include "Battle/BattleImmediatePreview.h"
-#include "Components/Overlay.h"
-#include "UI/BattleImmediatePreviewTextBlock.h"
+#include "Components/Button.h"
+#include "Components/HorizontalBox.h"
+#include "Components/Image.h"
+#include "Components/TextBlock.h"
 #include "UI/BattleHUDViewModel.h"
 
 using namespace Phase6UIA1Test;
+
+namespace
+{
+	UPhase6UIA2NR4CardProbe* MakePreviewCardProbe(
+		UObject* Outer,
+		const FBattleHUDCardView& View,
+		UTextBlock*& OutDescription)
+	{
+		UPhase6UIA2NR4CardProbe* Card = NewObject<UPhase6UIA2NR4CardProbe>(Outer);
+		UButton* Button = NewObject<UButton>(Card);
+		UTextBlock* Name = NewObject<UTextBlock>(Card);
+		UTextBlock* Cost = NewObject<UTextBlock>(Card);
+		OutDescription = NewObject<UTextBlock>(Card);
+		UTextBlock* Type = NewObject<UTextBlock>(Card);
+		UImage* Art = NewObject<UImage>(Card);
+		Card->ConfigureSurfaces(Button, Name, Cost, OutDescription, Type, Art);
+		Card->SetCardView(View);
+		return Card;
+	}
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FNativePreviewEventsIndependentTest,
@@ -53,8 +76,6 @@ bool FNativePreviewEventsIndependentTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Preview publishes through a distinct delegate"), Sink->PreviewRequestedCount, 1);
 	TestEqual(TEXT("Preview delegate carries current gameplay target id"), Sink->LastPreviewTargetId, 7);
 
-	// Keep pointer inspection active while target-selection eligibility disappears.
-	// Preview must clear without clearing inspection.
 	Presentation->SetPresentationData(Combatant, false, false, INDEX_NONE, false);
 	TestTrue(TEXT("Inspection remains active when Preview eligibility disappears"), Presentation->IsTransientInspectionActive());
 	TestEqual(TEXT("Preview clears independently"), Sink->PreviewClearedCount, 1);
@@ -72,81 +93,62 @@ bool FNativePreviewEventsIndependentTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FNativePreviewSurfaceFormattingTest,
-	"SlayTheSpireDemo.UIA3.NativePreviewIntegration.NativeSurfaceRendersAndClearsFromViewModel",
+	FNativePreviewCardFaceFormattingTest,
+	"SlayTheSpireDemo.UIA3.NativePreviewIntegration.SelectedCardFaceRendersAndRestoresPreviewValues",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
 )
 
-bool FNativePreviewSurfaceFormattingTest::RunTest(const FString& Parameters)
+bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 {
-	UPhase6UIA3PreviewHUDProbe* HUD =
-		NewObject<UPhase6UIA3PreviewHUDProbe>(GetTransientPackage());
-	UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>(HUD);
-	UOverlay* Overlay = NewObject<UOverlay>(HUD);
-	if (!TestNotNull(TEXT("Native HUD Preview probe exists"), HUD)
-		|| !TestNotNull(TEXT("Preview ViewModel exists"), ViewModel)
-		|| !TestNotNull(TEXT("Preview host Overlay exists"), Overlay))
+	FBattleHUDCardView CardView;
+	CardView.RuntimeId = 17;
+	CardView.CardId = TEXT("StrikeProbe");
+	CardView.DisplayName = FText::FromString(TEXT("Strike"));
+	CardView.Cost = 1;
+	CardView.CardType = ECardType::Attack;
+	CardView.TargetType = ECardTargetType::Enemy;
+	CardView.Description = FText::FromString(TEXT("Deal 6 damage."));
+
+	UTextBlock* Description = nullptr;
+	UPhase6UIA2NR4CardProbe* Card = MakePreviewCardProbe(GetTransientPackage(), CardView, Description);
+	if (!TestNotNull(TEXT("Card-face Preview probe exists"), Card)
+		|| !TestNotNull(TEXT("Card-face description surface exists"), Description))
 	{
 		return false;
 	}
 
-	ViewModel->BattleId = 1;
-	ViewModel->StateRevision = 4;
-	ViewModel->SelectedCardRuntimeId = 17;
-	ViewModel->PreviewTargetId = 1;
-	ViewModel->PreviewTargetPresentationId = TEXT("PreviewEnemy");
-	ViewModel->bHasImmediatePreview = true;
-	ViewModel->ImmediatePreview.BattleId = 1;
-	ViewModel->ImmediatePreview.StateRevision = 4;
-	ViewModel->ImmediatePreview.CardRuntimeId = 17;
-	ViewModel->ImmediatePreview.SourcePresentationId = TEXT("PreviewPlayer");
-	ViewModel->ImmediatePreview.TargetPresentationId = TEXT("PreviewEnemy");
-	ViewModel->ImmediatePreview.Validation = FGameplayValidationResult::Allowed();
-	ViewModel->ImmediatePreview.EnergyBefore = 3;
-	ViewModel->ImmediatePreview.EffectiveCost = 1;
-	ViewModel->ImmediatePreview.bHasEnergyAfter = true;
-	ViewModel->ImmediatePreview.EnergyAfter = 2;
+	const FLinearColor BaseColor = Description->GetColorAndOpacity().GetSpecifiedColor();
 
+	FImmediateCardPreview Preview;
+	Preview.CardRuntimeId = 17;
+	Preview.Validation = FGameplayValidationResult::Allowed();
+	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 9 damage."));
 	FImmediatePreviewOperation Damage;
 	Damage.EffectIndex = 0;
 	Damage.SemanticArgumentName = TEXT("Damage");
 	Damage.Type = EImmediatePreviewOperationType::Damage;
+	Damage.BaseAmount = 6;
 	Damage.ResolvedAmount = 9;
-	Damage.HitCount = 2;
-	ViewModel->ImmediatePreview.Operations.Add(Damage);
+	Damage.HitCount = 1;
+	Preview.Operations.Add(Damage);
 
-	FImmediatePreviewOperation Block;
-	Block.EffectIndex = 1;
-	Block.SemanticArgumentName = TEXT("Block");
-	Block.Type = EImmediatePreviewOperationType::Block;
-	Block.ResolvedAmount = 8;
-	Block.HitCount = 1;
-	ViewModel->ImmediatePreview.Operations.Add(Block);
+	Card->ApplyImmediatePreview(Preview);
+	TestEqual(TEXT("Target-specific Damage replaces selected card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 9 damage.")));
+	const FLinearColor IncreasedColor = Description->GetColorAndOpacity().GetSpecifiedColor();
+	TestTrue(TEXT("Value above authored base uses red emphasis"), IncreasedColor.R > IncreasedColor.G && IncreasedColor.R > IncreasedColor.B);
+	TestFalse(TEXT("Increased Preview does not keep base color"), IncreasedColor.Equals(BaseColor));
 
-	HUD->ConfigurePreviewSurface(ViewModel, Overlay);
-	TestEqual(TEXT("Valid A3 Preview owns exactly one transient PlayArea child"), Overlay->GetChildrenCount(), 1);
-	if (Overlay->GetChildrenCount() != 1)
-	{
-		return false;
-	}
+	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 4 damage."));
+	Preview.Operations[0].ResolvedAmount = 4;
+	Card->ApplyImmediatePreview(Preview);
+	TestEqual(TEXT("Decreased target-specific Damage also replaces card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 4 damage.")));
+	const FLinearColor DecreasedColor = Description->GetColorAndOpacity().GetSpecifiedColor();
+	TestTrue(TEXT("Value below authored base uses a distinct cool-color emphasis"), DecreasedColor.B > DecreasedColor.R);
+	TestFalse(TEXT("Decreased Preview does not keep base color"), DecreasedColor.Equals(BaseColor));
 
-	UBattleImmediatePreviewTextBlock* PreviewText =
-		Cast<UBattleImmediatePreviewTextBlock>(Overlay->GetChildAt(0));
-	if (!TestNotNull(TEXT("PlayArea child is the dedicated A3 Preview surface"), PreviewText))
-	{
-		return false;
-	}
-
-	const FString Display = PreviewText->GetText().ToString();
-	TestTrue(TEXT("Preview preserves per-hit multi-hit formatting"), Display.Contains(TEXT("Damage 9 x 2")));
-	TestTrue(TEXT("Preview renders supported Block operation"), Display.Contains(TEXT("Block 8")));
-	TestTrue(TEXT("Preview renders authoritative Energy transition"), Display.Contains(TEXT("Energy 3 -> 2")));
-
-	ViewModel->ClearPreviewTarget();
-	TestEqual(TEXT("Clearing A3 Preview removes the transient PlayArea child synchronously"), Overlay->GetChildrenCount(), 0);
-	TestTrue(TEXT("Clearing A3 Preview clears formatted text authority"), ViewModel->GetImmediatePreviewDisplayText().IsEmpty());
-
-	HUD->ReleasePreviewSurfaceForTesting();
+	Card->ClearImmediatePreview();
+	TestEqual(TEXT("Clearing Preview restores frozen card-face description"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
+	TestTrue(TEXT("Clearing Preview restores base description color"), Description->GetColorAndOpacity().GetSpecifiedColor().Equals(BaseColor));
 	return true;
 }
 
@@ -163,19 +165,27 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 	Fixture.InitializeViewModel();
 	if (!RequireFixture(*this, Fixture)) return false;
 
-	UPhase6UIA3PreviewHUDProbe* HUD =
-		NewObject<UPhase6UIA3PreviewHUDProbe>(Fixture.World);
-	UOverlay* Overlay = NewObject<UOverlay>(HUD);
-	UPhase6UIA3PreviewEventSink* Sink =
-		NewObject<UPhase6UIA3PreviewEventSink>(Fixture.World);
+	UPhase6UIA3PreviewHUDProbe* HUD = NewObject<UPhase6UIA3PreviewHUDProbe>(Fixture.World);
+	UHorizontalBox* Hand = NewObject<UHorizontalBox>(HUD);
+	UPhase6UIA3PreviewEventSink* Sink = NewObject<UPhase6UIA3PreviewEventSink>(Fixture.World);
 	if (!TestNotNull(TEXT("Native HUD handoff probe exists"), HUD)
-		|| !TestNotNull(TEXT("Handoff Preview overlay exists"), Overlay)
+		|| !TestNotNull(TEXT("Handoff Hand exists"), Hand)
 		|| !TestNotNull(TEXT("Handoff event sink exists"), Sink))
 	{
 		return false;
 	}
 
-	HUD->ConfigurePreviewSurface(Fixture.ViewModel, Overlay);
+	if (Fixture.ViewModel->HandCards.Num() != 1)
+	{
+		AddError(TEXT("Expected one displayed Hand card for A3-5 handoff."));
+		return false;
+	}
+
+	UTextBlock* CardDescription = nullptr;
+	UPhase6UIA2NR4CardProbe* Card = MakePreviewCardProbe(HUD, Fixture.ViewModel->HandCards[0], CardDescription);
+	Hand->AddChildToHorizontalBox(Card);
+	HUD->ConfigurePreviewSurface(Fixture.ViewModel, Hand);
+
 	const int32 RuntimeId = Fixture.FirstRuntimeId();
 	TestTrue(TEXT("Card selection succeeds before A3 handoff"), Fixture.ViewModel->SelectCardByRuntimeId(RuntimeId));
 	if (Fixture.ViewModel->LegalTargets.Num() != 1)
@@ -186,28 +196,18 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 
 	const int32 TargetId = Fixture.ViewModel->LegalTargets[0].TargetId;
 	TestTrue(TEXT("Target-specific Preview builds before submission"), Fixture.ViewModel->SetPreviewTargetById(TargetId));
+	HUD->ApplyPreviewSurfaceForTesting();
 	TestTrue(TEXT("Preview is live immediately before submission"), Fixture.ViewModel->bHasImmediatePreview);
-	TestEqual(TEXT("Native A3 surface is present before submission"), Overlay->GetChildrenCount(), 1);
+	TestEqual(TEXT("Card-face Preview does not add or remove formal Hand children"), Hand->GetChildrenCount(), 1);
 
 	Sink->ObserveViewModel(Fixture.ViewModel);
-
-	// Production Combatant RequestLegalTarget emits OnPreviewCleared before
-	// OnTargetRequested. Exercise that exact HUD-side clear first so the test
-	// verifies physical PlayArea ownership, not only the ViewModel DTO state.
 	HUD->ClearPreviewAsCombatantWouldForTesting();
 	TestTrue(
 		TEXT("ViewModel broadcast exposes Preview-cleared state while selection is still pre-request"),
 		Sink->bObservedPreRequestPreviewClear);
-	TestEqual(
-		TEXT("Production Preview clear physically releases A3 PlayArea ownership before request"),
-		Overlay->GetChildrenCount(),
-		0);
+	TestEqual(TEXT("Preview clear leaves formal Hand structure intact"), Hand->GetChildrenCount(), 1);
 
 	TestTrue(TEXT("Native target submission is accepted"), HUD->SelectTarget(TargetId));
-	TestEqual(
-		TEXT("A3 surface remains absent before committed A2 PlayArea ownership"),
-		Overlay->GetChildrenCount(),
-		0);
 	TestFalse(TEXT("Accepted request leaves no A3 Preview DTO"), Fixture.ViewModel->bHasImmediatePreview);
 	TestEqual(TEXT("Accepted request enters Resolving"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
 	TestTrue(TEXT("Accepted request locks input until committed Presentation catch-up"), Fixture.ViewModel->bInputLocked);
