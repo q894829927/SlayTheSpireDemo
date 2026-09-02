@@ -20,6 +20,7 @@ class UDeckRuntime;
 class UStatusData;
 class UTurnEndedAction;
 struct FBattleReadSnapshot;
+struct FImmediateCardPreview;
 enum class EDamageKind : uint8;
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBattleReadStateReady, uint64, uint64);
@@ -126,6 +127,11 @@ public:
 	FGameplayValidationResult QueryCardPlayability(const UCardInstance* Card) const;
 	FGameplayValidationResult QueryPlayCard(const UCardInstance* Card, const ACombatant* RequestedTarget) const;
 	FGameplayRequestResult RequestPlayCard(UCardInstance* Card, ACombatant* RequestedTarget);
+	bool TryBuildImmediateCardPreview(
+		const UCardInstance* Card,
+		const ACombatant* Target,
+		FImmediateCardPreview& OutPreview
+	) const;
 
 	FGameplayValidationResult QueryEndPlayerTurn() const;
 	FGameplayRequestResult RequestEndPlayerTurn();
