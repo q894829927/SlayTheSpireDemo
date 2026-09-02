@@ -2,7 +2,7 @@
 
 Applies to `Source/SlayTheSpireDemo/UI/**`.
 
-Read `docs/Phase6UIA3Implementation.md`, `docs/Phase6UIA2EImplementation.md`, and `docs/LegacyUIPreservationPolicy.md` before active A3 battle-UI work.
+Read `docs/Phase6UIA3Implementation.md`, `docs/Phase6UIA3CardFacePreviewAmendment.md`, `docs/Phase6UIA2EImplementation.md`, and `docs/LegacyUIPreservationPolicy.md` before active A3 battle-UI work.
 
 ## Legacy UI Preservation
 
@@ -62,14 +62,20 @@ Presentation may lock the View while Gameplay is request-eligible. Unlock only a
 
 ## Preview Phase Boundary
 
-UI-A2E is complete and sealed. Active A3 work is now authorized only under `docs/Phase6UIA3Implementation.md`.
+UI-A2E is complete and sealed. Active A3 work is authorized under `docs/Phase6UIA3Implementation.md` plus the later explicit UX amendment in `docs/Phase6UIA3CardFacePreviewAmendment.md`. The amendment controls A3-5 visible presentation where the two documents differ.
 
 Use the name **Target-Specific Current-State Preview**. Preview construction belongs to a Gameplay/read Query boundary. ViewModel/UMG own selection, preview-target nomination, hover/focus, clearing and display only; they must not iterate CardEffects or reimplement Damage/Block/Energy legality rules.
 
 The first Preview model uses a flat Blueprint-friendly Operations array. It reports supported values for the current `(BattleId, StateRevision, Card, Target)` and does not promise the final outcome of the whole card Resolution. Damage preview is resolved incoming damage per hit before Block absorption, not predicted HP loss.
 
+The visible A3-5 Preview belongs to the currently selected Native Hand card. Gameplay-resolved supported operation values may temporarily replace matching semantic values in that card face. Do not render a separate Damage/Block/Energy Preview label.
+
+`OV_PlayArea` is committed A2-only. A3 Preview must never add a child to it or reuse A2 damage-number presentation as a pre-commit surface.
+
+Energy/cost remain valid ImmediatePreview DTO fields for Gameplay-owned legality but are not a standalone visible A3-5 loss preview.
+
 Inspection and Preview are separate lifecycles. Do not reuse combatant/status inspection events as PreviewTarget ownership merely because hover may drive both.
 
 On BattleId/StateRevision change, clear selection, legal targets, PreviewTarget and Preview rather than retaining/recomputing selection across revisions.
 
-On accepted authoritative submission, clear pre-commit Preview before A2 committed playback takes visual ownership.
+On accepted authoritative submission, restore/clear the pre-commit card-face Preview before A2 committed playback takes visual ownership.
