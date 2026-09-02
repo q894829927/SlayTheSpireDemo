@@ -59,7 +59,7 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("SetCardView immediately refreshes name"), Name->GetText().ToString(), FString(TEXT("R4 Skill")));
 	TestEqual(TEXT("SetCardView immediately refreshes cost"), Cost->GetText().ToString(), FString(TEXT("2")));
 	TestEqual(TEXT("SetCardView immediately refreshes description"), Description->GetText().ToString(), FString(TEXT("Gain frozen test Block.")));
-	TestEqual(TEXT("SetCardView refreshes CardType using enum display text"), Type->GetText().ToString(), FString(TEXT("Skill")));
+	TestEqual(TEXT("SetCardView refreshes player-facing localized CardType"), Type->GetText().ToString(), FString(TEXT("技能")));
 	TestTrue(TEXT("SetCardView refreshes CardArt"), Art->GetBrush().GetResourceObject() == Texture);
 
 	Card->OnBattleCardRequested.AddUniqueDynamic(Sink, &UPhase6UIA2NR4RequestSink::HandleCardRequested);
