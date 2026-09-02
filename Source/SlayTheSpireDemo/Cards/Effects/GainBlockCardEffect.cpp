@@ -86,6 +86,7 @@ void UGainBlockCardEffect::BuildImmediatePreviewOperations(
 	Operation.EffectIndex = EffectIndex;
 	Operation.SemanticArgumentName = DescriptionArgumentName;
 	Operation.Type = EImmediatePreviewOperationType::Block;
+	Operation.BaseAmount = BaseAmount;
 	Operation.ResolvedAmount = Spec.ResolvedAmount;
 	Operation.HitCount = 1;
 	OutOperations.Add(Operation);
