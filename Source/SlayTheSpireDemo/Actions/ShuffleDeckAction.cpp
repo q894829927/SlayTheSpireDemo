@@ -38,7 +38,10 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!Deck->HasCardsInDiscardPile() || Deck->HasCardsInDrawPile())
+	// A gameplay shuffle is only legal when DrawPile is empty. DiscardPile may
+	// also be empty: that zero-card shuffle is still a committed fact so each
+	// exhausted draw attempt can trigger shuffle-reactive mechanics exactly once.
+	if (Deck->HasCardsInDrawPile())
 	{
 		Deck->ShuffleDiscardIntoDrawPileCommit();
 		Finish();
@@ -110,6 +113,11 @@ void UShuffleDeckAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Action] DeckShuffled event dispatched after successful shuffle commit."));
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Action] DeckShuffled event dispatched after committed gameplay shuffle. MovedCards=%d."),
+		CommitResult.MovedCardCount
+	);
 	Finish();
 }
