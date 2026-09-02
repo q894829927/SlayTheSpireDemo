@@ -7,6 +7,7 @@ void URelicInstance::Initialize(URelicData* InDefinition, ABattleManager* InBatt
 	Definition = InDefinition;
 	Battle = InBattle;
 	RuntimeSequence = InRuntimeSequence;
+	Counter = 0;
 }
 
 URelicData* URelicInstance::GetDefinition() const
@@ -27,6 +28,16 @@ uint64 URelicInstance::GetRuntimeSequence() const
 ABattleManager* URelicInstance::GetBattle() const
 {
 	return Battle.Get();
+}
+
+int32 URelicInstance::GetCounter() const
+{
+	return Counter;
+}
+
+void URelicInstance::SetCounterFromAction(int32 InCounter)
+{
+	Counter = FMath::Max(0, InCounter);
 }
 
 FString URelicInstance::GetDebugLabel() const
