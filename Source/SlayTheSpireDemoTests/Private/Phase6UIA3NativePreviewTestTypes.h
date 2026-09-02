@@ -7,7 +7,7 @@
 #include "Phase6UIA3NativePreviewTestTypes.generated.h"
 
 class UBattleHUDViewModel;
-class UOverlay;
+class UHorizontalBox;
 
 UCLASS(Transient)
 class SLAYTHESPIREDEMOTESTS_API UPhase6UIA3PreviewCombatantProbe
@@ -22,7 +22,8 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA3PreviewHUDProbe : public UBattleHUDWi
 	GENERATED_BODY()
 
 public:
-	void ConfigurePreviewSurface(UBattleHUDViewModel* InViewModel, UOverlay* InOverlay);
+	void ConfigurePreviewSurface(UBattleHUDViewModel* InViewModel, UHorizontalBox* InHand);
+	void RequestPreviewForTesting(int32 TargetId);
 	void ReleasePreviewSurfaceForTesting();
 	void ClearPreviewAsCombatantWouldForTesting();
 };
