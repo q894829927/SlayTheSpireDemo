@@ -18,11 +18,13 @@ UI-A3: IN PROGRESS / AUTHORIZED
 A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
-A3-4 ViewModel Transient Preview Lifecycle: REGRESSION FIX IMPLEMENTED / REVALIDATION PENDING
-A3-5 Native card-face Preview + A2/A3 PIE: IMPLEMENTED / REVALIDATION PENDING
+A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / REVALIDATED / SEALED
+A3-5 Native card-face Preview + A2/A3 PIE: VALIDATED / SEAL PENDING
 ```
 
 A production PIE regression was traced back to A3-4 revision invalidation rather than the sealed A2 CardPlayed implementation. A3-5 also exposed two real ownership problems during diagnosis (standalone Preview sharing `OV_PlayArea`, and Preview hover using structural `OnChanged`), both of which remain fixed, but neither was the final cause of the missing CardPlayed animation.
+
+The A3-4 regression fix has now been revalidated by both focused Automation suites and production PIE. CardPlayed animation is restored.
 
 ## Active authority
 
@@ -53,9 +55,10 @@ A3-3 compatibility rerun ImmediatePreviewQuery: 2/2 Success (user-reported)
 
 A3-4 original Editor Build: PASS (user-reported)
 A3-4 original Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
+A3-4 regression-fix Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
 ```
 
-The original A3-4 focused gate did not cover the interaction between its `OnReadStateReady` revision invalidation broadcast and an A2 Record already started by deferred public Presentation delivery. That omission is now treated as a regression gap; the production behavior must be revalidated before A3-4 is considered sealed again.
+The original A3-4 focused gate did not cover the interaction between its `OnReadStateReady` revision invalidation broadcast and an A2 Record already started by deferred public Presentation delivery. That regression gap is now covered explicitly: Presentation-owned Ready invalidation may clear stale transient state but must not emit structural `OnChanged`.
 
 Historical shared-contract note: the old `SlayTheSpireDemo.Phase6UIA1.ViewModel` suite contains two stale assertions that mutate CardData/Status after the opening frozen Presentation baseline and expect a later subscriber to see those mutable changes. Do not weaken sealed frozen Presentation semantics to satisfy them.
 
@@ -201,46 +204,25 @@ SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported)
 production L_BattleTest PIE: FAIL — CardPlayed animation absent, only Presentation delay visible
 ```
 
-Current A3-4 playback-regression fix:
+Current regression-fix evidence:
 
 ```text
-Editor Build: NOT YET RUN on current head
-SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: NOT YET RUN on current head
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: NOT YET RUN on current head
-Production L_BattleTest PIE: NOT YET RUN on current head
+SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported, 2026-09-02)
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported, 2026-09-02)
+Production L_BattleTest PIE: PASS for restored CardPlayed animation (user-reported, 2026-09-02)
 ```
 
-## Next exact validation
-
-Run only:
+Result:
 
 ```text
-1. Development Editor Build once.
-2. Run SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle once; expect 3/3 PASS.
-3. Run SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expect 3/3 PASS.
-4. Run one production /Game/SlayTheSpireDemo/Maps/L_BattleTest PIE session.
+A3 transient Preview invalidation no longer cancels committed A2 CardPlayed playback.
+CardPlayed visible animation is restored in production PIE.
 ```
 
-PIE acceptance:
+## Next exact action
 
-```text
-Strike / Enemy:
-select Strike -> hover/focus Enemy -> selected Strike card-face Damage changes
-no separate Damage/Energy preview appears
-submit Enemy -> Preview clears
-A2 played card visibly moves from Hand toward OV_PlayArea
-committed Damage playback follows normally
+Do not make further behavioral changes to A2 playback or A3 Preview ownership for this defect. The regression is fixed and revalidated.
 
-Defend / Player:
-selected Defend card-face Block changes
-no separate Block/Energy preview appears
-submit -> Preview clears -> committed A2 playback remains coherent
+The remaining A3 administrative action is to review the final A3-5 acceptance evidence and seal A3-5 / UI-A3 if no additional PIE acceptance defect is reported.
 
-revision invalidation:
-old selection/Preview does not survive a new StateRevision
-but the Ready edge does not cancel an already-started committed A2 visual
-```
-
-If this exact fix still produces a missing visual, do not revisit Preview ownership first. Check whether `[BattleHUD][CardPlayedReject]` exists. If there is no rejection, inspect Native CardPlayed start/cancel/finish logging and Controller timeout state to establish whether any other caller cancels the accepted token.
-
-Do not run Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates a sealed shared contract. Do not start Phase 7 until A3-5 is validated and sealed.
+Do not run Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates a sealed shared contract. Do not start Phase 7 until A3-5 is sealed.
