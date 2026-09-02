@@ -26,6 +26,12 @@ public:
 	bool AddNumber(FName Name, double Value);
 	bool AddText(FName Name, const FText& Value);
 	bool AddPercentMagnitude(FName Name, int32 Numerator, int32 Denominator);
+
+	// Replaces one already-declared semantic argument with a Gameplay-resolved A3
+	// operation value. It deliberately cannot create a new argument, so target-
+	// specific card-face formatting stays inside the validated authored template.
+	bool OverrideInteger(FName Name, int64 Value);
+
 	void AddUnknown(FName Name, const FString& Error);
 	void AddError(const FString& Error);
 
