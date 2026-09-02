@@ -36,6 +36,8 @@ Runtime input bindings are not historical state. Refresh them only after Present
 
 When Presentation is enabled, `OnReadStateReady` must not bypass Presenter/Controller and directly apply live state to the HUD ViewModel.
 
+The generic `OnChanged` channel is structural/frozen HUD state and may rebuild formal surfaces. PreviewTarget/ImmediatePreview changes use the dedicated `OnPreviewChanged` channel and must not trigger `RefreshHand()` or recreate formal Hand Widgets. A2 `CardPlayed` relies on stable historical Hand Widget identity/geometry for its animation start anchor.
+
 ## Committed Presentation
 
 The committed-history flow is:
