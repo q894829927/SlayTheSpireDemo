@@ -8,6 +8,7 @@
 
 class UButton;
 class UImage;
+class URichTextBlock;
 class UTextBlock;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
@@ -47,8 +48,7 @@ public:
 	FBattleHUDCardView GetCardView() const { return CurrentCardView; }
 
 #if WITH_DEV_AUTOMATION_TESTS
-	// Avoids forcing the tests module to resolve SlateCore's FSlateColor table
-	// helpers merely to prove which A3 emphasis branch was selected.
+	// Semantic branch probe only. Rendering now comes from per-value RichText tags.
 	int8 GetImmediatePreviewToneForTesting() const { return ImmediatePreviewTone; }
 #endif
 
@@ -75,7 +75,7 @@ protected:
 	TObjectPtr<UTextBlock> Txt_Cost;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> Txt_CardDescription;
+	TObjectPtr<URichTextBlock> Txt_CardDescription;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Txt_CardType;
@@ -90,10 +90,10 @@ private:
 	UPROPERTY(Transient)
 	FBattleHUDCardView CurrentCardView;
 
-	FSlateColor BaseDescriptionColor = FSlateColor(FLinearColor::White);
 	bool bNativeBindingsValid = false;
 	bool bCardDelegateBound = false;
 	bool bImmediatePreviewApplied = false;
-	// -1 = decreased/cool, 0 = neutral/base, +1 = increased/red.
+	// -1 = at least one decrease and no increase, 0 = neutral, +1 = any increase.
+	// This is test-only semantic evidence; RichText may style multiple values independently.
 	int8 ImmediatePreviewTone = 0;
 };
