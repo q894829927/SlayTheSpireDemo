@@ -14,8 +14,8 @@ Phase 6UI-A3: COMPLETE / VALIDATED / SEALED
 
 Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
-7A Relic Runtime: IMPLEMENTED / VALIDATION PENDING
-7B Status + Relic Trigger Sources: NOT STARTED
+7A Relic Runtime: COMPLETE / VALIDATED / SEALED
+7B Status + Relic Trigger Sources: NEXT / NOT STARTED
 7C Sundial + GainEnergyAction: NOT STARTED
 7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
@@ -26,6 +26,12 @@ Active authority:
 docs/Phase7RelicsImplementation.md
 ```
 
+7A validation authority:
+
+```text
+docs/Phase7AValidation.md
+```
+
 Final Phase 6UI-A authority remains:
 
 ```text
@@ -34,7 +40,7 @@ docs/Phase6UIA3Seal.md
 
 ## Phase 7 design review closure
 
-The 2026-09-02 pre-7A review was incorporated into the authority and the design is now sealed for the first vertical slice.
+The 2026-09-02 pre-7A review was incorporated into the authority and the design is sealed for the first vertical slice.
 
 Locked clarifications:
 
@@ -79,7 +85,7 @@ lazy BattleId/getter initialization
 7B/7C/Presentation work
 ```
 
-## 7A implementation now on main
+## 7A implementation
 
 Runtime foundation:
 
@@ -121,7 +127,7 @@ StartBattle
 → continue Presentation/opening-hand flow
 ```
 
-`GetPlayerRelicContainer()` now only returns the already-owned pointer and has no initialization side effects.
+`GetPlayerRelicContainer()` only returns the already-owned pointer and has no initialization side effects.
 
 Key implementation commits:
 
@@ -136,22 +142,23 @@ feat(phase7a): initialize starting relics during battle setup
 test(phase7a): cover relic runtime and setup ordering
 ```
 
-Roadmap status update:
+## 7A accepted validation
+
+Validated implementation HEAD before evidence-only documentation updates:
 
 ```text
-7581d113a8c103320fbcd4136ee43ce48ead220e
-docs(phase7): mark relic runtime implementation pending validation
+86de988bef8e85c17d6197394f72cf756627e693
 ```
 
-## 7A focused Automation
-
-Prefix:
+User-reported UE 5.8 evidence on 2026-09-02:
 
 ```text
-SlayTheSpireDemo.Phase7.RelicRuntime
+Development Editor Build                         PASS
+SlayTheSpireDemo.Phase7.RelicRuntime            5/5 PASS
+Manual PIE                                      NOT REQUIRED FOR 7A
 ```
 
-Current five tests:
+Focused tests:
 
 ```text
 MembershipAndIdentity
@@ -161,35 +168,26 @@ BattleRestartLifecycle
 StartingRelicsPrecedeLaterStatus
 ```
 
-The final test explicitly proves that the Relic getter does not lazily initialize before StartBattle, configured Relics preserve authored order, and a Status created after setup receives a later battle-wide RuntimeSequence.
+This closes the 7A acceptance contract. No Phase6R, A2D5, Shipping, Legacy parity or manual PIE rerun is required because no concrete failure invalidated those sealed gates.
 
-## Validation state
-
-No current-main UE build or Phase 7A Automation run has been performed or claimed yet.
-
-Historical `phase7-relic-gameplay` build/4-test results are background evidence only; they do not validate the selectively ported current-main implementation.
-
-The required 7A gate is intentionally small:
+Formal evidence:
 
 ```text
-1. Development Editor Build once.
-2. Run SlayTheSpireDemo.Phase7.RelicRuntime once; expected 5 focused tests.
-3. No manual PIE gate for 7A.
-4. Record the result and STOP.
+docs/Phase7AValidation.md
 ```
-
-Do not run Phase6R, A2D5, Shipping, Legacy parity or the historical branch's old 84-test regression batch unless a concrete failure directly invalidates one of those sealed contracts.
 
 ## Next exact action
 
-USER ACTION REQUIRED:
-
-Run the current `main` Development Editor build. If it passes, run exactly:
+The next phase boundary is:
 
 ```text
-SlayTheSpireDemo.Phase7.RelicRuntime
+Phase 7B — Status + Relic Trigger Sources
 ```
 
-If Build and all five focused tests pass, record 7A as **COMPLETE / VALIDATED / SEALED** and move the active phase boundary to **7B — Status + Relic Trigger Sources**.
+7B must generalize only the existing Status-shaped Trigger runtime-source boundary so Status and Relic candidates can share one deterministic Dispatcher ordering domain:
 
-Do not begin 7B code before the 7A focused gate is accepted.
+```text
+Priority → RuntimeSequence → LocalTriggerIndex
+```
+
+Do not begin Sundial behavior, positive Energy mutation, Relic UI, Abacus, Phase 8, Relic modifiers, run persistence or advanced Relic Presentation as part of the 7B refactor.
