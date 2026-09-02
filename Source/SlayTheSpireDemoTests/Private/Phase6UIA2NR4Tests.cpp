@@ -44,7 +44,8 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	View.Cost = 2;
 	View.CardType = ECardType::Skill;
 	View.TargetType = ECardTargetType::Self;
-	View.Description = FText::FromString(TEXT("Gain frozen test Block."));
+	View.Description = FText::FromString(TEXT("Gain 5 Block."));
+	View.RichDescription = FText::FromString(TEXT("Gain <PreviewIncrease>6</> Block."));
 	View.CardArt = Texture;
 	View.bGameplayPlayable = true;
 
@@ -56,9 +57,13 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("GetCardView preserves Cost"), RoundTrip.Cost, 2);
 	TestEqual(TEXT("GetCardView preserves TargetType"), RoundTrip.TargetType, ECardTargetType::Self);
 	TestTrue(TEXT("GetCardView preserves CardArt"), RoundTrip.CardArt.Get() == Texture);
+	TestEqual(TEXT("GetCardView preserves rich description"), RoundTrip.RichDescription.ToString(), FString(TEXT("Gain <PreviewIncrease>6</> Block.")));
 	TestEqual(TEXT("SetCardView immediately refreshes name"), Name->GetText().ToString(), FString(TEXT("R4 Skill")));
 	TestEqual(TEXT("SetCardView immediately refreshes cost"), Cost->GetText().ToString(), FString(TEXT("2")));
-	TestEqual(TEXT("SetCardView immediately refreshes description"), Description->GetText().ToString(), FString(TEXT("Gain frozen test Block.")));
+	TestEqual(
+		TEXT("SetCardView prefers current RichText description when supplied"),
+		Description->GetText().ToString(),
+		FString(TEXT("Gain <PreviewIncrease>6</> Block.")));
 	TestEqual(TEXT("SetCardView refreshes player-facing localized CardType"), Type->GetText().ToString(), FString(TEXT("技能")));
 	TestTrue(TEXT("SetCardView refreshes CardArt"), Art->GetBrush().GetResourceObject() == Texture);
 
