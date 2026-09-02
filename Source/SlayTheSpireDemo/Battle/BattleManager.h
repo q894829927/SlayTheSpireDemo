@@ -17,6 +17,8 @@ class UBattleActionQueue;
 class UCardData;
 class UCardInstance;
 class UDeckRuntime;
+class URelicContainer;
+class URelicData;
 class UStatusData;
 class UTurnEndedAction;
 struct FBattleReadSnapshot;
@@ -72,6 +74,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Cards")
 	TArray<TObjectPtr<UCardData>> DebugStartingDeck;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Relics")
+	TArray<TObjectPtr<URelicData>> DebugStartingRelics;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug|Status")
 	TArray<TObjectPtr<UStatusData>> DebugPhase5AStatuses;
@@ -144,6 +149,8 @@ public:
 	bool CanSpendEnergy(int32 Amount) const;
 	bool TrySpendEnergy(int32 Amount);
 	uint64 AllocateRuntimeSequence();
+	URelicContainer* GetPlayerRelicContainer();
+	const URelicContainer* GetPlayerRelicContainer() const;
 
 	bool TryResolveCombatantPresentationId(
 		const ACombatant* Combatant,
@@ -219,6 +226,7 @@ private:
 	void StartEnemyTurn();
 	void CommitNextEnemyIntent();
 	FEnemyIntent ChooseNextEnemyIntent() const;
+	bool InitializeRelicsForBattle();
 
 	void HandleActionQueueEmpty();
 	void HandleActionQueueResolutionIdle();
@@ -281,6 +289,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<URelicContainer> PlayerRelicContainer = nullptr;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBattlePresentationRecorder> PresentationRecorder = nullptr;
