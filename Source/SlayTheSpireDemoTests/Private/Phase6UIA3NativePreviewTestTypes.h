@@ -24,6 +24,7 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA3PreviewHUDProbe : public UBattleHUDWi
 public:
 	void ConfigurePreviewSurface(UBattleHUDViewModel* InViewModel, UOverlay* InOverlay);
 	void ReleasePreviewSurfaceForTesting();
+	void ClearPreviewAsCombatantWouldForTesting();
 };
 
 UCLASS(Transient)
