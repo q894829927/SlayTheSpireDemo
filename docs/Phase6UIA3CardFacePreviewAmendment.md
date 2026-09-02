@@ -2,11 +2,11 @@
 
 Date: **2026-09-02**
 
-Status: **AUTHORIZED UX AMENDMENT / RICHTEXT VALIDATED / A3-5 SEAL PENDING**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 This document records the explicit A3-5 UX/ownership change made after production PIE exposed conflicts between the first standalone Preview surface and sealed A2 `CardPlayed` playback.
 
-Where this document conflicts with the A3-5 presentation details in `docs/Phase6UIA3Implementation.md`, this amendment controls. The underlying A3 Query semantics and all sealed A2 Presentation semantics remain unchanged.
+Where this document conflicts with the A3-5 presentation details in `docs/Phase6UIA3Implementation.md`, this amendment controls. Final phase acceptance/status is recorded in `docs/Phase6UIA3Seal.md`. The underlying A3 Query semantics and all sealed A2 Presentation semantics remain unchanged.
 
 ## Locked visible behavior
 
@@ -198,6 +198,14 @@ SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS
 Production PIE: Strength-modified card-face Damage changes color correctly
 ```
 
-The current project does not yet contain a playable Dexterity-granting card, so a Dexterity-specific manual PIE spot-check was not run. This is **accepted for the current slice** because `SlayTheSpireDemo.UIA3.RichCardTextBaseline.BlockTracksDexterityAndFrailty` directly covers the Block authored-base RichText behavior in Automation and passed. A future playable Dexterity card may be used for an additional manual spot-check, but that absence is not a blocker for the current RichText acceptance record.
+The current project does not yet contain a playable Dexterity-granting card, so a Dexterity-specific manual PIE spot-check was not run. This is **accepted for the current slice** because `SlayTheSpireDemo.UIA3.RichCardTextBaseline.BlockTracksDexterityAndFrailty` directly covers the Block authored-base RichText behavior in Automation and passed. A future playable Dexterity card may be used for an additional manual spot-check, but that absence is not a blocker for the sealed RichText acceptance record.
 
-If the played card later fails to appear and `[BattleHUD][CardPlayedReject]` is present, capture those lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
+## Seal result
+
+```text
+A3-5 Native card-face Preview: COMPLETE / VALIDATED / SEALED
+RichText per-value comparison styling: COMPLETE / VALIDATED / SEALED
+Phase 6UI-A3: COMPLETE / VALIDATED / SEALED
+```
+
+No additional manual Dexterity PIE gate is required to reopen this slice. If the played card later fails to appear and `[BattleHUD][CardPlayedReject]` is present, capture those lines before changing A2 behavior. Do not weaken sealed A2 acceptance predicates merely to make the visual start.
