@@ -19,7 +19,7 @@ A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
 A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / VALIDATED / SEALED
-A3-5 Minimal Native UMG + A2/A3 Combined PIE: NEXT IMPLEMENTATION SLICE
+A3-5 Minimal Native UMG + A2/A3 Combined PIE: IMPLEMENTED / VALIDATION PENDING
 ```
 
 UI-A2 remains complete/sealed. Native HUD remains the sole active production implementation. Legacy HUD/Card/Status remain retained/deprecated with zero production runtime dependency.
@@ -47,121 +47,137 @@ A3-2B Automation SlayTheSpireDemo.UIA3.ImmediatePreviewQuery: 2/2 Success, exit 
 A3-3 Editor Build: PASS
 A3-3 Automation SlayTheSpireDemo.UIA3.ImmediatePreviewLegality: 2/2 Success, exit 0
 A3-3 compatibility rerun SlayTheSpireDemo.UIA3.ImmediatePreviewQuery: 2/2 Success (user-reported)
-Manual PIE: NOT REQUIRED for A3-2/A3-3
+
+A3-4 Editor Build: PASS (user-reported)
+A3-4 Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: PASS (3 expected, user-reported)
+Manual PIE: NOT REQUIRED for A3-2/A3-3/A3-4
 ```
 
-A3-3 implementation commits:
+A3-4 historical shared-contract note remains: `SlayTheSpireDemo.Phase6UIA1.ViewModel` discovered 11 tests; directly affected interaction/revision/terminal cases passed, while two stale historical assertions (`SubscribeThenPullBuildsHUD`, `CardPresentationFieldsComeFromDefinition`) failed because they mutate Status/CardData after the opening frozen Presentation baseline has already been created. Do not weaken frozen Presentation semantics to make those assertions pass.
+
+## A3-5 implementation state
+
+Implementation commits after the A3-4 seal:
 
 ```text
-fa7832e07e78a2b2e0b23ce9835b95b95ea25ed2  feat(ui-a3): add preview legality and energy
-fca059cd150a8f1d004068e95cbc4573e3438749  test(ui-a3): keep A3-2B gate compatible with pre-target preview
-874013d7f62744a514459398e406f650d1aa2720  test(ui-a3): cover preview legality and energy
-3c05c7b1967e9864229b59270c84b90ae7c13bde  docs(ui-a3): seal A3-3 focused gate
+1dd72a378089d6e3e61a1de4996062e9e81c9f9f  feat(ui-a3): add dedicated combatant preview events
+5947d70a13b3979da9ac5e82eb95000b5d167265  feat(ui-a3): publish independent preview lifecycle
+b77b435d9aafd4cb1d8f86c1be4cb38a344572f6  feat(ui-a3): expose formatted immediate preview text
+3124784b6856e2b71369f5218cf862ffeeece05d  feat(ui-a3): format immediate preview for native hud
+b995e5b489347bda39c028d9b6c77feb59e4b316  feat(ui-a3): add native immediate preview text surface
+2ab3fdc549368473e2ce0a04f92c2d67a11447a8  feat(ui-a3): drive native preview text from viewmodel
+b108012a0c0f3c1a0fb37ce18481821806e3e906  feat(ui-a3): wire native preview surface contract
+6f27914acaa9fddbe59282fda29685cd5b907d50  feat(ui-a3): integrate native preview target surface
+bab2a1f31a10999de7b5b628722f46be15598809  feat(ui-a3): clear preview before target request
+8eae36f1b5077f02e96e575583ace2d355bcfbc5  test(ui-a3): add native preview integration probes
+03c52b76af82108a12eaf45d5d708dac0f971c90  test(ui-a3): implement native preview integration probes
+0b4b0e6406d598a5acdd0e4b70bf94c26457bdd0  test(ui-a3): cover native preview and a3 a2 handoff
 ```
 
-## A3-4 sealed implementation
-
-Implementation commits:
+Changed production boundary:
 
 ```text
-37e82b306fd47585b191c21c88f0dc4150c78c09  feat(ui-a3): add transient preview viewmodel state
-260866bff2e616ab16949345d7d37a77e3d90d18  feat(ui-a3): implement preview target lifecycle
-5552e382e279090a2afb7794cd85763d4434dc4a  feat(ui-a3): clear stale preview with viewmodel lifecycle
-4f63de522ce1e5ade12f1dd2fd393a31553f8315  test(ui-a3): cover viewmodel preview lifecycle
-```
-
-Changed boundary:
-
-```text
+Source/SlayTheSpireDemo/UI/BattleHUDCombatantPresentationWidgetBase.h/.cpp
 Source/SlayTheSpireDemo/UI/BattleHUDViewModel.h
-Source/SlayTheSpireDemo/UI/BattleHUDViewModel.cpp
 Source/SlayTheSpireDemo/UI/BattleHUDViewModelUIA3Preview.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA3ViewModelPreviewLifecycleTests.cpp
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDWidgetBase.cpp
+Source/SlayTheSpireDemo/UI/BattleHUDWidgetUIA3Preview.cpp
+Source/SlayTheSpireDemo/UI/BattleImmediatePreviewTextBlock.h/.cpp
 ```
 
-Sealed semantics:
+Implemented A3-5 semantics:
 
 ```text
-SetPreviewTargetById(TargetId) explicitly nominates only a current gameplay-provided legal target
-ClearPreviewTarget() clears target nomination and ImmediatePreview without cancelling card selection
-ViewModel never calculates Effects/Damage/Block/Energy rules; it delegates to BattleManager::TryBuildImmediateCardPreview
-Preview DTO must match current live binding BattleId + StateRevision + selected CardRuntimeId + Source/Target PresentationIds
-normal Preview build failure fails soft by clearing Preview state
-switching selected card clears previous Preview
-CancelSelection clears PreviewTarget + ImmediatePreview
-accepted authoritative card/end-turn submission clears Preview through interaction teardown
-loss/refresh of live bindings clears Preview
-ApplyPresentationSnapshot clears selection on every BattleId/StateRevision change even when bResetInteraction=false
-OnReadStateReady clears selection/legal targets/PreviewTarget/Preview immediately when Gameplay revision changes, including while PresentationController still owns historical display
-terminal / PresentationUnavailable paths clear Preview through existing interaction teardown
-PreviewTarget state is separate from combatant/status inspection delegates and does not alter card interaction state
+Combatant presentation exposes dedicated OnPreviewRequested(TargetId) / OnPreviewCleared delegates
+pointer/focus may drive both Inspection and Preview, but the two event/state lifecycles are independent
+stationary hover/focus republishes Preview when legal target state changes
+committed target interaction clears transient Preview before OnTargetRequested
+UBattleHUDWidget binds only the dedicated Preview delegates for PreviewTarget nomination
+ViewModel formats only already-resolved ImmediatePreview DTO fields; no Widget Gameplay calculations
+Native Preview surface is a dedicated UBattleImmediatePreviewTextBlock, not Enemy Intent, feedback, inspection tooltip or A2 damage-number text
+Preview surface is dynamically parented into OV_PlayArea only while valid Preview text exists
+clearing Preview synchronously removes that child, preserving OV_PlayArea for exclusive A2 CardPlayed ownership
+UBattleHUDWidgetBase::SelectTarget explicitly calls ClearPreviewTarget before SelectTargetById, guaranteeing pre-request A3 teardown for click/keyboard/controller submission paths
+accepted authoritative Request then follows the unchanged Gameplay/A2 resolution path
+no Legacy behavior/fallback/parity code was added
+no Blueprint asset dependency was added; production Legacy dependency closure is therefore not intentionally changed
 ```
 
-No UMG/widget rendering was added in A3-4.
-
-## A3-4 validation evidence
+First compact display formatting is presentation-only:
 
 ```text
-Editor Build: PASS (user-reported, latest A3-4 head)
-Focused Automation: SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle
-Expected tests: 3
-Result: PASS (user-reported)
-Manual PIE: NOT REQUIRED
+Damage 9
+Damage 9 x 2
+Block 8
+Energy 3 -> 2
 ```
 
-Because `UBattleHUDViewModel` is a shared contract, the historical prefix was also executed:
+Rejected validation remains unavailable on this minimal numeric surface; existing HUD feedback continues to own player-facing request-failure text. This avoids creating a duplicate legality/failure-reason table in A3 UI formatting.
+
+## Focused A3-5 Automation
+
+Prefix:
 
 ```text
-SlayTheSpireDemo.Phase6UIA1.ViewModel
-Discovered: 11 tests
-Directly affected interaction/revision/terminal cases: PASS
-Aggregate process exit: -1 because of exactly 2 stale historical assertions unrelated to the A3-4 diff
+SlayTheSpireDemo.UIA3.NativePreviewIntegration
 ```
 
-The two stale historical tests are:
+Expected tests:
 
 ```text
-SubscribeThenPullBuildsHUD
-CardPresentationFieldsComeFromDefinition
+DedicatedPreviewEventsStayIndependentFromInspection
+NativeSurfaceRendersAndClearsFromViewModel
+TargetSubmissionClearsPreviewBeforeAuthoritativeRequest
 ```
 
-They mutate Status/CardData after `FHUDTestFixture` construction has already called `StartBattle()` and frozen the opening Presentation baseline, then expect a late-subscriber ViewModel to see those later mutable changes. That expectation conflicts with the sealed A2 frozen-Presentation boundary. A3-4 did not change combatant Status or card presentation-field copying. Do not weaken frozen Presentation semantics to make these legacy assertions pass. Track them as historical test debt and repair their fixture timing separately if/when that old suite is maintained.
+The handoff test observes an intermediate ViewModel broadcast where the card is still selected / ChoosingTarget while `ImmediatePreview` has already been cleared. This proves A3 teardown precedes the authoritative target request rather than merely observing the final post-request Resolving state.
 
-The same aggregate run showed the directly affected A3-4 shared-contract regressions succeeding, including:
+## Validation actually performed for A3-5
+
+No UE validation is claimed yet for the A3-5 code.
 
 ```text
-ReadyRefreshClearsStaleSelection
-ResolutionFaultIsVisibleTerminalState
-SelectionUsesLegalTargetsAndCancelIsPresentationOnly
-SelfTargetUsesLegalPlayerSelection
-NoTargetRequiresConfirmAndLocksUntilReady
-TargetRequestLocksUntilReady
-EndTurnLocksUntilReady
-UnplayableCardSurfacesGameplayReason
+Editor Build: NOT RUN for A3-5
+Native WBP compile/save after parent C++ changes: NOT RUN
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: NOT RUN
+Production L_BattleTest combined A3/A2 PIE: NOT RUN
+Legacy dependency regression: NOT RUN / not currently invalidated because no asset dependency was added
+Shipping / Phase6R / A2D5 / broad Scenario suites: intentionally NOT RUN
 ```
 
-A3 / A2 broad suites, Phase6R, Shipping and Legacy parity were intentionally not run.
+## Next exact action — A3-5 validation
 
-A3-4 is COMPLETE / VALIDATED / SEALED.
-
-## Next exact action — A3-5
-
-Implement only:
+Closed-scope automated gate:
 
 ```text
-A3-5 — Minimal Native UMG + A2/A3 handoff
+1. Editor Build once at current head.
+2. Open/Compile/Save affected Native assets once after C++ parent changes:
+   WBP_BattleHUD_Native
+   WBP_CombatantPresentation
+   require compile success / 0 Blueprint errors (BS_UP_TO_DATE equivalent).
+3. Run exactly:
+   SlayTheSpireDemo.UIA3.NativePreviewIntegration
+   expected: 3 tests / all Success / exit 0.
 ```
 
-Required scope:
+Then run one production `L_BattleTest` focused PIE session and verify:
 
 ```text
-Native HUD only
-small dedicated transient Preview surface
-PreviewTarget nomination from hover/focus through dedicated Preview events/state, separate from inspection and authoritative target submission
-render current supported Operations / Energy / validation from ViewModel ImmediatePreview only
-accepted authoritative submission clears A3 Preview immediately before A2 committed Presentation playback owns the visual result
-no Legacy fallback/parity path
-no Gameplay rule recomputation in Widget code
+Strike / Enemy:
+select Strike -> hover/focus Enemy -> Damage Preview appears
+submit Enemy -> Preview disappears before A2 CardPlayed/Damage playback
+A2 playback remains coherent and input unlocks only after catch-up
+
+Defend / Player:
+select Defend -> hover/focus Player -> Block Preview appears
+submit Player -> Preview disappears and committed Block playback takes over
+
+revision invalidation:
+relevant state/modifier change -> old selection/Preview does not survive new StateRevision
+new selection -> Preview reflects the current state
+
+No duplicate target highlight, stale Preview, Preview-over-A2 overlap or visible A3/A2 flashback.
 ```
 
-Acceptance must follow `docs/Phase6UIA3Implementation.md`: focused automated widget/lifecycle gate plus the required combined Native PIE handoff check. Do not start Phase 7 until A3-5 is sealed.
+Do not run Phase6R, A2D5, Shipping, broad Scenario A-E or Legacy parity unless a concrete failure invalidates their sealed contracts. Do not start Phase 7 until A3-5 is validated and sealed.
