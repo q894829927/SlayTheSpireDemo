@@ -2,11 +2,11 @@
 
 Date: **2026-09-02**
 
-Status: **DESIGN AUTHORIZED / IMPLEMENTATION NOT STARTED**
+Status: **DESIGN SEALED / 7A IMPLEMENTATION AUTHORIZED**
 
-Phase 6UI-A is complete, validated and sealed by `docs/Phase6UIA3Seal.md`. Phase 7 is now the next project phase.
+Phase 6UI-A is complete, validated and sealed by `docs/Phase6UIA3Seal.md`. Phase 7 is now the active project phase.
 
-This document is the active Phase 7 design authority. Runtime code must not be started from this document until the user explicitly authorizes the implementation slice.
+This document is the formal Phase 7 implementation authority. The user has explicitly authorized Phase 7A after the design review recorded on 2026-09-02. Later slices remain separately gated by this document.
 
 ---
 
@@ -93,6 +93,7 @@ relic removal
 relic stacking/duplicates
 relic-specific VFX/SFX
 RelicTriggered dedicated Presentation Record
+RelicCounterChanged dedicated Presentation Record
 advanced tooltip/inspect UX
 A3 prediction of Relic reactions
 universal modifier-source framework
@@ -122,8 +123,8 @@ Recommended first-version fields:
 FName RelicId;
 FText DisplayName;
 FText Description;
-TObjectPtr<UTexture2D> Icon;              // optional for first asset
-TArray<TObjectPtr<UBattleTrigger>> Triggers;
+TObjectPtr<UTexture2D> Icon;              // optional until the UI slice
+TArray<TObjectPtr<UBattleTrigger>> Triggers; // introduced when 7B needs it
 ```
 
 The Trigger subobjects are immutable definition objects, exactly like Status trigger definitions.
@@ -132,18 +133,16 @@ Do not put mutable Sundial progress on `URelicData`.
 
 ### 4.2 URelicInstance
 
-Recommended first-version runtime state:
+Core 7A runtime identity is:
 
 ```text
 Definition
 RelicId
 RuntimeSequence
-Counter
+Battle context
 ```
 
-`Counter` is runtime state used by Sundial. It is not stored on the Trigger definition.
-
-The first version does not need a universal arbitrary key/value state bag. Add another explicit runtime field only when a concrete second Relic requires it.
+Sundial adds its concrete mutable `Counter` only when 7C requires it. Do not add a universal arbitrary key/value state bag in 7A. Add another explicit runtime field only when a concrete Relic requires it.
 
 ### 4.3 URelicContainer
 
@@ -161,7 +160,7 @@ expose read-only ordered instances to Gameplay queries / dispatcher
 
 Mid-battle relic acquisition is out of scope; first-version Relics are configured before the battle starts.
 
-### 4.4 RuntimeSequence
+### 4.4 RuntimeSequence and exact battle-setup order
 
 Relics use the existing battle-wide:
 
@@ -179,9 +178,33 @@ Priority
 → LocalTriggerIndex
 ```
 
-No `SourceKind` tiebreaker is required if RuntimeSequence allocation remains unique battle-wide.
+No `SourceKind` tiebreaker is required because RuntimeSequence allocation is unique inside one battle.
 
-Starting Relics are instantiated in their configured array order at one fixed battle-setup point before gameplay shuffle events can occur.
+Because RuntimeSequence is a cross-source ordering contract, starting Relic creation must not be lazy and must not depend on the first caller of a getter. `GetPlayerRelicContainer()` is a read/access boundary, not a hidden initialization boundary.
+
+The Phase 7A integration point is locked to the current `ABattleManager::StartBattle()` lifecycle:
+
+```text
+create/reset ActionQueue + EventDispatcher + DeckRuntime
+→ initialize DeckRuntime from configured deck
+   - setup shuffle may happen here
+   - setup shuffle emits no gameplay DeckShuffled event
+   - deck setup consumes no battle RuntimeSequence
+→ NextRuntimeSequence = 1
+→ Player.InitializeCombatant / Enemy.InitializeCombatant
+   - resets Status containers
+   - does not create runtime Status instances
+→ advance BattleId / establish the new battle state
+→ initialize PlayerRelicContainer for this battle
+→ instantiate configured StartingRelics in authored array order
+   - each Relic consumes ABattleManager::AllocateRuntimeSequence()
+→ all subsequent runtime Status creation and other sequence-owning sources
+→ normal opening-hand / turn flow
+```
+
+This gives configured Starting Relics the earliest runtime sequences in the new battle after the allocator reset. Any Status created later in the battle receives a later RuntimeSequence. If a future feature introduces formal configured Starting Statuses, their relative setup position must be explicitly designed rather than silently changing this contract.
+
+A battle restart rebuilds Relic membership at the same explicit setup point. RuntimeSequence may restart from `1` in a new BattleId; cross-battle identity must therefore never be interpreted as RuntimeSequence alone.
 
 ---
 
@@ -333,17 +356,34 @@ Do not react to setup shuffle because setup emits no `FDeckShuffledEvent`.
 
 Do not inspect card identity, DrawAction identity or RetryDraw identity.
 
-### 6.3 Trigger remains read-only
+### 6.3 Trigger remains read-only and freezes intended configuration
 
 `USundialTrigger::BuildReactions` must not increment the counter and must not grant Energy directly.
 
-It creates one reaction Action:
+It creates one reaction Action and freezes the immutable intended values into that Action at construction time:
 
 ```text
-USundialAdvanceAction
+USundialTrigger::BuildReactions
+↓
+new USundialAdvanceAction
+↓
+Initialize(
+    RelicInstance,
+    ShufflesRequired,
+    EnergyGain
+)
 ```
 
-The trigger definition carries configuration; mutable progress belongs to `URelicInstance` and is committed by the Action.
+The Action therefore owns its intended operation:
+
+```text
+RequiredShuffles = authored ShufflesRequired at BuildReactions time
+EnergyGain       = authored EnergyGain at BuildReactions time
+```
+
+`USundialAdvanceAction::Execute()` must not rediscover the Trigger by walking `RelicData.Triggers[]`, casting back to `USundialTrigger`, and reinterpreting definition configuration.
+
+Mutable progress still belongs to `URelicInstance` and is committed only by the Action.
 
 ### 6.4 SundialAdvanceAction
 
@@ -352,16 +392,16 @@ This is intentionally a narrow content vertical-slice Action rather than a specu
 Execute-time behavior:
 
 ```text
-validate RelicInstance / RelicData / Battle
-validate ShufflesRequired > 0 and EnergyGain > 0
+validate exact current RelicInstance membership / Battle
+validate frozen RequiredShuffles > 0 and frozen EnergyGain > 0
 ↓
 advance the live Sundial counter by 1
 ↓
-if counter < ShufflesRequired:
+if counter < RequiredShuffles:
     commit counter
     Finish
 
-if counter reaches ShufflesRequired:
+if counter reaches RequiredShuffles:
     reset counter to 0
     create dependent UGainEnergyAction(+EnergyGain)
     propagate PresentationRecordWriter
@@ -426,6 +466,22 @@ Do not let Sundial directly assign `Battle->Energy`.
 
 If the existing EnergyChanged record construction is currently private to `BattleManager.cpp`, extract only one narrowly scoped shared helper so `BattleManager` and `UGainEnergyAction` produce identical committed record semantics. Do not create a general Presentation framework refactor.
 
+### 7.3 Independent primitive acceptance
+
+Sundial tests validate the Relic mechanic. `TryGain` / `UGainEnergyAction` receive a separate small focused primitive test group so the reusable Energy contract is not proved only indirectly through Sundial.
+
+It must cover:
+
+```text
+Gain +2 succeeds
+Energy may exceed MaxEnergy
+zero amount rejected
+negative amount rejected
+integer overflow rejected
+invalid Battle fails soft
+committed EnergyChanged payload has exact Before / After / Delta
+```
+
 ---
 
 ## 8. Read state, frozen Presentation and minimal UI
@@ -449,7 +505,9 @@ FRelicReadView
 
 ### 8.2 Frozen/HUD view
 
-Freeze to a pointer-free player-facing DTO:
+Freeze to a **mutable-gameplay-runtime-pointer-free player-facing DTO**. It must not retain `URelicInstance*` or other mutable Gameplay runtime truth. Immutable presentation asset references such as `UTexture2D` are allowed, matching existing frozen Card/HUD presentation practice.
+
+Conceptually:
 
 ```text
 FBattleHUDRelicView
@@ -457,25 +515,55 @@ FBattleHUDRelicView
 - RuntimeSequence
 - DisplayName
 - Description
+- bShowCounter
 - Counter
+- CounterMax
 - Icon
 ```
 
-The Presentation FinalSnapshot owns historical display state while A2 playback is active, exactly as for existing HUD surfaces.
-
-### 8.3 No dedicated RelicTriggered record in first version
-
-Do not add a new Presentation Record merely to flash Sundial in the first slice.
-
-First-version visible behavior is sufficient if:
+Counter presentation is data-driven rather than RelicId-driven:
 
 ```text
-DeckShuffled committed Presentation plays normally
-EnergyChanged committed Presentation shows +2 Energy on the third shuffle
-FinalSnapshot/catch-up updates Sundial counter coherently
+Sundial:
+    bShowCounter = true
+    Counter      = current runtime progress
+    CounterMax   = 3
+
+Relic with no counter UI:
+    bShowCounter = false
+    Counter / CounterMax are ignored by the Widget
 ```
 
-A dedicated RelicTriggered/RelicCounterChanged visual record is deferred until a concrete UX need proves it necessary.
+Native UI must never write `if (RelicId == "Sundial")` merely to decide whether a counter is visible.
+
+The Presentation FinalSnapshot owns historical display state while A2 playback is active, exactly as for existing HUD surfaces.
+
+### 8.3 Locked historical playback semantics without a Relic counter Record
+
+Phase 7 first version deliberately does **not** provide record-by-record historical playback for Relic counter changes.
+
+There is no `RelicCounterChanged` / `RelicTriggered` Record and therefore no reducer operation that can advance the historical Relic counter between individual Records inside one Envelope.
+
+Locked behavior:
+
+```text
+while an A2 Envelope is actively playing:
+    Relic counter display remains at the last completed historical snapshot
+
+DeckShuffled Record may play:
+    Relic counter display does not advance from that Record alone
+
+third shuffle may then play EnergyChanged(+2):
+    Relic counter may still visually show the previous historical value
+
+when the Envelope completes / reconciles:
+    Relic display is replaced/reconciled to Envelope.FinalSnapshot
+    Counter then reflects the exact committed final value
+```
+
+This lag until FinalSnapshot reconciliation is intentional and acceptable for Phase 7. It preserves the existing A2 historical model without inventing a new Presentation Record solely for first-version counter animation.
+
+A future `RelicCounterChanged` or `RelicTriggered` Record may provide per-trigger visual progression if a concrete UX requirement justifies it.
 
 ### 8.4 Native UI
 
@@ -490,7 +578,7 @@ First version only needs:
 
 ```text
 name/icon
-counter when relevant
+counter when bShowCounter is true
 basic tooltip/description if cheap within existing Native patterns
 ```
 
@@ -521,9 +609,11 @@ A2 remains responsible for showing what actually committed after submission.
 
 ---
 
-## 10. Recommended implementation slices
+## 10. Implementation slices
 
 ### 7A — Relic Runtime
+
+Status: **AUTHORIZED / START NOW**
 
 Scope:
 
@@ -531,12 +621,12 @@ Scope:
 URelicData
 URelicInstance
 URelicContainer
-BattleManager ownership/setup
+BattleManager explicit ownership/setup
 battle-wide RuntimeSequence
 focused runtime tests
 ```
 
-No dispatcher changes, Sundial trigger or UI yet.
+No dispatcher changes, Sundial trigger, Counter behavior or UI yet.
 
 Acceptance:
 
@@ -545,11 +635,20 @@ AUTOMATED
 - Editor Build once
 - SlayTheSpireDemo.Phase7.RelicRuntime focused suite once
 
+The focused suite must include the explicit setup-order contract:
+- configured Starting Relics are instantiated during StartBattle, not lazily from a getter
+- configured Relics preserve authored order
+- each receives a non-zero battle RuntimeSequence
+- a Status/runtime source created after battle setup receives a later RuntimeSequence
+- battle restart rebuilds exact Relic instances for the new BattleId
+
 MANUAL PIE
 - none
 ```
 
 ### 7B — Status + Relic Trigger Sources
+
+Status: **NOT STARTED**
 
 Scope:
 
@@ -579,6 +678,8 @@ Do not run the full Phase6R aggregate.
 
 ### 7C — Sundial + GainEnergyAction
 
+Status: **NOT STARTED**
+
 Scope:
 
 ```text
@@ -587,12 +688,21 @@ UGainEnergyAction
 USundialTrigger
 USundialAdvanceAction
 DA_Relic_Sundial or equivalent production definition
+focused GainEnergy primitive tests
 focused Sundial tests
 ```
 
 Acceptance must prove:
 
 ```text
+GainEnergy primitive:
++2 succeeds
+may exceed MaxEnergy
+0 / negative / overflow reject
+invalid Battle fails soft
+EnergyChanged Before / After / Delta exact
+
+Sundial:
 setup shuffle does not advance Sundial
 first gameplay shuffle: 0 -> 1, no Energy gain
 second gameplay shuffle: 1 -> 2, no Energy gain
@@ -600,6 +710,7 @@ third gameplay shuffle: 2 -> 0, exactly +2 Energy
 fourth gameplay shuffle: 0 -> 1
 only real committed DeckShuffled events count
 trigger/build stage is read-only
+USundialAdvanceAction consumes frozen RequiredShuffles / EnergyGain values
 counter mutation occurs through Action execution
 Energy gain occurs through dependent UGainEnergyAction
 reaction order remains deterministic
@@ -610,14 +721,16 @@ Manual PIE is not yet required if UI has not arrived.
 
 ### 7D — Relic Read/Frozen/Native UI
 
+Status: **NOT STARTED**
+
 Scope:
 
 ```text
 Relic read DTO
 frozen Presentation snapshot relic DTO
-ViewModel/HUD relic view
+ViewModel/HUD relic view with bShowCounter / Counter / CounterMax
 minimal Native relic Widget/container
-Sundial counter visible
+Sundial counter visible through FinalSnapshot reconciliation
 ```
 
 Acceptance:
@@ -633,7 +746,8 @@ ASSET
 MANUAL PIE
 - one production L_BattleTest pass
 - Sundial visible
-- real shuffles advance visible counter coherently
+- completed Envelopes reconcile visible counter to exact FinalSnapshot state
+- no claim of per-Record counter progression in Phase 7 first version
 - third real shuffle gives +2 Energy through committed playback
 - no duplicate relic widget / flashback / input lock
 ```
@@ -664,7 +778,7 @@ Do not implement Abacus before Sundial is independently complete unless the user
 
 ## 12. Files likely affected
 
-This is a design forecast, not authorization to edit them yet.
+This is a phase forecast; each slice must touch only its own required subset.
 
 ```text
 Source/SlayTheSpireDemo/Relics/RelicData.*
@@ -700,13 +814,20 @@ Relic != Status.
 RelicData is immutable; RelicInstance owns mutable progress.
 Relics are battle-scoped until a real run layer exists.
 Relics share ABattleManager RuntimeSequence allocation with Statuses.
+Starting Relics are created explicitly during StartBattle after allocator reset; getters do not lazily create them.
+Configured Starting Relics receive earlier RuntimeSequences than subsequent runtime Status creation.
 BattleEventDispatcher remains snapshot-based; no persistent Trigger Registry.
 Cross-source trigger order remains Priority → RuntimeSequence → LocalTriggerIndex.
 UBattleTrigger remains read-only eligibility/reaction construction.
+Sundial trigger freezes RequiredShuffles / EnergyGain into its reaction Action.
 Sundial counter mutation happens in an Action, never in Trigger/UI.
 Sundial reward uses a reusable GainEnergyAction.
+GainEnergy has an independent reusable primitive contract and focused tests.
 The first Phase 7 need generalizes Trigger sources only; Modifier pipelines are not generalized speculatively.
-No dedicated RelicTriggered Presentation Record is required in the first vertical slice.
+No dedicated RelicTriggered or RelicCounterChanged Presentation Record is required in the first vertical slice.
+Without such a Record, Relic counters remain at the last completed historical snapshot during A2 playback and update on FinalSnapshot reconciliation.
+HUD counter visibility is data-driven through bShowCounter / CounterMax, never by checking a concrete RelicId.
+Frozen/HUD Relic DTOs exclude mutable Gameplay runtime pointers but may retain immutable presentation asset references.
 A3 does not predict Relic reactions.
 ```
 
@@ -714,10 +835,12 @@ A3 does not predict Relic reactions.
 
 ## 14. Next exact action
 
-The next implementation slice, once explicitly authorized, is:
+The design is sealed for the first Phase 7 vertical slice. Do not expand the architecture again without a concrete implementation need or defect.
+
+The active implementation slice is now:
 
 ```text
 Phase 7A — Relic Runtime
 ```
 
-Before writing code, inspect only the exact battle setup/runtime-sequence ownership needed to place `URelicContainer` deterministically. Do not begin 7B/7C in the same slice.
+Implement only the definition/runtime/container foundation, explicit `StartBattle()` setup and focused runtime tests. Do not begin 7B/7C/7D in the same slice.
