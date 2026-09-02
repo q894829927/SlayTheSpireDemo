@@ -2,17 +2,45 @@
 
 bool FPreviewTextArgumentBuilder::AddInteger(FName Name, int64 Value)
 {
-	return AddValue(Name, FFormatArgumentValue(Value));
+	const bool bAdded = AddValue(Name, FFormatArgumentValue(Value));
+	if (bAdded)
+	{
+		IntegerPresentationMetadata.Remove(Name);
+	}
+	return bAdded;
+}
+
+bool FPreviewTextArgumentBuilder::AddIntegerWithAuthoredBase(FName Name, int64 Value, int64 AuthoredBase)
+{
+	if (!AddValue(Name, FFormatArgumentValue(Value)))
+	{
+		return false;
+	}
+
+	FIntegerPresentationMetadata& Metadata = IntegerPresentationMetadata.Add(Name);
+	Metadata.CurrentValue = Value;
+	Metadata.AuthoredBase = AuthoredBase;
+	return true;
 }
 
 bool FPreviewTextArgumentBuilder::AddNumber(FName Name, double Value)
 {
-	return AddValue(Name, FFormatArgumentValue(Value));
+	const bool bAdded = AddValue(Name, FFormatArgumentValue(Value));
+	if (bAdded)
+	{
+		IntegerPresentationMetadata.Remove(Name);
+	}
+	return bAdded;
 }
 
 bool FPreviewTextArgumentBuilder::AddText(FName Name, const FText& Value)
 {
-	return AddValue(Name, FFormatArgumentValue(Value));
+	const bool bAdded = AddValue(Name, FFormatArgumentValue(Value));
+	if (bAdded)
+	{
+		IntegerPresentationMetadata.Remove(Name);
+	}
+	return bAdded;
 }
 
 bool FPreviewTextArgumentBuilder::AddPercentMagnitude(FName Name, int32 Numerator, int32 Denominator)
@@ -55,6 +83,10 @@ bool FPreviewTextArgumentBuilder::OverrideInteger(FName Name, int64 Value)
 	}
 
 	*Existing = FFormatArgumentValue(Value);
+	if (FIntegerPresentationMetadata* Metadata = IntegerPresentationMetadata.Find(Name))
+	{
+		Metadata->CurrentValue = Value;
+	}
 	return true;
 }
 
@@ -66,6 +98,7 @@ void FPreviewTextArgumentBuilder::AddUnknown(FName Name, const FString& Error)
 		return;
 	}
 
+	IntegerPresentationMetadata.Remove(Name);
 	ArgumentValues.Add(Name, FFormatArgumentValue(FText::FromString(TEXT("?"))));
 }
 
@@ -82,6 +115,30 @@ bool FPreviewTextArgumentBuilder::Contains(FName Name) const
 const FFormatArgumentValue* FPreviewTextArgumentBuilder::FindValue(FName Name) const
 {
 	return Name.IsNone() ? nullptr : ArgumentValues.Find(Name);
+}
+
+bool FPreviewTextArgumentBuilder::TryGetAuthoredBaseComparison(
+	FName Name,
+	int64& OutCurrentValue,
+	int64& OutAuthoredBase
+) const
+{
+	OutCurrentValue = 0;
+	OutAuthoredBase = 0;
+	if (Name.IsNone())
+	{
+		return false;
+	}
+
+	const FIntegerPresentationMetadata* Metadata = IntegerPresentationMetadata.Find(Name);
+	if (Metadata == nullptr)
+	{
+		return false;
+	}
+
+	OutCurrentValue = Metadata->CurrentValue;
+	OutAuthoredBase = Metadata->AuthoredBase;
+	return true;
 }
 
 bool FPreviewTextArgumentBuilder::HasErrors() const
