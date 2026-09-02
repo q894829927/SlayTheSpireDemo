@@ -262,6 +262,7 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 		FrozenCard.Cost = Source.CurrentCost;
 		FrozenCard.TargetType = Source.TargetType;
 		FrozenCard.Description = Source.CurrentDescription;
+		FrozenCard.RichDescription = Source.CurrentRichDescription;
 
 		UCardInstance* Card = Source.Card.Get();
 		const UCardData* Definition = IsValid(Card) ? Card->GetDefinition() : nullptr;
