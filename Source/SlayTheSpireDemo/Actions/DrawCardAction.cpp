@@ -20,6 +20,7 @@ void UDrawCardAction::Initialize(UDeckRuntime* InDeck, ACombatant* InPresentatio
 	EventDispatcher = nullptr;
 	EventCombatants.Reset();
 	PresentationCardSource = InPresentationCardSource;
+	bRetriedAfterShuffle = false;
 }
 
 void UDrawCardAction::Initialize(
@@ -46,6 +47,7 @@ void UDrawCardAction::Initialize(
 		EventCombatants.Add(Combatant);
 	}
 	PresentationCardSource = InPresentationCardSource;
+	bRetriedAfterShuffle = false;
 }
 
 void UDrawCardAction::Execute(UBattleActionQueue* Queue)
@@ -103,70 +105,75 @@ void UDrawCardAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (Deck->HasCardsInDiscardPile())
+	// The RetryDraw produced by this same authored draw attempt gets exactly one
+	// chance after its shuffle. If the zero-card shuffle left DrawPile empty, stop
+	// here instead of recursively scheduling another shuffle forever.
+	if (bRetriedAfterShuffle)
 	{
-		UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
-		TArray<ACombatant*> RawCombatants;
-
-		if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
-		{
-			RawCombatants.Reserve(EventCombatants.Num());
-			for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
-			{
-				if (!IsValid(Combatant.Get()))
-				{
-					Queue->RequestResolutionFault(TEXT("DrawCardAction found an invalid authoritative combatant in its event-dispatch context."));
-					Finish();
-					return;
-				}
-				RawCombatants.Add(Combatant.Get());
-			}
-		}
-		else
-		{
-			ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
-			if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
-			{
-				Queue->RequestResolutionFault(TEXT("DrawCardAction requires valid battle-event wiring before scheduling Shuffle -> RetryDraw."));
-				Finish();
-				return;
-			}
-		}
-
-		UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
-		ShuffleAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
-		ShuffleAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
-
-		UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
-		RetryDrawAction->Initialize(
-			Deck.Get(),
-			ResolvedEventDispatcher,
-			RawCombatants,
-			PresentationCardSource.Get()
-		);
-		RetryDrawAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
-
-		TArray<UBattleAction*> ContinuationBatch;
-		ContinuationBatch.Add(ShuffleAction);
-		ContinuationBatch.Add(RetryDrawAction);
-
-		if (!Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
-		{
-			Queue->RequestResolutionFault(TEXT("DrawCardAction failed to enqueue the atomic Shuffle -> RetryDraw continuation."));
-			Finish();
-			return;
-		}
-
-		UE_LOG(
-			LogTemp,
-			Log,
-			TEXT("[Action] DrawCardAction found an empty DrawPile. Queued atomic ShuffleDeckAction -> RetryDraw continuation at the front.")
-		);
-
+		UE_LOG(LogTemp, Log, TEXT("[Action] RetryDraw ended: DrawPile is still empty after this draw attempt's single shuffle."));
 		Finish();
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("[Action] DrawCardAction skipped: DrawPile and DiscardPile are both empty."));
+	UBattleEventDispatcher* ResolvedEventDispatcher = EventDispatcher.Get();
+	TArray<ACombatant*> RawCombatants;
+
+	if (IsValid(ResolvedEventDispatcher) && EventCombatants.Num() > 0)
+	{
+		RawCombatants.Reserve(EventCombatants.Num());
+		for (const TObjectPtr<ACombatant>& Combatant : EventCombatants)
+		{
+			if (!IsValid(Combatant.Get()))
+			{
+				Queue->RequestResolutionFault(TEXT("DrawCardAction found an invalid authoritative combatant in its event-dispatch context."));
+				Finish();
+				return;
+			}
+			RawCombatants.Add(Combatant.Get());
+		}
+	}
+	else
+	{
+		ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter());
+		if (!IsValid(Battle) || !Battle->TryBuildEventDispatchContext(ResolvedEventDispatcher, RawCombatants))
+		{
+			Queue->RequestResolutionFault(TEXT("DrawCardAction requires valid battle-event wiring before scheduling Shuffle -> RetryDraw."));
+			Finish();
+			return;
+		}
+	}
+
+	UShuffleDeckAction* ShuffleAction = NewObject<UShuffleDeckAction>(Queue);
+	ShuffleAction->Initialize(Deck.Get(), ResolvedEventDispatcher, RawCombatants);
+	ShuffleAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
+
+	UDrawCardAction* RetryDrawAction = NewObject<UDrawCardAction>(Queue);
+	RetryDrawAction->Initialize(
+		Deck.Get(),
+		ResolvedEventDispatcher,
+		RawCombatants,
+		PresentationCardSource.Get()
+	);
+	RetryDrawAction->bRetriedAfterShuffle = true;
+	RetryDrawAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
+
+	TArray<UBattleAction*> ContinuationBatch;
+	ContinuationBatch.Add(ShuffleAction);
+	ContinuationBatch.Add(RetryDrawAction);
+
+	if (!Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
+	{
+		Queue->RequestResolutionFault(TEXT("DrawCardAction failed to enqueue the atomic Shuffle -> RetryDraw continuation."));
+		Finish();
+		return;
+	}
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Action] DrawCardAction found an empty DrawPile. Queued exactly one ShuffleDeckAction -> RetryDraw continuation for this draw attempt. DiscardCount=%d"),
+		Deck->GetDiscardCount()
+	);
+
 	Finish();
 }
