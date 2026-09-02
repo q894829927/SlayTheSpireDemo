@@ -14,6 +14,7 @@ enum class EBattleState : uint8;
 enum class EGameplayRequestFailureReason : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDViewModelChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDPreviewChanged);
 
 UCLASS(BlueprintType)
 class SLAYTHESPIREDEMO_API UBattleHUDViewModel : public UObject
@@ -51,7 +52,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Preview")
 	void ClearPreviewTarget();
 
-	// Formatting only. Gameplay values/legality remain owned by ImmediatePreview.
+	// Historical compatibility API. The standalone text Preview surface is no
+	// longer a production display path; target-specific values render on the card.
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Preview")
 	FText GetImmediatePreviewDisplayText() const;
 
@@ -73,8 +75,15 @@ public:
 	bool IsPresentationDisplayOwned() const;
 	void SetPresentationDisplayOwned(bool bOwned);
 
+	// Structural/frozen HUD state. Native HUD may rebuild formal Hand/Status rows
+	// in response to this event.
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
+
+	// A3 transient Preview-only state. This MUST NOT cause formal Hand rebuilding;
+	// it exists so a target hover/focus can restyle only the selected card face.
+	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Preview")
+	FBattleHUDPreviewChanged OnPreviewChanged;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Revision")
 	int64 BattleId = 0;
@@ -160,6 +169,7 @@ private:
 	void SetFeedback(EGameplayRequestFailureReason Reason);
 	void ClearFeedback();
 	void BroadcastChanged();
+	void BroadcastPreviewChanged();
 	bool CanAcceptSelectionInput() const;
 	bool IsLiveBindingCurrent() const;
 	const FBattleHUDCardView* FindDisplayedCardByRuntimeId(int32 RuntimeId) const;
