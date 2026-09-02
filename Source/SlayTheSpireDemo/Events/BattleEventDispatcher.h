@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "BattleTrigger.h"
 #include "BattleEventDispatcher.generated.h"
 
 class ABattleManager;
@@ -15,7 +16,13 @@ struct FPresentationRecordWriter;
 // successfully built, inserted or executed in this same order.
 struct FTriggerEligibilityRecord
 {
+	ETriggerRuntimeSourceKind SourceKind = ETriggerRuntimeSourceKind::Status;
+	FName SourceId = NAME_None;
+
+	// Phase 6 compatibility field. Populated for Status candidates and left None
+	// for Relic candidates. New code should prefer SourceKind + SourceId.
 	FName StatusId = NAME_None;
+
 	int32 Priority = 0;
 	uint64 RuntimeSequence = 0;
 	int32 LocalTriggerIndex = INDEX_NONE;
