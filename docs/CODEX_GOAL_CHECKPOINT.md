@@ -16,7 +16,7 @@ Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
-7C Sundial + GainEnergyAction: NEXT / NOT STARTED
+7C Sundial + GainEnergyAction: IMPLEMENTED / VALIDATION PENDING
 7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
 
@@ -26,7 +26,7 @@ Active authority:
 docs/Phase7RelicsImplementation.md
 ```
 
-Validation authorities:
+Validation authorities already sealed:
 
 ```text
 docs/Phase7AValidation.md
@@ -42,130 +42,154 @@ Relics use the battle-wide ABattleManager RuntimeSequence allocator
 Status + Relic trigger order = Priority → RuntimeSequence → LocalTriggerIndex
 BattleEventDispatcher remains snapshot-based; no persistent Trigger Registry
 Trigger remains read-only eligibility + Action construction
-Sundial counter mutation will occur through an Action
-Sundial reward will use GainEnergyAction
+Sundial counter mutation occurs through USundialAdvanceAction
+Sundial reward occurs through UGainEnergyAction
 A3 does not predict Relic reactions
 ```
 
-The design-review clarifications remain locked:
+## Accepted predecessor evidence
 
-```text
-- no first-version RelicTriggered / RelicCounterChanged Presentation Record
-- Relic counter catches up at Envelope FinalSnapshot reconciliation
-- Starting Relics are created explicitly during StartBattle, never lazily from a getter
-- future HUD Relic DTO uses bShowCounter / Counter / CounterMax
-- SundialAdvanceAction freezes ShufflesRequired / EnergyGain at reaction-build time
-- frozen HUD DTOs may hold immutable presentation asset references but not mutable RelicInstance truth
-- GainEnergyAction receives its own primitive tests in 7C
-```
-
-## 7A accepted validation
-
-Validated implementation HEAD before evidence-only documentation updates:
-
-```text
-86de988bef8e85c17d6197394f72cf756627e693
-```
-
-User-reported UE 5.8 evidence on 2026-09-02:
+7A user-reported UE 5.8 gate:
 
 ```text
 Development Editor Build                         PASS
 SlayTheSpireDemo.Phase7.RelicRuntime            5/5 PASS
-Manual PIE                                      NOT REQUIRED FOR 7A
 ```
 
-7A is sealed. Do not rerun it merely because later slices change unrelated boundaries.
-
-## 7B implementation and accepted validation
-
-7B generalized only the Trigger-source boundary:
+7B user-reported UE 5.8 gate:
 
 ```text
-FTriggerRuntimeSource
-- SourceKind: Status / Relic
-- RuntimeObject
-- SourceId
-- RuntimeSequence
-- CombatantOwner (null for battle-owned Relic)
-
-FTriggerContext
-- preserves historical Status constructors/accessor behavior
-- keeps GetRuntimeSource() as Status compatibility accessor
-- adds GetRuntimeSourceObject()
-- adds GetRelicSource()
-- adds GetSourceKind()
-- adds GetSourceId()
-- adds GetRuntimeSequence()
-- Relic contexts use the neutral descriptor rather than a pointer overload
-
-URelicData
-- now authors Instanced Triggers[]
-
-BattleEventDispatcher
-- still snapshots candidates at dispatch time
-- collects Status candidates from supplied Combatants
-- collects Relic candidates from the bound BattleContext RelicContainer
-- deduplicates runtime source enumeration with TSet<UObject*>
-- combines both source kinds into one candidate array
-- sorts only by Priority → RuntimeSequence → LocalTriggerIndex
-- does not use SourceKind as an ordering key
-- preserves atomic final reaction insertion
-
-FTriggerEligibilityRecord
-- SourceKind + SourceId are the neutral fields
-- StatusId remains as a Phase 6 compatibility field
-- Relic records leave StatusId=None
+SlayTheSpireDemo.Phase7.TriggerSources          3/3 PASS
+SlayTheSpireDemo.Phase6A.Trigger                PASS
 ```
 
-User-reported UE 5.8 validation on 2026-09-03:
+Do not rerun those sealed gates merely because 7C adds concrete Relic content.
 
-```text
-SlayTheSpireDemo.Phase7.TriggerSources     3/3 PASS
-SlayTheSpireDemo.Phase6A.Trigger          PASS
-Manual PIE                                NOT REQUIRED FOR 7B
-```
+## 7C implementation now on main
 
-The prescribed Development Editor build step produced a runnable current-main test binary; no build/runtime failure was reported.
-
-Formal evidence:
-
-```text
-docs/Phase7BValidation.md
-```
-
-7B is therefore **COMPLETE / VALIDATED / SEALED**. Do not run the full Phase6R aggregate, A2D5, Shipping, Legacy parity or unrelated UI suites merely because this source-neutral boundary is sealed.
-
-## Next exact action
-
-The next phase boundary is:
-
-```text
-Phase 7C — Sundial + GainEnergyAction
-```
-
-7C may now implement only:
+Reusable Energy primitive:
 
 ```text
 BattleEnergyMutation::TryGain
+- Amount > 0
+- no MaxEnergy clamp
+- invalid Battle / invalid amount / int32 overflow fail soft
+- exact Before / After / Delta result
+
 UGainEnergyAction
-URelicInstance Sundial counter state required by the concrete vertical slice
-USundialTrigger
-USundialAdvanceAction
-focused primitive Energy tests
-focused Sundial gameplay tests
+- owns intended positive Amount
+- commits only through TryGain
+- emits existing EnergyChanged Presentation payload when a writer is available
+- finishes on success or fail-soft rejection
 ```
 
-The locked behavior remains:
+Sundial runtime/content:
 
 ```text
-initial setup shuffle: no FDeckShuffledEvent -> no Sundial progress
-1st gameplay shuffle: 0 -> 1
-2nd gameplay shuffle: 1 -> 2
-3rd gameplay shuffle: 2 -> 0 + enqueue GainEnergyAction(+2)
-4th gameplay shuffle: 0 -> 1
+URelicInstance
+- Counter runtime state starts at 0
+- public read accessor
+- mutation boundary restricted to USundialAdvanceAction
+
+USundialTrigger
+- reacts only to FDeckShuffledEvent
+- requires the current authoritative Battle DeckRuntime
+- requires a valid Relic source and Battle
+- is read-only
+- freezes ShufflesRequired / EnergyGain into USundialAdvanceAction
+
+USundialAdvanceAction
+- validates exact current RelicInstance membership and frozen config
+- 0 -> 1
+- 1 -> 2
+- threshold: queues dependent UGainEnergyAction(+2), then commits Counter -> 0
+- propagates PresentationRecordWriter to the dependent Energy Action
+- never pumps the queue
 ```
 
-`USundialTrigger` is read-only and freezes `ShufflesRequired / EnergyGain` into the reaction Action at BuildReactions time. `USundialAdvanceAction` owns counter mutation and enqueues the reusable `UGainEnergyAction`; neither Trigger nor UI may mutate Gameplay truth directly.
+`ABattleManager::IsAuthoritativeDeckRuntime()` is the narrow Gameplay identity query used by Sundial; the Trigger does not recover or compare DeckRuntime through UObject Outer chains.
 
-Do not begin 7D Relic Read/Frozen/Native UI, Abacus, Phase 8, Relic modifiers, run persistence or advanced Relic Presentation in the same change.
+No card identity, DrawAction identity, RetryDraw identity or Pommel Strike special case exists.
+
+## 7C focused Automation now on main
+
+Energy prefix:
+
+```text
+SlayTheSpireDemo.Phase7.EnergyGain
+- MutationContracts
+- ActionAndPresentation
+```
+
+Covers:
+
+```text
++2 succeeds
+may exceed MaxEnergy
+0 rejected
+negative rejected
+overflow rejected
+invalid Battle fails soft
+GainEnergyAction commits through queue
+EnergyChanged Before / After / Delta exact
+```
+
+Sundial prefix:
+
+```text
+SlayTheSpireDemo.Phase7.Sundial
+- SequenceAndDeckIdentity
+- TriggerReadOnlyAndFrozenConfig
+```
+
+Covers:
+
+```text
+wrong DeckRuntime does not advance
+0 -> 1
+1 -> 2
+2 -> 0 +2 Energy
+0 -> 1
+Trigger/BuildReactions do not mutate Counter or Energy
+3 / +2 are frozen into the queued Action at BuildReactions time
+```
+
+The existing Phase 6 producer contract already proves setup shuffle emits no gameplay `FDeckShuffledEvent`; 7C does not duplicate that sealed producer test.
+
+## Production Sundial asset status
+
+The binary UE DataAsset cannot be authored safely through the text GitHub contents path. After the 7C C++ Build succeeds, create/configure locally in UE 5.8:
+
+```text
+DA_Relic_Sundial : URelicData
+RelicId = Sundial
+DisplayName = 日晷
+Description = 每洗牌3次，获得2点能量。
+Triggers[0] = USundialTrigger
+    ShufflesRequired = 3
+    EnergyGain = 2
+```
+
+Then add `DA_Relic_Sundial` to the production/test `BP_BattleManager -> DebugStartingRelics` array. Icon/HUD display belongs to 7D and is not required for the 7C Gameplay gate.
+
+## Required 7C validation gate
+
+Run only:
+
+```text
+1. Development Editor Build once.
+2. SlayTheSpireDemo.Phase7.EnergyGain once; expected 2/2.
+3. SlayTheSpireDemo.Phase7.Sundial once; expected 2/2.
+4. No manual PIE gate yet; visible Relic acceptance belongs to 7D.
+5. Record evidence and STOP.
+```
+
+Do not rerun Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites without a concrete failure.
+
+## Next exact action
+
+USER ACTION REQUIRED:
+
+Build current `main`. If it compiles, run the two 7C focused prefixes above. If both pass, author/configure `DA_Relic_Sundial` locally and report the result.
+
+Do not begin 7D before 7C is accepted and the production Sundial definition is present.
