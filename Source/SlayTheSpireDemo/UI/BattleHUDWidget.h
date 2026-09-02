@@ -9,6 +9,7 @@
 class UBattleCardWidget;
 class UBattleStatusWidget;
 class UBattleHUDCombatantPresentationWidgetBase;
+class UBattleImmediatePreviewTextBlock;
 class UButton;
 class UHorizontalBox;
 class UOverlay;
@@ -54,6 +55,8 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual void OnWidgetRebuilt() override;
+	virtual void BeginDestroy() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
@@ -268,6 +271,8 @@ protected:
 	bool RefreshStatusTooltip(
 		UWidget* StatusTooltip,
 		const TArray<FBattleHUDStatusView>& Statuses);
+	void EnsureImmediatePreviewSurface();
+	void ReleaseImmediatePreviewSurface();
 
 	UFUNCTION()
 	void HandleCardRequested(int32 RuntimeId);
@@ -283,6 +288,12 @@ protected:
 
 	UFUNCTION()
 	void HandleCombatantTargetRequested(int32 TargetId);
+
+	UFUNCTION()
+	void HandleCombatantPreviewRequested(int32 TargetId);
+
+	UFUNCTION()
+	void HandleCombatantPreviewCleared();
 
 	UFUNCTION()
 	void HandleCombatantInspectRequested(UBattleHUDCombatantPresentationWidgetBase* Presentation);
@@ -387,6 +398,11 @@ private:
 	int32 PendingFastCardRuntimeId = INDEX_NONE;
 	bool bFastCardSelectionRetryScheduled = false;
 
+	// A3 transient preview surface. It is dynamically parented only while a valid
+	// pre-commit Preview exists, so A2 OV_PlayArea ownership remains exclusive.
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleImmediatePreviewTextBlock> ImmediatePreviewText = nullptr;
+
 	// Controller/reducer state never lives here. These fields describe only the
 	// one local visual currently owned by this HUD.
 	bool bHasActiveNativePresentation = false;
@@ -402,7 +418,7 @@ private:
 	int32 ActiveNativeSimplePrimaryAfter = 0;
 	int32 ActiveNativeSimpleSecondaryBefore = 0;
 	int32 ActiveNativeSimpleSecondaryAfter = 0;
-	int32 ActiveNativeSimpleEnergyMax = 0;
+	int32 ActiveNativeEnergyMax = 0;
 
 	// Frozen R7 Damage visual state. Target surfaces are weak local presentation
 	// references; all historical values are copied from the accepted Record.
