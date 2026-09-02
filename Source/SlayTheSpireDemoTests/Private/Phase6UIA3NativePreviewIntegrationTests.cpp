@@ -117,8 +117,6 @@ bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	const FLinearColor BaseColor = Description->GetColorAndOpacity().GetSpecifiedColor();
-
 	FImmediateCardPreview Preview;
 	Preview.CardRuntimeId = 17;
 	Preview.Validation = FGameplayValidationResult::Allowed();
@@ -134,21 +132,23 @@ bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 
 	Card->ApplyImmediatePreview(Preview);
 	TestEqual(TEXT("Target-specific Damage replaces selected card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 9 damage.")));
-	const FLinearColor IncreasedColor = Description->GetColorAndOpacity().GetSpecifiedColor();
-	TestTrue(TEXT("Value above authored base uses red emphasis"), IncreasedColor.R > IncreasedColor.G && IncreasedColor.R > IncreasedColor.B);
-	TestFalse(TEXT("Increased Preview does not keep base color"), IncreasedColor.Equals(BaseColor));
+	TestEqual(TEXT("Value above authored base selects red/increased emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(1));
 
 	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 4 damage."));
 	Preview.Operations[0].ResolvedAmount = 4;
 	Card->ApplyImmediatePreview(Preview);
 	TestEqual(TEXT("Decreased target-specific Damage also replaces card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 4 damage.")));
-	const FLinearColor DecreasedColor = Description->GetColorAndOpacity().GetSpecifiedColor();
-	TestTrue(TEXT("Value below authored base uses a distinct cool-color emphasis"), DecreasedColor.B > DecreasedColor.R);
-	TestFalse(TEXT("Decreased Preview does not keep base color"), DecreasedColor.Equals(BaseColor));
+	TestEqual(TEXT("Value below authored base selects cool/decreased emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(-1));
+
+	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 6 damage."));
+	Preview.Operations[0].ResolvedAmount = 6;
+	Card->ApplyImmediatePreview(Preview);
+	TestEqual(TEXT("Authored-base value remains the normal card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
+	TestEqual(TEXT("Value equal to authored base selects neutral emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
 
 	Card->ClearImmediatePreview();
 	TestEqual(TEXT("Clearing Preview restores frozen card-face description"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
-	TestTrue(TEXT("Clearing Preview restores base description color"), Description->GetColorAndOpacity().GetSpecifiedColor().Equals(BaseColor));
+	TestEqual(TEXT("Clearing Preview restores neutral description styling"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
 	return true;
 }
 
