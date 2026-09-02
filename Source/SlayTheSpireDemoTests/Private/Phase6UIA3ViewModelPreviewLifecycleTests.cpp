@@ -1,4 +1,5 @@
 #include "Phase6UIA1TestFixture.h"
+#include "Phase6UIA3NativePreviewTestTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -120,6 +121,13 @@ bool FViewModelPreviewRevisionClearTest::RunTest(const FString& Parameters)
 	Fixture.InitializeViewModel();
 	if (!RequireFixture(*this, Fixture)) return false;
 
+	UPhase6UIA3PreviewEventSink* Sink = NewObject<UPhase6UIA3PreviewEventSink>(Fixture.World);
+	if (!TestNotNull(TEXT("Revision notification sink exists"), Sink))
+	{
+		return false;
+	}
+	Sink->ObserveViewModel(Fixture.ViewModel);
+
 	const int32 RuntimeId = Fixture.FirstRuntimeId();
 	TestTrue(TEXT("Card selection succeeds before external revision"), Fixture.ViewModel->SelectCardByRuntimeId(RuntimeId));
 	if (Fixture.ViewModel->LegalTargets.Num() != 1)
@@ -135,6 +143,8 @@ bool FViewModelPreviewRevisionClearTest::RunTest(const FString& Parameters)
 	const int64 DisplayBattleIdBefore = Fixture.ViewModel->BattleId;
 	const int64 DisplayRevisionBefore = Fixture.ViewModel->StateRevision;
 	Fixture.ViewModel->SetPresentationDisplayOwned(true);
+	const int32 StructuralChangesBeforeReady = Sink->StructuralChangedCount;
+	const int32 PreviewChangesBeforeReady = Sink->PreviewChangedCount;
 
 	const FGameplayRequestResult EndTurnResult = Fixture.Battle->RequestEndPlayerTurn();
 	TestTrue(TEXT("External authoritative EndTurn is accepted"), EndTurnResult.IsAcceptedForResolution());
@@ -144,8 +154,10 @@ bool FViewModelPreviewRevisionClearTest::RunTest(const FString& Parameters)
 	Fixture.FlushReady();
 
 	// Presentation ownership deliberately prevents the ViewModel from applying the
-	// new frozen snapshot here. The read-ready edge must nevertheless invalidate
-	// all old-revision interaction and Preview state immediately.
+	// new frozen snapshot here. The read-ready edge must invalidate old-revision
+	// interaction immediately without publishing structural OnChanged: public
+	// Presentation delivery runs before this edge, so a structural notification
+	// here would cancel a valid CardPlayed visual that has already started.
 	TestEqual(TEXT("Presentation-owned ViewModel does not jump display BattleId ahead"), Fixture.ViewModel->BattleId, DisplayBattleIdBefore);
 	TestEqual(TEXT("Presentation-owned ViewModel does not jump display revision ahead"), Fixture.ViewModel->StateRevision, DisplayRevisionBefore);
 	TestEqual(TEXT("New Gameplay revision clears stale selected card before catch-up"), Fixture.ViewModel->SelectedCardRuntimeId, INDEX_NONE);
@@ -156,6 +168,8 @@ bool FViewModelPreviewRevisionClearTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("New Gameplay revision clears stale Preview DTO"), Fixture.ViewModel->ImmediatePreview.StateRevision, int64(0));
 	TestEqual(TEXT("ViewModel waits in Resolving for Presentation catch-up"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
 	TestTrue(TEXT("ViewModel stays input-locked until Presentation catch-up"), Fixture.ViewModel->bInputLocked);
+	TestEqual(TEXT("Presentation-owned Ready invalidation does not emit structural OnChanged"), Sink->StructuralChangedCount, StructuralChangesBeforeReady);
+	TestEqual(TEXT("Presentation-owned Ready invalidation refreshes only transient Preview"), Sink->PreviewChangedCount, PreviewChangesBeforeReady + 1);
 	return true;
 }
 
