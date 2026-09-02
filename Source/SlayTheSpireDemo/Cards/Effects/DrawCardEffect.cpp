@@ -1,7 +1,7 @@
 #include "DrawCardEffect.h"
 
 #include "../CardPlayContext.h"
-#include "../../Actions/DrawCardAction.h"
+#include "../../Actions/DrawCardsAction.h"
 #include "../../Deck/DeckRuntime.h"
 #include "../../Events/BattleEventDispatcher.h"
 #include "../../Battle/BattleTextTypes.h"
@@ -17,26 +17,28 @@ void UDrawCardEffect::BuildActions(
 		return;
 	}
 
-	const bool bHasEventContext = IsValid(Context.EventDispatcher) && Context.EventCombatants.Num() > 0;
-
-	for (int32 Index = 0; Index < DrawCount; ++Index)
+	if (DrawCount <= 0)
 	{
-		UDrawCardAction* Action = NewObject<UDrawCardAction>(Context.ActionOuter);
-		if (bHasEventContext)
-		{
-			Action->Initialize(
-				Context.Deck,
-				Context.EventDispatcher,
-				Context.EventCombatants,
-				Context.Source
-			);
-		}
-		else
-		{
-			Action->Initialize(Context.Deck, Context.Source);
-		}
-		OutActions.Add(Action);
+		return;
 	}
+
+	const bool bHasEventContext = IsValid(Context.EventDispatcher) && Context.EventCombatants.Num() > 0;
+	UDrawCardsAction* Action = NewObject<UDrawCardsAction>(Context.ActionOuter);
+	if (bHasEventContext)
+	{
+		Action->Initialize(
+			Context.Deck,
+			DrawCount,
+			Context.EventDispatcher,
+			Context.EventCombatants,
+			Context.Source
+		);
+	}
+	else
+	{
+		Action->Initialize(Context.Deck, DrawCount, Context.Source);
+	}
+	OutActions.Add(Action);
 }
 
 void UDrawCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
