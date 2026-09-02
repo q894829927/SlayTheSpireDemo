@@ -19,7 +19,8 @@ A2 = post-commit playback of immutable facts that actually committed
 UI-A3: IN PROGRESS / AUTHORIZED
 A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: IN PROGRESS
-A3-2A Immediate Preview DTO + Effect contribution: IMPLEMENTED / VALIDATION PENDING
+A3-2A Immediate Preview DTO + Effect contribution: COMPLETE / VALIDATED / SEALED
+A3-2B BattleManager Query + identity stamping: NEXT IMPLEMENTATION SLICE
 A3-3 Energy + Target-Aware Legality: NOT STARTED
 A3-4 ViewModel Transient Preview Lifecycle: NOT STARTED
 A3-5 Minimal Native UMG + A2/A3 Combined PIE: NOT STARTED
@@ -87,7 +88,7 @@ Target-Specific Current-State Preview
   at one current BattleId/StateRevision
 ```
 
-## A3-2A implementation state
+## A3-2A sealed implementation
 
 Implementation commit:
 
@@ -108,7 +109,7 @@ Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.cpp
 Source/SlayTheSpireDemoTests/Private/Phase6UIA3ImmediatePreviewTests.cpp
 ```
 
-The implementation establishes:
+The sealed contract establishes:
 
 ```text
 FImmediateCardPreview
@@ -122,7 +123,7 @@ unsupported effects omitted from Operations[]
 focused Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
 ```
 
-A3-2A still does not touch:
+A3-2A did not touch:
 
 ```text
 BattleManager public Preview query construction
@@ -139,35 +140,53 @@ multi-enemy architecture
 cross-revision retained selection
 ```
 
-## Validation actually performed
+## A3-2A validation evidence
 
-No new UE validation has been claimed for A3-2A yet.
-
-The GitHub-connected implementation session could inspect and commit repository source, but it could not execute the project's local UE5.8 Editor Build or Unreal Automation command. Therefore:
+Closed-scope Gate completed on **2026-09-02** against the A3-2A implementation.
 
 ```text
-Editor Build: NOT RUN
-SlayTheSpireDemo.UIA3.ImmediatePreview Automation: NOT RUN
+Editor Build: PASS (user-run UE5.8 SlayTheSpireDemoEditor build)
+Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
+Discovered: 3 tests
+Result: 3/3 Success
+Automation exit code: 0
 Manual PIE: NOT REQUIRED for A3-2A
 Phase6R / A2D5 / Shipping / broad Scenario suites: intentionally NOT RUN
 ```
 
-Do not treat the implementation commit as validated or sealed until the focused Gate below passes.
+Focused tests passed:
+
+```text
+BlockUsesSelfPipelineAndIgnoresHoveredEnemy
+DamageUsesTargetSpecificPipelineAndPreservesHits
+SupportedEffectsKeepDefinitionOrderAndUnsupportedEffectsStayAbsent
+```
+
+This is sufficient to seal A3-2A under the closed-scope validation policy. Do not rerun this Gate unless a later edit invalidates the A3-2A contract or its proving tests.
 
 ## Next exact action
 
-Run only the closed-scope A3-2A validation Gate:
+Implement only:
 
 ```text
-1. Regenerate project files only if required by the local build environment.
-2. Editor Build once.
-3. Run Automation prefix exactly once:
-   SlayTheSpireDemo.UIA3.ImmediatePreview
-4. Confirm all focused tests pass and no compile/UHT issue exists.
-5. Record the exact Build + Automation evidence.
-6. Mark A3-2A COMPLETE / VALIDATED / SEALED and STOP before the next A3 slice.
+A3-2B — BattleManager public Immediate Preview Query + identity stamping
 ```
 
-Do not begin the BattleManager public Preview query / identity-stamping slice until A3-2A passes this Gate.
+Required boundary:
+
+```text
+ABattleManager::TryBuildImmediateCardPreview(...)
+current BattleId + StateRevision stamping
+CardRuntimeId stamping
+SourcePresentationId + TargetPresentationId stamping
+iterate immutable CardData Effects in definition order
+call BuildImmediatePreviewOperations(...) only
+return coherent FImmediateCardPreview without mutation
+focused A3-2B Automation
+```
+
+Do not add A3-3 Energy/legality behavior yet beyond preserving the DTO fields already reserved for it.
+
+Do not touch ViewModel / UMG / PreviewTarget lifecycle in A3-2B.
 
 Do not run Phase6R, A2D5, Shipping, broad Scenario A-E, Legacy parity or unrelated historical suites unless a concrete shared-contract failure invalidates them.
