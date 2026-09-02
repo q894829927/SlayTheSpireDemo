@@ -48,7 +48,10 @@ void UGainBlockCardEffect::BuildPreviewArguments(
 	Spec.Target = Context.Target;
 	Spec.BaseAmount = BaseAmount;
 	FBlockModifierPipeline::Resolve(Spec);
-	OutArguments.AddInteger(DescriptionArgumentName, Spec.ResolvedAmount);
+	OutArguments.AddIntegerWithAuthoredBase(
+		DescriptionArgumentName,
+		Spec.ResolvedAmount,
+		BaseAmount);
 }
 
 void UGainBlockCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
