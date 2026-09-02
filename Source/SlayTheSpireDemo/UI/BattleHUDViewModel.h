@@ -51,6 +51,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Preview")
 	void ClearPreviewTarget();
 
+	// Formatting only. Gameplay values/legality remain owned by ImmediatePreview.
+	UFUNCTION(BlueprintPure, Category = "Battle HUD|Preview")
+	FText GetImmediatePreviewDisplayText() const;
+
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Selection")
 	bool TryGetLegalTargetByPresentationId(
 		FName PresentationId,
