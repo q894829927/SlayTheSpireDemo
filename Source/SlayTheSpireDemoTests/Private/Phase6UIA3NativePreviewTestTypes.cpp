@@ -1,16 +1,20 @@
 #include "Phase6UIA3NativePreviewTestTypes.h"
 
-#include "Components/Overlay.h"
+#include "Components/HorizontalBox.h"
 #include "UI/BattleHUDViewModel.h"
 
 void UPhase6UIA3PreviewHUDProbe::ConfigurePreviewSurface(
 	UBattleHUDViewModel* InViewModel,
-	UOverlay* InOverlay
+	UHorizontalBox* InHand
 )
 {
-	OV_PlayArea = InOverlay;
+	HB_Hand = InHand;
 	SetViewModel(InViewModel);
-	EnsureImmediatePreviewSurface();
+}
+
+void UPhase6UIA3PreviewHUDProbe::RequestPreviewForTesting(int32 TargetId)
+{
+	HandleCombatantPreviewRequested(TargetId);
 }
 
 void UPhase6UIA3PreviewHUDProbe::ReleasePreviewSurfaceForTesting()
