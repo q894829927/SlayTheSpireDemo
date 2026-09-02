@@ -5,6 +5,7 @@
 #include "Phase6UIA2NR4TestTypes.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
+#include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 #include "Engine/Texture2D.h"
 
@@ -20,7 +21,7 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	UButton* Button = NewObject<UButton>(Card);
 	UTextBlock* Name = NewObject<UTextBlock>(Card);
 	UTextBlock* Cost = NewObject<UTextBlock>(Card);
-	UTextBlock* Description = NewObject<UTextBlock>(Card);
+	URichTextBlock* Description = NewObject<URichTextBlock>(Card);
 	UTextBlock* Type = NewObject<UTextBlock>(Card);
 	UImage* Art = NewObject<UImage>(Card);
 	UTexture2D* Texture = NewObject<UTexture2D>(Card);
