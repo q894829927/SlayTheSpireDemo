@@ -20,7 +20,7 @@ CardData / CardInstance
 
 `BattleStateMachine` controls macro turn flow. `BattleActionQueue` controls deterministic execution order. Modifiers change an operation before commit. Events describe facts after commit. Triggers build queued reactions.
 
-Complex behavior must emerge from generic composition. Pommel Strike knows configured Damage/Draw effects; Defend knows Block; DeckRuntime knows zones/draw/shuffle; future Sundial knows shuffle events. None should know concrete combinations.
+Complex behavior must emerge from generic composition. Pommel Strike knows configured Damage/Draw effects; Defend knows Block; DeckRuntime knows zones/draw/shuffle; Sundial knows shuffle events. None should know concrete combinations.
 
 ## 2. State Ownership
 
@@ -39,6 +39,10 @@ Owns DrawPile, Hand, DiscardPile, ExhaustPile and PlayArea truth. DrawPile end i
 ### StatusContainer
 
 Owns authoritative Status membership and merge/create decisions. `UStatusInstance` owns mutable Amount, RuntimeSequence and Owner; `UStatusData` is immutable definition data.
+
+### RelicContainer
+
+Owns battle-scoped Relic membership. `URelicData` is immutable definition data; `URelicInstance` owns mutable runtime state such as Sundial Counter and shares the battle-wide RuntimeSequence domain with Status runtime sources.
 
 ## 3. BattleActionQueue
 
@@ -71,11 +75,11 @@ Ratio arithmetic uses explicit integer numerator/denominator, safe intermediates
 
 A BattleEvent is a short-lived immutable-by-contract value fact. Dispatch/Trigger code must not cache its references.
 
-Trigger sources are collected on demand. Eligibility uses snapshot semantics; built Actions validate live state at Execute-time. Trigger ordering is `Priority → RuntimeSequence → LocalTriggerIndex`.
+Trigger sources are collected on demand. Eligibility uses snapshot semantics; built Actions validate live state at Execute-time. Status and Relic Trigger ordering is `Priority → RuntimeSequence → LocalTriggerIndex`.
 
 Triggers are read-only builders. They never mutate Gameplay or drive the queue. Event emission follows a successful commit, and reaction batches are atomically inserted before the source action finishes.
 
-`FDeckShuffledEvent` occurs only after a real discard-to-draw shuffle commit and before RetryDraw. Initial battle setup shuffle is normalization, not a Gameplay event.
+`FDeckShuffledEvent` occurs only after a committed gameplay `UShuffleDeckAction` and before the remaining bulk-draw continuation. A committed shuffle normally moves DiscardPile cards to an empty DrawPile, but `MovedCardCount` may be `0` when that ShuffleAction was already planned by an earlier bulk-draw step before the available DrawPile cards were consumed. A fresh draw request against `DrawPile=0 / DiscardPile=0` does not schedule a ShuffleAction. Initial battle setup randomization is normalization, not a Gameplay event.
 
 ## 6. Card and Deck Resolution
 
@@ -91,7 +95,21 @@ UCardData
 
 Effects are immutable shared definitions that capture base intent. Mutable-state-dependent outcomes resolve at Action Execute-time. FinishCardPlay delegates authoritative movement to DeckRuntime.
 
-Draw does not synchronously shuffle. One DrawAction is one draw attempt. Empty DrawPile with available Discard schedules `Shuffle → RetryDraw`. Battle RNG is initialized once and consumed deterministically.
+Draw uses a two-level Action model:
+
+```text
+UDrawCardEffect(DrawCount = N)
+→ UDrawCardsAction(N)                 // bulk intent / orchestration
+   ├─ UDrawCardAction                 // atomic one-card DrawPile -> Hand commit
+   ├─ UShuffleDeckAction              // committed shuffle + DeckShuffled event
+   └─ UDrawCardsAction(Remaining)     // continue the same bulk request
+```
+
+`UDrawCardsAction` owns `RemainingDraws`, evaluates live Hand capacity and pile counts, and plans deterministic continuation batches. It never mutates DeckRuntime directly. `UDrawCardAction` performs exactly one card movement and never decides to shuffle or retry.
+
+A fresh bulk request with both DrawPile and DiscardPile empty ends immediately. If a bulk request still owes cards after consuming the currently available DrawPile, it pre-plans `ShuffleDeckAction → DrawCardsAction(Remaining)`. Therefore a previously planned ShuffleAction may later execute with both piles empty and commit `MovedCardCount=0`; this is a real gameplay shuffle fact, not a general “empty draw means shuffle” rule.
+
+Draw/shuffle never execute synchronously outside the queue. Battle RNG is initialized once and consumed deterministically by committed non-empty shuffles.
 
 ## 7. Presentation Architecture
 
@@ -123,7 +141,7 @@ See `docs/Phase6UIA2Implementation.md` for the complete contract and `docs/Phase
 
 ```text
 MODEL
-BattleManager / Combatants / DeckRuntime / Status runtime / Enemy Intent / BattleActionQueue
+BattleManager / Combatants / DeckRuntime / Status runtime / Relic runtime / Enemy Intent / BattleActionQueue
 
 VIEWMODEL
 frozen player-facing display state
