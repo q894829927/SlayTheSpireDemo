@@ -123,8 +123,15 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCardView
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	ECardTargetType TargetType = ECardTargetType::None;
 
+	// Plain semantic card description retained for non-RichText consumers and
+	// immutable contract comparisons.
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText Description;
+
+	// Optional Native RichText version of Description. When empty, presentation
+	// falls back to Description. Only semantic numeric values carry style tags.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	FText RichDescription;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	TObjectPtr<UTexture2D> CardArt = nullptr;
