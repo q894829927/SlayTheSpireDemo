@@ -16,6 +16,11 @@ public:
 	// target so the normal Hand surface reflects only current source-side effects.
 	static FText ResolveCardDescription(const UCardInstance* Card, ACombatant* Source);
 
+	// Same A3-1 current values, with only Damage/Block semantic arguments whose
+	// Gameplay-resolved amount differs from their immutable authored base wrapped
+	// in the Native RichText comparison styles.
+	static FText ResolveCardRichDescription(const UCardInstance* Card, ACombatant* Source);
+
 	// A3 target-specific card face: start from the validated A3-1 semantic
 	// arguments, then override only supported Damage/Block semantic names with the
 	// already Gameplay-resolved ImmediatePreview Operations. Unsupported effects
