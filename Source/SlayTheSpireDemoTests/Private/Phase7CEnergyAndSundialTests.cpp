@@ -3,7 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Actions/BattleActionQueue.h"
-#include "Actions/DrawCardAction.h"
+#include "Actions/DrawCardsAction.h"
 #include "Actions/GainEnergyAction.h"
 #include "Battle/BattleManager.h"
 #include "Battle/EnergyMutation.h"
@@ -318,25 +318,26 @@ namespace Phase7C
 		TArray<ACombatant*> Combatants;
 		if (!TestTrue(TEXT("Build event dispatch context"), Fixture.BuildDispatchContext(Dispatcher, Combatants))) return false;
 
-		UDrawCardAction* DrawOne = NewObject<UDrawCardAction>(Queue);
-		DrawOne->Initialize(Deck, Dispatcher, Combatants, Fixture.Player);
-		UDrawCardAction* DrawTwo = NewObject<UDrawCardAction>(Queue);
-		DrawTwo->Initialize(Deck, Dispatcher, Combatants, Fixture.Player);
-		TArray<UBattleAction*> DrawBatch{DrawOne, DrawTwo};
+		UDrawCardsAction* DrawTwo = NewObject<UDrawCardsAction>(Queue);
+		DrawTwo->Initialize(Deck, 2, Dispatcher, Combatants, Fixture.Player);
 
 		const int32 EnergyBefore = Fixture.Battle->Energy;
-		if (!TestTrue(TEXT("Draw-two batch accepted"), Queue->AddBatchToBackPreserveOrder(DrawBatch))) return false;
-		if (!TestTrue(TEXT("Draw-two batch resolves"), Queue->StartProcessing())) return false;
+		if (!TestTrue(TEXT("Bulk Draw 2 accepted"), Queue->AddToBack(DrawTwo))) return false;
+		if (!TestTrue(TEXT("Bulk Draw 2 resolves"), Queue->StartProcessing())) return false;
 
-		// Draw #1: Draw empty + Discard one -> shuffle one card, then draw it.
-		// Draw #2: Draw empty + Discard empty -> commit a zero-card shuffle once,
-		// then RetryDraw stops because this draw attempt already shuffled.
-		TestEqual(TEXT("Draw two causes two Sundial shuffle counts"), Sundial->GetCounter(), 2);
+		// Bulk Draw 2 starts with Draw=0 / Discard=1, so it first schedules a
+		// one-card shuffle. After that shuffle, the remaining bulk request sees
+		// Draw=1 while still owing 2 draws, so it pre-plans DrawCard -> Shuffle ->
+		// DrawCards(1). The planned second Shuffle executes after the only card is
+		// drawn, therefore it commits with MovedCardCount=0 and still counts for
+		// Sundial. The final DrawCards(1) then sees a truly exhausted deck and ends
+		// without scheduling a third shuffle.
+		TestEqual(TEXT("Bulk Draw 2 causes two Sundial shuffle counts"), Sundial->GetCounter(), 2);
 		TestEqual(TEXT("Two shuffles do not yet grant Energy"), Fixture.Battle->Energy, EnergyBefore);
 		TestEqual(TEXT("Only card ends in Hand"), Deck->GetHandCount(), 1);
 		TestEqual(TEXT("DrawPile ends empty"), Deck->GetDrawCount(), 0);
 		TestEqual(TEXT("DiscardPile ends empty"), Deck->GetDiscardCount(), 0);
-		TestFalse(TEXT("Zero-card retry flow does not fault"), Queue->IsResolutionFaulted());
+		TestFalse(TEXT("Bulk zero-card continuation does not fault"), Queue->IsResolutionFaulted());
 		return true;
 	}
 
