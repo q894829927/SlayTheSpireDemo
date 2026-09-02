@@ -1,9 +1,10 @@
 #include "BattleHUDWidget.h"
 
+#include "BattleCardWidget.h"
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 #include "BattleHUDViewModel.h"
 #include "BattleImmediatePreviewTextBlock.h"
-#include "Components/Overlay.h"
+#include "Components/HorizontalBox.h"
 
 void UBattleHUDWidget::OnWidgetRebuilt()
 {
@@ -58,26 +59,42 @@ void UBattleHUDWidget::BeginDestroy()
 
 void UBattleHUDWidget::EnsureImmediatePreviewSurface()
 {
-	if (!IsValid(ViewModel) || !IsValid(OV_PlayArea))
+	if (!IsValid(ViewModel)
+		|| !IsValid(HB_Hand)
+		|| !ViewModel->bHasImmediatePreview
+		|| ViewModel->SelectedCardRuntimeId == INDEX_NONE)
 	{
 		return;
 	}
 
-	if (!IsValid(ImmediatePreviewText))
+	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
 	{
-		ImmediatePreviewText = NewObject<UBattleImmediatePreviewTextBlock>(
-			this,
-			TEXT("Txt_ImmediatePreview_Runtime"));
-	}
-
-	if (IsValid(ImmediatePreviewText))
-	{
-		ImmediatePreviewText->AttachToPreview(ViewModel, OV_PlayArea);
+		UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
+		if (IsValid(CardWidget)
+			&& CardWidget->GetRuntimeId() == ViewModel->SelectedCardRuntimeId)
+		{
+			CardWidget->ApplyImmediatePreview(ViewModel->ImmediatePreview);
+			return;
+		}
 	}
 }
 
 void UBattleHUDWidget::ReleaseImmediatePreviewSurface()
 {
+	// A3 no longer owns OV_PlayArea. Clear any selected-card face override only.
+	if (IsValid(HB_Hand))
+	{
+		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+		{
+			if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
+			{
+				CardWidget->ClearImmediatePreview();
+			}
+		}
+	}
+
+	// Compatibility cleanup for an object created by an older hot-reloaded A3-5
+	// implementation. New code never creates this standalone surface.
 	if (IsValid(ImmediatePreviewText))
 	{
 		ImmediatePreviewText->DetachFromPreview();
@@ -90,13 +107,22 @@ void UBattleHUDWidget::HandleCombatantPreviewRequested(int32 TargetId)
 	if (!bNativeBindingsValid
 		|| TargetId == INDEX_NONE
 		|| !IsValid(ViewModel)
-		|| !IsValid(OV_PlayArea))
+		|| !IsValid(HB_Hand))
 	{
 		return;
 	}
 
-	EnsureImmediatePreviewSurface();
-	ViewModel->SetPreviewTargetById(TargetId);
+	// SetPreviewTargetById may broadcast and rebuild the formal Hand. Apply the
+	// card-face override only after that broadcast returns so it lands on the
+	// current Hand widget instance rather than a stale pre-refresh card.
+	if (ViewModel->SetPreviewTargetById(TargetId))
+	{
+		EnsureImmediatePreviewSurface();
+	}
+	else
+	{
+		ReleaseImmediatePreviewSurface();
+	}
 }
 
 void UBattleHUDWidget::HandleCombatantPreviewCleared()
@@ -106,11 +132,9 @@ void UBattleHUDWidget::HandleCombatantPreviewCleared()
 		return;
 	}
 
-	// Production target submission clears transient inspection/Preview before
-	// OnTargetRequested. Remove the A3 Widget itself first so OV_PlayArea is
-	// physically empty before synchronous authoritative request/A2 playback can
-	// enter BeginNativeCardPlayedPresentation. Do not rely on multicast delegate
-	// ordering for this ownership handoff.
+	// Restore the selected card face before clearing transient Preview state.
+	// Neither step touches OV_PlayArea; committed A2 playback keeps exclusive
+	// ownership of that container.
 	ReleaseImmediatePreviewSurface();
 	ViewModel->ClearPreviewTarget();
 }
