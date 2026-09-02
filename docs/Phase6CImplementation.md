@@ -2,163 +2,156 @@
 
 Status: **COMPLETE / HISTORICAL PHASE 6C VALIDATION SEALED**.
 
-Phase 6C added the second real post-commit battle event. Phase 7C later refined one gameplay-fidelity edge of the shuffle contract so the demo matches the intended Slay-the-Spire Sundial draw loop.
+Phase 6C added the post-commit `DeckShuffled` event. Phase 7C later refined the draw-side producer contract after Sundial exposed an important source-game behavior: `Draw N` must remain one bulk request instead of being flattened into N unrelated draw attempts.
 
 ## Phase 7C gameplay-fidelity amendment
 
-The original Phase 6C rule treated `DiscardPile empty` as a shuffle no-op. That rule is superseded for **gameplay draw attempts**.
-
-The current authoritative rule is:
+Current draw ownership is:
 
 ```text
-one authored DrawCardAction / one draw attempt
-↓
-DrawPile non-empty
-→ draw normally
-→ no shuffle
-
-DrawPile empty
-→ commit exactly one gameplay Shuffle attempt
-→ DiscardPile cards, if any, move to DrawPile
-→ DiscardPile may also be empty: MovedCardCount = 0 is still a committed gameplay shuffle
-→ emit DeckShuffled Record/Event
-→ run shuffle reactions
-→ RetryDraw exactly once
-→ if DrawPile is still empty, this draw attempt ends
+UDrawCardEffect(DrawCount = N)
+→ UDrawCardsAction(N)
+   - owns RemainingDraws
+   - inspects current DrawPile / DiscardPile / Hand capacity
+   - plans deterministic continuation batches
+→ UDrawCardAction
+   - atomic one-card DrawPile -> Hand commit only
+→ UShuffleDeckAction
+   - atomic shuffle commit + DeckShuffled Record/Event
+→ UDrawCardsAction(Remaining)
 ```
 
-Therefore an upgraded draw-two card can produce two shuffle facts when appropriate:
+`UDrawCardAction` no longer decides whether to shuffle and no longer recursively retries itself. Shuffle planning belongs only to `UDrawCardsAction`.
+
+## Bulk draw semantics
+
+A fresh bulk request first checks whether any card exists at all:
 
 ```text
-before Draw #1: Draw=0, Discard=1
-Draw #1
-→ shuffle 1 card
+DrawPile = 0
+DiscardPile = 0
+→ DrawCardsAction ends
+→ no ShuffleAction is scheduled
+→ no DeckShuffled event
+```
+
+When cards exist but the current DrawPile cannot satisfy the whole request:
+
+```text
+ImmediateDraws = min(RemainingDraws, DrawPileCount)
+RemainingAfterImmediate = RemainingDraws - ImmediateDraws
+
+plan atomically:
+[DrawCardAction x ImmediateDraws]
+→ ShuffleDeckAction
+→ DrawCardsAction(RemainingAfterImmediate)
+```
+
+When `DrawPile = 0` and `DiscardPile > 0`, `ImmediateDraws = 0`, so the continuation is simply:
+
+```text
+ShuffleDeckAction
+→ DrawCardsAction(same RemainingDraws)
+```
+
+The remaining bulk action re-evaluates the live deck state when it executes.
+
+## Why a zero-card shuffle can still be real
+
+A zero-card shuffle is not produced merely because a new draw request sees an empty deck. It occurs only when an earlier bulk-draw planning step already scheduled a `ShuffleDeckAction` while the request still owed more draws.
+
+Example:
+
+```text
+Draw 2
+initial: Draw=0, Discard=1
+
+BulkDraw(2)
+→ plans Shuffle #1 + BulkDraw(2)
+
+Shuffle #1
+→ moves the one discard card to Draw
 → DeckShuffled #1
-→ draw that card
 
-before Draw #2: Draw=0, Discard=0
-Draw #2
-→ zero-card gameplay shuffle
+BulkDraw(2)
+current: Draw=1, Discard=0
+→ plans DrawCard(1) + Shuffle #2 + BulkDraw(1)
+
+DrawCard(1)
+→ consumes the only Draw card
+
+Shuffle #2 executes as already planned
+current: Draw=0, Discard=0
+→ commits with MovedCardCount=0
 → DeckShuffled #2
-→ RetryDraw remains empty and ends
+
+BulkDraw(1)
+current: Draw=0, Discard=0
+→ ends without scheduling a third shuffle
 ```
 
-This is required for the generic two-Pommel-Strike+/Sundial interaction. There is still no Pommel Strike or Sundial special case in Deck/Draw code.
+This is the generic behavior required for the two-Pommel-Strike+/Sundial loop. There is no card identity or Relic identity check in Draw/Deck code.
 
-The following remain unchanged:
+## Shuffle commit semantics
+
+`UShuffleDeckAction` may commit when the authoritative DrawPile is empty. `DiscardPile` may be empty if the action was already scheduled by a prior bulk-draw step.
 
 ```text
-initial battle setup shuffle emits no gameplay DeckShuffled event
-DrawPile non-empty rejects ShuffleDiscardIntoDrawPileCommit
-one draw attempt may shuffle at most once
-zero-card RetryDraw never recursively shuffles forever
-DeckShuffled still occurs after the shuffle commit and before RetryDraw
+DrawPile non-empty
+→ ShuffleDeckAction no-op
+→ no DeckShuffled
+
+DrawPile empty, DiscardPile non-empty
+→ move Discard -> Draw
+→ shuffle with battle RNG
+→ committed DeckShuffled
+
+DrawPile empty, DiscardPile empty
+→ MovedCardCount = 0
+→ committed DeckShuffled
 ```
 
-## Runtime contract
-
-The empty-draw continuation is:
+The event ordering remains unchanged:
 
 ```text
-DrawCardAction
-→ [ShuffleDeckAction, RetryDrawAction]
-```
-
-A committed gameplay shuffle resolves as:
-
-```text
-ShuffleDeckAction Execute
-→ validate Deck / Queue
-→ require DrawPile empty
-→ resolve event-dispatch dependencies
-→ DeckRuntime::ShuffleDiscardIntoDrawPileCommit()
-→ shuffle commit succeeds
-   - MovedCardCount may be > 0
-   - MovedCardCount may be 0 when DiscardPile is empty
+Shuffle commit
+→ DeckShuffled Presentation Record when a writer is available
 → FDeckShuffledEvent(ExactDeck)
-→ BattleEventDispatcher
-→ eligible reactions inserted at Queue front
-→ ShuffleDeckAction Finish
+→ Trigger reactions inserted at Queue front
 → reactions execute
-→ RetryDrawAction executes once
+→ remaining bulk draw continues
 ```
 
-Required ordering remains:
+Initial battle deck setup randomization still emits no gameplay `FDeckShuffledEvent`.
 
-```text
-DrawCardAction
-→ ShuffleDeckAction commit
-→ FDeckShuffledEvent
-→ Shuffle reactions
-→ RetryDrawAction
-```
+## Hand capacity
 
-A shuffle with a **non-empty DrawPile** remains rejected and emits no `FDeckShuffledEvent`.
-
-## Typed event representation
-
-`FBattleEvent` has an explicit internal event type discriminator and concrete payloads including:
-
-```text
-FTurnEndedEvent
-FDeckShuffledEvent
-```
-
-Checked access remains type-isolated. `FDeckShuffledEvent` carries the exact `UDeckRuntime*` whose gameplay shuffle committed.
-
-Events remain short-lived C++ values. No event UObject/DataAsset and no persistent Trigger Registry is required.
+`UDrawCardsAction` caps the live request to available Hand slots before planning. A full Hand ends the bulk request without scheduling additional draw/shuffle work.
 
 ## Explicit dispatch dependencies
 
-The battle-scoped `UBattleEventDispatcher` receives the authoritative battle context and combatants used for Trigger collection.
-
-`ABattleManager::TryBuildEventDispatchContext(...)` remains the narrow bridge. Card effects receive dispatcher/combatant references through their play context; they do not search actors and do not own trigger membership.
-
-When a draw reaches an empty DrawPile, valid event wiring is required before the gameplay shuffle commit. This now includes a zero-card shuffle. Missing/invalid wiring requests Queue `ResolutionFault` instead of committing an event-producing fact that cannot be dispatched.
-
-## Failure / no-op semantics
-
-Current semantics:
-
-```text
-DrawPile not empty
-→ no shuffle commit
-→ no DeckShuffled event
-
-DrawPile empty, DiscardPile non-empty
-→ committed shuffle
-→ cards move
-→ DeckShuffled event
-
-DrawPile empty, DiscardPile empty
-→ committed zero-card gameplay shuffle
-→ no card movement
-→ DeckShuffled event
-```
-
-A `RetryDrawAction` created by the same draw attempt is marked as already having performed its one shuffle. If it still sees an empty DrawPile, it finishes without scheduling another shuffle.
+Bulk draw carries the existing dispatcher/combatant context when available. It only requires valid event wiring when it actually needs to schedule a shuffle-producing continuation. No actor search or persistent Trigger Registry is introduced.
 
 ## Regression coverage
 
-Historical Phase 6C validation remains valid evidence for the original event ordering and dispatcher contracts. The Phase 7C correction adds focused coverage for the newly discovered gameplay-fidelity edge:
+Historical Phase 6C evidence remains sealed for the original event/ordering layer. The corrected current contract is covered by:
+
+```text
+SlayTheSpireDemo.Phase6C.Event.TypedPayloadIsolation
+SlayTheSpireDemo.Phase6C.Shuffle.SuccessEmitsAfterCommit
+SlayTheSpireDemo.Phase6C.Shuffle.EmptyDiscardDoesNotEmit
+SlayTheSpireDemo.Phase6C.Shuffle.NonEmptyDrawPileDoesNotEmit
+SlayTheSpireDemo.Phase6C.Draw.EmptyBulkDoesNotShuffle
+SlayTheSpireDemo.Phase6C.Draw.ShuffleReactionBeforeRetryDraw
+```
+
+The Sundial integration additionally proves:
 
 ```text
 SlayTheSpireDemo.Phase7.Sundial.DrawTwoCountsZeroCardShuffle
 ```
 
-That regression must prove:
-
-```text
-Draw=0, Discard=1
-+ two sequential draw attempts
-→ first shuffle moves one card
-→ first RetryDraw draws it
-→ second draw commits a zero-card shuffle
-→ exactly two Sundial shuffle counts
-→ second RetryDraw terminates without recursion/fault
-```
-
-The existing Phase 6C ordering contract remains sticky unless this amendment causes a concrete regression.
+That test uses one `UDrawCardsAction(2)`, not two independent single-draw actions.
 
 ## Historical Phase 6C validation
 
@@ -173,4 +166,4 @@ Phase 6C    5/5
 Total      53/53
 ```
 
-That historical gate is not reinterpreted as validation of the later Phase 7C amendment. The amendment receives its own current-main Build/focused Automation evidence before Phase 7C is sealed.
+That historical total is not reinterpreted as evidence for the later bulk-draw amendment. The amended contract requires a new current-head Build plus the directly affected focused Phase6C and Phase7 Sundial gates before Phase 7C can be sealed.
