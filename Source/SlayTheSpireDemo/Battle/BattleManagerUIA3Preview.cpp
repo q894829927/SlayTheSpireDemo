@@ -111,6 +111,10 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 		Card,
 		Player.Get(),
 		Preview.Operations);
+	Preview.CardFaceRichDescription = FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
+		Card,
+		Player.Get(),
+		Preview.Operations);
 
 	OutPreview = MoveTemp(Preview);
 	return true;
