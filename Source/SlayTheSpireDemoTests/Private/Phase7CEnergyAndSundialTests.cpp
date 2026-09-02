@@ -3,9 +3,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Actions/BattleActionQueue.h"
+#include "Actions/DrawCardAction.h"
 #include "Actions/GainEnergyAction.h"
 #include "Battle/BattleManager.h"
 #include "Battle/EnergyMutation.h"
+#include "Cards/CardData.h"
+#include "Cards/CardInstance.h"
 #include "Combat/Combatant.h"
 #include "Deck/DeckRuntime.h"
 #include "Events/BattleEvent.h"
@@ -271,6 +274,69 @@ namespace Phase7C
 		if (!TestTrue(TEXT("Fourth shuffle resolves"), Fixture.DispatchShuffle(Deck))) return false;
 		TestEqual(TEXT("Fourth shuffle 0 -> 1"), Sundial->GetCounter(), 1);
 		TestEqual(TEXT("Fourth shuffle grants no extra Energy"), Fixture.Battle->Energy, InitialEnergy + 2);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+		FPhase7CSundialDrawTwoZeroCardShuffleTest,
+		"SlayTheSpireDemo.Phase7.Sundial.DrawTwoCountsZeroCardShuffle",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+	)
+
+	bool FPhase7CSundialDrawTwoZeroCardShuffleTest::RunTest(const FString& Parameters)
+	{
+		FSundialFixture Fixture;
+		if (!TestTrue(TEXT("Sundial fixture ready"), Fixture.IsReady())) return false;
+		URelicInstance* Sundial = Fixture.GetSundial();
+		UDeckRuntime* Deck = Fixture.Battle->GetDeckRuntimeForTesting();
+		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
+		if (!TestNotNull(TEXT("Sundial runtime"), Sundial)
+			|| !TestNotNull(TEXT("Deck"), Deck)
+			|| !TestNotNull(TEXT("Queue"), Queue))
+		{
+			return false;
+		}
+
+		UCardData* Definition = NewObject<UCardData>(Fixture.World);
+		Definition->CardId = TEXT("SingleCycleCard");
+		Definition->BaseCost = 0;
+		Definition->TargetType = ECardTargetType::None;
+		TArray<TObjectPtr<UCardData>> Definitions{Definition};
+		Deck->InitializeFromDefinitions(Definitions, 1337);
+
+		UCardInstance* OnlyCard = nullptr;
+		if (!TestTrue(TEXT("Move only card Draw -> Hand"), Deck->TryDrawTopCard(OnlyCard))
+			|| !TestNotNull(TEXT("Only card runtime"), OnlyCard)
+			|| !TestTrue(TEXT("Move only card Hand -> Discard"), Deck->TryDiscardCard(OnlyCard)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("Precondition Draw empty"), Deck->GetDrawCount(), 0);
+		TestEqual(TEXT("Precondition Discard has one"), Deck->GetDiscardCount(), 1);
+
+		UBattleEventDispatcher* Dispatcher = nullptr;
+		TArray<ACombatant*> Combatants;
+		if (!TestTrue(TEXT("Build event dispatch context"), Fixture.BuildDispatchContext(Dispatcher, Combatants))) return false;
+
+		UDrawCardAction* DrawOne = NewObject<UDrawCardAction>(Queue);
+		DrawOne->Initialize(Deck, Dispatcher, Combatants, Fixture.Player);
+		UDrawCardAction* DrawTwo = NewObject<UDrawCardAction>(Queue);
+		DrawTwo->Initialize(Deck, Dispatcher, Combatants, Fixture.Player);
+		TArray<UBattleAction*> DrawBatch{DrawOne, DrawTwo};
+
+		const int32 EnergyBefore = Fixture.Battle->Energy;
+		if (!TestTrue(TEXT("Draw-two batch accepted"), Queue->AddBatchToBackPreserveOrder(DrawBatch))) return false;
+		if (!TestTrue(TEXT("Draw-two batch resolves"), Queue->StartProcessing())) return false;
+
+		// Draw #1: Draw empty + Discard one -> shuffle one card, then draw it.
+		// Draw #2: Draw empty + Discard empty -> commit a zero-card shuffle once,
+		// then RetryDraw stops because this draw attempt already shuffled.
+		TestEqual(TEXT("Draw two causes two Sundial shuffle counts"), Sundial->GetCounter(), 2);
+		TestEqual(TEXT("Two shuffles do not yet grant Energy"), Fixture.Battle->Energy, EnergyBefore);
+		TestEqual(TEXT("Only card ends in Hand"), Deck->GetHandCount(), 1);
+		TestEqual(TEXT("DrawPile ends empty"), Deck->GetDrawCount(), 0);
+		TestEqual(TEXT("DiscardPile ends empty"), Deck->GetDiscardCount(), 0);
+		TestFalse(TEXT("Zero-card retry flow does not fault"), Queue->IsResolutionFaulted());
 		return true;
 	}
 
