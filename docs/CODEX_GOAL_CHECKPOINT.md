@@ -18,11 +18,11 @@ UI-A3: IN PROGRESS / AUTHORIZED
 A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
-A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / VALIDATED / SEALED
+A3-4 ViewModel Transient Preview Lifecycle: REGRESSION FIX IMPLEMENTED / REVALIDATION PENDING
 A3-5 Native card-face Preview + A2/A3 PIE: IMPLEMENTED / REVALIDATION PENDING
 ```
 
-The previous A3-5 standalone Preview implementation passed its focused Automation but failed production PIE because the played card no longer appeared in the A2 play area. That run is historical evidence only and does not validate the current head.
+A production PIE regression was traced back to A3-4 revision invalidation rather than the sealed A2 CardPlayed implementation. A3-5 also exposed two real ownership problems during diagnosis (standalone Preview sharing `OV_PlayArea`, and Preview hover using structural `OnChanged`), both of which remain fixed, but neither was the final cause of the missing CardPlayed animation.
 
 ## Active authority
 
@@ -51,28 +51,19 @@ A3-3 Editor Build: PASS
 A3-3 Automation SlayTheSpireDemo.UIA3.ImmediatePreviewLegality: 2/2 Success, exit 0
 A3-3 compatibility rerun ImmediatePreviewQuery: 2/2 Success (user-reported)
 
-A3-4 Editor Build: PASS (user-reported)
-A3-4 Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
+A3-4 original Editor Build: PASS (user-reported)
+A3-4 original Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
 ```
+
+The original A3-4 focused gate did not cover the interaction between its `OnReadStateReady` revision invalidation broadcast and an A2 Record already started by deferred public Presentation delivery. That omission is now treated as a regression gap; the production behavior must be revalidated before A3-4 is considered sealed again.
 
 Historical shared-contract note: the old `SlayTheSpireDemo.Phase6UIA1.ViewModel` suite contains two stale assertions that mutate CardData/Status after the opening frozen Presentation baseline and expect a later subscriber to see those mutable changes. Do not weaken sealed frozen Presentation semantics to satisfy them.
 
-## Why A3-5 was redesigned
+## A3-5 visible design
 
-The first A3-5 visible Preview used a dynamically created `UBattleImmediatePreviewTextBlock` and attached it to `OV_PlayArea`.
+The first A3-5 visible Preview used a dynamically created `UBattleImmediatePreviewTextBlock` attached to `OV_PlayArea`. That was a real ownership error because sealed A2 `CardPlayed` owns that container exclusively.
 
-That was a bad ownership fit because sealed A2 `CardPlayed` treats `OV_PlayArea` as its committed-animation container and rejects starting its Native visual when its strict historical/presentation preconditions are not met. Production PIE showed the symptom:
-
-```text
-Gameplay request/resolution proceeds
-but played card does not visibly enter the Native play area
-```
-
-The Controller correctly immediate-falls-back when a Native Record visual returns false, so Gameplay can remain correct while the CardPlayed animation is silently skipped.
-
-The current redesign removes A3 from `OV_PlayArea` completely.
-
-## Current A3-5 visible design
+The current design is:
 
 ```text
 select card
@@ -81,7 +72,7 @@ select card
 → ViewModel stores exact BattleId/StateRevision/Card/Target stamped Preview
 → selected UBattleCardWidget temporarily displays target-specific card-face values
 → leave/unfocus/submit/revision change
-→ card face restores frozen historical description
+→ card face restores its frozen historical description
 ```
 
 Visible rules:
@@ -97,9 +88,7 @@ Energy/cost remain in the DTO for Gameplay-owned legality only.
 
 ### Card-face semantic formatting
 
-A3-1 remains the normal card-face baseline. `FBattleTextResolver` first builds the validated current source-side/self semantic arguments, then the target-specific A3 path overrides only semantic names supplied by already-resolved `ImmediatePreview.Operations`.
-
-This means:
+A3-1 remains the normal card-face baseline. `FBattleTextResolver` first builds validated current source-side/self semantic arguments, then the target-specific A3 path overrides only semantic names supplied by already-resolved `ImmediatePreview.Operations`.
 
 ```text
 Strike:   Deal {Damage} damage. -> target-specific Damage replaces {Damage}
@@ -109,7 +98,7 @@ Uppercut: supported Damage may change while unsupported Weak/Vulnerable values k
 
 UI does not parse formatted text and does not rerun Damage/Block formulas.
 
-Each supported operation now carries:
+Each supported operation carries:
 
 ```text
 BaseAmount     = authored immutable effect amount
@@ -126,9 +115,73 @@ ResolvedAmount == BaseAmount -> original description style
 
 The current Native Designer uses a plain `UTextBlock` for the description, so this C++ slice colors that description surface as a whole. Exact per-number run coloring requires a later RichText Designer migration; it must not reintroduce a separate Preview overlay or Gameplay calculations in UMG.
 
+## Final CardPlayed regression root cause
+
+The missing animation was introduced by A3-4 commit `5552e382e279090a2afb7794cd85763d4434dc4a` (`feat(ui-a3): clear stale preview with viewmodel lifecycle`). It added structural `BroadcastChanged()` when `HandleReadStateReady()` observed a new Gameplay revision, even when the ViewModel was Presentation-owned.
+
+The public boundary order is:
+
+```text
+stable Gameplay boundary
+→ seal immutable Presentation Envelope
+→ deferred TryPublishReadStateReady
+→ DrainPendingPublicPresentationDeliveries FIRST
+→ PresentationController starts CardPlayed
+→ Native HUD creates/owns the played-card visual and timer
+→ OnReadStateReady.Broadcast(new revision) SECOND
+```
+
+Before the regression fix, the second step then did:
+
+```text
+HandleReadStateReady
+→ ClearSelectionInternal
+→ ClearLiveInputBindings
+→ SetResolving
+→ structural BroadcastChanged
+→ UBattleHUDWidgetBase::HandleViewModelChanged
+→ CancelTrackedPresentationPlayback
+→ CancelPresentationRecordPlayback
+→ remove the already-started CardPlayed visual
+```
+
+This exactly explains the PIE symptom of no visible card animation while Presentation timing/delay still existed. The A2 `BattleHUDWidget.cpp` CardPlayed implementation itself was unchanged from the pre-A3-5 stable implementation.
+
+### Implemented fix
+
+Production commit:
+
+```text
+583660b41725486cde3d363e749e2a2bbec96d51
+fix(ui-a3): keep revision invalidation off presentation refresh
+```
+
+When `bPresentationDisplayOwned == true`, new-revision invalidation still immediately clears stale selection, legal targets, live bindings and ImmediatePreview and sets Resolving, but it publishes only `OnPreviewChanged`. It must not publish structural `OnChanged` before the PresentationController advances historical display.
+
+Non-Presentation-owned ViewModels retain the existing structural `OnChanged` behavior.
+
+Regression-test commit:
+
+```text
+2cf435bff03a4736d6751316393eaf1ee326093e
+test(ui-a3): keep ready invalidation off structural channel
+```
+
+The existing `RevisionChangeClearsBeforePresentationCatchUp` test now proves both sides of the contract:
+
+```text
+new revision still clears stale selection/legal targets/Preview immediately
+Presentation-owned display BattleId/StateRevision do not jump ahead
+Interaction becomes Resolving and input locks
+structural OnChanged count does NOT increase at the Ready invalidation edge
+PreviewChanged count increases exactly once
+```
+
+This locks the condition required for an already-started A2 `CardPlayed` visual to survive the later ReadStateReady edge.
+
 ## CardPlayed rejection diagnostics
 
-A precise read-only diagnostic now runs only when a Native `CardPlayed` Record is rejected before Controller immediate fallback.
+A precise read-only diagnostic remains available only when a Native `CardPlayed` Record is rejected before Controller immediate fallback.
 
 Search prefix:
 
@@ -136,61 +189,25 @@ Search prefix:
 [BattleHUD][CardPlayedReject]
 ```
 
-It logs:
-
-```text
-Playback token and Record identity
-Card RuntimeId / CardId / HandIndexBefore / PlayAreaIndexAfter
-ViewModel / HB_Hand / OV_PlayArea validity
-card snapshot validity
-source/target PresentationId validity
-EnergyBefore/EnergyAfter/CostPaid/CardCost consistency
-ViewModel historical Energy match
-actual OV_PlayArea child count vs expected
-ViewModel Hand index/card snapshot match
-formal Hand child count vs ViewModel Hand count
-required historical Hand widget/card snapshot match
-ViewModel and Widget RuntimeId match counts
-Hand and PlayArea child class/name summaries
-```
-
-Diagnostics do not mutate Gameplay, ViewModel, Widget ownership or Presentation state and must not be used as justification to weaken sealed A2 predicates.
-
-## Focused Automation at current head
-
-Prefix remains:
-
-```text
-SlayTheSpireDemo.UIA3.NativePreviewIntegration
-```
-
-Expected exactly 3 tests:
-
-```text
-DedicatedPreviewEventsStayIndependentFromInspection
-SelectedCardFaceRendersAndRestoresPreviewValues
-TargetSubmissionClearsPreviewBeforeAuthoritativeRequest
-```
-
-The card-face test proves target-specific visible replacement, red-above-base, blue-below-base and restoration. The handoff test proves A3 card-face Preview does not alter formal Hand structure and clears before authoritative submission.
+It reports Record/token identity, card snapshot, participant ids, Energy/cost consistency, historical Hand matching and actual `OV_PlayArea` children. Diagnostics do not mutate Gameplay, ViewModel, Widget ownership or Presentation state and must not be used to weaken sealed A2 predicates.
 
 ## Validation history
 
-Historical pre-redesign evidence:
+Historical pre-fix evidence:
 
 ```text
-Editor Build: PASS (user-reported)
-old NativePreviewIntegration: 3/3 Success, exit 0 (user-reported)
-production L_BattleTest PIE: FAIL — played card did not appear in play area
+A3-5 card-face Editor Build: PASS (user-reported)
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported)
+production L_BattleTest PIE: FAIL — CardPlayed animation absent, only Presentation delay visible
 ```
 
-Current card-face/diagnostic head:
+Current A3-4 playback-regression fix:
 
 ```text
-Editor Build: NOT YET RUN
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: NOT YET RUN
-Production L_BattleTest PIE: NOT YET RUN
-Native WBP compile/save after current parent C++ changes: NOT YET CONFIRMED
+Editor Build: NOT YET RUN on current head
+SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: NOT YET RUN on current head
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: NOT YET RUN on current head
+Production L_BattleTest PIE: NOT YET RUN on current head
 ```
 
 ## Next exact validation
@@ -199,8 +216,8 @@ Run only:
 
 ```text
 1. Development Editor Build once.
-2. Compile/Save WBP_BattleHUD_Native and WBP_BattleCard_Native once; require 0 Blueprint errors.
-3. Run SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expect 3/3 Success, exit 0.
+2. Run SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle once; expect 3/3 PASS.
+3. Run SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expect 3/3 PASS.
 4. Run one production /Game/SlayTheSpireDemo/Maps/L_BattleTest PIE session.
 ```
 
@@ -210,22 +227,20 @@ PIE acceptance:
 Strike / Enemy:
 select Strike -> hover/focus Enemy -> selected Strike card-face Damage changes
 no separate Damage/Energy preview appears
-submit Enemy -> card-face Preview clears -> A2 played card visibly enters OV_PlayArea -> committed Damage playback remains coherent
+submit Enemy -> Preview clears
+A2 played card visibly moves from Hand toward OV_PlayArea
+committed Damage playback follows normally
 
 Defend / Player:
-select Defend -> hover/focus Player -> selected Defend card-face Block changes
+selected Defend card-face Block changes
 no separate Block/Energy preview appears
-submit Player -> card-face Preview clears -> A2 playback remains coherent
-
-styling:
-above authored base -> red
-below authored base -> blue
-equal -> normal style
+submit -> Preview clears -> committed A2 playback remains coherent
 
 revision invalidation:
-old selection/Preview does not survive new StateRevision
+old selection/Preview does not survive a new StateRevision
+but the Ready edge does not cancel an already-started committed A2 visual
 ```
 
-If CardPlayed still does not visibly enter the play area, capture the `[BattleHUD][CardPlayedReject]` lines from that PIE run and diagnose the exact failed predicate before making any further behavioral change.
+If this exact fix still produces a missing visual, do not revisit Preview ownership first. Check whether `[BattleHUD][CardPlayedReject]` exists. If there is no rejection, inspect Native CardPlayed start/cancel/finish logging and Controller timeout state to establish whether any other caller cancels the accepted token.
 
 Do not run Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates a sealed shared contract. Do not start Phase 7 until A3-5 is validated and sealed.
