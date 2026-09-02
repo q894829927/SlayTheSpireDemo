@@ -72,12 +72,6 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 		Preview.EnergyAfter = Preview.EnergyBefore - Preview.EffectiveCost;
 	}
 
-	ACombatant* MutableTarget = const_cast<ACombatant*>(Target);
-	Preview.CardFaceDescription = FBattleTextResolver::ResolveCardDescription(
-		Card,
-		Player.Get(),
-		MutableTarget);
-
 	Preview.Operations.Reserve(Definition->Effects.Num());
 
 	FCardEffectPreviewContext Context;
@@ -86,7 +80,7 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 	// A3-1's shared preview context predates the public const Query surface and
 	// still stores mutable actor pointers. The Effect contribution contract is
 	// read-only; this narrow adapter must not be used to mutate Target.
-	Context.Target = MutableTarget;
+	Context.Target = const_cast<ACombatant*>(Target);
 
 	for (int32 EffectIndex = 0; EffectIndex < Definition->Effects.Num(); ++EffectIndex)
 	{
@@ -112,6 +106,11 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 			}
 		}
 	}
+
+	Preview.CardFaceDescription = FBattleTextResolver::ResolveCardDescriptionForImmediatePreview(
+		Card,
+		Player.Get(),
+		Preview.Operations);
 
 	OutPreview = MoveTemp(Preview);
 	return true;
