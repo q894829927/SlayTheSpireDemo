@@ -12,7 +12,7 @@ This document records project progress, implementation history and durable phase
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
 - **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
-- **Phase 7 Relics is in progress.** The design is sealed; **7A Relic Runtime and 7B Status + Relic Trigger Sources are complete, validated and sealed**. 7C Sundial + GainEnergyAction is next. Active authority: `docs/Phase7RelicsImplementation.md`.
+- **Phase 7 Relics is in progress.** The design is sealed; **7A Relic Runtime and 7B Status + Relic Trigger Sources are complete, validated and sealed**. **7C Sundial + GainEnergyAction is implemented, including the bulk-draw semantics correction, and is awaiting current-head validation.** Active authority: `docs/Phase7RelicsImplementation.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -34,17 +34,21 @@ Durable decisions:
 
 ## Phase 3 — Deck System
 
-Status: **COMPLETE / PIE validated**
+Status: **COMPLETE / PIE validated; draw orchestration amended by Phase 7C bulk-draw semantics**
 
-Implemented Draw, Hand, Discard and Exhaust zones; deterministic Fisher–Yates shuffle with battle-scoped `FRandomStream`; stable runtime card identity; and queued `Shuffle → RetryDraw`.
+Implemented Draw, Hand, Discard and Exhaust zones; deterministic Fisher–Yates shuffle with battle-scoped `FRandomStream`; stable runtime card identity; and queued draw/shuffle continuation.
 
-Durable decisions:
+Durable decisions after the Phase 7C amendment:
 
 - DeckRuntime owns pile truth;
 - DrawPile end is top;
-- one DrawAction is one draw attempt;
+- `UDrawCardsAction(N)` owns one bulk Draw-N request and `RemainingDraws`;
+- `UDrawCardAction` is the atomic one-card DrawPile→Hand mutation only;
+- bulk draw plans queued `DrawCardAction(s) → ShuffleDeckAction → DrawCardsAction(Remaining)` when the current DrawPile cannot satisfy the request;
+- a fresh `Draw=0 / Discard=0` bulk request ends without a shuffle;
+- a previously planned ShuffleAction may later commit with `MovedCardCount=0` after available DrawPile cards were consumed;
 - draw never synchronously shuffles;
-- initial battle RNG is consumed across deterministic shuffles.
+- initial battle RNG is consumed across deterministic non-empty shuffles.
 
 ## Phase 4 — Data-Driven Cards
 
@@ -82,7 +86,7 @@ Durable decisions:
 
 ## Phase 6 — Battle Events and Triggers
 
-Status: **COMPLETE for defined Phase 6 scope**
+Status: **COMPLETE for defined Phase 6 scope; DeckShuffled producer semantics amended by Phase 7C bulk draw**
 
 Slices:
 
@@ -100,7 +104,9 @@ Durable decisions:
 - queue faults enter only at safe points;
 - QueueEmpty is non-reentrant;
 - player/enemy TurnEnded timing and hand cleanup are Gameplay semantics;
-- DeckShuffled emits after successful commit and before RetryDraw;
+- DeckShuffled emits after a committed gameplay ShuffleAction and before the remaining bulk-draw continuation;
+- a legitimately pre-planned zero-card ShuffleAction may emit DeckShuffled with `MovedCardCount=0`;
+- a fresh exhausted bulk draw does not create a shuffle;
 - initial setup shuffle is not a DeckShuffled Gameplay event;
 - Automation-only sources live in the Editor-only test module.
 
@@ -174,7 +180,7 @@ Read:
 
 ## Phase 7 — Relics
 
-Status: **IN PROGRESS — 7A + 7B COMPLETE / VALIDATED / SEALED; 7C NEXT**
+Status: **IN PROGRESS — 7A + 7B COMPLETE / VALIDATED / SEALED; 7C IMPLEMENTED / BULK-DRAW REFACTOR / VALIDATION PENDING**
 
 Active implementation authority: `docs/Phase7RelicsImplementation.md`.
 
@@ -184,15 +190,15 @@ Phase 7A contains `URelicData`, `URelicInstance`, `URelicContainer`, explicit `A
 
 Phase 7B introduced the smallest source-neutral Trigger boundary needed for Status and Relic triggers to coexist. `FTriggerRuntimeSource` carries source kind/id/runtime object/RuntimeSequence, `FTriggerContext` preserves historical Status compatibility while adding neutral/Relic accessors, `URelicData` can author Trigger definitions, and `BattleEventDispatcher` snapshots Status + Relic candidates into one deterministic ordering domain: `Priority → RuntimeSequence → LocalTriggerIndex`. There is still no persistent Trigger Registry and SourceKind is not an ordering key. Accepted validation: `SlayTheSpireDemo.Phase7.TriggerSources` 3/3 PASS and `SlayTheSpireDemo.Phase6A.Trigger` PASS; no manual PIE was required. Formal evidence: `docs/Phase7BValidation.md`.
 
-7C Sundial + GainEnergyAction is next. It may add the reusable positive-Energy primitive and the concrete Sundial counter/Trigger/Action vertical slice, but Relic Read/Frozen/Native UI remains 7D.
+Phase 7C implements `BattleEnergyMutation::TryGain`, `UGainEnergyAction`, runtime Relic Counter, `USundialTrigger` and `USundialAdvanceAction`. During manual Sundial/Pommel testing, draw semantics were corrected before sealing: `UDrawCardEffect(DrawCount=N)` now creates one `UDrawCardsAction(N)`, while `UDrawCardAction` remains the one-card mutation primitive. Bulk draw plans Shuffle and remaining-draw continuations through the ActionQueue, allowing the source-game zero-card shuffle edge to emerge from generic rules without a Pommel/Sundial special case. Current-head Build, Phase6C 6/6, Phase7.Sundial 3/3 and the focused two-upgraded-Pommel PIE check remain pending before 7C can be sealed.
 
-The first full gameplay vertical slice remains Sundial driven by the already-committed `FDeckShuffledEvent`. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
+Relic Read/Frozen/Native UI remains 7D. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
 
 ## Phase 8 — Combo Architecture Validation
 
 Status: **PLANNED AFTER PHASE 7**
 
-Validate two upgraded Pommel Strikes plus Sundial without special-case combination code. The interaction must emerge from generic card, draw, shuffle, event, modifier and action rules and be visually understandable through the playable UI.
+Validate two upgraded Pommel Strikes plus Sundial without special-case combination code. The interaction must emerge from generic card, bulk-draw, shuffle, event, modifier and action rules and be visually understandable through the playable UI.
 
 ## Phase 6UI-B — Advanced UX / Tooling
 
