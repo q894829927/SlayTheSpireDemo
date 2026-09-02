@@ -4,6 +4,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/Image.h"
 #include "Components/Overlay.h"
+#include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 #include "Engine/World.h"
 
@@ -14,7 +15,7 @@ void UPhase6UIA2NR8CardProbe::NativeOnInitialized()
 		TestButton = NewObject<UButton>(this);
 		TestName = NewObject<UTextBlock>(this);
 		TestCost = NewObject<UTextBlock>(this);
-		TestDescription = NewObject<UTextBlock>(this);
+		TestDescription = NewObject<URichTextBlock>(this);
 		TestType = NewObject<UTextBlock>(this);
 		TestArt = NewObject<UImage>(this);
 		Btn_Card = TestButton;
