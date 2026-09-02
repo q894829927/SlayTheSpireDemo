@@ -20,7 +20,7 @@ UI-A3: IN PROGRESS / AUTHORIZED
 A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: IN PROGRESS
 A3-2A Immediate Preview DTO + Effect contribution: COMPLETE / VALIDATED / SEALED
-A3-2B BattleManager Query + identity stamping: NEXT IMPLEMENTATION SLICE
+A3-2B BattleManager Query + identity stamping: IMPLEMENTED / VALIDATION PENDING
 A3-3 Energy + Target-Aware Legality: NOT STARTED
 A3-4 ViewModel Transient Preview Lifecycle: NOT STARTED
 A3-5 Minimal Native UMG + A2/A3 Combined PIE: NOT STARTED
@@ -97,19 +97,7 @@ Implementation commit:
 feat(ui-a3): add immediate preview effect contributions
 ```
 
-Implemented boundary:
-
-```text
-Source/SlayTheSpireDemo/Battle/BattleImmediatePreview.h
-Source/SlayTheSpireDemo/Cards/Effects/CardEffect.h
-Source/SlayTheSpireDemo/Cards/Effects/DamageCardEffect.h
-Source/SlayTheSpireDemo/Cards/Effects/DamageCardEffect.cpp
-Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.h
-Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.cpp
-Source/SlayTheSpireDemoTests/Private/Phase6UIA3ImmediatePreviewTests.cpp
-```
-
-The sealed contract establishes:
+The sealed A3-2A contract establishes:
 
 ```text
 FImmediateCardPreview
@@ -120,17 +108,75 @@ UDamageCardEffect target-specific Damage contribution through FDamageModifierPip
 UGainBlockCardEffect Self Block contribution through FBlockModifierPipeline
 fixed multi-hit per-hit ResolvedAmount + authored HitCount semantics
 unsupported effects omitted from Operations[]
-focused Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
 ```
 
-A3-2A did not touch:
+A3-2A validation evidence:
 
 ```text
-BattleManager public Preview query construction
+Editor Build: PASS (user-run UE5.8 SlayTheSpireDemoEditor build)
+Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
+Discovered: 3 tests
+Result: 3/3 Success
+Automation exit code: 0
+Manual PIE: NOT REQUIRED
+```
+
+Do not rerun the sealed A3-2A Gate unless a later edit invalidates that contract or its proving tests.
+
+## A3-2B implementation state
+
+Implementation commits:
+
+```text
+a796709034427d470881b6a7d01f2701305406b7  feat(ui-a3): expose immediate preview query
+57d0cc0db45089cf025310002806f944bf59769f  feat(ui-a3): build immediate preview query
+ebf3838b188b9ccf66e40df549d1fa3665fddd6a  test(ui-a3): cover immediate preview query assembly
+```
+
+Changed boundary from the sealed A3-2A head:
+
+```text
+Source/SlayTheSpireDemo/Battle/BattleManager.h
+Source/SlayTheSpireDemo/Battle/BattleManagerUIA3Preview.cpp
+Source/SlayTheSpireDemoTests/Private/Phase6UIA3ImmediatePreviewQueryTests.cpp
+```
+
+Implemented behavior:
+
+```text
+ABattleManager::TryBuildImmediateCardPreview(...)
+current BattleId + StateRevision stamping
+CardRuntimeId stamping
+canonical SourcePresentationId + TargetPresentationId stamping via TryResolveCombatantPresentationId
+immutable CardData Effects iteration in definition order
+BuildImmediatePreviewOperations(...) only; no BuildActions
+unsupported valid effects remain absent while later supported EffectIndex values are preserved
+failed/incoherent transport inputs reset OutPreview and return false
+A3-3 Validation/Energy fields remain reserved and are not populated here
+```
+
+The public Query accepts `const ACombatant*`. The shared A3-1 `FCardEffectPreviewContext` still stores `ACombatant*`, so the implementation uses one narrow `const_cast` adapter when assigning the context Target. The Effect contribution contract remains read-only, and the focused test checks that the Query does not mutate battle/combatant/deck/queue state.
+
+Focused A3-2B Automation prefix:
+
+```text
+SlayTheSpireDemo.UIA3.ImmediatePreviewQuery
+```
+
+Expected tests:
+
+```text
+StampsCurrentIdentityAndKeepsDefinitionOrder
+IsDeterministicReadOnlyAndRejectsIncoherentInputs
+```
+
+A3-2B still does not touch:
+
+```text
 ViewModel
 UMG
-Energy / legality evaluation
 PreviewTarget lifecycle
+Energy / legality evaluation
 Trigger / Relic prediction
 final HP prediction
 HP ghost bars
@@ -140,53 +186,29 @@ multi-enemy architecture
 cross-revision retained selection
 ```
 
-## A3-2A validation evidence
+## Validation actually performed for A3-2B
 
-Closed-scope Gate completed on **2026-09-02** against the A3-2A implementation.
+No UE validation has been claimed yet for the new A3-2B code.
 
 ```text
-Editor Build: PASS (user-run UE5.8 SlayTheSpireDemoEditor build)
-Automation prefix: SlayTheSpireDemo.UIA3.ImmediatePreview
-Discovered: 3 tests
-Result: 3/3 Success
-Automation exit code: 0
-Manual PIE: NOT REQUIRED for A3-2A
+Editor Build: NOT RUN for A3-2B
+SlayTheSpireDemo.UIA3.ImmediatePreviewQuery Automation: NOT RUN
+Manual PIE: NOT REQUIRED for A3-2B
 Phase6R / A2D5 / Shipping / broad Scenario suites: intentionally NOT RUN
 ```
 
-Focused tests passed:
-
-```text
-BlockUsesSelfPipelineAndIgnoresHoveredEnemy
-DamageUsesTargetSpecificPipelineAndPreservesHits
-SupportedEffectsKeepDefinitionOrderAndUnsupportedEffectsStayAbsent
-```
-
-This is sufficient to seal A3-2A under the closed-scope validation policy. Do not rerun this Gate unless a later edit invalidates the A3-2A contract or its proving tests.
-
 ## Next exact action
 
-Implement only:
+Run only the closed-scope A3-2B Gate:
 
 ```text
-A3-2B — BattleManager public Immediate Preview Query + identity stamping
+1. Editor Build once.
+2. Run Automation prefix exactly once:
+   SlayTheSpireDemo.UIA3.ImmediatePreviewQuery
+3. Confirm exactly the focused A3-2B tests pass and Automation exits successfully.
+4. Record Build + Automation evidence.
+5. Mark A3-2B COMPLETE / VALIDATED / SEALED.
+6. Only then decide whether A3-2 is fully closed or whether the dedicated implementation document requires another A3-2 sub-slice before A3-3.
 ```
-
-Required boundary:
-
-```text
-ABattleManager::TryBuildImmediateCardPreview(...)
-current BattleId + StateRevision stamping
-CardRuntimeId stamping
-SourcePresentationId + TargetPresentationId stamping
-iterate immutable CardData Effects in definition order
-call BuildImmediatePreviewOperations(...) only
-return coherent FImmediateCardPreview without mutation
-focused A3-2B Automation
-```
-
-Do not add A3-3 Energy/legality behavior yet beyond preserving the DTO fields already reserved for it.
-
-Do not touch ViewModel / UMG / PreviewTarget lifecycle in A3-2B.
 
 Do not run Phase6R, A2D5, Shipping, broad Scenario A-E, Legacy parity or unrelated historical suites unless a concrete shared-contract failure invalidates them.
