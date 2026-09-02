@@ -157,6 +157,7 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	}
 
 	ClearFeedback();
+	ClearImmediatePreviewInternal();
 	SelectedCardRuntimeId = RuntimeId;
 	RebuildLegalTargets(Card);
 
@@ -338,6 +339,9 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 {
 	// Pure historical display copy. No runtime/query/data-asset access belongs in
 	// this function.
+	const bool bRevisionChanged = BattleId != Snapshot.BattleId
+		|| StateRevision != Snapshot.StateRevision;
+
 	BattleId = Snapshot.BattleId;
 	StateRevision = Snapshot.StateRevision;
 	DisplayedBattleState = Snapshot.BattleState;
@@ -354,7 +358,7 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 	bDisplayedSnapshotCanEndTurn = Snapshot.bCanEndTurn;
 
 	ClearLiveInputBindings();
-	if (bResetInteraction)
+	if (bResetInteraction || bRevisionChanged)
 	{
 		ClearSelectionInternal();
 	}
@@ -487,6 +491,19 @@ void UBattleHUDViewModel::HandleReadStateReady(uint64 InBattleId, uint64 InState
 	if (!IsValid(Battle))
 	{
 		return;
+	}
+
+	const bool bIncomingRevisionChanged = BattleId != static_cast<int64>(InBattleId)
+		|| StateRevision != static_cast<int64>(InStateRevision);
+	if (bIncomingRevisionChanged)
+	{
+		// A3 first-version policy is intentionally conservative: as soon as a new
+		// stable Gameplay revision is announced, stale interaction/Preview state is
+		// dropped even when the PresentationController still owns historical display.
+		ClearSelectionInternal();
+		ClearLiveInputBindings();
+		SetResolving();
+		BroadcastChanged();
 	}
 
 	if (!Battle->IsPresentationAvailable())
@@ -641,6 +658,7 @@ void UBattleHUDViewModel::ClearSelectionInternal()
 	SelectedCardRuntimeId = INDEX_NONE;
 	LegalTargets.Reset();
 	LegalTargetObjects.Reset();
+	ClearImmediatePreviewInternal();
 }
 
 void UBattleHUDViewModel::ClearLiveInputBindings()
@@ -651,6 +669,7 @@ void UBattleHUDViewModel::ClearLiveInputBindings()
 	LegalTargets.Reset();
 	LiveBindingBattleId = 0;
 	LiveBindingStateRevision = 0;
+	ClearImmediatePreviewInternal();
 }
 
 void UBattleHUDViewModel::SetFeedback(EGameplayRequestFailureReason Reason)
