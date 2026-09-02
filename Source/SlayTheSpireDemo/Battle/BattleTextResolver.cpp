@@ -112,6 +112,47 @@ namespace
 		return FText::Format(Format, ExactArguments);
 	}
 
+	FText ResolveCardDescriptionInternal(
+		const UCardInstance* Card,
+		ACombatant* Source,
+		ACombatant* ConcreteTarget,
+		bool bUseConcreteTarget)
+	{
+		if (!IsValid(Card))
+		{
+			return FText::GetEmpty();
+		}
+
+		const UCardData* Definition = Card->GetDefinition();
+		if (!IsValid(Definition))
+		{
+			return FText::GetEmpty();
+		}
+
+		FPreviewTextArgumentBuilder Builder;
+		Builder.AddInteger(TEXT("Cost"), Card->GetCurrentCost());
+
+		FCardEffectPreviewContext Context;
+		Context.Card = Card;
+		Context.Source = Source;
+		Context.Target = Definition->TargetType == ECardTargetType::Self
+			? Source
+			: (bUseConcreteTarget ? ConcreteTarget : nullptr);
+
+		for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
+		{
+			const UCardEffect* Effect = EffectPtr.Get();
+			if (!IsValid(Effect))
+			{
+				Builder.AddError(FString::Printf(TEXT("Card %s contains an invalid Effect."), *Card->GetDebugLabel()));
+				continue;
+			}
+			Effect->BuildPreviewArguments(Context, Builder);
+		}
+
+		return FormatDescription(Definition->Description, Builder, Card->GetDebugLabel());
+	}
+
 	void AddValidationError(TArray<FText>& OutErrors, const FString& Error)
 	{
 		OutErrors.Add(FText::FromString(Error));
@@ -180,37 +221,15 @@ namespace
 
 FText FBattleTextResolver::ResolveCardDescription(const UCardInstance* Card, ACombatant* Source)
 {
-	if (!IsValid(Card))
-	{
-		return FText::GetEmpty();
-	}
+	return ResolveCardDescriptionInternal(Card, Source, nullptr, false);
+}
 
-	const UCardData* Definition = Card->GetDefinition();
-	if (!IsValid(Definition))
-	{
-		return FText::GetEmpty();
-	}
-
-	FPreviewTextArgumentBuilder Builder;
-	Builder.AddInteger(TEXT("Cost"), Card->GetCurrentCost());
-
-	FCardEffectPreviewContext Context;
-	Context.Card = Card;
-	Context.Source = Source;
-	Context.Target = Definition->TargetType == ECardTargetType::Self ? Source : nullptr;
-
-	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
-	{
-		const UCardEffect* Effect = EffectPtr.Get();
-		if (!IsValid(Effect))
-		{
-			Builder.AddError(FString::Printf(TEXT("Card %s contains an invalid Effect."), *Card->GetDebugLabel()));
-			continue;
-		}
-		Effect->BuildPreviewArguments(Context, Builder);
-	}
-
-	return FormatDescription(Definition->Description, Builder, Card->GetDebugLabel());
+FText FBattleTextResolver::ResolveCardDescription(
+	const UCardInstance* Card,
+	ACombatant* Source,
+	ACombatant* Target)
+{
+	return ResolveCardDescriptionInternal(Card, Source, Target, true);
 }
 
 FText FBattleTextResolver::ResolveStatusDescription(const UStatusInstance* StatusInstance)
