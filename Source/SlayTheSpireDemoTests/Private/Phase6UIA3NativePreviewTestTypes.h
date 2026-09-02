@@ -58,10 +58,15 @@ public:
 	UFUNCTION()
 	void HandleViewModelChanged();
 
+	UFUNCTION()
+	void HandlePreviewViewModelChanged();
+
 	int32 InspectRequestedCount = 0;
 	int32 InspectClearedCount = 0;
 	int32 PreviewRequestedCount = 0;
 	int32 PreviewClearedCount = 0;
+	int32 StructuralChangedCount = 0;
+	int32 PreviewChangedCount = 0;
 	int32 LastPreviewTargetId = INDEX_NONE;
 	bool bObservedPreRequestPreviewClear = false;
 
