@@ -24,6 +24,7 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA3PreviewHUDProbe : public UBattleHUDWi
 public:
 	void ConfigurePreviewSurface(UBattleHUDViewModel* InViewModel, UHorizontalBox* InHand);
 	void RequestPreviewForTesting(int32 TargetId);
+	void ApplyPreviewSurfaceForTesting();
 	void ReleasePreviewSurfaceForTesting();
 	void ClearPreviewAsCombatantWouldForTesting();
 };
