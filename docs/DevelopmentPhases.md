@@ -12,7 +12,7 @@ This document records project progress, implementation history and durable phase
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
 - **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
-- **Phase 7 Relics design is authorized; runtime implementation has not started.** Active design authority: `docs/Phase7RelicsImplementation.md`.
+- **Phase 7 Relics is in progress.** The design is sealed; 7A Relic Runtime is implemented and awaiting its focused Build/Automation gate. Active authority: `docs/Phase7RelicsImplementation.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -174,13 +174,15 @@ Read:
 
 ## Phase 7 — Relics
 
-Status: **DESIGN AUTHORIZED / IMPLEMENTATION NOT STARTED**
+Status: **IN PROGRESS — 7A IMPLEMENTED / VALIDATION PENDING**
 
-Active design authority: `docs/Phase7RelicsImplementation.md`.
+Active implementation authority: `docs/Phase7RelicsImplementation.md`.
 
-First validation is Sundial; Abacus remains optional. Phase 7 introduces the first non-Status Trigger source and therefore must extract only the smallest source-neutral boundary needed for Status and Relic triggers to coexist. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
+The Phase 7 design is sealed. First validation remains Sundial; Abacus is optional. Phase 7 introduces the first non-Status Trigger source and therefore extracts only the smallest source-neutral boundary needed for Status and Relic triggers to coexist. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
 
-The first implementation target is a deterministic Sundial vertical slice driven by the already-committed `FDeckShuffledEvent`. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
+Current 7A implementation contains `URelicData`, `URelicInstance`, `URelicContainer`, explicit `ABattleManager` ownership/setup, ordered configured starting Relics and focused RuntimeSequence lifecycle tests. Starting Relics are instantiated during `StartBattle()` after the battle RuntimeSequence allocator reset; the Relic getter is not a lazy initialization path. 7B Dispatcher work, Sundial, positive Energy gain and Relic UI have not started.
+
+The first full gameplay vertical slice remains Sundial driven by the already-committed `FDeckShuffledEvent`. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
 
 ## Phase 8 — Combo Architecture Validation
 
