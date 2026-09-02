@@ -39,6 +39,9 @@ void UPhase6UIA3PreviewEventSink::ObserveViewModel(UBattleHUDViewModel* InViewMo
 		Previous->OnChanged.RemoveDynamic(
 			this,
 			&UPhase6UIA3PreviewEventSink::HandleViewModelChanged);
+		Previous->OnPreviewChanged.RemoveDynamic(
+			this,
+			&UPhase6UIA3PreviewEventSink::HandlePreviewViewModelChanged);
 	}
 
 	ObservedViewModel = InViewModel;
@@ -47,6 +50,9 @@ void UPhase6UIA3PreviewEventSink::ObserveViewModel(UBattleHUDViewModel* InViewMo
 		InViewModel->OnChanged.AddUniqueDynamic(
 			this,
 			&UPhase6UIA3PreviewEventSink::HandleViewModelChanged);
+		InViewModel->OnPreviewChanged.AddUniqueDynamic(
+			this,
+			&UPhase6UIA3PreviewEventSink::HandlePreviewViewModelChanged);
 	}
 }
 
@@ -78,6 +84,12 @@ void UPhase6UIA3PreviewEventSink::HandlePreviewCleared()
 
 void UPhase6UIA3PreviewEventSink::HandleViewModelChanged()
 {
+	++StructuralChangedCount;
+}
+
+void UPhase6UIA3PreviewEventSink::HandlePreviewViewModelChanged()
+{
+	++PreviewChangedCount;
 	const UBattleHUDViewModel* ViewModel = ObservedViewModel.Get();
 	if (IsValid(ViewModel)
 		&& ViewModel->SelectedCardRuntimeId != INDEX_NONE
