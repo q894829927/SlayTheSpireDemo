@@ -1,248 +1,138 @@
-# Codex Goal Checkpoint — Phase 6UI-A3
+# Codex Goal Checkpoint — Phase 7 Relics
 
 Last updated: **2026-09-02**
 
 ## Goal
 
-Complete Phase 6UI-A3 without changing Gameplay authority, sealed A2 committed-presentation semantics, Native/Legacy ownership or phase ordering.
-
-```text
-A3 = pre-commit read-only current-state supported Operation values
-A2 = post-commit playback of immutable facts that actually committed
-```
+Design and then implement Phase 7 Relics as a first-class deterministic Gameplay system, beginning with Sundial, without reopening sealed Phase 6UI-A contracts or modeling Relics as Statuses.
 
 ## Current status
 
 ```text
-UI-A3: IN PROGRESS / AUTHORIZED
-A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
-A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
-A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
-A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / REVALIDATED / SEALED
-A3-5 Native card-face Preview + A2/A3 PIE: VALIDATED / SEAL PENDING
-A3-5 RichText per-value comparison styling: VALIDATED
+Phase 6UI-A: COMPLETE / VALIDATED / SEALED
+Phase 6UI-A3: COMPLETE / VALIDATED / SEALED
+
+Phase 7 Relics: DESIGN AUTHORIZED / IMPLEMENTATION NOT STARTED
+7A Relic Runtime: NEXT IMPLEMENTATION SLICE, NOT YET AUTHORIZED TO CODE
+7B Status + Relic Trigger Sources: NOT STARTED
+7C Sundial + GainEnergyAction: NOT STARTED
+7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
 
-A production PIE regression was traced back to A3-4 revision invalidation rather than the sealed A2 CardPlayed implementation. A3-5 also exposed two real ownership problems during diagnosis (standalone Preview sharing `OV_PlayArea`, and Preview hover using structural `OnChanged`), both of which remain fixed, but neither was the final cause of the missing CardPlayed animation.
-
-The A3-4 regression fix has now been revalidated by both focused Automation suites and production PIE. CardPlayed animation is restored.
-
-The later RichText refinement is also validated: normal current-state Hand card faces and target-specific Preview both color only the affected numeric semantic value. Strength-modified Damage is confirmed in PIE. Dexterity manual PIE is currently unavailable because the project has no playable Dexterity-granting card; the Block behavior is accepted through the passing focused `BlockTracksDexterityAndFrailty` Automation coverage.
-
-## Active authority
+Final A3 seal authority:
 
 ```text
-AGENTS.md
-Source/SlayTheSpireDemo/UI/AGENTS.md
-docs/Phase6UIA3Implementation.md
-docs/Phase6UIA3CardFacePreviewAmendment.md
-docs/Phase6UIA3DynamicTextImplementation.md
-docs/ValidationExecutionPolicy.md
+docs/Phase6UIA3Seal.md
 ```
 
-`docs/Phase6UIA3CardFacePreviewAmendment.md` is the later explicit A3-5 UX amendment and controls visible Preview presentation where it differs from the original A3 implementation document.
-
-UI-A2 remains complete/sealed. Native HUD remains the sole active production implementation. Legacy HUD/Card/Status remain retained/deprecated with zero intended production runtime dependency.
-
-## Sealed predecessor evidence
+Phase 7 active design authority:
 
 ```text
-A3-2A Editor Build: PASS
-A3-2A Automation SlayTheSpireDemo.UIA3.ImmediatePreview: 3/3 Success, exit 0
-A3-2B Editor Build: PASS
-A3-2B Automation SlayTheSpireDemo.UIA3.ImmediatePreviewQuery: 2/2 Success, exit 0
-
-A3-3 Editor Build: PASS
-A3-3 Automation SlayTheSpireDemo.UIA3.ImmediatePreviewLegality: 2/2 Success, exit 0
-A3-3 compatibility rerun ImmediatePreviewQuery: 2/2 Success (user-reported)
-
-A3-4 original Editor Build: PASS (user-reported)
-A3-4 original Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
-A3-4 regression-fix Automation SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported)
+docs/Phase7RelicsImplementation.md
 ```
 
-The original A3-4 focused gate did not cover the interaction between its `OnReadStateReady` revision invalidation broadcast and an A2 Record already started by deferred public Presentation delivery. That regression gap is now covered explicitly: Presentation-owned Ready invalidation may clear stale transient state but must not emit structural `OnChanged`.
+`docs/Phase6UIA3Implementation.md` remains the detailed historical implementation plan and durable A3 contract document; its old progress header is superseded by `docs/Phase6UIA3Seal.md`.
 
-Historical shared-contract note: the old `SlayTheSpireDemo.Phase6UIA1.ViewModel` suite contains two stale assertions that mutate CardData/Status after the opening frozen Presentation baseline and expect a later subscriber to see those mutable changes. Do not weaken sealed frozen Presentation semantics to satisfy them.
+## Phase 6UI-A final accepted evidence
 
-## A3-5 visible design
-
-The first A3-5 visible Preview used a dynamically created `UBattleImmediatePreviewTextBlock` attached to `OV_PlayArea`. That was a real ownership error because sealed A2 `CardPlayed` owns that container exclusively.
-
-The current design is:
+User-reported UE 5.8 evidence on 2026-09-02:
 
 ```text
-select card
-→ hover/focus a legal PreviewTarget
-→ BattleManager builds FImmediateCardPreview through current read-only Gameplay pipelines
-→ ViewModel stores exact BattleId/StateRevision/Card/Target stamped Preview
-→ selected UBattleCardWidget temporarily displays target-specific card-face values
-→ leave/unfocus/submit/revision change
-→ card face restores its frozen historical description
+SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS
+SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS
+SlayTheSpireDemo.UIA3.RichCardTextBaseline: 2/2 PASS
+Production L_BattleTest PIE: CardPlayed animation restored
+Production PIE: Strength-modified current card-face Damage colors correctly
 ```
 
-Visible rules:
+No playable Dexterity-granting card currently exists. Dexterity/Frailty Block RichText is accepted through the passing focused `BlockTracksDexterityAndFrailty` Automation and is not a Phase 7 blocker.
+
+Do not rerun these gates merely because Phase 7 begins.
+
+## Phase 7 design baseline
+
+Design document commit:
 
 ```text
-No standalone Damage preview label
-No standalone Block preview label
-No standalone Energy-loss preview label
-A3 never adds a child to OV_PlayArea
+27756788f0945a2d2550346e5e36a3cb618277a7
+docs(phase7): design relic runtime and sundial vertical slice
 ```
 
-Energy/cost remain in the DTO for Gameplay-owned legality only.
-
-### Card-face semantic formatting
-
-A3-1 remains the normal card-face baseline. `FBattleTextResolver` first builds validated current source-side/self semantic arguments, then the target-specific A3 path overrides only semantic names supplied by already-resolved `ImmediatePreview.Operations`.
+Project roadmap seal/update commit immediately before the Phase 7 design:
 
 ```text
-Strike:   Deal {Damage} damage. -> target-specific Damage replaces {Damage}
-Defend:   Gain {Block} Block.   -> current resolved Block replaces {Block}
-Uppercut: supported Damage may change while unsupported Weak/Vulnerable values keep normal A3-1 text
+16a4cd954286e2c0b32ef0bfb05b67925d9aac6f
+docs: seal phase 6ui-a and authorize phase 7 design
 ```
 
-UI does not parse formatted text and does not rerun Damage/Block formulas.
-
-Each supported Damage/Block value retains:
+A3 final seal document commit:
 
 ```text
-BaseAmount      = authored immutable effect amount
-Current/Resolved = current Gameplay-pipeline result
+a42fe2c1e4fd8728f264bb67a03c09b378338cda
+docs(ui-a3): seal playable immediate preview phase
 ```
 
-Native comparison styling:
+## Locked Phase 7 architecture
 
 ```text
-Current/Resolved > BaseAmount  -> PreviewIncrease (red)
-Current/Resolved < BaseAmount  -> PreviewDecrease (blue)
-Current/Resolved == BaseAmount -> Default / original description style
+RelicData != RelicInstance
+Relic != Status
+Relic mutable progress belongs to RelicInstance
+RelicContainer is battle-scoped until a real run layer exists
+Relics use ABattleManager::AllocateRuntimeSequence()
+Status + Relic trigger order remains Priority → RuntimeSequence → LocalTriggerIndex
+BattleEventDispatcher remains snapshot-based
+No persistent Trigger Registry
+UBattleTrigger remains read-only
+Sundial counter mutation occurs through an Action
+Sundial reward uses a reusable GainEnergyAction
+A3 does not predict Relic reactions
+No Relic Modifier framework is introduced until a concrete modifier Relic requires it
 ```
 
-The Native card description is now a `URichTextBlock` backed by `DT_BattleCardTextStyles` rows `Default`, `PreviewIncrease` and `PreviewDecrease`. The resolver wraps only the exact semantic numeric argument, so surrounding authored/localized text keeps the normal style.
-
-Normal A3-1 Hand card faces use the same authored-base rule. Therefore Strength/Weak can color Damage and Dexterity/Frailty can color Block without requiring target hover. The target-specific Preview path still uses explicit `ImmediatePreview.Operations` Base/Resolved values, so it does not infer target styling by parsing the final string.
-
-## Final CardPlayed regression root cause
-
-The missing animation was introduced by A3-4 commit `5552e382e279090a2afb7794cd85763d4434dc4a` (`feat(ui-a3): clear stale preview with viewmodel lifecycle`). It added structural `BroadcastChanged()` when `HandleReadStateReady()` observed a new Gameplay revision, even when the ViewModel was Presentation-owned.
-
-The public boundary order is:
+## Sundial target behavior
 
 ```text
-stable Gameplay boundary
-→ seal immutable Presentation Envelope
-→ deferred TryPublishReadStateReady
-→ DrainPendingPublicPresentationDeliveries FIRST
-→ PresentationController starts CardPlayed
-→ Native HUD creates/owns the played-card visual and timer
-→ OnReadStateReady.Broadcast(new revision) SECOND
+initial setup shuffle: no FDeckShuffledEvent -> no progress
+1st gameplay shuffle: counter 0 -> 1, no Energy
+2nd gameplay shuffle: counter 1 -> 2, no Energy
+3rd gameplay shuffle: counter 2 -> 0, enqueue dependent GainEnergyAction(+2)
+4th gameplay shuffle: counter 0 -> 1
 ```
 
-Before the regression fix, the second step then did:
+The Trigger only builds the reaction Action. It does not mutate the Relic counter or Energy.
+
+## Planned slices
+
+### 7A — Relic Runtime
 
 ```text
-HandleReadStateReady
-→ ClearSelectionInternal
-→ ClearLiveInputBindings
-→ SetResolving
-→ structural BroadcastChanged
-→ UBattleHUDWidgetBase::HandleViewModelChanged
-→ CancelTrackedPresentationPlayback
-→ CancelPresentationRecordPlayback
-→ remove the already-started CardPlayed visual
+URelicData
+URelicInstance
+URelicContainer
+BattleManager ownership/setup
+battle-wide RuntimeSequence
+focused runtime tests
 ```
 
-This exactly explains the PIE symptom of no visible card animation while Presentation timing/delay still existed. The A2 `BattleHUDWidget.cpp` CardPlayed implementation itself was unchanged from the pre-A3-5 stable implementation.
+No Dispatcher, Sundial or UI changes in 7A.
 
-### Implemented fix
+### 7B — Status + Relic Trigger Sources
 
-Production commit:
+Generalize only the current Status-shaped Trigger runtime-source boundary. Preserve old Status trigger behavior and ordering. Do not add a registry.
 
-```text
-583660b41725486cde3d363e749e2a2bbec96d51
-fix(ui-a3): keep revision invalidation off presentation refresh
-```
+### 7C — Sundial + GainEnergyAction
 
-When `bPresentationDisplayOwned == true`, new-revision invalidation still immediately clears stale selection, legal targets, live bindings and ImmediatePreview and sets Resolving, but it publishes only `OnPreviewChanged`. It must not publish structural `OnChanged` before the PresentationController advances historical display.
+Add positive Energy mutation Action plus Sundial Trigger/Advance Action. Initial setup shuffle remains excluded by the existing event contract.
 
-Non-Presentation-owned ViewModels retain the existing structural `OnChanged` behavior.
+### 7D — Relic Read/Frozen/Native UI
 
-Regression-test commit:
-
-```text
-2cf435bff03a4736d6751316393eaf1ee326093e
-test(ui-a3): keep ready invalidation off structural channel
-```
-
-The existing `RevisionChangeClearsBeforePresentationCatchUp` test now proves both sides of the contract:
-
-```text
-new revision still clears stale selection/legal targets/Preview immediately
-Presentation-owned display BattleId/StateRevision do not jump ahead
-Interaction becomes Resolving and input locks
-structural OnChanged count does NOT increase at the Ready invalidation edge
-PreviewChanged count increases exactly once
-```
-
-This locks the condition required for an already-started A2 `CardPlayed` visual to survive the later ReadStateReady edge.
-
-## CardPlayed rejection diagnostics
-
-A precise read-only diagnostic remains available only when a Native `CardPlayed` Record is rejected before Controller immediate fallback.
-
-Search prefix:
-
-```text
-[BattleHUD][CardPlayedReject]
-```
-
-It reports Record/token identity, card snapshot, participant ids, Energy/cost consistency, historical Hand matching and actual `OV_PlayArea` children. Diagnostics do not mutate Gameplay, ViewModel, Widget ownership or Presentation state and must not be used to weaken sealed A2 predicates.
-
-## Validation history
-
-Historical pre-fix evidence:
-
-```text
-A3-5 card-face Editor Build: PASS (user-reported)
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported)
-production L_BattleTest PIE: FAIL — CardPlayed animation absent, only Presentation delay visible
-```
-
-Current regression-fix evidence:
-
-```text
-SlayTheSpireDemo.UIA3.ViewModelPreviewLifecycle: 3/3 PASS (user-reported, 2026-09-02)
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported, 2026-09-02)
-Production L_BattleTest PIE: PASS for restored CardPlayed animation (user-reported, 2026-09-02)
-```
-
-Current RichText evidence:
-
-```text
-SlayTheSpireDemo.UIA3.RichCardTextBaseline: 2/2 PASS (user-reported, 2026-09-02)
-SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 PASS (user-reported, 2026-09-02)
-Production PIE: Strength-modified card-face Damage changes color correctly (user-reported, 2026-09-02)
-Dexterity manual PIE: NOT RUN — no playable Dexterity-granting card currently exists
-Dexterity/Frailty Block RichText behavior: covered by passing BlockTracksDexterityAndFrailty Automation and accepted for this slice
-```
-
-Result:
-
-```text
-A3 transient Preview invalidation no longer cancels committed A2 CardPlayed playback.
-CardPlayed visible animation is restored in production PIE.
-RichText card faces color only changed semantic numeric values.
-Normal source/self modifier changes can color the card face without target hover.
-Dexterity manual PIE absence is not a blocker for the current RichText acceptance record because focused Block Automation passed.
-```
+Expose Relic state through read/frozen DTOs and the Native HUD. No dedicated RelicTriggered Presentation Record is required for the first slice; existing DeckShuffled/EnergyChanged playback plus FinalSnapshot catch-up is sufficient.
 
 ## Next exact action
 
-Do not make further behavioral changes to A2 playback, A3 Preview ownership or RichText comparison styling unless a new concrete defect is reported. The current regression and RichText slice are validated.
+Wait for explicit user authorization to implement **Phase 7A — Relic Runtime**.
 
-The remaining A3 administrative action is to review the final A3-5 acceptance evidence and seal A3-5 / UI-A3 if no additional PIE acceptance defect is reported.
+When authorized, inspect only the exact current battle setup and RuntimeSequence allocation path needed to place `URelicContainer` deterministically, then implement 7A as one bounded slice.
 
-A future playable Dexterity card may be used for an optional manual Block-color spot-check; it is not required to reopen this validated RichText slice.
-
-Do not run Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates a sealed shared contract. Do not start Phase 7 until A3-5 is sealed.
+Do not begin 7B, 7C, Abacus, Phase 8, Relic modifiers, run persistence or advanced Relic Presentation in the same change.
