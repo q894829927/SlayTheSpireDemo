@@ -19,7 +19,7 @@ A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
 A3-4 ViewModel Transient Preview Lifecycle: COMPLETE / VALIDATED / SEALED
-A3-5 Minimal Native UMG + A2/A3 Combined PIE: IMPLEMENTED / AUTOMATED GATE PASS / MANUAL GATE PENDING
+A3-5 Minimal Native UMG + A2/A3 Combined PIE: PIE DEFECT FIXED / REVALIDATION REQUIRED
 ```
 
 UI-A2 remains complete/sealed. Native HUD remains the sole active production implementation. Legacy HUD/Card/Status remain retained/deprecated with zero production runtime dependency.
@@ -57,7 +57,7 @@ A3-4 historical shared-contract note remains: `SlayTheSpireDemo.Phase6UIA1.ViewM
 
 ## A3-5 implementation state
 
-Implementation commits after the A3-4 seal:
+Implementation/fix commits after the A3-4 seal include:
 
 ```text
 1dd72a378089d6e3e61a1de4996062e9e81c9f9f  feat(ui-a3): add dedicated combatant preview events
@@ -73,8 +73,12 @@ bab2a1f31a10999de7b5b628722f46be15598809  feat(ui-a3): clear preview before targ
 03c52b76af82108a12eaf45d5d708dac0f971c90  test(ui-a3): implement native preview integration probes
 0b4b0e6406d598a5acdd0e4b70bf94c26457bdd0  test(ui-a3): cover native preview and a3 a2 handoff
 5b0522b3c96cef9e069d5cb85d7a1f71f4b8f071  fix(ui-a3): avoid preview overlay slot shadowing
- e6e9d55bad20f790216cd5fbaf48b4169c7e12a9  fix(ui-a3): restore native energy presentation state name
+e6e9d55bad20f790216cd5fbaf48b4169c7e12a9  fix(ui-a3): restore native energy presentation state name
 0ea1f50aa4d459f862b7415821077aee330a22ae  test(ui-a3): give handoff preview visible energy state
+a8f875a5a0b52017ef15b26abd9183e361729992  fix(ui-a3): release preview surface before target handoff
+1a102dc321ea3a1fac6c93e321c519aea5eade15  test(ui-a3): expose production preview-clear handoff
+63531a214cee455ad0609b2e13d59ea39a9f7923  test(ui-a3): route probe through production preview clear
+36076047e25ea8e6d47831eac61ada23e66e11f0  test(ui-a3): cover production preview clear before target request
 ```
 
 Changed production boundary:
@@ -100,8 +104,8 @@ UBattleHUDWidget binds only the dedicated Preview delegates for PreviewTarget no
 ViewModel formats only already-resolved ImmediatePreview DTO fields; no Widget Gameplay calculations
 Native Preview surface is a dedicated UBattleImmediatePreviewTextBlock, not Enemy Intent, feedback, inspection tooltip or A2 damage-number text
 Preview surface is dynamically parented into OV_PlayArea only while valid Preview text exists
-clearing Preview synchronously removes that child, preserving OV_PlayArea for exclusive A2 CardPlayed ownership
-UBattleHUDWidgetBase::SelectTarget explicitly calls ClearPreviewTarget before SelectTargetById, guaranteeing pre-request A3 teardown for click/keyboard/controller submission paths
+production OnPreviewCleared now explicitly releases the A3 Preview Widget before clearing the ViewModel DTO, so physical OV_PlayArea ownership is gone before synchronous OnTargetRequested / authoritative request / A2 playback
+UBattleHUDWidgetBase::SelectTarget also clears the ViewModel Preview before SelectTargetById as a second semantic guard
 accepted authoritative Request then follows the unchanged Gameplay/A2 resolution path
 no Legacy behavior/fallback/parity code was added
 no Blueprint asset dependency was added; production Legacy dependency closure is therefore not intentionally changed
@@ -134,49 +138,56 @@ NativeSurfaceRendersAndClearsFromViewModel
 TargetSubmissionClearsPreviewBeforeAuthoritativeRequest
 ```
 
-The handoff test observes an intermediate ViewModel broadcast where the card is still selected / ChoosingTarget while `ImmediatePreview` has already been cleared. This proves A3 teardown precedes the authoritative target request rather than merely observing the final post-request Resolving state.
+The handoff regression now exercises the production ordering explicitly: Preview is visible, the HUD production Preview-clear handler physically removes the transient OV_PlayArea child and clears the DTO while selection is still `ChoosingTarget`, and only then is the target submitted. This closes the earlier test gap where the test called `HUD->SelectTarget()` directly and therefore did not exercise the real Combatant `OnPreviewCleared -> OnTargetRequested` sequence.
 
-## Validation actually performed for A3-5
+## Validation history and current state for A3-5
+
+Before the PIE defect fix:
 
 ```text
-Editor Build: PASS at latest A3-5/test-fix head (user-reported)
+Editor Build: PASS (user-reported)
 SlayTheSpireDemo.UIA3.NativePreviewIntegration: 3/3 Success, exit 0 (user-reported)
-Native WBP compile/save after parent C++ changes: NOT YET CONFIRMED
-Production L_BattleTest combined A3/A2 PIE: NOT YET RUN / NOT YET CONFIRMED
-Legacy dependency regression: NOT RUN / not currently invalidated because no asset dependency was added
-Shipping / Phase6R / A2D5 / broad Scenario suites: intentionally NOT RUN
 ```
 
-The first A3-5 Automation run exposed one test-fixture defect rather than a production defect: `TargetSubmissionClearsPreviewBeforeAuthoritativeRequest` used an Enemy-target card with `Cost=0` and no supported Damage/Block effect, so the DTO could be valid while the minimal numeric Preview text was correctly empty. The fixture was changed to `Cost=1`, producing a deterministic `Energy 3 -> 2` visible surface. The rerun then passed all 3 tests.
+The first Automation run had exposed a test-fixture defect: the handoff card had `Cost=0` and no supported Damage/Block effect, so the DTO could be valid while the minimal numeric Preview text was correctly empty. The fixture was changed to `Cost=1`, producing deterministic `Energy 3 -> 2`; the rerun passed 3/3.
 
-## Remaining exact action — final A3-5 manual gate
-
-Compile/Save the two affected Native Blueprint assets once after the C++ parent changes if not already done:
+Manual production PIE then exposed a real handoff defect:
 
 ```text
-WBP_BattleHUD_Native
-WBP_CombatantPresentation
+L_BattleTest: FAIL
+Symptom: after target submission, the played card no longer appeared in the Native play area.
 ```
 
-Require compile success / 0 Blueprint errors.
+The relevant A2 `CardPlayed` path requires `OV_PlayArea` to be physically empty before it takes ownership. A3 had been relying on the Preview TextBlock's ViewModel multicast callback to remove itself. The real Combatant path already emitted `OnPreviewCleared` before `OnTargetRequested`, but the HUD handler only cleared the ViewModel DTO. The fix makes the HUD handler explicitly call `ReleaseImmediatePreviewSurface()` before `ClearPreviewTarget()`, removing dependence on multicast callback ordering for physical PlayArea ownership.
 
-Then run one production `L_BattleTest` focused PIE session and verify:
+Because production code and the focused regression changed after the previous green run, that earlier A3-5 automated result is historical evidence only and does not seal the current head.
+
+## Next exact action — revalidate the handoff fix
+
+Run only:
+
+```text
+1. Editor Build once at current head.
+2. SlayTheSpireDemo.UIA3.NativePreviewIntegration once — expect 3/3 Success, exit 0.
+3. Return to production L_BattleTest PIE and recheck Strike/Enemy and Defend/Player handoff.
+```
+
+PIE acceptance:
 
 ```text
 Strike / Enemy:
 select Strike -> hover/focus Enemy -> Damage Preview appears
-submit Enemy -> Preview disappears before A2 CardPlayed/Damage playback
-A2 playback remains coherent and input unlocks only after catch-up
+submit Enemy -> Preview disappears -> played card visibly enters A2 play area -> committed Damage playback remains coherent
 
 Defend / Player:
 select Defend -> hover/focus Player -> Block Preview appears
-submit Player -> Preview disappears and committed Block playback takes over
+submit Player -> Preview disappears -> played card / committed Block presentation proceeds normally
 
 revision invalidation:
 relevant state/modifier change -> old selection/Preview does not survive new StateRevision
-new selection -> Preview reflects the current state
+new selection -> Preview reflects current state
 
 No duplicate target highlight, stale Preview, Preview-over-A2 overlap or visible A3/A2 flashback.
 ```
 
-Do not rerun the automated A3-5 prefix unless this manual gate exposes a concrete defect. Do not run Phase6R, A2D5, Shipping, broad Scenario A-E or Legacy parity unless a concrete failure invalidates their sealed contracts. Do not start Phase 7 until A3-5 is validated and sealed.
+Do not run Phase6R, A2D5, Shipping, broad Scenario A-E or Legacy parity unless a concrete failure invalidates their sealed contracts. Do not start Phase 7 until A3-5 is validated and sealed.
