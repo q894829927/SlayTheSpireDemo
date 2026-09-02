@@ -17,6 +17,8 @@
 #include "../Events/BattleEvent.h"
 #include "../Events/BattleEventDispatcher.h"
 #include "../Modifiers/ModifierTypes.h"
+#include "../Relics/RelicContainer.h"
+#include "../Relics/RelicData.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
@@ -300,6 +302,12 @@ void ABattleManager::StartBattle()
 	LastPublishedBattleId = 0;
 	LastPublishedReadStateRevision = 0;
 
+	if (!InitializeRelicsForBattle())
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not initialize the player RelicContainer."));
+		return;
+	}
+
 #if WITH_DEV_AUTOMATION_TESTS
 	bForceInvalidPlayerEndBatchForTesting = false;
 	bForceInvalidEnemyTurnBatchForTesting = false;
@@ -315,7 +323,7 @@ void ABattleManager::StartBattle()
 	UE_LOG(
 		LogTemp,
 		Log,
-		TEXT("[Battle] Battle started. BattleId=%llu ActionQueue, EventDispatcher, DeckRuntime and StatusContainers initialized."),
+		TEXT("[Battle] Battle started. BattleId=%llu ActionQueue, EventDispatcher, DeckRuntime, RelicContainer and StatusContainers initialized."),
 		BattleId
 	);
 	StartOpeningHand();
@@ -954,6 +962,52 @@ uint64 ABattleManager::AllocateRuntimeSequence()
 	}
 
 	return NextRuntimeSequence++;
+}
+
+URelicContainer* ABattleManager::GetPlayerRelicContainer()
+{
+	return PlayerRelicContainer.Get();
+}
+
+const URelicContainer* ABattleManager::GetPlayerRelicContainer() const
+{
+	return PlayerRelicContainer.Get();
+}
+
+bool ABattleManager::InitializeRelicsForBattle()
+{
+	if (!IsValid(PlayerRelicContainer.Get()))
+	{
+		PlayerRelicContainer = NewObject<URelicContainer>(this);
+	}
+	if (!IsValid(PlayerRelicContainer.Get()))
+	{
+		return false;
+	}
+
+	PlayerRelicContainer->Initialize(this);
+	for (const TObjectPtr<URelicData>& Definition : DebugStartingRelics)
+	{
+		const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get());
+		switch (Result.Outcome)
+		{
+		case ERelicAddOutcome::Added:
+			break;
+		case ERelicAddOutcome::Duplicate:
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Relic] Duplicate DebugStartingRelics entry ignored: RelicId=%s."),
+				IsValid(Definition.Get()) ? *Definition->RelicId.ToString() : TEXT("None")
+			);
+			break;
+		case ERelicAddOutcome::Invalid:
+		default:
+			UE_LOG(LogTemp, Warning, TEXT("[Relic] Invalid DebugStartingRelics entry ignored."));
+			break;
+		}
+	}
+	return true;
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
