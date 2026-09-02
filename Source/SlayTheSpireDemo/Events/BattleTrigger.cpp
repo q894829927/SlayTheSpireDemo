@@ -60,21 +60,6 @@ FTriggerContext::FTriggerContext(
 }
 
 FTriggerContext::FTriggerContext(
-	URelicInstance* InRuntimeSource,
-	UObject* InActionOuter,
-	ABattleManager* InBattle,
-	const FPresentationRecordWriter& InPresentationRecordWriter
-)
-	: FTriggerContext(
-		FTriggerRuntimeSource::FromRelic(InRuntimeSource),
-		InActionOuter,
-		InBattle,
-		InPresentationRecordWriter
-	)
-{
-}
-
-FTriggerContext::FTriggerContext(
 	const FTriggerRuntimeSource& InRuntimeSource,
 	UObject* InActionOuter,
 	ABattleManager* InBattle,
