@@ -7,6 +7,7 @@ class UCardData;
 class UCardInstance;
 class UStatusData;
 class UStatusInstance;
+struct FImmediatePreviewOperation;
 
 class SLAYTHESPIREDEMO_API FBattleTextResolver
 {
@@ -15,13 +16,14 @@ public:
 	// target so the normal Hand surface reflects only current source-side effects.
 	static FText ResolveCardDescription(const UCardInstance* Card, ACombatant* Source);
 
-	// A3 target-specific variant. The same authored format/effect argument system
-	// is reused, but a concrete current target may participate in read-only Damage
-	// resolution. Self-target Block still resolves Source as its own target.
-	static FText ResolveCardDescription(
+	// A3 target-specific card face: start from the validated A3-1 semantic
+	// arguments, then override only supported Damage/Block semantic names with the
+	// already Gameplay-resolved ImmediatePreview Operations. Unsupported effects
+	// keep their normal current card-face values.
+	static FText ResolveCardDescriptionForImmediatePreview(
 		const UCardInstance* Card,
 		ACombatant* Source,
-		ACombatant* Target);
+		const TArray<FImmediatePreviewOperation>& Operations);
 
 	static FText ResolveStatusDescription(const UStatusInstance* StatusInstance);
 
