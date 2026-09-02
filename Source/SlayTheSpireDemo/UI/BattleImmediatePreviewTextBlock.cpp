@@ -77,10 +77,10 @@ void UBattleImmediatePreviewTextBlock::HandlePreviewChanged()
 	if (GetParent() != Overlay)
 	{
 		RemoveFromParent();
-		if (UOverlaySlot* Slot = Overlay->AddChildToOverlay(this))
+		if (UOverlaySlot* PreviewOverlaySlot = Overlay->AddChildToOverlay(this))
 		{
-			Slot->SetHorizontalAlignment(HAlign_Center);
-			Slot->SetVerticalAlignment(VAlign_Center);
+			PreviewOverlaySlot->SetHorizontalAlignment(HAlign_Center);
+			PreviewOverlaySlot->SetVerticalAlignment(VAlign_Center);
 		}
 	}
 }
