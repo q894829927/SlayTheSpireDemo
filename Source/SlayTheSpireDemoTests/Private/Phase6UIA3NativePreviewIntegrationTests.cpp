@@ -185,6 +185,7 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 	UPhase6UIA2NR4CardProbe* Card = MakePreviewCardProbe(HUD, Fixture.ViewModel->HandCards[0], CardDescription);
 	Hand->AddChildToHorizontalBox(Card);
 	HUD->ConfigurePreviewSurface(Fixture.ViewModel, Hand);
+	Sink->ObserveViewModel(Fixture.ViewModel);
 
 	const int32 RuntimeId = Fixture.FirstRuntimeId();
 	TestTrue(TEXT("Card selection succeeds before A3 handoff"), Fixture.ViewModel->SelectCardByRuntimeId(RuntimeId));
@@ -195,17 +196,22 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 	}
 
 	const int32 TargetId = Fixture.ViewModel->LegalTargets[0].TargetId;
+	const int32 StructuralBeforePreview = Sink->StructuralChangedCount;
+	const int32 PreviewEventsBefore = Sink->PreviewChangedCount;
 	TestTrue(TEXT("Target-specific Preview builds before submission"), Fixture.ViewModel->SetPreviewTargetById(TargetId));
 	HUD->ApplyPreviewSurfaceForTesting();
 	TestTrue(TEXT("Preview is live immediately before submission"), Fixture.ViewModel->bHasImmediatePreview);
 	TestEqual(TEXT("Card-face Preview does not add or remove formal Hand children"), Hand->GetChildrenCount(), 1);
+	TestEqual(TEXT("Preview nomination does not broadcast structural OnChanged"), Sink->StructuralChangedCount, StructuralBeforePreview);
+	TestEqual(TEXT("Preview nomination uses dedicated PreviewChanged channel"), Sink->PreviewChangedCount, PreviewEventsBefore + 1);
 
-	Sink->ObserveViewModel(Fixture.ViewModel);
 	HUD->ClearPreviewAsCombatantWouldForTesting();
 	TestTrue(
-		TEXT("ViewModel broadcast exposes Preview-cleared state while selection is still pre-request"),
+		TEXT("Preview channel exposes cleared state while selection is still pre-request"),
 		Sink->bObservedPreRequestPreviewClear);
 	TestEqual(TEXT("Preview clear leaves formal Hand structure intact"), Hand->GetChildrenCount(), 1);
+	TestEqual(TEXT("Preview clear does not broadcast structural OnChanged"), Sink->StructuralChangedCount, StructuralBeforePreview);
+	TestEqual(TEXT("Preview clear uses dedicated PreviewChanged channel"), Sink->PreviewChangedCount, PreviewEventsBefore + 2);
 
 	TestTrue(TEXT("Native target submission is accepted"), HUD->SelectTarget(TargetId));
 	TestFalse(TEXT("Accepted request leaves no A3 Preview DTO"), Fixture.ViewModel->bHasImmediatePreview);
