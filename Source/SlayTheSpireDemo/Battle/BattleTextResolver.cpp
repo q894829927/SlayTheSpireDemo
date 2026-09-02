@@ -1,5 +1,6 @@
 #include "BattleTextResolver.h"
 
+#include "BattleImmediatePreview.h"
 #include "BattleTextTypes.h"
 #include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
@@ -112,32 +113,28 @@ namespace
 		return FText::Format(Format, ExactArguments);
 	}
 
-	FText ResolveCardDescriptionInternal(
+	bool BuildCardDescriptionArguments(
 		const UCardInstance* Card,
 		ACombatant* Source,
-		ACombatant* ConcreteTarget,
-		bool bUseConcreteTarget)
+		FPreviewTextArgumentBuilder& Builder)
 	{
 		if (!IsValid(Card))
 		{
-			return FText::GetEmpty();
+			return false;
 		}
 
 		const UCardData* Definition = Card->GetDefinition();
 		if (!IsValid(Definition))
 		{
-			return FText::GetEmpty();
+			return false;
 		}
 
-		FPreviewTextArgumentBuilder Builder;
 		Builder.AddInteger(TEXT("Cost"), Card->GetCurrentCost());
 
 		FCardEffectPreviewContext Context;
 		Context.Card = Card;
 		Context.Source = Source;
-		Context.Target = Definition->TargetType == ECardTargetType::Self
-			? Source
-			: (bUseConcreteTarget ? ConcreteTarget : nullptr);
+		Context.Target = Definition->TargetType == ECardTargetType::Self ? Source : nullptr;
 
 		for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
 		{
@@ -149,8 +146,7 @@ namespace
 			}
 			Effect->BuildPreviewArguments(Context, Builder);
 		}
-
-		return FormatDescription(Definition->Description, Builder, Card->GetDebugLabel());
+		return true;
 	}
 
 	void AddValidationError(TArray<FText>& OutErrors, const FString& Error)
@@ -221,15 +217,41 @@ namespace
 
 FText FBattleTextResolver::ResolveCardDescription(const UCardInstance* Card, ACombatant* Source)
 {
-	return ResolveCardDescriptionInternal(Card, Source, nullptr, false);
+	if (!IsValid(Card) || !IsValid(Card->GetDefinition()))
+	{
+		return FText::GetEmpty();
+	}
+
+	FPreviewTextArgumentBuilder Builder;
+	if (!BuildCardDescriptionArguments(Card, Source, Builder))
+	{
+		return FText::GetEmpty();
+	}
+	return FormatDescription(Card->GetDefinition()->Description, Builder, Card->GetDebugLabel());
 }
 
-FText FBattleTextResolver::ResolveCardDescription(
+FText FBattleTextResolver::ResolveCardDescriptionForImmediatePreview(
 	const UCardInstance* Card,
 	ACombatant* Source,
-	ACombatant* Target)
+	const TArray<FImmediatePreviewOperation>& Operations)
 {
-	return ResolveCardDescriptionInternal(Card, Source, Target, true);
+	if (!IsValid(Card) || !IsValid(Card->GetDefinition()))
+	{
+		return FText::GetEmpty();
+	}
+
+	FPreviewTextArgumentBuilder Builder;
+	if (!BuildCardDescriptionArguments(Card, Source, Builder))
+	{
+		return FText::GetEmpty();
+	}
+
+	for (const FImmediatePreviewOperation& Operation : Operations)
+	{
+		Builder.OverrideInteger(Operation.SemanticArgumentName, Operation.ResolvedAmount);
+	}
+
+	return FormatDescription(Card->GetDefinition()->Description, Builder, Card->GetDebugLabel());
 }
 
 FText FBattleTextResolver::ResolveStatusDescription(const UStatusInstance* StatusInstance)
