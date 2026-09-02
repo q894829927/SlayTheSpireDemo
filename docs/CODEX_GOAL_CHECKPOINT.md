@@ -16,7 +16,7 @@ Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
-7C Sundial + GainEnergyAction: IMPLEMENTED / VALIDATION PENDING
+7C Sundial + GainEnergyAction: IMPLEMENTED / BULK-DRAW REFACTOR / VALIDATION PENDING
 7D Relic Read/Frozen/Native UI: NOT STARTED
 ```
 
@@ -63,114 +63,94 @@ SlayTheSpireDemo.Phase7.TriggerSources          3/3 PASS
 SlayTheSpireDemo.Phase6A.Trigger                PASS
 ```
 
-Do not rerun those sealed gates merely because 7C adds concrete Relic content.
+Do not rerun those sealed gates because of the 7C draw refactor.
 
-## 7C implementation now on main
+## 7C Relic/Energy implementation on main
 
 Reusable Energy primitive:
 
 ```text
 BattleEnergyMutation::TryGain
-- Amount > 0
-- no MaxEnergy clamp
-- invalid Battle / invalid amount / int32 overflow fail soft
-- exact Before / After / Delta result
-
 UGainEnergyAction
-- owns intended positive Amount
-- commits only through TryGain
-- emits existing EnergyChanged Presentation payload when a writer is available
-- finishes on success or fail-soft rejection
 ```
 
 Sundial runtime/content:
 
 ```text
-URelicInstance
-- Counter runtime state starts at 0
-- public read accessor
-- mutation boundary restricted to USundialAdvanceAction
-
+URelicInstance::Counter
 USundialTrigger
-- reacts only to FDeckShuffledEvent
-- requires the current authoritative Battle DeckRuntime
-- requires a valid Relic source and Battle
-- is read-only
-- freezes ShufflesRequired / EnergyGain into USundialAdvanceAction
-
 USundialAdvanceAction
-- validates exact current RelicInstance membership and frozen config
-- 0 -> 1
-- 1 -> 2
-- threshold: queues dependent UGainEnergyAction(+2), then commits Counter -> 0
-- propagates PresentationRecordWriter to the dependent Energy Action
-- never pumps the queue
 ```
 
-`ABattleManager::IsAuthoritativeDeckRuntime()` is the narrow Gameplay identity query used by Sundial; the Trigger does not recover or compare DeckRuntime through UObject Outer chains.
+Sundial still reacts only to the authoritative battle `FDeckShuffledEvent`; no card identity, DrawAction identity, RetryDraw identity or Pommel Strike special case exists.
 
-No card identity, DrawAction identity, RetryDraw identity or Pommel Strike special case exists.
+## 7C draw-semantics refactor
 
-## 7C gameplay-fidelity correction — zero-card shuffle
+The first zero-card correction modeled `Draw N` as N independent draw attempts. Before sealing 7C, that temporary model was replaced with a source-game-style bulk draw boundary.
 
-Manual use of two upgraded Pommel-Strike-style draw-two cards with Sundial exposed one mismatch with Slay the Spire 1: the project previously treated `DrawPile=0, DiscardPile=0` as no shuffle, which prevents the standard Sundial infinite.
-
-The corrected generic draw contract is now:
+Current production structure:
 
 ```text
-one authored draw attempt
-↓
-DrawPile non-empty
-→ draw normally
+UDrawCardEffect DrawCount=N
+→ UDrawCardsAction(N)
+   - owns RemainingDraws
+   - evaluates Hand capacity + DrawPile + DiscardPile at Execute time
+   - plans deterministic continuation batches
+   ↓
+   UDrawCardAction x available-now
+   → UShuffleDeckAction when the bulk request still owes draws
+   → UDrawCardsAction(Remaining)
 
-DrawPile empty
-→ exactly one ShuffleDeckAction
-→ DiscardPile may contain cards OR be empty
-→ ShuffleDiscardIntoDrawPileCommit succeeds when DrawPile is empty
-→ zero-card shuffle uses MovedCardCount=0
-→ DeckShuffled Record/Event still emits
-→ shuffle reactions run
-→ RetryDraw exactly once
-→ if still empty, stop; do not shuffle recursively again
+UDrawCardAction
+= one atomic DrawPile -> Hand commit only
+= no shuffle planning
+= no retry recursion
 ```
 
-This produces the intended draw-two behavior:
+`ABattleManager::BuildDrawActionBatch()` now also creates one `UDrawCardsAction(DrawCount)` so opening-hand and turn-start draw use the same semantics as card effects. The debug single-draw path uses `UDrawCardsAction(1)` as well.
+
+## Correct zero-card shuffle semantics
+
+A **fresh** bulk request against a truly exhausted deck does not shuffle:
 
 ```text
-Draw=0, Discard=1
-Draw #1 → shuffle one card → DeckShuffled #1 → draw it
-Draw #2 → Draw=0, Discard=0 → zero-card shuffle → DeckShuffled #2 → no card drawn
+BulkDraw(1)
+Draw=0 / Discard=0
+→ end
+→ no DeckShuffled
 ```
 
-Initial battle setup shuffle remains excluded. A non-empty DrawPile still rejects an explicit gameplay shuffle. No concrete card/relic special case was added.
+A zero-card shuffle can still happen when it was already planned by an earlier bulk step:
 
-Durable Phase 6C history has been amended in:
+```text
+BulkDraw(2)
+initial Draw=0 / Discard=1
+→ Shuffle #1
+→ BulkDraw(2) sees Draw=1 / Discard=0
+→ plans DrawCard(1) + Shuffle #2 + BulkDraw(1)
+→ DrawCard consumes the only card
+→ planned Shuffle #2 executes at Draw=0 / Discard=0
+   MovedCardCount=0
+   DeckShuffled #2
+→ final BulkDraw(1) sees a truly exhausted deck and ends
+```
+
+This is the generic two-Pommel-Strike+/Sundial behavior. `UShuffleDeckAction` retains zero-card commit ability when it is legitimately scheduled at an empty-DrawPile boundary.
+
+Durable producer history is amended in:
 
 ```text
 docs/Phase6CImplementation.md
 ```
 
-## 7C focused Automation now on main
+## Focused Automation on current main
 
-Energy prefix:
+Energy prefix remains:
 
 ```text
 SlayTheSpireDemo.Phase7.EnergyGain
 - MutationContracts
 - ActionAndPresentation
-```
-
-Covers:
-
-```text
-+2 succeeds
-may exceed MaxEnergy
-0 rejected
-negative rejected
-overflow rejected
-invalid Battle fails soft
-GainEnergyAction commits through queue
-EnergyChanged Before / After / Delta exact
 ```
 
 Sundial prefix:
@@ -182,26 +162,19 @@ SlayTheSpireDemo.Phase7.Sundial
 - TriggerReadOnlyAndFrozenConfig
 ```
 
-Covers:
+`DrawTwoCountsZeroCardShuffle` now uses **one `UDrawCardsAction(2)`**, not two independent single-draw actions.
+
+Phase6C prefix now contains 6 tests, adding:
 
 ```text
-wrong DeckRuntime does not advance
-0 -> 1
-1 -> 2
-2 -> 0 +2 Energy
-0 -> 1
-one-card discard + draw-two produces two shuffle counts
-second draw may commit a zero-card shuffle
-RetryDraw after zero-card shuffle terminates without recursion/fault
-Trigger/BuildReactions do not mutate Counter or Energy
-3 / +2 are frozen into the queued Action at BuildReactions time
+SlayTheSpireDemo.Phase6C.Draw.EmptyBulkDoesNotShuffle
 ```
 
-The existing Phase 6 producer contract still proves setup shuffle emits no gameplay `FDeckShuffledEvent`; 7C does not change setup initialization.
+This proves a fresh `Draw=0 / Discard=0` bulk request does not manufacture a shuffle event.
 
-## Production Sundial asset status
+## Production Sundial asset
 
-The intended production definition is:
+Expected local UE asset:
 
 ```text
 DA_Relic_Sundial : URelicData
@@ -213,22 +186,24 @@ Triggers[0] = USundialTrigger
     EnergyGain = 2
 ```
 
-The user has exercised Sundial in gameplay; that manual run exposed the zero-card shuffle mismatch above. Icon/HUD display still belongs to 7D.
+Icon/HUD display remains 7D.
 
-## Required 7C validation gate after zero-card correction
+## Required current-head validation gate
 
-Because Draw/Shuffle producer semantics changed after the earlier Sundial run, the current-head gate is now:
+The bulk draw refactor changes shared Draw/Shuffle producer code, so validate only the directly invalidated contract:
 
 ```text
-1. Development Editor Build once.
-2. SlayTheSpireDemo.Phase7.Sundial once; expected 3/3.
-3. SlayTheSpireDemo.Phase6C once; expected historical 5/5 regression prefix to remain green.
-4. SlayTheSpireDemo.Phase7.EnergyGain does NOT need rerun if it already passed before this correction; this change does not touch Energy code/tests.
-5. One focused manual PIE check with the configured Sundial + two upgraded draw-two Pommel Strikes:
-   - after exhausting other cards, each draw-two cycle counts the real + zero-card shuffles correctly;
-   - Sundial grants +2 every third shuffle;
-   - the two-card loop can remain Energy-neutral/infinite as expected.
-6. Record evidence and STOP.
+1. Regenerate project files once because DrawCardsAction.h/.cpp are new.
+2. Development Editor Build once.
+3. SlayTheSpireDemo.Phase6C once; expected 6/6.
+4. SlayTheSpireDemo.Phase7.Sundial once; expected 3/3.
+5. SlayTheSpireDemo.Phase7.EnergyGain does not need rerun unless it had not already passed; Energy code is unchanged by the bulk refactor.
+6. One focused PIE check with configured Sundial + two upgraded draw-two Pommel Strikes:
+   - after other cards are exhausted, one Draw 2 with one recyclable card produces the real + planned zero-card shuffle pair;
+   - a fresh draw against Draw=0 / Discard=0 does not create extra shuffle counts;
+   - Sundial grants +2 every third committed shuffle;
+   - the two-card loop can remain infinite as expected.
+7. Record evidence and STOP.
 ```
 
 Do not rerun Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites without a concrete failure.
@@ -237,6 +212,6 @@ Do not rerun Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites witho
 
 USER ACTION REQUIRED:
 
-Build current `main`, run `SlayTheSpireDemo.Phase7.Sundial` and `SlayTheSpireDemo.Phase6C`, then repeat the two-upgraded-Pommel + Sundial PIE check that exposed this issue.
+Regenerate project files, build current `main`, run the Phase6C and Phase7.Sundial focused prefixes, then repeat the two-upgraded-Pommel + Sundial PIE check.
 
-Do not begin 7D before this corrected 7C behavior is accepted.
+Do not begin 7D before corrected 7C behavior is accepted.
