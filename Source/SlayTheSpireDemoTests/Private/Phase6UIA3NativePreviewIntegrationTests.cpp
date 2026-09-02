@@ -158,7 +158,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 {
-	FHUDTestFixture Fixture(ECardTargetType::Enemy, 0, 5);
+	FHUDTestFixture Fixture(ECardTargetType::Enemy, 1, 5);
 	Fixture.DrainInitialReady();
 	Fixture.InitializeViewModel();
 	if (!RequireFixture(*this, Fixture)) return false;
