@@ -7,6 +7,9 @@
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
 #include "../Presentation/BattlePresentationRecorder.h"
+#include "../Relics/RelicContainer.h"
+#include "../Relics/RelicData.h"
+#include "../Relics/RelicInstance.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
@@ -19,7 +22,7 @@ namespace
 {
 	struct FTriggerCandidate
 	{
-		UStatusInstance* RuntimeSource = nullptr;
+		FTriggerRuntimeSource RuntimeSource;
 		const UBattleTrigger* TriggerDefinition = nullptr;
 		int32 LocalTriggerIndex = INDEX_NONE;
 	};
@@ -123,7 +126,7 @@ bool UBattleEventDispatcher::Dispatch(
 		: FPresentationRecordWriter{};
 
 	TArray<FTriggerCandidate> Candidates;
-	TSet<UStatusInstance*> SeenRuntimeSources;
+	TSet<UObject*> SeenRuntimeSources;
 
 	for (ACombatant* Combatant : Combatants)
 	{
@@ -140,19 +143,20 @@ bool UBattleEventDispatcher::Dispatch(
 
 		for (const TObjectPtr<UStatusInstance>& InstancePtr : Container->GetStatuses())
 		{
-			UStatusInstance* RuntimeSource = InstancePtr.Get();
-			if (!IsValid(RuntimeSource) || SeenRuntimeSources.Contains(RuntimeSource))
+			UStatusInstance* Instance = InstancePtr.Get();
+			if (!IsValid(Instance) || SeenRuntimeSources.Contains(Instance))
 			{
 				continue;
 			}
-			SeenRuntimeSources.Add(RuntimeSource);
+			SeenRuntimeSources.Add(Instance);
 
-			const UStatusData* Definition = RuntimeSource->GetDefinition();
+			const UStatusData* Definition = Instance->GetDefinition();
 			if (!IsValid(Definition))
 			{
 				continue;
 			}
 
+			const FTriggerRuntimeSource Source = FTriggerRuntimeSource::FromStatus(Instance);
 			for (int32 LocalIndex = 0; LocalIndex < Definition->Triggers.Num(); ++LocalIndex)
 			{
 				const UBattleTrigger* Trigger = Definition->Triggers[LocalIndex].Get();
@@ -162,14 +166,14 @@ bool UBattleEventDispatcher::Dispatch(
 						LogTemp,
 						Error,
 						TEXT("[Event] Status %s contains invalid Trigger at LocalTriggerIndex=%d."),
-						*RuntimeSource->GetDebugLabel(),
+						*Instance->GetDebugLabel(),
 						LocalIndex
 					);
 					continue;
 				}
 
-				FTriggerContext Context(
-					RuntimeSource,
+				const FTriggerContext Context(
+					Source,
 					Queue,
 					BattleContext.Get(),
 					ResolvedPresentationWriter
@@ -177,10 +181,65 @@ bool UBattleEventDispatcher::Dispatch(
 				if (Trigger->CanReact(Event, Context))
 				{
 					FTriggerCandidate Candidate;
-					Candidate.RuntimeSource = RuntimeSource;
+					Candidate.RuntimeSource = Source;
 					Candidate.TriggerDefinition = Trigger;
 					Candidate.LocalTriggerIndex = LocalIndex;
 					Candidates.Add(Candidate);
+				}
+			}
+		}
+	}
+
+	if (IsValid(BattleContext.Get()))
+	{
+		const URelicContainer* RelicContainer = BattleContext->GetPlayerRelicContainer();
+		if (IsValid(RelicContainer))
+		{
+			for (const TObjectPtr<URelicInstance>& InstancePtr : RelicContainer->GetRelics())
+			{
+				URelicInstance* Instance = InstancePtr.Get();
+				if (!IsValid(Instance) || SeenRuntimeSources.Contains(Instance))
+				{
+					continue;
+				}
+				SeenRuntimeSources.Add(Instance);
+
+				const URelicData* Definition = Instance->GetDefinition();
+				if (!IsValid(Definition))
+				{
+					continue;
+				}
+
+				const FTriggerRuntimeSource Source = FTriggerRuntimeSource::FromRelic(Instance);
+				for (int32 LocalIndex = 0; LocalIndex < Definition->Triggers.Num(); ++LocalIndex)
+				{
+					const UBattleTrigger* Trigger = Definition->Triggers[LocalIndex].Get();
+					if (!IsValid(Trigger))
+					{
+						UE_LOG(
+							LogTemp,
+							Error,
+							TEXT("[Event] Relic %s contains invalid Trigger at LocalTriggerIndex=%d."),
+							*Instance->GetDebugLabel(),
+							LocalIndex
+						);
+						continue;
+					}
+
+					const FTriggerContext Context(
+						Source,
+						Queue,
+						BattleContext.Get(),
+						ResolvedPresentationWriter
+					);
+					if (Trigger->CanReact(Event, Context))
+					{
+						FTriggerCandidate Candidate;
+						Candidate.RuntimeSource = Source;
+						Candidate.TriggerDefinition = Trigger;
+						Candidate.LocalTriggerIndex = LocalIndex;
+						Candidates.Add(Candidate);
+					}
 				}
 			}
 		}
@@ -194,11 +253,9 @@ bool UBattleEventDispatcher::Dispatch(
 				return A.TriggerDefinition->Priority < B.TriggerDefinition->Priority;
 			}
 
-			const uint64 ASequence = A.RuntimeSource->GetRuntimeSequence();
-			const uint64 BSequence = B.RuntimeSource->GetRuntimeSequence();
-			if (ASequence != BSequence)
+			if (A.RuntimeSource.RuntimeSequence != B.RuntimeSource.RuntimeSequence)
 			{
-				return ASequence < BSequence;
+				return A.RuntimeSource.RuntimeSequence < B.RuntimeSource.RuntimeSequence;
 			}
 
 			return A.LocalTriggerIndex < B.LocalTriggerIndex;
@@ -212,14 +269,18 @@ bool UBattleEventDispatcher::Dispatch(
 		if (OutEligibilityTrace)
 		{
 			FTriggerEligibilityRecord Record;
-			Record.StatusId = Candidate.RuntimeSource->GetStatusId();
+			Record.SourceKind = Candidate.RuntimeSource.Kind;
+			Record.SourceId = Candidate.RuntimeSource.SourceId;
+			Record.StatusId = Candidate.RuntimeSource.Kind == ETriggerRuntimeSourceKind::Status
+				? Candidate.RuntimeSource.SourceId
+				: NAME_None;
 			Record.Priority = Candidate.TriggerDefinition->Priority;
-			Record.RuntimeSequence = Candidate.RuntimeSource->GetRuntimeSequence();
+			Record.RuntimeSequence = Candidate.RuntimeSource.RuntimeSequence;
 			Record.LocalTriggerIndex = Candidate.LocalTriggerIndex;
 			OutEligibilityTrace->Add(Record);
 		}
 
-		FTriggerContext Context(
+		const FTriggerContext Context(
 			Candidate.RuntimeSource,
 			Queue,
 			BattleContext.Get(),
@@ -245,8 +306,8 @@ bool UBattleEventDispatcher::Dispatch(
 			UE_LOG(
 				LogTemp,
 				Error,
-				TEXT("[Event] Trigger batch discarded for %s LocalTriggerIndex=%d: %s"),
-				*Candidate.RuntimeSource->GetDebugLabel(),
+				TEXT("[Event] Trigger batch discarded for SourceId=%s LocalTriggerIndex=%d: %s"),
+				*Candidate.RuntimeSource.SourceId.ToString(),
 				Candidate.LocalTriggerIndex,
 				*LocalFailureReason
 			);
