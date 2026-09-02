@@ -37,23 +37,21 @@ void USundialAdvanceAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	const int32 CounterBefore = RuntimeRelic->GetCounter();
-	const int32 CounterAfterIncrement = CounterBefore + 1;
-	if (CounterAfterIncrement < RequiredShuffles)
+	if (CounterBefore < RequiredShuffles - 1)
 	{
-		RuntimeRelic->SetCounterFromAction(CounterAfterIncrement);
+		const int32 CounterAfter = CounterBefore + 1;
+		RuntimeRelic->SetCounterFromAction(CounterAfter);
 		UE_LOG(
 			LogTemp,
 			Log,
 			TEXT("[Relic] Sundial advanced: %d -> %d / %d"),
 			CounterBefore,
-			CounterAfterIncrement,
+			CounterAfter,
 			RequiredShuffles
 		);
 		Finish();
 		return;
 	}
-
-	RuntimeRelic->SetCounterFromAction(0);
 
 	UGainEnergyAction* GainAction = NewObject<UGainEnergyAction>(Queue);
 	GainAction->Initialize(Battle, EnergyGain);
@@ -66,6 +64,7 @@ void USundialAdvanceAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
+	RuntimeRelic->SetCounterFromAction(0);
 	UE_LOG(
 		LogTemp,
 		Log,
