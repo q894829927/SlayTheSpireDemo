@@ -9,6 +9,7 @@
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Image.h"
+#include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 #include "UI/BattleHUDViewModel.h"
 
@@ -19,13 +20,13 @@ namespace
 	UPhase6UIA2NR4CardProbe* MakePreviewCardProbe(
 		UObject* Outer,
 		const FBattleHUDCardView& View,
-		UTextBlock*& OutDescription)
+		URichTextBlock*& OutDescription)
 	{
 		UPhase6UIA2NR4CardProbe* Card = NewObject<UPhase6UIA2NR4CardProbe>(Outer);
 		UButton* Button = NewObject<UButton>(Card);
 		UTextBlock* Name = NewObject<UTextBlock>(Card);
 		UTextBlock* Cost = NewObject<UTextBlock>(Card);
-		OutDescription = NewObject<UTextBlock>(Card);
+		OutDescription = NewObject<URichTextBlock>(Card);
 		UTextBlock* Type = NewObject<UTextBlock>(Card);
 		UImage* Art = NewObject<UImage>(Card);
 		Card->ConfigureSurfaces(Button, Name, Cost, OutDescription, Type, Art);
@@ -109,7 +110,7 @@ bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 	CardView.TargetType = ECardTargetType::Enemy;
 	CardView.Description = FText::FromString(TEXT("Deal 6 damage."));
 
-	UTextBlock* Description = nullptr;
+	URichTextBlock* Description = nullptr;
 	UPhase6UIA2NR4CardProbe* Card = MakePreviewCardProbe(GetTransientPackage(), CardView, Description);
 	if (!TestNotNull(TEXT("Card-face Preview probe exists"), Card)
 		|| !TestNotNull(TEXT("Card-face description surface exists"), Description))
@@ -121,6 +122,7 @@ bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 	Preview.CardRuntimeId = 17;
 	Preview.Validation = FGameplayValidationResult::Allowed();
 	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 9 damage."));
+	Preview.CardFaceRichDescription = FText::FromString(TEXT("Deal <PreviewIncrease>9</> damage."));
 	FImmediatePreviewOperation Damage;
 	Damage.EffectIndex = 0;
 	Damage.SemanticArgumentName = TEXT("Damage");
@@ -131,24 +133,32 @@ bool FNativePreviewCardFaceFormattingTest::RunTest(const FString& Parameters)
 	Preview.Operations.Add(Damage);
 
 	Card->ApplyImmediatePreview(Preview);
-	TestEqual(TEXT("Target-specific Damage replaces selected card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 9 damage.")));
-	TestEqual(TEXT("Value above authored base selects red/increased emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(1));
+	TestEqual(
+		TEXT("Only increased target-specific value carries the red RichText tag"),
+		Description->GetText().ToString(),
+		FString(TEXT("Deal <PreviewIncrease>9</> damage.")));
+	TestEqual(TEXT("Value above authored base selects increased semantic branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(1));
 
 	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 4 damage."));
+	Preview.CardFaceRichDescription = FText::FromString(TEXT("Deal <PreviewDecrease>4</> damage."));
 	Preview.Operations[0].ResolvedAmount = 4;
 	Card->ApplyImmediatePreview(Preview);
-	TestEqual(TEXT("Decreased target-specific Damage also replaces card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 4 damage.")));
-	TestEqual(TEXT("Value below authored base selects cool/decreased emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(-1));
+	TestEqual(
+		TEXT("Only decreased target-specific value carries the cool RichText tag"),
+		Description->GetText().ToString(),
+		FString(TEXT("Deal <PreviewDecrease>4</> damage.")));
+	TestEqual(TEXT("Value below authored base selects decreased semantic branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(-1));
 
 	Preview.CardFaceDescription = FText::FromString(TEXT("Deal 6 damage."));
+	Preview.CardFaceRichDescription = FText::FromString(TEXT("Deal 6 damage."));
 	Preview.Operations[0].ResolvedAmount = 6;
 	Card->ApplyImmediatePreview(Preview);
-	TestEqual(TEXT("Authored-base value remains the normal card-face value"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
-	TestEqual(TEXT("Value equal to authored base selects neutral emphasis branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
+	TestEqual(TEXT("Authored-base value carries no RichText emphasis tag"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
+	TestEqual(TEXT("Value equal to authored base selects neutral semantic branch"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
 
 	Card->ClearImmediatePreview();
 	TestEqual(TEXT("Clearing Preview restores frozen card-face description"), Description->GetText().ToString(), FString(TEXT("Deal 6 damage.")));
-	TestEqual(TEXT("Clearing Preview restores neutral description styling"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
+	TestEqual(TEXT("Clearing Preview restores neutral description state"), Card->GetImmediatePreviewToneForTesting(), static_cast<int8>(0));
 	return true;
 }
 
@@ -181,7 +191,7 @@ bool FNativePreviewPreRequestHandoffTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UTextBlock* CardDescription = nullptr;
+	URichTextBlock* CardDescription = nullptr;
 	UPhase6UIA2NR4CardProbe* Card = MakePreviewCardProbe(HUD, Fixture.ViewModel->HandCards[0], CardDescription);
 	Hand->AddChildToHorizontalBox(Card);
 	HUD->ConfigurePreviewSurface(Fixture.ViewModel, Hand);
