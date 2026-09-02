@@ -19,8 +19,8 @@ A3-1 Dynamic Text: COMPLETE / VALIDATED / SEALED
 A3-2 Target-Specific Current-State Preview: COMPLETE / VALIDATED / SEALED
 A3-2A Immediate Preview DTO + Effect contribution: COMPLETE / VALIDATED / SEALED
 A3-2B BattleManager Query + identity stamping: COMPLETE / VALIDATED / SEALED
-A3-3 Energy + Target-Aware Legality: IMPLEMENTED / VALIDATION PENDING
-A3-4 ViewModel Transient Preview Lifecycle: NOT STARTED
+A3-3 Energy + Target-Aware Legality: COMPLETE / VALIDATED / SEALED
+A3-4 ViewModel Transient Preview Lifecycle: IN PROGRESS / AUTHORIZED
 A3-5 Minimal Native UMG + A2/A3 Combined PIE: NOT STARTED
 ```
 
@@ -40,15 +40,11 @@ docs/ValidationExecutionPolicy.md
 
 ## A3-2 sealed evidence
 
-A3-2A implementation:
-
 ```text
+A3-2A implementation:
 08f878e9f4f74b438985d187884c877d613617af  feat(ui-a3): add immediate preview effect contributions
-```
 
 A3-2B implementation:
-
-```text
 a796709034427d470881b6a7d01f2701305406b7  feat(ui-a3): expose immediate preview query
 57d0cc0db45089cf025310002806f944bf59769f  feat(ui-a3): build immediate preview query
 ebf3838b188b9ccf66e40df549d1fa3665fddd6a  test(ui-a3): cover immediate preview query assembly
@@ -64,11 +60,9 @@ A3-2B Automation SlayTheSpireDemo.UIA3.ImmediatePreviewQuery: 2/2 Success, exit 
 Manual PIE: NOT REQUIRED
 ```
 
-A3-2 is therefore COMPLETE / VALIDATED / SEALED.
+## A3-3 sealed implementation
 
-## A3-3 implementation state
-
-Implementation commits after the A3-2 seal:
+Implementation commits:
 
 ```text
 fa7832e07e78a2b2e0b23ce9835b95b95ea25ed2  feat(ui-a3): add preview legality and energy
@@ -76,70 +70,61 @@ fca059cd150a8f1d004068e95cbc4573e3438749  test(ui-a3): keep A3-2B gate compatibl
 874013d7f62744a514459398e406f650d1aa2720  test(ui-a3): cover preview legality and energy
 ```
 
-Implemented behavior:
+Sealed semantics:
 
 ```text
-Target == nullptr
--> coherent pre-target Preview
--> Validation = QueryCardPlayability(Card)
--> TargetPresentationId = None
--> target-specific Damage contribution remains absent until a concrete target exists
-
-Target != nullptr
--> target identity must resolve to the current battle
--> Validation = QueryPlayCard(Card, Target)
-
+Target == nullptr -> QueryCardPlayability(Card), TargetPresentationId=None
+Target != nullptr -> QueryPlayCard(Card, Target)
 EnergyBefore = current authoritative Energy
 EffectiveCost = Card->GetCurrentCost()
-EnergyAfter is valid only when Validation.bAllowed and current Energy covers EffectiveCost
-rejected Preview leaves bHasEnergyAfter=false and does not fabricate negative EnergyAfter
-normal InvalidTarget / NotEnoughEnergy are DTO validation outcomes, not build failures
-RequestPlayCard remains authoritative and is not called by Preview construction
+EnergyAfter exists only for an allowed current play
+NotEnoughEnergy / InvalidTarget remain authoritative Gameplay validation outcomes
+RequestPlayCard semantics remain unchanged
 ```
 
-New focused A3-3 Automation prefix:
+A3-3 validation completed on **2026-09-02**:
 
 ```text
-SlayTheSpireDemo.UIA3.ImmediatePreviewLegality
-```
-
-Expected tests:
-
-```text
-PreTargetUsesPlayabilityAndBoundTargetUsesPlayCard
-InsufficientEnergyHasNoEnergyAfterAndRequestStillRejects
-```
-
-The A3-3 implementation intentionally extends the same public Preview query so null Target is now a coherent pre-target state. This invalidates the old A3-2B test assertion that null Target was a transport failure. That assertion was removed while the A3-2B target-bound identity/order/read-only coverage was retained.
-
-## Validation actually performed for A3-3
-
-No new UE validation is claimed yet for the A3-3 code.
-
-```text
-Editor Build: NOT RUN for A3-3
-SlayTheSpireDemo.UIA3.ImmediatePreviewQuery compatibility rerun: NOT RUN
-SlayTheSpireDemo.UIA3.ImmediatePreviewLegality: NOT RUN
-Manual PIE: NOT REQUIRED for A3-3
+Editor Build: PASS (user-run against current A3-3 code)
+Automation SlayTheSpireDemo.UIA3.ImmediatePreviewLegality: 2/2 Success, exit 0
+Automation SlayTheSpireDemo.UIA3.ImmediatePreviewQuery compatibility rerun: 2/2 Success (user-reported)
+Manual PIE: NOT REQUIRED
 Phase6R / A2D5 / Shipping / broad Scenario / Legacy parity: intentionally NOT RUN
 ```
 
-## Next exact action
+A3-3 is COMPLETE / VALIDATED / SEALED.
 
-Run only the closed-scope A3-3 Gate:
+## Next exact action — A3-4
+
+Implement only:
+
+```text
+A3-4 — ViewModel Transient Preview Lifecycle
+```
+
+Required semantics:
+
+```text
+explicit SetPreviewTargetById(TargetId) / ClearPreviewTarget()
+ViewModel transiently owns selected Card identity + LegalTargets + PreviewTarget identity + ImmediatePreview
+Preview data comes only from BattleManager::TryBuildImmediateCardPreview(...)
+Preview valid only for exact current live binding BattleId + StateRevision
+BattleId or StateRevision change clears selection, LegalTargets, PreviewTarget and ImmediatePreview
+CancelSelection clears PreviewTarget + ImmediatePreview
+accepted authoritative card request clears Preview before A2 committed playback
+terminal / PresentationUnavailable / lost live binding clears Preview
+normal Preview query failure fails soft and never mutates Gameplay
+inspection and PreviewTarget lifecycles remain separate
+```
+
+Do not touch UMG in A3-4. Do not add Preview rendering yet.
+
+A3-4 Gate after implementation:
 
 ```text
 1. Editor Build once.
-2. Rerun the invalidated A3-2B compatibility prefix exactly once:
-   SlayTheSpireDemo.UIA3.ImmediatePreviewQuery
-   expected: 2 tests
-3. Run the new A3-3 prefix exactly once:
-   SlayTheSpireDemo.UIA3.ImmediatePreviewLegality
-   expected: 2 tests
-4. Both prefixes must be all Success and Automation must exit 0.
-5. Record exact evidence and seal A3-3.
+2. Run one focused ViewModel Preview-lifecycle Automation prefix once.
+3. Prove selection/target/cancel/accepted-request/revision clear behavior.
+4. Prove stale Preview is never retained across StateRevision.
+5. Manual PIE: NOT REQUIRED.
 ```
-
-Do not rerun A3-2A, Phase6R, A2D5, Shipping, broad Scenario suites or Legacy parity unless a concrete failure invalidates them.
-
-Do not start A3-4 until this Gate passes.
