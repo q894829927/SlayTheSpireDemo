@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "../Battle/BattleImmediatePreview.h"
 #include "BattleHUDTypes.h"
 #include "BattleHUDViewModel.generated.h"
 
@@ -43,6 +44,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Preview")
+	bool SetPreviewTargetById(int32 TargetId);
+
+	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Preview")
+	void ClearPreviewTarget();
 
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Selection")
 	bool TryGetLegalTargetByPresentationId(
@@ -119,6 +126,20 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Selection")
 	TArray<FBattleHUDTargetView> LegalTargets;
 
+	// PreviewTarget is an explicit transient lifecycle and is intentionally
+	// separate from inspection/tooltip state and authoritative target submission.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Preview")
+	int32 PreviewTargetId = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Preview")
+	FName PreviewTargetPresentationId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Preview")
+	bool bHasImmediatePreview = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Preview")
+	FImmediateCardPreview ImmediatePreview;
+
 protected:
 	virtual void BeginDestroy() override;
 
@@ -127,6 +148,8 @@ private:
 	bool ApplyLatestFrozenBaselineAndRefresh(bool bResetInteraction);
 	void RebuildLegalTargets(UCardInstance* Card);
 	bool SubmitSelectedCard(ACombatant* Target);
+	bool TryBuildImmediatePreviewForTarget(ACombatant* Target, int32 TargetId);
+	void ClearImmediatePreviewInternal();
 	void SetResolving();
 	void ClearSelectionInternal();
 	void ClearLiveInputBindings();
