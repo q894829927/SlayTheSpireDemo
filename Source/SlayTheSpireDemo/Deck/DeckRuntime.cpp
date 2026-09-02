@@ -286,14 +286,11 @@ FDeckShuffleCommitResult UDeckRuntime::ShuffleDiscardIntoDrawPileCommit()
 	Result.DrawCountBefore = DrawPile.Num();
 	Result.DiscardCountBefore = DiscardPile.Num();
 
-	if (DiscardPile.Num() == 0)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Deck] Shuffle skipped: DiscardPile is empty."));
-		Result.DrawCountAfter = DrawPile.Num();
-		Result.DiscardCountAfter = DiscardPile.Num();
-		return Result;
-	}
-
+	// Gameplay shuffle semantics follow the source-game draw loop: an empty
+	// DrawPile may commit one shuffle attempt even when the DiscardPile is also
+	// empty. This zero-card shuffle is still a committed gameplay fact and may
+	// trigger shuffle-reactive mechanics such as Sundial. A non-empty DrawPile
+	// remains an invalid shuffle boundary.
 	if (DrawPile.Num() != 0)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Deck] Shuffle skipped: DrawPile is not empty (Draw=%d)."), DrawPile.Num());
@@ -303,14 +300,25 @@ FDeckShuffleCommitResult UDeckRuntime::ShuffleDiscardIntoDrawPileCommit()
 	}
 
 	Result.MovedCardCount = DiscardPile.Num();
-	DrawPile.Append(DiscardPile);
-	DiscardPile.Reset();
-	ShuffleDrawPileWithBattleRng();
+	if (DiscardPile.Num() > 0)
+	{
+		DrawPile.Append(DiscardPile);
+		DiscardPile.Reset();
+		ShuffleDrawPileWithBattleRng();
+	}
+
 	Result.bCommitted = true;
 	Result.DrawCountAfter = DrawPile.Num();
 	Result.DiscardCountAfter = DiscardPile.Num();
 
-	UE_LOG(LogTemp, Log, TEXT("[Deck] Shuffled DiscardPile into DrawPile using the battle RNG stream."));
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("[Deck] Gameplay shuffle committed. MovedCards=%d Draw=%d Discard=%d."),
+		Result.MovedCardCount,
+		Result.DrawCountAfter,
+		Result.DiscardCountAfter
+	);
 	LogState(TEXT("AfterShuffle"));
 	return Result;
 }
