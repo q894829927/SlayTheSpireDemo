@@ -106,7 +106,11 @@ void UBattleHUDWidget::HandleCombatantPreviewCleared()
 		return;
 	}
 
-	// The text surface observes the same ViewModel delegate and removes itself
-	// synchronously from OV_PlayArea when this clears the A3 DTO.
+	// Production target submission clears transient inspection/Preview before
+	// OnTargetRequested. Remove the A3 Widget itself first so OV_PlayArea is
+	// physically empty before synchronous authoritative request/A2 playback can
+	// enter BeginNativeCardPlayedPresentation. Do not rely on multicast delegate
+	// ordering for this ownership handoff.
+	ReleaseImmediatePreviewSurface();
 	ViewModel->ClearPreviewTarget();
 }
