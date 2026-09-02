@@ -2,13 +2,8 @@
 
 #include "Components/Button.h"
 #include "Components/Image.h"
+#include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
-
-namespace
-{
-	const FLinearColor IncreasedPreviewColor(0.90f, 0.16f, 0.16f, 1.0f);
-	const FLinearColor DecreasedPreviewColor(0.20f, 0.52f, 1.0f, 1.0f);
-}
 
 void UBattleCardWidget::NativeOnInitialized()
 {
@@ -34,8 +29,6 @@ void UBattleCardWidget::NativeOnInitialized()
 			*GetPathName());
 		return;
 	}
-
-	BaseDescriptionColor = Txt_CardDescription->GetColorAndOpacity();
 }
 
 void UBattleCardWidget::NativeConstruct()
@@ -77,11 +70,14 @@ void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)
 
 void UBattleCardWidget::ApplyImmediatePreview(const FImmediateCardPreview& Preview)
 {
+	const FText& PreviewDescription = Preview.CardFaceRichDescription.IsEmpty()
+		? Preview.CardFaceDescription
+		: Preview.CardFaceRichDescription;
 	if (!IsValid(Txt_CardDescription)
 		|| Preview.CardRuntimeId == INDEX_NONE
 		|| Preview.CardRuntimeId != CurrentCardView.RuntimeId
 		|| !Preview.Validation.bAllowed
-		|| Preview.CardFaceDescription.IsEmpty())
+		|| PreviewDescription.IsEmpty())
 	{
 		ClearImmediatePreview();
 		return;
@@ -101,23 +97,10 @@ void UBattleCardWidget::ApplyImmediatePreview(const FImmediateCardPreview& Previ
 		}
 	}
 
-	Txt_CardDescription->SetText(Preview.CardFaceDescription);
-	if (bHasIncrease)
-	{
-		// User-facing convention for this project: values above authored base are red.
-		Txt_CardDescription->SetColorAndOpacity(FSlateColor(IncreasedPreviewColor));
-		ImmediatePreviewTone = 1;
-	}
-	else if (bHasDecrease)
-	{
-		Txt_CardDescription->SetColorAndOpacity(FSlateColor(DecreasedPreviewColor));
-		ImmediatePreviewTone = -1;
-	}
-	else
-	{
-		Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
-		ImmediatePreviewTone = 0;
-	}
+	// RichText style tags are already attached to the exact semantic values by
+	// BattleTextResolver. The Widget does not parse numbers or recolor the sentence.
+	Txt_CardDescription->SetText(PreviewDescription);
+	ImmediatePreviewTone = bHasIncrease ? 1 : (bHasDecrease ? -1 : 0);
 	bImmediatePreviewApplied = true;
 }
 
@@ -134,7 +117,6 @@ void UBattleCardWidget::ClearImmediatePreview()
 	if (IsValid(Txt_CardDescription))
 	{
 		Txt_CardDescription->SetText(CurrentCardView.Description);
-		Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
 	}
 }
 
@@ -155,7 +137,6 @@ void UBattleCardWidget::RefreshFromCardView()
 	Txt_CardName->SetText(CurrentCardView.DisplayName);
 	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
 	Txt_CardDescription->SetText(CurrentCardView.Description);
-	Txt_CardDescription->SetColorAndOpacity(BaseDescriptionColor);
 	ImmediatePreviewTone = 0;
 
 	if (const UEnum* CardTypeEnum = StaticEnum<ECardType>())
