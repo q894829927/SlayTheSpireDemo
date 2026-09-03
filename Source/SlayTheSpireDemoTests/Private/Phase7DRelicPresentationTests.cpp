@@ -28,7 +28,8 @@ namespace Phase7D
 		const TCHAR* DisplayName,
 		bool bShowCounter,
 		int32 CounterMax,
-		UTexture2D* Icon = nullptr)
+		UTexture2D* Icon = nullptr,
+		bool bCreateCountTrigger = true)
 	{
 		URelicData* Definition = NewObject<URelicData>(Outer);
 		if (!IsValid(Definition))
@@ -42,7 +43,18 @@ namespace Phase7D
 			FString::Printf(TEXT("%s description"), DisplayName));
 		Definition->Icon = Icon;
 		Definition->bShowCounter = bShowCounter;
-		Definition->CounterDisplayMax = CounterMax;
+
+		if (bShowCounter && bCreateCountTrigger)
+		{
+			UDeckShuffledCountTrigger* CounterTrigger = NewObject<UDeckShuffledCountTrigger>(Definition);
+			if (!IsValid(CounterTrigger))
+			{
+				return nullptr;
+			}
+			CounterTrigger->RequiredCount = CounterMax;
+			Definition->Triggers.Add(CounterTrigger);
+		}
+
 		return Definition;
 	}
 
@@ -53,7 +65,9 @@ namespace Phase7D
 			TEXT("Sundial"),
 			TEXT("Sundial"),
 			true,
-			3);
+			3,
+			nullptr,
+			false);
 		if (!IsValid(Definition))
 		{
 			return nullptr;
@@ -113,7 +127,7 @@ namespace Phase7D
 				FBattleEvent::MakeDeckShuffled(Deck),
 				Queue,
 				Combatants,
-			nullptr,
+				nullptr,
 				&Writer))
 			{
 				return false;
@@ -260,14 +274,18 @@ namespace Phase7D
 		TestEqual(TEXT("Freeze sorts by RuntimeSequence"), Frozen[0].RelicId, FName(TEXT("Earlier")));
 		TestTrue(TEXT("Counter view remains data-driven"), Frozen[0].bShowCounter);
 		TestEqual(TEXT("Counter payload copied"), Frozen[0].Counter, 2);
-		TestEqual(TEXT("Counter max copied from presentation metadata"), Frozen[0].CounterMax, 5);
+		TestEqual(TEXT("Counter max derives from Gameplay threshold"), Frozen[0].CounterMax, 5);
 		TestFalse(TEXT("Passive relic hides counter"), Frozen[1].bShowCounter);
 		TestEqual(TEXT("Hidden counter max normalized"), Frozen[1].CounterMax, 0);
 
-		EarlierDefinition->CounterDisplayMax = 0;
+		UDeckShuffledCountTrigger* EarlierTrigger = EarlierDefinition->Triggers.Num() == 1
+			? Cast<UDeckShuffledCountTrigger>(EarlierDefinition->Triggers[0].Get())
+			: nullptr;
+		if (!TestNotNull(TEXT("Earlier count trigger"), EarlierTrigger)) return false;
+		EarlierTrigger->RequiredCount = 0;
 		TArray<FRelicReadView> InvalidViews{Earlier};
 		TestFalse(
-			TEXT("Visible counter without a positive display max is rejected"),
+			TEXT("Visible counter without a positive Gameplay threshold is rejected"),
 			RelicPresentationSnapshot::TryFreeze(InvalidViews, Frozen));
 		TestEqual(TEXT("Rejected freeze leaves no partial relic output"), Frozen.Num(), 0);
 		return true;
