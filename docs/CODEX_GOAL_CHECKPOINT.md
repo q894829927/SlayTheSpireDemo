@@ -1,4 +1,4 @@
-# Codex Goal Checkpoint — Phase 7 Relics
+# Codex Goal Checkpoint — Phase 7 / Phase 8
 
 Last updated: **2026-09-04**
 
@@ -12,76 +12,107 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7D Relic Read / Frozen / Native UI: COMPLETE / VALIDATED / SEALED
 7E Relic Reaction Composition: COMPLETE / VALIDATED / SEALED
 7F Relic Counter Metadata Unification: COMPLETE / VALIDATED / SEALED
+Phase 8 Combo Architecture Validation: DESIGN DRAFTED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
 ```
 
-## Phase 7F authority / evidence
+## Final Phase 7 authority / evidence
 
 ```text
-docs/Phase7FCounterMetadataImplementation.md   // completed implementation contract
-docs/Phase7FValidation.md                      // trusted final validation evidence
+docs/Phase7RelicsImplementation.md
+
+docs/Phase7AValidation.md
+docs/Phase7BValidation.md
+docs/Phase7CValidation.md
+docs/Phase7DValidation.md
+docs/Phase7ERelicCompositionDesign.md
+docs/Phase7EImplementation.md
+docs/Phase7EValidation.md
+docs/Phase7FCounterMetadataImplementation.md
+docs/Phase7FValidation.md
 ```
 
-Phase 7F removes duplicate authored counter-threshold metadata without reopening sealed Phase 7A–7E behavior.
+Phase 7A–7F are sealed and must not be reopened without a concrete Phase 8 failure that invalidates an existing contract.
 
-## Final 7F implementation
+## Phase 7 final durable state
 
 ```text
-URelicCountTrigger : UBattleTrigger
-└─ RequiredCount                          // sole authored threshold
-
-UDeckShuffledCountTrigger : URelicCountTrigger
-
-URelicData
-- CounterDisplayMax removed
-- bShowCounter retained as Presentation choice
-- TryGetCounterMax derives from the unique URelicCountTrigger
-- DataValidation rejects >1 count trigger
-- bShowCounter requires one valid positive count threshold
-
-RelicPresentationSnapshot
-- frozen CounterMax derives from authoritative RequiredCount
-- FBattleHUDRelicView remains a value-only frozen DTO
+Relics are first-class immutable-definition + mutable-runtime Gameplay sources.
+Status and Relic triggers share deterministic dispatcher ordering.
+Sundial is composed from UDeckShuffledCountTrigger + RelicEffects.
+GainEnergyAction is reusable and queued.
+Relic HUD state flows through read/frozen Presentation DTOs.
+CounterDisplayMax no longer exists as authored metadata.
+URelicCountTrigger::RequiredCount is the sole authored counter threshold.
 ```
 
-Current single-counter runtime constraint remains explicit: one Relic definition may own at most one `URelicCountTrigger` while `URelicInstance` owns one `Counter`.
-
-## Production Sundial final state
-
-`DA_Relic_Sundial` was reopened and saved in Unreal Editor after the reflected property removal. Confirmed state:
+Production Sundial final state:
 
 ```text
 bShowCounter = true
-CounterDisplayMax = no longer present
 Triggers[0] = UDeckShuffledCountTrigger
 RequiredCount = 3
 Effects[0] = UGainEnergyRelicEffect
 Amount = 2
 ```
 
-Historical 7D/7E documents that mention `CounterDisplayMax` remain trusted evidence of the pre-7F state; 7F supersedes only that metadata contract.
+## Phase 8 design authority
 
-## Final trusted Phase 7F gates
+Design draft:
 
 ```text
-UE project-file regeneration                                   PASS
-Development Editor Build                                       PASS
-SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource          PASS
-SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions    PASS
-SlayTheSpireDemo.Phase7E                                       PASS
-SlayTheSpireDemo.Phase7.Sundial                                PASS
-SlayTheSpireDemo.Phase7.RelicPresentation                      PASS
-Production Sundial PIE smoke                                   PASS
+docs/Phase8ComboArchitectureDesign.md
 ```
 
-PIE confirmed the production Sundial still advances `0 -> 1 -> 2 -> 0`, grants `+2 Energy` on the third real shuffle, and has no Missing Class / Failed to load / crash.
+Phase 8 goal:
 
-No unrelated Phase6R / A2D5 / Shipping aggregate gate was required for this bounded cleanup.
+```text
+2 × data-driven Pommel Strike+
++ Sundial
+
+Card
+→ Effects
+→ DrawCardsAction(2)
+→ real Shuffle
+→ FDeckShuffledEvent
+→ Sundial reaction
+→ every third counted shuffle +2 Energy
+```
+
+Locked draft direction:
+
+```text
+Pommel Strike+ is an immutable UCardData content variant.
+No generic Upgrade runtime in Phase 8.
+No bUpgraded / UpgradeLevel / UpgradeCardAction / UpgradeDelta.
+No Pommel/Sundial identity special case.
+Do not redesign sealed Draw / Shuffle semantics.
+A3 still does not predict Draw/Shuffle/Relic reactions.
+```
+
+Planned Phase 8 slices:
+
+```text
+8A Upgraded Pommel Content Variant
+8B Automated Combo Integration
+8C Production PIE Acceptance
+8D Validation / Seal
+```
+
+The proposed dedicated Automation prefix is:
+
+```text
+SlayTheSpireDemo.Phase8
+```
+
+The automated combo must start from real Card / Effect execution rather than manually dispatching `FDeckShuffledEvent` as its primary path.
 
 ## Next exact action
 
 ```text
-STOP.
+REVIEW docs/Phase8ComboArchitectureDesign.md.
 
-Do not reopen sealed Phase 7A–7F work or automatically start another phase.
-Select and explicitly authorize the next bounded design/implementation goal first.
+Phase 8 implementation is NOT authorized yet.
+Do not modify Card / Draw / Shuffle / Relic runtime.
+Do not create the production Pommel Strike+ asset yet.
+Explicit user authorization is required after design review.
 ```
