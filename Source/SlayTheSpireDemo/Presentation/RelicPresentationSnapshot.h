@@ -1,9 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
-struct FBattleHUDRelicView;
-struct FRelicReadView;
+#include "../Battle/BattleReadSnapshot.h"
+#include "../UI/BattleHUDTypes.h"
 
 namespace RelicPresentationSnapshot
 {
