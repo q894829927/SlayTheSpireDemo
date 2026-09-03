@@ -2,9 +2,9 @@
 
 日期：**2026-09-04**
 
-状态：**IMPLEMENTATION AUTHORIZED / SOURCE IMPLEMENTED / VALIDATION PENDING**
+状态：**COMPLETE / VALIDATED / SEALED**
 
-用户已明确授权按本文件范围实施 Phase 7F。Phase 7A–7E 保持 sealed；本阶段只消除 Relic counter threshold 的重复 authored metadata，不重新打开既有 Gameplay / Presentation 行为合同。
+用户已明确授权并完成 Phase 7F。Phase 7A–7E 保持 sealed；本阶段只消除 Relic counter threshold 的重复 authored metadata，不重新打开既有 Gameplay / Presentation 行为合同。
 
 ## 目标
 
@@ -14,11 +14,9 @@ Counter threshold 只有一个权威 authored 来源：
 URelicCountTrigger::RequiredCount
 ```
 
-删除 `URelicData::CounterDisplayMax`。`FBattleHUDRelicView::CounterMax` 继续保留，但它是 freeze 后的值 DTO，不是第二份配置。
+`URelicData::CounterDisplayMax` 已删除。`FBattleHUDRelicView::CounterMax` 继续保留，但它是 freeze 后的值 DTO，不是第二份配置。
 
-## 实现边界
-
-已实现：
+## 最终实现
 
 ```text
 URelicCountTrigger : UBattleTrigger
@@ -54,8 +52,6 @@ int32 Counter
 bShowCounter=true                       -> 必须唯一解析出一个正 RequiredCount 的 CountTrigger
 ```
 
-这避免在现有单 Counter runtime 上伪造多个独立计数 mechanic。
-
 ## 保持不变
 
 ```text
@@ -69,7 +65,7 @@ Widget 不查询 Trigger / RelicData
 不修改 Phase 7E reaction composition / queue semantics
 ```
 
-历史 7D/7E 文档中关于 `CounterDisplayMax` 的文字是当时 sealed 状态的历史记录；Phase 7F 从本阶段开始 supersede 该特定 metadata contract，不回写历史证据。
+历史 7D/7E 文档中关于 `CounterDisplayMax` 的文字继续作为当时 sealed 状态的历史记录；Phase 7F supersede 该特定 metadata contract，不回写历史证据。
 
 ## 测试迁移
 
@@ -80,16 +76,6 @@ Source/SlayTheSpireDemoTests/Private/Phase7FCounterMetadataTests.cpp
 
 SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource
 SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions
-```
-
-测试覆盖：
-
-```text
-UDeckShuffledCountTrigger 继承 generic URelicCountTrigger
-TryGetCounterMax 只读取 RequiredCount
-修改 RequiredCount 后 frozen CounterMax 同步变化，不存在第二份 authored max
-bShowCounter=false 时 frozen CounterMax 归零
-无 CountTrigger / 多 CountTrigger / 非正 RequiredCount 的可见 Counter freeze fail-closed
 ```
 
 既有测试已迁移：
@@ -104,42 +90,49 @@ Phase7ERelicCompositionTests.cpp
 - 删除 CounterDisplayMax fixture 配置
 ```
 
-## 生产资产迁移
+## 生产资产
 
-`DA_Relic_Sundial` 当前已具有：
+生产 `DA_Relic_Sundial` 已在 Unreal Editor 中重新保存，并确认：
 
 ```text
 bShowCounter = true
+CounterDisplayMax = 不再存在
 Triggers[0] = UDeckShuffledCountTrigger
 RequiredCount = 3
 Effects[0] = UGainEnergyRelicEffect
 Amount = 2
 ```
 
-由于 `CounterDisplayMax` 已从 C++ 反射类型删除，源码 Build 通过后需在 Unreal Editor 打开并重新保存 `DA_Relic_Sundial`，确认 Details 中不再存在 `CounterDisplayMax`，并让保存后的 `.uasset` 清理旧 serialized property。
+## Validation
 
-Connected GitHub 不直接编辑该二进制 `.uasset`。
-
-## Next exact gate
+用户已完成并确认：
 
 ```text
-USER ACTION REQUIRED
-
-1. git pull
-2. regenerate UE project files（新增 reflected URelicCountTrigger）
-3. Development Editor Build once
-4. STOP and report the Build result
+UE project-file regeneration                                   PASS
+Development Editor Build                                       PASS
+SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource          PASS
+SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions    PASS
+SlayTheSpireDemo.Phase7E                                       PASS
+SlayTheSpireDemo.Phase7.Sundial                                PASS
+SlayTheSpireDemo.Phase7.RelicPresentation                      PASS
+Production Sundial PIE smoke                                   PASS
 ```
 
-Build PASS 后再依次执行：
+PIE 中日晷继续按 `0 -> 1 -> 2 -> 0` 推进，并在第三次真实洗牌获得 `+2 Energy`；无 Missing Class / Failed to load / 崩溃。
+
+详细最终证据见：
 
 ```text
-SlayTheSpireDemo.Phase7F
-→ 打开/保存 DA_Relic_Sundial，确认无 CounterDisplayMax 且 RequiredCount=3
-→ SlayTheSpireDemo.Phase7E
-→ SlayTheSpireDemo.Phase7.Sundial
-→ SlayTheSpireDemo.Phase7.RelicPresentation
-→ Sundial PIE smoke
+docs/Phase7FValidation.md
 ```
 
-遵循项目 validation policy：已经 PASS 的 Gate 不重复运行，除非后续修改使其失效。
+## Seal
+
+Phase 7F 已完成且无剩余实施 Gate。
+
+```text
+RequiredCount = sole authored counter threshold
+CounterMax    = frozen Presentation value derived from RequiredCount
+```
+
+**Phase 7F is COMPLETE / VALIDATED / SEALED.**
