@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-08-31
+快照日期：2026-09-03
 
 ## 1. 用途与边界
 
@@ -32,6 +32,183 @@ PLANNED / NOT WIRED
 | `WBP_CombatantTooltip` | 2026-08-20 16:48:35 | 6 | `EventGraph` 3 nodes |
 | `WBP_StatusTooltip` | 2026-08-20 21:25:07 | 2 | `RebuildTooltip` 10 nodes；`EventGraph` 3 nodes |
 | `WBP_StatusTooltipEntry` | 2026-08-20 16:37:42 | 8 | `SetStatusView` 22 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
+
+## 2.1 2026-09-03 Native WBP 工作树快照 — CURRENT SAVED
+
+本节记录当前工作树中已经保存到磁盘的 Native WBP。内容由 UE5.8 MCP 的 UMG/Blueprint 只读工具确认；`CURRENT SAVED` 表示资产文件已经存在并已保存，不表示本节列出的全部运行时交互已经通过 PIE。
+
+当前工作树中与 WBP 直接相关的资产如下：
+
+| WBP | 状态 | Parent Class | Designer 控件数 | Graph | 文件信息 |
+|---|---|---|---:|---|---|
+| `WBP_BattleHUD_Native` | 已修改、CURRENT SAVED | `UBattleHUDWidget` | 76 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-03 20:52:20；143,179 bytes；SHA-256 `AA300B26DA0658F550F1487F43AF3DD3C3D05253999190E2FBE99A9B4527C1F1` |
+| `WBP_BattleCard_Native` | 已修改、CURRENT SAVED | `UBattleCardWidget` | 20 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-02 21:05:52；48,878 bytes；SHA-256 `27929456E042C9E1CF2B7C3D8E37EBD27D607477B374982ECD8D0C0FADD59841` |
+| `Relic/WBP_BattleRelic_Native` | 新建、CURRENT SAVED | `UBattleRelicWidget` | 6 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 20:15:38；38,013 bytes；SHA-256 `102308A3EAB97E683BF4FED848983C17CF875930BF7B329F46FF530D84D065C1` |
+| `Relic/WBP_BattleRelicStrip_Native` | 新建、CURRENT SAVED | `UBattleRelicStripWidget` | 2 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 20:20:08；26,596 bytes；SHA-256 `F4B6FDA5AEDB900F7CBDC22E5536D49F72562E6C233A5B6120710BABF1ED0095` |
+| `Relic/WBP_BattleRelicTooltip_Native` | 新建、CURRENT SAVED | `UBattleRelicTooltipWidget` | 6 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 18:40:50；36,330 bytes；SHA-256 `30BB5EBDC3011C69AB37172762D29207ED6D35C9C32CBD10720F17BF6076BFC1` |
+
+上述五个 Native WBP 的 MCP 资产路径分别为：
+
+```text
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native
+/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard_Native
+/Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelic_Native
+/Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelicStrip_Native
+/Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelicTooltip_Native
+```
+
+### 2.1.1 WBP_BattleHUD_Native — 当前新增遗物入口
+
+MCP 确认根控件为 `CanvasPanel_54`，当前 Designer 控件数为 76。当前树中新增并保存了：
+
+```text
+CanvasPanel_54
+└── RelicStrip_Player : WBP_BattleRelicStrip_Native
+```
+
+`RelicStrip_Player` 的 Canvas Slot 已保存为：
+
+```text
+Anchor = (0.020, 0.060)
+Size   = 560 × 80
+ZOrder = 5
+```
+
+当前 HUD 只记录了玩家遗物条实例；遗物条内部负责从 ViewModel 接收有序 `Relics` 并重建遗物控件。该实例没有移入 Legacy HUD，也没有新增 Gameplay 查询入口。
+
+### 2.1.2 WBP_BattleCard_Native — 当前 Designer
+
+MCP 确认当前卡牌仍为 20 个 Designer 控件：
+
+```text
+SB_Card : SizeBox
+└── Btn_Card : Button
+    └── OV_Card : Overlay
+        ├── BG_Card
+        ├── VB_CardContent
+        │   ├── Txt_CardName
+        │   ├── SB_CardArt
+        │   │   └── Img_CardArt
+        │   └── Txt_CardType
+        ├── SB_Description
+        │   └── Txt_CardDescription : RichTextBlock
+        └── SB_Cost
+            └── OV_Cost
+                ├── Img_CostBG
+                ├── Img_CostBase
+                ├── Img_CostSwirl
+                ├── Img_CostGlow
+                ├── Img_CostOuter
+                ├── Img_CostRing
+                └── Txt_Cost
+```
+
+`Txt_CardDescription` 当前使用 `DT_BattleCardTextStyles`，默认 Designer 文本为“造成6点伤害”，Visibility 为 `Visible`。实际数值和强化富文本仍由 C++ 传入的 `FBattleHUDCardView` 驱动，WBP 不重新计算 Gameplay 结果。
+
+### 2.1.3 WBP_BattleRelic_Native — CURRENT SAVED
+
+MCP 确认当前 Designer 层级为：
+
+```text
+SizeBox_Root : SizeBox
+    WidthOverride  = 72
+    HeightOverride = 72
+    Visibility     = Visible
+└── Overlay_Relic : Overlay
+    ├── Img_RelicIcon : Image
+    │   └── Visibility = HitTestInvisible
+    ├── Btn_RelicInteraction : Button
+    │   ├── HorizontalAlignment = Fill
+    │   ├── VerticalAlignment   = Fill
+    │   ├── IsFocusable         = false
+    │   └── WidgetStyle         = NoDrawType
+    └── Border_Counter : Border
+        └── Txt_RelicCounter : TextBlock
+```
+
+当前类默认值由 MCP 确认如下：
+
+```text
+TooltipWidgetClass = /Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelicTooltip_Native.WBP_BattleRelicTooltip_Native_C
+TooltipCursorOffset = (18, 18)
+TooltipZOrder       = 1000
+Root Visibility     = SelfHitTestInvisible
+```
+
+`Img_RelicIcon` 与 `Border_Counter` 不参与命中测试，实际交互层是铺满遗物区域的 `Btn_RelicInteraction`。根 Widget 的 `SelfHitTestInvisible` 和 C++ `NativeOnMouseEnter()` 是否形成预期的父 Widget 悬停回调，仍需通过 PIE 验证；当前快照不把 Tooltip 显示标记为已验收。
+
+### 2.1.4 WBP_BattleRelicStrip_Native — CURRENT SAVED
+
+MCP 确认当前 Designer 层级为：
+
+```text
+SizeBox_Root : SizeBox
+    MinDesiredWidth  = 80
+    MinDesiredHeight = 20
+    Visibility       = Visible
+└── HB_Relics : HorizontalBox
+    └── Visibility = Visible
+```
+
+当前类默认值为：
+
+```text
+RelicWidgetClass = /Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelic_Native.WBP_BattleRelic_Native_C
+Root Visibility  = SelfHitTestInvisible
+```
+
+`HB_Relics` 是 C++ `UBattleRelicStripWidget` 的 Required BindWidget；遗物实例由 C++ 按冻结 `FBattleHUDRelicView` 有序创建，WBP 不持有 Gameplay 状态。
+
+### 2.1.5 WBP_BattleRelicTooltip_Native — CURRENT SAVED
+
+MCP 确认当前 Designer 层级为：
+
+```text
+SizeBox_Root : SizeBox
+    WidthOverride    = 330
+    MinDesiredHeight = 80
+└── Border_Outer
+    └── Border_Inner
+        └── VerticalBox_Content
+            ├── Txt_RelicName : TextBlock
+            └── Txt_RelicDescription : TextBlock
+```
+
+当前 Designer 默认文本为：
+
+```text
+Txt_RelicName        = 日晷
+Txt_RelicDescription = 每洗牌3次，获得2点能量。
+```
+
+两个文本控件均已由 MCP 确认存在并暴露为变量，和 `UBattleRelicTooltipWidget` 的 `BindWidget` 名称一致。Tooltip 根类默认 Visibility 为 `HitTestInvisible`；它只显示内容，不应拦截遗物按钮的鼠标事件。
+
+### 2.1.6 当前工作树的非 WBP 修改
+
+以下修改已在 `git status` 中确认，但不属于本文件的 WBP Designer/Graph 快照，因此只在此列出，不把它们伪装成蓝图修改：
+
+```text
+Content/SlayTheSpireDemo/Data/DT_BattleCardTextStyles.uasset
+Content/SlayTheSpireDemo/Maps/L_BattleTest.umap
+Content/SlayTheSpireDemo/Data/Relics/DA_Relic_Sundial.uasset
+```
+
+当前工作树没有对 Legacy battle HUD/Card/Status 资产的新增修改记录。
+
+### 2.1.7 当前未完成的人工验证
+
+```text
+USER ACTION REQUIRED / NOT YET PASS
+
+在 L_BattleTest 中启动 Native HUD PIE：
+→ 确认 RelicStrip_Player 出现日晷图标
+→ 将鼠标移到 72 × 72 的遗物按钮区域
+→ 预期在鼠标右下方出现 ZOrder=1000 的 Tooltip
+→ 预期显示“日晷”和“每洗牌3次，获得2点能量。”
+→ 鼠标离开后 Tooltip 消失
+```
+
+当前代码路径是 `UBattleRelicWidget::NativeOnMouseEnter()` → `ShowRelicTooltip()`；MCP 已确认资产 class 引用、按钮覆盖区域、Tooltip BindWidget 和默认尺寸存在，但尚未证明运行时一定能收到父 Widget 的 Hover 回调，也没有把当前 Tooltip 缺失现象标记为通过。
 
 ## 3. WBP_BattleHUD — CURRENT SAVED
 
