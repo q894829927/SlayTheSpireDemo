@@ -8,7 +8,6 @@ class ABattleManager;
 class UAdvanceRelicCounterAction;
 class URelicContainer;
 class URelicData;
-class USundialAdvanceAction;
 
 UCLASS()
 class SLAYTHESPIREDEMO_API URelicInstance : public UObject
@@ -25,7 +24,6 @@ public:
 
 private:
 	friend class URelicContainer;
-	friend class USundialAdvanceAction; // retained until the production Sundial asset migrates
 	friend class UAdvanceRelicCounterAction;
 
 	void Initialize(URelicData* InDefinition, ABattleManager* InBattle, uint64 InRuntimeSequence);
