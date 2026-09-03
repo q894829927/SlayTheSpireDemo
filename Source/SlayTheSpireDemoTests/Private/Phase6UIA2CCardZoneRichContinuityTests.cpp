@@ -54,20 +54,22 @@ namespace Phase6UIA2CCardZoneRichContinuity
 			UCardData* CardA = NewObject<UCardData>(World);
 			CardA->CardId = TEXT("RichDrawA");
 			CardA->DisplayName = FText::FromString(TEXT("Rich Draw A"));
-			CardA->Description = FText::FromString(TEXT("Deal {Damage} damage."));
+			CardA->Description = FText::FromString(TEXT("Draw continuity A."));
 			CardA->BaseCost = 0;
 			CardA->TargetType = ECardTargetType::Enemy;
 
 			UCardData* CardB = NewObject<UCardData>(World);
 			CardB->CardId = TEXT("RichDrawB");
 			CardB->DisplayName = FText::FromString(TEXT("Rich Draw B"));
-			CardB->Description = FText::FromString(TEXT("Deal {Damage} damage."));
+			CardB->Description = FText::FromString(TEXT("Draw continuity B."));
 			CardB->BaseCost = 0;
 			CardB->TargetType = ECardTargetType::Enemy;
 
 			Battle->Player = Player;
 			Battle->Enemy = Enemy;
-			Battle->DebugStartingDeck = { CardA, CardB };
+			Battle->DebugStartingDeck.Reset();
+			Battle->DebugStartingDeck.Add(CardA);
+			Battle->DebugStartingDeck.Add(CardB);
 			Battle->OpeningHandDrawCount = 0;
 			Battle->PlayerTurnDrawCount = 0;
 			Battle->EnemyTestAttackDamage = 0;
@@ -176,6 +178,9 @@ bool FPhase6UIA2CCardZoneWorkingSnapshotRichContinuityTest::RunTest(const FStrin
 		return false;
 	}
 
+	// These are Strength-style resolved payloads, but the contract assertions below
+	// intentionally depend only on non-empty/distinct frozen text and exact record
+	// equality rather than a hard-coded localized sentence.
 	const FPresentationCardSnapshot CardA = MakeCardSnapshot(
 		1001,
 		TEXT("RichDrawA"),
@@ -231,6 +236,8 @@ bool FPhase6UIA2CCardZoneWorkingSnapshotRichContinuityTest::RunTest(const FStrin
 
 	const FPresentationPlaybackToken FirstToken = Fixture.Controller->GetActivePlaybackTokenForTesting();
 	TestEqual(TEXT("First token belongs to Draw A"), FirstToken.PresentationSequence, static_cast<int64>(1));
+	// Call the Controller directly: this test targets reducer state, not Widget
+	// completion deferral. Widget-level CoreTicker forwarding has separate coverage.
 	Fixture.Controller->NotifyPresentationFinished(FirstToken);
 
 	TestTrue(TEXT("Second Draw is now the active playback"), Fixture.Controller->IsWaitingForCompletionForTesting());
