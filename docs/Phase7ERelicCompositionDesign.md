@@ -112,6 +112,7 @@ Universal Effect Context
 persistent Trigger Registry
 任意 key/value Relic runtime state bag
 CardPlayed / AttackPlayed / TurnStarted 等新 BattleEvent
+UDrawCardsRelicEffect
 RelicCounterChanged Presentation Record
 RelicTriggered Presentation Record
 A3 对遗物反应的预测
@@ -121,6 +122,8 @@ GAS 迁移
 ```
 
 现有 `BattleEvent` 只有 `TurnEnded` 和 `DeckShuffled`。7E 第一版继续只使用已经存在并验证的 `FDeckShuffledEvent`，不为了证明组合化而同时扩展 Event 系统。
+
+第一版只实现 `UGainEnergyRelicEffect` 与 `UGainBlockRelicEffect`。这两个 Effect 已足以验证 Trigger 复用、Counter/Threshold 复用、multi-effect 顺序、Presentation participant identity 与 nested Writer propagation；`UDrawCardsRelicEffect` 留待真实需求出现后再设计。
 
 ---
 
@@ -227,15 +230,21 @@ Relic Gameplay Owner = Battle->Player
 
 `UDeckShuffledCountTrigger::BuildReactions()` 创建 Effect Context 时统一解析：
 
-```text
-Relic  = Context.GetRelicSource()
-Battle = Context.GetBattle()
-Owner  = Battle->Player
-OwnerPresentationId
-       = Battle->TryResolveCombatantPresentationId(Owner)
+```cpp
+URelicInstance* Relic = Context.GetRelicSource();
+ABattleManager* Battle = Context.GetBattle();
+ACombatant* Owner = IsValid(Battle) ? Battle->Player.Get() : nullptr;
+
+FName OwnerPresentationId = NAME_None;
+const bool bOwnerPresentationIdResolved =
+    IsValid(Battle)
+    && IsValid(Owner)
+    && Battle->TryResolveCombatantPresentationId(
+        Owner,
+        OwnerPresentationId);
 ```
 
-`OwnerPresentationId` 解析失败时保持 `NAME_None`；只有真正依赖 participant identity 的 Effect 才因此构建失败。`UGainEnergyRelicEffect` 不依赖它，`UGainBlockRelicEffect` 依赖它。
+如果解析失败，`OwnerPresentationId` 保持 `NAME_None`。`bOwnerPresentationIdResolved` 只用于构建阶段判断；只有真正依赖 participant identity 的 Effect 才因此构建失败。`UGainEnergyRelicEffect` 不依赖它，`UGainBlockRelicEffect` 依赖它。
 
 ### 6.2 第一版不提供通用 Target
 
@@ -315,7 +324,6 @@ Deck 有效
 Relic runtime source 有效
 Battle 有效
 Relic.GetBattle() == Battle
-Relic 仍属于 Battle.PlayerRelicContainer
 Event Deck 是当前 authoritative DeckRuntime
 RequiredCount > 0
 Effects 配置有效
@@ -330,12 +338,26 @@ DrawAction identity
 RetryDraw identity
 ```
 
+7E **不在 `CanReact()` 新增 PlayerRelicContainer membership 检查**。这是有意保持现有 sealed Sundial eligibility 语义的最小迁移：当前 Dispatcher 本身就是从当前 `PlayerRelicContainer` 枚举 Relic candidate，因此正常 dispatch 路径已经具备来源约束。
+
+真正需要防止 stale runtime 的 membership 重验证保留在：
+
+```text
+BuildReactions
+→ 确认 Relic 当前仍属于 Battle.PlayerRelicContainer
+
+UAdvanceRelicCounterAction::Execute
+→ 再次权威确认 Relic 当前仍属于 Container
+```
+
+这样既不扩大 `CanReact()` 的 sealed 行为，又能覆盖 Build 到 Execute 之间的运行时变化。
+
 ### 8.2 `BuildReactions`
 
 职责：
 
 ```text
-验证 Relic / Battle / Player ownership
+验证 Relic / Battle / Player ownership / 当前 membership
 建立 FRelicEffectContext
 ↓
 按 Effects[] 声明顺序逐个 Build
@@ -350,9 +372,16 @@ RetryDraw identity
 → 必须至少包含一个 Action
 ↓
 创建 UAdvanceRelicCounterAction
-→ 冻结 Relic / RequiredCount / PreparedRewardActions[]
 ↓
-OutActions.Add(CounterAction)
+调用 Initialize(Relict, RequiredCount, PreparedRewardActions)
+↓
+Initialize 返回 false
+→ 整个 reaction fail-closed
+→ 不加入 OutActions
+↓
+Initialize 返回 true
+→ 冻结 Relic / RequiredCount / PreparedRewardActions[]
+→ OutActions.Add(CounterAction)
 ```
 
 Trigger 自身不修改 Counter，也不直接执行 reward。
@@ -475,14 +504,36 @@ Action->GetOuter() == this Queue
 
 Dispatcher 的 local batch 只包含 `UAdvanceRelicCounterAction`，看不到其内部的 `RewardActions[]`。如果某个 Effect 使用错误 Outer，只依赖 Queue 最终检查，会把错误延迟到 Counter 达到阈值时才暴露。
 
-因此 `UAdvanceRelicCounterAction::Initialize()` 必须对 prepared rewards 做一次静态验证：
+因此 `UAdvanceRelicCounterAction::Initialize()` 必须返回 `bool`，并在初始化阶段对 prepared rewards 做一次静态验证：
+
+```cpp
+bool Initialize(
+    URelicInstance* InRelic,
+    int32 InRequiredCount,
+    const TArray<UBattleAction*>& InRewardActions);
+```
+
+静态验证至少覆盖：
 
 ```text
+Relic 有效
+RequiredCount > 0
+PreparedRewardActions 非空
 每个 RewardAction：
 - IsValid
 - 未 Finished
 - GetOuter() == CounterAction.GetOuter()
 - batch 内没有重复 Action 指针
+```
+
+如果任一项失败：
+
+```text
+Initialize(...) = false
+→ 不保存部分初始化状态
+→ UDeckShuffledCountTrigger 不把 CounterAction 加入 OutActions
+→ 当前 reaction fail-closed
+→ Counter 不前进
 ```
 
 这里不检查 Queue 动态状态：
@@ -501,6 +552,17 @@ QueueEmpty broadcast 状态
 ## 12. `UAdvanceRelicCounterAction`
 
 替代 `USundialAdvanceAction` 的可复用 Counter/Threshold Action。
+
+初始化接口：
+
+```cpp
+bool Initialize(
+    URelicInstance* InRelic,
+    int32 InRequiredCount,
+    const TArray<UBattleAction*>& InRewardActions);
+```
+
+只有 `Initialize()` 返回 `true` 的 CounterAction 才能进入 Trigger 的 `OutActions`。
 
 概念状态：
 
@@ -839,14 +901,20 @@ A2 EnergyChanged payload 正确
 4. 新增 UDeckShuffledCountTrigger
 5. 新增 focused 7E tests
 6. 使用测试定义验证 multi-effect composition
-7. 将 Sundial 测试定义迁移到新 Trigger + Effect
-8. 跑原有 Phase7.Sundial / EnergyGain / RelicPresentation 回归
+7. 迁移 Phase7.Sundial 测试 fixture / 测试代码 / 测试定义：
+   - 不再实例化 USundialTrigger / USundialAdvanceAction
+   - 改用 UDeckShuffledCountTrigger + UGainEnergyRelicEffect
+   - 保留原有可观察行为断言
+8. 运行“迁移后的 Phase7.Sundial 行为回归”：
+   - 这里的“回归”指原 observable behavior 全部保持
+   - 不是继续运行仍依赖旧 Sundial C++ 类型的测试路径
+   - 同时运行 Phase7.EnergyGain / Phase7.RelicPresentation 必要回归
 9. 生产 DA_Relic_Sundial 改用新 Trigger + GainEnergyRelicEffect
-10. 最后删除 USundialTrigger / USundialAdvanceAction
+10. 删除 USundialTrigger / USundialAdvanceAction，以及测试中的旧类引用
 11. 再跑一次最小必要回归
 ```
 
-在步骤 8 之前，旧 Sundial 路径保持可用，便于对照行为。
+在步骤 7 完成之前，旧 Sundial 测试/生产路径仍可用于对照；步骤 7 之后，`Phase7.Sundial` 这个测试组名可以保留，但其 fixture 和实现必须已经迁移到新组合路径。
 
 ---
 
@@ -916,9 +984,21 @@ Invalid Action
 Finished Action
 错误 Outer
 重复 Action 指针
+非法 RequiredCount
+空 RewardActions
 ```
 
-都应在 CounterAction 创建/初始化阶段拒绝，不把错误拖到 threshold 执行时。
+都应在 `UAdvanceRelicCounterAction::Initialize(...)` 阶段拒绝：
+
+```text
+Initialize(...) = false
+→ Trigger 不把 CounterAction 加入 OutActions
+→ 当前 reaction fail-closed
+→ Counter 不前进
+→ 不触发 Queue ResolutionFault
+```
+
+不把这些 definition / frozen-intent 错误拖到 threshold 执行时。
 
 ### 20.3 threshold 时 Queue 插入失败
 
@@ -947,6 +1027,8 @@ A. DeckShuffledCountTrigger
 - 非 authoritative Deck 不响应
 - setup shuffle 不参与
 - RequiredCount 非法配置拒绝
+- CanReact 不额外依赖 PlayerRelicContainer membership 分支
+- BuildReactions 对当前 PlayerRelicContainer membership 做 fail-closed 重验证
 
 B. Counter
 - 0 → 1 → 2 → 0
@@ -963,7 +1045,8 @@ C. Effect composition
 
 D. Outer / frozen intent
 - RewardAction Outer 必须是目标 Queue
-- 错误 Outer 在 build/init 阶段即可发现
+- 错误 Outer 在 Initialize 阶段返回 false
+- Initialize false 时 CounterAction 不进入 OutActions
 - CounterAction Execute 不遍历 RelicData.Triggers[]
 - CounterAction Execute 不重新调用 RelicEffect::BuildActions
 
@@ -978,7 +1061,8 @@ F. 第二个组合遗物
 - 不新增遗物专属 Trigger / Action 类
 
 G. Sundial migration regression
-- 原 Phase7.Sundial 行为全部保持
+- Phase7.Sundial 测试 fixture / 测试代码已迁移到新 Trigger + Effect
+- 原 Phase7.Sundial observable behavior 全部保持
 - Phase7.EnergyGain 保持
 - Phase7.RelicPresentation 3/3 保持
 - 7D FinalSnapshot 2 → 0 时序保持
@@ -1017,13 +1101,15 @@ Development Editor Build 一次
 4. RewardActions 在 BuildReactions 阶段冻结
 5. RewardActions 保持 Effects[] 声明顺序
 6. 任一 Effect 构建失败时 whole reaction fail-closed
-7. RewardAction Outer 在 build/init 阶段得到静态验证
-8. nested RewardActions 正确继承 PresentationRecordWriter
-9. GainBlock participant identities 完整可信
-10. TestCompositeRelic 无任何遗物专属 C++
-11. Sundial 完成纯配置迁移
-12. 原 7C / 7D observable behavior 无回归
-13. 删除 USundialTrigger / USundialAdvanceAction 后所有 gate 仍 PASS
+7. UAdvanceRelicCounterAction::Initialize 返回 bool，并在 build/init 阶段静态验证 RewardAction Outer / 重复 / finished / 空 batch / RequiredCount
+8. Initialize 失败时 CounterAction 不进入 Trigger OutActions
+9. nested RewardActions 正确继承 PresentationRecordWriter
+10. GainBlock participant identities 完整可信
+11. TestCompositeRelic 无任何遗物专属 C++
+12. Sundial 测试 fixture / 测试代码和生产资产完成纯组合迁移
+13. 原 7C / 7D observable behavior 无回归
+14. 删除 USundialTrigger / USundialAdvanceAction 后所有 gate 仍 PASS
+15. 7E 第一版未引入 UDrawCardsRelicEffect 或其他非必要 Scope 扩张
 ```
 
 最终希望得到：
@@ -1056,14 +1142,17 @@ Effect Context 最小字段
 Player Relic Owner 来源
 Presentation participant identity
 Reward Action Outer 合同
+Initialize 失败回传与 fail-closed 落点
 Eager-build 冻结边界
 Writer propagation
 multi-effect 顺序
 fail-closed 粒度
 Counter reset / Queue fault 时序
 第二个真实组合验证案例
-Sundial 迁移顺序
+Sundial 测试代码 / fixture / 生产资产迁移顺序
+CanReact 与 Build/Execute membership 重验证边界
 7D 零语义修改边界
+7E 第一版明确不实现 DrawCardsRelicEffect
 ```
 
 但当前状态仍为：
