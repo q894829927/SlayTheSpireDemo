@@ -69,6 +69,38 @@ struct SLAYTHESPIREDEMO_API FBattleHUDStatusView
 };
 
 USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FBattleHUDRelicView
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	FName RelicId = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	int64 RuntimeSequence = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	FText DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	FText Description;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	bool bShowCounter = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	int32 Counter = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	int32 CounterMax = 0;
+
+	// Immutable presentation asset reference only. No URelicInstance or other
+	// mutable Gameplay runtime pointer is permitted in the frozen HUD DTO.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	TObjectPtr<UTexture2D> Icon = nullptr;
+};
+
+USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FBattleHUDCombatantView
 {
 	GENERATED_BODY()
@@ -98,6 +130,13 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCombatantView
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	TArray<FBattleHUDStatusView> Statuses;
+
+	// Phase 7 Relics are player-owned. The Enemy view keeps this empty. Keeping
+	// the frozen Relic collection on the Player HUD view lets existing
+	// FPresentationStateSnapshot/ViewModel value-copy boundaries carry it without
+	// introducing mutable Gameplay ownership into Presentation.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD|Relic")
+	TArray<FBattleHUDRelicView> Relics;
 };
 
 USTRUCT(BlueprintType)
