@@ -3,6 +3,8 @@
 #include "BattleActionQueue.h"
 #include "FinishCardPlayAction.h"
 #include "../Battle/BattleManager.h"
+#include "../Battle/BattleTextResolver.h"
+#include "../Battle/BattleTextTypes.h"
 #include "../Battle/EnergyMutation.h"
 #include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
@@ -12,6 +14,60 @@
 #include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEventDispatcher.h"
 #include "../Presentation/PresentationCardSnapshotBuilder.h"
+
+namespace
+{
+	bool TryBuildCommittedCardFaceRichDescription(
+		const UCardData* Definition,
+		const UCardInstance* Card,
+		ACombatant* Source,
+		ACombatant* Target,
+		FText& OutRichDescription)
+	{
+		OutRichDescription = FText::GetEmpty();
+		if (!IsValid(Definition) || !IsValid(Card) || !IsValid(Source))
+		{
+			return false;
+		}
+
+		FCardEffectPreviewContext PreviewContext;
+		PreviewContext.Card = Card;
+		PreviewContext.Source = Source;
+		PreviewContext.Target = Target;
+
+		TArray<FImmediatePreviewOperation> Operations;
+		Operations.Reserve(Definition->Effects.Num());
+		for (int32 EffectIndex = 0; EffectIndex < Definition->Effects.Num(); ++EffectIndex)
+		{
+			const UCardEffect* Effect = Definition->Effects[EffectIndex].Get();
+			if (!IsValid(Effect))
+			{
+				return false;
+			}
+
+			const int32 OperationStart = Operations.Num();
+			Effect->BuildImmediatePreviewOperations(PreviewContext, EffectIndex, Operations);
+			for (int32 OperationIndex = OperationStart; OperationIndex < Operations.Num(); ++OperationIndex)
+			{
+				const FImmediatePreviewOperation& Operation = Operations[OperationIndex];
+				if (Operation.EffectIndex != EffectIndex
+					|| Operation.SemanticArgumentName.IsNone()
+					|| Operation.BaseAmount < 0
+					|| Operation.ResolvedAmount < 0
+					|| Operation.HitCount <= 0)
+				{
+					return false;
+				}
+			}
+		}
+
+		OutRichDescription = FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
+			Card,
+			Source,
+			Operations);
+		return !OutRichDescription.IsEmpty();
+	}
+}
 
 void UPlayCardAction::Initialize(
 	ABattleManager* InBattle,
@@ -158,6 +214,18 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		Battle->TryResolveCombatantPresentationId(ResolvedTarget, Context.TargetPresentationId);
 	}
 
+	// Freeze the same read-only current-state card-face resolution used by A3
+	// before any follow-up Action can mutate the battle. A3 itself still clears on
+	// submission; A2 receives this value only through the immutable CardPlayed
+	// snapshot and never queries live Gameplay during playback.
+	FText CommittedCardFaceRichDescription;
+	const bool bHasCommittedCardFaceRichDescription = TryBuildCommittedCardFaceRichDescription(
+		Definition,
+		Card.Get(),
+		Source.Get(),
+		ResolvedTarget,
+		CommittedCardFaceRichDescription);
+
 	TArray<UBattleAction*> FollowUpActions;
 	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
 	{
@@ -233,6 +301,10 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		const bool bCardValid = PresentationCardSnapshot::TryBuild(Card.Get(), Source.Get(), CardSnapshot)
 			&& CardSnapshot.RuntimeId == ZoneCommit.CardRuntimeId
 			&& CardSnapshot.CardId == ZoneCommit.CardId;
+		if (bCardValid && bHasCommittedCardFaceRichDescription)
+		{
+			CardSnapshot.RichDescription = CommittedCardFaceRichDescription;
+		}
 
 		if (!bSourceValid || !bTargetValid || !bCardValid)
 		{
