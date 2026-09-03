@@ -7,6 +7,8 @@
 #include "../Combat/Combatant.h"
 #include "../Enemy/EnemyIntent.h"
 
+class URelicData;
+class URelicInstance;
 class UStatusData;
 class UStatusInstance;
 
@@ -20,6 +22,18 @@ struct SLAYTHESPIREDEMO_API FStatusReadView
 
 	// Populated by TryBuildPlayerFacingReadSnapshot for this exact revision.
 	FText CurrentDescription;
+};
+
+struct SLAYTHESPIREDEMO_API FRelicReadView
+{
+	// Read-only observation handles. Frozen Presentation must not retain either
+	// mutable runtime pointer; it copies immutable definition fields and scalar
+	// runtime facts into FBattleHUDRelicView.
+	TWeakObjectPtr<URelicInstance> Relic;
+	TWeakObjectPtr<URelicData> Definition;
+	FName RelicId = NAME_None;
+	uint64 RuntimeSequence = 0;
+	int32 Counter = 0;
 };
 
 struct SLAYTHESPIREDEMO_API FCombatantReadView
@@ -73,6 +87,9 @@ struct SLAYTHESPIREDEMO_API FBattleReadSnapshot
 
 	FCombatantReadView Player;
 	FCombatantReadView Enemy;
+
+	// Ordered player-owned Relic runtime facts for this exact read revision.
+	TArray<FRelicReadView> Relics;
 
 	// The committed authoritative action plan. BaseAmount remains the source used
 	// later to build the EnemyTurn Action.
