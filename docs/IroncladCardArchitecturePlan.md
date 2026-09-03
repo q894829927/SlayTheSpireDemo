@@ -14,7 +14,7 @@
 
 ## 1. Current project baseline
 
-当前稳定架构已经有：
+当前稳定架构：
 
 ```text
 UCardData / UCardInstance
@@ -67,9 +67,207 @@ StatusData 只有 DamageModifiers / BlockModifiers / Triggers
 
 ---
 
-## 2. Architecture capability catalog
+## 2. Locked architecture rule — capabilities are orthogonal and composable
 
-后续所有 Ironclad 卡牌都映射到以下能力编号。实现时应按真实消费者组合抽象，禁止为具体卡名加分支。
+后续 Ironclad 扩展必须遵守以下长期规则：
+
+> **能力之间可以通过稳定的数据合同组合，但不能彼此知道具体实现，也不能知道具体卡牌、Status、Relic 或组合消费者。**
+
+设计目标不是：
+
+```text
+Capability A
+→ knows Capability B
+→ knows Capability C
+```
+
+而是：
+
+```text
+Query / Spec / SelectionResult / CommitResult / BattleEvent
+= shared neutral contracts
+
+independent capability producer
+→ neutral contract
+→ independent capability consumer
+```
+
+### 2.1 Allowed dependency directions
+
+允许的组合只能沿现有架构方向发生：
+
+```text
+Read-only Query
+→ returns fact/value only
+
+CardEffect / Rule Source
+→ builds or modifies typed intent/spec
+
+BattleAction
+→ requests authoritative mutation
+
+Runtime owner
+→ commits mutation
+→ returns exact CommitResult
+
+Commit
+→ emits immutable BattleEvent when such a fact has real consumers
+
+Trigger
+→ reads Event + source snapshot
+→ builds reaction BattleActions
+
+Selection
+→ returns SelectionResult
+→ does not know what the caller will do with that result
+
+RNG
+→ returns deterministic choice
+→ does not know card semantics
+```
+
+### 2.2 Forbidden capability coupling
+
+禁止形成以下关系：
+
+```text
+Selection system knows Exhaust
+Exhaust system knows Feel No Pain / Dark Embrace
+CardExhausted event knows its listeners
+Draw system knows Evolve / Battle Trance
+Card Rule Pipeline knows Corruption / Clash
+Dynamic Value system knows Body Slam / Perfected Strike
+Deck Query knows Damage
+RNG knows Sword Boomerang / Infernal Blade
+Multi-enemy system knows Cleave / Whirlwind
+HP-loss system knows Rupture / Blood for Blood
+Upgrade system knows Armaments / Searing Blow special cases
+```
+
+同样禁止：
+
+```cpp
+if (CardId == "Corruption")
+if (CardId == "PerfectedStrike")
+if (CardId == "FeelNoPain")
+if (RelicId == "Sundial" && CardId == "PommelStrike")
+if (DisplayName.Contains("Strike"))
+```
+
+### 2.3 Card is the composition root, not the capability implementation
+
+具体卡牌只负责组合独立能力。
+
+例如 Corruption：
+
+```text
+Corruption content
+→ Apply Status / Power
+
+Corruption rule source
+→ contributes generic Skill Cost Modifier
+→ contributes generic Skill Destination Modifier
+
+CardPlaySpec
+→ CardRuleModifierPipeline
+→ ResolvedCost = 0
+→ ResolvedDestination = Exhaust
+
+Zone commit
+→ CardExhaustedEvent
+
+Feel No Pain Trigger
+→ GainBlockAction
+
+Dark Embrace Trigger
+→ DrawCardsAction
+```
+
+必须满足：
+
+```text
+Corruption 不知道 Feel No Pain
+Corruption 不知道 Dark Embrace
+Feel No Pain 不知道 Corruption
+Dark Embrace 不知道 Corruption
+Exhaust 不知道任何上述具体能力
+```
+
+例如 Perfected Strike：
+
+```text
+Card Trait metadata
+→ DeckQuery.CountCardsWithTrait(Strike)
+→ Dynamic Numeric Source
+→ Damage Spec
+→ existing Damage Modifier Pipeline
+→ Damage commit
+```
+
+DeckQuery 只回答查询；Dynamic Numeric Source 只计算数值；Damage Pipeline 不知道数值来自 DeckQuery。
+
+例如 Burning Pact：
+
+```text
+CardSelectionRequest
+→ SelectionResult
+→ ExhaustCardAction
+→ CardExhaustedEvent
+→ DrawCardsAction
+```
+
+Selection 系统不应该出现 `SelectCardForExhaust`、`SelectCardForHeadbutt` 等具体能力 API。
+
+### 2.4 Capability implementation requirements
+
+每个新增能力域必须满足：
+
+```text
+[ ] 不查询具体 CardId / DisplayName / StatusId / RelicId 来决定通用行为
+[ ] 可以单独测试自己的输入、输出、失败语义和 deterministic ordering
+[ ] 对外暴露 typed Query / Spec / Result / Event，而不是另一能力的内部对象
+[ ] 不通过 Widget / Presentation 反向驱动 Gameplay mutation
+[ ] 不为当前唯一消费者设计专用万能接口
+[ ] 出现第二个真实消费者后再决定是否继续抽象
+[ ] 跨能力 integration test 验证组合，但不把 integration 逻辑下沉进任一能力
+```
+
+### 2.5 Planning waves are not architecture dependencies
+
+本文后面的 `Wave` 只表示：
+
+```text
+推荐实现顺序
+推荐验证顺序
+风险控制顺序
+```
+
+它们**不表示能力 A 在语义上依赖能力 B**。
+
+例如 `CardExhaustedEvent` 由 Exhaust commit 产生、Trigger 消费，这是通过稳定 Event contract 组合；不能理解成“Trigger 系统依赖 Exhaust 系统内部实现”。
+
+如果某张卡同时使用多个能力：
+
+```text
+Card content/orchestration
+├─ Capability A
+├─ Capability B
+└─ Capability C
+```
+
+而不是：
+
+```text
+Capability A
+→ directly calls Capability B
+→ directly calls Capability C
+```
+
+---
+
+## 3. Architecture capability catalog
+
+后续所有 Ironclad 卡牌都映射到以下能力编号。能力编号表示正交能力域，不表示彼此之间的直接依赖关系。
 
 ### CAP-00 — Existing primitive composition
 
@@ -77,7 +275,7 @@ StatusData 只有 DamageModifiers / BlockModifiers / Triggers
 
 ### CAP-01 — Upgrade state and upgraded definition resolution
 
-支持真正的卡牌升级，而不只是单独制作 `Plus` DataAsset。至少要解决：
+支持真正的卡牌升级，而不只是单独制作 `Plus` DataAsset：
 
 ```text
 run-level UpgradeLevel ownership
@@ -91,8 +289,6 @@ Phase 8 的 Pommel Strike+ **不授权 CAP-01**；它仍只是 content variant�
 
 ### CAP-02 — Card traits + zone/deck/hand queries
 
-通用查询，不允许通过 DisplayName / CardId 列表硬编码。
-
 ```text
 CardTraits / tags
 count cards by trait / type / zone
@@ -100,11 +296,11 @@ query all active combat cards
 query Hand composition
 ```
 
-Perfected Strike 应依赖 `Strike` trait，而不是名字包含字符串。
+Perfected Strike 使用 `Strike` trait，不使用名字字符串匹配。
 
 ### CAP-03 — Dynamic numeric sources / formulas
 
-Effect 的 base value 可以来自当前 Gameplay state，而不是永远是 authored constant。
+Effect base value 可以读取 Gameplay state：
 
 ```text
 Current Block
@@ -114,11 +310,9 @@ per-card combat state
 special modifier multiplier
 ```
 
-必须仍然进入正确 typed pipeline；例如 Body Slam 计算出的 base damage 之后仍吃 Strength / Weak / Vulnerable。
+计算结果仍必须进入对应 typed pipeline。
 
 ### CAP-04 — Pending card selection / player choice
-
-支持 ActionQueue 中需要玩家选择一张牌的暂停边界：
 
 ```text
 Hand selection
@@ -131,15 +325,13 @@ resume exact queued resolution
 Automation deterministic chooser
 ```
 
-选择不能由 Widget 直接修改 DeckRuntime。
+Selection 只返回结果，不决定后续 Exhaust / Move / Copy 等行为。
 
 ### CAP-05 — Generic card-zone mutation / creation / copy
 
-补齐可组合的 authoritative Actions：
-
 ```text
 create runtime card from definition
-copy runtime card identity/config into new runtime instance
+copy runtime card config into new runtime instance
 move Hand ↔ Draw/Discard/Exhaust
 put card on DrawPile top
 add card to Hand / Discard / DrawPile
@@ -150,8 +342,6 @@ DeckRuntime 继续拥有 zone truth。
 
 ### CAP-06 — Exhaust lifecycle + exact CardExhausted fact
 
-Exhaust 不只是 `DefaultDestination=Exhaust`。需要统一：
-
 ```text
 explicit exhaust from Hand
 played card exhaust destination
@@ -161,11 +351,9 @@ exact CardRuntimeId / CardId / source context
 post-commit CardExhausted BattleEvent
 ```
 
-这是 Ironclad 最重要的新增能力簇之一。
+Exhaust 只负责 mutation + committed fact，不知道任何 Exhaust reactive Power。
 
 ### CAP-07 — Temporal card keywords / turn-scoped rules
-
-包括：
 
 ```text
 Ethereal
@@ -175,24 +363,22 @@ turn-scoped trigger charges
 end/start-turn expiry
 ```
 
-不能靠卡牌自己在 Tick 中维护。
+不能靠具体卡 Tick 维护。
 
 ### CAP-08 — HP loss / healing / MaxHP / combat counters
-
-需要区分：
 
 ```text
 Damage != Lose HP
 LoseHP bypasses Block
 Heal
 MaxHP gain
-HP-loss source attribution（from card / enemy / other）
+HP-loss source attribution
 combat-scoped HP-loss count
 ```
 
 ### CAP-09 — Card play rule pipeline
 
-把目前散落的 `BaseCost / TargetType / DefaultDestination / QueryPlayability` 收敛为可扩展 read-only rule resolution：
+把 `BaseCost / TargetType / DefaultDestination / QueryPlayability` 解析为 typed read-only card-play rules：
 
 ```text
 playability predicates
@@ -204,23 +390,21 @@ per-turn cost override
 free-play policy
 ```
 
-Corruption、Blood for Blood、Battle Trance、Clash、Whirlwind 都依赖这一层。
+Pipeline 不知道 Corruption、Clash、Whirlwind 等名字；这些只是 modifier consumers/sources。
 
 ### CAP-10 — Autonomous / repeated card play
-
-支持 Gameplay Action 触发另一张牌的正常 play pipeline，而不是直接调用 Effect：
 
 ```text
 play top card for free
 repeat next Attack
 preserve source/runtime identity
-avoid recursive special-case / duplicate cost spend
+avoid duplicate cost spend
 explicit destination policy
 ```
 
-### CAP-11 — Multi-enemy combat model and target sets
+必须重新进入正常 Card play contract，而不是直接调用具体 Effect。
 
-当前项目只有单 `Enemy`。完整 Ironclad 需要：
+### CAP-11 — Multi-enemy combat model and target sets
 
 ```text
 ordered enemy collection
@@ -232,23 +416,19 @@ terminal state only after all enemies dead
 Presentation participant identity for N enemies
 ```
 
-这是较大的架构扩展，不能以循环当前单 Enemy 指针伪装。
-
 ### CAP-12 — Deterministic battle RNG service
-
-Deck shuffle 已有自己的 deterministic RNG，但随机目标/随机卡牌/随机弃牌需要 battle-level deterministic random choice contract：
 
 ```text
 random enemy
 random Hand card
 random Attack generation
-random draw-pile insertion/shuffle semantics
+random draw-pile insertion semantics
 seeded Automation reproducibility
 ```
 
-### CAP-13 — Status amount transforms
+RNG 只做随机选择，不理解消费者语义。
 
-除“Apply +N”外，还需要：
+### CAP-13 — Status amount transforms
 
 ```text
 lose Strength
@@ -257,11 +437,9 @@ set / clamp / temporary delta
 exact current Status instance mutation
 ```
 
-Limit Break / Disarm / Flex 不能通过伪造特殊 Status 名称绕过。
-
 ### CAP-14 — Gameplay event surface expansion
 
-按 committed fact 增加真正有消费者的事件，候选包括：
+按真实 committed fact 增加事件：
 
 ```text
 TurnStarted
@@ -273,39 +451,31 @@ BlockGained
 CombatantAttacked / DamageResolved
 ```
 
-仍遵守：Event = post-commit immutable fact，Trigger = read-only Action builder。
+Event 只描述事实，不查询或调用 Listener。
 
 ### CAP-15 — Per-card runtime combat state
 
-`UCardInstance` 需要有限、显式的 mutable combat state 或 dedicated state component，用于 Rampage 这类“这个具体副本本场战斗永久变化”的牌。
-
-不要提前做 arbitrary key/value bag。
+为 Rampage 等具体副本提供有限、显式 mutable combat state 或 dedicated state component。禁止 arbitrary key/value bag。
 
 ### CAP-16 — Status / Curse card gameplay
-
-虽然 enum 已有 Status / Curse，但还需要实际规则：
 
 ```text
 Wound / Dazed / Burn definitions
 unplayable or special-playability rules
 Status/Curse draw detection
-Ethereal Status（如 Dazed）
-end-turn Burn behavior if needed
+Ethereal Status
+end-turn Burn behavior
 created Status card runtime identity
 ```
 
 ### CAP-17 — Block lifecycle/rule modifiers
 
-支持 Block 本身的生命周期规则，而不只是 GainBlock amount：
-
 ```text
 retain Block across turn start（Barricade）
-explicit current Block transform（Entrench 可复用 CAP-03）
+current Block transform
 ```
 
 ### CAP-18 — Damage outcome / Fatal / aggregation
-
-Action 需要能可靠得到 committed outcome：
 
 ```text
 actual HP loss after Block
@@ -314,15 +484,11 @@ aggregate damage across multiple targets
 Fatal follow-up
 ```
 
-Feed / Reaper 依赖，不能通过 play 后重新猜测 HP 差值。
-
 ### CAP-19 — Enemy intent query
 
-Gameplay-facing、read-only、authoritative enemy intent query，用于 Spot Weakness。不能读取 HUD 文本或 Presentation intent。
+Gameplay-facing、read-only、authoritative enemy intent query。不得读取 HUD 或 Presentation intent。
 
 ### CAP-20 — Card catalog / generation pool
-
-随机生成 Attack 等能力需要明确的 content registry / pool query：
 
 ```text
 query eligible card definitions
@@ -331,11 +497,11 @@ battle RNG pick
 create temporary runtime instance
 ```
 
-Infernal Blade 是首个真实消费者。
+Card Catalog 只返回候选 Definition，不负责 RNG，不负责创建 runtime card。
 
 ---
 
-## 3. Full Ironclad card inventory → capability mapping
+## 4. Full Ironclad card inventory → capability mapping
 
 说明：下面只概括机制，不锁数值。`CAP-00` 表示核心 Gameplay 基本可由现有 primitive composition 完成；生产资产、文本、图标和 focused test 仍然要做。
 
@@ -447,7 +613,7 @@ Distinct   75
 
 ---
 
-## 4. Capability pressure / how many cards need each area
+## 5. Capability pressure / how many cards need each area
 
 下面是粗粒度 planning 计数；一张卡可计入多个能力，因此总和不会等于 75。
 
@@ -465,22 +631,22 @@ CAP-12 Battle RNG                           ≈  6 cards
 CAP-16 Status/Curse card gameplay           ≈  6 cards
 CAP-02 Traits / deck-hand query             ≈  5 cards
 CAP-13 Status amount transforms             ≈  3 cards
-CAP-01 True upgrade ownership               =  Armaments + Searing Blow as direct consumers
-CAP-10 Autonomous/repeat play               =  Havoc + Double Tap
-CAP-18 Fatal/damage aggregation              =  Feed + Reaper
-CAP-15 Per-card combat state                 =  Rampage
-CAP-17 Block retention                       =  Barricade
-CAP-19 Enemy intent query                    =  Spot Weakness
-CAP-20 Random card generation pool           =  Infernal Blade
+CAP-01 True upgrade ownership               = Armaments + Searing Blow as direct consumers
+CAP-10 Autonomous/repeat play               = Havoc + Double Tap
+CAP-18 Fatal/damage aggregation              = Feed + Reaper
+CAP-15 Per-card combat state                 = Rampage
+CAP-17 Block retention                       = Barricade
+CAP-19 Enemy intent query                    = Spot Weakness
+CAP-20 Random card generation pool           = Infernal Blade
 ```
 
-最明显的结论：**Exhaust + expanded committed events 是 Ironclad 最大的下一代架构中心。** Corruption 不是一个孤立特例；它依赖的 Exhaust/CardPlayed rule surface 会同时服务大量卡牌。
+最明显的容量压力仍然来自 Exhaust 与 expanded committed events，但这只是**优先级信号**，不是让两个能力域互相耦合的理由。
 
 ---
 
-## 5. Recommended architecture dependency order
+## 6. Recommended implementation / validation order — not dependency order
 
-不要按 rarity 或卡牌名字逐张实现。应按能力簇推进，每个能力至少用两个真实消费者验证后再继续抽象。
+不要按 rarity 或卡牌名字逐张实现。下面 Wave 仅用于控制实现风险和选择集成验证消费者；**不是能力间依赖图**。
 
 ### Wave 0 — Current composition / Phase 8
 
@@ -498,9 +664,9 @@ Bludgeon
 
 目标：不新增核心架构，证明 current composition 稳定。Phase 8 的 `Pommel Strike+ + Sundial` 仍属于这一层。
 
-### Wave 1 — Exhaust foundation
+### Wave 1 — Exhaust fact surface
 
-优先消费者：
+验证消费者：
 
 ```text
 Impervious
@@ -512,21 +678,19 @@ Feel No Pain
 Dark Embrace
 ```
 
-应一次设计：
+需要分别设计并独立测试：
 
 ```text
-ExhaustCardAction / bulk exhaust
-CardExhausted committed event
-exact CardRuntimeId payload
-played-card Exhaust destination
-Trigger reactions from CardExhausted
+Exhaust mutation
+CardExhausted CommitResult / BattleEvent
+CardExhausted Trigger consumer
 ```
 
-Feel No Pain + Dark Embrace 必须一起作为通用性证明。
+Feel No Pain + Dark Embrace 用来验证同一个 neutral Event 可以被多个独立 Trigger 消费；它们不得形成彼此依赖。
 
 ### Wave 2 — Selection + generic zone operations
 
-优先消费者：
+验证消费者：
 
 ```text
 Burning Pact
@@ -537,11 +701,9 @@ Exhume
 True Grit
 ```
 
-建立正式 pending choice，而不是 UI callback 直接修改 Gameplay。
+Selection 与 Zone Mutation 是两个独立能力域。Selection 只产生结果，具体卡牌 orchestration 决定把结果交给 Exhaust / Move / Copy 中的哪一个操作。
 
 ### Wave 3 — Status/Curse cards + card creation
-
-优先消费者：
 
 ```text
 Wild Strike
@@ -552,11 +714,9 @@ Evolve
 Fire Breathing
 ```
 
-这一步同时验证 CardDrawn event、Status/Curse runtime identity 和 created card Presentation。
+分别验证 Card Creation、CardDrawn Event、Status/Curse rule。三者通过 neutral runtime identity / event contract 组合，不共享消费者特判。
 
 ### Wave 4 — Dynamic values / traits
-
-建议顺序：
 
 ```text
 Body Slam
@@ -567,11 +727,9 @@ Second Wind
 Fiend Fire
 ```
 
-先 Body Slam + Perfected Strike 形成第二个真实 dynamic-value consumer，再决定是否抽 `CardNumericSource` 层。
+Body Slam 与 Perfected Strike 只是两个 Dynamic Numeric Source 消费者。是否抽象 `CardNumericSource` 必须由第二个真实消费者证明，而不是让 Dynamic Value 系统直接依赖 DeckQuery 或 Block internals。
 
 ### Wave 5 — Turn-scoped powers/events
-
-消费者：
 
 ```text
 Metallicize
@@ -584,11 +742,9 @@ Flex
 Battle Trance
 ```
 
-补 `TurnStarted` 及 this-turn lifecycle。不要用 Actor Tick 实现。
+Turn lifecycle 只产生 neutral turn facts / expiry boundary；具体 Status/Power 通过 Trigger 或 modifier contract 消费。
 
 ### Wave 6 — HP-loss and outcome semantics
-
-消费者：
 
 ```text
 Bloodletting
@@ -601,11 +757,9 @@ Reaper
 Combust
 ```
 
-明确 `LoseHP != Damage`，并给 committed outcome 提供 Fatal / actual HP loss。
+明确 `LoseHP != Damage`。HP mutation、HPLost Event、Fatal outcome 分别保持独立职责。
 
 ### Wave 7 — Multi-enemy + deterministic RNG
-
-消费者：
 
 ```text
 Cleave
@@ -619,11 +773,9 @@ Sword Boomerang
 Juggernaut
 ```
 
-这是从单 Enemy demo 走向完整 combat encounter 的大边界，应独立设计，不夹在某张卡的小提交里。
+Multi-enemy target query 与 RNG 是独立能力。RandomEnemy = ordered candidate query + deterministic RNG choice，而不是 RNG 直接访问 BattleManager enemy internals。
 
 ### Wave 8 — Card rule modifier pipeline
-
-消费者：
 
 ```text
 Clash
@@ -634,7 +786,7 @@ Corruption
 Infernal Blade
 ```
 
-建立 typed card-play rule specs；Corruption 用正式 Cost/Destination rule modifier，而不是 `HasCorruption` 特判。
+建立 typed CardPlaySpec / Modifier contract。Corruption 只是 Cost/Destination modifier source，不得成为 Pipeline 内部特判。
 
 ### Wave 9 — Autonomous/repeated play
 
@@ -643,7 +795,7 @@ Havoc
 Double Tap
 ```
 
-两张牌一起证明“自动打牌”不是 Havoc 专属 Action。
+两张牌共同验证 generic autonomous/repeated card play contract；该能力只重新提交 normal play intent，不知道具体后续 Effects。
 
 ### Wave 10 — Runtime mutation / true upgrades
 
@@ -653,13 +805,36 @@ Armaments    → temporary combat upgrade
 Searing Blow → unbounded persistent upgrade count
 ```
 
-这一层应等 Run Deck ownership 明确后再做。Searing Blow 是检验 upgrade model 是否真正正确的终极消费者。
+Per-card state 与 Upgrade ownership 仍是两个独立能力域。它们可以同时存在于有效卡牌解析中，但不得合并成 arbitrary mutable property bag。
 
 ---
 
-## 6. Key architectural decisions to preserve
+## 7. Durable review checklist for every new card
 
-未来实现全部 75 张时，仍必须保持：
+每增加一张新卡，先问：
+
+```text
+1. 这张卡需要读取哪些 Fact / Query？
+2. 它创建哪些 typed intent / Spec？
+3. 哪个 BattleAction 承担 mutation？
+4. 哪个 runtime owner 承担 authoritative commit？
+5. CommitResult 需要冻结哪些事实？
+6. 是否真的存在 post-commit Event 消费者？
+7. Trigger 是否只读 Event 并 Build Action？
+8. 是否需要 Selection？Selection 是否只返回结果？
+9. 是否需要 RNG？RNG 是否只做 deterministic choice？
+10. 是否出现任意具体 Card/Status/Relic identity branch？
+11. 是否让一个能力直接调用了另一个能力的内部实现？
+12. integration 是否可以只通过公共 typed contract 完成？
+```
+
+如果第 10 或第 11 项为“是”，默认视为架构走偏，需要重新设计。
+
+---
+
+## 8. Key architectural decisions to preserve
+
+未来实现全部 75 张时，必须保持：
 
 ```text
 Card name / CardId 不决定组合行为
@@ -669,31 +844,33 @@ DeckRuntime 是 zone truth
 Modifier 在 commit 前改变 typed spec
 BattleEvent 只描述已 commit 的事实
 Trigger 只读 eligibility + Action build
+能力域之间只通过 neutral typed contracts 组合
 UI 不直接操作 Gameplay state
 A2 只播放 committed facts
 A3 只做当前状态、确定性、read-only preview
 ```
 
-禁止形成：
-
-```cpp
-if (CardId == "Corruption")
-if (CardId == "PerfectedStrike")
-if (CardId == "FeelNoPain")
-if (DisplayName.Contains("Strike"))
-```
-
-正确方向应是：
+正确方向：
 
 ```text
-Traits / typed specs / modifiers / events / triggers / zone actions
-→ content composition
-→ individual card emerges from data
+Traits
+Queries
+Typed Specs
+SelectionResult
+CommitResult
+Modifier Pipelines
+BattleEvents
+Triggers
+Zone Actions
+Deterministic RNG
+
+→ orthogonal capability composition
+→ individual card behavior emerges from content/orchestration
 ```
 
 ---
 
-## 7. Phase 8 relationship
+## 9. Phase 8 relationship
 
 本规划不会把 Phase 8 扩成“实现所有 Ironclad 卡”。
 
@@ -705,17 +882,18 @@ Pommel Strike+ + Sundial
 → Combo Architecture Validation
 ```
 
-Phase 8 通过后，再从本文选择下一个**bounded capability wave**。建议优先进入 Exhaust foundation，而不是直接跳 Corruption；因为 Corruption 同时依赖 CardExhausted、CardPlayed、Cost rule、Destination rule，直接做会一次打开太多边界。
+这个组合本身就是能力解耦的样板：Pommel Strike+ 不知道 Sundial，Draw 不知道 Relic，Shuffle 只提交事实，Sundial 只消费 `DeckShuffled` fact。
+
+Phase 8 通过后，再从本文选择一个 bounded capability goal。后续选择 Wave 只决定实施顺序，不构成能力之间的语义依赖授权。
 
 ---
 
-## 8. Planning status
+## 10. Planning status
 
 ```text
 Inventory coverage:          75 / 75 distinct Ironclad card definitions
 Architecture capabilities:   CAP-00 .. CAP-20 mapped
+Coupling rule:               ORTHOGONAL / CONTRACT-ONLY COMPOSITION
 Implementation authorization: NONE
 Phase 8 scope:               unchanged
 ```
-
-下一步如果继续设计，应针对单个 Wave 创建 dedicated design doc；不要把本文件当成一次性实现清单。
