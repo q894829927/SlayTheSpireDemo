@@ -6,6 +6,7 @@
 #include "../Cards/CardInstance.h"
 #include "../Combat/Combatant.h"
 #include "../Enemy/EnemyIntent.h"
+#include "../Presentation/RelicPresentationSnapshot.h"
 #include "../Status/StatusData.h"
 
 namespace
@@ -249,6 +250,13 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 
 	if (!FreezeCombatant(ReadSnapshot.Player, true, OutSnapshot.Player)
 		|| !FreezeCombatant(ReadSnapshot.Enemy, false, OutSnapshot.Enemy))
+	{
+		return false;
+	}
+
+	if (!RelicPresentationSnapshot::TryFreeze(
+		ReadSnapshot.Relics,
+		OutSnapshot.Player.Relics))
 	{
 		return false;
 	}
