@@ -5,9 +5,6 @@
 struct FBattleHUDRelicView;
 struct FRelicReadView;
 
-template <typename ElementType>
-class TArray;
-
 namespace RelicPresentationSnapshot
 {
 	// Converts exact read-revision Relic facts into immutable player-facing HUD
