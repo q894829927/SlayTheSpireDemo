@@ -11,88 +11,84 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7C Sundial + GainEnergyAction: COMPLETE / VALIDATED / SEALED
 7D Relic Read / Frozen / Native UI: COMPLETE / VALIDATED / SEALED
 7E Relic Reaction Composition: COMPLETE / VALIDATED / SEALED
+7F Relic Counter Metadata Unification: IMPLEMENTATION AUTHORIZED / SOURCE IMPLEMENTED / VALIDATION PENDING
 ```
 
-## Phase 7E authority / evidence
+## Phase 7F active authority
 
 ```text
-docs/Phase7ERelicCompositionDesign.md   // sealed design contract
-docs/Phase7EImplementation.md           // completed implementation status
-docs/Phase7EValidation.md               // trusted final validation evidence
+docs/Phase7FCounterMetadataImplementation.md
 ```
 
-## Final 7E implementation
+Phase 7F only removes duplicate authored counter-threshold metadata. It does not reopen sealed Phase 7A–7E Gameplay or UI behavior.
+
+## Implemented on current remote source
 
 ```text
-URelicEffect + FRelicEffectContext
-UGainEnergyRelicEffect
-UGainBlockRelicEffect
-UDeckShuffledCountTrigger
-UAdvanceRelicCounterAction
-URelicInstance generic counter-action friend boundary
-URelicData generic Trigger/DataValidation traversal
+URelicCountTrigger : UBattleTrigger
+└─ RequiredCount
+
+UDeckShuffledCountTrigger : URelicCountTrigger
+
+URelicData
+- CounterDisplayMax removed
+- bShowCounter retained as Presentation choice
+- TryGetCounterMax derives from the unique URelicCountTrigger
+- DataValidation rejects >1 count trigger
+- bShowCounter requires one valid positive count threshold
+
+RelicPresentationSnapshot
+- frozen CounterMax derives from authoritative RequiredCount
+- FBattleHUDRelicView remains a value-only frozen DTO
 ```
 
-Locked behavior:
+Focused tests added:
 
 ```text
-BuildReactions eagerly builds/freezes RewardActions
-任一 Effect build 失败 -> whole reaction fail-closed
-CounterAction::Initialize validates prepared reward batch
-RewardAction Outer must equal the target Queue
-threshold uses AddBatchToFrontPreserveOrder
-Counter resets only after dependent batch insertion succeeds
-insertion failure -> ResolutionFault and Counter remains unchanged
-CounterAction propagates PresentationRecordWriter to nested RewardActions
-GainBlockRelicEffect freezes Owner participant identity before execution
-Execute revalidates live Relic membership
+SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource
+SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions
 ```
 
-## Production Sundial migration
+Existing Phase7D RelicPresentation and Phase7E composition fixtures have been migrated off `CounterDisplayMax`.
 
-`DA_Relic_Sundial` is saved as:
+## Production Sundial state / pending asset save
+
+Before this source change, production `DA_Relic_Sundial` was already saved and validated with:
 
 ```text
+bShowCounter = true
 Triggers[0] = UDeckShuffledCountTrigger
 RequiredCount = 3
 Effects[0] = UGainEnergyRelicEffect
 Amount = 2
 ```
 
-The production asset was validated in PIE. The old Sundial-specific implementation has been removed:
+After the new source builds, the asset must be opened and saved once in Unreal Editor so the removed reflected `CounterDisplayMax` property is no longer carried as stale serialized data. Connected GitHub cannot author the binary `.uasset`.
+
+## Historical Phase 7E evidence
+
+`docs/Phase7EValidation.md` remains trusted sealed evidence for 7E. Historical 7D/7E documents that mention `CounterDisplayMax` describe the pre-7F state and are not rewritten.
+
+## Next exact gate
 
 ```text
-USundialTrigger
-USundialAdvanceAction
-URelicInstance old USundialAdvanceAction friend
+USER ACTION REQUIRED
+
+1. git pull
+2. regenerate UE project files because reflected URelicCountTrigger was added
+3. Development Editor Build once
+4. STOP and report the Build result
 ```
 
-## Final trusted Phase 7E gates
+If Build passes, next validation order is:
 
 ```text
-Development Editor Build                                      PASS
-SlayTheSpireDemo.Phase7E focused gates                         PASS
-SlayTheSpireDemo.Phase7.Sundial                                PASS
-SlayTheSpireDemo.Phase7.EnergyGain                             PASS
-SlayTheSpireDemo.Phase7.RelicPresentation                      PASS
-Production Sundial PIE                                         PASS
-
-After old-class deletion:
-UE project-file regeneration                                   PASS
-Development Editor Build                                       PASS
-SlayTheSpireDemo.Phase7.Sundial final regression               PASS
-Production PIE smoke / no stale old-class asset reference      PASS
+SlayTheSpireDemo.Phase7F
+→ open/save DA_Relic_Sundial and confirm CounterDisplayMax is gone, RequiredCount=3 remains
+→ SlayTheSpireDemo.Phase7E
+→ SlayTheSpireDemo.Phase7.Sundial
+→ SlayTheSpireDemo.Phase7.RelicPresentation
+→ Sundial PIE smoke
 ```
 
-Detailed evidence is in `docs/Phase7EValidation.md`.
-
-## Next exact action
-
-```text
-STOP.
-
-Do not reopen sealed Phase 7A-7E work or automatically start a new phase.
-Select and explicitly authorize the next bounded design/implementation goal first.
-```
-
-A possible future cleanup discussed but **not authorized or active** is unifying Relic counter presentation metadata so `CounterDisplayMax` does not duplicate a counter mechanic's authoritative `RequiredCount`. That work is outside sealed Phase 7E and must receive its own design/authorization before implementation.
+Do not run broader unrelated Phase6R / A2D5 / Shipping aggregate gates for this bounded cleanup.
