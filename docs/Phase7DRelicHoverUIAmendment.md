@@ -25,7 +25,7 @@ Relic with visible counter
 Hovering a Relic icon creates one transient Native tooltip that follows the mouse cursor with a small offset:
 
 ```text
-Relic icon hover
+Relic interaction hit layer hover
 → transient tooltip
    - frozen DisplayName
    - frozen Description
@@ -35,16 +35,44 @@ Relic icon hover
    - tooltip is removed
 ```
 
-The tooltip is `HitTestInvisible` so it cannot steal hover ownership from the Relic icon. No standard UMG `SetToolTipText` path is used in parallel.
+The tooltip is `HitTestInvisible` so it cannot steal hover ownership from the Relic interaction hit layer. No standard UMG `SetToolTipText` path is used in parallel.
 
 The tooltip consumes only `FBattleHUDRelicView`. It must not query `URelicInstance`, `URelicData`, `ABattleManager` or any mutable Gameplay state.
+
+## Explicit interaction hit layer
+
+Relic hover uses the same validated interaction pattern as `WBP_CombatantPresentation`: a transparent Button is an explicit sibling hit layer instead of relying on `UUserWidget::NativeOnMouseEnter`.
+
+```text
+WBP_BattleRelic_Native
+└─ Overlay_Root
+   ├─ Img_RelicIcon             Hit Test Invisible
+   ├─ Btn_RelicInteraction      transparent; sole hover hit layer
+   └─ Border_Counter            Hit Test Invisible
+      └─ Txt_RelicCounter       Hit Test Invisible
+```
+
+The Button does not own Gameplay interaction and has no click behavior. Its Native bindings are only:
+
+```text
+Btn_RelicInteraction.OnHovered
+→ UBattleRelicWidget::HandleRelicHovered
+→ ShowRelicTooltip
+
+Btn_RelicInteraction.OnUnhovered
+→ UBattleRelicWidget::HandleRelicUnhovered
+→ HideRelicTooltip
+```
+
+The icon/counter are presentation-only siblings and do not participate in Slate hit testing. This prevents visual children from competing with the explicit hover target.
 
 ## Native class split
 
 ```text
 UBattleRelicWidget
 → steady-state icon + optional current-counter badge
-→ owns hover lifecycle and cursor-follow positioning
+→ binds Btn_RelicInteraction hover/unhover lifecycle
+→ owns cursor-follow positioning
 → creates UBattleRelicTooltipWidget from an authored TooltipWidgetClass
 
 UBattleRelicTooltipWidget
@@ -61,8 +89,9 @@ UBattleRelicStripWidget
 `WBP_BattleRelic_Native : UBattleRelicWidget`
 
 ```text
-Img_RelicIcon       : Image
-Txt_RelicCounter    : TextBlock
+Btn_RelicInteraction : Button
+Img_RelicIcon        : Image
+Txt_RelicCounter     : TextBlock
 ```
 
 `Txt_RelicName` is no longer a steady-state binding.
@@ -82,15 +111,14 @@ HB_Relics : HorizontalBox
 
 ## Validation boundary
 
-C++ gate:
+C++ gate after this interaction amendment:
 
 ```text
-regenerate project files
 Development Editor Build
 SlayTheSpireDemo.Phase7.RelicPresentation remains PASS
 ```
 
-The new hover behavior is a visual/input presentation requirement and therefore requires one focused PIE after the Native WBP assets are created:
+The hover behavior is a visual/input presentation requirement and therefore requires one focused PIE after `WBP_BattleRelic_Native` adds the explicit Button hit layer:
 
 ```text
 steady state shows icon only (+ optional single-number badge)
