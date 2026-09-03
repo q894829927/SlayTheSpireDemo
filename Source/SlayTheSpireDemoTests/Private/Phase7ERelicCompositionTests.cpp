@@ -70,7 +70,6 @@ namespace Phase7E
 			Definition->RelicId = TEXT("Phase7ECompositeRelic");
 			Definition->DisplayName = FText::FromString(TEXT("Phase7E Composite Relic"));
 			Definition->bShowCounter = true;
-			Definition->CounterDisplayMax = 3;
 
 			Trigger = NewObject<UDeckShuffledCountTrigger>(Definition);
 			Trigger->RequiredCount = 3;
