@@ -20,68 +20,86 @@ docs/Phase7ERelicCompositionDesign.md   // approved design content
 docs/Phase7EImplementation.md           // explicit implementation authorization/status
 ```
 
-The user explicitly authorized Phase 7E implementation on 2026-09-03. `docs/Phase7EImplementation.md` supersedes the pre-authorization status text left at the end of the design document; the design contracts themselves remain authoritative.
+The user explicitly authorized Phase 7E implementation on 2026-09-03. `docs/Phase7EImplementation.md` supersedes the pre-authorization status text left at the end of the design document; the reviewed design contracts remain authoritative.
 
-## 7E locked implementation contract
-
-```text
-URelicData.Triggers[]
-→ UDeckShuffledCountTrigger
-→ URelicEffect[]
-→ prepared RewardActions built during BuildReactions
-→ UAdvanceRelicCounterAction
-→ threshold uses AddBatchToFrontPreserveOrder
-→ RewardActions inherit CounterAction PresentationRecordWriter
-→ authoritative Queue executes rewards
-```
-
-First-version effects:
+## Implemented on current remote source
 
 ```text
+URelicEffect + FRelicEffectContext
 UGainEnergyRelicEffect
 UGainBlockRelicEffect
+UDeckShuffledCountTrigger
+UAdvanceRelicCounterAction
+URelicInstance generic counter-action friend boundary
+URelicData generic Trigger/DataValidation traversal
 ```
 
-Not in 7E first version:
+Locked behavior in the implementation:
 
 ```text
-UDrawCardsRelicEffect
-new BattleEvent kinds
-GenericEventTrigger / condition DSL
-7D UI or Frozen DTO changes
+BuildReactions eagerly builds/freeze RewardActions
+任一 Effect build 失败 -> whole reaction fail-closed
+CounterAction::Initialize returns bool and validates prepared reward batch
+RewardAction Outer must equal the target Queue
+threshold uses AddBatchToFrontPreserveOrder
+Counter resets only after dependent batch insertion succeeds
+insertion failure -> ResolutionFault and Counter remains unchanged
+CounterAction propagates its PresentationRecordWriter to nested RewardActions
+GainBlockRelicEffect freezes Owner participant identity before execution
+Execute revalidates live Relic membership
 ```
 
-## Implemented so far
+## Tests already migrated/added in source
 
 ```text
-Source/SlayTheSpireDemo/Relics/Effects/RelicEffect.h
-Source/SlayTheSpireDemo/Relics/Effects/GainEnergyRelicEffect.h/.cpp
-Source/SlayTheSpireDemo/Relics/Effects/GainBlockRelicEffect.h/.cpp
-Source/SlayTheSpireDemo/Actions/AdvanceRelicCounterAction.h/.cpp
-Source/SlayTheSpireDemo/Relics/DeckShuffledCountTrigger.h/.cpp
-RelicData generic child-trigger validation
-URelicInstance friend boundary extended to UAdvanceRelicCounterAction
 Source/SlayTheSpireDemoTests/Private/Phase7ERelicCompositionTests.cpp
+Source/SlayTheSpireDemoTests/Private/Phase7ERelicCounterFaultTests.cpp
+
+Phase7CEnergyAndSundialTests.cpp
+- Phase7.Sundial fixture now uses UDeckShuffledCountTrigger + UGainEnergyRelicEffect
+- frozen-config test mutates RequiredCount/Effect Amount after BuildReactions
+
+Phase7DRelicPresentationTests.cpp
+- Sundial FinalSnapshot fixture now uses the new composition path
 ```
 
-No Build or Automation result has been claimed yet.
+No Build, Automation or PIE result has been claimed after these changes.
 
-## Remaining exact sequence
+## Next exact gate
 
 ```text
-1. Source-review the new 7E primitives/tests for compile-contract issues.
-2. User pulls/regenerates project files and runs Development Editor Build once.
-3. If Build passes, run SlayTheSpireDemo.Phase7E once.
-4. Fix only failed 7E gate if needed.
-5. Migrate Phase7.Sundial / Phase7.RelicPresentation test fixtures to the new Trigger+Effect path.
-6. In Unreal Editor migrate production DA_Relic_Sundial:
-   UDeckShuffledCountTrigger RequiredCount=3
-   Effects[0]=UGainEnergyRelicEffect Amount=2
-7. Run required Sundial / EnergyGain / RelicPresentation regression.
-8. Only after asset + tests no longer reference old classes, delete USundialTrigger / USundialAdvanceAction and remove their RelicInstance friend.
-9. Final minimal regression, then record Phase7E validation/seal.
+USER ACTION REQUIRED
+
+1. git pull
+2. regenerate UE project files because new reflected UCLASS headers were added
+3. Development Editor Build once
+4. STOP and report the build result
 ```
 
-## Binary asset boundary
+Use the project-standard commands from root `AGENTS.md`.
 
-Connected GitHub editing cannot author the existing `DA_Relic_Sundial.uasset`. Do not delete the old Sundial C++ classes before the Unreal Editor asset migration is saved, or the production asset can retain a broken class reference.
+If Build passes, the next single gate is:
+
+```text
+SlayTheSpireDemo.Phase7E
+```
+
+Do not run the Sundial/RelicPresentation regression before the focused 7E suite passes.
+
+## Remaining after focused 7E passes
+
+```text
+1. In Unreal Editor migrate production DA_Relic_Sundial:
+   Trigger = UDeckShuffledCountTrigger
+   RequiredCount = 3
+   Effects[0] = UGainEnergyRelicEffect
+   Amount = 2
+2. Save the .uasset.
+3. Run the required migrated Phase7.Sundial / Phase7.EnergyGain / Phase7.RelicPresentation regression once.
+4. Only after the production asset and tests no longer depend on old classes:
+   delete USundialTrigger / USundialAdvanceAction
+   remove the old USundialAdvanceAction friend from URelicInstance
+5. Final minimal regression and Phase7E validation/seal documentation.
+```
+
+Connected GitHub editing cannot author the existing binary `DA_Relic_Sundial.uasset`, so the old Sundial C++ classes must remain until that Unreal Editor asset migration is saved.
