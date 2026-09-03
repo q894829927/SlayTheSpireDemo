@@ -338,26 +338,23 @@ DrawAction identity
 RetryDraw identity
 ```
 
-7E **不在 `CanReact()` 新增 PlayerRelicContainer membership 检查**。这是有意保持现有 sealed Sundial eligibility 语义的最小迁移：当前 Dispatcher 本身就是从当前 `PlayerRelicContainer` 枚举 Relic candidate，因此正常 dispatch 路径已经具备来源约束。
+7E **不在 `CanReact()` 或 `BuildReactions()` 增加 PlayerRelicContainer membership 检查**。这是有意保持现有 sealed Sundial eligibility/build 语义的最小迁移。
 
-真正需要防止 stale runtime 的 membership 重验证保留在：
+当前正常路径中，Dispatcher 已经同步地从当前 `PlayerRelicContainer` 枚举 Relic candidate，并在同一调用栈内依次完成 `CanReact → sort → BuildReactions → final batch insertion`，中间没有 yield 点。因此在 `BuildReactions()` 再检查 membership 只是冗余防御，不能覆盖 `Build → Execute` 的运行时窗口。
+
+真正覆盖该窗口的权威 membership 重验证只保留在：
 
 ```text
-BuildReactions
-→ 确认 Relic 当前仍属于 Battle.PlayerRelicContainer
-
 UAdvanceRelicCounterAction::Execute
-→ 再次权威确认 Relic 当前仍属于 Container
+→ 确认 Relic 当前仍属于 Battle.PlayerRelicContainer
 ```
-
-这样既不扩大 `CanReact()` 的 sealed 行为，又能覆盖 Build 到 Execute 之间的运行时变化。
 
 ### 8.2 `BuildReactions`
 
 职责：
 
 ```text
-验证 Relic / Battle / Player ownership / 当前 membership
+验证 Relic / Battle / Player ownership
 建立 FRelicEffectContext
 ↓
 按 Effects[] 声明顺序逐个 Build
@@ -373,7 +370,7 @@ UAdvanceRelicCounterAction::Execute
 ↓
 创建 UAdvanceRelicCounterAction
 ↓
-调用 Initialize(Relict, RequiredCount, PreparedRewardActions)
+调用 Initialize(Relic, RequiredCount, PreparedRewardActions)
 ↓
 Initialize 返回 false
 → 整个 reaction fail-closed
@@ -1027,14 +1024,14 @@ A. DeckShuffledCountTrigger
 - 非 authoritative Deck 不响应
 - setup shuffle 不参与
 - RequiredCount 非法配置拒绝
-- CanReact 不额外依赖 PlayerRelicContainer membership 分支
-- BuildReactions 对当前 PlayerRelicContainer membership 做 fail-closed 重验证
+- CanReact / BuildReactions 不新增 PlayerRelicContainer membership 分支
 
 B. Counter
 - 0 → 1 → 2 → 0
 - 非阈值不执行 reward
 - threshold enqueue 成功后才 reset
 - enqueue 失败时 counter 保持原值并 fault
+- Execute 对当前 PlayerRelicContainer membership 做权威重验证
 
 C. Effect composition
 - GainEnergyRelicEffect 产生正确 GainEnergyAction
@@ -1150,7 +1147,7 @@ fail-closed 粒度
 Counter reset / Queue fault 时序
 第二个真实组合验证案例
 Sundial 测试代码 / fixture / 生产资产迁移顺序
-CanReact 与 Build/Execute membership 重验证边界
+CanReact / BuildReactions 与 Execute membership 权威重验证边界
 7D 零语义修改边界
 7E 第一版明确不实现 DrawCardsRelicEffect
 ```
