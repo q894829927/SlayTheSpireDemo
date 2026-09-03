@@ -3,6 +3,7 @@
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
 #include "../Presentation/BattlePresentationController.h"
+#include "../Presentation/PresentationCardView.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
@@ -149,19 +150,7 @@ FBattleHUDCardView UBattleHUDWidgetBase::MakePresentationCardView(
 	const FPresentationCardSnapshot& Snapshot
 ) const
 {
-	FBattleHUDCardView View;
-	View.RuntimeId = Snapshot.RuntimeId;
-	View.CardId = Snapshot.CardId;
-	View.DisplayName = Snapshot.DisplayName;
-	View.Cost = Snapshot.Cost;
-	View.CardType = Snapshot.CardType;
-	View.TargetType = Snapshot.TargetType;
-	View.Description = Snapshot.Description;
-	View.RichDescription = Snapshot.RichDescription;
-	View.CardArt = Snapshot.CardArt;
-	View.bGameplayPlayable = false;
-	View.UnplayableReason = FText::GetEmpty();
-	return View;
+	return PresentationCardView::MakePresentationOnlyCardView(Snapshot);
 }
 
 FBattleHUDStatusView UBattleHUDWidgetBase::MakePresentationStatusView(
