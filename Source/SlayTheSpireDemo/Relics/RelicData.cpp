@@ -20,6 +20,24 @@ EDataValidationResult URelicData::IsDataValid(FDataValidationContext& Context) c
 		bValid = false;
 	}
 
+	for (int32 Index = 0; Index < Triggers.Num(); ++Index)
+	{
+		const UBattleTrigger* Trigger = Triggers[Index].Get();
+		if (!IsValid(Trigger))
+		{
+			Context.AddError(FText::FromString(FString::Printf(
+				TEXT("Relic contains an invalid Trigger at index %d."),
+				Index)));
+			bValid = false;
+			continue;
+		}
+
+		if (Trigger->IsDataValid(Context) == EDataValidationResult::Invalid)
+		{
+			bValid = false;
+		}
+	}
+
 	return bValid
 		? EDataValidationResult::Valid
 		: EDataValidationResult::Invalid;
