@@ -87,8 +87,33 @@ bool FPhase7ERelicCounterThresholdEnqueueFailureTest::RunTest(const FString& Par
 	}
 
 	TArray<UBattleAction*> InitialBatch{ThresholdAdvance, PendingReward};
-	if (!TestTrue(TEXT("Initial threshold batch queues"), Queue->AddBatchToBackPreserveOrder(InitialBatch))
-		|| !TestTrue(TEXT("Threshold batch starts"), Queue->StartProcessing()))
+	if (!TestTrue(TEXT("Initial threshold batch queues"), Queue->AddBatchToBackPreserveOrder(InitialBatch)))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	// This test deliberately drives the queue into the ResolutionFault path.
+	// Register those Error logs as expected so Automation validates the state
+	// contract instead of treating the intentional fault diagnostics as failure.
+	AddExpectedErrorPlain(
+		TEXT("[Relic] Counter threshold reached but prepared reward batch insertion failed."),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
+	AddExpectedErrorPlain(
+		TEXT("[ActionQueue] Resolution fault requested:"),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
+	AddExpectedErrorPlain(
+		TEXT("[ActionQueue] Resolution faulted."),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
+	AddExpectedErrorPlain(
+		TEXT("[Battle] Resolution faulted."),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
+
+	if (!TestTrue(TEXT("Threshold batch starts"), Queue->StartProcessing()))
 	{
 		World->DestroyWorld(false);
 		return false;
