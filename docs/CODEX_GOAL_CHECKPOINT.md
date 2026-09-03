@@ -17,7 +17,7 @@ Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
 7C Sundial + GainEnergyAction: COMPLETE / VALIDATED / SEALED
-7D Relic Read/Frozen/Native UI: NEXT / NOT STARTED
+7D Relic Read/Frozen/Native UI: IMPLEMENTED / C++ VALIDATION PENDING / ASSET PENDING
 
 Post-seal card-face continuity correction:
 COMPLETE / VALIDATED
@@ -89,36 +89,9 @@ EnergyPresentationRecord::AppendCommittedEnergyChanged(
     const FPresentationRecordWriter&)
 ```
 
-It owns only established committed A2 `EnergyChanged` record semantics:
+It owns only established committed A2 `EnergyChanged` record semantics. Gameplay mutation remains entirely in `BattleEnergyMutation`.
 
-```text
-failed/no-op commit or unavailable writer -> no record
-Delta must equal EnergyAfter - EnergyBefore
-invalid Delta -> invalidate current Presentation resolution
-valid commit -> one EnergyChanged(Before, After, Delta)
-append failure -> log; Gameplay remains authoritative
-```
-
-Gameplay mutation remains entirely in `BattleEnergyMutation`.
-
-Both production callers delegate to the same helper:
-
-```text
-UGainEnergyAction
-→ BattleEnergyMutation::TryGain
-→ EnergyPresentationRecord::AppendCommittedEnergyChanged
-
-ABattleManager turn-end / turn-start energy presentation
-→ BattleEnergyMutation::SetValue
-→ ABattleManager narrow wrapper
-→ EnergyPresentationRecord::AppendCommittedEnergyChanged
-```
-
-No general Presentation framework, queue behavior, Sundial logic, Energy clamp rule, or Gameplay mutation semantics were added or changed by this cleanup.
-
-## Accepted 7C validation evidence — 2026-09-03
-
-User-reported focused results:
+Accepted user-reported focused results on 2026-09-03:
 
 ```text
 SlayTheSpireDemo.Phase6C                            PASS
@@ -127,36 +100,16 @@ SlayTheSpireDemo.Phase7.EnergyGain                 2/2 PASS
 SlayTheSpireDemo.Phase6UIA2C.Record.EndTurnEnergy  1/1 PASS
 ```
 
-The final two gates validate both direct users of the shared EnergyChanged helper:
-
-```text
-Phase7.EnergyGain
-→ GainEnergyAction + exact Before/After/Delta semantics
-
-Phase6UIA2C.Record.EndTurnEnergy
-→ BattleManager established EndTurn EnergyChanged semantics
-```
-
-7C is therefore **COMPLETE / VALIDATED / SEALED**. No further Phase6R, A2D5, Shipping, Legacy parity, Phase6C, Sundial, card-face-continuity, or unrelated UI rerun is required for this slice.
+7C is **COMPLETE / VALIDATED / SEALED**.
 
 ## Post-seal card-face continuity correction — CLOSED
 
-The Draw-to-Hand `red -> white -> red` defect was caused by two independent `FPresentationCardSnapshot -> FBattleHUDCardView` copiers. The Controller reducer copier dropped `RichDescription` between transient Draw playback and FinalSnapshot reconciliation.
-
-The durable boundary is now:
+The durable card projection boundary is:
 
 ```text
 FPresentationCardSnapshot
 → PresentationCardView::MakePresentationOnlyCardView
 → FBattleHUDCardView
-```
-
-The mapper is presentation-only, preserves frozen `RichDescription`, forces `bGameplayPlayable=false`, and must not be used for the independent formal current-state path:
-
-```text
-FCardReadView
-→ ABattleManager::TryFreezePresentationStateSnapshot
-→ FBattleHUDCardView with current Gameplay legality
 ```
 
 User-reported validation on **2026-09-03**:
@@ -168,9 +121,100 @@ Focused Strength Draw PIE visual continuity                  PASS
 Visible red -> white -> red regression                       NOT OBSERVED
 ```
 
-## Production Sundial asset
+## 7D implementation checkpoint
 
-Expected production/debug asset remains:
+The C++ implementation for the Relic read/frozen/native-display boundary is now present but has not yet been validated by the local UE 5.8 build.
+
+### Read and frozen state
+
+```text
+URelicInstance runtime facts
+→ FRelicReadView
+   - weak Relic observation handle
+   - weak immutable Definition handle
+   - RelicId
+   - RuntimeSequence
+   - Counter
+→ player-facing FBattleReadSnapshot.Relics
+→ RelicPresentationSnapshot::TryFreeze
+→ FBattleHUDRelicView
+   - RelicId
+   - RuntimeSequence
+   - DisplayName
+   - Description
+   - bShowCounter
+   - Counter
+   - CounterMax
+   - immutable Icon
+→ FPresentationStateSnapshot.Player.Relics
+→ UBattleHUDViewModel.Player.Relics by value
+```
+
+`FBattleHUDRelicView` retains no `URelicInstance` or other mutable Gameplay runtime pointer. Relic display order is deterministic by RuntimeSequence.
+
+### Counter presentation metadata
+
+`URelicData` now carries immutable presentation metadata only:
+
+```text
+Icon
+bShowCounter
+CounterDisplayMax
+```
+
+`CounterDisplayMax` does not drive Sundial Gameplay. The trigger's authored `ShufflesRequired` remains Gameplay authority. Native UI decides counter visibility from frozen `bShowCounter`, never from `RelicId`.
+
+### Historical playback contract
+
+No `RelicCounterChanged` / `RelicTriggered` Record was added.
+
+```text
+A2 Envelope active
+→ Relic strip observes historical ViewModel snapshot
+→ counter remains last completed historical value
+
+Envelope completes
+→ Controller applies Envelope.FinalSnapshot
+→ exact committed Relic counter becomes visible
+```
+
+The focused `FinalSnapshotReconciliation` test explicitly locks the Sundial `2 -> 0` case while an `EnergyChanged(+2)` Record is playing.
+
+### Native UI boundary
+
+Two Native-only widgets were added:
+
+```text
+UBattleRelicWidget
+→ consumes one FBattleHUDRelicView only
+→ name / optional icon / data-driven counter / frozen description tooltip
+
+UBattleRelicStripWidget
+→ embedded child of WBP_BattleHUD_Native
+→ binds to the owning HUD's existing frozen ViewModel
+→ rebuilds only when Relic identity/order changes
+→ otherwise reuses widgets by (RelicId, RuntimeSequence) and updates frozen views in place
+```
+
+The strip does not query BattleManager, Relic runtime, or definition objects.
+
+### Focused 7D Automation added
+
+```text
+SlayTheSpireDemo.Phase7.RelicPresentation.ReadAndFrozenSnapshot
+SlayTheSpireDemo.Phase7.RelicPresentation.FreezeContract
+SlayTheSpireDemo.Phase7.RelicPresentation.FinalSnapshotReconciliation
+```
+
+Expected prefix result after a successful build:
+
+```text
+SlayTheSpireDemo.Phase7.RelicPresentation    3/3 PASS
+```
+
+## Production Sundial asset — 7D fields still pending
+
+The existing Sundial definition remains:
 
 ```text
 DA_Relic_Sundial : URelicData
@@ -182,19 +226,23 @@ Triggers[0] = USundialTrigger
     EnergyGain = 2
 ```
 
-Icon/HUD display belongs to 7D.
+After the C++ gate passes, the 7D asset step must additionally set:
+
+```text
+bShowCounter = true
+CounterDisplayMax = 3
+Icon = optional
+```
 
 ## Next exact action
 
 ```text
-7D — Relic Read/Frozen/Native UI
+USER ACTION REQUIRED — C++ GATE ONLY
 
-Implement only:
-- Relic read DTO
-- frozen Presentation relic DTO
-- ViewModel/HUD relic view with bShowCounter / Counter / CounterMax
-- minimal Native relic Widget/container
-- FinalSnapshot reconciliation semantics from the sealed Phase 7 design
+1. regenerate UE project files
+2. Development Editor Build once
+3. run SlayTheSpireDemo.Phase7.RelicPresentation once
+4. report Build result and Automation result
 ```
 
-Do not add a first-version `RelicCounterChanged` / `RelicTriggered` Record, A3 Relic prediction, Legacy Relic UI, acquisition/reward/save/shop systems, or RelicId-specific HUD logic.
+Do not create/edit WBP assets until this C++ gate passes. After it passes, create only the Native Relic Widget/Strip assets and embed the strip into WBP_BattleHUD_Native. Do not modify Legacy UI.
