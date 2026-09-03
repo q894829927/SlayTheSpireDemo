@@ -4,7 +4,7 @@ Last updated: **2026-09-03**
 
 ## Goal
 
-Implement Phase 7 Relics as a first-class deterministic Gameplay system, beginning with Sundial, without reopening sealed Phase 6UI-A architecture or modeling Relics as Statuses.
+Implement Phase 7 Relics as a first-class deterministic Gameplay system, beginning with Sundial, without reopening sealed Phase 6UI-A Gameplay architecture or modeling Relics as Statuses.
 
 ## Current status
 
@@ -19,54 +19,26 @@ Phase 7 design: SEALED
 7C Sundial + GainEnergyAction: IMPLEMENTED / BULK-DRAW TESTS PASS / FINAL ACCEPTANCE PENDING
 7D Relic Read/Frozen/Native UI: NOT STARTED
 
-Post-seal A3→A2 card-face continuity defect:
-FIX IMPLEMENTED / VALIDATION PENDING
+Post-seal card-face continuity correction:
+SHARED PRESENTATION-ONLY MAPPER IMPLEMENTED / VALIDATION PENDING
 ```
 
-Active authority:
+Active Phase 7 authority:
 
 ```text
 docs/Phase7RelicsImplementation.md
 ```
 
-Validation authorities already sealed:
+Validated predecessor evidence:
 
 ```text
-docs/Phase7AValidation.md
-docs/Phase7BValidation.md
+7A Development Editor Build                     PASS
+7A SlayTheSpireDemo.Phase7.RelicRuntime        5/5 PASS
+7B SlayTheSpireDemo.Phase7.TriggerSources      3/3 PASS
+7B SlayTheSpireDemo.Phase6A.Trigger            PASS
 ```
 
-## Locked Phase 7 boundaries
-
-```text
-Relic != Status
-RelicData != RelicInstance
-Relics use the battle-wide ABattleManager RuntimeSequence allocator
-Status + Relic trigger order = Priority → RuntimeSequence → LocalTriggerIndex
-BattleEventDispatcher remains snapshot-based; no persistent Trigger Registry
-Trigger remains read-only eligibility + Action construction
-Sundial counter mutation occurs through USundialAdvanceAction
-Sundial reward occurs through UGainEnergyAction
-A3 does not predict Relic reactions
-```
-
-## Accepted predecessor evidence
-
-7A user-reported UE 5.8 gate:
-
-```text
-Development Editor Build                         PASS
-SlayTheSpireDemo.Phase7.RelicRuntime            5/5 PASS
-```
-
-7B user-reported UE 5.8 gate:
-
-```text
-SlayTheSpireDemo.Phase7.TriggerSources          3/3 PASS
-SlayTheSpireDemo.Phase6A.Trigger                PASS
-```
-
-## 7C implementation
+## 7C Gameplay implementation
 
 Reusable Energy primitive:
 
@@ -86,8 +58,6 @@ USundialAdvanceAction
 Sundial reacts only to the authoritative battle `FDeckShuffledEvent`; no card identity, DrawAction identity, RetryDraw identity or Pommel Strike special case exists.
 
 ## Bulk Draw contract
-
-Current production structure:
 
 ```text
 UDrawCardEffect DrawCount=N
@@ -110,72 +80,124 @@ UDrawCardAction
 
 A fresh bulk request against `Draw=0 / Discard=0` ends without a shuffle. A zero-card shuffle may still commit when that `UShuffleDeckAction` was already planned by an earlier bulk step before the final available DrawPile card was consumed. This produces the generic two-Pommel-Strike+/Sundial infinite without content special cases.
 
-User-reported current bulk focused results:
+User-reported focused results:
 
 ```text
 SlayTheSpireDemo.Phase6C                         PASS
 SlayTheSpireDemo.Phase7.Sundial                 PASS
 ```
 
-Those gates are sticky for the current card-face-only correction below; do not rerun them unless later Draw/Shuffle/Sundial code changes.
+Those gates are sticky for the current Presentation-only correction; Draw/Shuffle/Sundial code is unchanged.
 
-## Post-seal A3→A2 card-face continuity correction
+## Post-seal card-face continuity correction
 
-A gameplay PIE pass exposed a presentation defect:
+Two related visual continuity defects were exposed during PIE:
 
 ```text
-Strength and/or target Vulnerable
-→ selected Hand card correctly shows resolved RichText value/color in A3
-→ submit
-→ A3 correctly clears before A2 ownership
-→ A2 CardPlayed creates a new presentation card from FPresentationCardSnapshot
-→ snapshot previously contained only the stable plain/source-side Description
-→ outgoing card visually reverted to the lower/base value and neutral/source-only styling
+A3 -> A2 CardPlayed:
+resolved/target-specific card face could revert when A2 created its historical presentation card.
+
+CardZoneChanged Draw -> Hand:
+a Strength-modified card could display resolved RichText during draw animation,
+then temporarily fall back to plain/white text after the Record reducer rebuilt the Working Hand,
+then return to RichText when Envelope.FinalSnapshot reconciled.
 ```
 
-The architecture remains unchanged: A3 is still pre-commit/transient and clears before A2; A2 still renders only immutable committed history and never reads live Gameplay.
+The authority boundary remains unchanged:
 
-Implemented narrow fix:
+```text
+A3 = transient pre-commit current-state preview
+A2 = immutable committed historical playback
+FinalSnapshot = stable frozen current-state reconciliation for that Resolution
+```
+
+### Root cause now fixed
+
+`FPresentationCardSnapshot -> FBattleHUDCardView` had two independent presentation-only copiers. `UBattleHUDWidgetBase::MakePresentationCardView()` copied `RichDescription`; the Controller's private Draw reducer copier did not.
+
+The durable boundary is now:
 
 ```text
 FPresentationCardSnapshot
-- Description      = stable plain/source-side semantic description
-- RichDescription  = optional frozen Native RichText presentation
-
-PresentationCardSnapshot::TryBuild
-→ freezes normal current source-side RichDescription
-
-PlayCardAction before follow-up mutation
-→ reuses CardEffect::BuildImmediatePreviewOperations read-only pipelines
-→ resolves exact target-specific committed card-face RichDescription
-→ CardPlayed snapshot overrides only RichDescription
-→ stable Description remains unchanged for historical Hand identity matching
-
-UBattleHUDWidgetBase::MakePresentationCardView
-→ copies frozen RichDescription into FBattleHUDCardView
-
-A2 CardPlayed
-→ still creates its own presentation card in OV_PlayArea
-→ that card now displays the frozen submitted value/color
-→ no dependency on the transient A3 Widget or mutable Gameplay during playback
+→ PresentationCardView::MakePresentationOnlyCardView
+→ FBattleHUDCardView
 ```
 
-The sealed `TargetSubmissionClearsPreviewBeforeAuthoritativeRequest` behavior is intentionally preserved.
-
-New focused regression:
+Implementation:
 
 ```text
-SlayTheSpireDemo.UIA3.CardPlayedRichHandoff.StrengthAndVulnerableStayFrozen
+Source/SlayTheSpireDemo/Presentation/PresentationCardView.h/.cpp
 ```
 
-It proves a base-6 Strike with +2 source Strength and target Vulnerable freezes:
+The mapper is explicitly presentation-only:
 
 ```text
-stable Description     = Deal 8 damage.
-CardPlayed RichText     = Deal <PreviewIncrease>12</> damage.
-Presentation card view  = same frozen RichText
-visible RichText widget = same frozen RichText
+- complete frozen display projection, including RichDescription
+- bGameplayPlayable = false
+- UnplayableReason = empty
+- MUST NOT be used for FCardReadView / FinalSnapshot formal Hand freezing
 ```
+
+`UBattleHUDWidgetBase::MakePresentationCardView()` keeps its existing BlueprintPure API and delegates to the shared mapper.
+
+`UBattlePresentationController` no longer owns a separate `MakeHUDCardView()` field copier. `CardZoneChanged DrawPile -> Hand` inserts the shared presentation-only projection into the WorkingSnapshot.
+
+The independent formal current-state path remains:
+
+```text
+FCardReadView
+→ ABattleManager::TryFreezePresentationStateSnapshot
+→ FBattleHUDCardView with current Gameplay legality
+```
+
+Do not route that path through the presentation-only mapper.
+
+Identity comparison remains intentionally narrower than projection. In particular, do not add `RichDescription` mechanically to CardPlayed Hand identity predicates: the Hand may contain source-side RichText while the committed CardPlayed snapshot legitimately contains target-specific Vulnerable-resolved RichText.
+
+## Focused regressions added
+
+Mapper contract:
+
+```text
+SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper
+```
+
+It verifies the shared mapper and the preserved BlueprintPure wrapper both project all current presentation-only card fields, including `RichDescription`, while remaining non-gameplay-playable.
+
+Controller Stage-B continuity:
+
+```text
+SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged.WorkingSnapshotRichContinuity
+```
+
+It uses a real asynchronous Controller playback window with two consecutive Draw Records:
+
+```text
+Draw A active
+→ complete A
+→ A is reduced into WorkingSnapshot
+→ Draw B becomes active
+→ FinalSnapshot has NOT yet replaced WorkingSnapshot
+→ assert Working A.RichDescription == Record A.RichDescription
+```
+
+The payloads are non-empty and distinct. Assertions depend on non-empty/distinct frozen text and exact Record equality, not on one localized sentence.
+
+The test calls `Controller::NotifyPresentationFinished()` directly because its target is reducer state; Widget CoreTicker completion deferral already has separate coverage and is not part of this invariant.
+
+## Durable architecture rule
+
+`docs/Architecture.md` now records:
+
+```text
+FPresentationCardSnapshot -> FBattleHUDCardView
+must use the shared presentation-only projection.
+
+FCardReadView -> FBattleHUDCardView
+remains the independent stable current-state freeze path.
+```
+
+`CODEX_GOAL_CHECKPOINT.md` records execution status only. Do not write PASS evidence to `docs/Validation.md` until the local validation below actually runs.
 
 ## Production Sundial asset
 
@@ -195,27 +217,32 @@ Icon/HUD display remains 7D.
 
 ## Required current-head validation gate
 
-The bulk Draw/Shuffle tests already passed and are not invalidated by the card-face correction. Run only:
+This correction changes shared Presentation mapping/Controller code but not Gameplay. Run only:
 
 ```text
-1. Regenerate project files once because the new focused test .cpp was added.
+1. Regenerate project files once because new .h/.cpp and focused test .cpp files were added.
 2. Development Editor Build once.
-3. SlayTheSpireDemo.UIA3.CardPlayedRichHandoff once; expected 1/1.
-4. SlayTheSpireDemo.Phase6UIA2C.Record.CardPlayed once; existing CardPlayed contract must remain green.
-5. SlayTheSpireDemo.UIA3.NativePreviewIntegration once; expected existing 3/3, proving submit still clears A3 through the sealed handoff.
-6. One focused production PIE check:
-   - Strength-modified attack keeps its resolved value/color while flying to PlayArea;
-   - target Vulnerable-modified attack keeps the target-specific resolved value/color while flying to PlayArea;
-   - no duplicate card, CardPlayed rejection, flashback or input lock.
-7. Record evidence and STOP.
+3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper once; expected 1/1.
+4. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged.WorkingSnapshotRichContinuity once; expected 1/1.
+5. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once; existing producer/regression contract must remain green.
+6. One focused PIE visual check:
+   - Player already has Strength;
+   - draw an Attack whose numeric card face is modified by Strength;
+   - draw animation -> Working Hand -> later Record playback -> FinalSnapshot stays on the same resolved RichText/color;
+   - no visible red -> white -> red flashback.
+7. After those gates pass, record the exact evidence in docs/Validation.md and STOP.
 ```
 
-Do not rerun Phase6C, Phase7.Sundial, Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites unless a concrete new failure invalidates them.
+Do not rerun Phase6C, Phase7.Sundial, EnergyGain, TriggerSources, Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites unless a concrete failure invalidates them.
+
+## Scope protection
+
+This correction touches only source/tests/docs. Do not save, move, rename, regenerate or otherwise modify unrelated `Content/` assets while validating it.
 
 ## Next exact action
 
 USER ACTION REQUIRED:
 
-Regenerate project files, build current `main`, run the three focused card-handoff gates above, then repeat the exact PIE case that exposed the text/value/color reversion.
+Regenerate project files, build current `main`, run the three focused Automation gates above, then perform the single Strength draw PIE visual check.
 
 Do not begin 7D until this correction and 7C final acceptance are closed.
