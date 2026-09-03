@@ -45,9 +45,9 @@ void UBattleRelicStripWidget::HandleViewModelChanged()
 
 UBattleHUDWidgetBase* UBattleRelicStripWidget::ResolveOwningBattleHUD() const
 {
-	for (UObject* Cursor = GetOuter(); Cursor != nullptr; Cursor = Cursor->GetOuter())
+	for (UObject* OuterObject = GetOuter(); OuterObject != nullptr; OuterObject = OuterObject->GetOuter())
 	{
-		if (UBattleHUDWidgetBase* HUD = Cast<UBattleHUDWidgetBase>(Cursor))
+		if (UBattleHUDWidgetBase* HUD = Cast<UBattleHUDWidgetBase>(OuterObject))
 		{
 			return HUD;
 		}
