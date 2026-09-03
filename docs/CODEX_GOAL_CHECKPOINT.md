@@ -106,10 +106,40 @@ SlayTheSpireDemo.Phase8
 
 The automated combo must start from real Card / Effect execution rather than manually dispatching `FDeckShuffledEvent` as its primary path.
 
+## Ironclad long-term card planning reference
+
+A full Slay the Spire 1 Ironclad inventory/capability decomposition now exists at:
+
+```text
+docs/IroncladCardArchitecturePlan.md
+```
+
+It covers:
+
+```text
+75 distinct Ironclad card definitions
+= 3 Basic + 20 Common + 36 Uncommon + 16 Rare
+
+CAP-00 .. CAP-20 architecture capability map
+full card-by-card capability mapping
+recommended capability-wave dependency order
+```
+
+This is **planning reference only**. It does not authorize implementation and does not expand Phase 8. In particular:
+
+```text
+Phase 8 remains Pommel Strike+ + Sundial combo validation only.
+Do not start Corruption / Exhaust / multi-enemy / upgrade-runtime work as part of 8A.
+After Phase 8, select one bounded capability wave and create a dedicated design authority before implementation.
+```
+
+The current long-term recommendation after Phase 8 is to consider the Exhaust foundation first because it has the broadest Ironclad reuse surface, but that is not yet an active phase.
+
 ## Next exact action
 
 ```text
-REVIEW docs/Phase8ComboArchitectureDesign.md.
+REVIEW docs/Phase8ComboArchitectureDesign.md
+and docs/IroncladCardArchitecturePlan.md.
 
 Phase 8 implementation is NOT authorized yet.
 Do not modify Card / Draw / Shuffle / Relic runtime.
