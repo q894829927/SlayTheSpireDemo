@@ -2,11 +2,11 @@
 
 日期：**2026-09-03**
 
-状态：**DESIGN APPROVED / IMPLEMENTATION AUTHORIZED / IN PROGRESS**
+状态：**COMPLETE / VALIDATED / SEALED**
 
-用户已明确授权开始 Phase 7E。本文记录实施状态；详细设计、边界与验收合同继续以 `docs/Phase7ERelicCompositionDesign.md` 为准。该设计文档末尾原有的 `DESIGN DRAFT / IMPLEMENTATION NOT AUTHORIZED` 是授权前状态，现由本次用户明确授权和本文状态覆盖，不改变其中已经完成最终 review 的设计内容。
+用户已明确授权并完成 Phase 7E。详细设计、边界与验收合同继续以 `docs/Phase7ERelicCompositionDesign.md` 为准；最终验证证据记录在 `docs/Phase7EValidation.md`。
 
-## 当前实施范围
+## 最终实施范围
 
 ```text
 URelicEffect + FRelicEffectContext
@@ -31,8 +31,29 @@ nested RewardActions 由 CounterAction 传播 PresentationRecordWriter
 7D Read/Frozen/Native UI 零语义修改
 ```
 
-## 当前执行状态
+## 最终状态
 
-已开始新增 7E 通用 C++ primitives 和 focused tests。生产 `DA_Relic_Sundial` 是二进制 `.uasset`，需要在 Unreal Editor 中迁移到 `UDeckShuffledCountTrigger + UGainEnergyRelicEffect` 后才能安全删除旧 Sundial 专属 C++ 类。
+生产 `DA_Relic_Sundial` 已在 Unreal Editor 中迁移并保存为：
 
-在本轮 C++ 变更完成前，不声明 Build / Automation / PIE 通过。
+```text
+Trigger = UDeckShuffledCountTrigger
+RequiredCount = 3
+Effects[0] = UGainEnergyRelicEffect
+Amount = 2
+```
+
+迁移后的日晷已通过 focused Phase7E Automation、Phase7.Sundial / Phase7.EnergyGain / Phase7.RelicPresentation 回归和 PIE 验证。
+
+旧的日晷专属实现已在生产资产和回归不再依赖后删除：
+
+```text
+USundialTrigger
+USundialAdvanceAction
+URelicInstance 中旧 USundialAdvanceAction friend
+```
+
+删除旧 reflected classes 后再次完成 project-file regeneration、Development Editor Build、最终 Sundial focused regression 和生产 PIE smoke，均 PASS。
+
+Phase 7E 不要求也未额外运行无关的 Phase6R、A2D5、Shipping 等历史 aggregate Gate。
+
+**Phase 7E is COMPLETE / VALIDATED / SEALED.**
