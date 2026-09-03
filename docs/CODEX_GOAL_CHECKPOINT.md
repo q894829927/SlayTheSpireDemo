@@ -16,7 +16,7 @@ Phase 7 Relics: IN PROGRESS
 Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
-7C Sundial + GainEnergyAction: IMPLEMENTED / GAMEPLAY GATES PASS / FINAL DESIGN CONFORMANCE PENDING
+7C Sundial + GainEnergyAction: IMPLEMENTED / SHARED ENERGY RECORD HELPER IMPLEMENTED / VALIDATION PENDING
 7D Relic Read/Frozen/Native UI: NOT STARTED
 
 Post-seal card-face continuity correction:
@@ -83,37 +83,62 @@ Focused Strength Draw PIE visual continuity                  PASS
 Visible red -> white -> red regression                       NOT OBSERVED
 ```
 
-The CardZoneChanged prefix includes the new `WorkingSnapshotRichContinuity` Stage-B regression. Detailed evidence is recorded in:
+Detailed evidence is recorded in `docs/PostSealCardFaceContinuityValidation.md`.
+
+## Shared EnergyChanged Presentation helper
+
+The remaining 7C design-conformance item has now been implemented narrowly.
+
+Shared production helper:
 
 ```text
-docs/PostSealCardFaceContinuityValidation.md
+Source/SlayTheSpireDemo/Presentation/EnergyPresentationRecord.h/.cpp
+
+EnergyPresentationRecord::AppendCommittedEnergyChanged(
+    const FEnergyCommitResult&,
+    const FPresentationRecordWriter&)
 ```
 
-No further Phase6C/Sundial/Phase6R/A2D5/Shipping/Legacy regression is required for this correction.
-
-## Remaining 7C design-conformance item
-
-The sealed Phase 7 design requires `BattleManager` and `UGainEnergyAction` to produce `EnergyChanged` Presentation records through one narrowly scoped shared helper when the existing construction is private to `BattleManager.cpp`.
-
-Current `UGainEnergyAction` still constructs the `EnergyChanged` payload locally. This is behaviorally validated but does not yet satisfy that sealed implementation constraint. Do **not** mark 7C SEALED until this duplication is removed.
-
-Required narrow correction:
+It owns only the existing committed A2 `EnergyChanged` record semantics:
 
 ```text
-extract one shared EnergyChanged-record helper
-→ BattleManager existing energy-change presentation path delegates to it
-→ UGainEnergyAction delegates to it
-→ no general Presentation refactor
+failed/no-op commit or unavailable writer -> no record
+Delta must equal EnergyAfter - EnergyBefore
+invalid Delta -> invalidate current Presentation resolution
+valid commit -> one EnergyChanged(Before, After, Delta)
+append failure -> log; Gameplay remains authoritative
 ```
 
-After that correction, invalidate only the directly affected evidence:
+Gameplay mutation remains entirely in `BattleEnergyMutation`.
+
+Both active production paths now delegate to this helper:
 
 ```text
-Development Editor Build
-SlayTheSpireDemo.Phase7.EnergyGain
+UGainEnergyAction
+→ BattleEnergyMutation::TryGain
+→ EnergyPresentationRecord::AppendCommittedEnergyChanged
+
+ABattleManager turn-end / turn-start energy presentation
+→ BattleEnergyMutation::SetValue
+→ ABattleManager narrow wrapper
+→ EnergyPresentationRecord::AppendCommittedEnergyChanged
 ```
 
-Rerun Sundial only if the helper correction changes Gameplay/queue behavior; a pure record-construction refactor does not by itself invalidate the existing Sundial gameplay gate.
+No general Presentation framework, queue behavior, Sundial logic, Energy clamp rule, or Gameplay mutation semantics were changed.
+
+## Required validation gate
+
+New source files were added and the BattleManager/GainEnergyAction EnergyChanged paths changed. Run only:
+
+```text
+1. Regenerate project files once.
+2. Development Editor Build once.
+3. SlayTheSpireDemo.Phase7.EnergyGain once; expected 2/2 PASS.
+4. SlayTheSpireDemo.Phase6UIA2C.Record.EndTurnEnergy once; expected 1/1 PASS.
+5. Record evidence and STOP.
+```
+
+No PIE is required for this helper-only refactor. Do not rerun Sundial, Phase6C, card-face continuity, Phase6R, A2D5, Shipping, Legacy parity, or unrelated UI suites unless a concrete failure invalidates them.
 
 ## Production Sundial asset
 
@@ -129,13 +154,15 @@ Triggers[0] = USundialTrigger
     EnergyGain = 2
 ```
 
-The user's real two-Pommel-Strike+/Sundial PIE investigation has already exercised the configured Sundial behavior. Icon/HUD display remains 7D.
+Icon/HUD display remains 7D.
 
 ## Next exact action
 
 ```text
-7C: extract the narrow shared EnergyChanged Presentation helper,
-then run Editor Build + SlayTheSpireDemo.Phase7.EnergyGain once.
+USER ACTION REQUIRED:
+regenerate project files,
+build current main,
+run Phase7.EnergyGain and Phase6UIA2C.Record.EndTurnEnergy once each.
 ```
 
-Do not begin 7D or mark 7C SEALED before that design-conformance correction is complete and validated.
+If those gates pass, record the exact evidence and close 7C implementation acceptance before starting 7D.
