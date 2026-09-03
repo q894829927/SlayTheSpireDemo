@@ -22,6 +22,7 @@ class URelicData;
 class UStatusData;
 class UTurnEndedAction;
 struct FBattleReadSnapshot;
+struct FEnergyCommitResult;
 struct FImmediateCardPreview;
 enum class EDamageKind : uint8;
 
@@ -261,6 +262,10 @@ private:
 	bool HasValidDeckRuntime() const;
 	bool HasValidEventDispatcher() const;
 	bool IsActionQueueBusy() const;
+
+	static void AppendEnergyChangedPresentationRecord(
+		const FEnergyCommitResult& CommitResult,
+		const FPresentationRecordWriter& Writer);
 
 	bool BeginPresentationResolution(EPresentationResolutionOrigin Origin);
 	void AbortPresentationResolution();
