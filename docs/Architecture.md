@@ -133,6 +133,16 @@ Gameplay validation / Request
 
 A sealed Envelope owns one `BattleId`, `ResolutionId`, Origin, ordered Records, FinalStateRevision and matching FinalSnapshot. Historical playback never reconstructs the past from mutable Gameplay.
 
+Historical committed-card projection has one presentation-only boundary:
+
+```text
+FPresentationCardSnapshot
+→ PresentationCardView::MakePresentationOnlyCardView
+→ FBattleHUDCardView
+```
+
+That mapper is only for frozen Record/presentation cards and therefore always produces a presentation-only, non-gameplay-playable view. `FCardReadView → FBattleHUDCardView` remains a separate stable current-state freeze path owned by `TryFreezePresentationStateSnapshot`; it carries current Gameplay legality and must not be routed through the presentation-only mapper. Projection completeness and identity matching are separate concerns: display fields such as `RichDescription` must survive the projection, while historical identity predicates may intentionally compare only stable identity fields.
+
 Internal seal and public notification are distinct. Seal releases the builder before another Resolution begins; `OnPresentationResolutionReady` and `OnReadStateReady` remain deferred until after an accepted Request returns.
 
 See `docs/Phase6UIA2Implementation.md` for the complete contract and `docs/Phase6UIA2EImplementation.md` for current Blueprint/PIE closure.
