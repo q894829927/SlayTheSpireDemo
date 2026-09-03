@@ -1,6 +1,6 @@
 # Phase 7D Relic Hover UI Amendment
 
-Status: **IMPLEMENTATION AUTHORIZED / C++ VALIDATION PENDING**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 This amendment refines only the Native Phase 7D Relic presentation described by `docs/Phase7RelicsImplementation.md`. Gameplay, Relic runtime state, trigger behavior, Read/Frozen DTOs and FinalSnapshot reconciliation remain unchanged.
 
@@ -66,6 +66,8 @@ Btn_RelicInteraction.OnUnhovered
 
 The icon/counter are presentation-only siblings and do not participate in Slate hit testing. This prevents visual children from competing with the explicit hover target.
 
+The owning `RelicStrip_Player` in `WBP_BattleHUD_Native` must be `Not Hit-Testable (Self Only)`, not `Not Hit-Testable (Self & All Children)`, so the child interaction Button remains in the Slate hit-test path.
+
 ## Native class split
 
 ```text
@@ -109,22 +111,28 @@ Txt_RelicDescription  : TextBlock
 HB_Relics : HorizontalBox
 ```
 
-## Validation boundary
+## Validation evidence
 
-C++ gate after this interaction amendment:
-
-```text
-Development Editor Build
-SlayTheSpireDemo.Phase7.RelicPresentation remains PASS
-```
-
-The hover behavior is a visual/input presentation requirement and therefore requires one focused PIE after `WBP_BattleRelic_Native` adds the explicit Button hit layer:
+C++ gate:
 
 ```text
-steady state shows icon only (+ optional single-number badge)
-hover shows one custom tooltip with name + description
-mouse movement moves the tooltip
-mouse leave removes it
-Sundial badge displays 0 -> 1 -> 2 -> 0, never /3
-third-shuffle EnergyChanged playback preserves the already-sealed FinalSnapshot timing contract
+Development Editor Build                                      PASS
+SlayTheSpireDemo.Phase7.RelicPresentation                     3/3 PASS
 ```
+
+Focused PIE acceptance on 2026-09-03:
+
+```text
+steady state shows icon only (+ optional single-number badge)  PASS
+hover shows one custom tooltip with name + description         PASS
+mouse movement moves the tooltip                               PASS
+mouse leave removes it                                         PASS
+no duplicate / stuck tooltip                                   PASS
+Sundial badge displays 0 -> 1 -> 2 -> 0, never /3             PASS
+third-shuffle A2 playback retains historical 2                 PASS
+same Envelope FinalSnapshot reconciles visible counter to 0    PASS
+```
+
+## Seal
+
+This amendment is complete, validated and sealed as part of Phase 7D. Future cosmetic Relic artwork changes, including optional outline presentation, do not reopen this contract.
