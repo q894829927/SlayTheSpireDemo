@@ -11,22 +11,23 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7C Sundial + GainEnergyAction: COMPLETE / VALIDATED / SEALED
 7D Relic Read / Frozen / Native UI: COMPLETE / VALIDATED / SEALED
 7E Relic Reaction Composition: COMPLETE / VALIDATED / SEALED
-7F Relic Counter Metadata Unification: IMPLEMENTATION AUTHORIZED / SOURCE IMPLEMENTED / VALIDATION PENDING
+7F Relic Counter Metadata Unification: COMPLETE / VALIDATED / SEALED
 ```
 
-## Phase 7F active authority
+## Phase 7F authority / evidence
 
 ```text
-docs/Phase7FCounterMetadataImplementation.md
+docs/Phase7FCounterMetadataImplementation.md   // completed implementation contract
+docs/Phase7FValidation.md                      // trusted final validation evidence
 ```
 
-Phase 7F only removes duplicate authored counter-threshold metadata. It does not reopen sealed Phase 7A–7E Gameplay or UI behavior.
+Phase 7F removes duplicate authored counter-threshold metadata without reopening sealed Phase 7A–7E behavior.
 
-## Implemented on current remote source
+## Final 7F implementation
 
 ```text
 URelicCountTrigger : UBattleTrigger
-└─ RequiredCount
+└─ RequiredCount                          // sole authored threshold
 
 UDeckShuffledCountTrigger : URelicCountTrigger
 
@@ -42,53 +43,45 @@ RelicPresentationSnapshot
 - FBattleHUDRelicView remains a value-only frozen DTO
 ```
 
-Focused tests added:
+Current single-counter runtime constraint remains explicit: one Relic definition may own at most one `URelicCountTrigger` while `URelicInstance` owns one `Counter`.
 
-```text
-SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource
-SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions
-```
+## Production Sundial final state
 
-Existing Phase7D RelicPresentation and Phase7E composition fixtures have been migrated off `CounterDisplayMax`.
-
-## Production Sundial state / pending asset save
-
-Before this source change, production `DA_Relic_Sundial` was already saved and validated with:
+`DA_Relic_Sundial` was reopened and saved in Unreal Editor after the reflected property removal. Confirmed state:
 
 ```text
 bShowCounter = true
+CounterDisplayMax = no longer present
 Triggers[0] = UDeckShuffledCountTrigger
 RequiredCount = 3
 Effects[0] = UGainEnergyRelicEffect
 Amount = 2
 ```
 
-After the new source builds, the asset must be opened and saved once in Unreal Editor so the removed reflected `CounterDisplayMax` property is no longer carried as stale serialized data. Connected GitHub cannot author the binary `.uasset`.
+Historical 7D/7E documents that mention `CounterDisplayMax` remain trusted evidence of the pre-7F state; 7F supersedes only that metadata contract.
 
-## Historical Phase 7E evidence
-
-`docs/Phase7EValidation.md` remains trusted sealed evidence for 7E. Historical 7D/7E documents that mention `CounterDisplayMax` describe the pre-7F state and are not rewritten.
-
-## Next exact gate
+## Final trusted Phase 7F gates
 
 ```text
-USER ACTION REQUIRED
-
-1. git pull
-2. regenerate UE project files because reflected URelicCountTrigger was added
-3. Development Editor Build once
-4. STOP and report the Build result
+UE project-file regeneration                                   PASS
+Development Editor Build                                       PASS
+SlayTheSpireDemo.Phase7F.CounterMetadata.SingleSource          PASS
+SlayTheSpireDemo.Phase7F.CounterMetadata.InvalidDefinitions    PASS
+SlayTheSpireDemo.Phase7E                                       PASS
+SlayTheSpireDemo.Phase7.Sundial                                PASS
+SlayTheSpireDemo.Phase7.RelicPresentation                      PASS
+Production Sundial PIE smoke                                   PASS
 ```
 
-If Build passes, next validation order is:
+PIE confirmed the production Sundial still advances `0 -> 1 -> 2 -> 0`, grants `+2 Energy` on the third real shuffle, and has no Missing Class / Failed to load / crash.
+
+No unrelated Phase6R / A2D5 / Shipping aggregate gate was required for this bounded cleanup.
+
+## Next exact action
 
 ```text
-SlayTheSpireDemo.Phase7F
-→ open/save DA_Relic_Sundial and confirm CounterDisplayMax is gone, RequiredCount=3 remains
-→ SlayTheSpireDemo.Phase7E
-→ SlayTheSpireDemo.Phase7.Sundial
-→ SlayTheSpireDemo.Phase7.RelicPresentation
-→ Sundial PIE smoke
-```
+STOP.
 
-Do not run broader unrelated Phase6R / A2D5 / Shipping aggregate gates for this bounded cleanup.
+Do not reopen sealed Phase 7A–7F work or automatically start another phase.
+Select and explicitly authorize the next bounded design/implementation goal first.
+```
