@@ -15,8 +15,9 @@ struct FGeometry;
  * Native frozen-view boundary for one player Relic.
  *
  * The steady-state surface shows only the Relic icon plus an optional numeric
- * counter. Btn_RelicHover is the explicit Slate hit target for hover lifecycle;
- * hover presentation is delegated to a separate frozen Tooltip Widget.
+ * counter. Btn_RelicInteraction is the explicit transparent Slate hit layer for
+ * the hover lifecycle, mirroring the validated combatant-presentation pattern.
+ * Hover presentation is delegated to a separate frozen Tooltip Widget.
  * This Widget never queries URelicInstance, URelicData or BattleManager and never
  * mutates the authoritative Relic counter.
  */
@@ -54,7 +55,7 @@ protected:
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> Btn_RelicHover;
+	TObjectPtr<UButton> Btn_RelicInteraction;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_RelicIcon;
