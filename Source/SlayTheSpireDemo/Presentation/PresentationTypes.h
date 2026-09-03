@@ -124,8 +124,15 @@ struct SLAYTHESPIREDEMO_API FPresentationCardSnapshot
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	ECardTargetType TargetType = ECardTargetType::None;
 
+	// Stable plain semantic description retained for historical identity checks.
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	FText Description;
+
+	// Optional frozen Native RichText presentation. CardPlayed may replace this
+	// with the exact target-specific committed card face while keeping Description
+	// stable for historical matching.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	FText RichDescription;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	TObjectPtr<UTexture2D> CardArt = nullptr;
