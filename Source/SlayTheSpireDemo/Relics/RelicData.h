@@ -27,19 +27,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Relic|Presentation")
 	TObjectPtr<UTexture2D> Icon = nullptr;
 
-	// Generic presentation metadata. Widgets consume the frozen HUD DTO only and
-	// never special-case RelicId (for example, "Sundial") to decide counter UI.
+	// Presentation choice only. Counter maximum is derived from the unique
+	// URelicCountTrigger so Gameplay threshold has a single authored source.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Relic|Presentation")
 	bool bShowCounter = false;
 
-	// Presentation-only display maximum. It does not drive Gameplay mutation or
-	// trigger thresholds. Authored content must keep it aligned with the mechanic
-	// it is describing when bShowCounter is enabled.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Relic|Presentation", meta = (EditCondition = "bShowCounter", ClampMin = "1"))
-	int32 CounterDisplayMax = 0;
-
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Relic|Triggers")
 	TArray<TObjectPtr<UBattleTrigger>> Triggers;
+
+	// Resolves the single authoritative Gameplay counter threshold. Returns false
+	// when there is no count trigger, more than one count trigger, or an invalid
+	// RequiredCount. This query never special-cases a concrete Relic or event type.
+	bool TryGetCounterMax(int32& OutCounterMax) const;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
