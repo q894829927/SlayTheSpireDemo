@@ -223,17 +223,19 @@ This correction changes shared Presentation mapping/Controller code but not Game
 1. Regenerate project files once because new .h/.cpp and focused test .cpp files were added.
 2. Development Editor Build once.
 3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper once; expected 1/1.
-4. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged.WorkingSnapshotRichContinuity once; expected 1/1.
-5. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once; existing producer/regression contract must remain green.
-6. One focused PIE visual check:
+4. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once; this prefix now covers both:
+   - the existing CardZoneChanged producer/regression test;
+   - WorkingSnapshotRichContinuity.
+   Expected 2/2.
+5. One focused PIE visual check:
    - Player already has Strength;
    - draw an Attack whose numeric card face is modified by Strength;
    - draw animation -> Working Hand -> later Record playback -> FinalSnapshot stays on the same resolved RichText/color;
    - no visible red -> white -> red flashback.
-7. After those gates pass, record the exact evidence in docs/Validation.md and STOP.
+6. After those gates pass, record the exact evidence in docs/Validation.md and STOP.
 ```
 
-Do not rerun Phase6C, Phase7.Sundial, EnergyGain, TriggerSources, Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites unless a concrete failure invalidates them.
+Do not run `WorkingSnapshotRichContinuity` separately before the CardZoneChanged prefix; that would only duplicate the same focused evidence. Do not rerun Phase6C, Phase7.Sundial, EnergyGain, TriggerSources, Phase6R, A2D5, Shipping, Legacy parity or unrelated UI suites unless a concrete failure invalidates them.
 
 ## Scope protection
 
@@ -243,6 +245,6 @@ This correction touches only source/tests/docs. Do not save, move, rename, regen
 
 USER ACTION REQUIRED:
 
-Regenerate project files, build current `main`, run the three focused Automation gates above, then perform the single Strength draw PIE visual check.
+Regenerate project files, build current `main`, run the mapper gate and the CardZoneChanged prefix once each, then perform the single Strength draw PIE visual check.
 
 Do not begin 7D until this correction and 7C final acceptance are closed.
