@@ -1,7 +1,7 @@
 #include "BattleRelicWidget.h"
 
 #include "BattleRelicTooltipWidget.h"
-#include "Blueprint/SlateBlueprintLibrary.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Engine/World.h"
@@ -38,26 +38,24 @@ void UBattleRelicWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
+void UBattleRelicWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	UpdateRelicTooltipPosition();
+}
+
 void UBattleRelicWidget::NativeOnMouseEnter(
 	const FGeometry& InGeometry,
 	const FPointerEvent& InMouseEvent)
 {
 	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
-	ShowRelicTooltip(InMouseEvent);
+	ShowRelicTooltip();
 }
 
 void UBattleRelicWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 {
 	HideRelicTooltip();
 	Super::NativeOnMouseLeave(InMouseEvent);
-}
-
-FReply UBattleRelicWidget::NativeOnMouseMove(
-	const FGeometry& InGeometry,
-	const FPointerEvent& InMouseEvent)
-{
-	UpdateRelicTooltipPosition(InMouseEvent);
-	return Super::NativeOnMouseMove(InGeometry, InMouseEvent);
 }
 
 void UBattleRelicWidget::SetRelicView(const FBattleHUDRelicView& View)
@@ -120,7 +118,7 @@ UBattleRelicTooltipWidget* UBattleRelicWidget::CreateRelicTooltipWidget() const
 	return nullptr;
 }
 
-void UBattleRelicWidget::ShowRelicTooltip(const FPointerEvent& InMouseEvent)
+void UBattleRelicWidget::ShowRelicTooltip()
 {
 	if (IsValid(ActiveTooltipWidget)
 		|| TooltipWidgetClass == nullptr
@@ -140,7 +138,7 @@ void UBattleRelicWidget::ShowRelicTooltip(const FPointerEvent& InMouseEvent)
 	Tooltip->SetAlignmentInViewport(FVector2D::ZeroVector);
 	Tooltip->AddToViewport(TooltipZOrder);
 	ActiveTooltipWidget = Tooltip;
-	UpdateRelicTooltipPosition(InMouseEvent);
+	UpdateRelicTooltipPosition();
 }
 
 void UBattleRelicWidget::HideRelicTooltip()
@@ -152,24 +150,16 @@ void UBattleRelicWidget::HideRelicTooltip()
 	ActiveTooltipWidget = nullptr;
 }
 
-void UBattleRelicWidget::UpdateRelicTooltipPosition(const FPointerEvent& InMouseEvent)
+void UBattleRelicWidget::UpdateRelicTooltipPosition()
 {
 	if (!IsValid(ActiveTooltipWidget))
 	{
 		return;
 	}
 
-	FVector2D PixelPosition = FVector2D::ZeroVector;
-	FVector2D ViewportPosition = FVector2D::ZeroVector;
-	USlateBlueprintLibrary::AbsoluteToViewport(
-		this,
-		InMouseEvent.GetScreenSpacePosition(),
-		PixelPosition,
-		ViewportPosition);
-
-	// ViewportPosition is already in viewport-local/DPI-adjusted Slate units, so
-	// SetPositionInViewport must not apply inverse DPI a second time.
-	ActiveTooltipWidget->SetPositionInViewport(
-		ViewportPosition + TooltipCursorOffset,
-		false);
+	// GetMousePositionOnViewport and SetPositionInViewport(..., false) use the
+	// same viewport-local/DPI-adjusted coordinate space, avoiding an extra DPI
+	// transform while the tooltip follows the cursor.
+	const FVector2D MousePosition = UWidgetLayoutLibrary::GetMousePositionOnViewport(this);
+	ActiveTooltipWidget->SetPositionInViewport(MousePosition + TooltipCursorOffset, false);
 }
