@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-09-03
+快照日期：2026-09-04
 
 ## 1. 用途与边界
 
@@ -43,7 +43,7 @@ PLANNED / NOT WIRED
 |---|---|---|---:|---|---|
 | `WBP_BattleHUD_Native` | 已修改、CURRENT SAVED | `UBattleHUDWidget` | 76 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-03 20:52:20；143,179 bytes；SHA-256 `AA300B26DA0658F550F1487F43AF3DD3C3D05253999190E2FBE99A9B4527C1F1` |
 | `WBP_BattleCard_Native` | 已修改、CURRENT SAVED | `UBattleCardWidget` | 20 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-02 21:05:52；48,878 bytes；SHA-256 `27929456E042C9E1CF2B7C3D8E37EBD27D607477B374982ECD8D0C0FADD59841` |
-| `Relic/WBP_BattleRelic_Native` | 新建、CURRENT SAVED | `UBattleRelicWidget` | 6 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 20:15:38；38,013 bytes；SHA-256 `102308A3EAB97E683BF4FED848983C17CF875930BF7B329F46FF530D84D065C1` |
+| `Relic/WBP_BattleRelic_Native` | 已修改、CURRENT SAVED、INDEX STAGED | `UBattleRelicWidget` | 6（上次 MCP 读取） | `EventGraph`：上次 MCP 读取为 PreConstruct、Construct、Tick | 2026-09-03 23:57:29；39,821 bytes；SHA-256 `EECA3F7CBE7592AA7D390BAAB7BB033B36BD29675801470619ACA6C394C6695B` |
 | `Relic/WBP_BattleRelicStrip_Native` | 新建、CURRENT SAVED | `UBattleRelicStripWidget` | 2 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 20:20:08；26,596 bytes；SHA-256 `F4B6FDA5AEDB900F7CBDC22E5536D49F72562E6C233A5B6120710BABF1ED0095` |
 | `Relic/WBP_BattleRelicTooltip_Native` | 新建、CURRENT SAVED | `UBattleRelicTooltipWidget` | 6 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 18:40:50；36,330 bytes；SHA-256 `30BB5EBDC3011C69AB37172762D29207ED6D35C9C32CBD10720F17BF6076BFC1` |
 
@@ -209,6 +209,62 @@ USER ACTION REQUIRED / NOT YET PASS
 ```
 
 当前代码路径是 `UBattleRelicWidget::NativeOnMouseEnter()` → `ShowRelicTooltip()`；MCP 已确认资产 class 引用、按钮覆盖区域、Tooltip BindWidget 和默认尺寸存在，但尚未证明运行时一定能收到父 Widget 的 Hover 回调，也没有把当前 Tooltip 缺失现象标记为通过。
+
+## 2.2 2026-09-04 Git index 暂存资产快照
+
+本节只记录当前 Git index 中已经暂存的资产，不等同于完整工作树快照。Git 状态的第一列为暂存状态，第二列为工作树状态。
+
+### 2.2.1 暂存的 WBP/UMG 资产
+
+当前只有以下一个 WBP 资产被暂存：
+
+```text
+M  Content/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelic_Native.uasset
+```
+
+暂存版本的 LFS 指针为：
+
+```text
+oid  = sha256:eeca3f7cbe7592aa7d390baab7bb033b36bd29675801470619aca6c394c6695b
+size = 39821
+```
+
+该文件当前工作树没有第二列修改，表示工作树内容与 index 暂存内容一致。其 Unreal 资产路径为：
+
+```text
+/Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelic_Native
+```
+
+上方 `2.1.3` 的 Designer 层级和 Tooltip 类引用是最近一次 MCP 只读读取到的结构基线；由于本次暂存版本的文件大小和 LFS 对象已经变化，不能把那次读取自动当作本次 index 版本的完整 Graph 证明。当前这一版的详细 Designer/Graph 状态应在 Unreal MCP 恢复后重新读取并覆盖基线。
+
+### 2.2.2 同批暂存但非 WBP 的资产
+
+以下文件也在当前 Git index 中，但不属于本文件的 WBP Designer/Graph 资产；这里仅记录暂存事实：
+
+| 状态 | 资产 | 暂存 LFS oid | 暂存大小 |
+|---|---|---|---:|
+| `A` | `Content/SlayTheSpireDemo/Data/Relics/DA_Relic_Abacus.uasset` | `ba3e55b91239203b64361aea6b48f0a5b34276fd5f3d3037dcc2a2fd6369f71b` | 2,962 bytes |
+| `M` | `Content/SlayTheSpireDemo/Data/Relics/DA_Relic_Sundial.uasset` | `568234507f7ab79f8bd399dd97524013245246b7f91df2c066ac75aebe4f1027` | 3,129 bytes |
+| `M` | `Content/SlayTheSpireDemo/Maps/L_BattleTest.umap` | `6842f91ab2c496c8fae5360c629db045c314940d940b4098d5f6e6e184b07e2d` | 148,126 bytes |
+
+这些 DataAsset 和地图的具体内容不在本节展开；WBP 文档不把它们描述成蓝图 Graph 修改。
+
+### 2.2.3 当前暂存边界
+
+截至 2026-09-04：
+
+```text
+INDEX STAGED
+→ WBP_BattleRelic_Native.uasset
+→ DA_Relic_Abacus.uasset
+→ DA_Relic_Sundial.uasset
+→ L_BattleTest.umap
+
+UNSTAGED WORKTREE
+→ Config/DefaultGame.ini
+```
+
+本次文档更新本身写入工作树后也属于未暂存文档修改；没有执行 `git add`，以免改变用户当前的暂存边界。
 
 ## 3. WBP_BattleHUD — CURRENT SAVED
 
