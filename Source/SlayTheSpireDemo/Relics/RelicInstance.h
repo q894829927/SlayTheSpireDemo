@@ -5,6 +5,7 @@
 #include "RelicInstance.generated.h"
 
 class ABattleManager;
+class UAdvanceRelicCounterAction;
 class URelicContainer;
 class URelicData;
 class USundialAdvanceAction;
@@ -24,7 +25,8 @@ public:
 
 private:
 	friend class URelicContainer;
-	friend class USundialAdvanceAction;
+	friend class USundialAdvanceAction; // retained until the production Sundial asset migrates
+	friend class UAdvanceRelicCounterAction;
 
 	void Initialize(URelicData* InDefinition, ABattleManager* InBattle, uint64 InRuntimeSequence);
 	void SetCounterFromAction(int32 InCounter);
