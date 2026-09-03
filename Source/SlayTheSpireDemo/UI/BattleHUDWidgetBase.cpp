@@ -157,6 +157,7 @@ FBattleHUDCardView UBattleHUDWidgetBase::MakePresentationCardView(
 	View.CardType = Snapshot.CardType;
 	View.TargetType = Snapshot.TargetType;
 	View.Description = Snapshot.Description;
+	View.RichDescription = Snapshot.RichDescription;
 	View.CardArt = Snapshot.CardArt;
 	View.bGameplayPlayable = false;
 	View.UnplayableReason = FText::GetEmpty();
