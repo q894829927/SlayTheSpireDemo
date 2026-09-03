@@ -1,5 +1,6 @@
 #include "BattlePresentationController.h"
 
+#include "PresentationCardView.h"
 #include "../Battle/BattleManager.h"
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
@@ -184,22 +185,6 @@ namespace
 				return Card.RuntimeId == RuntimeId;
 			}
 		);
-	}
-
-	FBattleHUDCardView MakeHUDCardView(const FPresentationCardSnapshot& Card)
-	{
-		FBattleHUDCardView View;
-		View.RuntimeId = Card.RuntimeId;
-		View.CardId = Card.CardId;
-		View.DisplayName = Card.DisplayName;
-		View.Cost = Card.Cost;
-		View.CardType = Card.CardType;
-		View.TargetType = Card.TargetType;
-		View.Description = Card.Description;
-		View.CardArt = Card.CardArt;
-		View.bGameplayPlayable = false;
-		View.UnplayableReason = FText::GetEmpty();
-		return View;
 	}
 
 	int32 FindStatusIndexByIdentity(
@@ -990,7 +975,9 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 				return false;
 			}
 			--WorkingPresentationSnapshot.DrawCount;
-			WorkingPresentationSnapshot.HandCards.Insert(MakeHUDCardView(Card), Record.CardZoneChanged.ToIndex);
+			WorkingPresentationSnapshot.HandCards.Insert(
+				PresentationCardView::MakePresentationOnlyCardView(Card),
+				Record.CardZoneChanged.ToIndex);
 			return true;
 		}
 
