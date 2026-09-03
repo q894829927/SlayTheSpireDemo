@@ -20,8 +20,14 @@ bool RelicPresentationSnapshot::TryFreeze(
 			|| Source.RuntimeSequence > static_cast<uint64>(MAX_int64)
 			|| Source.Counter < 0
 			|| !IsValid(Definition)
-			|| SeenRelicIds.Contains(Source.RelicId)
-			|| (Definition->bShowCounter && Definition->CounterDisplayMax <= 0))
+			|| SeenRelicIds.Contains(Source.RelicId))
+		{
+			OutRelics.Reset();
+			return false;
+		}
+
+		int32 CounterMax = 0;
+		if (Definition->bShowCounter && !Definition->TryGetCounterMax(CounterMax))
 		{
 			OutRelics.Reset();
 			return false;
@@ -38,9 +44,7 @@ bool RelicPresentationSnapshot::TryFreeze(
 		Frozen.Description = Definition->Description;
 		Frozen.bShowCounter = Definition->bShowCounter;
 		Frozen.Counter = Source.Counter;
-		Frozen.CounterMax = Definition->bShowCounter
-			? Definition->CounterDisplayMax
-			: 0;
+		Frozen.CounterMax = Definition->bShowCounter ? CounterMax : 0;
 		Frozen.Icon = Definition->Icon;
 		OutRelics.Add(MoveTemp(Frozen));
 	}
