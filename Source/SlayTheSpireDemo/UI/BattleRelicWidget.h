@@ -50,13 +50,11 @@ protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnMouseEnter(
 		const FGeometry& InGeometry,
 		const FPointerEvent& InMouseEvent) override;
 	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
-	virtual FReply NativeOnMouseMove(
-		const FGeometry& InGeometry,
-		const FPointerEvent& InMouseEvent) override;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_RelicIcon;
@@ -67,9 +65,9 @@ protected:
 private:
 	void RefreshFromRelicView();
 	UBattleRelicTooltipWidget* CreateRelicTooltipWidget() const;
-	void ShowRelicTooltip(const FPointerEvent& InMouseEvent);
+	void ShowRelicTooltip();
 	void HideRelicTooltip();
-	void UpdateRelicTooltipPosition(const FPointerEvent& InMouseEvent);
+	void UpdateRelicTooltipPosition();
 
 	UPROPERTY(Transient)
 	FBattleHUDRelicView NativeRelicView;
