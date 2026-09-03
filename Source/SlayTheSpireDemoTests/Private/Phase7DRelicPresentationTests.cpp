@@ -12,8 +12,9 @@
 #include "Events/BattleEventDispatcher.h"
 #include "Presentation/BattlePresentationController.h"
 #include "Presentation/RelicPresentationSnapshot.h"
+#include "Relics/DeckShuffledCountTrigger.h"
+#include "Relics/Effects/GainEnergyRelicEffect.h"
 #include "Relics/RelicData.h"
-#include "Relics/SundialTrigger.h"
 #include "UI/BattleHUDViewModel.h"
 #include "Engine/Texture2D.h"
 
@@ -58,13 +59,20 @@ namespace Phase7D
 			return nullptr;
 		}
 
-		USundialTrigger* Trigger = NewObject<USundialTrigger>(Definition);
+		UDeckShuffledCountTrigger* Trigger = NewObject<UDeckShuffledCountTrigger>(Definition);
 		if (!IsValid(Trigger))
 		{
 			return nullptr;
 		}
-		Trigger->ShufflesRequired = 3;
-		Trigger->EnergyGain = 2;
+		Trigger->RequiredCount = 3;
+
+		UGainEnergyRelicEffect* EnergyEffect = NewObject<UGainEnergyRelicEffect>(Trigger);
+		if (!IsValid(EnergyEffect))
+		{
+			return nullptr;
+		}
+		EnergyEffect->Amount = 2;
+		Trigger->Effects.Add(EnergyEffect);
 		Definition->Triggers.Add(Trigger);
 		return Definition;
 	}
@@ -287,9 +295,6 @@ namespace Phase7D
 			return false;
 		}
 
-		// Two committed gameplay shuffle events advance Sundial to 2. The envelope
-		// contains no Relic counter Record, so its empty playback reconciles directly
-		// to the new FinalSnapshot baseline.
 		if (!TestTrue(TEXT("First two shuffle events resolve"), ResolveQueuedShuffleEvents(Fixture, 2)))
 		{
 			return false;
@@ -301,9 +306,6 @@ namespace Phase7D
 			return false;
 		}
 
-		// Third shuffle resets the authoritative counter and queues GainEnergyAction,
-		// producing a real EnergyChanged Record. While that Record is playing, the
-		// visible Relic DTO must stay at the previous historical baseline (2).
 		if (!TestTrue(TEXT("Third shuffle resolves"), ResolveQueuedShuffleEvents(Fixture, 1)))
 		{
 			return false;
