@@ -6,16 +6,17 @@
 #include "BattleRelicWidget.generated.h"
 
 class UBattleRelicTooltipWidget;
+class UButton;
 class UImage;
 class UTextBlock;
 struct FGeometry;
-struct FPointerEvent;
 
 /**
  * Native frozen-view boundary for one player Relic.
  *
  * The steady-state surface shows only the Relic icon plus an optional numeric
- * counter. Hover presentation is delegated to a separate frozen Tooltip Widget.
+ * counter. Btn_RelicHover is the explicit Slate hit target for hover lifecycle;
+ * hover presentation is delegated to a separate frozen Tooltip Widget.
  * This Widget never queries URelicInstance, URelicData or BattleManager and never
  * mutates the authoritative Relic counter.
  */
@@ -51,10 +52,9 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-	virtual void NativeOnMouseEnter(
-		const FGeometry& InGeometry,
-		const FPointerEvent& InMouseEvent) override;
-	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UButton> Btn_RelicHover;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_RelicIcon;
@@ -63,6 +63,12 @@ protected:
 	TObjectPtr<UTextBlock> Txt_RelicCounter;
 
 private:
+	UFUNCTION()
+	void HandleRelicHovered();
+
+	UFUNCTION()
+	void HandleRelicUnhovered();
+
 	void RefreshFromRelicView();
 	UBattleRelicTooltipWidget* CreateRelicTooltipWidget() const;
 	void ShowRelicTooltip();
