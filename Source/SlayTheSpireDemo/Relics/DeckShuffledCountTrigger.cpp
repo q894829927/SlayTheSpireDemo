@@ -111,12 +111,6 @@ EDataValidationResult UDeckShuffledCountTrigger::IsDataValid(FDataValidationCont
 	const EDataValidationResult ParentResult = Super::IsDataValid(Context);
 	bool bValid = ParentResult != EDataValidationResult::Invalid;
 
-	if (RequiredCount <= 0)
-	{
-		Context.AddError(FText::FromString(TEXT("DeckShuffledCountTrigger RequiredCount must be greater than zero.")));
-		bValid = false;
-	}
-
 	if (Effects.Num() == 0)
 	{
 		Context.AddError(FText::FromString(TEXT("DeckShuffledCountTrigger requires at least one RelicEffect.")));
