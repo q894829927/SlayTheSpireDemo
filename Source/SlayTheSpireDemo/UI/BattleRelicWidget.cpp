@@ -2,6 +2,7 @@
 
 #include "BattleRelicTooltipWidget.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
+#include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 #include "Engine/World.h"
@@ -11,11 +12,12 @@ void UBattleRelicWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	bNativeBindingsValid = IsValid(Img_RelicIcon)
+	bNativeBindingsValid = IsValid(Btn_RelicInteraction)
+		&& IsValid(Img_RelicIcon)
 		&& IsValid(Txt_RelicCounter);
 	if (!ensureMsgf(
 		bNativeBindingsValid,
-		TEXT("Native Battle Relic '%s' is missing Img_RelicIcon or Txt_RelicCounter."),
+		TEXT("Native Battle Relic '%s' is missing Btn_RelicInteraction, Img_RelicIcon or Txt_RelicCounter."),
 		*GetName()))
 	{
 		UE_LOG(
@@ -29,12 +31,34 @@ void UBattleRelicWidget::NativeOnInitialized()
 void UBattleRelicWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	if (bNativeBindingsValid)
+	{
+		Btn_RelicInteraction->OnHovered.AddUniqueDynamic(
+			this,
+			&UBattleRelicWidget::HandleRelicHovered);
+		Btn_RelicInteraction->OnUnhovered.AddUniqueDynamic(
+			this,
+			&UBattleRelicWidget::HandleRelicUnhovered);
+	}
+
 	RefreshFromRelicView();
 }
 
 void UBattleRelicWidget::NativeDestruct()
 {
 	HideRelicTooltip();
+
+	if (IsValid(Btn_RelicInteraction))
+	{
+		Btn_RelicInteraction->OnHovered.RemoveDynamic(
+			this,
+			&UBattleRelicWidget::HandleRelicHovered);
+		Btn_RelicInteraction->OnUnhovered.RemoveDynamic(
+			this,
+			&UBattleRelicWidget::HandleRelicUnhovered);
+	}
+
 	Super::NativeDestruct();
 }
 
@@ -44,37 +68,14 @@ void UBattleRelicWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	UpdateRelicTooltipPosition();
 }
 
-void UBattleRelicWidget::NativeOnMouseEnter(
-	const FGeometry& InGeometry,
-	const FPointerEvent& InMouseEvent)
+void UBattleRelicWidget::HandleRelicHovered()
 {
-	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
-
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[BattleRelicTooltipDiag] MouseEnter Widget='%s' RelicId='%s' TooltipClass='%s' Visibility=%d Enabled=%d."),
-		*GetPathName(),
-		*NativeRelicView.RelicId.ToString(),
-		*GetNameSafe(TooltipWidgetClass.Get()),
-		static_cast<int32>(GetVisibility()),
-		GetIsEnabled() ? 1 : 0);
-
 	ShowRelicTooltip();
 }
 
-void UBattleRelicWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
+void UBattleRelicWidget::HandleRelicUnhovered()
 {
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[BattleRelicTooltipDiag] MouseLeave Widget='%s' RelicId='%s' ActiveTooltip=%d."),
-		*GetPathName(),
-		*NativeRelicView.RelicId.ToString(),
-		IsValid(ActiveTooltipWidget) ? 1 : 0);
-
 	HideRelicTooltip();
-	Super::NativeOnMouseLeave(InMouseEvent);
 }
 
 void UBattleRelicWidget::SetRelicView(const FBattleHUDRelicView& View)
@@ -98,7 +99,7 @@ void UBattleRelicWidget::RefreshFromRelicView()
 	if (IsValid(NativeRelicView.Icon))
 	{
 		Img_RelicIcon->SetBrushFromTexture(NativeRelicView.Icon, true);
-		Img_RelicIcon->SetVisibility(ESlateVisibility::Visible);
+		Img_RelicIcon->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 	else
 	{
@@ -123,93 +124,32 @@ UBattleRelicTooltipWidget* UBattleRelicWidget::CreateRelicTooltipWidget() const
 {
 	if (TooltipWidgetClass == nullptr)
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Create skipped: TooltipWidgetClass is null on Widget='%s'."),
-			*GetPathName());
 		return nullptr;
 	}
 
 	if (APlayerController* OwningPlayer = GetOwningPlayer())
 	{
-		UBattleRelicTooltipWidget* Created =
-			CreateWidget<UBattleRelicTooltipWidget>(OwningPlayer, TooltipWidgetClass);
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Create via OwningPlayer Widget='%s' Class='%s' Result='%s'."),
-			*GetPathName(),
-			*GetNameSafe(TooltipWidgetClass.Get()),
-			*GetNameSafe(Created));
-		return Created;
+		return CreateWidget<UBattleRelicTooltipWidget>(OwningPlayer, TooltipWidgetClass);
 	}
 	if (UWorld* World = GetWorld(); IsValid(World))
 	{
-		UBattleRelicTooltipWidget* Created =
-			CreateWidget<UBattleRelicTooltipWidget>(World, TooltipWidgetClass);
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Create via World Widget='%s' Class='%s' Result='%s'."),
-			*GetPathName(),
-			*GetNameSafe(TooltipWidgetClass.Get()),
-			*GetNameSafe(Created));
-		return Created;
+		return CreateWidget<UBattleRelicTooltipWidget>(World, TooltipWidgetClass);
 	}
-
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[BattleRelicTooltipDiag] Create failed: no OwningPlayer and no valid World for Widget='%s'."),
-		*GetPathName());
 	return nullptr;
 }
 
 void UBattleRelicWidget::ShowRelicTooltip()
 {
-	if (IsValid(ActiveTooltipWidget))
+	if (IsValid(ActiveTooltipWidget)
+		|| TooltipWidgetClass == nullptr
+		|| (NativeRelicView.DisplayName.IsEmpty() && NativeRelicView.Description.IsEmpty()))
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Show skipped: tooltip already active Widget='%s' Tooltip='%s'."),
-			*GetPathName(),
-			*GetNameSafe(ActiveTooltipWidget));
-		return;
-	}
-
-	if (TooltipWidgetClass == nullptr)
-	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Show skipped: TooltipWidgetClass is null Widget='%s' RelicId='%s'."),
-			*GetPathName(),
-			*NativeRelicView.RelicId.ToString());
-		return;
-	}
-
-	if (NativeRelicView.DisplayName.IsEmpty() && NativeRelicView.Description.IsEmpty())
-	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Show skipped: frozen DisplayName and Description are both empty Widget='%s' RelicId='%s'."),
-			*GetPathName(),
-			*NativeRelicView.RelicId.ToString());
 		return;
 	}
 
 	UBattleRelicTooltipWidget* Tooltip = CreateRelicTooltipWidget();
 	if (!IsValid(Tooltip))
 	{
-		UE_LOG(
-			LogTemp,
-			Warning,
-			TEXT("[BattleRelicTooltipDiag] Show failed: CreateRelicTooltipWidget returned invalid Widget='%s' RelicId='%s'."),
-			*GetPathName(),
-			*NativeRelicView.RelicId.ToString());
 		return;
 	}
 
@@ -219,19 +159,6 @@ void UBattleRelicWidget::ShowRelicTooltip()
 	Tooltip->AddToViewport(TooltipZOrder);
 	ActiveTooltipWidget = Tooltip;
 	UpdateRelicTooltipPosition();
-
-	const FVector2D DesiredSize = Tooltip->GetDesiredSize();
-	UE_LOG(
-		LogTemp,
-		Warning,
-		TEXT("[BattleRelicTooltipDiag] Show success Tooltip='%s' InViewport=%d Visibility=%d DesiredSize=(%.1f, %.1f) NameEmpty=%d DescriptionEmpty=%d."),
-		*GetPathNameSafe(Tooltip),
-		Tooltip->IsInViewport() ? 1 : 0,
-		static_cast<int32>(Tooltip->GetVisibility()),
-		DesiredSize.X,
-		DesiredSize.Y,
-		NativeRelicView.DisplayName.IsEmpty() ? 1 : 0,
-		NativeRelicView.Description.IsEmpty() ? 1 : 0);
 }
 
 void UBattleRelicWidget::HideRelicTooltip()
@@ -250,9 +177,6 @@ void UBattleRelicWidget::UpdateRelicTooltipPosition()
 		return;
 	}
 
-	// GetMousePositionOnViewport and SetPositionInViewport(..., false) use the
-	// same viewport-local/DPI-adjusted coordinate space, avoiding an extra DPI
-	// transform while the tooltip follows the cursor.
 	const FVector2D MousePosition = UWidgetLayoutLibrary::GetMousePositionOnViewport(this);
 	ActiveTooltipWidget->SetPositionInViewport(MousePosition + TooltipCursorOffset, false);
 }
