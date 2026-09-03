@@ -7,7 +7,6 @@
 #include "BattleHUDWidget.generated.h"
 
 class UBattleCardWidget;
-class UBattleRelicWidget;
 class UBattleStatusWidget;
 class UBattleHUDCombatantPresentationWidgetBase;
 class UBattleImmediatePreviewTextBlock;
@@ -31,8 +30,6 @@ class UWidget;
  * per-Record DrawPile-to-Hand movement. R9 adds formal Native Status rows and
  * exact-identity StatusChanged playback. R10 adds terminal Record rendering and
  * keeps PresentationUnavailable as a separate ViewModel-driven UI state.
- * Phase 7D adds the frozen player-Relic strip; it has no per-Record Relic
- * reducer and reconciles exact counter state only through Envelope FinalSnapshot.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidget : public UBattleHUDWidgetBase
@@ -45,9 +42,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
 	TSubclassOf<UBattleStatusWidget> StatusWidgetClass;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
-	TSubclassOf<UBattleRelicWidget> RelicWidgetClass;
 
 	// Native card-request call sites intentionally resolve to this C++ overload.
 	// Slow input preserves the inherited request path. A click that lands during
@@ -267,7 +261,6 @@ protected:
 	void RefreshHand();
 	void RefreshCombatants();
 	void RefreshStatusRows();
-	void RefreshRelics();
 	void RefreshEnergy();
 	void RefreshPileCounts();
 	void RefreshInputState();
@@ -378,11 +371,6 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> Txt_Outcome;
 
-	// Optional during the 7D Native asset migration. Production 7D acceptance
-	// requires WBP_BattleHUD_Native to provide this exact relic-strip binding.
-	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UHorizontalBox> HB_Relics;
-
 	// Truly optional surfaces. They are not required for the Native HUD shell.
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UVerticalBox> EnemyIntentPanel;
@@ -430,7 +418,7 @@ private:
 	int32 ActiveNativeSimplePrimaryAfter = 0;
 	int32 ActiveNativeSimpleSecondaryBefore = 0;
 	int32 ActiveNativeSimpleSecondaryAfter = 0;
-	int32 ActiveNativeEnergyMax = 0;
+	int32 ActiveNativeSimpleEnergyMax = 0;
 
 	// Frozen R7 Damage visual state. Target surfaces are weak local presentation
 	// references; all historical values are copied from the accepted Record.
