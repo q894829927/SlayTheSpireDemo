@@ -17,8 +17,7 @@ Phase 7 design: SEALED
 7A Relic Runtime: COMPLETE / VALIDATED / SEALED
 7B Status + Relic Trigger Sources: COMPLETE / VALIDATED / SEALED
 7C Sundial + GainEnergyAction: COMPLETE / VALIDATED / SEALED
-7D Relic Read/Frozen contract: C++ VALIDATED
-7D Relic Native hover UI amendment: IMPLEMENTED / BUILD VALIDATION PENDING / ASSET PENDING
+7D Relic Read / Frozen / Native UI: COMPLETE / VALIDATED / SEALED
 
 Post-seal card-face continuity correction:
 COMPLETE / VALIDATED
@@ -28,7 +27,7 @@ Active authority:
 
 ```text
 docs/Phase7RelicsImplementation.md
-docs/Phase7DRelicHoverUIAmendment.md   // later explicit 7D visible-UX refinement
+docs/Phase7DRelicHoverUIAmendment.md   // sealed 7D visible-UX refinement
 ```
 
 Accepted evidence:
@@ -115,7 +114,7 @@ Focused Strength Draw PIE visual continuity                  PASS
 Visible red -> white -> red regression                       NOT OBSERVED
 ```
 
-## 7D read/frozen contract — VALIDATED
+## 7D Relic Read / Frozen / Native UI — SEALED
 
 ```text
 URelicInstance runtime facts
@@ -125,17 +124,20 @@ URelicInstance runtime facts
 → FBattleHUDRelicView
 → FPresentationStateSnapshot.Player.Relics
 → UBattleHUDViewModel.Player.Relics by value
+→ Native Relic Strip / Tooltip
 ```
 
 `FBattleHUDRelicView` retains no `URelicInstance` or other mutable Gameplay runtime pointer. Relic display order is deterministic by RuntimeSequence.
 
-The user reported a successful Development Editor Build and:
+Accepted C++ evidence:
 
 ```text
-SlayTheSpireDemo.Phase7.RelicPresentation    3/3 PASS
+Development Editor Build                                      PASS
+SlayTheSpireDemo.Phase7.RelicPresentation.ReadAndFrozenSnapshot        PASS
+SlayTheSpireDemo.Phase7.RelicPresentation.FreezeContract               PASS
+SlayTheSpireDemo.Phase7.RelicPresentation.FinalSnapshotReconciliation  PASS
+SlayTheSpireDemo.Phase7.RelicPresentation                              3/3 PASS
 ```
-
-This validates Read/Frozen mapping plus FinalSnapshot counter reconciliation. The later hover-UI amendment changes only Native Widget presentation and therefore requires a new build/PIE gate, not a re-design of the Read/Frozen contract.
 
 ## 7D historical playback contract
 
@@ -151,11 +153,11 @@ Envelope completes
 → exact committed Relic counter becomes visible
 ```
 
-The focused FinalSnapshot reconciliation test locks the Sundial `2 -> 0` case while `EnergyChanged(+2)` is still being presented.
+The focused FinalSnapshot reconciliation test and manual PIE lock the Sundial `2 -> 0` case while `EnergyChanged(+2)` is still being presented.
 
-## 7D Native hover UI amendment
+## 7D Native Relic UI contract — VALIDATED
 
-The compact visible contract is now:
+Steady state:
 
 ```text
 no-counter Relic
@@ -165,40 +167,39 @@ counter Relic
 → icon + lower-right current integer badge
 → 0 / 1 / 2 as individual values
 → never "0/3", "1/3" or "2/3"
+```
 
-hover Relic icon
+Hover:
+
+```text
+Btn_RelicInteraction
+→ OnHovered
 → one custom transient tooltip
 → frozen DisplayName + Description
 → follows mouse with a small cursor offset
 
-mouse leave / Relic Widget destruction
+OnUnhovered / Relic Widget destruction
 → tooltip removed
 ```
 
-`CounterMax` remains frozen metadata but is not rendered in the steady-state badge. `bShowCounter` remains the only counter-visibility switch; there is no `RelicId == Sundial` UI branch.
+The production HUD `RelicStrip_Player` must remain `Not Hit-Testable (Self Only)`, not `Not Hit-Testable (Self & All Children)`, so child Relic interaction widgets remain in the Slate hit-test path.
 
-Native class split:
+User-reported manual PIE acceptance on **2026-09-03**:
 
 ```text
-UBattleRelicWidget
-→ Img_RelicIcon
-→ Txt_RelicCounter
-→ TooltipWidgetClass
-→ hover / mouse-move / leave lifecycle
-
-UBattleRelicTooltipWidget
-→ Txt_RelicName
-→ Txt_RelicDescription
-→ frozen FBattleHUDRelicView only
-
-UBattleRelicStripWidget
-→ unchanged
-→ reuses widgets by (RelicId, RuntimeSequence)
+Relic strip renders normally                                      PASS
+Sundial shows 0 / 1 / 2 only; never /3                          PASS
+Custom hover tooltip appears                                     PASS
+Tooltip shows DisplayName + Description                          PASS
+Tooltip follows mouse                                            PASS
+Mouse leave removes tooltip                                      PASS
+No duplicate tooltip / stuck hover                               PASS
+Third shuffle: historical 2 during A2, then 0 after FinalSnapshot PASS
 ```
 
-The old standard `SetToolTipText` path and the steady-state `Txt_RelicName` binding are removed from `UBattleRelicWidget`.
+7D is **COMPLETE / VALIDATED / SEALED**.
 
-## Production Sundial asset — 7D fields still pending
+## Production Sundial asset — ACCEPTED
 
 ```text
 DA_Relic_Sundial : URelicData
@@ -211,29 +212,18 @@ Triggers[0] = USundialTrigger
 
 bShowCounter = true
 CounterDisplayMax = 3
-Icon = authored/temporary visual asset
+Icon = authored Relic visual asset
 ```
 
 `CounterDisplayMax` is presentation metadata only; Gameplay authority remains the trigger's `ShufflesRequired`.
 
+Additional Relic texture assets, including outline artwork under the Relic texture area, are non-blocking cosmetic polish and do not reopen 7D.
+
 ## Next exact action
 
 ```text
-USER ACTION REQUIRED — UPDATED C++ GATE
+STOP — Phase 7D is sealed.
 
-1. git pull
-2. regenerate UE project files (new reflected Tooltip class was added)
-3. Development Editor Build once
-4. if Build passes, run SlayTheSpireDemo.Phase7.RelicPresentation once
-5. report Build + Automation result
+Do not reopen 7D Gameplay/Read/Frozen/FinalSnapshot contracts for cosmetic changes.
+Any future Relic Trigger/Effect composition refactor must be designed and gated as a separate follow-up slice.
 ```
-
-Do not create/update the Native Relic WBP assets until this updated C++ gate passes. After it passes, create only:
-
-```text
-WBP_BattleRelicTooltip_Native
-WBP_BattleRelic_Native
-WBP_BattleRelicStrip_Native
-```
-
-and embed the strip into `WBP_BattleHUD_Native`. Do not modify Legacy UI.
