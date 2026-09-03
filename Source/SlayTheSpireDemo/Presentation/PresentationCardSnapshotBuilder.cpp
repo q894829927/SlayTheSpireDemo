@@ -33,6 +33,7 @@ bool PresentationCardSnapshot::TryBuild(
 	OutSnapshot.CardType = Definition->CardType;
 	OutSnapshot.TargetType = Definition->TargetType;
 	OutSnapshot.Description = FBattleTextResolver::ResolveCardDescription(Card, Source);
+	OutSnapshot.RichDescription = FBattleTextResolver::ResolveCardRichDescription(Card, Source);
 	OutSnapshot.CardArt = Definition->CardArt;
 	return true;
 }
