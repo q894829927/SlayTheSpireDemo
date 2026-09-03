@@ -5,6 +5,9 @@
 #include "../Combat/Combatant.h"
 #include "../Modifiers/Damage/DamageModifierPipeline.h"
 #include "../Modifiers/Damage/DamageSpec.h"
+#include "../Relics/RelicContainer.h"
+#include "../Relics/RelicData.h"
+#include "../Relics/RelicInstance.h"
 #include "BattleTextResolver.h"
 #include "Containers/Ticker.h"
 
@@ -26,12 +29,81 @@ namespace
 			CardView.CurrentRichDescription = FBattleTextResolver::ResolveCardRichDescription(CardView.Card.Get(), Source);
 		}
 	}
+
+	bool BuildRelicReadViews(
+		const URelicContainer* RelicContainer,
+		TArray<FRelicReadView>& OutRelics)
+	{
+		OutRelics.Reset();
+		if (!IsValid(RelicContainer))
+		{
+			return true;
+		}
+
+		const TArray<TObjectPtr<URelicInstance>>& Relics = RelicContainer->GetRelics();
+		OutRelics.Reserve(Relics.Num());
+		TSet<FName> SeenRelicIds;
+
+		for (const TObjectPtr<URelicInstance>& RelicPtr : Relics)
+		{
+			URelicInstance* Relic = RelicPtr.Get();
+			URelicData* Definition = IsValid(Relic) ? Relic->GetDefinition() : nullptr;
+			const FName RelicId = IsValid(Relic) ? Relic->GetRelicId() : NAME_None;
+			const uint64 RuntimeSequence = IsValid(Relic) ? Relic->GetRuntimeSequence() : 0;
+			const int32 Counter = IsValid(Relic) ? Relic->GetCounter() : -1;
+
+			if (!IsValid(Relic)
+				|| !IsValid(Definition)
+				|| RelicId.IsNone()
+				|| RuntimeSequence == 0
+				|| Counter < 0
+				|| SeenRelicIds.Contains(RelicId))
+			{
+				OutRelics.Reset();
+				return false;
+			}
+
+			SeenRelicIds.Add(RelicId);
+
+			FRelicReadView View;
+			View.Relic = Relic;
+			View.Definition = Definition;
+			View.RelicId = RelicId;
+			View.RuntimeSequence = RuntimeSequence;
+			View.Counter = Counter;
+			OutRelics.Add(MoveTemp(View));
+		}
+
+		OutRelics.Sort(
+			[](const FRelicReadView& A, const FRelicReadView& B)
+			{
+				return A.RuntimeSequence < B.RuntimeSequence;
+			}
+		);
+
+		for (int32 Index = 1; Index < OutRelics.Num(); ++Index)
+		{
+			if (OutRelics[Index - 1].RuntimeSequence >= OutRelics[Index].RuntimeSequence)
+			{
+				OutRelics.Reset();
+				return false;
+			}
+		}
+
+		return true;
+	}
 }
 
 bool ABattleManager::TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const
 {
 	if (!TryBuildReadSnapshot(OutSnapshot))
 	{
+		return false;
+	}
+
+	if (!BuildRelicReadViews(GetPlayerRelicContainer(), OutSnapshot.Relics))
+	{
+		OutSnapshot = FBattleReadSnapshot{};
 		return false;
 	}
 
