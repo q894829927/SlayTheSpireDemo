@@ -14,10 +14,11 @@
 #include "Events/BattleEvent.h"
 #include "Events/BattleEventDispatcher.h"
 #include "Presentation/BattlePresentationRecorder.h"
+#include "Relics/DeckShuffledCountTrigger.h"
+#include "Relics/Effects/GainEnergyRelicEffect.h"
 #include "Relics/RelicContainer.h"
 #include "Relics/RelicData.h"
 #include "Relics/RelicInstance.h"
-#include "Relics/SundialTrigger.h"
 #include "Engine/World.h"
 
 namespace Phase7C
@@ -57,7 +58,8 @@ namespace Phase7C
 		ACombatant* Player = nullptr;
 		ACombatant* Enemy = nullptr;
 		URelicData* SundialDefinition = nullptr;
-		USundialTrigger* SundialTrigger = nullptr;
+		UDeckShuffledCountTrigger* SundialTrigger = nullptr;
+		UGainEnergyRelicEffect* SundialEnergyEffect = nullptr;
 
 		FSundialFixture()
 		{
@@ -91,9 +93,11 @@ namespace Phase7C
 			SundialDefinition = NewObject<URelicData>(World);
 			SundialDefinition->RelicId = TEXT("Sundial");
 			SundialDefinition->DisplayName = FText::FromString(TEXT("Sundial"));
-			SundialTrigger = NewObject<USundialTrigger>(SundialDefinition);
-			SundialTrigger->ShufflesRequired = 3;
-			SundialTrigger->EnergyGain = 2;
+			SundialTrigger = NewObject<UDeckShuffledCountTrigger>(SundialDefinition);
+			SundialTrigger->RequiredCount = 3;
+			SundialEnergyEffect = NewObject<UGainEnergyRelicEffect>(SundialTrigger);
+			SundialEnergyEffect->Amount = 2;
+			SundialTrigger->Effects.Add(SundialEnergyEffect);
 			SundialDefinition->Triggers.Add(SundialTrigger);
 			Battle->DebugStartingRelics.Add(SundialDefinition);
 			Battle->StartBattle();
@@ -106,6 +110,7 @@ namespace Phase7C
 				&& IsValid(Enemy)
 				&& IsValid(SundialDefinition)
 				&& IsValid(SundialTrigger)
+				&& IsValid(SundialEnergyEffect)
 				&& IsValid(Battle->GetDeckRuntimeForTesting())
 				&& IsValid(Battle->GetActionQueueForTesting())
 				&& IsValid(Battle->GetPlayerRelicContainer())
@@ -363,15 +368,15 @@ namespace Phase7C
 		TestEqual(TEXT("Trigger/BuildReactions are read-only for Counter"), Sundial->GetCounter(), 2);
 		TestEqual(TEXT("Trigger/BuildReactions are read-only for Energy"), Fixture.Battle->Energy, EnergyBeforeThird);
 
-		// Mutation after BuildReactions proves the queued Action owns the frozen
-		// intended 3/+2 values rather than rediscovering Trigger configuration.
-		Fixture.SundialTrigger->ShufflesRequired = 99;
-		Fixture.SundialTrigger->EnergyGain = 99;
+		// Mutation after BuildReactions proves the queued generic CounterAction owns
+		// the frozen RequiredCount and the prepared GainEnergyAction owns Amount=2.
+		Fixture.SundialTrigger->RequiredCount = 99;
+		Fixture.SundialEnergyEffect->Amount = 99;
 
 		UBattleActionQueue* Queue = Fixture.Battle->GetActionQueueForTesting();
 		if (!TestTrue(TEXT("Frozen reaction executes"), Queue->StartProcessing())) return false;
-		TestEqual(TEXT("Frozen RequiredShuffles resets counter"), Sundial->GetCounter(), 0);
-		TestEqual(TEXT("Frozen EnergyGain grants +2"), Fixture.Battle->Energy, EnergyBeforeThird + 2);
+		TestEqual(TEXT("Frozen RequiredCount resets counter"), Sundial->GetCounter(), 0);
+		TestEqual(TEXT("Frozen GainEnergy reward grants +2"), Fixture.Battle->Energy, EnergyBeforeThird + 2);
 		return true;
 	}
 }
