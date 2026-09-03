@@ -43,9 +43,6 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Relic|Tooltip")
 	FVector2D TooltipCursorOffset = FVector2D(18.0f, 18.0f);
 
-	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Relic|Tooltip", meta = (ClampMin = "0.0"))
-	float TooltipViewportEdgePadding = 8.0f;
-
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Relic|Tooltip")
 	int32 TooltipZOrder = 1000;
 
