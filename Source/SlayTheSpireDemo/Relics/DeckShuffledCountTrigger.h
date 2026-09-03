@@ -1,20 +1,17 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "../Events/BattleTrigger.h"
+#include "RelicCountTrigger.h"
 #include "DeckShuffledCountTrigger.generated.h"
 
 class URelicEffect;
 
 UCLASS(EditInlineNew, DefaultToInstanced)
-class SLAYTHESPIREDEMO_API UDeckShuffledCountTrigger : public UBattleTrigger
+class SLAYTHESPIREDEMO_API UDeckShuffledCountTrigger : public URelicCountTrigger
 {
 	GENERATED_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Relic|Trigger|Count", meta = (ClampMin = "1"))
-	int32 RequiredCount = 1;
-
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Relic|Trigger|Effects")
 	TArray<TObjectPtr<URelicEffect>> Effects;
 
