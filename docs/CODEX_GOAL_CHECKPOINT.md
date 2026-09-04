@@ -11,17 +11,26 @@ Phase 7A–7F: COMPLETE / VALIDATED / SEALED
 Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
-Card Expansion / Upgrade Foundation:
-REVIEW FIX IMPLEMENTED / REVALIDATION PENDING
+Card Upgrade STS-Style Refactor:
+DESIGN APPROVED / AUTHORITY LOCKED / IMPLEMENTATION NOT STARTED
 
-Production Card Base/Plus Authoring:
-BLOCKED ONLY BY CURRENT DIRECTLY-INVALIDATED REVALIDATION GATES
+Previous FCardUpgradeConfig Foundation:
+HISTORICAL / SUPERSEDED / DO NOT REVALIDATE AS FINAL TARGET
+
+Production Card Authoring:
+BLOCKED BY STS-STYLE REFACTOR + SIX-ASSET MIGRATION
 
 Card Trigger Source Expansion:
 DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED
 ```
 
-## Current Upgrade Foundation authority
+## Current authority
+
+```text
+docs/CardUpgradeSTSStyleRefactor.md
+```
+
+Historical only:
 
 ```text
 docs/CardUpgradeFoundationDesign.md
@@ -29,154 +38,159 @@ docs/CardUpgradeFoundationImplementation.md
 docs/CardUpgradeFoundationValidation.md
 ```
 
-Current authoritative ordinary-card model:
+## Locked target model
 
 ```text
+UCardData / CardEffects = immutable shared definitions
+UCardInstance::bUpgraded = single ordinary-card mutable truth
+
 UCardData
-├─ stable shared fields
-│  ├─ CardId
-│  ├─ DisplayName
-│  ├─ CardArt
-│  ├─ CardType
-│  └─ TargetType
-│
-├─ Base
-│  ├─ Description
-│  ├─ BaseCost
-│  ├─ DefaultDestination
-│  └─ Effects[]
-│
-├─ bHasUpgrade
-└─ Upgrade : FCardUpgradeConfig
-   ├─ Description
-   ├─ Cost
-   ├─ DefaultDestination
-   └─ Effects[]
+├─ shared identity/presentation/rules
+├─ Description
+├─ BaseCost
+├─ UpgradedCost
+├─ DefaultDestination
+└─ one Effects[]
 
-UCardInstance
-├─ Definition
-├─ RuntimeId
-└─ bool bUpgraded
+Effects
+→ typed Base / Upgraded authored fields only where that Effect owns the value
 ```
 
-`UCardVariantData / UpgradedVariant` is no longer part of ordinary-card authoring. A hidden load-only compatibility shim may remain for assets saved during the brief old implementation window, but it is not an authoring surface.
-
-## Stable metadata rule
-
-These values are authored once and are not duplicated in Upgrade:
+Remove as ordinary-card authority:
 
 ```text
-DisplayName
-CardArt
-CardType
-TargetType
+bHasUpgrade
+FCardUpgradeConfig
+second Upgrade.Description
+second Upgrade.Destination
+second Upgrade.Effects[]
 ```
 
-The upgraded DisplayName string itself does not change:
+## Effective-value boundary
 
-```text
-Base     → Strike
-Upgraded → Strike
+Effect resolver API is deliberately narrow:
+
+```cpp
+GetEffectiveXXX(bool bIsUpgraded)
 ```
 
-No auto-appended `+` and no second authored name.
+not:
 
-Upgrade state is presented visually:
-
-```text
-Base name     → Designer/default color
-Upgraded name → gold
+```cpp
+GetEffectiveXXX(UCardInstance*)
 ```
 
-## Presentation state boundary
+Calling boundary freezes `Card->IsUpgraded()` and passes only the bool.
 
-The mutable Gameplay flag is frozen before UI consumption:
+Current build-time freeze is legal because the card being played does not change its own `bUpgraded` during that resolution. If a future mechanic can change that state mid-resolution, affected effective-value resolution must move to Action Execute-time.
+
+No `Upgraded*=0` fallback semantics are permitted. Every Upgraded field is explicitly authored and independently validated.
+
+## Presentation state remains locked
 
 ```text
-UCardInstance::IsUpgraded()
+UCardInstance::bUpgraded
 → FPresentationCardSnapshot.bUpgraded
-→ PresentationCardView
 → FBattleHUDCardView.bUpgraded
 → UBattleCardWidget
-→ gold Txt_CardName
+→ upgraded name gold
 ```
 
-The current Hand freeze also writes the same `bUpgraded` fact directly into `FBattleHUDCardView`.
+DisplayName text itself remains unchanged. No `+` suffix in Gameplay.
 
-The Widget never queries Gameplay to decide the color and never mutates upgrade state.
+## Migration scope
 
-## Effective gameplay boundary
+All six current production card assets are in scope:
 
 ```text
-stable:
-GetDisplayName()   // same authored text before/after upgrade
-GetCardArt()
-GetCardType()
-GetTargetType()
-
-Base/Upgrade-sensitive:
-GetDescriptionFormat()
-GetCurrentCost()
-ResolveDestination()
-GetEffects()
+DA_Card_Strike
+DA_Card_Defend
+DA_Card_PommelStrike
+DA_Card_TwinStrike
+DA_Card_Uppercut
+DA_Card_Inflame
 ```
 
-Gameplay / Preview consumers do not branch on specific CardId or Effect type to implement ordinary upgrade behavior.
-
-## Mutation authority
+Migration rule:
 
 ```text
-UUpgradeCardAction
-→ CardInstance::CommitUpgrade
-→ false -> true once
+old model still present
+→ add new typed Upgraded* fields
+→ parity-check/copy old Upgrade values into new fields
+→ only after parity remove old serialized ordinary-upgrade fields
+→ USER ACTION REQUIRED: open/resave all six assets in UE Editor
 ```
 
-Second upgrade remains generic fail-soft and does not ResolutionFault.
+`UCardVariantData` load shim stays until asset load/resave evidence proves removal is safe.
 
-## Historical validation and current invalidation
+## Test migration
 
-Earlier user-side UE5.8 evidence:
+Do not add a parallel new upgrade test file.
+
+Migrate:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build: PASS
-SlayTheSpireDemo.CardUpgrade: PASS
-SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
+Source/SlayTheSpireDemoTests/Private/CardUpgradeFoundationTests.cpp
 ```
 
-Those results remain historical/sticky where contracts were not subsequently changed.
-
-The current review fixes changed ordinary upgrade authoring plus card Presentation DTO/mapping/widget styling. Therefore current directly-invalidated gates are:
+Remove old two-object assertions and prove:
 
 ```text
-1. Editor Build once
-2. SlayTheSpireDemo.CardUpgrade once
-3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper once
-4. SlayTheSpireDemo.Phase6UIA2N.R4 once
+same CardId / RuntimeId
+same Effects object identity across upgrade
+bUpgraded false -> true once
+base values before upgrade
+upgraded typed values after upgrade
+same DisplayName text
+frozen bUpgraded propagation
+Gameplay / Dynamic Text / A3 value parity
 ```
 
-The previous A3 ImmediatePreview PASS remains sticky because the gold-name pass did not modify A3 production source.
+## Final validation budget
 
-Do not expand to Phase6R / A2D5 / Shipping unless one of these focused gates exposes a shared-contract regression.
-
-## Deferred / non-goals
-
-Current ordinary-card Foundation still does not implement:
+Final-head gates for the refactor are:
 
 ```text
-RepeatableUpgradeCapability
-Searing Blow
-Armaments
-Run Deck persistence
-campfire / reward / shop
-save/load
-Phase 8
+1. SlayTheSpireDemoEditor Win64 Development Build
+2. SlayTheSpireDemo.CardUpgrade
+3. SlayTheSpireDemo.UIA3.DynamicText
+4. SlayTheSpireDemo.UIA3.ImmediatePreview
+5. SlayTheSpireDemo.Phase6C
+6. one focused PIE visual pass
+```
+
+Phase6C is required because current Effect `BuildActions` authored-value reads are modified.
+
+Do not run full Phase 6 / Phase 7.
+
+The previously pending PresentationCardViewMapper/R4 gates belonged to the superseded intermediate gold-name implementation state; they do not need to be run merely to seal that obsolete model. Their relevant upgraded-state mapping behavior remains part of the final refactor code and can be investigated only if focused final gates expose a Presentation regression.
+
+## Phase 8 relation
+
+Phase 8 remains deferred and non-blocking.
+
+The new spawn/starting-card upgraded-state spec may later allow PIE setup with two upgraded Pommel Strike instances, but Phase 8 Automation remains transient-definition based and does not lock production Pommel numeric values.
+
+## Explicit non-goals
+
+```text
+repeatable upgrade / UpgradeCount / Searing Blow
+UpgradedDescriptionOverride
+effect count/type structural replacement
+universal Upgrade Delta / Upgrade Context
+card-name '+' suffix
+Armaments content implementation
+Phase 8 implementation
+save/load/run-deck persistence
+campfire/reward/shop upgrade UX
 ```
 
 ## Next exact action
 
 ```text
-Run the current directly-invalidated gates.
-If all PASS:
-→ restore Card Expansion / Upgrade Foundation = COMPLETE / VALIDATED / SEALED
-→ start Production Card Base/Plus Authoring
+Implement R1 from docs/CardUpgradeSTSStyleRefactor.md:
+→ add UpgradedCost and typed per-effect Upgraded* fields
+→ add bool-only effective helpers + validation
+→ keep old serialized fields temporarily for six-asset parity migration
+→ do not switch/remove old runtime authority until parity authoring is complete
 ```
