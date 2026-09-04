@@ -3,11 +3,11 @@
 #include "CardData.h"
 #include "Effects/CardEffect.h"
 
-void UCardInstance::Initialize(UCardData* InDefinition, int32 InRuntimeId)
+void UCardInstance::Initialize(UCardData* InDefinition, int32 InRuntimeId, bool bStartUpgraded)
 {
 	Definition = InDefinition;
 	RuntimeId = InRuntimeId;
-	bUpgraded = false;
+	bUpgraded = bStartUpgraded;
 }
 
 const UCardData* UCardInstance::GetDefinition() const
@@ -32,9 +32,7 @@ bool UCardInstance::IsUpgraded() const
 
 bool UCardInstance::CanUpgrade() const
 {
-	return IsValid(Definition.Get())
-		&& !bUpgraded
-		&& Definition->bHasUpgrade;
+	return IsValid(Definition.Get()) && !bUpgraded;
 }
 
 bool UCardInstance::CommitUpgrade()
@@ -70,11 +68,7 @@ ECardTargetType UCardInstance::GetTargetType() const
 
 FText UCardInstance::GetDescriptionFormat() const
 {
-	if (!IsValid(Definition.Get()))
-	{
-		return FText::GetEmpty();
-	}
-	return bUpgraded ? Definition->Upgrade.Description : Definition->Description;
+	return IsValid(Definition.Get()) ? Definition->Description : FText::GetEmpty();
 }
 
 int32 UCardInstance::GetCurrentCost() const
@@ -83,26 +77,20 @@ int32 UCardInstance::GetCurrentCost() const
 	{
 		return 0;
 	}
-	return FMath::Max(0, bUpgraded ? Definition->Upgrade.Cost : Definition->BaseCost);
+	return FMath::Max(0, bUpgraded ? Definition->UpgradedCost : Definition->BaseCost);
 }
 
 ECardDestination UCardInstance::ResolveDestination() const
 {
-	if (!IsValid(Definition.Get()))
-	{
-		return ECardDestination::Discard;
-	}
-	return bUpgraded ? Definition->Upgrade.DefaultDestination : Definition->DefaultDestination;
+	return IsValid(Definition.Get())
+		? Definition->DefaultDestination
+		: ECardDestination::Discard;
 }
 
 const TArray<TObjectPtr<UCardEffect>>& UCardInstance::GetEffects() const
 {
 	static const TArray<TObjectPtr<UCardEffect>> EmptyEffects;
-	if (!IsValid(Definition.Get()))
-	{
-		return EmptyEffects;
-	}
-	return bUpgraded ? Definition->Upgrade.Effects : Definition->Effects;
+	return IsValid(Definition.Get()) ? Definition->Effects : EmptyEffects;
 }
 
 FString UCardInstance::GetDebugLabel() const
