@@ -7,7 +7,6 @@
 
 class UCardData;
 class UCardEffect;
-class UCardVariantData;
 class UTexture2D;
 class UUpgradeCardAction;
 
@@ -26,12 +25,15 @@ public:
 	bool IsUpgraded() const;
 	bool CanUpgrade() const;
 
+	// Stable metadata never changes for an ordinary upgrade.
 	FText GetDisplayName() const;
-	FText GetDescriptionFormat() const;
 	UTexture2D* GetCardArt() const;
 	ECardType GetCardType() const;
-	int32 GetCurrentCost() const;
 	ECardTargetType GetTargetType() const;
+
+	// Upgrade-sensitive authored configuration.
+	FText GetDescriptionFormat() const;
+	int32 GetCurrentCost() const;
 	ECardDestination ResolveDestination() const;
 	const TArray<TObjectPtr<UCardEffect>>& GetEffects() const;
 
@@ -40,7 +42,6 @@ public:
 private:
 	friend class UUpgradeCardAction;
 
-	const UCardVariantData* GetActiveUpgradedVariant() const;
 	bool CommitUpgrade();
 
 	UPROPERTY(Transient)
