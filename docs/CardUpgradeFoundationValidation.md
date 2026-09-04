@@ -6,17 +6,7 @@
 
 ## Historical validated scope
 
-上一轮简化 Foundation 曾以以下 source shape 通过用户本地验证：
-
-```text
-UCardData Base configuration
-+ optional UCardVariantData UpgradedVariant
-+ UCardInstance.bUpgraded
-+ effective getters
-+ UUpgradeCardAction
-```
-
-用户当时明确报告：
+更早的 Upgrade Foundation 版本曾由用户在本地 UE5.8 环境验证通过：
 
 ```text
 SlayTheSpireDemoEditor Win64 Development Build: PASS
@@ -24,13 +14,13 @@ SlayTheSpireDemo.CardUpgrade: PASS
 SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-该证据是真实历史证据，不删除。
+这些证据是真实历史证据并继续保留。
 
-## Review fix that invalidated the old seal
+## Current review-fix source
 
-随后用户指出升级配置不应重复名字、图标等稳定字段。
+用户随后进一步收敛 ordinary-card authoring 与升级名称表现。
 
-当前 source 已改为：
+当前数据模型：
 
 ```text
 stable shared UCardData fields
@@ -53,35 +43,80 @@ Upgrade : FCardUpgradeConfig
 └─ Effects[]
 ```
 
-同时移除了 ordinary-card `UCardVariantData` authoring object，并让 `GetDisplayName()` 在升级后从同一个 authored name 派生 `+`。
+当前升级名称合同：
 
-因此上一轮 COMPLETE / VALIDATED / SEALED 状态不能直接覆盖当前 head。
+```text
+DisplayName text is stable
+Base     → default Designer name color
+Upgraded → gold name color
+```
+
+不自动拼接 `+`，也不 author 第二个名字。
+
+Presentation state path：
+
+```text
+UCardInstance::bUpgraded
+→ FPresentationCardSnapshot.bUpgraded
+→ FBattleHUDCardView.bUpgraded
+→ UBattleCardWidget
+→ gold Txt_CardName
+```
+
+Current Hand freeze 同样冻结 `bUpgraded` 到 `FBattleHUDCardView`。
+
+## Why the previous seal is not current-head evidence
+
+在历史 PASS 后，当前 head 修改了：
+
+```text
+CardData / CardInstance ordinary upgrade shape
+BattleText definition validation
+CardUpgrade focused tests
+FBattleHUDCardView
+FPresentationCardSnapshot
+PresentationCardSnapshotBuilder
+PresentationCardView
+BattleManager current-state Presentation freeze
+UBattleCardWidget name styling
+```
+
+因此之前的 COMPLETE / VALIDATED / SEALED 状态不能直接覆盖当前 head。
 
 ## Required revalidation
 
-本次 review fix 直接失效的 Gate 只有：
+当前只重跑直接失效 Gate：
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development Build
-2. SlayTheSpireDemo.CardUpgrade focused Automation
+2. SlayTheSpireDemo.CardUpgrade
+3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper
+4. SlayTheSpireDemo.Phase6UIA2N.R4
 ```
 
-A3 production source没有在本 review fix 中再次修改，因此上一轮：
+此前：
 
 ```text
 SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-保持 sticky，不要求重跑。
+保持 sticky，因为 gold-name review fix 没有修改 A3 production source。
+
+当前也不要求 Phase6R / A2D5 / Shipping aggregate gate。
 
 ## Current claim boundary
 
 当前只能声明：
 
 ```text
-Review-fix source implemented
-Static source shape updated
-Revalidation pending
+review-fix source implemented
+static contract synchronized
+revalidation pending
 ```
 
-不能重新声明 Foundation sealed，直到上述两个 Gate PASS。
+只有四项直接失效 Gate 全部 PASS 后，才恢复：
+
+```text
+Card Expansion / Upgrade Foundation
+COMPLETE / VALIDATED / SEALED
+```
