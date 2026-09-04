@@ -16,7 +16,10 @@ class SLAYTHESPIREDEMO_API UCardInstance : public UObject
 	GENERATED_BODY()
 
 public:
-	void Initialize(UCardData* InDefinition, int32 InRuntimeId);
+	// Creation-time upgraded state belongs to the runtime instance, never the
+	// shared UCardData definition. In-combat upgrades still go through
+	// UUpgradeCardAction / CommitUpgrade().
+	void Initialize(UCardData* InDefinition, int32 InRuntimeId, bool bStartUpgraded = false);
 
 	const UCardData* GetDefinition() const;
 	int32 GetRuntimeId() const;
@@ -31,7 +34,9 @@ public:
 	ECardType GetCardType() const;
 	ECardTargetType GetTargetType() const;
 
-	// Upgrade-sensitive authored configuration.
+	// Ordinary upgrades keep one shared Description / Destination / Effects
+	// composition. Only typed authored values such as cost/effect amounts select
+	// Base vs Upgraded using this instance's bUpgraded state.
 	FText GetDescriptionFormat() const;
 	int32 GetCurrentCost() const;
 	ECardDestination ResolveDestination() const;
