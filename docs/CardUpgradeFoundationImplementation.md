@@ -2,240 +2,213 @@
 
 日期：**2026-09-04**
 
-状态：**COMPLETE / VALIDATED / SEALED**
+状态：**REVIEW FIX IMPLEMENTED / REVALIDATION PENDING**
 
-本文件是 Card Expansion / Upgrade Foundation 的 implementation authority。用户已明确要求：**简化阶段并开始执行**；随后在本地 UE5.8 环境完成规定 Build 与 focused Automation，并报告全部通过。
+本文件是 Card Expansion / Upgrade Foundation 的 implementation authority。
 
 ---
 
-## 1. Simplified model
+## 1. Current simplified model
 
-普通卡不建立通用升级表达式、typed delta 系统或多阶段参数解释器。
+普通卡继续使用：
 
 ```text
-UCardData
-├─ Base configuration        // 现有字段，保持现有资产兼容
-└─ optional UpgradedVariant  // 第二套完整 authored configuration
-
 UCardInstance
 └─ bool bUpgraded
 ```
 
-```text
-bUpgraded=false
-→ Base
+但升级配置已经进一步收窄，不再使用 `UCardVariantData` 完整复制整张卡。
 
-bUpgraded=true
-→ UpgradedVariant
+当前 source shape：
+
+```text
+UCardData
+├─ stable shared fields
+│  ├─ CardId
+│  ├─ DisplayName
+│  ├─ CardArt
+│  ├─ CardType
+│  └─ TargetType
+│
+├─ Base authored fields
+│  ├─ Description
+│  ├─ BaseCost
+│  ├─ DefaultDestination
+│  └─ Effects[]
+│
+├─ bHasUpgrade
+└─ Upgrade : FCardUpgradeConfig
+   ├─ Description
+   ├─ Cost
+   ├─ DefaultDestination
+   └─ Effects[]
 ```
 
-`CardId` 只存在于 `UCardData`；升级前后仍是同一个 CardInstance / RuntimeId。
+Editor 不再创建/选择 `Card Variant Data` UObject。
 
 ---
 
-## 2. Implemented data model
+## 2. Why stable fields are not duplicated
 
-`UCardData` 顶层现有字段继续作为 Base：
+普通升级不需要重新填写：
 
 ```text
 DisplayName
-Description
 CardArt
 CardType
 TargetType
-BaseCost
-DefaultDestination
-Effects[]
 ```
 
-新增 inline `UCardVariantData`：
+`DisplayName` 的可见 `+` 从 runtime upgrade state 派生：
 
 ```text
-DisplayName
-Description
-CardArt
-CardType
-TargetType
-Cost
-DefaultDestination
-Effects[]
+Strike → Strike+
 ```
 
-以及：
-
-```text
-UCardData.UpgradedVariant
-```
-
-没有 `UpgradedVariant` 的卡不能执行普通升级。
+不是第二个 authored 名字。
 
 ---
 
-## 3. Implemented runtime boundary
+## 3. Runtime boundary
 
-`UCardInstance` 已新增：
+`UCardInstance` 当前行为：
 
 ```text
-bUpgraded
-IsUpgraded()
-CanUpgrade()
-GetDisplayName()
-GetDescriptionFormat()
-GetCardArt()
-GetCardType()
-GetCurrentCost()
-GetTargetType()
-ResolveDestination()
-GetEffects()
+stable fields
+→ always read UCardData top-level
+
+Description / Cost / Destination / Effects
+→ bUpgraded ? Upgrade : Base
 ```
 
-只有 `UCardInstance` 负责 Base/Plus 选择。
+有效 getter：
 
-Gameplay / Preview / Presentation 不应自行根据 `bUpgraded` 选择 definition 字段。
+```text
+GetDisplayName()       // upgraded derives +
+GetCardArt()           // shared
+GetCardType()          // shared
+GetTargetType()        // shared
+GetDescriptionFormat() // Base/Upgrade
+GetCurrentCost()       // Base/Upgrade
+ResolveDestination()   // Base/Upgrade
+GetEffects()           // Base/Upgrade
+```
 
 ---
 
-## 4. Implemented mutation
+## 4. Mutation
 
-新增：
-
-```text
-UUpgradeCardAction
-```
-
-合同：
+`UUpgradeCardAction` 合同不变：
 
 ```text
-valid Card + UpgradedVariant + !bUpgraded
-→ commit false -> true
+valid Card + bHasUpgrade + !bUpgraded
+→ false -> true
 
-already upgraded / no UpgradedVariant
-→ reject fail-soft
+already upgraded / bHasUpgrade=false
+→ fail-soft reject
 → Finish
 → no ResolutionFault
 ```
 
-本 slice 不创建 `CardUpgradedEvent`。
-
 ---
 
-## 5. Migrated production consumers
+## 5. Production consumers
 
-以下 variant-sensitive 路径已切到 `UCardInstance` effective getters：
+此前迁移的 consumer boundary 保持不变：
 
 ```text
 PlayCardAction
-→ target + Effects + committed card-face resolution
-
 BattleTextResolver
-→ Description format + target + Effects
-→ validates both Base and Upgraded authored configurations
-
 BattleManagerUIA3Preview
-→ effective Effects
-
 PresentationCardSnapshotBuilder
-→ effective display/cost/type/target/art/text
-
 BattleManager current-state Presentation freeze
-→ effective display/type/art
 ```
 
-现有 `FCardReadView` 已通过 `GetCurrentCost / GetTargetType` 获得 effective cost/target；description 继续通过已迁移的 `BattleTextResolver` 解析。
+review fix 只缩窄 upgrade authoring shape，没有新建第二套 Gameplay path。
 
 ---
 
 ## 6. Focused Automation
 
-新增：
+继续使用：
 
 ```text
 SlayTheSpireDemo.CardUpgrade.SingleVariant
 SlayTheSpireDemo.CardUpgrade.EffectiveConsumers
 ```
 
-覆盖：
+测试已更新为验证：
 
 ```text
-Base getters
-CanUpgrade
-UpgradeCardAction one-time commit
-second action fail-soft rejection
-stable CardId / RuntimeId
-Base/Plus authored Effects are distinct
-Base Draw 1 -> Plus Draw 2 effective Effects
-Base/Plus dynamic description
-Base/Plus committed card snapshot
-```
-
-A3 implementation迁移到 `Card->GetEffects()`，因此本 slice 还要求重跑直接失效的 A3 ImmediatePreview focused gate。
-
----
-
-## 7. Validation evidence
-
-2026-09-04，用户在本地 UE5.8 环境报告以下规定 Gate 全部通过：
-
-```text
-SlayTheSpireDemoEditor Win64 Development Build: PASS
-SlayTheSpireDemo.CardUpgrade: PASS
-SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
-```
-
-这些结果属于用户本地执行的 validation evidence；本工具环境没有独立重跑 UE。
-
-本 slice 没有运行、也不需要据此宣称：
-
-```text
-full Phase6R aggregate
-Shipping exclusion
-manual PIE
-packaged-game validation
-```
-
-详细 seal 记录见：
-
-```text
-docs/CardUpgradeFoundationValidation.md
+stable DisplayName/CardType/TargetType are not duplicated
+upgraded display name derives '+' automatically
+Base/Upgrade Description/Cost/Destination/Effects switch correctly
+Base/Upgrade share CardId / RuntimeId
+second upgrade remains fail-soft
 ```
 
 ---
 
-## 8. Explicit non-goals
+## 7. Validation state
+
+上一轮用户已经通过：
+
+```text
+Editor Build
+SlayTheSpireDemo.CardUpgrade
+SlayTheSpireDemo.UIA3.ImmediatePreview
+```
+
+但该证据对应旧 `UCardVariantData` source shape。
+
+本次 review fix 修改了：
+
+```text
+CardData.h
+CardInstance.h/.cpp
+BattleTextResolver.cpp
+CardUpgradeFoundationTests.cpp
+```
+
+因此旧 seal 作为历史证据保留，但当前 source 需要重新：
+
+```text
+Editor Build once
+→ SlayTheSpireDemo.CardUpgrade once
+```
+
+本次没有修改 A3 production code，因此上一轮 A3 ImmediatePreview PASS 仍 sticky，不要求再次运行。
+
+---
+
+## 8. Non-goals
+
+仍不做：
 
 ```text
 RepeatableUpgradeCapability
 Searing Blow
 Armaments
-Run Deck persistence
-campfire / reward / shop
+Run Deck
+campfire/reward/shop
 save/load
 CardUpgradedEvent
-universal EffectiveCardFacts
-upgrade delta/expression language
-production .uasset migration
 Phase 8
 ```
 
-重复升级后续单独设计，不污染普通卡的 `bool + two configs` 模型。
-
 ---
 
-## 9. Final seal state
+## 9. Stop state
 
 ```text
-[x] Base + UpgradedVariant runtime implemented
-[x] UCardInstance effective getters implemented
-[x] UpgradeCardAction implemented
-[x] variant-sensitive production consumers migrated
-[x] focused Automation source added
-[x] docs/checkpoint updated
-[x] Editor Build PASS
-[x] CardUpgrade focused Automation PASS
-[x] A3 directly-invalidated regression PASS
-[x] Validation record / seal
+[x] remove UCardVariantData ordinary authoring object
+[x] add slim FCardUpgradeConfig
+[x] keep name/art/type/target shared
+[x] derive '+' from runtime upgrade state
+[x] update validation and focused Automation source
+[ ] Editor Build PASS on review-fix head
+[ ] SlayTheSpireDemo.CardUpgrade PASS on review-fix head
+[ ] restore validation seal
 ```
 
-**Card Expansion / Upgrade Foundation is now COMPLETE / VALIDATED / SEALED.**
-
-下一 bounded task 是 production card Base/Plus authoring；本 Foundation 不再继续扩 scope，除非后续真实卡牌证明当前合同不足。
+当前不继续 production card authoring，直到这两个直接失效 Gate 重新通过。
