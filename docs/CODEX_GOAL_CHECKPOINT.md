@@ -12,19 +12,14 @@ Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
 Card Upgrade STS-Style Refactor:
-R3 MOST GATES PASS / DYNAMICTEXT CORRECT-PREFIX RERUN PENDING
+R3 COMPLETE / VALIDATED
+R4 LEGACY SOURCE REMOVAL IMPLEMENTED / BUILD + SIX-ASSET RESAVE PENDING
 
 Previous FCardUpgradeConfig Foundation:
-HISTORICAL / SUPERSEDED / MIGRATION-ONLY FIELDS STILL PRESENT UNTIL R4
+HISTORICAL / SUPERSEDED / SOURCE FIELDS REMOVED
 
 Production Card Authoring:
-BLOCKED BY DYNAMICTEXT R3 GATE + R4 LEGACY-FIELD REMOVAL/RESAVE
-```
-
-Current R3 source head:
-
-```text
-ef8ea8b5dd17d4956143bac5616427584fca2fb1
+BLOCKED ONLY BY R4 BUILD + POST-REMOVAL ASSET RESAVE + FINAL PIE/SEAL
 ```
 
 ## Current authority
@@ -35,7 +30,7 @@ docs/CardUpgradeSTSStyleRefactor.md
 
 ## Completed migration state
 
-R1 added and validated the new typed authoring surface:
+R1 added the typed authoring surface:
 
 ```text
 UCardData.BaseCost / UpgradedCost
@@ -45,7 +40,7 @@ Draw: DrawCount / UpgradedDrawCount
 ApplyStatus: Amount / UpgradedAmount
 ```
 
-R2 is user-complete: all six production card assets were parity-authored, saved and committed while the legacy fields still existed:
+R2 user-complete: all six production card assets were parity-authored, saved and committed while the legacy fields still existed:
 
 ```text
 DA_Card_Strike
@@ -56,9 +51,7 @@ DA_Card_Uppercut
 DA_Card_Inflame
 ```
 
-## R3 source switch implemented
-
-Runtime authority now uses the STS-style model:
+R3 runtime authority now uses the STS-style model:
 
 ```text
 UCardInstance::bUpgraded = single mutable ordinary-upgrade truth
@@ -70,15 +63,15 @@ GetEffects()           -> always Definition->Effects
 CanUpgrade()           -> valid Definition && !bUpgraded
 ```
 
-Creation-time upgraded state is supported at the runtime-instance creation boundary:
+Creation-time upgraded state remains supported via:
 
 ```cpp
 Initialize(UCardData*, RuntimeId, bStartUpgraded)
 ```
 
-This does not mutate UCardData. In-combat upgrades still go only through `UUpgradeCardAction -> CommitUpgrade()`.
+In-combat upgrades still go only through `UUpgradeCardAction -> CommitUpgrade()`.
 
-Current Effect consumers freeze `Context.Card->IsUpgraded()` at the existing build/preview boundary and pass only the bool into typed helpers:
+Effect consumers converge through typed bool-only helpers:
 
 ```text
 Damage BuildActions / Dynamic Text / A3 -> GetEffectiveAmount/GetEffectiveHitCount
@@ -87,65 +80,46 @@ Draw   BuildActions / Dynamic Text      -> GetEffectiveDrawCount
 Status BuildActions / Dynamic Text      -> GetEffectiveAmount
 ```
 
-`BattleTextResolver::ValidateCardDefinition` validates one Description + one Effects[] composition; each Effect validates both Base and Upgraded authored values.
+## R3 validation evidence
 
-`CardUpgradeFoundationTests.cpp` has been migrated in place to prove same Effect object identity, one-time `bUpgraded` mutation, Base/Upgraded typed values, creation-time upgraded state, Dynamic Text and frozen Presentation state.
-
-## Migration-only legacy fields still present
-
-Do not delete yet until all R3 gates validate:
+All focused gates PASS:
 
 ```text
-bHasUpgrade
-FCardUpgradeConfig
-Upgrade.*
-UCardVariantData compatibility shim
+SlayTheSpireDemoEditor Win64 Development Build
+SlayTheSpireDemo.CardUpgrade
+SlayTheSpireDemo.Phase6UIA3.DynamicText
+SlayTheSpireDemo.UIA3.ImmediatePreview
+SlayTheSpireDemo.Phase6C
 ```
 
-They are no longer runtime authority after R3; they remain only to keep serialized migration safety through R4.
+The Dynamic Text suite uses the real prefix `SlayTheSpireDemo.Phase6UIA3.DynamicText`.
 
-## R3 validation state
+## R4 source removal
 
-Correct Gate names:
+R4 source cleanup is implemented:
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development Build
-2. SlayTheSpireDemo.CardUpgrade
-3. SlayTheSpireDemo.Phase6UIA3.DynamicText
-4. SlayTheSpireDemo.UIA3.ImmediatePreview
-5. SlayTheSpireDemo.Phase6C
+removed FCardUpgradeConfig
+removed bHasUpgrade
+removed UCardData::Upgrade
 ```
 
-Current sticky evidence reported by user:
+`UCardVariantData` is intentionally still present as a hidden load-compatibility shim. Do not delete it until the six production assets have successfully loaded and been resaved after legacy field removal.
+
+## Next exact actions
 
 ```text
-Build: PASS
-SlayTheSpireDemo.CardUpgrade: PASS
-SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
-SlayTheSpireDemo.Phase6C: PASS
-SlayTheSpireDemo.Phase6UIA3.DynamicText: NOT RUN
+1. Rebuild SlayTheSpireDemoEditor Win64 Development.
+2. If Build PASS, open all six DA_Card_* assets.
+3. Verify BaseCost / UpgradedCost and each Effect Base/Upgraded value.
+4. Confirm old Has Upgrade / Upgrade authoring surface is gone.
+5. Save all six assets and commit the resulting .uasset changes.
+6. Then assess whether UCardVariantData shim can be removed safely.
+7. Perform one focused PIE: normal name color; upgraded same name text in gold; upgraded numeric text correct.
+8. Seal.
 ```
 
-The prior command used the wrong prefix `SlayTheSpireDemo.UIA3.DynamicText` and UE reported `No automation tests matched`. This is not a gameplay/test failure; it means the intended Dynamic Text suite never ran. The actual tests are registered under `SlayTheSpireDemo.Phase6UIA3.DynamicText.*`.
-
-Next exact action:
-
-```text
-Run only SlayTheSpireDemo.Phase6UIA3.DynamicText once.
-Do not rebuild and do not rerun CardUpgrade / ImmediatePreview / Phase6C unless that test exposes a source fix that invalidates them.
-```
-
-If the corrected Dynamic Text gate passes:
-
-```text
-→ enter R4
-→ remove FCardUpgradeConfig / bHasUpgrade / Upgrade.*
-→ reopen and resave all six production card assets
-→ decide whether UCardVariantData compatibility shim can be safely removed
-→ final Build + any directly invalidated focused gates
-→ one focused PIE visual pass: same name text, upgraded name gold, upgraded numeric text correct
-→ seal
-```
+R3 CardUpgrade / DynamicText / ImmediatePreview / Phase6C remain sticky after this R4 source-only legacy removal unless Build or asset loading exposes a shared regression.
 
 ## Explicit non-goals
 
