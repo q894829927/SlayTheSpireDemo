@@ -111,13 +111,16 @@ and is implemented together with the first formal card-development batch.
 Locked Upgrade rules:
 
 ```text
-Upgrade is orthogonal to Damage / Block / Draw / Exhaust / Status / Relic.
-No CardId-specific upgrade branch.
-Do not use bool-only bUpgraded as the final model.
-Model must allow UpgradeLevel >= 0.
+Default card upgrade is single-use and may use bool bUpgraded.
+Normal card: false → true; a second upgrade is rejected generically.
+Repeated upgrading is NOT part of every card's default model.
+Repeated upgrading is an optional capability assigned by card definition.
+Searing Blow is a consumer of that capability, not a CardId special case.
+Normal upgraded card title uses only "+".
+Repeatable upgrade presentation uses "+1", "+2", ...
+Upgrade remains orthogonal to Damage / Block / Draw / Exhaust / Status / Relic.
 All Gameplay / UI / A2 / A3 consume one effective-card boundary.
 Runtime temporary upgrade remains Action-authoritative.
-Design must remain extensible to Armaments and Searing Blow Level N.
 ```
 
 This does not yet authorize Run Deck, campfire, save/load, reward or shop systems.
