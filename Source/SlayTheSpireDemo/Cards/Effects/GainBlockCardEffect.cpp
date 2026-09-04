@@ -1,5 +1,6 @@
 #include "GainBlockCardEffect.h"
 
+#include "../CardInstance.h"
 #include "../CardPlayContext.h"
 #include "../../Actions/GainBlockAction.h"
 #include "../../Combat/Combatant.h"
@@ -23,8 +24,16 @@ void UGainBlockCardEffect::BuildActions(
 		return;
 	}
 
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+	if (EffectiveAmount < 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] Block build skipped: invalid effective Amount=%d."), EffectiveAmount);
+		return;
+	}
+
 	UGainBlockAction* Action = NewObject<UGainBlockAction>(Context.ActionOuter);
-	Action->Initialize(Context.Source, Context.Target, BaseAmount);
+	Action->Initialize(Context.Source, Context.Target, EffectiveAmount);
 	Action->SetPresentationParticipantIds(
 		Context.SourcePresentationId,
 		Context.TargetPresentationId
@@ -48,15 +57,18 @@ void UGainBlockCardEffect::BuildPreviewArguments(
 		return;
 	}
 
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+
 	FBlockSpec Spec;
 	Spec.Source = Context.Source;
 	Spec.Target = Context.Target;
-	Spec.BaseAmount = BaseAmount;
+	Spec.BaseAmount = EffectiveAmount;
 	FBlockModifierPipeline::Resolve(Spec);
 	OutArguments.AddIntegerWithAuthoredBase(
 		DescriptionArgumentName,
 		Spec.ResolvedAmount,
-		BaseAmount);
+		EffectiveAmount);
 }
 
 void UGainBlockCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
@@ -81,9 +93,11 @@ void UGainBlockCardEffect::BuildImmediatePreviewOperations(
 	TArray<FImmediatePreviewOperation>& OutOperations
 ) const
 {
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
 	if (!IsValid(Context.Source)
 		|| DescriptionArgumentName.IsNone()
-		|| BaseAmount < 0)
+		|| EffectiveAmount < 0)
 	{
 		return;
 	}
@@ -91,14 +105,14 @@ void UGainBlockCardEffect::BuildImmediatePreviewOperations(
 	FBlockSpec Spec;
 	Spec.Source = Context.Source;
 	Spec.Target = Context.Source;
-	Spec.BaseAmount = BaseAmount;
+	Spec.BaseAmount = EffectiveAmount;
 	FBlockModifierPipeline::Resolve(Spec);
 
 	FImmediatePreviewOperation Operation;
 	Operation.EffectIndex = EffectIndex;
 	Operation.SemanticArgumentName = DescriptionArgumentName;
 	Operation.Type = EImmediatePreviewOperationType::Block;
-	Operation.BaseAmount = BaseAmount;
+	Operation.BaseAmount = EffectiveAmount;
 	Operation.ResolvedAmount = Spec.ResolvedAmount;
 	Operation.HitCount = 1;
 	OutOperations.Add(Operation);
