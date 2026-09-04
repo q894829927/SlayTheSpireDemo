@@ -2,222 +2,187 @@
 
 日期：**2026-09-04**
 
-状态：**DESIGN SIMPLIFIED / IMPLEMENTED / VALIDATED / SEALED**
+状态：**DESIGN REFINED / REVIEW FIX IMPLEMENTED / REVALIDATION PENDING**
 
-实施与验证 authority：
+当前 implementation authority：
 
 ```text
 docs/CardUpgradeFoundationImplementation.md
-docs/CardUpgradeFoundationValidation.md
 ```
 
-用户已明确收敛普通卡升级方案：**一张卡只维护升级前、升级后两套 authored configuration；普通升级不建立通用参数 delta / expression framework。**
-
-Phase 8 已 deferred，不是当前 Card Expansion 的前置 Gate。
+用户进一步收敛普通卡升级模型：**不会因普通升级而变化的字段不应重复配置。**
 
 ---
 
-## 1. Normal card model
+## 1. Ordinary card shape
+
+一张卡仍只有一个 `UCardData`、一个 `CardId` 和一个运行时身份。
+
+稳定字段只配置一次：
 
 ```text
 UCardData
 ├─ CardId
-├─ Base configuration
-└─ optional UpgradedVariant
+├─ DisplayName
+├─ CardArt
+├─ CardType
+├─ TargetType
+├─ Base Description / Cost / Destination / Effects
+├─ bHasUpgrade
+└─ Upgrade : FCardUpgradeConfig
 ```
 
-Base configuration 继续使用当前 `UCardData` 已有字段，以保持现有 `.uasset` 兼容：
+`FCardUpgradeConfig` 只包含普通升级真正可能变化的内容：
 
 ```text
-DisplayName
 Description
-CardArt
-CardType
-TargetType
-BaseCost
-DefaultDestination
-Effects[]
-```
-
-`UpgradedVariant` 是第二套完整配置：
-
-```text
-DisplayName
-Description
-CardArt
-CardType
-TargetType
 Cost
 DefaultDestination
 Effects[]
 ```
 
-Base / Plus 永远共享：
+明确不重复：
 
 ```text
 CardId
-UCardInstance
-RuntimeId
+DisplayName
+CardArt
+CardType
+TargetType
 ```
 
-不为 Plus 创建第二个 card identity。
+因此 Editor 中不再出现 `Card Variant Data` UObject，也不会要求为升级卡重复填写名字、图标、类型和目标类型。
 
 ---
 
-## 2. Runtime upgrade state
+## 2. Runtime state
 
-普通 `UCardInstance` 只维护：
+普通卡仍只需要：
 
 ```text
 bool bUpgraded
 ```
 
-规则：
-
 ```text
-false → Base
-true  → UpgradedVariant
+bUpgraded = false
+→ Description / Cost / Destination / Effects 读取 Base
 
-CanUpgrade
-= !bUpgraded && UpgradedVariant exists
+bUpgraded = true
+→ Description / Cost / Destination / Effects 读取 Upgrade
 ```
 
-第一次升级 `false -> true`；第二次升级 generic fail-soft reject。
+稳定字段始终读取 `UCardData` 顶层。
 
-普通卡不使用 `UpgradeLevel`、参数 patch 列表、表达式语言或 Damage/Block/Draw-specific upgrade interpreter。
+```text
+CanUpgrade
+= !bUpgraded && bHasUpgrade
+```
+
+第一次升级：`false -> true`。
+
+第二次升级：generic fail-soft reject。
 
 ---
 
-## 3. Effective boundary
+## 3. Display name
 
-所有 variant-sensitive 消费者只通过 `UCardInstance` effective getters 读取当前配置：
+卡牌名称本体不重复 author。
 
 ```text
-GetDisplayName()
-GetDescriptionFormat()
+DisplayName = "Strike"
+```
+
+升级后的 `+` 是 runtime/presentation-derived indicator：
+
+```text
+Base     → Strike
+Upgraded → Strike+
+```
+
+不需要再填写一个 `DisplayName = Strike+`。
+
+`CardArt` 同样始终复用同一资源。
+
+---
+
+## 4. Effective boundary
+
+`UCardInstance` 继续作为唯一 effective boundary。
+
+稳定 getter：
+
+```text
+GetDisplayName()   // upgraded 时自动派生 +
 GetCardArt()
 GetCardType()
-GetCurrentCost()
 GetTargetType()
+```
+
+升级敏感 getter：
+
+```text
+GetDescriptionFormat()
+GetCurrentCost()
 ResolveDestination()
 GetEffects()
 ```
 
-生产路径包括：
-
-```text
-PlayCardAction
-BattleTextResolver
-A3 Immediate Preview
-current-state Hand freeze
-committed CardPlayed snapshot
-```
-
-消费者不得自行根据 `bUpgraded` 选择 `Definition` 字段。
+Gameplay / A3 / Presentation 不允许自行读取 `bUpgraded` 后选择字段。
 
 ---
 
-## 4. Mutation authority
+## 5. Why Destination remains in Upgrade
 
-战斗内普通升级遵循 Action authority：
+名字、图标、CardType、TargetType 对普通 Ironclad 升级没有必要重复；但 `DefaultDestination` 必须保留，因为真实升级内容可能改变 Exhaust/Discard 行为。
+
+同理，Description / Cost / Effects 是普通升级的核心差异面。
+
+---
+
+## 6. Mutation authority
 
 ```text
-UpgradeCardAction
-→ validates UCardInstance
-→ commits bUpgraded false -> true
+UUpgradeCardAction
+→ UCardInstance::CommitUpgrade()
+→ false -> true
 → Finish
 ```
 
 Widget 不直接修改 `bUpgraded`。
 
-当前没有独立消费者，因此本 Foundation 不创建 `CardUpgradedEvent`。
+当前仍不创建 `CardUpgradedEvent`。
 
 ---
 
-## 5. Authoring examples
+## 7. Repeatable upgrade
 
-```text
-Strike
-Base: Damage 6
-Plus: Damage 9
-```
-
-```text
-Defend
-Base: Block 5
-Plus: Block 8
-```
-
-```text
-Pommel Strike
-Base: Damage + Draw 1
-Plus: upgraded Damage + Draw 2
-```
-
-两套配置可以拥有不同 authored Effect 参数；普通 Upgrade Runtime 不解释这些差异。
-
----
-
-## 6. Repeatable upgrades
-
-Searing Blow 等重复升级不属于 ordinary-card Foundation。
+Searing Blow 不进入本 ordinary-card model。
 
 ```text
 普通卡
-→ bool + Base/UpgradedVariant
+→ bool + Base fields + slim Upgrade config
 
 可重复升级卡
-→ future optional orthogonal capability
+→ future optional capability
 ```
 
-不能为了重复升级卡把所有普通卡改成整数 `UpgradeLevel`。
-
----
-
-## 7. Sealed scope
-
-已实现并验证：
-
-```text
-UCardVariantData / UCardData.UpgradedVariant
-UCardInstance.bUpgraded + effective getters
-UpgradeCardAction
-variant-sensitive production consumer migration
-focused Automation
-```
-
-明确不包含：
-
-```text
-Searing Blow
-Armaments
-Run Deck
-campfire
-reward/shop
-save/load
-CardUpgradedEvent
-universal upgrade expression/delta system
-Phase 8
-```
+不得为 Searing Blow 把全部普通卡改成全局 `UpgradeLevel`。
 
 ---
 
 ## 8. Acceptance
 
 ```text
-[x] existing cards without UpgradedVariant continue using current Base fields unchanged
-[x] a card with UpgradedVariant can upgrade exactly once
-[x] Base and Plus keep the same CardId / RuntimeId
-[x] second upgrade is rejected fail-soft
-[x] variant-sensitive Gameplay path uses UCardInstance effective boundary
-[x] A3 uses effective Effects boundary
-[x] card text uses effective Description/Effects
-[x] current-state and committed snapshots use effective card fields
-[x] no Damage/Block/Draw-specific upgrade branch exists
-[x] no CardId-specific upgrade branch exists
-[x] Editor Build PASS reported by user
-[x] CardUpgrade focused Automation PASS reported by user
-[x] directly-invalidated A3 ImmediatePreview regression PASS reported by user
+[ ] no Card Variant Data UObject in ordinary upgrade authoring
+[ ] Upgrade editor section contains only Description / Cost / Destination / Effects
+[ ] DisplayName is authored once and upgraded '+' is derived
+[ ] CardArt is authored once
+[ ] CardType is authored once
+[ ] TargetType is authored once
+[ ] Base/Upgrade share CardId and RuntimeId
+[ ] upgrade commits exactly once
+[ ] actual Gameplay / A3 / Presentation consume the effective Description/Cost/Destination/Effects
+[ ] no CardId-specific or Effect-type-specific upgrade branch
 ```
 
-**This design is sealed.** Production card Base/Plus authoring may now consume it without reopening Foundation design.
+本次 review fix 修改了已验证 source contract，因此上一轮 seal evidence 变为历史证据；需要重新 Build + focused `SlayTheSpireDemo.CardUpgrade` 后才能恢复 seal。
