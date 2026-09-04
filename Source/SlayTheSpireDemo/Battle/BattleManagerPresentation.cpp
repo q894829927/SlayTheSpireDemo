@@ -273,14 +273,14 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 		FrozenCard.RichDescription = Source.CurrentRichDescription;
 
 		UCardInstance* Card = Source.Card.Get();
-		const UCardData* Definition = IsValid(Card) ? Card->GetDefinition() : nullptr;
-		if (IsValid(Definition))
+		if (IsValid(Card) && IsValid(Card->GetDefinition()))
 		{
-			FrozenCard.DisplayName = Definition->DisplayName.IsEmpty()
+			const FText EffectiveDisplayName = Card->GetDisplayName();
+			FrozenCard.DisplayName = EffectiveDisplayName.IsEmpty()
 				? FText::FromName(Source.CardId)
-				: Definition->DisplayName;
-			FrozenCard.CardType = Definition->CardType;
-			FrozenCard.CardArt = Definition->CardArt;
+				: EffectiveDisplayName;
+			FrozenCard.CardType = Card->GetCardType();
+			FrozenCard.CardArt = Card->GetCardArt();
 		}
 		else
 		{
