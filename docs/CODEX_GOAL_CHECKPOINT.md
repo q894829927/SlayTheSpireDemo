@@ -12,16 +12,16 @@ Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
 Card Expansion / Upgrade Foundation:
-COMPLETE / VALIDATED / SEALED
+REVIEW FIX IMPLEMENTED / REVALIDATION PENDING
 
 Production Card Base/Plus Authoring:
-NEXT BOUNDED TASK / NOT STARTED
+BLOCKED ONLY BY THE TWO DIRECTLY-INVALIDATED REVALIDATION GATES
 
 Card Trigger Source Expansion:
 DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED
 ```
 
-## Sealed Upgrade Foundation authority
+## Current Upgrade Foundation authority
 
 ```text
 docs/CardUpgradeFoundationDesign.md
@@ -29,65 +29,76 @@ docs/CardUpgradeFoundationImplementation.md
 docs/CardUpgradeFoundationValidation.md
 ```
 
-The user explicitly simplified ordinary card upgrades on 2026-09-04:
+The user further simplified ordinary-card upgrade authoring after the first validated version.
 
-```text
-one UCardData identity
-├─ existing Base configuration
-└─ optional full UpgradedVariant configuration
-
-UCardInstance
-└─ bool bUpgraded
-```
-
-This supersedes older CAP-01 / Upgrade draft wording that proposed a generic typed upgrade-delta/effective-facts framework for ordinary cards.
-
-Ordinary cards do **not** use a global `UpgradeLevel`, parameter patch interpreter, expression language, or Damage/Block/Draw-specific upgrade logic.
-
-## Implemented source shape
+Current authoritative model:
 
 ```text
 UCardData
-├─ CardId                       // shared identity
-├─ existing Base fields
-│  ├─ DisplayName / Description / CardArt
-│  ├─ CardType / TargetType / BaseCost / DefaultDestination
+├─ stable shared fields
+│  ├─ CardId
+│  ├─ DisplayName
+│  ├─ CardArt
+│  ├─ CardType
+│  └─ TargetType
+│
+├─ Base
+│  ├─ Description
+│  ├─ BaseCost
+│  ├─ DefaultDestination
 │  └─ Effects[]
-└─ optional UCardVariantData UpgradedVariant
-   ├─ DisplayName / Description / CardArt
-   ├─ CardType / TargetType / Cost / DefaultDestination
+│
+├─ bHasUpgrade
+└─ Upgrade : FCardUpgradeConfig
+   ├─ Description
+   ├─ Cost
+   ├─ DefaultDestination
    └─ Effects[]
 
 UCardInstance
 ├─ Definition
 ├─ RuntimeId
-└─ bUpgraded
+└─ bool bUpgraded
 ```
 
-Effective access is centralized on `UCardInstance`:
+`UCardVariantData` / `UpgradedVariant` is no longer part of ordinary-card authoring.
+
+## Stable metadata rule
+
+These values are authored once and are not duplicated in Upgrade:
 
 ```text
-GetDisplayName
-GetDescriptionFormat
-GetCardArt
-GetCardType
-GetCurrentCost
-GetTargetType
-ResolveDestination
-GetEffects
+DisplayName
+CardArt
+CardType
+TargetType
 ```
 
-Consumers migrated to this boundary:
+Visible upgraded name is derived:
 
 ```text
-PlayCardAction
-BattleTextResolver
-BattleManagerUIA3Preview
-PresentationCardSnapshotBuilder
-BattleManager current-state Presentation freeze
+Strike → Strike+
 ```
 
-Base and Plus remain the same `CardId / UCardInstance / RuntimeId`.
+The `+` is not a second authored DisplayName.
+
+## Effective boundary
+
+```text
+stable:
+GetDisplayName()   // derives + when upgraded
+GetCardArt()
+GetCardType()
+GetTargetType()
+
+Base/Upgrade-sensitive:
+GetDescriptionFormat()
+GetCurrentCost()
+ResolveDestination()
+GetEffects()
+```
+
+Gameplay / Preview / Presentation do not directly branch on `bUpgraded`.
 
 ## Mutation authority
 
@@ -97,22 +108,11 @@ UUpgradeCardAction
 → false -> true once
 ```
 
-Second upgrade is a generic fail-soft rejection and must not create a ResolutionFault.
+Second upgrade remains generic fail-soft and does not ResolutionFault.
 
-No `CardUpgradedEvent` is introduced in this slice.
+## Historical validation and current invalidation
 
-## Validation evidence
-
-Added focused tests:
-
-```text
-SlayTheSpireDemo.CardUpgrade.SingleVariant
-SlayTheSpireDemo.CardUpgrade.EffectiveConsumers
-```
-
-The implementation directly changed A3 preview effect selection from authored Base `Definition->Effects` to effective `Card->GetEffects()`, so the existing A3 ImmediatePreview focused gate was the only directly invalidated sealed regression gate.
-
-On 2026-09-04 the user reported the prescribed local UE5.8 gates all passing:
+Before this review fix, the user reported:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development Build: PASS
@@ -120,19 +120,22 @@ SlayTheSpireDemo.CardUpgrade: PASS
 SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-No exact test counts were supplied, so none are inferred here.
+Those results remain historical evidence.
 
-This seals the simplified ordinary-card Upgrade Foundation. Detailed evidence: `docs/CardUpgradeFoundationValidation.md`.
+The subsequent slim-authoring review fix changed `CardData`, `CardInstance`, BattleText definition validation and CardUpgrade focused tests. It did **not** modify A3 production source again.
 
-## Sticky validation rule
+Therefore current revalidation is only:
 
-The passing Foundation gates are sticky.
+```text
+1. Editor Build once
+2. SlayTheSpireDemo.CardUpgrade once
+```
 
-Do not rerun Build/CardUpgrade/A3 merely because production card DataAssets are authored next. Rerun only when a shared Foundation contract is changed or a concrete regression invalidates the evidence.
+The previous A3 ImmediatePreview PASS remains sticky.
 
 ## Deferred / non-goals
 
-The sealed Foundation does not implement:
+Current ordinary-card Foundation still does not implement:
 
 ```text
 RepeatableUpgradeCapability
@@ -144,12 +147,11 @@ save/load
 Phase 8
 ```
 
-Repeatable upgrading remains a later orthogonal capability and must not force ordinary cards away from the simple `bool + two authored configs` model.
-
 ## Next exact action
 
 ```text
-Production Card Base/Plus Authoring
+Run the two directly-invalidated gates.
+If both PASS:
+→ restore Card Expansion / Upgrade Foundation = COMPLETE / VALIDATED / SEALED
+→ start Production Card Base/Plus Authoring
 ```
-
-Start with a small first batch of real cards using the sealed Foundation. Do not reopen or redesign Upgrade Foundation unless real production-card requirements prove the contract insufficient.
