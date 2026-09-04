@@ -56,6 +56,9 @@ void UBattleCardWidget::NativeOnInitialized()
 			*GetPathName());
 		return;
 	}
+
+	DefaultCardNameColor = Txt_CardName->GetColorAndOpacity();
+	bDefaultCardNameColorCaptured = true;
 }
 
 void UBattleCardWidget::NativeConstruct()
@@ -162,6 +165,14 @@ void UBattleCardWidget::RefreshFromCardView()
 	}
 
 	Txt_CardName->SetText(CurrentCardView.DisplayName);
+	if (bDefaultCardNameColorCaptured)
+	{
+		Txt_CardName->SetColorAndOpacity(
+			CurrentCardView.bUpgraded
+				? FSlateColor(UpgradedNameColor)
+				: DefaultCardNameColor);
+	}
+
 	Txt_Cost->SetText(FText::AsNumber(CurrentCardView.Cost));
 	Txt_CardDescription->SetText(GetVisibleCardDescription(CurrentCardView));
 	ImmediatePreviewTone = 0;
