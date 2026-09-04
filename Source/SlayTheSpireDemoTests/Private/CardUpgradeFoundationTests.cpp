@@ -78,7 +78,7 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 
 	TestFalse(TEXT("Card starts unupgraded"), Card->IsUpgraded());
 	TestTrue(TEXT("Card with authored Upgrade config can upgrade"), Card->CanUpgrade());
-	TestEqual(TEXT("Shared display name"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
+	TestEqual(TEXT("Base display name"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
 	TestEqual(TEXT("Shared card type"), Card->GetCardType(), ECardType::Attack);
 	TestEqual(TEXT("Shared target type"), Card->GetTargetType(), ECardTargetType::Enemy);
 	TestEqual(TEXT("Base cost"), Card->GetCurrentCost(), 2);
@@ -92,8 +92,9 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Card becomes upgraded"), Card->IsUpgraded());
 	TestFalse(TEXT("Normal card cannot upgrade twice"), Card->CanUpgrade());
 
-	// Name/art/type/target are deliberately not duplicated in Upgrade config.
-	TestEqual(TEXT("Display name remains shared after upgrade"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
+	// Name/art/type/target are not duplicated in Upgrade config. The visible '+'
+	// is derived from runtime upgrade state rather than authored as a second name.
+	TestEqual(TEXT("Upgraded display derives plus suffix"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name+")));
 	TestEqual(TEXT("Card type remains shared after upgrade"), Card->GetCardType(), ECardType::Attack);
 	TestEqual(TEXT("Target type remains shared after upgrade"), Card->GetTargetType(), ECardTargetType::Enemy);
 
@@ -105,7 +106,6 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Upgraded Draw count"), UpgradedDraw->DrawCount, 2);
 	TestTrue(TEXT("Base and upgraded Effects are distinct authored objects"), BaseDraw != UpgradedDraw);
 
-	// A second action is a generic fail-soft rejection, not a ResolutionFault.
 	if (!RunUpgradeThroughQueue(*this, Card)) return false;
 	TestTrue(TEXT("Second attempt leaves card upgraded"), Card->IsUpgraded());
 
@@ -139,7 +139,7 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 
 	FPresentationCardSnapshot BaseSnapshot;
 	TestTrue(TEXT("Base card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, BaseSnapshot));
-	TestEqual(TEXT("Base snapshot shared display"), BaseSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
+	TestEqual(TEXT("Base snapshot display"), BaseSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
 	TestEqual(TEXT("Base snapshot cost"), BaseSnapshot.Cost, 2);
 	TestEqual(TEXT("Base snapshot shared type"), BaseSnapshot.CardType, ECardType::Attack);
 	TestEqual(TEXT("Base snapshot shared target"), BaseSnapshot.TargetType, ECardTargetType::Enemy);
@@ -156,7 +156,7 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Upgraded card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, UpgradedSnapshot));
 	TestEqual(TEXT("Runtime identity is unchanged by upgrade"), UpgradedSnapshot.RuntimeId, BaseSnapshot.RuntimeId);
 	TestEqual(TEXT("Card identity is unchanged by upgrade"), UpgradedSnapshot.CardId, BaseSnapshot.CardId);
-	TestEqual(TEXT("Display name stays shared"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
+	TestEqual(TEXT("Snapshot derives upgraded plus suffix"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name+")));
 	TestEqual(TEXT("Upgraded snapshot cost"), UpgradedSnapshot.Cost, 1);
 	TestEqual(TEXT("Card type stays shared"), UpgradedSnapshot.CardType, ECardType::Attack);
 	TestEqual(TEXT("Target type stays shared"), UpgradedSnapshot.TargetType, ECardTargetType::Enemy);
