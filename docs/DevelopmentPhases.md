@@ -12,7 +12,9 @@ This document records project progress, implementation history and durable phase
 - **UI-A2 Basic Committed Presentation is complete, validated and sealed.**
 - **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
-- **Phase 7 Relics is in progress.** The design is sealed; **7A Relic Runtime and 7B Status + Relic Trigger Sources are complete, validated and sealed**. **7C Sundial + GainEnergyAction is implemented, including the bulk-draw semantics correction, and is awaiting current-head validation.** Active authority: `docs/Phase7RelicsImplementation.md`.
+- **Phase 7 Relics 7A–7F are complete, validated and sealed.** Current status authority is summarized in `docs/CODEX_GOAL_CHECKPOINT.md`; individual evidence remains in the dedicated Phase 7 implementation/validation documents.
+- **Phase 8 Combo Architecture Validation is design-refined but implementation is not yet authorized.** Active design authority: `docs/Phase8ComboArchitectureDesign.md`.
+- **Card Expansion / Upgrade Foundation is design-refined and planned immediately after Phase 8 seal, but implementation is not authorized.** Authority: `docs/CardUpgradeFoundationDesign.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -99,7 +101,8 @@ Durable decisions:
 
 - Events are committed facts; Triggers are read-only Action builders;
 - trigger eligibility is snapshot-based and Actions validate live state;
-- trigger order is `Priority → RuntimeSequence → LocalTriggerIndex`;
+- trigger order is `Priority → RuntimeSequence → LocalTriggerIndex` for the sealed Status-era ordering domain;
+- Phase 7B extended Status/Relic sources while preserving the same relative RuntimeSequence ordering;
 - reaction batches insert atomically with nested depth-first semantics;
 - queue faults enter only at safe points;
 - QueueEmpty is non-reentrant;
@@ -180,29 +183,123 @@ Read:
 
 ## Phase 7 — Relics
 
-Status: **IN PROGRESS — 7A + 7B COMPLETE / VALIDATED / SEALED; 7C IMPLEMENTED / BULK-DRAW REFACTOR / VALIDATION PENDING**
+Status: **7A–7F COMPLETE / VALIDATED / SEALED**
 
-Active implementation authority: `docs/Phase7RelicsImplementation.md`.
+Current summary authority: `docs/CODEX_GOAL_CHECKPOINT.md`.
 
-The Phase 7 design is sealed. First full gameplay validation remains Sundial; Abacus is optional. Relics remain their own immutable definition + mutable runtime-instance model and must never be disguised as Statuses.
+The Phase 7 design and all implemented slices are sealed. Relics remain their own immutable definition + mutable runtime-instance model and are not disguised as Statuses.
 
-Phase 7A contains `URelicData`, `URelicInstance`, `URelicContainer`, explicit `ABattleManager` ownership/setup, ordered configured starting Relics and focused RuntimeSequence lifecycle tests. Starting Relics are instantiated during `StartBattle()` after the battle RuntimeSequence allocator reset; the Relic getter is not a lazy initialization path. The accepted 7A gate is Development Editor Build PASS plus `SlayTheSpireDemo.Phase7.RelicRuntime` 5/5 PASS; no manual PIE was required. Formal evidence: `docs/Phase7AValidation.md`.
+### 7A — Relic Runtime
 
-Phase 7B introduced the smallest source-neutral Trigger boundary needed for Status and Relic triggers to coexist. `FTriggerRuntimeSource` carries source kind/id/runtime object/RuntimeSequence, `FTriggerContext` preserves historical Status compatibility while adding neutral/Relic accessors, `URelicData` can author Trigger definitions, and `BattleEventDispatcher` snapshots Status + Relic candidates into one deterministic ordering domain: `Priority → RuntimeSequence → LocalTriggerIndex`. There is still no persistent Trigger Registry and SourceKind is not an ordering key. Accepted validation: `SlayTheSpireDemo.Phase7.TriggerSources` 3/3 PASS and `SlayTheSpireDemo.Phase6A.Trigger` PASS; no manual PIE was required. Formal evidence: `docs/Phase7BValidation.md`.
+`URelicData`, `URelicInstance`, `URelicContainer`, explicit `ABattleManager` ownership/setup, ordered configured starting Relics and deterministic runtime sequence lifecycle were established and validated.
 
-Phase 7C implements `BattleEnergyMutation::TryGain`, `UGainEnergyAction`, runtime Relic Counter, `USundialTrigger` and `USundialAdvanceAction`. During manual Sundial/Pommel testing, draw semantics were corrected before sealing: `UDrawCardEffect(DrawCount=N)` now creates one `UDrawCardsAction(N)`, while `UDrawCardAction` remains the one-card mutation primitive. Bulk draw plans Shuffle and remaining-draw continuations through the ActionQueue, allowing the source-game zero-card shuffle edge to emerge from generic rules without a Pommel/Sundial special case. Current-head Build, Phase6C 6/6, Phase7.Sundial 3/3 and the focused two-upgraded-Pommel PIE check remain pending before 7C can be sealed.
+### 7B — Status + Relic Trigger Sources
 
-Relic Read/Frozen/Native UI remains 7D. Initial battle setup shuffle remains excluded. A3 does not expand to predict Relic reactions in Phase 7.
+`FTriggerRuntimeSource` and the source-neutral Trigger boundary allow Status and Relic trigger definitions to coexist. Existing Status/Relic deterministic ordering remains based on `Priority → RuntimeSequence → LocalTriggerIndex`; no persistent Trigger Registry exists.
+
+### 7C — Sundial + GainEnergyAction
+
+Positive Energy mutation, `UGainEnergyAction`, runtime Relic counter, Sundial trigger/counter behavior and corrected bulk Draw-N semantics were validated. `UDrawCardEffect(DrawCount=N)` builds one `UDrawCardsAction(N)`, while `UDrawCardAction` remains the atomic one-card mutation.
+
+The sealed bulk-draw ordering pattern is:
+
+```text
+DrawCardsAction
+→ queues Draw / Shuffle / RemainingDraw continuation batch at Queue front
+
+ShuffleDeckAction
+→ commit Shuffle
+→ Dispatch DeckShuffled
+
+Dispatcher reactions
+→ insert ahead of RemainingDraw
+```
+
+Therefore:
+
+```text
+Shuffle
+→ reactions
+→ remaining draw continuation
+```
+
+This ordering is a durable precedent for later typed resolution-local authored continuations.
+
+### 7D — Relic Read / Frozen / Native UI
+
+Relic read/frozen presentation and Native HUD integration are complete, validated and sealed. Presentation remains read-only with respect to Gameplay authority.
+
+### 7E — Relic Reaction Composition
+
+Generic Relic Effect composition, fail-closed reaction construction, dependent Action insertion, presentation writer propagation and live membership validation are complete, validated and sealed.
+
+### 7F — Relic Counter Metadata Unification
+
+Relic count threshold metadata uses the CountTrigger as the authored threshold authority; production Sundial counter metadata/assets were migrated and validated. 7F is complete, validated and sealed.
+
+Initial battle setup shuffle remains excluded from `DeckShuffled` Gameplay events. A3 does not predict Relic reactions.
 
 ## Phase 8 — Combo Architecture Validation
 
-Status: **PLANNED AFTER PHASE 7**
+Status: **DESIGN REFINED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED**
 
-Validate two upgraded Pommel Strikes plus Sundial without special-case combination code. The interaction must emerge from generic card, bulk-draw, shuffle, event, modifier and action rules and be visually understandable through the playable UI.
+Authority: `docs/Phase8ComboArchitectureDesign.md`.
+
+Phase 8 no longer depends on “two upgraded Pommel Strikes” as Automation content.
+
+Automated architecture validation uses an authored **transient Draw-2 card definition** in the test module:
+
+```text
+Transient UCardData
+→ generic Effects including UDrawCardEffect(DrawCount=2)
+→ real PlayCard / Action path
+→ real Shuffle
+→ DeckShuffled Event
+→ Sundial reaction
+→ remaining draw continuation
+```
+
+This keeps the regression test independent of future production Pommel Strike Base/Upgrade authoring.
+
+The already-observed production Pommel Strike Draw-2 scenario remains separate sticky PIE evidence; no persistent test-only `Pommel Strike+` asset is required.
+
+Phase 8 must validate that the interaction emerges from generic card, bulk-draw, shuffle, event, trigger and action rules without combination special cases.
+
+## Card Expansion / Upgrade Foundation
+
+Status: **DESIGN REFINED / PLANNED AFTER PHASE 8 / IMPLEMENTATION NOT AUTHORIZED**
+
+Authority: `docs/CardUpgradeFoundationDesign.md`.
+
+After Phase 8 is sealed, generic Upgrade Foundation is the next bounded Card Expansion goal. It is not deferred until the final Ironclad wave.
+
+Core direction:
+
+```text
+normal card
+→ exactly-one Single upgrade state
+
+repeatable definition
+→ immutable RepeatableUpgradeCapability policy
+→ exactly-one Repeatable runtime state
+
+actual gameplay + A3 + committed card-face
+→ same typed effective card/effect view
+```
+
+The first Upgrade slice keeps Effect type/order/count unchanged and changes typed authored parameters only.
+
+## Card Trigger Source Expansion
+
+Status: **DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED**
+
+Authority: `docs/CardTriggerSourceExpansionDesign.md`.
+
+This slice must be implemented independently before Sentinel/Card-trigger consumers. It adds a typed Card trigger-source provider and a deterministic comparison key while preserving sealed Status/Relic ordering. It is not part of Phase 8.
 
 ## Phase 6UI-B — Advanced UX / Tooling
 
-Status: **PLANNED AFTER PHASE 8**
+Status: **PLANNED AFTER PHASE 8 / CARD FOUNDATION AS APPLICABLE**
 
 Advanced preview, Keyword/CardText presentation, developer overlay, presentation timeline tooling, controller/accessibility work and responsive layout belong here unless required earlier for basic playability or diagnosis.
 
