@@ -45,27 +45,6 @@ public:
 	TArray<TObjectPtr<UCardEffect>> Effects;
 };
 
-USTRUCT(BlueprintType)
-struct SLAYTHESPIREDEMO_API FCardUpgradeConfig
-{
-	GENERATED_BODY()
-
-	// Migration-only legacy ordinary-upgrade configuration. R1 keeps this
-	// serialized shape so production assets can copy their old authored values
-	// into the new typed Base/Upgraded fields before runtime authority switches.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Upgrade", meta = (MultiLine = "true", DisplayName = "Description Format"))
-	FText Description;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Upgrade", meta = (ClampMin = "0"))
-	int32 Cost = 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Upgrade")
-	ECardDestination DefaultDestination = ECardDestination::Discard;
-
-	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Card|Upgrade")
-	TArray<TObjectPtr<UCardEffect>> Effects;
-};
-
 UCLASS(BlueprintType)
 class SLAYTHESPIREDEMO_API UCardData : public UPrimaryDataAsset
 {
@@ -95,9 +74,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Rules", meta = (ClampMin = "0"))
 	int32 BaseCost = 1;
 
-	// STS-style typed upgrade target. During R1/R2 runtime still reads the legacy
-	// Upgrade.Cost; production assets must establish parity here before R3.
-	// No sentinel/fallback semantics: unchanged cost is authored explicitly.
+	// STS-style typed upgrade value. No sentinel/fallback semantics: unchanged
+	// cost is authored explicitly to the same value as BaseCost.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Rules", meta = (ClampMin = "0"))
 	int32 UpgradedCost = 1;
 
@@ -106,14 +84,6 @@ public:
 
 	UPROPERTY(EditAnywhere, Instanced, BlueprintReadOnly, Category = "Card|Effects")
 	TArray<TObjectPtr<UCardEffect>> Effects;
-
-	// Migration-only legacy authority until R3. Do not add new behavior against
-	// this flag/config; new upgrade data belongs on typed Card/Effect fields.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Upgrade", meta = (InlineEditConditionToggle))
-	bool bHasUpgrade = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Upgrade", meta = (EditCondition = "bHasUpgrade"))
-	FCardUpgradeConfig Upgrade;
 
 #if WITH_EDITOR
 	virtual EDataValidationResult IsDataValid(class FDataValidationContext& Context) const override;
