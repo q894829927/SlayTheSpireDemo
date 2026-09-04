@@ -18,14 +18,13 @@
 namespace
 {
 	bool TryBuildCommittedCardFaceRichDescription(
-		const UCardData* Definition,
 		const UCardInstance* Card,
 		ACombatant* Source,
 		ACombatant* Target,
 		FText& OutRichDescription)
 	{
 		OutRichDescription = FText::GetEmpty();
-		if (!IsValid(Definition) || !IsValid(Card) || !IsValid(Source))
+		if (!IsValid(Card) || !IsValid(Card->GetDefinition()) || !IsValid(Source))
 		{
 			return false;
 		}
@@ -35,11 +34,12 @@ namespace
 		PreviewContext.Source = Source;
 		PreviewContext.Target = Target;
 
+		const TArray<TObjectPtr<UCardEffect>>& Effects = Card->GetEffects();
 		TArray<FImmediatePreviewOperation> Operations;
-		Operations.Reserve(Definition->Effects.Num());
-		for (int32 EffectIndex = 0; EffectIndex < Definition->Effects.Num(); ++EffectIndex)
+		Operations.Reserve(Effects.Num());
+		for (int32 EffectIndex = 0; EffectIndex < Effects.Num(); ++EffectIndex)
 		{
-			const UCardEffect* Effect = Definition->Effects[EffectIndex].Get();
+			const UCardEffect* Effect = Effects[EffectIndex].Get();
 			if (!IsValid(Effect))
 			{
 				return false;
@@ -149,8 +149,7 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	const UCardData* Definition = Card->GetDefinition();
-	if (Definition == nullptr)
+	if (!IsValid(Card->GetDefinition()))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Action] PlayCardAction skipped: %s has no valid definition."), *Card->GetDebugLabel());
 		Finish();
@@ -165,7 +164,7 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	ACombatant* ResolvedTarget = nullptr;
-	switch (Definition->TargetType)
+	switch (Card->GetTargetType())
 	{
 	case ECardTargetType::None:
 		break;
@@ -214,20 +213,16 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 		Battle->TryResolveCombatantPresentationId(ResolvedTarget, Context.TargetPresentationId);
 	}
 
-	// Freeze the same read-only current-state card-face resolution used by A3
-	// before any follow-up Action can mutate the battle. A3 itself still clears on
-	// submission; A2 receives this value only through the immutable CardPlayed
-	// snapshot and never queries live Gameplay during playback.
 	FText CommittedCardFaceRichDescription;
 	const bool bHasCommittedCardFaceRichDescription = TryBuildCommittedCardFaceRichDescription(
-		Definition,
 		Card.Get(),
 		Source.Get(),
 		ResolvedTarget,
 		CommittedCardFaceRichDescription);
 
+	const TArray<TObjectPtr<UCardEffect>>& Effects = Card->GetEffects();
 	TArray<UBattleAction*> FollowUpActions;
-	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
+	for (const TObjectPtr<UCardEffect>& EffectPtr : Effects)
 	{
 		const UCardEffect* Effect = EffectPtr.Get();
 		if (!IsValid(Effect))
