@@ -4,11 +4,22 @@
 
 状态：**PLANNING REFERENCE / IMPLEMENTATION NOT AUTHORIZED**
 
-本文件把《Slay the Spire 1》Ironclad 全部卡牌拆成长期内容需求与去重后的架构能力。它不是新的实施授权，也不扩大 `docs/Phase8ComboArchitectureDesign.md` 的 Phase 8 范围。
+本文件把《Slay the Spire 1》Ironclad 全部卡牌拆成长期内容需求与去重后的架构能力。它不是新的实施授权，也不扩大任何当前 active slice。
 
 基线口径：Ironclad 有 **72 张常规卡池卡**（20 Common / 36 Uncommon / 16 Rare），另有起始牌 `Strike / Defend / Bash` 3 个不同定义，因此本文覆盖 **75 个不同 Ironclad 卡牌定义**。
 
 本文不锁死每张卡的具体数值；数值属于 content authoring。本文锁定的是能力边界、公共合同、组合方式和长期实现/验证顺序。
+
+最新顺序决定：
+
+```text
+Phase 8 Combo Architecture Validation
+→ DEFERRED / not a blocker
+
+Card Expansion / Upgrade Foundation
+→ NEXT ACTIVE GOAL
+→ implementation still requires explicit authorization
+```
 
 ---
 
@@ -460,7 +471,7 @@ Effect type/order/count unchanged
 only typed authored parameters change
 ```
 
-Phase 8 seal 后先建立 generic Upgrade Foundation；Armaments/Searing Blow 只是以后对应 card batch 的特殊消费者。
+**CAP-01 generic Foundation 现在是 next active goal，不再等待 Phase 8。** Armaments/Searing Blow 仍只是以后对应 card batch 的特殊消费者。
 
 ### CAP-02 — Card traits + zone/deck/hand queries
 
@@ -993,15 +1004,9 @@ Card Trigger Source Expansion                = Sentinel first direct validation 
 
 ## 6. Recommended implementation / validation order
 
-### Foundation 0 — Phase 8 first
+### Foundation 0 — Card Expansion / Upgrade Foundation — NEXT ACTIVE GOAL
 
-Phase 8 使用 transient authored Draw-2 test definition + Sundial 做架构验证；Production PIE 继续保留当前 Draw-2 Pommel evidence。
-
-Phase 8 Automation 不依赖未来 Pommel Base/Upgrade 数值。
-
-### Foundation 1 — Card Expansion / Upgrade Foundation
-
-**Phase 8 seal 后立即进行。**
+当前 next bounded goal：
 
 ```text
 Default Single upgrade state
@@ -1011,7 +1016,7 @@ typed EffectiveCardView / EffectiveEffects[]
 first normal upgraded cards
 ```
 
-这一步不是 Wave 10；generic Upgrade Foundation 在正式大批卡牌开发前建立。
+Implementation 仍未授权；必须先显式授权第一个 Upgrade Foundation slice。
 
 ### Wave 1 — Exhaust fact surface
 
@@ -1145,6 +1150,24 @@ Searing Blow → repeatable-upgrade policy/state consumer
 
 Clone spec 只在 mutable states 与真实 Copy consumer 同时形成需求时落地。
 
+### Deferred integration gate — Phase 8
+
+Phase 8 不属于上述能力实现的前置依赖。
+
+```text
+Status: DESIGN REFINED / DEFERRED
+Authority: docs/Phase8ComboArchitectureDesign.md
+```
+
+以后在需要跨系统集成验证时恢复：
+
+```text
+transient authored Draw-2 card
+→ real Draw / Shuffle / Event / Sundial chain
+```
+
+Production Draw-2 Pommel + Sundial PIE evidence 继续保留。
+
 ---
 
 ## 7. Durable review checklist for every new card
@@ -1203,22 +1226,28 @@ Effective card boundary 是 typed card/effect view，不是万能 bag
 
 ## 9. Phase 8 relationship
 
-Phase 8 当前 authority：`docs/Phase8ComboArchitectureDesign.md`。
+Phase 8 authority：`docs/Phase8ComboArchitectureDesign.md`。
 
-Automation：
+当前：
 
 ```text
-transient authored Draw-2 card definition + Sundial
+DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
+```
+
+Phase 8 不再阻塞 CAP-01 / Card Expansion Foundation。
+
+以后恢复时：
+
+```text
+Automation
+→ transient authored Draw-2 card definition + Sundial
 → real Card / Effect / Action / Shuffle / Event / Reaction chain
+
+Production evidence
+→ existing Draw-2 Pommel Strike + Sundial PIE observation
 ```
 
-Production evidence：
-
-```text
-existing Draw-2 Pommel Strike + Sundial PIE observation
-```
-
-两者分离，避免未来正式 Pommel Base/Upgrade authoring 破坏 Phase 8 architecture regression。
+两者继续分离，避免生产卡牌数值变化破坏 architecture regression。
 
 ---
 
@@ -1232,6 +1261,7 @@ Continuation rule:            TYPED / LOCAL / AUTHORED / IMMUTABLE / NON-EVENT
 Continuation ordering:        REACTIONS -> CONTINUATION -> PREVIOUSLY PENDING
 Card Trigger source:          INDEPENDENT DESIGN SLICE / PROVIDER-BASED DISCOVERY
 Card Trigger ordering:        PRIORITY -> SOURCE TIER -> SEQUENCE KEY -> LOCAL INDEX
-Upgrade Foundation:           AFTER PHASE8 SEAL / BEFORE BROAD CARD WAVES
+Upgrade Foundation:           NEXT ACTIVE GOAL / IMPLEMENTATION NOT AUTHORIZED
+Phase 8:                      DEFERRED / NOT A BLOCKER
 Implementation authorization: NONE
 ```
