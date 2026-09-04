@@ -17,13 +17,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "0"))
 	int32 BaseAmount = 6;
 
+	// No sentinel/fallback semantics. If damage is unchanged by upgrade, author
+	// the same explicit value here as BaseAmount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Upgrade", meta = (ClampMin = "0"))
+	int32 UpgradedAmount = 6;
+
 	// Number of independent DamageActions built from this immutable effect
 	// definition. Each hit resolves the current modifier pipeline separately.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "1"))
 	int32 HitCount = 1;
 
+	// No sentinel/fallback semantics. If hit count is unchanged by upgrade,
+	// author the same explicit value here as HitCount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Upgrade", meta = (ClampMin = "1"))
+	int32 UpgradedHitCount = 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
 	EDamageKind DamageKind = EDamageKind::Attack;
+
+	int32 GetEffectiveAmount(bool bIsUpgraded) const;
+	int32 GetEffectiveHitCount(bool bIsUpgraded) const;
 
 	virtual void BuildActions(
 		const FCardPlayContext& Context,
