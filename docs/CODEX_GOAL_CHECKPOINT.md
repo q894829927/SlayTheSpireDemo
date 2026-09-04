@@ -12,13 +12,13 @@ Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
 Card Upgrade STS-Style Refactor:
-R1 BUILD PASS / R2 SIX-ASSET PARITY COMMITTED / R3 SOURCE SWITCH IMPLEMENTED / VALIDATION PENDING
+R3 MOST GATES PASS / DYNAMICTEXT CORRECT-PREFIX RERUN PENDING
 
 Previous FCardUpgradeConfig Foundation:
 HISTORICAL / SUPERSEDED / MIGRATION-ONLY FIELDS STILL PRESENT UNTIL R4
 
 Production Card Authoring:
-BLOCKED BY R3 VALIDATION + R4 LEGACY-FIELD REMOVAL/RESAVE
+BLOCKED BY DYNAMICTEXT R3 GATE + R4 LEGACY-FIELD REMOVAL/RESAVE
 ```
 
 Current R3 source head:
@@ -56,7 +56,7 @@ DA_Card_Uppercut
 DA_Card_Inflame
 ```
 
-## R3 source switch now implemented
+## R3 source switch implemented
 
 Runtime authority now uses the STS-style model:
 
@@ -78,7 +78,7 @@ Initialize(UCardData*, RuntimeId, bStartUpgraded)
 
 This does not mutate UCardData. In-combat upgrades still go only through `UUpgradeCardAction -> CommitUpgrade()`.
 
-Current Effect consumers now freeze `Context.Card->IsUpgraded()` at the existing build/preview boundary and pass only the bool into typed helpers:
+Current Effect consumers freeze `Context.Card->IsUpgraded()` at the existing build/preview boundary and pass only the bool into typed helpers:
 
 ```text
 Damage BuildActions / Dynamic Text / A3 -> GetEffectiveAmount/GetEffectiveHitCount
@@ -87,13 +87,13 @@ Draw   BuildActions / Dynamic Text      -> GetEffectiveDrawCount
 Status BuildActions / Dynamic Text      -> GetEffectiveAmount
 ```
 
-`BattleTextResolver::ValidateCardDefinition` now validates one Description + one Effects[] composition; each Effect validates both Base and Upgraded authored values.
+`BattleTextResolver::ValidateCardDefinition` validates one Description + one Effects[] composition; each Effect validates both Base and Upgraded authored values.
 
 `CardUpgradeFoundationTests.cpp` has been migrated in place to prove same Effect object identity, one-time `bUpgraded` mutation, Base/Upgraded typed values, creation-time upgraded state, Dynamic Text and frozen Presentation state.
 
 ## Migration-only legacy fields still present
 
-Do not delete yet until R3 validates:
+Do not delete yet until all R3 gates validate:
 
 ```text
 bHasUpgrade
@@ -104,21 +104,38 @@ UCardVariantData compatibility shim
 
 They are no longer runtime authority after R3; they remain only to keep serialized migration safety through R4.
 
-## Required R3 validation
+## R3 validation state
 
-Run in this order:
+Correct Gate names:
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development Build
 2. SlayTheSpireDemo.CardUpgrade
-3. SlayTheSpireDemo.UIA3.DynamicText
+3. SlayTheSpireDemo.Phase6UIA3.DynamicText
 4. SlayTheSpireDemo.UIA3.ImmediatePreview
 5. SlayTheSpireDemo.Phase6C
 ```
 
-Do not run full Phase 6 / Phase 7.
+Current sticky evidence reported by user:
 
-If all R3 gates pass:
+```text
+Build: PASS
+SlayTheSpireDemo.CardUpgrade: PASS
+SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
+SlayTheSpireDemo.Phase6C: PASS
+SlayTheSpireDemo.Phase6UIA3.DynamicText: NOT RUN
+```
+
+The prior command used the wrong prefix `SlayTheSpireDemo.UIA3.DynamicText` and UE reported `No automation tests matched`. This is not a gameplay/test failure; it means the intended Dynamic Text suite never ran. The actual tests are registered under `SlayTheSpireDemo.Phase6UIA3.DynamicText.*`.
+
+Next exact action:
+
+```text
+Run only SlayTheSpireDemo.Phase6UIA3.DynamicText once.
+Do not rebuild and do not rerun CardUpgrade / ImmediatePreview / Phase6C unless that test exposes a source fix that invalidates them.
+```
+
+If the corrected Dynamic Text gate passes:
 
 ```text
 → enter R4
