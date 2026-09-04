@@ -153,6 +153,11 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCardView
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	FText DisplayName;
 
+	// Frozen presentation fact. The visible name text remains the authored
+	// DisplayName; presentation may style upgraded cards differently.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	bool bUpgraded = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	int32 Cost = 0;
 
