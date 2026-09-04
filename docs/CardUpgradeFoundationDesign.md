@@ -2,12 +2,13 @@
 
 日期：**2026-09-04**
 
-状态：**DESIGN SIMPLIFIED / IMPLEMENTATION ACTIVE**
+状态：**DESIGN SIMPLIFIED / IMPLEMENTED / VALIDATED / SEALED**
 
-当前实施 authority：
+实施与验证 authority：
 
 ```text
 docs/CardUpgradeFoundationImplementation.md
+docs/CardUpgradeFoundationValidation.md
 ```
 
 用户已明确收敛普通卡升级方案：**一张卡只维护升级前、升级后两套 authored configuration；普通升级不建立通用参数 delta / expression framework。**
@@ -17,8 +18,6 @@ Phase 8 已 deferred，不是当前 Card Expansion 的前置 Gate。
 ---
 
 ## 1. Normal card model
-
-普通卡只有同一个卡牌定义与同一个运行时身份：
 
 ```text
 UCardData
@@ -53,14 +52,7 @@ DefaultDestination
 Effects[]
 ```
 
-不创建：
-
-```text
-DA_Strike
-DA_StrikePlus
-```
-
-两个独立 card identity。Base / Plus 永远共享：
+Base / Plus 永远共享：
 
 ```text
 CardId
@@ -68,11 +60,13 @@ UCardInstance
 RuntimeId
 ```
 
+不为 Plus 创建第二个 card identity。
+
 ---
 
 ## 2. Runtime upgrade state
 
-普通 `UCardInstance` 只需要：
+普通 `UCardInstance` 只维护：
 
 ```text
 bool bUpgraded
@@ -81,37 +75,22 @@ bool bUpgraded
 规则：
 
 ```text
-bUpgraded=false
-→ Base configuration
+false → Base
+true  → UpgradedVariant
 
-bUpgraded=true
-→ UpgradedVariant
-```
-
-```text
 CanUpgrade
 = !bUpgraded && UpgradedVariant exists
 ```
 
-第一次升级：
+第一次升级 `false -> true`；第二次升级 generic fail-soft reject。
 
-```text
-false -> true
-```
-
-第二次升级：
-
-```text
-reject generically / fail-soft
-```
-
-不需要 UpgradeLevel，不需要参数 patch 列表，不需要按 Damage / Draw / Block 分别实现升级解释。
+普通卡不使用 `UpgradeLevel`、参数 patch 列表、表达式语言或 Damage/Block/Draw-specific upgrade interpreter。
 
 ---
 
 ## 3. Effective boundary
 
-所有消费者只能通过 `UCardInstance` effective getters 读取当前配置：
+所有 variant-sensitive 消费者只通过 `UCardInstance` effective getters 读取当前配置：
 
 ```text
 GetDisplayName()
@@ -124,7 +103,7 @@ ResolveDestination()
 GetEffects()
 ```
 
-因此：
+生产路径包括：
 
 ```text
 PlayCardAction
@@ -134,15 +113,13 @@ current-state Hand freeze
 committed CardPlayed snapshot
 ```
 
-都不自行判断 `bUpgraded`，也不直接读取 variant-sensitive `Definition->Effects / TargetType / DisplayName / ...`。
-
-这不是 Universal EffectiveCardFacts；只是 `UCardInstance` 对 Base / Plus 两套完整配置做一个统一选择。
+消费者不得自行根据 `bUpgraded` 选择 `Definition` 字段。
 
 ---
 
 ## 4. Mutation authority
 
-战斗内升级继续遵循项目 Action authority：
+战斗内普通升级遵循 Action authority：
 
 ```text
 UpgradeCardAction
@@ -153,7 +130,7 @@ UpgradeCardAction
 
 Widget 不直接修改 `bUpgraded`。
 
-当前没有真实独立消费者，因此不创建 `CardUpgradedEvent`。
+当前没有独立消费者，因此本 Foundation 不创建 `CardUpgradedEvent`。
 
 ---
 
@@ -161,40 +138,29 @@ Widget 不直接修改 `bUpgraded`。
 
 ```text
 Strike
-Base:
-→ Damage 6
-
-Plus:
-→ Damage 9
+Base: Damage 6
+Plus: Damage 9
 ```
 
 ```text
 Defend
-Base:
-→ Block 5
-
-Plus:
-→ Block 8
+Base: Block 5
+Plus: Block 8
 ```
 
 ```text
 Pommel Strike
-Base:
-→ Damage / Draw 1
-
-Plus:
-→ upgraded Damage / Draw 2
+Base: Damage + Draw 1
+Plus: upgraded Damage + Draw 2
 ```
 
-两套配置允许未来 Effect 数量或类型不同；普通 Upgrade Runtime 不需要知道两套配置具体差异是什么。
+两套配置可以拥有不同 authored Effect 参数；普通 Upgrade Runtime 不解释这些差异。
 
 ---
 
 ## 6. Repeatable upgrades
 
-Searing Blow 等可重复升级不进入当前 ordinary-card slice。
-
-锁定原则仍是：
+Searing Blow 等重复升级不属于 ordinary-card Foundation。
 
 ```text
 普通卡
@@ -204,25 +170,23 @@ Searing Blow 等可重复升级不进入当前 ordinary-card slice。
 → future optional orthogonal capability
 ```
 
-不能为了 Searing Blow 把所有普通卡重新改成整数 UpgradeLevel。
-
-Repeatable capability 的具体 API 等真实实施 Searing Blow 前再单独定稿。
+不能为了重复升级卡把所有普通卡改成整数 `UpgradeLevel`。
 
 ---
 
-## 7. Current implementation scope
+## 7. Sealed scope
 
-当前只做：
+已实现并验证：
 
 ```text
 UCardVariantData / UCardData.UpgradedVariant
 UCardInstance.bUpgraded + effective getters
 UpgradeCardAction
-variant-sensitive production consumers migration
+variant-sensitive production consumer migration
 focused Automation
 ```
 
-不做：
+明确不包含：
 
 ```text
 Searing Blow
@@ -233,6 +197,7 @@ reward/shop
 save/load
 CardUpgradedEvent
 universal upgrade expression/delta system
+Phase 8
 ```
 
 ---
@@ -240,16 +205,19 @@ universal upgrade expression/delta system
 ## 8. Acceptance
 
 ```text
-[ ] existing cards without UpgradedVariant continue using current Base fields unchanged
-[ ] a card with UpgradedVariant can upgrade exactly once
-[ ] Base and Plus keep the same CardId / RuntimeId
-[ ] second upgrade is rejected fail-soft
-[ ] actual Gameplay reads Plus Effects after upgrade
-[ ] A3 reads Plus Effects after upgrade
-[ ] card text reads Plus Description/Effects after upgrade
-[ ] current-state and committed snapshots freeze Plus display/cost/type/target/art/text
-[ ] no Damage/Block/Draw-specific upgrade branch exists
-[ ] no CardId-specific upgrade branch exists
+[x] existing cards without UpgradedVariant continue using current Base fields unchanged
+[x] a card with UpgradedVariant can upgrade exactly once
+[x] Base and Plus keep the same CardId / RuntimeId
+[x] second upgrade is rejected fail-soft
+[x] variant-sensitive Gameplay path uses UCardInstance effective boundary
+[x] A3 uses effective Effects boundary
+[x] card text uses effective Description/Effects
+[x] current-state and committed snapshots use effective card fields
+[x] no Damage/Block/Draw-specific upgrade branch exists
+[x] no CardId-specific upgrade branch exists
+[x] Editor Build PASS reported by user
+[x] CardUpgrade focused Automation PASS reported by user
+[x] directly-invalidated A3 ImmediatePreview regression PASS reported by user
 ```
 
-当前 implementation 仍需本地 Build + focused Automation 验证后才能 seal。
+**This design is sealed.** Production card Base/Plus authoring may now consume it without reopening Foundation design.
