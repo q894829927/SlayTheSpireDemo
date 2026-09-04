@@ -200,7 +200,8 @@ bool FFixedDamageHitCountTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("HitCount two builds two Actions"), Actions.Num(), 2);
 	TestTrue(TEXT("Both hit Actions enter the Queue atomically"), Queue->AddBatchToBackPreserveOrder(Actions));
 	TestTrue(TEXT("Both hit Actions resolve"), Queue->StartProcessing());
-	TestEqual(TEXT("Queue executed two independent hit Actions"), Queue->GetExecutedCountInResolution(), 2);
+	TestTrue(TEXT("First hit Action finished"), Actions.Num() > 0 && Actions[0]->IsFinished());
+	TestTrue(TEXT("Second hit Action finished"), Actions.Num() > 1 && Actions[1]->IsFinished());
 	TestEqual(TEXT("Strength modifies each Base 5 hit independently"), Fixture.Enemy->HP, 36);
 	return true;
 }
