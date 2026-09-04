@@ -112,6 +112,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Cards")
 	void TestPlayFirstCard();
 
+	// Focused visual/debug hook for the upgrade refactor. It upgrades the first
+	// runtime Hand card through the real UUpgradeCardAction boundary rather than
+	// mutating UCardData or UCardInstance directly.
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Battle|Debug|Cards")
+	void TestUpgradeFirstHandCard();
+
 	UFUNCTION(BlueprintCallable, Category = "Battle|Debug|Status")
 	void TestApplyPhase5AStatuses();
 
