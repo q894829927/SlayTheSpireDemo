@@ -2,13 +2,13 @@
 
 日期：**2026-09-05**
 
-状态：**R3 COMPLETE / VALIDATED / R4 LEGACY SOURCE REMOVAL BUILD PASS / SIX-ASSET LOAD PASS / FINAL PRESENTATION + RESAVE + SHIM ASSESSMENT PENDING**
+状态：**COMPLETE / VALIDATED / SEALED**
 
-本文件是普通卡升级重构的 dedicated authority。最终 ordinary-card upgrade 模型已经从 `FCardUpgradeConfig + bHasUpgrade + second Effects[]` 收敛到单一 `UCardData`、单一 `Effects[]`、typed Base/Upgraded authored values 与唯一 runtime `UCardInstance::bUpgraded`。
+本文件是普通卡升级重构的 dedicated authority。ordinary-card upgrade 已从 `FCardUpgradeConfig + bHasUpgrade + second Effects[]` 完整收敛到单一 `UCardData`、单一 `Effects[]`、typed Base/Upgraded authored values 与唯一 runtime `UCardInstance::bUpgraded`。
 
 ---
 
-## 1. Locked target
+## 1. Locked final model
 
 ```text
 one immutable UCardData
@@ -33,13 +33,13 @@ UCardInstance
 └─ bool bUpgraded
 ```
 
-禁止引入第二个 authoritative upgrade flag、普通卡 UpgradeLevel、Universal Upgrade Delta/Context、CardId 分支或第二套 Effects composition。
+禁止重新引入第二个 authoritative upgrade flag、普通卡 UpgradeLevel、Universal Upgrade Delta/Context、CardId 分支或第二套 Effects composition。
 
 ---
 
 ## 2. Typed per-effect upgrade values
 
-本轮覆盖当前生产已有四类 Effect：
+当前生产覆盖：
 
 ```text
 UDamageCardEffect
@@ -62,7 +62,7 @@ Effect resolver API 只接：
 GetEffectiveXXX(bool bIsUpgraded)
 ```
 
-不接 `UCardInstance*`。调用边界读取 `Card->IsUpgraded()` 后只传 bool。
+调用边界读取 `Card->IsUpgraded()` 后只传 bool；Effect 不依赖 `UCardInstance*`。
 
 `Upgraded*` 没有 magic fallback：升级不改某值时也必须显式 author 成与 Base 相同；Base/Upgraded 各自应用相同 DataValidation 规则。
 
@@ -103,7 +103,7 @@ GetEffects()
 → always Definition->Effects
 ```
 
-普通升级不再更换 Description、Destination 或 Effects object composition。
+普通升级不更换 Description、Destination 或 Effects object composition。
 
 战斗中 mutation authority 保持：
 
@@ -158,7 +158,7 @@ UCardInstance::bUpgraded
    └─ true:  DisplayName + "+" + upgraded title color
 ```
 
-当前升级标题颜色锁定为参考图中的亮黄绿色：
+升级标题颜色：
 
 ```text
 sRGB #7FFF00
@@ -175,9 +175,9 @@ sRGB #7FFF00
 
 ---
 
-## 7. Asset migration
+## 7. Asset migration and legacy cleanup
 
-六个生产资产：
+迁移范围：
 
 ```text
 DA_Card_Strike
@@ -188,36 +188,36 @@ DA_Card_Uppercut
 DA_Card_Inflame
 ```
 
-R2 已完成：旧字段仍存在时，新 `UpgradedCost / Effect.Upgraded*` 与旧 Upgrade 数值完成 parity，六资产已保存并提交。
-
-R4 source removal 已完成并 Build PASS：
+迁移已完成：
 
 ```text
-removed FCardUpgradeConfig
-removed bHasUpgrade
-removed UCardData::Upgrade
+R2
+→ legacy fields still present
+→ new UpgradedCost / Effect.Upgraded* authored to parity
+→ six assets saved/committed
+
+R4
+→ removed FCardUpgradeConfig
+→ removed bHasUpgrade
+→ removed UCardData::Upgrade
+→ Build PASS
+→ six assets loaded successfully
+→ six assets post-removal resaved
+
+Final compatibility cleanup
+→ removed UCardVariantData shim
+→ final Build PASS
+→ full Editor restart
+→ all six assets loaded successfully without the shim
 ```
 
-六个生产资产在删除旧字段后均已能够正常打开。`UCardVariantData` 暂时继续作为 load-compatibility shim，不属于 ordinary authoring surface；在 post-removal resave/commit 完成前不删除。
+`UCardVariantData` 已从生产源码删除，不再是任何 active compatibility dependency。
 
 ---
 
-## 8. R4 remaining user action
+## 8. Validation evidence
 
-```text
-open all six DA_Card_* assets
-→ verify BaseCost / UpgradedCost
-→ verify each Effect Base / Upgraded typed values
-→ confirm no old Upgrade / Has Upgrade authoring surface remains
-→ Save all six assets
-→ commit the six post-removal .uasset changes
-```
-
-只有六资产在旧字段删除后完成正常加载 + 重存，才评估删除 `UCardVariantData` compatibility shim。
-
----
-
-## 9. R3 validation evidence
+### R3 logic gates
 
 全部 PASS：
 
@@ -229,34 +229,48 @@ SlayTheSpireDemo.UIA3.ImmediatePreview
 SlayTheSpireDemo.Phase6C
 ```
 
----
+### R4 / Presentation gates
 
-## 10. Final presentation validation budget
-
-升级标题表现改动直接修改 `UBattleCardWidget`，因此新增的直接失效 Gate 只有：
+全部 PASS：
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development Build
-2. SlayTheSpireDemo.Phase6UIA2N.R4
-3. one focused PIE
+SlayTheSpireDemoEditor Win64 Development Build
+SlayTheSpireDemo.Phase6UIA2N.R4
+focused PIE
 ```
 
-R3 的 CardUpgrade / DynamicText / ImmediatePreview / Phase6C 保持 sticky PASS。
-
-focused PIE：
+focused PIE confirmed：
 
 ```text
-normal card → authored name, Designer/default title color
-same runtime card upgraded → authored name + "+", bright yellow-green title (#7FFF00)
-upgraded numeric text matches configured upgraded value
-actual Gameplay uses the same upgraded values
+normal card
+→ authored name
+→ Designer/default title color
+
+same runtime card upgraded
+→ authored name + "+"
+→ bright yellow-green title (#7FFF00)
+→ upgraded numeric text
+→ actual Gameplay uses the same upgraded values
 ```
+
+### Final shim-removal gates
+
+全部 PASS：
+
+```text
+UCardVariantData removed from source
+→ SlayTheSpireDemoEditor Win64 Development Build PASS
+→ full Editor restart
+→ all six production DA_Card_* assets open normally
+```
+
+No further Upgrade-focused regression run is required unless a future change directly invalidates this sealed surface.
 
 ---
 
-## 11. Reference acceptance case
+## 9. Reference acceptance case
 
-Pommel Strike 最终应满足：
+Pommel Strike sealed behavior：
 
 ```text
 same UCardInstance
@@ -276,11 +290,11 @@ Widget upgraded title color = #7FFF00
 Gameplay = Dynamic Text = A3 = configured upgraded typed values
 ```
 
-Phase 8 仍 deferred；其 Automation 继续使用 transient definitions，不锁生产 Pommel 数值。
-
 ---
 
-## 12. Explicit non-goals
+## 10. Explicit non-goals
+
+以下仍不属于本次 sealed ordinary-upgrade foundation：
 
 ```text
 repeatable upgrade / UpgradeCount / Searing Blow
@@ -294,9 +308,11 @@ save/load/run-deck persistence
 campfire/reward/shop upgrade UX
 ```
 
+若未来真实卡牌需求触发这些能力，应作为独立 capability slice 设计，不重开本次 ordinary-card upgrade 模型。
+
 ---
 
-## 13. Current stop state
+## 11. Final sealed checklist
 
 ```text
 [x] architecture direction locked
@@ -317,13 +333,26 @@ campfire/reward/shop upgrade UX
 [x] SlayTheSpireDemo.Phase6C PASS
 [x] R4 FCardUpgradeConfig / bHasUpgrade / Upgrade source removal
 [x] R4 Build PASS
-[x] six-asset post-removal load PASS
+[x] six-asset post-removal load/resave complete
 [x] upgraded Widget title '+' implementation
-[x] upgraded title #7FFF00 default implementation
-[ ] upgraded Widget Build PASS
-[ ] SlayTheSpireDemo.Phase6UIA2N.R4 PASS
-[ ] six-asset post-removal resave/commit
-[ ] assess UCardVariantData shim removal
-[ ] final focused PIE
-[ ] seal
+[x] upgraded title #7FFF00 implementation
+[x] upgraded Widget Build PASS
+[x] SlayTheSpireDemo.Phase6UIA2N.R4 PASS
+[x] final focused PIE PASS
+[x] UCardVariantData compatibility shim removed
+[x] post-shim-removal Build PASS
+[x] six-asset post-shim-removal load PASS
+[x] COMPLETE / VALIDATED / SEALED
+```
+
+---
+
+## 12. Stop state
+
+```text
+CARD UPGRADE STS-STYLE REFACTOR
+COMPLETE / VALIDATED / SEALED
+
+No new Phase / Card Expansion implementation is authorized by this document.
+STOP.
 ```
