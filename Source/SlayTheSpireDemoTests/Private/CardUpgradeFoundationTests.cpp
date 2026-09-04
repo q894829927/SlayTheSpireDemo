@@ -65,11 +65,11 @@ namespace CardUpgradeFoundation
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FCardUpgradeSingleVariantTest,
-	"SlayTheSpireDemo.CardUpgrade.SingleVariant",
+	FCardUpgradeSingleConfigTest,
+	"SlayTheSpireDemo.CardUpgrade.SingleConfig",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
+bool FCardUpgradeSingleConfigTest::RunTest(const FString& Parameters)
 {
 	using namespace CardUpgradeFoundation;
 
@@ -92,8 +92,6 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Card becomes upgraded"), Card->IsUpgraded());
 	TestFalse(TEXT("Normal card cannot upgrade twice"), Card->CanUpgrade());
 
-	// Name/art/type/target are not duplicated in Upgrade config. The visible '+'
-	// is derived from runtime upgrade state rather than authored as a second name.
 	TestEqual(TEXT("Upgraded display derives plus suffix"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name+")));
 	TestEqual(TEXT("Card type remains shared after upgrade"), Card->GetCardType(), ECardType::Attack);
 	TestEqual(TEXT("Target type remains shared after upgrade"), Card->GetTargetType(), ECardTargetType::Enemy);
