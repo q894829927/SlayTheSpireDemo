@@ -18,6 +18,7 @@ namespace Phase6UIA2PresentationCardViewMapper
 		Test.TestEqual(FString::Printf(TEXT("%s RuntimeId"), Prefix), View.RuntimeId, Snapshot.RuntimeId);
 		Test.TestEqual(FString::Printf(TEXT("%s CardId"), Prefix), View.CardId, Snapshot.CardId);
 		Test.TestTrue(FString::Printf(TEXT("%s DisplayName"), Prefix), View.DisplayName.EqualTo(Snapshot.DisplayName));
+		Test.TestEqual(FString::Printf(TEXT("%s upgraded state"), Prefix), View.bUpgraded, Snapshot.bUpgraded);
 		Test.TestEqual(FString::Printf(TEXT("%s Cost"), Prefix), View.Cost, Snapshot.Cost);
 		Test.TestEqual(FString::Printf(TEXT("%s CardType"), Prefix), View.CardType, Snapshot.CardType);
 		Test.TestEqual(FString::Printf(TEXT("%s TargetType"), Prefix), View.TargetType, Snapshot.TargetType);
@@ -43,6 +44,7 @@ bool FPhase6UIA2PresentationCardViewMapperTest::RunTest(const FString& Parameter
 	Snapshot.RuntimeId = 42;
 	Snapshot.CardId = TEXT("CommittedMapperProbe");
 	Snapshot.DisplayName = FText::FromString(TEXT("Committed Mapper Probe"));
+	Snapshot.bUpgraded = true;
 	Snapshot.Cost = 2;
 	Snapshot.CardType = ECardType::Skill;
 	Snapshot.TargetType = ECardTargetType::Self;
