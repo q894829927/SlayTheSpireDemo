@@ -133,7 +133,7 @@ review fix 只缩窄 upgrade authoring shape，没有新建第二套 Gameplay pa
 继续使用：
 
 ```text
-SlayTheSpireDemo.CardUpgrade.SingleVariant
+SlayTheSpireDemo.CardUpgrade.SingleConfig
 SlayTheSpireDemo.CardUpgrade.EffectiveConsumers
 ```
 
