@@ -14,17 +14,37 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7F Relic Counter Metadata Unification: COMPLETE / VALIDATED / SEALED
 
 Phase 8 Combo Architecture Validation:
-DESIGN REFINED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
+DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
 Card Expansion / Upgrade Foundation:
-DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED
+NEXT ACTIVE GOAL / DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED
 
 Card Trigger Source Expansion:
-DESIGN DRAFT / IMPLEMENTATION NOT AUTHORIZED
+DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED
 
 Ironclad Capability Architecture:
 COUPLING REVIEW REFINED / PLANNING ONLY
 ```
+
+## Ordering decision — Phase 8 is deferred
+
+The user explicitly changed the implementation order on **2026-09-04**.
+
+Phase 8 remains a valid future integration-validation gate, but it is no longer a prerequisite for starting Card Expansion / Upgrade Foundation.
+
+Current order is:
+
+```text
+Phase 7A–7F
+COMPLETE / VALIDATED / SEALED
+
+→ Card Expansion / Upgrade Foundation
+→ first formal upgraded-card batch
+→ later bounded Ironclad capability/card waves
+→ Phase 8 Combo Architecture Validation may be resumed later as an integration gate
+```
+
+Do not delete Phase 8 design or its existing Production PIE evidence. Mark it deferred and preserve it for later reuse.
 
 ## Sealed Phase 7 state
 
@@ -60,31 +80,17 @@ Shuffle commit
 → previously pending work
 ```
 
-This is the precedent to generalize for future authored Result->Continuation; do not invent a second queue-ordering model.
+This remains the precedent to generalize for future authored Result->Continuation.
 
-## Revised Phase 8 authority
+## Deferred Phase 8 authority
 
 ```text
 docs/Phase8ComboArchitectureDesign.md
 ```
 
-The existing Pommel Strike has already been configured to `Draw 2` and the user has manually observed the target gameplay chain in PIE:
+Phase 8 design is retained but deferred.
 
-```text
-Pommel Strike
-→ Damage
-→ Draw 2
-→ UDrawCardsAction(2)
-→ real Shuffle
-→ FDeckShuffledEvent
-→ Sundial Counter
-→ third counted Shuffle +2 Energy
-→ remaining Draw continuation
-```
-
-That remains Production PIE evidence only.
-
-Phase 8 Automation is now decoupled from production Pommel authored values:
+Its future Automation remains decoupled from production Pommel values:
 
 ```text
 Transient authored UCardData
@@ -97,154 +103,11 @@ Transient authored UCardData
 → Sundial reaction
 ```
 
-No persistent test-only `Pommel Strike+` asset is created. Future Upgrade Foundation may restore production Pommel Strike to Base Draw 1 / Upgraded Draw 2 without invalidating the architecture Automation.
+Existing Draw-2 Pommel Strike + Sundial observation remains Production PIE evidence only.
 
-Current Phase 8 scope is only:
+Phase 8 implementation is **not authorized now**, and Phase 8 is **not a blocker** for the next Card Expansion goal.
 
-```text
-8A Automated Combo Integration
-8B Record existing Production PIE evidence
-8C Validation / Seal
-```
-
-Suggested focused tests:
-
-```text
-SlayTheSpireDemo.Phase8.Combo.Draw2Sundial
-SlayTheSpireDemo.Phase8.Combo.OrderingAndContinuation
-```
-
-The automated path must start from real Card / Effect execution, not a manually dispatched `FDeckShuffledEvent`.
-
-Phase 8 still requires explicit implementation authorization.
-
-## Ironclad card planning
-
-Long-term card inventory/capability plan:
-
-```text
-docs/IroncladCardArchitecturePlan.md
-```
-
-It covers 75 distinct Ironclad card definitions and CAP-00..CAP-20 plus explicit cross-cutting typed contracts.
-
-Locked architecture rule:
-
-```text
-Primitive capabilities stay neutral.
-Authored card/orchestration is the composition layer and may combine multiple public contracts.
-Capabilities communicate through typed Query / Predicate / Spec / SelectionResult / CommitResult / BattleEvent contracts.
-Do NOT replace this with a UniversalResultBus / UniversalContext / arbitrary key-value interpreter.
-```
-
-Coupling-review decisions:
-
-```text
-CAP-09 no longer owns Draw restriction.
-Draw legality and Draw amount modification are a separate typed Draw rule surface.
-Draw modifiers use deterministic ordering homologous to existing modifier pipelines.
-
-CAP-12 RNG is domain-neutral: ChooseIndex / ChooseOne / Shuffle only.
-CAP-20 CardCatalog only returns ordered Definition candidates.
-CAP-05 CardCreation materializes the chosen Definition.
-
-Result-dependent composition uses a typed, authored, resolution-local Continuation.
-Continuation is NOT BattleEvent / Dispatcher / persistent Trigger registry.
-Continuation authored objects are immutable/stateless.
-Mutable-state-dependent numeric/predicate resolution occurs at Execute-time.
-```
-
-### Continuation ordering is not a new queue model
-
-Future CommitResult-dependent actions must reuse the sealed Draw/Shuffle pattern:
-
-```text
-Action Execute
-→ commit
-→ typed Result
-→ authored Continuation builds dependent batch
-→ AddBatchToFrontPreserveOrder(ContinuationBatch)
-→ dispatch committed BattleEvent
-→ reactions naturally insert ahead of ContinuationBatch
-→ Finish
-```
-
-Result:
-
-```text
-same-commit reactions
-→ authored Continuation actions
-→ previously pending actions
-```
-
-If Continuation build/insert fails:
-
-```text
-RequestResolutionFault
-→ Finish
-→ return immediately
-→ do NOT dispatch the event afterward from that failed path
-```
-
-Do not rely on `RequestResolutionFault` alone to make Dispatcher reject work before the Queue reaches its safe fault point.
-
-## Card Trigger Source Expansion authority
-
-Dedicated design:
-
-```text
-docs/CardTriggerSourceExpansionDesign.md
-```
-
-This is an independent future foundation slice, not part of Sentinel content implementation.
-
-Locked comparison key:
-
-```text
-Priority
-→ SourceTier
-   Status / Relic = 0
-   Card           = 1
-→ SequenceKey
-   Status / Relic = RuntimeSequence
-   Card           = RuntimeId
-→ LocalTriggerIndex
-```
-
-Source discovery must come through a typed Card trigger-source provider boundary; Dispatcher must not traverse Deck zones and interpret Card semantics.
-
-RuntimeId invariant:
-
-```text
-Every newly materialized UCardInstance
-→ fresh battle-unique RuntimeId
-→ same authoritative NextRuntimeId allocator
-```
-
-Clone/copy never copies RuntimeId.
-
-This slice must protect sealed ordering with focused Card-source Automation plus existing Phase7 Status/Relic and Phase6 trigger-order regressions.
-
-## Known sealed coupling guardrails
-
-Known historical coupling hotspots remain sealed and are not reopened now:
-
-```text
-UCardEffect compile-time A3 Preview coupling
-FCardPlayContext service-bag tendency
-FTriggerContext service-bag tendency
-PlayCardAction gameplay + card-face freeze + presentation snapshot duties
-```
-
-New card capabilities must not enlarge those surfaces:
-
-```text
-Do not add new subsystem services to FCardPlayContext or FTriggerContext.
-Do not use FTriggerContext::GetBattle() as a general subsystem locator.
-Prefer Event / source snapshot / typed Query boundaries.
-```
-
-## Upgrade Foundation authority
+## Card Expansion / Upgrade Foundation authority
 
 Dedicated design:
 
@@ -252,15 +115,7 @@ Dedicated design:
 docs/CardUpgradeFoundationDesign.md
 ```
 
-Decision:
-
-```text
-Upgrade System WILL be implemented,
-but not inside Phase 8.
-
-It becomes the Card Expansion Foundation immediately after Phase 8 seal
-and is implemented together with the first formal upgraded-card batch.
-```
+This is now the **next active bounded goal**, but implementation still requires explicit authorization.
 
 Locked Upgrade rules:
 
@@ -284,7 +139,7 @@ RepeatableUpgradeCapability:
 → does not build Presentation text
 ```
 
-Effective resolution is typed, not a flattened universal bag:
+Effective resolution remains typed, not a flattened universal bag:
 
 ```text
 EffectiveCardView
@@ -298,32 +153,104 @@ First Upgrade slice keeps Effect type/order/count unchanged and upgrades typed a
 
 Presentation consumes a frozen `FUpgradeStateView`; normal upgraded title uses `+`, repeatable presentation uses `+1`, `+2`, ...
 
-This does not yet authorize Run Deck, campfire, save/load, reward or shop systems.
+This does not authorize Run Deck, campfire, save/load, reward or shop systems.
 
-## Planning-order clarification
+## Ironclad architecture guardrails
 
-The long-term Ironclad Waves are implementation/validation groupings, not dependency order.
-
-Actual near-term sequence is:
+Long-term plan:
 
 ```text
-Phase 8 seal
-→ Card Expansion / Upgrade Foundation
-→ first normal upgraded-card batch
-→ later Ironclad capability waves
-→ Armaments / Searing Blow remain later special Upgrade consumers when their card batches arrive
+docs/IroncladCardArchitecturePlan.md
 ```
 
-Any old wording that places the generic Upgrade Foundation itself at a final "Wave 10" is stale; only special runtime-upgrade consumers may remain in that later wave.
+Locked architecture rule:
+
+```text
+Primitive capabilities stay neutral.
+Authored card/orchestration is the composition layer and may combine multiple public contracts.
+Capabilities communicate through typed Query / Predicate / Spec / SelectionResult / CommitResult / BattleEvent contracts.
+Do NOT replace this with a UniversalResultBus / UniversalContext / arbitrary key-value interpreter.
+```
+
+Result-dependent composition uses typed, authored, resolution-local, immutable/stateless Continuations.
+Mutable-state-dependent numeric/predicate resolution occurs at Execute-time.
+
+Future same-commit ordering continues to reuse the sealed pattern:
+
+```text
+Action Execute
+→ commit
+→ typed Result
+→ authored Continuation builds dependent batch
+→ AddBatchToFrontPreserveOrder(ContinuationBatch)
+→ dispatch committed BattleEvent
+→ reactions naturally insert ahead of ContinuationBatch
+→ Finish
+```
+
+Result:
+
+```text
+same-commit reactions
+→ authored Continuation actions
+→ previously pending actions
+```
+
+Failure path:
+
+```text
+Continuation build/insert failure
+→ RequestResolutionFault
+→ Finish
+→ return immediately
+→ do NOT dispatch afterward from that failed path
+```
+
+## Card Trigger Source Expansion authority
+
+Dedicated future design:
+
+```text
+docs/CardTriggerSourceExpansionDesign.md
+```
+
+This is an independent future foundation slice before Sentinel/Card-trigger consumers.
+
+Locked comparison key:
+
+```text
+Priority
+→ SourceTier
+   Status / Relic = 0
+   Card           = 1
+→ SequenceKey
+   Status / Relic = RuntimeSequence
+   Card           = RuntimeId
+→ LocalTriggerIndex
+```
+
+Source discovery must come through a typed Card trigger-source provider boundary; Dispatcher must not traverse Deck zones and interpret Card semantics.
+
+Every newly materialized `UCardInstance` receives a fresh battle-unique RuntimeId from the same authoritative allocator; clone/copy never copies RuntimeId.
+
+## Known sealed coupling guardrails
+
+```text
+UCardEffect compile-time A3 Preview coupling
+FCardPlayContext service-bag tendency
+FTriggerContext service-bag tendency
+PlayCardAction gameplay + card-face freeze + presentation snapshot duties
+```
+
+Do not enlarge these surfaces during Card Expansion.
 
 ## Next exact action
 
 ```text
-1. Review the refined Phase 8 design.
-2. Explicitly authorize Phase 8 implementation if accepted.
-3. Complete / validate / seal Phase 8.
-4. Then explicitly authorize Card Expansion / Upgrade Foundation as the next bounded goal.
-5. Keep Card Trigger Source Expansion as a separate future foundation slice before Sentinel/Card-trigger consumers.
-
-Do not start Upgrade or Ironclad capability implementation before Phase 8 seal unless the user explicitly changes this ordering.
+1. Phase 8 remains DEFERRED; do not implement it now.
+2. Card Expansion / Upgrade Foundation is the next active bounded goal.
+3. Before writing production card code, explicitly authorize the first Upgrade Foundation implementation slice.
+4. Implement/validate the Upgrade Foundation with the first formal upgraded-card batch.
+5. Continue later Ironclad capabilities as separately bounded slices.
+6. Resume Phase 8 later when an integration-validation gate is useful.
 ```
