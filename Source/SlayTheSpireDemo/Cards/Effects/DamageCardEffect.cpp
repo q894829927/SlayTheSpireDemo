@@ -1,5 +1,6 @@
 #include "DamageCardEffect.h"
 
+#include "../CardInstance.h"
 #include "../CardPlayContext.h"
 #include "../../Actions/DamageAction.h"
 #include "../../Combat/Combatant.h"
@@ -28,16 +29,24 @@ void UDamageCardEffect::BuildActions(
 		return;
 	}
 
-	if (HitCount <= 0)
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+	const int32 EffectiveHitCount = GetEffectiveHitCount(bIsUpgraded);
+	if (EffectiveAmount < 0 || EffectiveHitCount <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] Damage build skipped: invalid HitCount=%d."), HitCount);
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[CardEffect] Damage build skipped: invalid effective values Amount=%d HitCount=%d."),
+			EffectiveAmount,
+			EffectiveHitCount);
 		return;
 	}
 
-	for (int32 HitIndex = 0; HitIndex < HitCount; ++HitIndex)
+	for (int32 HitIndex = 0; HitIndex < EffectiveHitCount; ++HitIndex)
 	{
 		UDamageAction* Action = NewObject<UDamageAction>(Context.ActionOuter);
-		Action->Initialize(Context.Source, Context.Target, BaseAmount, DamageKind);
+		Action->Initialize(Context.Source, Context.Target, EffectiveAmount, DamageKind);
 		Action->SetPresentationParticipantIds(
 			Context.SourcePresentationId,
 			Context.TargetPresentationId
@@ -62,16 +71,19 @@ void UDamageCardEffect::BuildPreviewArguments(
 		return;
 	}
 
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+
 	FDamageSpec Spec;
 	Spec.Source = Context.Source;
 	Spec.Target = Context.Target;
 	Spec.DamageKind = DamageKind;
-	Spec.BaseAmount = BaseAmount;
+	Spec.BaseAmount = EffectiveAmount;
 	FDamageModifierPipeline::Resolve(Spec);
 	OutArguments.AddIntegerWithAuthoredBase(
 		DescriptionArgumentName,
 		Spec.ResolvedAmount,
-		BaseAmount);
+		EffectiveAmount);
 }
 
 void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
@@ -104,11 +116,14 @@ void UDamageCardEffect::BuildImmediatePreviewOperations(
 	TArray<FImmediatePreviewOperation>& OutOperations
 ) const
 {
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+	const int32 EffectiveHitCount = GetEffectiveHitCount(bIsUpgraded);
 	if (!IsValid(Context.Source)
 		|| !IsValid(Context.Target)
 		|| DescriptionArgumentName.IsNone()
-		|| BaseAmount < 0
-		|| HitCount <= 0)
+		|| EffectiveAmount < 0
+		|| EffectiveHitCount <= 0)
 	{
 		return;
 	}
@@ -117,15 +132,15 @@ void UDamageCardEffect::BuildImmediatePreviewOperations(
 	Spec.Source = Context.Source;
 	Spec.Target = Context.Target;
 	Spec.DamageKind = DamageKind;
-	Spec.BaseAmount = BaseAmount;
+	Spec.BaseAmount = EffectiveAmount;
 	FDamageModifierPipeline::Resolve(Spec);
 
 	FImmediatePreviewOperation Operation;
 	Operation.EffectIndex = EffectIndex;
 	Operation.SemanticArgumentName = DescriptionArgumentName;
 	Operation.Type = EImmediatePreviewOperationType::Damage;
-	Operation.BaseAmount = BaseAmount;
+	Operation.BaseAmount = EffectiveAmount;
 	Operation.ResolvedAmount = Spec.ResolvedAmount;
-	Operation.HitCount = HitCount;
+	Operation.HitCount = EffectiveHitCount;
 	OutOperations.Add(Operation);
 }
