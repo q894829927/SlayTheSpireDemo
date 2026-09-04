@@ -25,6 +25,7 @@ bool PresentationCardSnapshot::TryBuild(
 	OutSnapshot.DisplayName = EffectiveDisplayName.IsEmpty()
 		? FText::FromName(OutSnapshot.CardId)
 		: EffectiveDisplayName;
+	OutSnapshot.bUpgraded = Card->IsUpgraded();
 	OutSnapshot.Cost = Card->GetCurrentCost();
 	OutSnapshot.CardType = Card->GetCardType();
 	OutSnapshot.TargetType = Card->GetTargetType();
