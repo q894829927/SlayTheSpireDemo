@@ -2,9 +2,17 @@
 
 日期：**2026-09-04**
 
-状态：**HISTORICAL PASS / SUPERSEDED BY REVIEW FIX / REVALIDATION PENDING**
+状态：**HISTORICAL EVIDENCE / SUPERSEDED TARGET / NO CURRENT SEAL**
 
-## Historical validated scope
+当前 ordinary-card upgrade authority：
+
+```text
+docs/CardUpgradeSTSStyleRefactor.md
+```
+
+---
+
+## Historical validated evidence
 
 更早的 Upgrade Foundation 版本曾由用户在本地 UE5.8 环境验证通过：
 
@@ -14,109 +22,73 @@ SlayTheSpireDemo.CardUpgrade: PASS
 SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-这些证据是真实历史证据并继续保留。
+这些结果是真实历史证据，继续保留，不 retroactively 删除。
 
-## Current review-fix source
-
-用户随后进一步收敛 ordinary-card authoring 与升级名称表现。
-
-当前数据模型：
+之后又实现过中间 review-fix：
 
 ```text
-stable shared UCardData fields
-├─ CardId
-├─ DisplayName
-├─ CardArt
-├─ CardType
-└─ TargetType
-
-Base
-├─ Description
-├─ BaseCost
-├─ DefaultDestination
-└─ Effects[]
-
-Upgrade : FCardUpgradeConfig
-├─ Description
-├─ Cost
-├─ DefaultDestination
-└─ Effects[]
+slim FCardUpgradeConfig
+shared DisplayName/CardArt/CardType/TargetType
+frozen bUpgraded Presentation state
+gold upgraded card name
 ```
 
-当前升级名称合同：
+该中间 shape 尚未重新完成最终 Gate，就被新的 STS-style refactor 设计取代。
+
+---
+
+## Why no old revalidation is required now
+
+当前最终目标已经不再是：
 
 ```text
-DisplayName text is stable
-Base     → default Designer name color
-Upgraded → gold name color
+Base config
++ bHasUpgrade
++ FCardUpgradeConfig
++ second Effects[]
 ```
 
-不自动拼接 `+`，也不 author 第二个名字。
-
-Presentation state path：
+而是：
 
 ```text
-UCardInstance::bUpgraded
-→ FPresentationCardSnapshot.bUpgraded
-→ FBattleHUDCardView.bUpgraded
-→ UBattleCardWidget
-→ gold Txt_CardName
+one immutable CardData
+one immutable Effects[]
+per-field typed Base / Upgraded values
+one UCardInstance::bUpgraded
 ```
 
-Current Hand freeze 同样冻结 `bUpgraded` 到 `FBattleHUDCardView`。
+因此此前排队等待的旧 intermediate-head Gate 不再用于恢复旧 Foundation seal。
 
-## Why the previous seal is not current-head evidence
+不能声明新 STS-style refactor 已验证，也不应为了一个已经被 supersede 的 source shape 额外消耗 Build/Automation 预算。
 
-在历史 PASS 后，当前 head 修改了：
+---
+
+## Next validation authority
+
+新 refactor 的最终验证只按：
 
 ```text
-CardData / CardInstance ordinary upgrade shape
-BattleText definition validation
-CardUpgrade focused tests
-FBattleHUDCardView
-FPresentationCardSnapshot
-PresentationCardSnapshotBuilder
-PresentationCardView
-BattleManager current-state Presentation freeze
-UBattleCardWidget name styling
+docs/CardUpgradeSTSStyleRefactor.md
 ```
 
-因此之前的 COMPLETE / VALIDATED / SEALED 状态不能直接覆盖当前 head。
-
-## Required revalidation
-
-当前只重跑直接失效 Gate：
+执行：
 
 ```text
-1. SlayTheSpireDemoEditor Win64 Development Build
-2. SlayTheSpireDemo.CardUpgrade
-3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper
-4. SlayTheSpireDemo.Phase6UIA2N.R4
+Editor Build
+→ SlayTheSpireDemo.CardUpgrade
+→ SlayTheSpireDemo.UIA3.DynamicText
+→ SlayTheSpireDemo.UIA3.ImmediatePreview
+→ SlayTheSpireDemo.Phase6C
+→ one focused PIE visual pass
 ```
 
-此前：
+并包含六个生产 `.uasset` 的 parity-before-removal 与 USER ACTION resave Gate。
+
+在这些步骤完成前，当前只能声明：
 
 ```text
-SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
-```
-
-保持 sticky，因为 gold-name review fix 没有修改 A3 production source。
-
-当前也不要求 Phase6R / A2D5 / Shipping aggregate gate。
-
-## Current claim boundary
-
-当前只能声明：
-
-```text
-review-fix source implemented
-static contract synchronized
-revalidation pending
-```
-
-只有四项直接失效 Gate 全部 PASS 后，才恢复：
-
-```text
-Card Expansion / Upgrade Foundation
-COMPLETE / VALIDATED / SEALED
+STS-style refactor design approved
+implementation not started
+historical Upgrade Foundation evidence retained
+no current refactor seal
 ```
