@@ -48,6 +48,7 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	View.RichDescription = FText::FromString(TEXT("Gain <PreviewIncrease>6</> Block."));
 	View.CardArt = Texture;
 	View.bGameplayPlayable = true;
+	View.bUpgraded = false;
 
 	Card->SetCardView(View);
 
@@ -58,7 +59,7 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("GetCardView preserves TargetType"), RoundTrip.TargetType, ECardTargetType::Self);
 	TestTrue(TEXT("GetCardView preserves CardArt"), RoundTrip.CardArt.Get() == Texture);
 	TestEqual(TEXT("GetCardView preserves rich description"), RoundTrip.RichDescription.ToString(), FString(TEXT("Gain <PreviewIncrease>6</> Block.")));
-	TestEqual(TEXT("SetCardView immediately refreshes name"), Name->GetText().ToString(), FString(TEXT("R4 Skill")));
+	TestEqual(TEXT("Base SetCardView immediately refreshes authored name"), Name->GetText().ToString(), FString(TEXT("R4 Skill")));
 	TestEqual(TEXT("SetCardView immediately refreshes cost"), Cost->GetText().ToString(), FString(TEXT("2")));
 	TestEqual(
 		TEXT("SetCardView prefers current RichText description when supplied"),
@@ -66,6 +67,11 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 		FString(TEXT("Gain <PreviewIncrease>6</> Block.")));
 	TestEqual(TEXT("SetCardView refreshes player-facing localized CardType"), Type->GetText().ToString(), FString(TEXT("技能")));
 	TestTrue(TEXT("SetCardView refreshes CardArt"), Art->GetBrush().GetResourceObject() == Texture);
+
+	View.bUpgraded = true;
+	Card->SetCardView(View);
+	TestEqual(TEXT("Upgraded presentation appends one plus without changing authored DisplayName"), Name->GetText().ToString(), FString(TEXT("R4 Skill+")));
+	TestEqual(TEXT("Upgraded DTO still preserves authored DisplayName"), Card->GetCardView().DisplayName.ToString(), FString(TEXT("R4 Skill")));
 
 	Card->OnBattleCardRequested.AddUniqueDynamic(Sink, &UPhase6UIA2NR4RequestSink::HandleCardRequested);
 	Card->OnBattleCardRequested.AddUniqueDynamic(Sink, &UPhase6UIA2NR4RequestSink::HandleCardRequested);
