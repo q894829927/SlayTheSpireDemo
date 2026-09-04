@@ -273,19 +273,53 @@ Capability A
 
 无需新核心架构，只组合现有 Damage / Block / Draw / ApplyStatus / multi-hit / Energy / Destination。
 
-### CAP-01 — Upgrade state and upgraded definition resolution
+### CAP-01 — Default single upgrade + optional repeatable upgrade capability
 
-支持真正的卡牌升级，而不只是单独制作 `Plus` DataAsset：
+卡牌升级由一个默认单次升级能力和一个可选的重复升级能力组成；不能为了极少数可重复升级卡，让所有卡牌共享同一种整数等级模型。
+
+默认能力：
 
 ```text
-run-level UpgradeLevel ownership
-battle materialization
-combat-only temporary upgrade（Armaments）
-unbounded upgrade count（Searing Blow）
-所有 card text / cost / effects / A2 / A3 从同一 effective definition/value source 读取
+Default Card Upgrade
+→ battle/runtime state uses bool bUpgraded
+→ false = base
+→ true = upgraded
+→ normal card may upgrade exactly once
 ```
 
-Phase 8 的 Pommel Strike+ **不授权 CAP-01**；它仍只是 content variant。
+可选扩展能力：
+
+```text
+Optional RepeatableUpgradeCapability
+→ only explicitly authored cards receive it
+→ owns repeatable UpgradeCount = 0, 1, 2, ...
+→ provides generic repeated CanUpgrade / ApplyUpgrade / contribution / display semantics
+```
+
+统一解析边界：
+
+```text
+Base Card Definition
++ default bUpgraded
++ optional RepeatableUpgradeCapability state
+→ EffectiveCardFacts
+```
+
+所有 card text / cost / effects / A2 / A3 / UI 只读取 `EffectiveCardFacts`，不直接解释 `bUpgraded` 或重复升级状态。
+
+Armaments 只通过 generic Upgrade query/action 操作卡牌；Searing Blow 只是被内容赋予 RepeatableUpgradeCapability 的消费者。Upgrade 系统不得识别任何具体 CardId。
+
+普通升级显示 `CardName+`；重复升级能力可以通过同一 presentation boundary 输出 `CardName+1 / +2 / ...`。
+
+禁止：
+
+```text
+全局 UpgradeLevel 作为所有卡牌的默认状态模型
+if (CardId == "SearingBlow") 决定能否再次升级
+Damage / Draw / UI 等能力直接读取 bUpgraded 或 UpgradeCount
+```
+
+Phase 8 不授权 CAP-01；CAP-01 在后续 Card Expansion / Upgrade Foundation 中独立实施。
 
 ### CAP-02 — Card traits + zone/deck/hand queries
 
@@ -298,19 +332,62 @@ query Hand composition
 
 Perfected Strike 使用 `Strike` trait，不使用名字字符串匹配。
 
-### CAP-03 — Dynamic numeric sources / formulas
+### CAP-03 — Dynamic numeric sources / formulas through neutral facts
 
-Effect base value 可以读取 Gameplay state：
+Effect base value 可以来自动态 Gameplay facts，但 Dynamic Numeric 能力不能直接依赖产生这些 facts 的其他 capability 内部实现。
+
+允许输入：
 
 ```text
-Current Block
-Deck trait count
-cards exhausted by this operation
-per-card combat state
-special modifier multiplier
+authored constant
+read-only Query result
+operation-local typed CommitResult / Result
+explicit runtime state snapshot
 ```
 
+组合方向：
+
+```text
+independent capability
+→ neutral Query / Result / Context
+→ card orchestration
+→ Dynamic Numeric Source
+→ numeric value
+→ typed Gameplay Spec
+```
+
+例如：
+
+```text
+CombatantQuery
+→ CurrentBlock = N
+→ Dynamic Numeric Source
+→ DamageSpec
+
+DeckQuery
+→ StrikeTraitCount = N
+→ Dynamic Numeric Source
+→ DamageSpec
+
+Bulk card mutation
+→ typed Result.SucceededCount = N
+→ orchestration freezes N into numeric context
+→ Dynamic Numeric Source
+→ Damage / Block intent
+```
+
+因此 Dynamic Numeric 只知道“当前输入事实/数值是什么”，不知道它来自 Block、Exhaust、DeckQuery 或其他具体能力；产生结果的能力也不知道数值最终会被 Damage、Block 或别的消费者使用。
+
 计算结果仍必须进入对应 typed pipeline。
+
+禁止：
+
+```text
+Dynamic Numeric Source 直接访问另一 capability 的内部对象
+查询“上一次 Exhaust 操作”之类的隐式历史状态
+根据 CardId 决定去哪个系统取值
+Exhaust / DeckQuery / Block 系统直接调用 Damage numeric logic
+```
 
 ### CAP-04 — Pending card selection / player choice
 
@@ -457,15 +534,60 @@ Event 只描述事实，不查询或调用 Listener。
 
 为 Rampage 等具体副本提供有限、显式 mutable combat state 或 dedicated state component。禁止 arbitrary key/value bag。
 
-### CAP-16 — Status / Curse card gameplay
+### CAP-16 — Status / Curse card definition and runtime rules
+
+CAP-16 只定义 Status / Curse 卡牌本身的通用 card-facing 规则与 runtime identity，不拥有 Draw 或 Turn 的调度逻辑。
+
+负责：
 
 ```text
-Wound / Dazed / Burn definitions
-unplayable or special-playability rules
-Status/Curse draw detection
-Ethereal Status
-end-turn Burn behavior
-created Status card runtime identity
+Wound / Dazed / Burn 等 Card Definition
+CardType = Status / Curse
+traits / tags
+playability rules
+zone / default destination metadata
+created card runtime identity
+与卡本身相关的静态 keyword metadata
+```
+
+例如：
+
+```text
+Wound
+→ Status
+→ Unplayable
+
+Dazed
+→ Status
+→ Unplayable
+→ Ethereal metadata
+```
+
+跨系统行为通过中立事实组合：
+
+```text
+Draw commit
+→ CardDrawnEvent
+→ Evolve / Fire Breathing Trigger reads Event.Card facts
+→ builds reaction Action
+
+TurnEndedEvent
+→ Burn-authored generic Trigger
+→ builds its reaction Action
+
+Ethereal resolution
+→ CAP-07 temporal keyword/lifecycle contract
+```
+
+因此 Status/Curse card runtime 不知道 Evolve、Fire Breathing、Draw subsystem 或 Turn dispatcher；Draw/Turn 系统也不知道任何具体 Status/Curse card。
+
+禁止：
+
+```text
+StatusCardSystem 自己检测“刚抽到了 Status”并调用 Evolve
+StatusCardSystem 在 TurnEnd 中 if (CardId == Burn)
+Draw system 查询具体 Status/Curse consumer
+Turn system查询 Burn / Dazed 等具体卡牌
 ```
 
 ### CAP-17 — Block lifecycle/rule modifiers
