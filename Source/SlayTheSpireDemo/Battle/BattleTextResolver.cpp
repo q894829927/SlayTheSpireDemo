@@ -432,17 +432,8 @@ bool FBattleTextResolver::ValidateCardDefinition(const UCardData* Definition, TA
 	ValidateCardConfiguration(
 		Definition->Description,
 		Definition->Effects,
-		FString::Printf(TEXT("Card %s Base"), *CardName),
+		FString::Printf(TEXT("Card %s"), *CardName),
 		OutErrors);
-
-	if (Definition->bHasUpgrade)
-	{
-		ValidateCardConfiguration(
-			Definition->Upgrade.Description,
-			Definition->Upgrade.Effects,
-			FString::Printf(TEXT("Card %s Upgraded"), *CardName),
-			OutErrors);
-	}
 
 	return OutErrors.Num() == 0;
 }
