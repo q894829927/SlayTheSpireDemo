@@ -2,11 +2,13 @@
 
 日期：**2026-09-04**
 
-状态：**DESIGN REVISED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED**
+状态：**DESIGN REFINED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED**
 
 Phase 7A–7F 已完成、验证并 sealed。Phase 8 不重新打开这些阶段的 Gameplay / Presentation 合同，而是验证当前 Card、Draw、Shuffle、BattleEvent、Relic Trigger、ActionQueue 和 Presentation 架构能否在真实跨系统组合中自然协作。
 
-当前生产/调试内容中，Pommel Strike（剑柄打击）已经配置为 `Draw 2`，并已通过人工 PIE 观察到目标组合链。因此 Phase 8 不再创建专门的 `Pommel Strike+` 测试资产，也不再把 Upgrade System 作为本阶段内容。
+当前生产/调试内容中，Pommel Strike（剑柄打击）已经配置为 `Draw 2`，并已通过人工 PIE 观察到目标组合链。这份 Production PIE evidence 保留；但 **Phase 8 Automation 不再依赖生产 Pommel Strike 当前恰好为 Draw 2 的内容状态**，避免后续正式 Upgrade Foundation 把 Pommel Strike 恢复为 Base Draw 1 / Upgraded Draw 2 时破坏架构回归测试。
+
+Phase 8 不创建持久测试用 `Pommel Strike+` 资产，也不实现 Upgrade System。
 
 ---
 
@@ -15,18 +17,21 @@ Phase 7A–7F 已完成、验证并 sealed。Phase 8 不重新打开这些阶段
 Phase 8 的唯一主目标：
 
 ```text
-使用现有 Draw 2 Pommel Strike + Sundial
+使用 authored transient Draw-2 card definition + Sundial
 验证：
 Card → Draw → Shuffle → Event → Relic Reaction → Energy
 完整跨系统链路能够自然成立，且不存在 card/relic 组合特判。
 ```
 
-目标链路：
+Automation 目标链路：
 
 ```text
-Pommel Strike
+Transient UCardData
+├─ generic Damage Effect
+└─ UDrawCardEffect(DrawCount = 2)
+
+real Card play
 → Damage
-→ UDrawCardEffect(DrawCount = 2)
 → UDrawCardsAction(2)
 → DrawPile 不足
 → real Shuffle commit
@@ -39,7 +44,7 @@ Pommel Strike
 → remaining bulk-draw continuation
 ```
 
-Phase 8 成功的核心证据是：上述组合由独立能力通过稳定合同自然形成，而不是新增专属框架。
+Phase 8 成功的核心证据是：上述组合由独立能力通过稳定合同自然形成，而不是新增专属框架或绑定某张生产卡的 authored 数值。
 
 ---
 
@@ -50,7 +55,7 @@ Phase 8 必须继续遵守：
 ```text
 Card / Effect 不知道 Sundial
 Draw / Shuffle 不知道 Sundial
-Sundial 不知道 Pommel Strike
+Sundial 不知道测试卡定义或 Pommel Strike
 Presentation 不制造 Gameplay 结果
 A3 不预测未来 Shuffle / Relic reaction
 ```
@@ -75,9 +80,11 @@ if (CardId == "PommelStrike") { ForceShuffle(); }
 if (RelicId == "Sundial") { /* draw-specific branch */ }
 ```
 
+Automation 允许在 test module 中构造 transient `UCardData` / Effect subobjects；但必须走真实 `PlayCardAction → CardEffect → BattleAction` 路径，不能手工制造 Shuffle/Event/Counter 结果。
+
 ---
 
-## 3. Existing evidence
+## 3. Existing Production PIE evidence
 
 用户已在真实 PIE 中把 Pommel Strike 配置为 Draw 2，并确认可以观察到：
 
@@ -93,7 +100,19 @@ Damage
 → remaining Draw continuation
 ```
 
-这份人工证据可作为 Phase 8 的 Production PIE evidence 使用，不要求为了 Phase 8 重复制作 `Pommel Strike+` 资产或重复同一人工场景，除非后续代码修改使该 Gate 失效。
+这份人工证据继续作为 Phase 8 的 Production PIE evidence 使用。它证明当前生产 Gameplay/UI 可以观察到同一组合链，但 **它不再定义 Phase 8 Automation 的输入内容**。
+
+因此：
+
+```text
+Production PIE evidence
+→ existing Draw-2 Pommel Strike
+
+Automation architecture evidence
+→ transient authored Draw-2 card definition
+```
+
+若 8A 没有修改生产 Gameplay 路径，不重复人工 Gate。
 
 ---
 
@@ -101,9 +120,9 @@ Damage
 
 ### 8A — Automated Combo Integration
 
-新增 focused Automation，从真实 Card play / CardEffect 开始，而不是手工 dispatch `FDeckShuffledEvent`。
+新增 focused Automation，从 transient authored Card definition 的真实 Card play / CardEffect 开始，而不是手工 dispatch `FDeckShuffledEvent`，也不依赖生产 Pommel Strike 的当前 Base/Upgrade content。
 
-建议 dedicated prefix：
+Dedicated prefix：
 
 ```text
 SlayTheSpireDemo.Phase8
@@ -112,9 +131,20 @@ SlayTheSpireDemo.Phase8
 建议最少测试：
 
 ```text
-SlayTheSpireDemo.Phase8.Combo.PommelSundial
+SlayTheSpireDemo.Phase8.Combo.Draw2Sundial
 SlayTheSpireDemo.Phase8.Combo.OrderingAndContinuation
 ```
+
+测试定义要求：
+
+```text
+Transient UCardData
+→ ordinary authored target/cost/destination facts
+→ generic Damage Effect
+→ generic UDrawCardEffect(DrawCount = 2)
+```
+
+它不是特殊 Gameplay type，也不进入生产资产目录。
 
 必须验证：
 
@@ -137,6 +167,35 @@ Dispatcher->Dispatch(FBattleEvent::MakeDeckShuffled(...))
 ```
 
 作为起点。
+
+也不得通过修改生产 Pommel Strike 资产来准备测试输入。
+
+#### Sealed ordering contract reused by Phase 8
+
+Phase 8 不发明新的 Queue 顺序。现有 sealed Draw/Shuffle 合同已经形成：
+
+```text
+DrawCardsAction
+→ first queues [immediate draws, Shuffle, RemainingDraw] continuation batch at Queue front
+
+ShuffleDeckAction
+→ commits Shuffle
+→ dispatches DeckShuffled
+
+Dispatcher
+→ inserts reaction batch at Queue front
+```
+
+因此最终顺序自然为：
+
+```text
+Shuffle commit
+→ DeckShuffled reactions
+→ RemainingDraw continuation
+→ previously pending work
+```
+
+Phase 8 Automation 只验证这个既有合同，没有新 Queue API。
 
 ### 8B — Record Production PIE Evidence
 
@@ -177,7 +236,7 @@ COMPLETE / VALIDATED / SEALED
 
 **Upgrade System 仍然要做，但不属于 Phase 8。**
 
-升级系统改为战士卡牌扩展的基础能力，与正式卡牌开发一起推进，而不是为了 Phase 8 制造一个测试用 Plus 资产，也不是等所有卡牌完成后再补。
+升级系统改为战士卡牌扩展的基础能力，与正式卡牌内容一起推进，而不是为了 Phase 8 制造一个测试用 Plus 资产，也不是等全部卡牌完成后再补。
 
 后续卡牌开发原则：
 
@@ -192,20 +251,20 @@ Card Expansion Foundation
 Upgrade 必须保持正交：
 
 ```text
-普通卡默认使用 bool bUpgraded
+普通卡默认使用 single-upgrade state
 可重复升级不是所有卡的全局等级，而是 optional RepeatableUpgradeCapability
 Upgrade System 不知道 Damage / Draw / Exhaust / Corruption 等具体能力
-Damage / Draw / Exhaust 等能力也不直接判断 bUpgraded / UpgradeCount
-所有 Gameplay 通过统一 effective-card boundary 读取升级后的事实
-Presentation 通过冻结 UpgradeStateView / effective DTO 格式化 "+" 或 "+N"
+Damage / Draw / Exhaust 等能力也不直接判断 upgrade runtime state
+Gameplay / preview / frozen presentation 从统一 typed effective card/effect view 读取升级后的事实
+Presentation 通过冻结 UpgradeStateView 格式化 "+" 或 "+N"
 ```
 
 模型必须允许以后扩展到：
 
 ```text
 Armaments     → combat temporary upgrade through generic Upgrade action
-Searing Blow  → optional repeatable UpgradeCount state
-Run Deck      → future persistence materializes default bool or repeatable state
+Searing Blow  → optional repeatable count state
+Run Deck      → future persistence materializes the correct single/repeatable state
 ```
 
 具体设计 authority：
@@ -240,15 +299,16 @@ Phase 8 不默认运行 Phase6R / A2D5 / Shipping 等大型 aggregate gate；只
 ## 7. Acceptance definition
 
 ```text
-[ ] existing Pommel Strike Draw 2 is used; no test-only Pommel Strike+ asset required
+[ ] Automation uses a transient authored Draw-2 card definition, not production Pommel content
+[ ] no persistent test-only Pommel Strike+ asset is required
 [ ] automated combo starts from real Card / Effect execution
 [ ] real Shuffle commits emit the existing DeckShuffled fact
 [ ] Sundial counts only those committed facts
 [ ] third counted Shuffle grants exact +2 Energy
-[ ] reaction ordering precedes remaining bulk-draw continuation
+[ ] reaction ordering precedes remaining bulk-draw continuation through the existing sealed Queue pattern
 [ ] Queue drains without ResolutionFault
 [ ] no card/relic combination special case exists
-[ ] existing Production PIE evidence remains valid
+[ ] existing Production PIE evidence remains valid as separate evidence
 [ ] final evidence recorded in Phase8Validation.md
 ```
 
@@ -257,9 +317,9 @@ Phase 8 不默认运行 Phase6R / A2D5 / Shipping 等大型 aggregate gate；只
 ## 8. Next exact action
 
 ```text
-REVIEW THIS REVISED DESIGN.
+REVIEW THIS REFINED DESIGN.
 
 Phase 8 implementation is still NOT AUTHORIZED.
 Do not build Upgrade System inside Phase 8.
-After Phase 8 seal, start a separately bounded Card Expansion / Upgrade Foundation design and implementation.
+After Phase 8 seal, start the separately bounded Card Expansion / Upgrade Foundation goal.
 ```
