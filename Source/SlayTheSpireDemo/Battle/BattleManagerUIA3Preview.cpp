@@ -3,6 +3,7 @@
 #include "BattleImmediatePreview.h"
 #include "BattleTextResolver.h"
 #include "BattleTextTypes.h"
+#include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 #include "../Cards/Effects/CardEffect.h"
 #include "../Combat/Combatant.h"
