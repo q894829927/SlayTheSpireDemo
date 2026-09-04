@@ -7,6 +7,19 @@
 EDataValidationResult UCardData::IsDataValid(FDataValidationContext& Context) const
 {
 	const EDataValidationResult ParentResult = Super::IsDataValid(Context);
+	bool bIsValid = ParentResult != EDataValidationResult::Invalid;
+
+	if (BaseCost < 0)
+	{
+		Context.AddError(FText::FromString(TEXT("Card BaseCost cannot be negative.")));
+		bIsValid = false;
+	}
+	if (UpgradedCost < 0)
+	{
+		Context.AddError(FText::FromString(TEXT("Card UpgradedCost cannot be negative.")));
+		bIsValid = false;
+	}
+
 	TArray<FText> Errors;
 	if (!FBattleTextResolver::ValidateCardDefinition(this, Errors))
 	{
@@ -14,11 +27,11 @@ EDataValidationResult UCardData::IsDataValid(FDataValidationContext& Context) co
 		{
 			Context.AddError(Error);
 		}
-		return EDataValidationResult::Invalid;
+		bIsValid = false;
 	}
 
-	return ParentResult == EDataValidationResult::Invalid
-		? EDataValidationResult::Invalid
-		: EDataValidationResult::Valid;
+	return bIsValid
+		? EDataValidationResult::Valid
+		: EDataValidationResult::Invalid;
 }
 #endif
