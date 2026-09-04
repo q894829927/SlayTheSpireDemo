@@ -279,6 +279,7 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 			FrozenCard.DisplayName = EffectiveDisplayName.IsEmpty()
 				? FText::FromName(Source.CardId)
 				: EffectiveDisplayName;
+			FrozenCard.bUpgraded = Card->IsUpgraded();
 			FrozenCard.CardType = Card->GetCardType();
 			FrozenCard.CardArt = Card->GetCardArt();
 		}
