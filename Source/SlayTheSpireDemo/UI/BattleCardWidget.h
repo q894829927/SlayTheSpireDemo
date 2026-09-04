@@ -65,6 +65,11 @@ protected:
 	UFUNCTION()
 	void HandleCardClicked();
 
+	// Presentation-only style. The authored card name text itself never changes
+	// when upgraded; the upgraded state is communicated by color.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle HUD|Card|Style")
+	FLinearColor UpgradedNameColor = FLinearColor(1.0f, 0.72f, 0.0f, 1.0f);
+
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Btn_Card;
 
@@ -90,6 +95,8 @@ private:
 	UPROPERTY(Transient)
 	FBattleHUDCardView CurrentCardView;
 
+	FSlateColor DefaultCardNameColor;
+	bool bDefaultCardNameColorCaptured = false;
 	bool bNativeBindingsValid = false;
 	bool bCardDelegateBound = false;
 	bool bImmediatePreviewApplied = false;
