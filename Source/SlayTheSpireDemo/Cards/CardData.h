@@ -7,6 +7,41 @@
 #include "Effects/CardEffect.h"
 #include "CardData.generated.h"
 
+// Load-compatibility shim for any asset that was saved during the brief
+// UCardVariantData implementation window. Ordinary card authoring no longer
+// references or exposes this class; resaving a corrected CardData asset drops
+// the obsolete object/property data naturally.
+UCLASS(Deprecated)
+class SLAYTHESPIREDEMO_API UCardVariantData : public UObject
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY()
+	FText DisplayName;
+
+	UPROPERTY()
+	FText Description;
+
+	UPROPERTY()
+	TObjectPtr<UTexture2D> CardArt = nullptr;
+
+	UPROPERTY()
+	ECardType CardType = ECardType::Attack;
+
+	UPROPERTY()
+	ECardTargetType TargetType = ECardTargetType::Enemy;
+
+	UPROPERTY()
+	int32 Cost = 1;
+
+	UPROPERTY()
+	ECardDestination DefaultDestination = ECardDestination::Discard;
+
+	UPROPERTY(Instanced)
+	TArray<TObjectPtr<UCardEffect>> Effects;
+};
+
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FCardUpgradeConfig
 {
