@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-09-04
+快照日期：2026-09-05
 
 ## 1. 用途与边界
 
@@ -33,16 +33,16 @@ PLANNED / NOT WIRED
 | `WBP_StatusTooltip` | 2026-08-20 21:25:07 | 2 | `RebuildTooltip` 10 nodes；`EventGraph` 3 nodes |
 | `WBP_StatusTooltipEntry` | 2026-08-20 16:37:42 | 8 | `SetStatusView` 22 nodes；`SetAtlasVector2D` 5 nodes；`EventGraph` 3 nodes |
 
-## 2.1 2026-09-03 Native WBP 工作树快照 — CURRENT SAVED
+## 2.1 2026-09-05 Native WBP 工作树快照 — CURRENT SAVED
 
-本节记录当前工作树中已经保存到磁盘的 Native WBP。内容由 UE5.8 MCP 的 UMG/Blueprint 只读工具确认；`CURRENT SAVED` 表示资产文件已经存在并已保存，不表示本节列出的全部运行时交互已经通过 PIE。
+本节记录当前工作树中已经保存到磁盘的 Native WBP。内容由 UE5.8 MCP 的 UMG/Blueprint 只读工具确认；`CURRENT SAVED` 表示资产文件已经存在并已保存，不表示本节列出的全部运行时交互已经通过 PIE。2026-09-05 对最近写入的 `WBP_BattleHUD_Native` 和 `WBP_BattleCard_Native` 重新读取了 Designer 树、继承控件数量、根类和 CDO 关键默认值。
 
 当前工作树中与 WBP 直接相关的资产如下：
 
 | WBP | 状态 | Parent Class | Designer 控件数 | Graph | 文件信息 |
 |---|---|---|---:|---|---|
-| `WBP_BattleHUD_Native` | 已修改、CURRENT SAVED | `UBattleHUDWidget` | 76 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-03 20:52:20；143,179 bytes；SHA-256 `AA300B26DA0658F550F1487F43AF3DD3C3D05253999190E2FBE99A9B4527C1F1` |
-| `WBP_BattleCard_Native` | 已修改、CURRENT SAVED | `UBattleCardWidget` | 20 | `EventGraph`；MCP 未返回本地执行节点 | 2026-09-02 21:05:52；48,878 bytes；SHA-256 `27929456E042C9E1CF2B7C3D8E37EBD27D607477B374982ECD8D0C0FADD59841` |
+| `WBP_BattleHUD_Native` | 已修改、CURRENT SAVED | `UBattleHUDWidget` | 83（29 个继承） | `EventGraph`；当前 MCP `read_graph_dsl` 未返回本地执行节点 | 2026-09-05 01:49:45；154,854 bytes；SHA-256 `BDF4356600A390FB77DB605FADE6F7647CD140412C694442BE6D9E9A2C3A19C5` |
+| `WBP_BattleCard_Native` | 已修改、CURRENT SAVED | `UBattleCardWidget` | 16（6 个继承） | `EventGraph`；当前 MCP `read_graph_dsl` 未返回本地执行节点 | 2026-09-05 02:31:59；42,767 bytes；SHA-256 `44A3D137C5B83C2F3D05C4D33AA302621F20416BA21B5CD27FEA49B8699BEE26` |
 | `Relic/WBP_BattleRelic_Native` | 已修改、CURRENT SAVED、INDEX STAGED | `UBattleRelicWidget` | 6（上次 MCP 读取） | `EventGraph`：上次 MCP 读取为 PreConstruct、Construct、Tick | 2026-09-03 23:57:29；39,821 bytes；SHA-256 `EECA3F7CBE7592AA7D390BAAB7BB033B36BD29675801470619ACA6C394C6695B` |
 | `Relic/WBP_BattleRelicStrip_Native` | 新建、CURRENT SAVED | `UBattleRelicStripWidget` | 2 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 20:20:08；26,596 bytes；SHA-256 `F4B6FDA5AEDB900F7CBDC22E5536D49F72562E6C233A5B6120710BABF1ED0095` |
 | `Relic/WBP_BattleRelicTooltip_Native` | 新建、CURRENT SAVED | `UBattleRelicTooltipWidget` | 6 | `EventGraph`：PreConstruct、Construct、Tick，均无本地图连接 | 2026-09-03 18:40:50；36,330 bytes；SHA-256 `30BB5EBDC3011C69AB37172762D29207ED6D35C9C32CBD10720F17BF6076BFC1` |
@@ -57,9 +57,9 @@ PLANNED / NOT WIRED
 /Game/SlayTheSpireDemo/UI/Widgets/Relic/WBP_BattleRelicTooltip_Native
 ```
 
-### 2.1.1 WBP_BattleHUD_Native — 当前新增遗物入口
+### 2.1.1 WBP_BattleHUD_Native — 当前 Designer 与遗物入口
 
-MCP 确认根控件为 `CanvasPanel_54`，当前 Designer 控件数为 76。当前树中新增并保存了：
+MCP 确认根控件为 `CanvasPanel_54`，当前 Designer 控件数为 83，其中 29 个来自 `UBattleHUDWidget` 的继承树。当前根 Canvas 的主要直接子项包括 Player/Enemy 面板、EnemyIntent、Energy、Hand、三组牌堆、确认/取消/结束回合按钮、Terminal、状态 Tooltip、角色呈现、PlayArea、伤害文本，以及下列已保存的遗物入口：
 
 ```text
 CanvasPanel_54
@@ -76,34 +76,49 @@ ZOrder = 5
 
 当前 HUD 只记录了玩家遗物条实例；遗物条内部负责从 ViewModel 接收有序 `Relics` 并重建遗物控件。该实例没有移入 Legacy HUD，也没有新增 Gameplay 查询入口。
 
-### 2.1.2 WBP_BattleCard_Native — 当前 Designer
-
-MCP 确认当前卡牌仍为 20 个 Designer 控件：
+当前 HUD CDO 的关键默认引用由 MCP 确认如下：
 
 ```text
-SB_Card : SizeBox
+CardWidgetClass   = /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard_Native.WBP_BattleCard_Native_C
+StatusWidgetClass = /Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleStatus_Native.WBP_BattleStatus_Native_C
+```
+
+`WBP_BattleHUD_Native` 的当前完整 Designer 树以 MCP `GetWidgetDescription` 为准；当前 `EventGraph` 资产存在，但 MCP `read_graph_dsl` 没有返回本地执行节点，因此本次只更新可证实的 Designer/资产信息，不把 Graph 节点数推测写入快照。
+
+### 2.1.2 WBP_BattleCard_Native — 当前 Designer
+
+MCP 确认当前卡牌为 16 个 Designer 控件，其中 6 个为 `UBattleCardWidget` 继承控件。当前树为：
+
+```text
+SB_Card : SizeBox (150 × 210)
 └── Btn_Card : Button
     └── OV_Card : Overlay
-        ├── BG_Card
-        ├── VB_CardContent
-        │   ├── Txt_CardName
-        │   ├── SB_CardArt
+        ├── BG_Card : Border
+        ├── VB_CardContent : VerticalBox
+        │   ├── SB_CardName : SizeBox (HeightOverride = 20)
+        │   │   └── Txt_CardName
+        │   ├── SB_CardArt : SizeBox (HeightOverride = 100)
         │   │   └── Img_CardArt
         │   └── Txt_CardType
-        ├── SB_Description
+        ├── SB_Description : SizeBox (120 × 60)
         │   └── Txt_CardDescription : RichTextBlock
-        └── SB_Cost
-            └── OV_Cost
-                ├── Img_CostBG
+        └── SB_Cost : SizeBox (34 × 34)
+            └── OV_Cost : Overlay
                 ├── Img_CostBase
-                ├── Img_CostSwirl
-                ├── Img_CostGlow
-                ├── Img_CostOuter
-                ├── Img_CostRing
                 └── Txt_Cost
 ```
 
-`Txt_CardDescription` 当前使用 `DT_BattleCardTextStyles`，默认 Designer 文本为“造成6点伤害”，Visibility 为 `Visible`。实际数值和强化富文本仍由 C++ 传入的 `FBattleHUDCardView` 驱动，WBP 不重新计算 Gameplay 结果。
+`Txt_CardDescription` 当前使用 `DT_BattleCardTextStyles`，默认 Designer 文本为“造成6点伤害”，WrapTextAt 为 100，Visibility 为 `Visible`。费用层当前只有 `Img_CostBase` 和 `Txt_Cost`；本次 MCP 读取未发现旧快照中的 `Img_CostBG`、`Img_CostSwirl`、`Img_CostGlow`、`Img_CostOuter`、`Img_CostRing`。
+
+当前 Card CDO 的关键默认值由 MCP 确认如下：
+
+```text
+UpgradedNameColor = (0.2122308, 1.0, 0.0, 1.0)
+Root Visibility   = SelfHitTestInvisible
+OwnerHUD          = None（运行时由 HUD 写入）
+```
+
+实际数值和强化富文本仍由 C++ 传入的 `FBattleHUDCardView` 驱动，WBP 不重新计算 Gameplay 结果。
 
 ### 2.1.3 WBP_BattleRelic_Native — CURRENT SAVED
 
@@ -185,15 +200,13 @@ Txt_RelicDescription = 每洗牌3次，获得2点能量。
 
 ### 2.1.6 当前工作树的非 WBP 修改
 
-以下修改已在 `git status` 中确认，但不属于本文件的 WBP Designer/Graph 快照，因此只在此列出，不把它们伪装成蓝图修改：
+2026-09-05 当前 `git status --short` 只报告以下非 WBP 修改；它们不属于本文件的 WBP Designer/Graph 快照，因此只在此列出，不把它们伪装成蓝图修改：
 
 ```text
-Content/SlayTheSpireDemo/Data/DT_BattleCardTextStyles.uasset
-Content/SlayTheSpireDemo/Maps/L_BattleTest.umap
-Content/SlayTheSpireDemo/Data/Relics/DA_Relic_Sundial.uasset
+Config/DefaultGame.ini
 ```
 
-当前工作树没有对 Legacy battle HUD/Card/Status 资产的新增修改记录。
+当前工作树没有对上述 Native WBP 或 Legacy battle HUD/Card/Status 资产报告未提交的 Git 修改。最近写入时间和 MCP 读取用于更新本节资产快照，不等同于 Git 工作树 dirty 状态。
 
 ### 2.1.7 当前未完成的人工验证
 
@@ -208,7 +221,7 @@ USER ACTION REQUIRED / NOT YET PASS
 → 鼠标离开后 Tooltip 消失
 ```
 
-当前代码路径是 `UBattleRelicWidget::NativeOnMouseEnter()` → `ShowRelicTooltip()`；MCP 已确认资产 class 引用、按钮覆盖区域、Tooltip BindWidget 和默认尺寸存在，但尚未证明运行时一定能收到父 Widget 的 Hover 回调，也没有把当前 Tooltip 缺失现象标记为通过。
+当前代码路径是 `UBattleRelicWidget::NativeOnMouseEnter()` → `ShowRelicTooltip()`；MCP 已确认资产 class 引用、按钮覆盖区域、Tooltip BindWidget 和默认尺寸存在，但尚未证明运行时一定能收到父 Widget 的 Hover 回调，也没有把当前 Tooltip 缺失现象标记为通过。2026-09-05 对 HUD/Card 的本次 MCP 读取同样是只读结构证据，未执行 Compile/Save 或 PIE，不把卡牌费用层和 HUD 布局的运行时视觉结果标记为已验收。
 
 ## 2.2 2026-09-04 Git index 暂存资产快照
 
