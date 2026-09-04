@@ -1,8 +1,8 @@
 # Card Upgrade STS-Style Refactor
 
-日期：**2026-09-04**
+日期：**2026-09-05**
 
-状态：**R3 COMPLETE / VALIDATED / R4 LEGACY SOURCE REMOVAL IMPLEMENTED / BUILD + SIX-ASSET RESAVE PENDING**
+状态：**R3 COMPLETE / VALIDATED / R4 LEGACY SOURCE REMOVAL BUILD PASS / SIX-ASSET LOAD PASS / FINAL PRESENTATION + RESAVE + SHIM ASSESSMENT PENDING**
 
 本文件是普通卡升级重构的 dedicated authority。最终 ordinary-card upgrade 模型已经从 `FCardUpgradeConfig + bHasUpgrade + second Effects[]` 收敛到单一 `UCardData`、单一 `Effects[]`、typed Base/Upgraded authored values 与唯一 runtime `UCardInstance::bUpgraded`。
 
@@ -145,17 +145,33 @@ Gameplay、Dynamic Text、A3 不允许继续直接读取 raw Base 字段作为�
 
 ---
 
-## 6. Presentation remains unchanged
+## 6. Presentation contract
+
+Gameplay/DTO 的 `DisplayName` 永远保持 authored base name；升级标题的 `+` 和颜色只属于 Widget presentation：
 
 ```text
 UCardInstance::bUpgraded
 → FPresentationCardSnapshot.bUpgraded
 → FBattleHUDCardView.bUpgraded
 → UBattleCardWidget
-→ upgraded card name gold
+   ├─ false: DisplayName + Designer/default title color
+   └─ true:  DisplayName + "+" + upgraded title color
 ```
 
-`DisplayName` 文本本身不变，不自动拼 `+`。
+当前升级标题颜色锁定为参考图中的亮黄绿色：
+
+```text
+sRGB #7FFF00
+```
+
+因此：
+
+```text
+剑柄打击  → base
+剑柄打击+ → upgraded
+```
+
+禁止在 `UCardData::DisplayName` 中 author 第二份升级名称；`+` 只能由 Presentation 根据冻结 `bUpgraded` 格式化。
 
 ---
 
@@ -174,7 +190,7 @@ DA_Card_Inflame
 
 R2 已完成：旧字段仍存在时，新 `UpgradedCost / Effect.Upgraded*` 与旧 Upgrade 数值完成 parity，六资产已保存并提交。
 
-R4 source removal 现已完成：
+R4 source removal 已完成并 Build PASS：
 
 ```text
 removed FCardUpgradeConfig
@@ -182,13 +198,11 @@ removed bHasUpgrade
 removed UCardData::Upgrade
 ```
 
-`UCardVariantData` 暂时继续作为 load-compatibility shim，不属于 ordinary authoring surface。
+六个生产资产在删除旧字段后均已能够正常打开。`UCardVariantData` 暂时继续作为 load-compatibility shim，不属于 ordinary authoring surface；在 post-removal resave/commit 完成前不删除。
 
 ---
 
-## 8. R4 user action
-
-删除旧 reflected fields 后，必须在成功 Build 后执行一次资产重存：
+## 8. R4 remaining user action
 
 ```text
 open all six DA_Card_* assets
@@ -199,7 +213,7 @@ open all six DA_Card_* assets
 → commit the six post-removal .uasset changes
 ```
 
-只有六资产在旧字段删除后能够正常加载并重存，才有资格评估是否删除 `UCardVariantData` compatibility shim。本轮不提前删除 shim。
+只有六资产在旧字段删除后完成正常加载 + 重存，才评估删除 `UCardVariantData` compatibility shim。
 
 ---
 
@@ -215,27 +229,27 @@ SlayTheSpireDemo.UIA3.ImmediatePreview
 SlayTheSpireDemo.Phase6C
 ```
 
-Dynamic Text 最终使用真实前缀 `SlayTheSpireDemo.Phase6UIA3.DynamicText` 并通过。此前错误前缀 `SlayTheSpireDemo.UIA3.DynamicText` 的 `No automation tests matched` 不计为逻辑失败。
-
 ---
 
-## 10. R4 validation budget
+## 10. Final presentation validation budget
 
-R4 当前直接失效 Gate：
+升级标题表现改动直接修改 `UBattleCardWidget`，因此新增的直接失效 Gate 只有：
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development Build
-2. six production card assets post-removal load/resave
+2. SlayTheSpireDemo.Phase6UIA2N.R4
+3. one focused PIE
 ```
 
-R4 仅删除已不再被 Runtime 读取的 legacy serialized fields，因此 R3 的 CardUpgrade / DynamicText / ImmediatePreview / Phase6C 逻辑 Gate保持 sticky；除非 Build 或资产加载暴露出新的共享问题，否则不重复执行。
+R3 的 CardUpgrade / DynamicText / ImmediatePreview / Phase6C 保持 sticky PASS。
 
-资产重存后最终进行一次 focused PIE：
+focused PIE：
 
 ```text
-normal card → default name color
-same runtime card upgraded → same name text + gold name
+normal card → authored name, Designer/default title color
+same runtime card upgraded → authored name + "+", bright yellow-green title (#7FFF00)
 upgraded numeric text matches configured upgraded value
+actual Gameplay uses the same upgraded values
 ```
 
 ---
@@ -251,8 +265,9 @@ Upgrade:  Damage 10 / Draw 2
 same RuntimeId
 same CardId
 same Effects object identities
-same DisplayName text
-gold upgraded name
+Gameplay DisplayName remains the same authored text
+Widget title becomes DisplayName+
+Widget upgraded title color = #7FFF00
 ```
 
 并且：
@@ -272,7 +287,7 @@ repeatable upgrade / UpgradeCount / Searing Blow
 UpgradedDescriptionOverride
 effect count/type structural replacement
 universal Upgrade Delta / Upgrade Context
-card-name '+' suffix
+second authored upgraded DisplayName
 Armaments content implementation
 Phase 8 implementation
 save/load/run-deck persistence
@@ -301,8 +316,13 @@ campfire/reward/shop upgrade UX
 [x] SlayTheSpireDemo.UIA3.ImmediatePreview PASS
 [x] SlayTheSpireDemo.Phase6C PASS
 [x] R4 FCardUpgradeConfig / bHasUpgrade / Upgrade source removal
-[ ] R4 Build PASS
-[ ] six-asset post-removal load/resave/commit
+[x] R4 Build PASS
+[x] six-asset post-removal load PASS
+[x] upgraded Widget title '+' implementation
+[x] upgraded title #7FFF00 default implementation
+[ ] upgraded Widget Build PASS
+[ ] SlayTheSpireDemo.Phase6UIA2N.R4 PASS
+[ ] six-asset post-removal resave/commit
 [ ] assess UCardVariantData shim removal
 [ ] final focused PIE
 [ ] seal
