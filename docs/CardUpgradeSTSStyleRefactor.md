@@ -2,7 +2,7 @@
 
 日期：**2026-09-04**
 
-状态：**R1 BUILD PASS / R2 SIX-ASSET PARITY COMMITTED / R3 SOURCE SWITCH IMPLEMENTED / VALIDATION PENDING**
+状态：**R3 BUILD/CARDUPGRADE/IMMEDIATEPREVIEW/PHASE6C PASS / DYNAMICTEXT CORRECT-PREFIX RERUN PENDING**
 
 本文件是普通卡升级重构的 dedicated authority。它取代 `FCardUpgradeConfig + bHasUpgrade + second Effects[]` 作为最终 ordinary-card upgrade 设计，但在 R4 完成前暂时保留这些旧 serialized fields 作为迁移安全壳。
 
@@ -239,19 +239,31 @@ Presentation snapshot freezes bUpgraded
 
 ## 10. Validation budget
 
-R3 当前 Gate：
+R3 Gate：
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development Build
 2. SlayTheSpireDemo.CardUpgrade
-3. SlayTheSpireDemo.UIA3.DynamicText
+3. SlayTheSpireDemo.Phase6UIA3.DynamicText
 4. SlayTheSpireDemo.UIA3.ImmediatePreview
 5. SlayTheSpireDemo.Phase6C
 ```
 
+注意：Dynamic Text 的真实 Automation namespace 是 `SlayTheSpireDemo.Phase6UIA3.DynamicText`。此前文档中的 `SlayTheSpireDemo.UIA3.DynamicText` 是错误前缀；该命令返回 `No automation tests matched`，因此不构成测试失败，只表示该 Gate 尚未执行。
+
+当前 sticky evidence：
+
+```text
+Build: PASS
+SlayTheSpireDemo.CardUpgrade: PASS
+SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
+SlayTheSpireDemo.Phase6C: PASS
+SlayTheSpireDemo.Phase6UIA3.DynamicText: NOT RUN — corrected-prefix rerun pending
+```
+
 Phase6C 必须跑，因为 R3 直接修改了 Effect `BuildActions` 的 authored-value读取路径。
 
-不跑全量 Phase 6 / Phase 7。Passing Gate sticky；失败后只修复并重跑被该修复直接失效的 Gate。
+不跑全量 Phase 6 / Phase 7。Passing Gate sticky；当前仅需补跑正确前缀的 Dynamic Text，不重跑 Build/CardUpgrade/ImmediatePreview/Phase6C。
 
 R4 删除 serialized fields 后至少重新 Build；若 R4 仅删除已不再被 runtime 读取的 legacy fields，则已经 PASS 的逻辑 Gate保持 sticky，除非编译/资产加载问题说明相关 contract 被重新失效。
 
@@ -320,11 +332,11 @@ campfire/reward/shop upgrade UX
 [x] R3 Effect consumers switched
 [x] R3 BattleTextResolver single-config validation switched
 [x] CardUpgradeFoundationTests migrated in place
-[ ] R3 Build PASS
-[ ] SlayTheSpireDemo.CardUpgrade PASS
-[ ] SlayTheSpireDemo.UIA3.DynamicText PASS
-[ ] SlayTheSpireDemo.UIA3.ImmediatePreview PASS
-[ ] SlayTheSpireDemo.Phase6C PASS
+[x] R3 Build PASS
+[x] SlayTheSpireDemo.CardUpgrade PASS
+[ ] SlayTheSpireDemo.Phase6UIA3.DynamicText PASS — corrected-prefix rerun pending
+[x] SlayTheSpireDemo.UIA3.ImmediatePreview PASS
+[x] SlayTheSpireDemo.Phase6C PASS
 [ ] R4 legacy field removal
 [ ] six-asset post-removal resave
 [ ] final focused PIE
