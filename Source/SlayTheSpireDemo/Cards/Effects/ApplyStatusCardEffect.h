@@ -22,6 +22,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "1"))
 	int32 Amount = 1;
 
+	// No sentinel/fallback semantics. If status amount is unchanged by upgrade,
+	// author the same explicit value here as Amount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Upgrade", meta = (ClampMin = "1"))
+	int32 UpgradedAmount = 1;
+
+	int32 GetEffectiveAmount(bool bIsUpgraded) const;
+
 	virtual void BuildActions(
 		const FCardPlayContext& Context,
 		TArray<UBattleAction*>& OutActions
