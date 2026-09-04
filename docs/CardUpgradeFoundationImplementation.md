@@ -17,7 +17,7 @@ UCardInstance
 └─ bool bUpgraded
 ```
 
-但升级配置已经进一步收窄，不再使用 `UCardVariantData` 完整复制整张卡。
+普通升级配置已经收窄，不使用 `UCardVariantData` 完整复制整张卡。
 
 当前 source shape：
 
@@ -48,9 +48,9 @@ Editor 不再创建/选择 `Card Variant Data` UObject。
 
 ---
 
-## 2. Why stable fields are not duplicated
+## 2. Stable fields and upgraded name presentation
 
-普通升级不需要重新填写：
+普通升级不重复填写：
 
 ```text
 DisplayName
@@ -59,13 +59,30 @@ CardType
 TargetType
 ```
 
-`DisplayName` 的可见 `+` 从 runtime upgrade state 派生：
+`DisplayName` 文本在升级前后完全相同：
 
 ```text
-Strike → Strike+
+Base     → Strike
+Upgraded → Strike
 ```
 
-不是第二个 authored 名字。
+不再自动拼接 `+`。
+
+升级状态通过 Presentation 表达：
+
+```text
+Base name     → Designer/default color
+Upgraded name → gold
+```
+
+`bUpgraded` 会冻结进入：
+
+```text
+FPresentationCardSnapshot
+FBattleHUDCardView
+```
+
+Native `UBattleCardWidget` 只读取冻结 DTO；当 `bUpgraded=true` 时把 `Txt_CardName` 渲染为金色，不反向查询或修改 Gameplay。
 
 ---
 
@@ -84,7 +101,7 @@ Description / Cost / Destination / Effects
 有效 getter：
 
 ```text
-GetDisplayName()       // upgraded derives +
+GetDisplayName()       // shared authored text, no suffix
 GetCardArt()           // shared
 GetCardType()          // shared
 GetTargetType()        // shared
@@ -114,7 +131,7 @@ already upgraded / bHasUpgrade=false
 
 ## 5. Production consumers
 
-此前迁移的 consumer boundary 保持不变：
+Gameplay effective-value consumer boundary保持：
 
 ```text
 PlayCardAction
@@ -124,34 +141,55 @@ PresentationCardSnapshotBuilder
 BattleManager current-state Presentation freeze
 ```
 
-review fix 只缩窄 upgrade authoring shape，没有新建第二套 Gameplay path。
+本次 name-style review fix 额外扩展了 Presentation state propagation：
+
+```text
+UCardInstance::IsUpgraded()
+→ FPresentationCardSnapshot.bUpgraded
+→ PresentationCardView
+→ FBattleHUDCardView.bUpgraded
+→ UBattleCardWidget
+→ gold Txt_CardName
+```
+
+当前 Hand freeze 也直接冻结 `Card->IsUpgraded()` 到 `FBattleHUDCardView.bUpgraded`，因此 current-state 与 historical Card snapshot 使用同一个 presentation fact。
 
 ---
 
 ## 6. Focused Automation
 
-继续使用：
+Upgrade focused suite：
 
 ```text
 SlayTheSpireDemo.CardUpgrade.SingleConfig
 SlayTheSpireDemo.CardUpgrade.EffectiveConsumers
 ```
 
-测试已更新为验证：
+当前验证：
 
 ```text
 stable DisplayName/CardType/TargetType are not duplicated
-upgraded display name derives '+' automatically
+upgraded DisplayName text remains identical
 Base/Upgrade Description/Cost/Destination/Effects switch correctly
 Base/Upgrade share CardId / RuntimeId
+FPresentationCardSnapshot freezes bUpgraded
 second upgrade remains fail-soft
 ```
+
+Presentation mapper focused test也已扩展为验证：
+
+```text
+FPresentationCardSnapshot.bUpgraded
+→ FBattleHUDCardView.bUpgraded
+```
+
+Native R4 card widget 是本次修改的直接 regression owner。
 
 ---
 
 ## 7. Validation state
 
-上一轮用户已经通过：
+更早版本用户已经通过：
 
 ```text
 Editor Build
@@ -159,25 +197,26 @@ SlayTheSpireDemo.CardUpgrade
 SlayTheSpireDemo.UIA3.ImmediatePreview
 ```
 
-但该证据对应旧 `UCardVariantData` source shape。
+这些结果保留为历史/sticky evidence，但当前 head 后续又修改了 upgrade authoring shape 和 upgraded-name Presentation DTO/widget。
 
-本次 review fix 修改了：
-
-```text
-CardData.h
-CardInstance.h/.cpp
-BattleTextResolver.cpp
-CardUpgradeFoundationTests.cpp
-```
-
-因此旧 seal 作为历史证据保留，但当前 source 需要重新：
+当前直接失效 Gate：
 
 ```text
 Editor Build once
 → SlayTheSpireDemo.CardUpgrade once
+→ SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper once
+→ SlayTheSpireDemo.Phase6UIA2N.R4 once
 ```
 
-本次没有修改 A3 production code，因此上一轮 A3 ImmediatePreview PASS 仍 sticky，不要求再次运行。
+A3 production source没有在本轮 gold-name fix 中修改，因此既有：
+
+```text
+SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
+```
+
+保持 sticky，不要求再次运行。
+
+不默认扩大到 Phase6R / A2D5 / Shipping aggregate gates。
 
 ---
 
@@ -204,11 +243,15 @@ Phase 8
 [x] remove UCardVariantData ordinary authoring object
 [x] add slim FCardUpgradeConfig
 [x] keep name/art/type/target shared
-[x] derive '+' from runtime upgrade state
-[x] update validation and focused Automation source
-[ ] Editor Build PASS on review-fix head
-[ ] SlayTheSpireDemo.CardUpgrade PASS on review-fix head
+[x] keep upgraded DisplayName text unchanged
+[x] freeze bUpgraded into current/historical presentation DTOs
+[x] render upgraded Native card name gold
+[x] update focused Automation source
+[ ] Editor Build PASS on current head
+[ ] SlayTheSpireDemo.CardUpgrade PASS
+[ ] SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper PASS
+[ ] SlayTheSpireDemo.Phase6UIA2N.R4 PASS
 [ ] restore validation seal
 ```
 
-当前不继续 production card authoring，直到这两个直接失效 Gate 重新通过。
+当前不继续 production card authoring，直到这些直接失效 Gate 通过。
