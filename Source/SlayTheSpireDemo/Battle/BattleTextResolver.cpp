@@ -435,11 +435,11 @@ bool FBattleTextResolver::ValidateCardDefinition(const UCardData* Definition, TA
 		FString::Printf(TEXT("Card %s Base"), *CardName),
 		OutErrors);
 
-	if (const UCardVariantData* Upgraded = Definition->UpgradedVariant.Get())
+	if (Definition->bHasUpgrade)
 	{
 		ValidateCardConfiguration(
-			Upgraded->Description,
-			Upgraded->Effects,
+			Definition->Upgrade.Description,
+			Definition->Upgrade.Effects,
 			FString::Printf(TEXT("Card %s Upgraded"), *CardName),
 			OutErrors);
 	}
