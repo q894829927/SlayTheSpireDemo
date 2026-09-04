@@ -3,7 +3,6 @@
 #include "BattleImmediatePreview.h"
 #include "BattleTextResolver.h"
 #include "BattleTextTypes.h"
-#include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 #include "../Cards/Effects/CardEffect.h"
 #include "../Combat/Combatant.h"
@@ -21,13 +20,9 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 		|| BattleId > static_cast<uint64>(MAX_int64)
 		|| StateRevision > static_cast<uint64>(MAX_int64)
 		|| !IsValid(Player.Get())
-		|| !IsValid(Card))
-	{
-		return false;
-	}
-
-	const UCardData* Definition = Card->GetDefinition();
-	if (!IsValid(Definition) || Card->GetRuntimeId() == INDEX_NONE)
+		|| !IsValid(Card)
+		|| !IsValid(Card->GetDefinition())
+		|| Card->GetRuntimeId() == INDEX_NONE)
 	{
 		return false;
 	}
@@ -57,9 +52,6 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 	Preview.SourcePresentationId = SourcePresentationId;
 	Preview.TargetPresentationId = TargetPresentationId;
 
-	// A3-3 reuses the existing Gameplay validation vocabulary instead of
-	// reproducing target or Energy rules in UI code. A missing concrete target is
-	// a coherent pre-target state and therefore uses the target-agnostic query.
 	Preview.Validation = Target != nullptr
 		? QueryPlayCard(Card, Target)
 		: QueryCardPlayability(Card);
@@ -72,19 +64,17 @@ bool ABattleManager::TryBuildImmediateCardPreview(
 		Preview.EnergyAfter = Preview.EnergyBefore - Preview.EffectiveCost;
 	}
 
-	Preview.Operations.Reserve(Definition->Effects.Num());
+	const TArray<TObjectPtr<UCardEffect>>& Effects = Card->GetEffects();
+	Preview.Operations.Reserve(Effects.Num());
 
 	FCardEffectPreviewContext Context;
 	Context.Card = Card;
 	Context.Source = Player.Get();
-	// A3-1's shared preview context predates the public const Query surface and
-	// still stores mutable actor pointers. The Effect contribution contract is
-	// read-only; this narrow adapter must not be used to mutate Target.
 	Context.Target = const_cast<ACombatant*>(Target);
 
-	for (int32 EffectIndex = 0; EffectIndex < Definition->Effects.Num(); ++EffectIndex)
+	for (int32 EffectIndex = 0; EffectIndex < Effects.Num(); ++EffectIndex)
 	{
-		const UCardEffect* Effect = Definition->Effects[EffectIndex].Get();
+		const UCardEffect* Effect = Effects[EffectIndex].Get();
 		if (!IsValid(Effect))
 		{
 			return false;
