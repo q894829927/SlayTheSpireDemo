@@ -183,7 +183,8 @@ COMPLETE / VALIDATED / SEALED
 
 ```text
 Card Expansion Foundation
-├─ generic Upgrade state / resolution
+├─ default single-upgrade state / resolution
+├─ optional repeatable-upgrade capability
 ├─ first real upgraded card definitions
 └─ focused validation
 ```
@@ -191,20 +192,29 @@ Card Expansion Foundation
 Upgrade 必须保持正交：
 
 ```text
+普通卡默认使用 bool bUpgraded
+可重复升级不是所有卡的全局等级，而是 optional RepeatableUpgradeCapability
 Upgrade System 不知道 Damage / Draw / Exhaust / Corruption 等具体能力
-Damage / Draw / Exhaust 等能力也不直接判断 UpgradeLevel
-所有 Gameplay / UI / A2 / A3 只能通过统一的 effective card definition/value boundary 读取升级后的事实
+Damage / Draw / Exhaust 等能力也不直接判断 bUpgraded / UpgradeCount
+所有 Gameplay 通过统一 effective-card boundary 读取升级后的事实
+Presentation 通过冻结 UpgradeStateView / effective DTO 格式化 "+" 或 "+N"
 ```
 
-普通卡先支持基础/升级形态；模型必须从设计上允许以后扩展到：
+模型必须允许以后扩展到：
 
 ```text
-Armaments     → combat temporary upgrade
-Searing Blow  → level N / repeatable persistent upgrade
-Run Deck      → persistent UpgradeLevel ownership
+Armaments     → combat temporary upgrade through generic Upgrade action
+Searing Blow  → optional repeatable UpgradeCount state
+Run Deck      → future persistence materializes default bool or repeatable state
 ```
 
-具体设计 authority 单独放在卡牌开发文档，不扩大 Phase 8。
+具体设计 authority：
+
+```text
+docs/CardUpgradeFoundationDesign.md
+```
+
+Phase 8 不实现、也不验证上述 Upgrade Foundation。
 
 ---
 
