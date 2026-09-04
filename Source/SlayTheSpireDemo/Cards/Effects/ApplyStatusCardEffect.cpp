@@ -1,5 +1,6 @@
 #include "ApplyStatusCardEffect.h"
 
+#include "../CardInstance.h"
 #include "../CardPlayContext.h"
 #include "../../Actions/ApplyStatusAction.h"
 #include "../../Battle/BattleManager.h"
@@ -27,9 +28,11 @@ void UApplyStatusCardEffect::BuildActions(
 		return;
 	}
 
-	if (Amount <= 0)
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveAmount = GetEffectiveAmount(bIsUpgraded);
+	if (EffectiveAmount <= 0)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] ApplyStatus build skipped: Amount=%d."), Amount);
+		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] ApplyStatus build skipped: effective Amount=%d."), EffectiveAmount);
 		return;
 	}
 
@@ -39,7 +42,7 @@ void UApplyStatusCardEffect::BuildActions(
 		Context.Source,
 		Context.Target,
 		StatusDefinition,
-		Amount
+		EffectiveAmount
 	);
 	OutActions.Add(Action);
 }
@@ -50,11 +53,12 @@ void UApplyStatusCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) co
 }
 
 void UApplyStatusCardEffect::BuildPreviewArguments(
-	const FCardEffectPreviewContext& /*Context*/,
+	const FCardEffectPreviewContext& Context,
 	FPreviewTextArgumentBuilder& OutArguments
 ) const
 {
-	OutArguments.AddInteger(DescriptionArgumentName, Amount);
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	OutArguments.AddInteger(DescriptionArgumentName, GetEffectiveAmount(bIsUpgraded));
 }
 
 void UApplyStatusCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
