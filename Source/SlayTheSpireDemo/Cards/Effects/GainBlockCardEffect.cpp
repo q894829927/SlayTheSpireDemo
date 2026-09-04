@@ -7,6 +7,11 @@
 #include "../../Modifiers/Block/BlockSpec.h"
 #include "../../Battle/BattleTextTypes.h"
 
+int32 UGainBlockCardEffect::GetEffectiveAmount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedAmount : BaseAmount;
+}
+
 void UGainBlockCardEffect::BuildActions(
 	const FCardPlayContext& Context,
 	TArray<UBattleAction*>& OutActions
@@ -63,6 +68,10 @@ void UGainBlockCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors
 	if (BaseAmount < 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("GainBlockCardEffect BaseAmount cannot be negative.")));
+	}
+	if (UpgradedAmount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("GainBlockCardEffect UpgradedAmount cannot be negative.")));
 	}
 }
 
