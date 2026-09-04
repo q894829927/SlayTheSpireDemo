@@ -6,6 +6,11 @@
 #include "../../Events/BattleEventDispatcher.h"
 #include "../../Battle/BattleTextTypes.h"
 
+int32 UDrawCardEffect::GetEffectiveDrawCount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedDrawCount : DrawCount;
+}
+
 void UDrawCardEffect::BuildActions(
 	const FCardPlayContext& Context,
 	TArray<UBattleAction*>& OutActions
@@ -63,5 +68,9 @@ void UDrawCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) con
 	if (DrawCount < 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("DrawCardEffect DrawCount cannot be negative.")));
+	}
+	if (UpgradedDrawCount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DrawCardEffect UpgradedDrawCount cannot be negative.")));
 	}
 }
