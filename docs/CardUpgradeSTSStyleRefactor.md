@@ -2,9 +2,15 @@
 
 日期：**2026-09-04**
 
-状态：**DESIGN APPROVED / AUTHORITY LOCKED / IMPLEMENTATION NOT STARTED**
+状态：**R1 IMPLEMENTED / BUILD PENDING / R2 SIX-ASSET PARITY PENDING**
 
 本文件是下一轮普通卡牌升级重构的 dedicated authority。它在实现层面取代当前 `FCardUpgradeConfig + bHasUpgrade + second Effects[]` 方案，但保留既有 `UCardInstance::bUpgraded`、`UUpgradeCardAction`、A3/Presentation 冻结链与金色升级名称表现。
+
+当前 R1 source head：
+
+```text
+16ce7863c6ae4910ce4c0627dadb0e626641115f
+```
 
 ---
 
@@ -472,7 +478,9 @@ Card Upgrade STS-Style Refactor
 
 内部按迁移依赖连续收敛：
 
-### R1 — Add typed upgrade fields without removing old serialized fields
+### R1 — IMPLEMENTED / BUILD PENDING
+
+已完成 source edit：
 
 ```text
 add UpgradedCost
@@ -482,7 +490,7 @@ add Base+Upgraded DataValidation
 keep old FCardUpgradeConfig/bHasUpgrade temporarily for migration parity only
 ```
 
-此时旧资产仍可打开。
+R1 没有切换 Gameplay/DynamicText/A3 runtime authority；旧资产仍可按原模型加载，待 Build PASS 后进入 R2 parity。
 
 ### R2 — Asset parity authoring
 
@@ -624,7 +632,8 @@ campfire/reward/shop upgrade UX
 [x] parity-before-removal + USER ACTION resave locked
 [x] Phase8 relation preserved
 [x] explicit non-goals locked
-[ ] R1 implementation
+[x] R1 source implementation
+[ ] R1 editor Build PASS
 [ ] six-asset parity authoring
 [ ] R3 authority switch
 [ ] R4 old-model removal + asset resave
