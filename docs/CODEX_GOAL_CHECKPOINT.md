@@ -14,13 +14,16 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7F Relic Counter Metadata Unification: COMPLETE / VALIDATED / SEALED
 
 Phase 8 Combo Architecture Validation:
-DESIGN REVISED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
+DESIGN REFINED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
 
 Card Expansion / Upgrade Foundation:
 DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED
 
+Card Trigger Source Expansion:
+DESIGN DRAFT / IMPLEMENTATION NOT AUTHORIZED
+
 Ironclad Capability Architecture:
-COUPLING REVIEW INCORPORATED / PLANNING ONLY
+COUPLING REVIEW REFINED / PLANNING ONLY
 ```
 
 ## Sealed Phase 7 state
@@ -36,6 +39,28 @@ UGainEnergyRelicEffect.Amount = 2
 Counter 0 → 1 → 2 → 0
 third real counted Shuffle → +2 Energy
 ```
+
+Sealed queue/event ordering precedent remains:
+
+```text
+DrawCardsAction
+→ queues Draw / Shuffle / RemainingDraw continuation batch at Queue front
+
+ShuffleDeckAction
+→ commits Shuffle
+→ dispatches DeckShuffled
+
+Dispatcher
+→ inserts reaction batch at Queue front
+
+final execution order:
+Shuffle commit
+→ reactions
+→ RemainingDraw continuation
+→ previously pending work
+```
+
+This is the precedent to generalize for future authored Result->Continuation; do not invent a second queue-ordering model.
 
 ## Revised Phase 8 authority
 
@@ -57,7 +82,22 @@ Pommel Strike
 → remaining Draw continuation
 ```
 
-Therefore Phase 8 no longer creates a dedicated `Pommel Strike+` test asset.
+That remains Production PIE evidence only.
+
+Phase 8 Automation is now decoupled from production Pommel authored values:
+
+```text
+Transient authored UCardData
+├─ generic Damage Effect
+└─ UDrawCardEffect(DrawCount=2)
+
+→ real PlayCard / Effect / Action path
+→ real Shuffle commit
+→ real DeckShuffled event
+→ Sundial reaction
+```
+
+No persistent test-only `Pommel Strike+` asset is created. Future Upgrade Foundation may restore production Pommel Strike to Base Draw 1 / Upgraded Draw 2 without invalidating the architecture Automation.
 
 Current Phase 8 scope is only:
 
@@ -65,6 +105,13 @@ Current Phase 8 scope is only:
 8A Automated Combo Integration
 8B Record existing Production PIE evidence
 8C Validation / Seal
+```
+
+Suggested focused tests:
+
+```text
+SlayTheSpireDemo.Phase8.Combo.Draw2Sundial
+SlayTheSpireDemo.Phase8.Combo.OrderingAndContinuation
 ```
 
 The automated path must start from real Card / Effect execution, not a manually dispatched `FDeckShuffledEvent`.
@@ -90,12 +137,12 @@ Capabilities communicate through typed Query / Predicate / Spec / SelectionResul
 Do NOT replace this with a UniversalResultBus / UniversalContext / arbitrary key-value interpreter.
 ```
 
-Coupling-review decisions now recorded in the plan:
+Coupling-review decisions:
 
 ```text
 CAP-09 no longer owns Draw restriction.
 Draw legality and Draw amount modification are a separate typed Draw rule surface.
-Draw modifiers should use deterministic ordering homologous to existing modifier pipelines.
+Draw modifiers use deterministic ordering homologous to existing modifier pipelines.
 
 CAP-12 RNG is domain-neutral: ChooseIndex / ChooseOne / Shuffle only.
 CAP-20 CardCatalog only returns ordered Definition candidates.
@@ -103,41 +150,103 @@ CAP-05 CardCreation materializes the chosen Definition.
 
 Result-dependent composition uses a typed, authored, resolution-local Continuation.
 Continuation is NOT BattleEvent / Dispatcher / persistent Trigger registry.
-Action Execute -> commit Result -> synchronous Continuation build -> enqueue before Finish -> no queue pump.
-
-CardExhausted is an explicit future committed Gameplay event.
-Sentinel requires generic Card Trigger Runtime Source, not an Exhaust/CardId special case.
-CardData owns the trigger definition; CardInstance supplies runtime identity; no per-instance Trigger UObject is required.
-Card trigger ordering preserves existing Phase7 Status/Relic RuntimeSequence ordering; Card sources sort after existing non-card sources at equal Priority and use stable Card RuntimeId among cards.
-Deck setup still does not consume battle RuntimeSequence.
-
-HP mutation does not own consumer counters.
-Blood for Blood-style counts live in explicit card runtime state; Status/Power counters live in their own runtime owner.
-
-CAP-11 only supplies target sets; Damage/Status own their commits.
-CAP-17 only owns Block clear/retain lifecycle.
-CAP-18 only owns exact Damage outcome facts; Fatal/Heal/MaxHP follow-up belongs to authored Continuation.
-
-Card clone snapshot is conditional: introduce FCardCloneSpec only when mutable card state and a real Copy consumer require it.
-
-Shared predicate/query outlet is used by Dropkick / Spot Weakness-style conditional composition; do not create a second conditional system.
+Continuation authored objects are immutable/stateless.
+Mutable-state-dependent numeric/predicate resolution occurs at Execute-time.
 ```
 
-Known sealed legacy coupling hotspots are recorded but not reopened:
+### Continuation ordering is not a new queue model
+
+Future CommitResult-dependent actions must reuse the sealed Draw/Shuffle pattern:
+
+```text
+Action Execute
+→ commit
+→ typed Result
+→ authored Continuation builds dependent batch
+→ AddBatchToFrontPreserveOrder(ContinuationBatch)
+→ dispatch committed BattleEvent
+→ reactions naturally insert ahead of ContinuationBatch
+→ Finish
+```
+
+Result:
+
+```text
+same-commit reactions
+→ authored Continuation actions
+→ previously pending actions
+```
+
+If Continuation build/insert fails:
+
+```text
+RequestResolutionFault
+→ Finish
+→ return immediately
+→ do NOT dispatch the event afterward from that failed path
+```
+
+Do not rely on `RequestResolutionFault` alone to make Dispatcher reject work before the Queue reaches its safe fault point.
+
+## Card Trigger Source Expansion authority
+
+Dedicated design:
+
+```text
+docs/CardTriggerSourceExpansionDesign.md
+```
+
+This is an independent future foundation slice, not part of Sentinel content implementation.
+
+Locked comparison key:
+
+```text
+Priority
+→ SourceTier
+   Status / Relic = 0
+   Card           = 1
+→ SequenceKey
+   Status / Relic = RuntimeSequence
+   Card           = RuntimeId
+→ LocalTriggerIndex
+```
+
+Source discovery must come through a typed Card trigger-source provider boundary; Dispatcher must not traverse Deck zones and interpret Card semantics.
+
+RuntimeId invariant:
+
+```text
+Every newly materialized UCardInstance
+→ fresh battle-unique RuntimeId
+→ same authoritative NextRuntimeId allocator
+```
+
+Clone/copy never copies RuntimeId.
+
+This slice must protect sealed ordering with focused Card-source Automation plus existing Phase7 Status/Relic and Phase6 trigger-order regressions.
+
+## Known sealed coupling guardrails
+
+Known historical coupling hotspots remain sealed and are not reopened now:
 
 ```text
 UCardEffect compile-time A3 Preview coupling
 FCardPlayContext service-bag tendency
+FTriggerContext service-bag tendency
 PlayCardAction gameplay + card-face freeze + presentation snapshot duties
 ```
 
-New card capabilities must not enlarge those surfaces, especially by adding more subsystem services into `FCardPlayContext`.
+New card capabilities must not enlarge those surfaces:
 
-This remains planning reference only.
+```text
+Do not add new subsystem services to FCardPlayContext or FTriggerContext.
+Do not use FTriggerContext::GetBattle() as a general subsystem locator.
+Prefer Event / source snapshot / typed Query boundaries.
+```
 
 ## Upgrade Foundation authority
 
-Dedicated design draft:
+Dedicated design:
 
 ```text
 docs/CardUpgradeFoundationDesign.md
@@ -149,40 +258,72 @@ Decision:
 Upgrade System WILL be implemented,
 but not inside Phase 8.
 
-It becomes a Card Expansion foundation capability
-and is implemented together with the first formal card-development batch.
+It becomes the Card Expansion Foundation immediately after Phase 8 seal
+and is implemented together with the first formal upgraded-card batch.
 ```
 
 Locked Upgrade rules:
 
 ```text
-Default card upgrade is single-use and may use bool bUpgraded.
-Normal card: false → true; a second upgrade is rejected generically.
-Repeated upgrading is NOT part of every card's default model.
-Repeated upgrading is an optional capability assigned by card definition.
-Searing Blow is a consumer of that capability, not a CardId special case.
+Each CardInstance has exactly one authoritative upgrade-state shape.
 
-RepeatableUpgradeCapability owns only repeat policy/state (CanUpgrade / ApplyUpgrade / UpgradeCount).
-It must not know Damage / Draw / Block Effect types and must not build Presentation text.
+Normal definition:
+→ Single state only
+→ bool bUpgraded semantics
+→ exactly one upgrade
 
-Gameplay resolves authored upgrade data into EffectiveCardFacts.
-Presentation consumes a frozen FUpgradeStateView / effective DTO.
-Normal upgraded title uses only "+"; repeatable presentation uses "+1", "+2", ...
+Repeatable definition:
+→ Repeatable state only
+→ mutable RepeatCount in CardInstance/dedicated runtime state
+→ no independent authoritative bUpgraded
 
-Upgrade remains orthogonal to Damage / Block / Draw / Exhaust / Status / Relic.
-Runtime temporary upgrade remains Action-authoritative.
+RepeatableUpgradeCapability:
+→ immutable definition policy/authored data only
+→ does not store mutable RepeatCount
+→ does not know Damage / Draw / Block Effect types
+→ does not build Presentation text
 ```
 
+Effective resolution is typed, not a flattened universal bag:
+
+```text
+EffectiveCardView
+├─ card-level typed facts
+└─ EffectiveEffects[] with typed effect parameters
+```
+
+Actual gameplay, A3 preview, committed card-face freeze and Presentation snapshot building must consume the same effective card/effect values.
+
+First Upgrade slice keeps Effect type/order/count unchanged and upgrades typed authored parameters only.
+
+Presentation consumes a frozen `FUpgradeStateView`; normal upgraded title uses `+`, repeatable presentation uses `+1`, `+2`, ...
+
 This does not yet authorize Run Deck, campfire, save/load, reward or shop systems.
+
+## Planning-order clarification
+
+The long-term Ironclad Waves are implementation/validation groupings, not dependency order.
+
+Actual near-term sequence is:
+
+```text
+Phase 8 seal
+→ Card Expansion / Upgrade Foundation
+→ first normal upgraded-card batch
+→ later Ironclad capability waves
+→ Armaments / Searing Blow remain later special Upgrade consumers when their card batches arrive
+```
+
+Any old wording that places the generic Upgrade Foundation itself at a final "Wave 10" is stale; only special runtime-upgrade consumers may remain in that later wave.
 
 ## Next exact action
 
 ```text
-1. Review revised Phase 8 design.
+1. Review the refined Phase 8 design.
 2. Explicitly authorize Phase 8 implementation if accepted.
-3. Complete/validate/seal Phase 8.
+3. Complete / validate / seal Phase 8.
 4. Then explicitly authorize Card Expansion / Upgrade Foundation as the next bounded goal.
-5. Before implementing Exhaust/Sentinel/Battle Trance/Feed/Fiend Fire class mechanics, obey the newly locked Continuation / CardExhausted / Card Trigger ordering / Draw-rule decisions.
+5. Keep Card Trigger Source Expansion as a separate future foundation slice before Sentinel/Card-trigger consumers.
 
 Do not start Upgrade or Ironclad capability implementation before Phase 8 seal unless the user explicitly changes this ordering.
 ```
