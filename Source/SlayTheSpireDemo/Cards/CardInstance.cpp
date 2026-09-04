@@ -50,20 +50,7 @@ bool UCardInstance::CommitUpgrade()
 
 FText UCardInstance::GetDisplayName() const
 {
-	if (!IsValid(Definition.Get()))
-	{
-		return FText::GetEmpty();
-	}
-
-	const FText BaseName = Definition->DisplayName;
-	if (!bUpgraded || BaseName.IsEmpty())
-	{
-		return BaseName;
-	}
-
-	return FText::Format(
-		NSLOCTEXT("Cards", "UpgradedCardNameFormat", "{0}+"),
-		BaseName);
+	return IsValid(Definition.Get()) ? Definition->DisplayName : FText::GetEmpty();
 }
 
 UTexture2D* UCardInstance::GetCardArt() const
