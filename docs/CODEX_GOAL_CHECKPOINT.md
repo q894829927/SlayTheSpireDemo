@@ -1,4 +1,4 @@
-# Codex Goal Checkpoint — Phase 7 / Phase 8
+# Codex Goal Checkpoint — Phase 7 / Phase 8 / Card Expansion
 
 Last updated: **2026-09-04**
 
@@ -12,137 +12,123 @@ Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
 7D Relic Read / Frozen / Native UI: COMPLETE / VALIDATED / SEALED
 7E Relic Reaction Composition: COMPLETE / VALIDATED / SEALED
 7F Relic Counter Metadata Unification: COMPLETE / VALIDATED / SEALED
-Phase 8 Combo Architecture Validation: DESIGN DRAFTED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
+
+Phase 8 Combo Architecture Validation:
+DESIGN REVISED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED
+
+Card Expansion / Upgrade Foundation:
+DESIGN DRAFT / IMPLEMENTATION NOT AUTHORIZED
 ```
 
-## Final Phase 7 authority / evidence
+## Sealed Phase 7 state
 
-```text
-docs/Phase7RelicsImplementation.md
+Phase 7A–7F remain sealed. Do not reopen them without a concrete later failure that invalidates an existing contract.
 
-docs/Phase7AValidation.md
-docs/Phase7BValidation.md
-docs/Phase7CValidation.md
-docs/Phase7DValidation.md
-docs/Phase7ERelicCompositionDesign.md
-docs/Phase7EImplementation.md
-docs/Phase7EValidation.md
-docs/Phase7FCounterMetadataImplementation.md
-docs/Phase7FValidation.md
-```
-
-Phase 7A–7F are sealed and must not be reopened without a concrete Phase 8 failure that invalidates an existing contract.
-
-## Phase 7 final durable state
-
-```text
-Relics are first-class immutable-definition + mutable-runtime Gameplay sources.
-Status and Relic triggers share deterministic dispatcher ordering.
-Sundial is composed from UDeckShuffledCountTrigger + RelicEffects.
-GainEnergyAction is reusable and queued.
-Relic HUD state flows through read/frozen Presentation DTOs.
-CounterDisplayMax no longer exists as authored metadata.
-URelicCountTrigger::RequiredCount is the sole authored counter threshold.
-```
-
-Production Sundial final state:
+Production Sundial remains:
 
 ```text
 bShowCounter = true
-Triggers[0] = UDeckShuffledCountTrigger
-RequiredCount = 3
-Effects[0] = UGainEnergyRelicEffect
-Amount = 2
+UDeckShuffledCountTrigger.RequiredCount = 3
+UGainEnergyRelicEffect.Amount = 2
+Counter 0 → 1 → 2 → 0
+third real counted Shuffle → +2 Energy
 ```
 
-## Phase 8 design authority
-
-Design draft:
+## Revised Phase 8 authority
 
 ```text
 docs/Phase8ComboArchitectureDesign.md
 ```
 
-Phase 8 goal:
+The existing Pommel Strike has already been configured to `Draw 2` and the user has manually observed the target gameplay chain in PIE:
 
 ```text
-2 × data-driven Pommel Strike+
-+ Sundial
-
-Card
-→ Effects
-→ DrawCardsAction(2)
+Pommel Strike
+→ Damage
+→ Draw 2
+→ UDrawCardsAction(2)
 → real Shuffle
 → FDeckShuffledEvent
-→ Sundial reaction
-→ every third counted shuffle +2 Energy
+→ Sundial Counter
+→ third counted Shuffle +2 Energy
+→ remaining Draw continuation
 ```
 
-Locked draft direction:
+Therefore Phase 8 no longer creates a dedicated `Pommel Strike+` test asset.
+
+Current Phase 8 scope is only:
 
 ```text
-Pommel Strike+ is an immutable UCardData content variant.
-No generic Upgrade runtime in Phase 8.
-No bUpgraded / UpgradeLevel / UpgradeCardAction / UpgradeDelta.
-No Pommel/Sundial identity special case.
-Do not redesign sealed Draw / Shuffle semantics.
-A3 still does not predict Draw/Shuffle/Relic reactions.
+8A Automated Combo Integration
+8B Record existing Production PIE evidence
+8C Validation / Seal
 ```
 
-Planned Phase 8 slices:
+The automated path must start from real Card / Effect execution, not a manually dispatched `FDeckShuffledEvent`.
 
-```text
-8A Upgraded Pommel Content Variant
-8B Automated Combo Integration
-8C Production PIE Acceptance
-8D Validation / Seal
-```
+Phase 8 still requires explicit implementation authorization.
 
-The proposed dedicated Automation prefix is:
+## Ironclad card planning
 
-```text
-SlayTheSpireDemo.Phase8
-```
-
-The automated combo must start from real Card / Effect execution rather than manually dispatching `FDeckShuffledEvent` as its primary path.
-
-## Ironclad long-term card planning reference
-
-A full Slay the Spire 1 Ironclad inventory/capability decomposition now exists at:
+Long-term card inventory/capability plan:
 
 ```text
 docs/IroncladCardArchitecturePlan.md
 ```
 
-It covers:
+It covers 75 distinct Ironclad card definitions and CAP-00..CAP-20.
+
+Locked architecture rule:
 
 ```text
-75 distinct Ironclad card definitions
-= 3 Basic + 20 Common + 36 Uncommon + 16 Rare
+Capabilities are orthogonal and composable.
+They may communicate only through stable neutral contracts such as:
+Query / Spec / SelectionResult / CommitResult / BattleEvent.
 
-CAP-00 .. CAP-20 architecture capability map
-full card-by-card capability mapping
-recommended capability-wave dependency order
+No capability may know concrete Card / Status / Relic consumers.
 ```
 
-This is **planning reference only**. It does not authorize implementation and does not expand Phase 8. In particular:
+This remains planning reference only.
+
+## Upgrade Foundation authority
+
+Dedicated design draft:
 
 ```text
-Phase 8 remains Pommel Strike+ + Sundial combo validation only.
-Do not start Corruption / Exhaust / multi-enemy / upgrade-runtime work as part of 8A.
-After Phase 8, select one bounded capability wave and create a dedicated design authority before implementation.
+docs/CardUpgradeFoundationDesign.md
 ```
 
-The current long-term recommendation after Phase 8 is to consider the Exhaust foundation first because it has the broadest Ironclad reuse surface, but that is not yet an active phase.
+Decision:
+
+```text
+Upgrade System WILL be implemented,
+but not inside Phase 8.
+
+It becomes a Card Expansion foundation capability
+and is implemented together with the first formal card-development batch.
+```
+
+Locked Upgrade rules:
+
+```text
+Upgrade is orthogonal to Damage / Block / Draw / Exhaust / Status / Relic.
+No CardId-specific upgrade branch.
+Do not use bool-only bUpgraded as the final model.
+Model must allow UpgradeLevel >= 0.
+All Gameplay / UI / A2 / A3 consume one effective-card boundary.
+Runtime temporary upgrade remains Action-authoritative.
+Design must remain extensible to Armaments and Searing Blow Level N.
+```
+
+This does not yet authorize Run Deck, campfire, save/load, reward or shop systems.
 
 ## Next exact action
 
 ```text
-REVIEW docs/Phase8ComboArchitectureDesign.md
-and docs/IroncladCardArchitecturePlan.md.
+1. Review revised Phase 8 design.
+2. Explicitly authorize Phase 8 implementation if accepted.
+3. Complete/validate/seal Phase 8.
+4. Then explicitly authorize Card Expansion / Upgrade Foundation as the next bounded goal.
 
-Phase 8 implementation is NOT authorized yet.
-Do not modify Card / Draw / Shuffle / Relic runtime.
-Do not create the production Pommel Strike+ asset yet.
-Explicit user authorization is required after design review.
+Do not start Upgrade implementation before Phase 8 seal unless the user explicitly changes this ordering.
 ```
