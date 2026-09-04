@@ -7,6 +7,11 @@
 #include "../../Status/StatusData.h"
 #include "../../Battle/BattleTextTypes.h"
 
+int32 UApplyStatusCardEffect::GetEffectiveAmount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedAmount : Amount;
+}
+
 void UApplyStatusCardEffect::BuildActions(
 	const FCardPlayContext& Context,
 	TArray<UBattleAction*>& OutActions
@@ -65,5 +70,9 @@ void UApplyStatusCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErro
 	if (Amount <= 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("ApplyStatusCardEffect Amount must be positive.")));
+	}
+	if (UpgradedAmount <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("ApplyStatusCardEffect UpgradedAmount must be positive.")));
 	}
 }
