@@ -17,6 +17,7 @@
 ```text
 普通升级是默认能力：最多升级一次。
 多次升级不是所有卡牌的默认状态维度，而是可选的独立能力。
+Gameplay upgrade state 与 Presentation formatting 分离。
 ```
 
 因此完整模型应是：
@@ -27,6 +28,9 @@ Default Card Upgrade
 
 Optional Repeatable Upgrade Capability
 → only cards explicitly granted this capability can upgrade repeatedly
+
+Upgrade State View / Effective Card Facts
+→ frozen read-only boundary for gameplay/presentation consumers
 ```
 
 灼热打击是 Repeatable Upgrade Capability 的首个真实消费者，但通用系统不得识别具体 CardId。
@@ -58,9 +62,17 @@ Damage / Block / Draw / Exhaust 等系统
 不得根据 CardId 决定升级结果
 ```
 
-所有 Gameplay / Presentation 消费者只读取统一的 effective card boundary。
+所有 Gameplay / Presentation 消费者只读取统一的 effective card / frozen state boundary。
 
-Repeatable Upgrade Capability 也只扩展“能否再次升级 / 当前重复升级次数 / 如何解析该次数对应的有效内容”，不得直接知道 Damage、Draw 等具体消费者。
+Repeatable Upgrade Capability 只扩展：
+
+```text
+能否再次升级
+当前重复升级次数
+如何提交重复升级状态
+```
+
+它不得直接知道 Damage、Draw、Block 等具体消费者，也不得负责 UI 文本拼接。
 
 ---
 
@@ -98,7 +110,7 @@ bUpgraded = true
 
 ```text
 Base Card Facts
-+ Upgraded Card Facts / Upgrade Delta
++ Upgraded Card Facts / typed authored upgrade data
 → Effective Card Facts
 ```
 
@@ -129,17 +141,15 @@ UCardData
 → UpgradeCount = 0, 1, 2, 3, ...
 ```
 
-推荐的通用接口语义：
+推荐的 Gameplay 接口语义只保留：
 
 ```text
 CanUpgrade(CardInstance)
 ApplyUpgrade(CardInstance)
-GetEffectiveUpgradeCount(CardInstance)
-BuildUpgradeDisplaySuffix(CardInstance)
-ResolveUpgradeContribution(...)
+GetUpgradeStateView(CardInstance)
 ```
 
-其中默认路径与扩展路径为：
+其中：
 
 ```text
 No RepeatableUpgradeCapability
@@ -147,7 +157,15 @@ No RepeatableUpgradeCapability
 → bool bUpgraded
 
 Has RepeatableUpgradeCapability
-→ capability handles repeated upgrade policy/state
+→ capability handles repeated CanUpgrade / ApplyUpgrade / UpgradeCount state
+```
+
+不在 Repeatable capability 中提供：
+
+```text
+BuildUpgradeDisplaySuffix
+if DamageEffect / DrawEffect / BlockEffect
+ResolveUpgradeContribution(...) 这种会迫使它理解具体 Effect 的宽泛接口
 ```
 
 禁止：
@@ -173,19 +191,20 @@ Card Definition
 
 ## 5. Effective card boundary
 
-升级能力不能迫使每个 Gameplay / UI 系统自己解释 `bUpgraded` 或 Repeatable state。
+升级能力不能迫使每个 Gameplay / UI 系统自己解释 `bUpgraded` 或 repeatable state。
 
-统一入口负责：
+统一 Gameplay resolution 入口负责：
 
 ```text
 Base Card Definition
 + default bUpgraded state
-+ optional upgrade capability state
++ optional repeatable state
 + permitted combat card state
++ authored upgrade data
 → EffectiveCardFacts
 ```
 
-以下全部读取同一个 effective source：
+以下 Gameplay/preview 读取同一个 effective source：
 
 ```text
 PlayCardAction
@@ -193,8 +212,7 @@ Card cost / playability
 Card Effects
 BattleTextResolver
 A3 Immediate Preview
-PresentationCardSnapshot
-Card UI
+PresentationCardSnapshot builder
 ```
 
 不得出现散落逻辑：
@@ -204,7 +222,7 @@ if (Card->bUpgraded) { ... }
 if (Card->RepeatUpgradeCount > 0) { ... }
 ```
 
-这些状态只能由 Upgrade/effective-card boundary 解释，其他系统消费解析后的事实。
+不得让 Repeatable Upgrade Capability 自己识别 Damage / Draw / Block 等 Effect；具体升级内容由 authored card/effect data 参与 effective-card resolution。
 
 ---
 
@@ -224,9 +242,9 @@ Destination / keyword
 Effect count / effect configuration
 ```
 
-默认 Single upgrade 可以直接提供 Base / Upgraded 两套 authored facts。
+默认 Single upgrade 可以提供 Base / Upgraded 两套 authored facts，或等价的 typed authored upgrade data。
 
-Repeatable Upgrade Capability 则负责把 `UpgradeCount = N` 转换成该能力提供的通用 upgrade contribution；它仍通过 neutral effective-card contract 输出结果。
+Repeatable 卡牌的 `UpgradeCount = N` 只是 Gameplay state。`N` 如何映射到该卡的 effective numeric/content facts，必须由该卡自己的 authored resolution data/function 表达，并通过统一 `EffectiveCardFacts` 输出；Repeatable Upgrade Capability 本身不识别具体 Effect 类型。
 
 不得：
 
@@ -238,30 +256,30 @@ if (CardId == "SearingBlow") BaseDamage = ...;
 
 ---
 
-## 7. Locked presentation rule — upgrade suffix
+## 7. Locked presentation rule — state view, not Gameplay text building
 
-Gameplay upgrade state 与名称后缀的生成统一通过 effective-card / upgrade presentation boundary 输出，UI 不直接判断 CardId。
+Gameplay Upgrade System 不拼接名称后缀。
 
-默认单次升级：
+它只暴露冻结、只读的升级状态，例如：
 
 ```text
+FUpgradeStateView
+├─ bIsUpgraded
+├─ bIsRepeatable
+└─ RepeatCount
+```
+
+Presentation formatter 再根据这个 state view 生成显示：
+
+```text
+普通单次升级：
 Strike
 → Strike+
 
 Bash
 → Bash+
-```
 
-也就是说：
-
-```text
-bUpgraded = false → no suffix
-bUpgraded = true  → "+"
-```
-
-拥有 Repeatable Upgrade Capability 的卡：
-
-```text
+重复升级：
 灼热打击
 → 灼热打击+1
 → 灼热打击+2
@@ -269,22 +287,26 @@ bUpgraded = true  → "+"
 → ...
 ```
 
-因此 capability 可以提供通用 presentation suffix：
+规则：
 
 ```text
-UpgradeCount = 0 → ""
-UpgradeCount = N → "+N"
+single:
+bIsUpgraded = false → ""
+bIsUpgraded = true  → "+"
+
+repeatable:
+RepeatCount = 0 → ""
+RepeatCount = N → "+N"
 ```
 
-Native HUD、A2、A3、卡牌详情等全部读取同一 resolved DisplayName / UpgradeSuffix。
+Native HUD、A2、A3、卡牌详情等消费同一冻结 DTO / resolved DisplayName，不直接读取 Gameplay mutable state。
 
-禁止 UI 写：
+禁止：
 
-```cpp
-if (CardId == "SearingBlow")
-    Name += "+N";
-else if (bUpgraded)
-    Name += "+";
+```text
+RepeatableUpgradeCapability.BuildUpgradeDisplaySuffix(...)
+Widget 直接读取 CardInstance.bUpgraded / UpgradeCount
+UI if (CardId == "SearingBlow")
 ```
 
 ---
@@ -350,7 +372,8 @@ Upgrade Foundation 和第一批正式卡牌一起验证。
 普通 Damage 升级卡
 → Base → Upgraded
 → 第二次升级被拒绝
-→ 名称 CardName+
+→ EffectiveCardFacts 数值正确
+→ Presentation state view 显示 CardName+
 
 普通 Block 升级卡
 → 同一 default bool path
@@ -369,22 +392,25 @@ Armaments
 Searing Blow
 → 验证 optional RepeatableUpgradeCapability
 → UpgradeCount 0 → 1 → 2 → ...
-→ 名称 +1 / +2 / ...
+→ authored effective value resolution
+→ Presentation state view 显示 +1 / +2 / ...
 ```
 
-关键验收不是“全系统都能读 UpgradeLevel”，而是：
+关键验收是：
 
 ```text
 普通卡保持最简单的 bool 升级模型
 特殊重复升级能力独立存在
-两者统一通过 effective-card boundary 暴露结果
+升级 Gameplay state 不负责 Presentation 文本
+具体升级数值仍属于 authored card/effect content
+所有消费者通过统一 effective/frozen boundary 读取结果
 ```
 
 ---
 
 ## 11. Relationship to Ironclad capability plan
 
-`docs/IroncladCardArchitecturePlan.md` 中 CAP-01 继续表示 Upgrade 能力域，但应理解为：
+`docs/IroncladCardArchitecturePlan.md` 中 CAP-01 继续表示 Upgrade 能力域：
 
 ```text
 CAP-01A Default Single Upgrade
@@ -392,6 +418,11 @@ CAP-01A Default Single Upgrade
 
 CAP-01B Optional Repeatable Upgrade Capability
 → only explicit consumers such as Searing Blow
+→ owns repeat count/policy only
+
+Presentation
+→ consumes FUpgradeStateView / frozen effective DTO
+→ does not live inside CAP-01 Gameplay capability
 ```
 
 两者与 Damage / Exhaust / Selection / Dynamic Value 等能力域保持正交。
@@ -424,9 +455,12 @@ all 75 upgraded card assets
 [ ] repeated upgrading is not part of every card's default model
 [ ] repeatable upgrading is an optional capability assigned by card definition
 [ ] no CardId-specific branch exists for Searing Blow
+[ ] RepeatableUpgradeCapability does not know Damage/Draw/Block Effect types
+[ ] Gameplay Upgrade code does not build UI suffix text
+[ ] presentation consumes frozen FUpgradeStateView / effective DTO
 [ ] normal upgraded title uses only "+"
-[ ] repeatable capability title uses "+1", "+2", ...
-[ ] all Gameplay/UI consume one effective-card boundary
+[ ] repeatable title uses "+1", "+2", ...
+[ ] all Gameplay consumers use one effective-card boundary
 [ ] Upgrade remains orthogonal to Damage/Draw/Exhaust/etc.
 [ ] runtime mutation remains Action-authoritative
 [ ] future Run persistence can materialize both default and repeatable state
