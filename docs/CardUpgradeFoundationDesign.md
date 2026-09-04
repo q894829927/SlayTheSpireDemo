@@ -10,15 +10,26 @@
 
 ## 1. Goal
 
-升级系统与正式卡牌内容一起开发，而不是：
+升级系统与正式卡牌内容一起开发，而不是为了 Phase 8 单独造测试升级卡，也不是等全部卡牌完成后再整体迁移。
+
+核心设计原则：
 
 ```text
-为了 Phase 8 单独造 Pommel Strike+
-或
-等全部卡牌做完后再补升级系统
+普通升级是默认能力：最多升级一次。
+多次升级不是所有卡牌的默认状态维度，而是可选的独立能力。
 ```
 
-目标是建立一个正交、可复用的升级能力，使普通卡、临时升级和未来 Run 持久化都能共享同一套边界。
+因此完整模型应是：
+
+```text
+Default Card Upgrade
+→ bool bUpgraded
+
+Optional Repeatable Upgrade Capability
+→ only cards explicitly granted this capability can upgrade repeatedly
+```
+
+灼热打击是 Repeatable Upgrade Capability 的首个真实消费者，但通用系统不得识别具体 CardId。
 
 ---
 
@@ -43,82 +54,100 @@ Searing Blow
 
 ```text
 Damage / Block / Draw / Exhaust 等系统
-不得直接判断 UpgradeLevel
+不得直接判断具体升级卡牌
 不得根据 CardId 决定升级结果
 ```
 
-所有消费者只读取一个统一的 effective card boundary。
+所有 Gameplay / Presentation 消费者只读取统一的 effective card boundary。
+
+Repeatable Upgrade Capability 也只扩展“能否再次升级 / 当前重复升级次数 / 如何解析该次数对应的有效内容”，不得直接知道 Damage、Draw 等具体消费者。
 
 ---
 
-## 3. Required model
+## 3. Default upgrade model
 
-### 3.1 UpgradeLevel
-
-升级状态使用：
+绝大多数卡牌只存在两个状态：
 
 ```text
-UpgradeLevel : int32 >= 0
+Base
+Upgraded
 ```
 
-不能只设计：
+因此默认 runtime 状态允许直接使用：
 
-```text
-bool bUpgraded
+```cpp
+bool bUpgraded = false;
 ```
 
-因为完整战士卡池同时存在两类升级行为：
+通用默认规则：
 
 ```text
-绝大多数卡牌：
-Level 0 → Level 1
-之后不可继续升级
+bUpgraded = false
+→ CanUpgrade = true
 
-Searing Blow / 灼热打击：
-Level 0 → 1 → 2 → 3 → ...
-允许重复升级
+执行一次 Upgrade
+→ bUpgraded = true
+
+bUpgraded = true
+→ CanUpgrade = false
 ```
 
-因此 `UpgradeLevel` 表示当前升级层级，但“还能不能继续升级”不能由 `UpgradeLevel == 0` 这种全局规则决定。
+这正好表达绝大多数 Slay the Spire 卡牌的真实升级规则，不需要为了极少数特殊卡牌让所有 UCardInstance 默认携带一个通用整数等级语义。
 
-### 3.2 Upgrade limit policy
-
-升级次数限制属于 immutable Card Definition 的 authored rule，而不是具体卡名分支。
-
-推荐最小语义：
+普通卡牌的升级内容仍由数据定义：
 
 ```text
-ECardUpgradePolicy
-├─ None
-├─ Single
-└─ Repeatable
+Base Card Facts
++ Upgraded Card Facts / Upgrade Delta
+→ Effective Card Facts
 ```
 
-语义：
+具体采用完整 upgraded variant 还是 typed authored delta，在实施前结合当前 CardData / Effect 序列化结构决定；无论哪种形式，都不得形成 CardId 分支。
+
+---
+
+## 4. Optional Repeatable Upgrade Capability
+
+多次升级能力从默认 Upgrade 中摘出，作为**可选、正交能力**赋给需要它的卡牌。
+
+概念结构：
 
 ```text
-None
-→ 永远不可升级
-
-Single
-→ 只允许 Level 0 → Level 1
-→ Level >= 1 后 CanUpgrade = false
-
-Repeatable
-→ Level N → Level N+1
-→ 不由通用系统设置固定上限
+UCardData
+├─ normal upgrade definition
+└─ optional RepeatableUpgradeCapability
 ```
 
-普通 Ironclad 卡默认使用：
+运行时：
 
 ```text
-UpgradePolicy = Single
+普通卡
+→ only bUpgraded
+
+拥有 RepeatableUpgradeCapability 的卡
+→ repeatable runtime upgrade state
+→ UpgradeCount = 0, 1, 2, 3, ...
 ```
 
-灼热打击使用：
+推荐的通用接口语义：
 
 ```text
-UpgradePolicy = Repeatable
+CanUpgrade(CardInstance)
+ApplyUpgrade(CardInstance)
+GetEffectiveUpgradeCount(CardInstance)
+BuildUpgradeDisplaySuffix(CardInstance)
+ResolveUpgradeContribution(...)
+```
+
+其中默认路径与扩展路径为：
+
+```text
+No RepeatableUpgradeCapability
+→ generic single-upgrade path
+→ bool bUpgraded
+
+Has RepeatableUpgradeCapability
+→ capability handles repeated upgrade policy/state
 ```
 
 禁止：
@@ -126,7 +155,7 @@ UpgradePolicy = Repeatable
 ```cpp
 if (CardId == "SearingBlow")
 {
-    // allow another upgrade
+    ++UpgradeCount;
 }
 ```
 
@@ -134,46 +163,29 @@ if (CardId == "SearingBlow")
 
 ```text
 Card Definition
-→ UpgradePolicy
-→ generic CanUpgrade query
+→ optional RepeatableUpgradeCapability
+→ generic Upgrade query/action boundary
 ```
 
-如果未来出现有限多次升级的真实卡牌需求，再扩展 policy / MaxUpgradeLevel；当前不要提前增加没有消费者的复杂度。
-
-### 3.3 Ownership layering
-
-具体 ownership 分层：
-
-```text
-Persistent ownership
-→ future RunCardEntry / deck entry
-
-Battle materialized state
-→ UCardInstance receives effective UpgradeLevel
-
-Combat temporary mutation
-→ authoritative UpgradeCardAction or equivalent card-state mutation
-```
-
-Phase 8 不建立 RunCardEntry；卡牌扩展阶段只实现当前真实消费者需要的最小 ownership，同时保留未来持久化入口。
+未来若出现其他可多次升级卡，也只需要赋予同一能力或新的同类 capability，而不是修改默认升级系统。
 
 ---
 
-## 4. Effective card boundary
+## 5. Effective card boundary
 
-现有系统大量通过 `UCardInstance::GetDefinition()` 读取卡牌事实。升级能力不能迫使每个系统各自解释 UpgradeLevel。
+升级能力不能迫使每个 Gameplay / UI 系统自己解释 `bUpgraded` 或 Repeatable state。
 
-后续必须只有一个统一入口负责把：
+统一入口负责：
 
 ```text
 Base Card Definition
-+ UpgradeLevel
++ default bUpgraded state
++ optional upgrade capability state
 + permitted combat card state
+→ EffectiveCardFacts
 ```
 
-解析为当前有效卡牌事实。
-
-所有以下系统都必须消费同一个 resolved/effective source：
+以下全部读取同一个 effective source：
 
 ```text
 PlayCardAction
@@ -185,21 +197,22 @@ PresentationCardSnapshot
 Card UI
 ```
 
-不得出现：
+不得出现散落逻辑：
 
 ```cpp
-if (Card->GetUpgradeLevel() > 0) // scattered across gameplay systems
+if (Card->bUpgraded) { ... }
+if (Card->RepeatUpgradeCount > 0) { ... }
 ```
 
-`CanUpgrade` 也应由统一 Upgrade boundary 提供，而不是由 UI 自己推断。
+这些状态只能由 Upgrade/effective-card boundary 解释，其他系统消费解析后的事实。
 
 ---
 
-## 5. Content authoring principle
+## 6. Content authoring principle
 
-卡牌升级变化属于内容数据，不属于 Upgrade System 的卡名分支。
+升级发生什么变化属于 Card content，不属于 Upgrade runtime 的卡名规则。
 
-一张牌可以升级：
+升级可以改变：
 
 ```text
 Damage amount
@@ -211,17 +224,9 @@ Destination / keyword
 Effect count / effect configuration
 ```
 
-Upgrade Foundation 只提供：
+默认 Single upgrade 可以直接提供 Base / Upgraded 两套 authored facts。
 
-```text
-state
-upgrade-limit policy
-resolution
-authoritative mutation
-presentation-readable effective facts
-```
-
-具体哪一个字段如何变化由卡牌内容定义。
+Repeatable Upgrade Capability 则负责把 `UpgradeCount = N` 转换成该能力提供的通用 upgrade contribution；它仍通过 neutral effective-card contract 输出结果。
 
 不得：
 
@@ -231,178 +236,169 @@ if (CardId == "Bash") Vulnerable += 1;
 if (CardId == "SearingBlow") BaseDamage = ...;
 ```
 
-对于 Repeatable 卡牌，Level N 对数值的影响也必须由可数据化/可解析的升级内容规则表达，而不是由 Upgrade System 识别卡名。
-
 ---
 
-## 6. Locked presentation rule — upgrade suffix
+## 7. Locked presentation rule — upgrade suffix
 
-升级层级的 Gameplay state 与名称显示规则分离。
+Gameplay upgrade state 与名称后缀的生成统一通过 effective-card / upgrade presentation boundary 输出，UI 不直接判断 CardId。
 
-卡牌标题显示遵循：
-
-```text
-普通 Single-upgrade 卡：
-Level 0 → Strike
-Level 1 → Strike+
-
-不显示：
-Strike+1
-```
-
-对于 Repeatable upgrade 卡：
+默认单次升级：
 
 ```text
-灼热打击 Level 0 → 灼热打击
-灼热打击 Level 1 → 灼热打击+1
-灼热打击 Level 2 → 灼热打击+2
-灼热打击 Level 3 → 灼热打击+3
-...
+Strike
+→ Strike+
+
+Bash
+→ Bash+
 ```
 
-因此 Presentation 需要一个通用 upgrade suffix policy，而不是 UI 判断具体 CardId。
-
-推荐 authored semantic：
+也就是说：
 
 ```text
-ECardUpgradeDisplayPolicy
-├─ None
-├─ Plus
-└─ PlusLevel
+bUpgraded = false → no suffix
+bUpgraded = true  → "+"
 ```
 
-规则：
+拥有 Repeatable Upgrade Capability 的卡：
 
 ```text
-None
-→ 不添加升级后缀
-
-Plus
-→ UpgradeLevel > 0 时追加 "+"
-
-PlusLevel
-→ UpgradeLevel > 0 时追加 "+{UpgradeLevel}"
+灼热打击
+→ 灼热打击+1
+→ 灼热打击+2
+→ 灼热打击+3
+→ ...
 ```
 
-普通可升级卡：
+因此 capability 可以提供通用 presentation suffix：
 
 ```text
-UpgradePolicy        = Single
-UpgradeDisplayPolicy = Plus
+UpgradeCount = 0 → ""
+UpgradeCount = N → "+N"
 ```
 
-灼热打击：
+Native HUD、A2、A3、卡牌详情等全部读取同一 resolved DisplayName / UpgradeSuffix。
 
-```text
-UpgradePolicy        = Repeatable
-UpgradeDisplayPolicy = PlusLevel
-```
-
-最终 UI 不应自己拼接：
+禁止 UI 写：
 
 ```cpp
 if (CardId == "SearingBlow")
-    Name += FString::Printf(TEXT("+%d"), UpgradeLevel);
-else if (UpgradeLevel > 0)
-    Name += TEXT("+");
+    Name += "+N";
+else if (bUpgraded)
+    Name += "+";
 ```
-
-而应统一读取：
-
-```text
-EffectiveCardFacts.DisplayName
-或
-EffectiveCardFacts.UpgradeDisplaySuffix
-```
-
-从而 Native HUD、A2、A3、卡牌详情等不会出现不同的升级名称格式。
 
 ---
 
-## 7. Runtime mutation
+## 8. Runtime mutation authority
 
-战斗中的升级必须仍由 Gameplay ActionQueue 掌权：
+战斗内升级仍然由 Gameplay ActionQueue 掌权。
 
 ```text
 Armaments
 → Select Card(s)
 → Query CanUpgrade
 → UpgradeCardAction
-→ authoritative UCardInstance state commit
-→ optional committed CardUpgraded fact if a real consumer requires it
+→ Upgrade boundary commits state
 ```
 
-Widget 不能直接修改 UpgradeLevel。
-
-`UpgradeCardAction` 必须服从 Definition 的 UpgradePolicy：
+默认普通卡：
 
 ```text
-Single Level 1
-→ reject further upgrade
-
-Repeatable Level N
-→ allow N + 1
+false → true
+true → reject further upgrade
 ```
 
-如果没有真实 Trigger / Presentation consumer，不要为了形式提前创建 `CardUpgradedEvent`。
+拥有 RepeatableUpgradeCapability 的卡：
+
+```text
+N → N + 1
+```
+
+Widget 不直接写 `bUpgraded`，也不直接修改 capability runtime state。
+
+如果没有真实 Trigger / Presentation consumer，不提前创建 CardUpgradedEvent。
 
 ---
 
-## 8. First implementation consumers
+## 9. Ownership layering
 
-Upgrade Foundation 应和第一批正式卡牌一起验证。
-
-推荐至少覆盖：
+首个实现只需要 battle-scoped ownership，但边界不得妨碍未来 Run ownership：
 
 ```text
-一个普通数值升级卡
-→ 验证 Level 0 / 1 effective values
-→ 验证第二次升级被拒绝
-→ 名称从 CardName → CardName+
+future persistent card entry
+→ stores default upgraded state
+   or repeatable capability state
 
-一个 Effect 参数升级卡
+battle materialization
+→ UCardInstance receives corresponding battle state
+
+combat temporary mutation
+→ UpgradeCardAction
+```
+
+首个 Upgrade slice 不实现 Run Deck / campfire / save-load，只保留清晰的 materialization boundary。
+
+---
+
+## 10. First implementation consumers
+
+Upgrade Foundation 和第一批正式卡牌一起验证。
+
+至少覆盖：
+
+```text
+普通 Damage 升级卡
+→ Base → Upgraded
+→ 第二次升级被拒绝
+→ 名称 CardName+
+
+普通 Block 升级卡
+→ 同一 default bool path
+
+Effect 参数升级卡
 → 例如 Draw 1 → Draw 2
+→ 证明 Draw 系统本身不知道 bUpgraded
+```
 
+之后再用：
+
+```text
 Armaments
-→ 验证 battle temporary upgrade
-→ 已升级普通卡不能再次升级
+→ 验证 battle-time UpgradeCardAction
 
-Searing Blow（后续）
-→ 验证 Level N repeatable model
-→ 名称显示 CardName+1 / +2 / +3 ...
+Searing Blow
+→ 验证 optional RepeatableUpgradeCapability
+→ UpgradeCount 0 → 1 → 2 → ...
+→ 名称 +1 / +2 / ...
 ```
 
-不要求第一批就实现 Searing Blow，但模型必须在第一次落地时明确支持：
+关键验收不是“全系统都能读 UpgradeLevel”，而是：
 
 ```text
-UpgradePolicy = Repeatable
-UpgradeDisplayPolicy = PlusLevel
+普通卡保持最简单的 bool 升级模型
+特殊重复升级能力独立存在
+两者统一通过 effective-card boundary 暴露结果
 ```
-
-避免以后为了灼热打击推翻 Single-only 模型。
 
 ---
 
-## 9. Relationship to Ironclad capability plan
+## 11. Relationship to Ironclad capability plan
 
-`docs/IroncladCardArchitecturePlan.md` 中 CAP-01 仍是 Upgrade 能力域，但其实施优先级调整为：
+`docs/IroncladCardArchitecturePlan.md` 中 CAP-01 继续表示 Upgrade 能力域，但应理解为：
 
 ```text
-Phase 8 seal
-→ Card Expansion Foundation
-   ├─ Upgrade Foundation
-   ├─ first normal card content
-   └─ focused Upgrade validation
-→ other orthogonal capability areas independently
+CAP-01A Default Single Upgrade
+→ generic bool bUpgraded
+
+CAP-01B Optional Repeatable Upgrade Capability
+→ only explicit consumers such as Searing Blow
 ```
 
-这不表示 Upgrade 与 Exhaust / Dynamic Value / Selection 等能力存在依赖关系。
-
-它只是实施优先级：之后所有正式卡牌都应从一开始具备正确的升级表达能力，避免先制作大量基础版内容再整体迁移。
+两者与 Damage / Exhaust / Selection / Dynamic Value 等能力域保持正交。
 
 ---
 
-## 10. Non-goals for first Upgrade slice
+## 12. Non-goals for first Upgrade slice
 
 首个 Upgrade Foundation 不自动包含：
 
@@ -417,39 +413,34 @@ full Run Deck ownership
 all 75 upgraded card assets
 ```
 
-这些需要各自单独授权。
-
 ---
 
-## 11. Acceptance principles
+## 13. Acceptance principles
 
 ```text
-[ ] UpgradeLevel is int32 >= 0, not bool-only
-[ ] normal upgrade policy allows exactly Level 0 → 1
-[ ] second upgrade of a normal Single card is rejected
-[ ] repeatable policy supports Level N → N+1 without CardId special case
-[ ] normal upgraded card title uses only "+"
-[ ] repeatable upgraded card title uses "+1", "+2", ...
-[ ] upgrade display policy is data-driven and shared by all UI paths
-[ ] no CardId-specific upgrade branch
-[ ] Upgrade is orthogonal to Damage/Draw/Exhaust/etc.
-[ ] all Gameplay/UI read one effective card boundary
-[ ] runtime upgrade mutation is Action-authoritative
-[ ] normal Level 0/1 card upgrade is data-driven
-[ ] design remains extensible to Armaments temporary upgrade
-[ ] design directly supports Searing Blow Level N
-[ ] no unrelated Run/UI systems are pulled into the first slice
+[ ] default card upgrade state can be represented by bool bUpgraded
+[ ] normal cards can upgrade exactly once
+[ ] second default upgrade is rejected generically
+[ ] repeated upgrading is not part of every card's default model
+[ ] repeatable upgrading is an optional capability assigned by card definition
+[ ] no CardId-specific branch exists for Searing Blow
+[ ] normal upgraded title uses only "+"
+[ ] repeatable capability title uses "+1", "+2", ...
+[ ] all Gameplay/UI consume one effective-card boundary
+[ ] Upgrade remains orthogonal to Damage/Draw/Exhaust/etc.
+[ ] runtime mutation remains Action-authoritative
+[ ] future Run persistence can materialize both default and repeatable state
 ```
 
 ---
 
-## 12. Next exact action
+## 14. Next exact action
 
 ```text
 Do not implement this document during Phase 8.
 
 After Phase 8 is COMPLETE / VALIDATED / SEALED,
 select Card Expansion / Upgrade Foundation as the next bounded implementation goal,
-review the exact current CardData / CardInstance / Effect contracts,
+review exact current CardData / CardInstance / Effect contracts,
 and authorize implementation explicitly.
 ```
