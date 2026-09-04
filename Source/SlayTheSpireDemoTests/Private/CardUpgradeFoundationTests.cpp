@@ -92,7 +92,7 @@ bool FCardUpgradeSingleConfigTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Card becomes upgraded"), Card->IsUpgraded());
 	TestFalse(TEXT("Normal card cannot upgrade twice"), Card->CanUpgrade());
 
-	TestEqual(TEXT("Upgraded display derives plus suffix"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name+")));
+	TestEqual(TEXT("Upgraded card keeps the same authored display name"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
 	TestEqual(TEXT("Card type remains shared after upgrade"), Card->GetCardType(), ECardType::Attack);
 	TestEqual(TEXT("Target type remains shared after upgrade"), Card->GetTargetType(), ECardTargetType::Enemy);
 
@@ -138,6 +138,7 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 	FPresentationCardSnapshot BaseSnapshot;
 	TestTrue(TEXT("Base card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, BaseSnapshot));
 	TestEqual(TEXT("Base snapshot display"), BaseSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
+	TestFalse(TEXT("Base snapshot is not upgraded"), BaseSnapshot.bUpgraded);
 	TestEqual(TEXT("Base snapshot cost"), BaseSnapshot.Cost, 2);
 	TestEqual(TEXT("Base snapshot shared type"), BaseSnapshot.CardType, ECardType::Attack);
 	TestEqual(TEXT("Base snapshot shared target"), BaseSnapshot.TargetType, ECardTargetType::Enemy);
@@ -154,7 +155,8 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Upgraded card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, UpgradedSnapshot));
 	TestEqual(TEXT("Runtime identity is unchanged by upgrade"), UpgradedSnapshot.RuntimeId, BaseSnapshot.RuntimeId);
 	TestEqual(TEXT("Card identity is unchanged by upgrade"), UpgradedSnapshot.CardId, BaseSnapshot.CardId);
-	TestEqual(TEXT("Snapshot derives upgraded plus suffix"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name+")));
+	TestEqual(TEXT("Snapshot keeps shared display name"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
+	TestTrue(TEXT("Snapshot freezes upgraded presentation state"), UpgradedSnapshot.bUpgraded);
 	TestEqual(TEXT("Upgraded snapshot cost"), UpgradedSnapshot.Cost, 1);
 	TestEqual(TEXT("Card type stays shared"), UpgradedSnapshot.CardType, ECardType::Attack);
 	TestEqual(TEXT("Target type stays shared"), UpgradedSnapshot.TargetType, ECardTargetType::Enemy);
