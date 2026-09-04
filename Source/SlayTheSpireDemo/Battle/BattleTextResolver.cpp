@@ -106,9 +106,6 @@ namespace
 			{
 				if (const FText* ExplicitRichValue = ExplicitRichOverrides->Find(SemanticName))
 				{
-					// Target-specific Preview carries an explicit Gameplay-resolved
-					// Base/Resolved pair. Prefer that operation-owned presentation fact
-					// even when the normal source-side builder cannot style this semantic.
 					ExactArguments.Add(RequiredKey, FFormatArgumentValue(*ExplicitRichValue));
 					continue;
 				}
@@ -135,8 +132,6 @@ namespace
 
 			if (const FFormatArgumentValue* Value = Builder.FindValue(SemanticName))
 			{
-				// Preserve the exact spelling from the active (possibly localized)
-				// format pattern. FText named argument lookup is case-sensitive.
 				ExactArguments.Add(RequiredKey, *Value);
 			}
 		}
@@ -154,13 +149,7 @@ namespace
 		ACombatant* Source,
 		FPreviewTextArgumentBuilder& Builder)
 	{
-		if (!IsValid(Card))
-		{
-			return false;
-		}
-
-		const UCardData* Definition = Card->GetDefinition();
-		if (!IsValid(Definition))
+		if (!IsValid(Card) || !IsValid(Card->GetDefinition()))
 		{
 			return false;
 		}
@@ -170,9 +159,9 @@ namespace
 		FCardEffectPreviewContext Context;
 		Context.Card = Card;
 		Context.Source = Source;
-		Context.Target = Definition->TargetType == ECardTargetType::Self ? Source : nullptr;
+		Context.Target = Card->GetTargetType() == ECardTargetType::Self ? Source : nullptr;
 
-		for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
+		for (const TObjectPtr<UCardEffect>& EffectPtr : Card->GetEffects())
 		{
 			const UCardEffect* Effect = EffectPtr.Get();
 			if (!IsValid(Effect))
@@ -279,6 +268,31 @@ namespace
 			}
 		}
 	}
+
+	void ValidateCardConfiguration(
+		const FText& Description,
+		const TArray<TObjectPtr<UCardEffect>>& Effects,
+		const FString& DebugOwner,
+		TArray<FText>& OutErrors
+	)
+	{
+		TArray<FName> DeclaredNames;
+		for (const TObjectPtr<UCardEffect>& EffectPtr : Effects)
+		{
+			const UCardEffect* Effect = EffectPtr.Get();
+			if (!IsValid(Effect))
+			{
+				AddValidationError(OutErrors, FString::Printf(TEXT("%s contains an invalid Effect."), *DebugOwner));
+				continue;
+			}
+			Effect->GetPreviewArgumentNames(DeclaredNames);
+			Effect->ValidatePreviewConfiguration(OutErrors);
+		}
+
+		TSet<FName> OptionalNames;
+		OptionalNames.Add(TEXT("Cost"));
+		ValidateRequiredArguments(Description, DeclaredNames, OptionalNames, DebugOwner, OutErrors);
+	}
 }
 
 FText FBattleTextResolver::ResolveCardDescription(const UCardInstance* Card, ACombatant* Source)
@@ -293,7 +307,7 @@ FText FBattleTextResolver::ResolveCardDescription(const UCardInstance* Card, ACo
 	{
 		return FText::GetEmpty();
 	}
-	return FormatDescription(Card->GetDefinition()->Description, Builder, Card->GetDebugLabel());
+	return FormatDescription(Card->GetDescriptionFormat(), Builder, Card->GetDebugLabel());
 }
 
 FText FBattleTextResolver::ResolveCardRichDescription(const UCardInstance* Card, ACombatant* Source)
@@ -309,7 +323,7 @@ FText FBattleTextResolver::ResolveCardRichDescription(const UCardInstance* Card,
 		return FText::GetEmpty();
 	}
 	return FormatDescription(
-		Card->GetDefinition()->Description,
+		Card->GetDescriptionFormat(),
 		Builder,
 		Card->GetDebugLabel(),
 		true);
@@ -336,7 +350,7 @@ FText FBattleTextResolver::ResolveCardDescriptionForImmediatePreview(
 		Builder.OverrideInteger(Operation.SemanticArgumentName, Operation.ResolvedAmount);
 	}
 
-	return FormatDescription(Card->GetDefinition()->Description, Builder, Card->GetDebugLabel());
+	return FormatDescription(Card->GetDescriptionFormat(), Builder, Card->GetDebugLabel());
 }
 
 FText FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
@@ -363,7 +377,7 @@ FText FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview(
 	TMap<FName, FText> RichOverrides;
 	BuildRichPreviewOverrides(Operations, RichOverrides);
 	return FormatDescription(
-		Card->GetDefinition()->Description,
+		Card->GetDescriptionFormat(),
 		Builder,
 		Card->GetDebugLabel(),
 		true,
@@ -414,28 +428,22 @@ bool FBattleTextResolver::ValidateCardDefinition(const UCardData* Definition, TA
 		return false;
 	}
 
-	TArray<FName> DeclaredNames;
-	for (const TObjectPtr<UCardEffect>& EffectPtr : Definition->Effects)
+	const FString CardName = Definition->CardId.ToString();
+	ValidateCardConfiguration(
+		Definition->Description,
+		Definition->Effects,
+		FString::Printf(TEXT("Card %s Base"), *CardName),
+		OutErrors);
+
+	if (const UCardVariantData* Upgraded = Definition->UpgradedVariant.Get())
 	{
-		const UCardEffect* Effect = EffectPtr.Get();
-		if (!IsValid(Effect))
-		{
-			AddValidationError(OutErrors, FString::Printf(TEXT("Card %s contains an invalid Effect."), *Definition->CardId.ToString()));
-			continue;
-		}
-		Effect->GetPreviewArgumentNames(DeclaredNames);
-		Effect->ValidatePreviewConfiguration(OutErrors);
+		ValidateCardConfiguration(
+			Upgraded->Description,
+			Upgraded->Effects,
+			FString::Printf(TEXT("Card %s Upgraded"), *CardName),
+			OutErrors);
 	}
 
-	TSet<FName> OptionalNames;
-	OptionalNames.Add(TEXT("Cost"));
-	ValidateRequiredArguments(
-		Definition->Description,
-		DeclaredNames,
-		OptionalNames,
-		FString::Printf(TEXT("Card %s"), *Definition->CardId.ToString()),
-		OutErrors
-	);
 	return OutErrors.Num() == 0;
 }
 
