@@ -1,6 +1,7 @@
 #include "PresentationCardSnapshotBuilder.h"
 
 #include "../Battle/BattleTextResolver.h"
+#include "../Cards/CardData.h"
 #include "../Cards/CardInstance.h"
 
 bool PresentationCardSnapshot::TryBuild(
