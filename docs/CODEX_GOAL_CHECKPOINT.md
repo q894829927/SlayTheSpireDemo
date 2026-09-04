@@ -15,7 +15,7 @@ Card Expansion / Upgrade Foundation:
 REVIEW FIX IMPLEMENTED / REVALIDATION PENDING
 
 Production Card Base/Plus Authoring:
-BLOCKED ONLY BY THE TWO DIRECTLY-INVALIDATED REVALIDATION GATES
+BLOCKED ONLY BY CURRENT DIRECTLY-INVALIDATED REVALIDATION GATES
 
 Card Trigger Source Expansion:
 DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED
@@ -29,9 +29,7 @@ docs/CardUpgradeFoundationImplementation.md
 docs/CardUpgradeFoundationValidation.md
 ```
 
-The user further simplified ordinary-card upgrade authoring after the first validated version.
-
-Current authoritative model:
+Current authoritative ordinary-card model:
 
 ```text
 UCardData
@@ -61,7 +59,7 @@ UCardInstance
 └─ bool bUpgraded
 ```
 
-`UCardVariantData` / `UpgradedVariant` is no longer part of ordinary-card authoring.
+`UCardVariantData / UpgradedVariant` is no longer part of ordinary-card authoring. A hidden load-only compatibility shim may remain for assets saved during the brief old implementation window, but it is not an authoring surface.
 
 ## Stable metadata rule
 
@@ -74,19 +72,44 @@ CardType
 TargetType
 ```
 
-Visible upgraded name is derived:
+The upgraded DisplayName string itself does not change:
 
 ```text
-Strike → Strike+
+Base     → Strike
+Upgraded → Strike
 ```
 
-The `+` is not a second authored DisplayName.
+No auto-appended `+` and no second authored name.
 
-## Effective boundary
+Upgrade state is presented visually:
+
+```text
+Base name     → Designer/default color
+Upgraded name → gold
+```
+
+## Presentation state boundary
+
+The mutable Gameplay flag is frozen before UI consumption:
+
+```text
+UCardInstance::IsUpgraded()
+→ FPresentationCardSnapshot.bUpgraded
+→ PresentationCardView
+→ FBattleHUDCardView.bUpgraded
+→ UBattleCardWidget
+→ gold Txt_CardName
+```
+
+The current Hand freeze also writes the same `bUpgraded` fact directly into `FBattleHUDCardView`.
+
+The Widget never queries Gameplay to decide the color and never mutates upgrade state.
+
+## Effective gameplay boundary
 
 ```text
 stable:
-GetDisplayName()   // derives + when upgraded
+GetDisplayName()   // same authored text before/after upgrade
 GetCardArt()
 GetCardType()
 GetTargetType()
@@ -98,7 +121,7 @@ ResolveDestination()
 GetEffects()
 ```
 
-Gameplay / Preview / Presentation do not directly branch on `bUpgraded`.
+Gameplay / Preview consumers do not branch on specific CardId or Effect type to implement ordinary upgrade behavior.
 
 ## Mutation authority
 
@@ -112,7 +135,7 @@ Second upgrade remains generic fail-soft and does not ResolutionFault.
 
 ## Historical validation and current invalidation
 
-Before this review fix, the user reported:
+Earlier user-side UE5.8 evidence:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development Build: PASS
@@ -120,18 +143,20 @@ SlayTheSpireDemo.CardUpgrade: PASS
 SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-Those results remain historical evidence.
+Those results remain historical/sticky where contracts were not subsequently changed.
 
-The subsequent slim-authoring review fix changed `CardData`, `CardInstance`, BattleText definition validation and CardUpgrade focused tests. It did **not** modify A3 production source again.
-
-Therefore current revalidation is only:
+The current review fixes changed ordinary upgrade authoring plus card Presentation DTO/mapping/widget styling. Therefore current directly-invalidated gates are:
 
 ```text
 1. Editor Build once
 2. SlayTheSpireDemo.CardUpgrade once
+3. SlayTheSpireDemo.Phase6UIA2D4.PresentationCardViewMapper once
+4. SlayTheSpireDemo.Phase6UIA2N.R4 once
 ```
 
-The previous A3 ImmediatePreview PASS remains sticky.
+The previous A3 ImmediatePreview PASS remains sticky because the gold-name pass did not modify A3 production source.
+
+Do not expand to Phase6R / A2D5 / Shipping unless one of these focused gates exposes a shared-contract regression.
 
 ## Deferred / non-goals
 
@@ -150,8 +175,8 @@ Phase 8
 ## Next exact action
 
 ```text
-Run the two directly-invalidated gates.
-If both PASS:
+Run the current directly-invalidated gates.
+If all PASS:
 → restore Card Expansion / Upgrade Foundation = COMPLETE / VALIDATED / SEALED
 → start Production Card Base/Plus Authoring
 ```
