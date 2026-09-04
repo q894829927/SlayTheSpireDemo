@@ -115,6 +115,11 @@ struct SLAYTHESPIREDEMO_API FPresentationCardSnapshot
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	FText DisplayName;
 
+	// Frozen presentation state. DisplayName text itself remains unchanged;
+	// upgraded styling is presentation-only.
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	bool bUpgraded = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	int32 Cost = 0;
 
