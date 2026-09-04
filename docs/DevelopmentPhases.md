@@ -13,8 +13,8 @@ This document records project progress, implementation history and durable phase
 - **UI-A3 Deterministic Immediate Preview is complete, validated and sealed.** Final status authority: `docs/Phase6UIA3Seal.md`.
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
 - **Phase 7 Relics 7A–7F are complete, validated and sealed.** Current status authority is summarized in `docs/CODEX_GOAL_CHECKPOINT.md`; individual evidence remains in the dedicated Phase 7 implementation/validation documents.
-- **Phase 8 Combo Architecture Validation is design-refined but implementation is not yet authorized.** Active design authority: `docs/Phase8ComboArchitectureDesign.md`.
-- **Card Expansion / Upgrade Foundation is design-refined and planned immediately after Phase 8 seal, but implementation is not authorized.** Authority: `docs/CardUpgradeFoundationDesign.md`.
+- **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
+- **Card Expansion / Upgrade Foundation is the NEXT ACTIVE GOAL, design-refined, but implementation is not yet authorized.** Authority: `docs/CardUpgradeFoundationDesign.md`.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -241,13 +241,13 @@ Initial battle setup shuffle remains excluded from `DeckShuffled` Gameplay event
 
 ## Phase 8 — Combo Architecture Validation
 
-Status: **DESIGN REFINED / REVIEW PENDING / IMPLEMENTATION NOT AUTHORIZED**
+Status: **DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION**
 
 Authority: `docs/Phase8ComboArchitectureDesign.md`.
 
-Phase 8 no longer depends on “two upgraded Pommel Strikes” as Automation content.
+Phase 8 design and existing Production PIE evidence are retained, but implementation is postponed.
 
-Automated architecture validation uses an authored **transient Draw-2 card definition** in the test module:
+When resumed, Automation uses an authored transient Draw-2 card definition rather than depending on production Pommel Strike content:
 
 ```text
 Transient UCardData
@@ -259,19 +259,27 @@ Transient UCardData
 → remaining draw continuation
 ```
 
-This keeps the regression test independent of future production Pommel Strike Base/Upgrade authoring.
+The already-observed production Pommel Strike Draw-2 scenario remains separate sticky PIE evidence.
 
-The already-observed production Pommel Strike Draw-2 scenario remains separate sticky PIE evidence; no persistent test-only `Pommel Strike+` asset is required.
-
-Phase 8 must validate that the interaction emerges from generic card, bulk-draw, shuffle, event, trigger and action rules without combination special cases.
+Phase 8 may be resumed later as an integration gate after card architecture has expanded.
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **DESIGN REFINED / PLANNED AFTER PHASE 8 / IMPLEMENTATION NOT AUTHORIZED**
+Status: **NEXT ACTIVE GOAL / DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED**
 
 Authority: `docs/CardUpgradeFoundationDesign.md`.
 
-After Phase 8 is sealed, generic Upgrade Foundation is the next bounded Card Expansion goal. It is not deferred until the final Ironclad wave.
+The user explicitly changed the ordering: Upgrade Foundation no longer waits for Phase 8 seal.
+
+Current sequence:
+
+```text
+Phase 7A–7F sealed
+→ Card Expansion / Upgrade Foundation
+→ first formal upgraded-card batch
+→ later Ironclad capability/card slices
+→ deferred Phase 8 can be resumed later
+```
 
 Core direction:
 
@@ -295,11 +303,11 @@ Status: **DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NO
 
 Authority: `docs/CardTriggerSourceExpansionDesign.md`.
 
-This slice must be implemented independently before Sentinel/Card-trigger consumers. It adds a typed Card trigger-source provider and a deterministic comparison key while preserving sealed Status/Relic ordering. It is not part of Phase 8.
+This slice must be implemented independently before Sentinel/Card-trigger consumers. It adds a typed Card trigger-source provider and a deterministic comparison key while preserving sealed Status/Relic ordering.
 
 ## Phase 6UI-B — Advanced UX / Tooling
 
-Status: **PLANNED AFTER PHASE 8 / CARD FOUNDATION AS APPLICABLE**
+Status: **PLANNED LATER / CARD FOUNDATION AS APPLICABLE**
 
 Advanced preview, Keyword/CardText presentation, developer overlay, presentation timeline tooling, controller/accessibility work and responsive layout belong here unless required earlier for basic playability or diagnosis.
 
