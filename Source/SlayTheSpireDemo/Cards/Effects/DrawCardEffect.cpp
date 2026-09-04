@@ -1,5 +1,6 @@
 #include "DrawCardEffect.h"
 
+#include "../CardInstance.h"
 #include "../CardPlayContext.h"
 #include "../../Actions/DrawCardsAction.h"
 #include "../../Deck/DeckRuntime.h"
@@ -22,7 +23,9 @@ void UDrawCardEffect::BuildActions(
 		return;
 	}
 
-	if (DrawCount <= 0)
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveDrawCount = GetEffectiveDrawCount(bIsUpgraded);
+	if (EffectiveDrawCount <= 0)
 	{
 		return;
 	}
@@ -33,7 +36,7 @@ void UDrawCardEffect::BuildActions(
 	{
 		Action->Initialize(
 			Context.Deck,
-			DrawCount,
+			EffectiveDrawCount,
 			Context.EventDispatcher,
 			Context.EventCombatants,
 			Context.Source
@@ -41,7 +44,7 @@ void UDrawCardEffect::BuildActions(
 	}
 	else
 	{
-		Action->Initialize(Context.Deck, DrawCount, Context.Source);
+		Action->Initialize(Context.Deck, EffectiveDrawCount, Context.Source);
 	}
 	OutActions.Add(Action);
 }
@@ -52,11 +55,12 @@ void UDrawCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
 }
 
 void UDrawCardEffect::BuildPreviewArguments(
-	const FCardEffectPreviewContext& /*Context*/,
+	const FCardEffectPreviewContext& Context,
 	FPreviewTextArgumentBuilder& OutArguments
 ) const
 {
-	OutArguments.AddInteger(DescriptionArgumentName, DrawCount);
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	OutArguments.AddInteger(DescriptionArgumentName, GetEffectiveDrawCount(bIsUpgraded));
 }
 
 void UDrawCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
