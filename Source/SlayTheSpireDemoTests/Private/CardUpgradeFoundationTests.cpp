@@ -12,11 +12,11 @@
 
 namespace CardUpgradeFoundation
 {
-	UCardData* MakeTwoVariantCard(UObject* Outer)
+	UCardData* MakeTwoConfigCard(UObject* Outer)
 	{
 		UCardData* Definition = NewObject<UCardData>(Outer);
 		Definition->CardId = TEXT("UpgradeFixture");
-		Definition->DisplayName = FText::FromString(TEXT("Base Card"));
+		Definition->DisplayName = FText::FromString(TEXT("Shared Card Name"));
 		Definition->Description = FText::FromString(TEXT("Draw {Draw}."));
 		Definition->CardType = ECardType::Attack;
 		Definition->TargetType = ECardTargetType::Enemy;
@@ -27,18 +27,14 @@ namespace CardUpgradeFoundation
 		BaseDraw->DrawCount = 1;
 		Definition->Effects.Add(BaseDraw);
 
-		UCardVariantData* Upgraded = NewObject<UCardVariantData>(Definition);
-		Upgraded->DisplayName = FText::FromString(TEXT("Upgraded Card"));
-		Upgraded->Description = FText::FromString(TEXT("Draw {Draw}."));
-		Upgraded->CardType = ECardType::Skill;
-		Upgraded->TargetType = ECardTargetType::Self;
-		Upgraded->Cost = 1;
-		Upgraded->DefaultDestination = ECardDestination::Exhaust;
+		Definition->bHasUpgrade = true;
+		Definition->Upgrade.Description = FText::FromString(TEXT("Draw {Draw}."));
+		Definition->Upgrade.Cost = 1;
+		Definition->Upgrade.DefaultDestination = ECardDestination::Exhaust;
 
-		UDrawCardEffect* UpgradedDraw = NewObject<UDrawCardEffect>(Upgraded);
+		UDrawCardEffect* UpgradedDraw = NewObject<UDrawCardEffect>(Definition);
 		UpgradedDraw->DrawCount = 2;
-		Upgraded->Effects.Add(UpgradedDraw);
-		Definition->UpgradedVariant = Upgraded;
+		Definition->Upgrade.Effects.Add(UpgradedDraw);
 		return Definition;
 	}
 
@@ -77,15 +73,15 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 {
 	using namespace CardUpgradeFoundation;
 
-	UCardData* Definition = MakeTwoVariantCard(GetTransientPackage());
+	UCardData* Definition = MakeTwoConfigCard(GetTransientPackage());
 	UCardInstance* Card = MakeCard(GetTransientPackage(), Definition);
 
 	TestFalse(TEXT("Card starts unupgraded"), Card->IsUpgraded());
-	TestTrue(TEXT("Card with UpgradedVariant can upgrade"), Card->CanUpgrade());
-	TestEqual(TEXT("Base display name"), Card->GetDisplayName().ToString(), FString(TEXT("Base Card")));
+	TestTrue(TEXT("Card with authored Upgrade config can upgrade"), Card->CanUpgrade());
+	TestEqual(TEXT("Shared display name"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
+	TestEqual(TEXT("Shared card type"), Card->GetCardType(), ECardType::Attack);
+	TestEqual(TEXT("Shared target type"), Card->GetTargetType(), ECardTargetType::Enemy);
 	TestEqual(TEXT("Base cost"), Card->GetCurrentCost(), 2);
-	TestEqual(TEXT("Base type"), Card->GetCardType(), ECardType::Attack);
-	TestEqual(TEXT("Base target"), Card->GetTargetType(), ECardTargetType::Enemy);
 	TestEqual(TEXT("Base destination"), Card->ResolveDestination(), ECardDestination::Discard);
 	if (!TestEqual(TEXT("Base has one Effect"), Card->GetEffects().Num(), 1)) return false;
 	const UDrawCardEffect* BaseDraw = Cast<UDrawCardEffect>(Card->GetEffects()[0].Get());
@@ -95,10 +91,13 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 	if (!RunUpgradeThroughQueue(*this, Card)) return false;
 	TestTrue(TEXT("Card becomes upgraded"), Card->IsUpgraded());
 	TestFalse(TEXT("Normal card cannot upgrade twice"), Card->CanUpgrade());
-	TestEqual(TEXT("Upgraded display name"), Card->GetDisplayName().ToString(), FString(TEXT("Upgraded Card")));
+
+	// Name/art/type/target are deliberately not duplicated in Upgrade config.
+	TestEqual(TEXT("Display name remains shared after upgrade"), Card->GetDisplayName().ToString(), FString(TEXT("Shared Card Name")));
+	TestEqual(TEXT("Card type remains shared after upgrade"), Card->GetCardType(), ECardType::Attack);
+	TestEqual(TEXT("Target type remains shared after upgrade"), Card->GetTargetType(), ECardTargetType::Enemy);
+
 	TestEqual(TEXT("Upgraded cost"), Card->GetCurrentCost(), 1);
-	TestEqual(TEXT("Upgraded type"), Card->GetCardType(), ECardType::Skill);
-	TestEqual(TEXT("Upgraded target"), Card->GetTargetType(), ECardTargetType::Self);
 	TestEqual(TEXT("Upgraded destination"), Card->ResolveDestination(), ECardDestination::Exhaust);
 	if (!TestEqual(TEXT("Upgraded has one Effect"), Card->GetEffects().Num(), 1)) return false;
 	const UDrawCardEffect* UpgradedDraw = Cast<UDrawCardEffect>(Card->GetEffects()[0].Get());
@@ -113,7 +112,7 @@ bool FCardUpgradeSingleVariantTest::RunTest(const FString& Parameters)
 	UCardData* NoUpgradeDefinition = NewObject<UCardData>(GetTransientPackage());
 	NoUpgradeDefinition->CardId = TEXT("NoUpgradeFixture");
 	UCardInstance* NoUpgradeCard = MakeCard(GetTransientPackage(), NoUpgradeDefinition, 2);
-	TestFalse(TEXT("Card without UpgradedVariant cannot upgrade"), NoUpgradeCard->CanUpgrade());
+	TestFalse(TEXT("Card without authored Upgrade config cannot upgrade"), NoUpgradeCard->CanUpgrade());
 	return true;
 }
 
@@ -126,7 +125,7 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 {
 	using namespace CardUpgradeFoundation;
 
-	UCardData* Definition = MakeTwoVariantCard(GetTransientPackage());
+	UCardData* Definition = MakeTwoConfigCard(GetTransientPackage());
 	UCardInstance* Card = MakeCard(GetTransientPackage(), Definition, 7);
 
 	TArray<FText> ValidationErrors;
@@ -140,16 +139,16 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 
 	FPresentationCardSnapshot BaseSnapshot;
 	TestTrue(TEXT("Base card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, BaseSnapshot));
-	TestEqual(TEXT("Base snapshot display"), BaseSnapshot.DisplayName.ToString(), FString(TEXT("Base Card")));
+	TestEqual(TEXT("Base snapshot shared display"), BaseSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
 	TestEqual(TEXT("Base snapshot cost"), BaseSnapshot.Cost, 2);
-	TestEqual(TEXT("Base snapshot type"), BaseSnapshot.CardType, ECardType::Attack);
-	TestEqual(TEXT("Base snapshot target"), BaseSnapshot.TargetType, ECardTargetType::Enemy);
+	TestEqual(TEXT("Base snapshot shared type"), BaseSnapshot.CardType, ECardType::Attack);
+	TestEqual(TEXT("Base snapshot shared target"), BaseSnapshot.TargetType, ECardTargetType::Enemy);
 	TestEqual(TEXT("Base snapshot description"), BaseSnapshot.Description.ToString(), FString(TEXT("Draw 1.")));
 
 	if (!RunUpgradeThroughQueue(*this, Card)) return false;
 
 	TestEqual(
-		TEXT("Upgraded text uses UpgradedVariant Effects"),
+		TEXT("Upgraded text uses Upgrade Effects"),
 		FBattleTextResolver::ResolveCardDescription(Card, nullptr).ToString(),
 		FString(TEXT("Draw 2.")));
 
@@ -157,10 +156,10 @@ bool FCardUpgradeEffectiveConsumersTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Upgraded card snapshot freezes"), PresentationCardSnapshot::TryBuild(Card, nullptr, UpgradedSnapshot));
 	TestEqual(TEXT("Runtime identity is unchanged by upgrade"), UpgradedSnapshot.RuntimeId, BaseSnapshot.RuntimeId);
 	TestEqual(TEXT("Card identity is unchanged by upgrade"), UpgradedSnapshot.CardId, BaseSnapshot.CardId);
-	TestEqual(TEXT("Upgraded snapshot display"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Upgraded Card")));
+	TestEqual(TEXT("Display name stays shared"), UpgradedSnapshot.DisplayName.ToString(), FString(TEXT("Shared Card Name")));
 	TestEqual(TEXT("Upgraded snapshot cost"), UpgradedSnapshot.Cost, 1);
-	TestEqual(TEXT("Upgraded snapshot type"), UpgradedSnapshot.CardType, ECardType::Skill);
-	TestEqual(TEXT("Upgraded snapshot target"), UpgradedSnapshot.TargetType, ECardTargetType::Self);
+	TestEqual(TEXT("Card type stays shared"), UpgradedSnapshot.CardType, ECardType::Attack);
+	TestEqual(TEXT("Target type stays shared"), UpgradedSnapshot.TargetType, ECardTargetType::Enemy);
 	TestEqual(TEXT("Upgraded snapshot description"), UpgradedSnapshot.Description.ToString(), FString(TEXT("Draw 2.")));
 	return true;
 }
