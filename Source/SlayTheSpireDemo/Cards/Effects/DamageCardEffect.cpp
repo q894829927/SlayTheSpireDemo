@@ -7,6 +7,16 @@
 #include "../../Modifiers/Damage/DamageSpec.h"
 #include "../../Battle/BattleTextTypes.h"
 
+int32 UDamageCardEffect::GetEffectiveAmount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedAmount : BaseAmount;
+}
+
+int32 UDamageCardEffect::GetEffectiveHitCount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedHitCount : HitCount;
+}
+
 void UDamageCardEffect::BuildActions(
 	const FCardPlayContext& Context,
 	TArray<UBattleAction*>& OutActions
@@ -74,9 +84,17 @@ void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) c
 	{
 		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect BaseAmount cannot be negative.")));
 	}
+	if (UpgradedAmount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect UpgradedAmount cannot be negative.")));
+	}
 	if (HitCount <= 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect HitCount must be greater than zero.")));
+	}
+	if (UpgradedHitCount <= 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("DamageCardEffect UpgradedHitCount must be greater than zero.")));
 	}
 }
 
