@@ -2,15 +2,15 @@
 
 日期：**2026-09-04**
 
-状态：**DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED**
+状态：**NEXT ACTIVE GOAL / DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED**
 
-本文件定义战士卡牌扩展阶段需要的通用 Upgrade Foundation。它不属于 Phase 8；Phase 8 只做 transient authored Draw-2 card + Sundial 的 Automation 架构验证，并复用现有 Pommel Strike Draw 2 的 Production PIE evidence。
+本文件定义战士卡牌扩展阶段需要的通用 Upgrade Foundation。根据 2026-09-04 的最新顺序决定，Phase 8 已 deferred，不再作为本设计的前置 Gate；本设计现在是下一项 active bounded goal，但仍需要显式授权后才能开始实现。
 
 ---
 
 ## 1. Goal
 
-升级系统与正式卡牌内容一起开发，而不是为了 Phase 8 单独造测试升级卡，也不是等全部卡牌完成后再整体迁移。
+升级系统与正式卡牌内容一起开发，不为了 Phase 8 单独造测试升级卡，也不等全部卡牌完成后再整体迁移。
 
 核心设计原则：
 
@@ -525,7 +525,14 @@ Presentation
 → does not live inside CAP-01 Gameplay capability
 ```
 
-Upgrade Foundation 在 Phase 8 seal 后作为 **Card Expansion Foundation** 提前实施；Ironclad 后续 Wave 中的 Armaments / Searing Blow 只是特殊 runtime-upgrade consumers，不代表 Upgrade Foundation 要等到最后才建立。
+最新顺序：
+
+```text
+Phase 8 = deferred integration gate
+Card Expansion / Upgrade Foundation = next active bounded goal
+```
+
+因此 generic Upgrade Foundation **现在可以在 Phase 8 未实施的情况下被单独授权并开始实现**。Ironclad 后续 Wave 中的 Armaments / Searing Blow 仍只是特殊 runtime-upgrade consumers，不代表 Foundation 要等到最后才建立。
 
 两者与 Damage / Exhaust / Selection / Dynamic Value 等能力域保持正交。
 
@@ -578,10 +585,11 @@ universal upgrade expression language
 ## 14. Next exact action
 
 ```text
-Do not implement this document during Phase 8.
+Phase 8 is deferred and is NOT a blocker.
 
-After Phase 8 is COMPLETE / VALIDATED / SEALED,
-select Card Expansion / Upgrade Foundation as the next bounded implementation goal,
-review exact current CardData / CardInstance / Effect contracts,
-and authorize implementation explicitly.
+Before implementation:
+1. Review the current CardData / CardInstance / CardEffect / PlayCard / A3 / frozen-presentation contracts.
+2. Define the smallest first Upgrade Foundation implementation slice from this design.
+3. Explicitly authorize that implementation slice.
+4. Only then begin production code and the first formal upgraded-card batch.
 ```
