@@ -7,44 +7,6 @@
 #include "Effects/CardEffect.h"
 #include "CardData.generated.h"
 
-// Load-compatibility shim for any asset that was saved during the brief
-// UCardVariantData implementation window. Ordinary card authoring no longer
-// references or exposes this class. Keep the original reflected class name so
-// those serialized subobjects can still be resolved when an old asset is loaded.
-// Do not mark this UCLASS(Deprecated): Unreal requires deprecated reflected
-// classes to use the UDEPRECATED_ prefix, which would change the reflected name
-// and defeat this compatibility purpose.
-UCLASS()
-class SLAYTHESPIREDEMO_API UCardVariantData : public UObject
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY()
-	FText DisplayName;
-
-	UPROPERTY()
-	FText Description;
-
-	UPROPERTY()
-	TObjectPtr<UTexture2D> CardArt = nullptr;
-
-	UPROPERTY()
-	ECardType CardType = ECardType::Attack;
-
-	UPROPERTY()
-	ECardTargetType TargetType = ECardTargetType::Enemy;
-
-	UPROPERTY()
-	int32 Cost = 1;
-
-	UPROPERTY()
-	ECardDestination DefaultDestination = ECardDestination::Discard;
-
-	UPROPERTY(Instanced)
-	TArray<TObjectPtr<UCardEffect>> Effects;
-};
-
 UCLASS(BlueprintType)
 class SLAYTHESPIREDEMO_API UCardData : public UPrimaryDataAsset
 {
