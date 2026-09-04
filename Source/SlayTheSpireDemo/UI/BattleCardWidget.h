@@ -65,10 +65,11 @@ protected:
 	UFUNCTION()
 	void HandleCardClicked();
 
-	// Presentation-only style. The authored card name text itself never changes
-	// when upgraded; the upgraded state is communicated by color.
+	// Presentation-only style. The authored DisplayName remains unchanged;
+	// upgraded instances are rendered as "DisplayName+" in the Widget and use
+	// the bright yellow-green title color sampled from the visual reference.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle HUD|Card|Style")
-	FLinearColor UpgradedNameColor = FLinearColor(1.0f, 0.72f, 0.0f, 1.0f);
+	FLinearColor UpgradedNameColor = FLinearColor(0.5f, 1.0f, 0.0f, 1.0f);
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Btn_Card;
