@@ -26,6 +26,19 @@ namespace
 		}
 	}
 
+	FText GetVisibleCardName(const FBattleHUDCardView& View)
+	{
+		if (!View.bUpgraded || View.DisplayName.IsEmpty())
+		{
+			return View.DisplayName;
+		}
+
+		return FText::Format(
+			NSLOCTEXT("BattleCardWidget", "UpgradedCardNameFormat", "{0}+"),
+			View.DisplayName
+		);
+	}
+
 	const FText& GetVisibleCardDescription(const FBattleHUDCardView& View)
 	{
 		return View.RichDescription.IsEmpty() ? View.Description : View.RichDescription;
@@ -164,7 +177,9 @@ void UBattleCardWidget::RefreshFromCardView()
 		return;
 	}
 
-	Txt_CardName->SetText(CurrentCardView.DisplayName);
+	// Gameplay keeps the authored DisplayName stable. Only the presentation layer
+	// appends '+' for an upgraded runtime instance.
+	Txt_CardName->SetText(GetVisibleCardName(CurrentCardView));
 	if (bDefaultCardNameColorCaptured)
 	{
 		Txt_CardName->SetColorAndOpacity(
