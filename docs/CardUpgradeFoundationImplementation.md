@@ -2,9 +2,9 @@
 
 日期：**2026-09-04**
 
-状态：**SOURCE IMPLEMENTED / VALIDATION PENDING**
+状态：**COMPLETE / VALIDATED / SEALED**
 
-本文件是当前 Card Expansion / Upgrade Foundation 的 implementation authority。用户已明确要求：**简化阶段并开始执行**。
+本文件是 Card Expansion / Upgrade Foundation 的 implementation authority。用户已明确要求：**简化阶段并开始执行**；随后在本地 UE5.8 环境完成规定 Build 与 focused Automation，并报告全部通过。
 
 ---
 
@@ -141,11 +141,11 @@ BattleManager current-state Presentation freeze
 → effective display/type/art
 ```
 
-现有 `FCardReadView` 已经通过 `GetCurrentCost / GetTargetType` 获得 effective cost/target；description 继续通过已迁移的 `BattleTextResolver` 解析。
+现有 `FCardReadView` 已通过 `GetCurrentCost / GetTargetType` 获得 effective cost/target；description 继续通过已迁移的 `BattleTextResolver` 解析。
 
 ---
 
-## 6. Focused Automation source
+## 6. Focused Automation
 
 新增：
 
@@ -168,25 +168,36 @@ Base/Plus dynamic description
 Base/Plus committed card snapshot
 ```
 
-A3 implementation本身已经迁移到 `Card->GetEffects()`；由于修改了 sealed A3 生产路径，CardUpgrade focused suite PASS 后应只重跑直接失效的 A3 ImmediatePreview focused gate。
+A3 implementation迁移到 `Card->GetEffects()`，因此本 slice 还要求重跑直接失效的 A3 ImmediatePreview focused gate。
 
 ---
 
-## 7. Validation policy
+## 7. Validation evidence
 
-当前工具环境不能执行用户本地 UE5.8 Editor Build / Automation，因此目前不能宣称 PASS。
-
-Gate：
+2026-09-04，用户在本地 UE5.8 环境报告以下规定 Gate 全部通过：
 
 ```text
-Editor Build once
-→ SlayTheSpireDemo.CardUpgrade once
-→ if PASS, directly-invalidated A3 ImmediatePreview focused suite once
-→ record evidence
-→ seal
+SlayTheSpireDemoEditor Win64 Development Build: PASS
+SlayTheSpireDemo.CardUpgrade: PASS
+SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-不默认跑 Phase6R / A2D5 / Shipping aggregate gates；只有实际失败证明共享合同被破坏时再扩大。
+这些结果属于用户本地执行的 validation evidence；本工具环境没有独立重跑 UE。
+
+本 slice 没有运行、也不需要据此宣称：
+
+```text
+full Phase6R aggregate
+Shipping exclusion
+manual PIE
+packaged-game validation
+```
+
+详细 seal 记录见：
+
+```text
+docs/CardUpgradeFoundationValidation.md
+```
 
 ---
 
@@ -210,7 +221,7 @@ Phase 8
 
 ---
 
-## 9. Current stop state
+## 9. Final seal state
 
 ```text
 [x] Base + UpgradedVariant runtime implemented
@@ -219,10 +230,12 @@ Phase 8
 [x] variant-sensitive production consumers migrated
 [x] focused Automation source added
 [x] docs/checkpoint updated
-[ ] Editor Build PASS
-[ ] CardUpgrade focused Automation PASS
-[ ] A3 directly-invalidated regression PASS
-[ ] Validation record / seal
+[x] Editor Build PASS
+[x] CardUpgrade focused Automation PASS
+[x] A3 directly-invalidated regression PASS
+[x] Validation record / seal
 ```
 
-当前应 STOP 等待用户运行验证命令，不继续做生产卡资产或下一能力。
+**Card Expansion / Upgrade Foundation is now COMPLETE / VALIDATED / SEALED.**
+
+下一 bounded task 是 production card Base/Plus authoring；本 Foundation 不再继续扩 scope，除非后续真实卡牌证明当前合同不足。
