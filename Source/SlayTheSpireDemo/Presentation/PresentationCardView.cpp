@@ -9,6 +9,7 @@ FBattleHUDCardView PresentationCardView::MakePresentationOnlyCardView(
 	View.RuntimeId = Snapshot.RuntimeId;
 	View.CardId = Snapshot.CardId;
 	View.DisplayName = Snapshot.DisplayName;
+	View.bUpgraded = Snapshot.bUpgraded;
 	View.Cost = Snapshot.Cost;
 	View.CardType = Snapshot.CardType;
 	View.TargetType = Snapshot.TargetType;
