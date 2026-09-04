@@ -34,19 +34,7 @@ bool UCardInstance::CanUpgrade() const
 {
 	return IsValid(Definition.Get())
 		&& !bUpgraded
-		&& IsValid(Definition->UpgradedVariant.Get());
-}
-
-const UCardVariantData* UCardInstance::GetActiveUpgradedVariant() const
-{
-	if (!bUpgraded || !IsValid(Definition.Get()))
-	{
-		return nullptr;
-	}
-
-	return IsValid(Definition->UpgradedVariant.Get())
-		? Definition->UpgradedVariant.Get()
-		: nullptr;
+		&& Definition->bHasUpgrade;
 }
 
 bool UCardInstance::CommitUpgrade()
@@ -62,75 +50,59 @@ bool UCardInstance::CommitUpgrade()
 
 FText UCardInstance::GetDisplayName() const
 {
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return Variant->DisplayName;
-	}
 	return IsValid(Definition.Get()) ? Definition->DisplayName : FText::GetEmpty();
-}
-
-FText UCardInstance::GetDescriptionFormat() const
-{
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return Variant->Description;
-	}
-	return IsValid(Definition.Get()) ? Definition->Description : FText::GetEmpty();
 }
 
 UTexture2D* UCardInstance::GetCardArt() const
 {
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return Variant->CardArt.Get();
-	}
 	return IsValid(Definition.Get()) ? Definition->CardArt.Get() : nullptr;
 }
 
 ECardType UCardInstance::GetCardType() const
 {
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return Variant->CardType;
-	}
 	return IsValid(Definition.Get()) ? Definition->CardType : ECardType::Attack;
-}
-
-int32 UCardInstance::GetCurrentCost() const
-{
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return FMath::Max(0, Variant->Cost);
-	}
-	return IsValid(Definition.Get()) ? FMath::Max(0, Definition->BaseCost) : 0;
 }
 
 ECardTargetType UCardInstance::GetTargetType() const
 {
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
-	{
-		return Variant->TargetType;
-	}
 	return IsValid(Definition.Get()) ? Definition->TargetType : ECardTargetType::None;
+}
+
+FText UCardInstance::GetDescriptionFormat() const
+{
+	if (!IsValid(Definition.Get()))
+	{
+		return FText::GetEmpty();
+	}
+	return bUpgraded ? Definition->Upgrade.Description : Definition->Description;
+}
+
+int32 UCardInstance::GetCurrentCost() const
+{
+	if (!IsValid(Definition.Get()))
+	{
+		return 0;
+	}
+	return FMath::Max(0, bUpgraded ? Definition->Upgrade.Cost : Definition->BaseCost);
 }
 
 ECardDestination UCardInstance::ResolveDestination() const
 {
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
+	if (!IsValid(Definition.Get()))
 	{
-		return Variant->DefaultDestination;
+		return ECardDestination::Discard;
 	}
-	return IsValid(Definition.Get()) ? Definition->DefaultDestination : ECardDestination::Discard;
+	return bUpgraded ? Definition->Upgrade.DefaultDestination : Definition->DefaultDestination;
 }
 
 const TArray<TObjectPtr<UCardEffect>>& UCardInstance::GetEffects() const
 {
 	static const TArray<TObjectPtr<UCardEffect>> EmptyEffects;
-	if (const UCardVariantData* Variant = GetActiveUpgradedVariant())
+	if (!IsValid(Definition.Get()))
 	{
-		return Variant->Effects;
+		return EmptyEffects;
 	}
-	return IsValid(Definition.Get()) ? Definition->Effects : EmptyEffects;
+	return bUpgraded ? Definition->Upgrade.Effects : Definition->Effects;
 }
 
 FString UCardInstance::GetDebugLabel() const
