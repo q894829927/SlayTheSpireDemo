@@ -12,17 +12,21 @@ Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 
 Card Expansion / Upgrade Foundation:
-SIMPLIFIED IMPLEMENTATION COMPLETE IN SOURCE / VALIDATION PENDING
+COMPLETE / VALIDATED / SEALED
+
+Production Card Base/Plus Authoring:
+NEXT BOUNDED TASK / NOT STARTED
 
 Card Trigger Source Expansion:
 DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NOT AUTHORIZED
 ```
 
-## Current active authority
+## Sealed Upgrade Foundation authority
 
 ```text
 docs/CardUpgradeFoundationDesign.md
 docs/CardUpgradeFoundationImplementation.md
+docs/CardUpgradeFoundationValidation.md
 ```
 
 The user explicitly simplified ordinary card upgrades on 2026-09-04:
@@ -97,39 +101,38 @@ Second upgrade is a generic fail-soft rejection and must not create a Resolution
 
 No `CardUpgradedEvent` is introduced in this slice.
 
-## Focused validation source
+## Validation evidence
 
-Added:
+Added focused tests:
 
 ```text
 SlayTheSpireDemo.CardUpgrade.SingleVariant
 SlayTheSpireDemo.CardUpgrade.EffectiveConsumers
 ```
 
-The tests cover Base/Plus selection, one-time Action mutation, second-upgrade rejection, stable identity, authored Effect replacement, card text and committed card snapshot effective values.
+The implementation directly changed A3 preview effect selection from authored Base `Definition->Effects` to effective `Card->GetEffects()`, so the existing A3 ImmediatePreview focused gate was the only directly invalidated sealed regression gate.
 
-Because `BattleManagerUIA3Preview` was migrated from `Definition->Effects` to `Card->GetEffects()`, the existing focused A3 immediate-preview gate is directly invalidated and should be rerun after the new CardUpgrade suite passes.
-
-## Validation state
-
-No local UE Build or Automation has been run from this tool environment.
-
-Current status is therefore:
+On 2026-09-04 the user reported the prescribed local UE5.8 gates all passing:
 
 ```text
-Source implementation: COMPLETE
-Static review: COMPLETE
-Editor Build: PENDING USER RUN
-CardUpgrade focused Automation: PENDING USER RUN
-A3 directly-invalidated focused regression: PENDING USER RUN
-Seal: PENDING
+SlayTheSpireDemoEditor Win64 Development Build: PASS
+SlayTheSpireDemo.CardUpgrade: PASS
+SlayTheSpireDemo.UIA3.ImmediatePreview: PASS
 ```
 
-Do not claim PASS until those exact gates run.
+No exact test counts were supplied, so none are inferred here.
+
+This seals the simplified ordinary-card Upgrade Foundation. Detailed evidence: `docs/CardUpgradeFoundationValidation.md`.
+
+## Sticky validation rule
+
+The passing Foundation gates are sticky.
+
+Do not rerun Build/CardUpgrade/A3 merely because production card DataAssets are authored next. Rerun only when a shared Foundation contract is changed or a concrete regression invalidates the evidence.
 
 ## Deferred / non-goals
 
-Current slice does not implement:
+The sealed Foundation does not implement:
 
 ```text
 RepeatableUpgradeCapability
@@ -138,7 +141,6 @@ Armaments
 Run Deck persistence
 campfire / reward / shop
 save/load
-production card asset migration
 Phase 8
 ```
 
@@ -147,10 +149,7 @@ Repeatable upgrading remains a later orthogonal capability and must not force or
 ## Next exact action
 
 ```text
-1. User runs one Editor Build.
-2. User runs SlayTheSpireDemo.CardUpgrade once.
-3. If PASS, user runs the directly-invalidated A3 ImmediatePreview focused suite once.
-4. Report results.
-5. Record validation evidence and seal this simplified foundation if all pass.
-6. Only then start production card Base/Plus authoring as the next bounded task.
+Production Card Base/Plus Authoring
 ```
+
+Start with a small first batch of real cards using the sealed Foundation. Do not reopen or redesign Upgrade Foundation unless real production-card requirements prove the contract insufficient.
