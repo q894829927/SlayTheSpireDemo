@@ -69,7 +69,7 @@ protected:
 	// upgraded instances are rendered as "DisplayName+" in the Widget and use
 	// the bright yellow-green title color sampled from the visual reference.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle HUD|Card|Style")
-	FLinearColor UpgradedNameColor = FLinearColor(0.5f, 1.0f, 0.0f, 1.0f);
+	FLinearColor UpgradedNameColor = FLinearColor::FromSRGBColor(FColor(127, 255, 0, 255));
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Btn_Card;
