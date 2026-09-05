@@ -69,21 +69,12 @@ struct SLAYTHESPIREDEMO_API FCardRarityVisualStyle
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Face")
 	FCardFaceTextureRegion PowerFrame;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Face")
-	TObjectPtr<UTexture2D> TypeLeft = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Face")
-	TObjectPtr<UTexture2D> TypeCenter = nullptr;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card Face")
-	TObjectPtr<UTexture2D> TypeRight = nullptr;
 };
 
 /**
  * Presentation-only authored configuration.
  *
- * Text/name/cost/description/type-plate geometry remains fixed in the Widget
+ * Text/name/cost/description/card-type geometry remains fixed in the Widget
  * Designer for the current CFV pass. Only cropped atlas layers carry placement
  * because their trim offsets differ by selected texture.
  */
@@ -132,9 +123,6 @@ struct SLAYTHESPIREDEMO_API FResolvedCardFaceStyle
 	FCardFaceTextureRegion FrameRegion;
 	FCardFaceTextureRegion BannerRegion;
 	FCardFaceTextureRegion CostOrbRegion;
-	UTexture2D* TypeLeft = nullptr;
-	UTexture2D* TypeCenter = nullptr;
-	UTexture2D* TypeRight = nullptr;
 };
 
 /** Pure Presentation resolver. No Widget, Gameplay, asset loading or TMap iteration fallback. */
