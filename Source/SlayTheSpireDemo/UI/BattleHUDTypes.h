@@ -165,6 +165,12 @@ struct SLAYTHESPIREDEMO_API FBattleHUDCardView
 	ECardType CardType = ECardType::Attack;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	ECardRarity Rarity = ECardRarity::Common;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
+	ECardColor CardColor = ECardColor::Red;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle HUD")
 	ECardTargetType TargetType = ECardTargetType::None;
 
 	// Plain semantic card description retained for non-RichText consumers and
