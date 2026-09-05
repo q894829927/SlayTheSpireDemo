@@ -1,12 +1,15 @@
-# Codex Goal Checkpoint — Card Expansion
+# Codex Goal Checkpoint — Card Face Visual Style
 
 Last updated: **2026-09-05**
 
 ## Current status
 
 ```text
-Phase 6UI-A / A3: COMPLETE / VALIDATED / SEALED
-Phase 7A–7F: COMPLETE / VALIDATED / SEALED
+Phase 6UI-A / A3:
+COMPLETE / VALIDATED / SEALED
+
+Phase 7A–7F:
+COMPLETE / VALIDATED / SEALED
 
 Phase 8 Combo Architecture Validation:
 DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
@@ -14,8 +17,11 @@ DESIGN REFINED / DEFERRED / NOT A BLOCKER FOR CARD EXPANSION
 Card Upgrade STS-Style Refactor:
 COMPLETE / VALIDATED / SEALED
 
-Previous FCardUpgradeConfig Foundation:
-HISTORICAL / SUPERSEDED / SOURCE FIELDS REMOVED
+Card Face Visual Style (CFV):
+DESIGN LOCKED / IMPLEMENTATION NOT AUTHORIZED
+
+CFV-1 Card Metadata Contract:
+NOT STARTED / NOT AUTHORIZED
 
 Production Card Authoring:
 UNBLOCKED / NOT STARTED / NO NEW IMPLEMENTATION AUTHORIZED
@@ -24,144 +30,246 @@ UNBLOCKED / NOT STARTED / NO NEW IMPLEMENTATION AUTHORIZED
 ## Current authority
 
 ```text
+docs/CardFaceVisualStyleImplementation.md
+```
+
+The CFV authority has completed design review and is now locked. Do not begin CFV-1, Card Expansion, or any later CFV slice without a new explicit user authorization.
+
+The sealed Card Upgrade authority remains:
+
+```text
 docs/CardUpgradeSTSStyleRefactor.md
 ```
 
-The Upgrade authority is now sealed. Do not reopen it for ordinary card expansion unless a future requirement directly invalidates one of its locked contracts.
+It is predecessor/background authority only and must not be reopened for CFV unless a concrete future requirement directly invalidates one of its locked contracts.
 
-## Sealed upgrade model
+## Locked CFV model
 
-```text
-UCardData
-→ one Description
-→ BaseCost / UpgradedCost
-→ one Effects[]
-→ typed Base / Upgraded values per Effect
-
-UCardInstance
-→ Definition
-→ RuntimeId
-→ bool bUpgraded
-```
-
-Runtime authority:
+Semantic / frozen axes:
 
 ```text
-CanUpgrade()          -> valid Definition && !bUpgraded
-GetDescriptionFormat()-> Definition->Description
-GetCurrentCost()      -> bUpgraded ? UpgradedCost : BaseCost
-ResolveDestination()  -> Definition->DefaultDestination
-GetEffects()          -> always Definition->Effects
+CardType
+CardRarity
+CardColor
+Upgrade State
 ```
 
-In-combat mutation remains:
+Core rules:
 
 ```text
-UUpgradeCardAction
-→ UCardInstance::CommitUpgrade()
-→ bUpgraded false -> true once
+CardColor != character identity
+CardType / CardRarity / CardColor / bUpgraded remain orthogonal
+
+ECardColor:
+Red / Green / Blue / Purple / Colorless / Curse
+
+migration defaults:
+Rarity    = Common
+CardColor = Red
 ```
 
-Creation-time upgraded state remains supported via:
+The defaults exist for backward-compatible serialization only. Production CardData must explicitly author its real metadata when it enters the CFV production-authoring slice.
 
-```cpp
-UCardInstance::Initialize(Definition, RuntimeId, bStartUpgraded)
-```
-
-## Typed Effect upgrade surface
+Status / Curse standard production convention:
 
 ```text
-Damage:
-BaseAmount / UpgradedAmount
-HitCount / UpgradedHitCount
+Status
+→ CardType  = Status
+→ CardColor = Colorless
 
-Block:
-BaseAmount / UpgradedAmount
-
-Draw:
-DrawCount / UpgradedDrawCount
-
-ApplyStatus:
-Amount / UpgradedAmount
+Curse
+→ CardType  = Curse
+→ CardColor = Curse
+→ Rarity    = Curse
 ```
 
-Effective consumers use bool-only helpers and share the same upgraded value source across Gameplay / Dynamic Text / A3.
+These remain explicit content-authoring values; the data model does not implicitly couple `ECardType::Curse` to `ECardColor::Curse`.
 
-## Presentation contract
+## Frozen Presentation contract
+
+Planned CFV-1 propagation is:
 
 ```text
-Gameplay/DTO DisplayName
-→ always authored base name
-
-UBattleCardWidget
-→ bUpgraded == false: DisplayName + default title style
-→ bUpgraded == true:  DisplayName + "+" + upgraded title color
+UCardData.Rarity / CardColor
+        ↓
+UCardInstance getters
+        │
+        ├─ formal/current Hand freeze
+        │      ↓
+        │ FBattleHUDCardView
+        │
+        └─ committed/historical snapshot
+               ↓
+        FPresentationCardSnapshot
+               ↓
+        PresentationCardView
+               ↓
+        FBattleHUDCardView
 ```
 
-Upgraded title color:
+`FCardReadView` is not expanded with duplicate Rarity/CardColor fields.
+
+Generic exact card-face continuity will include:
 
 ```text
-sRGB #7FFF00
+bUpgraded
+Rarity
+CardColor
 ```
 
-No second authored upgraded DisplayName exists.
+`RichDescription` remains intentionally excluded from generic Hand identity comparison while still being propagated by the historical mapper.
 
-## Legacy cleanup complete
-
-Removed from active source/model:
+## Locked visual architecture
 
 ```text
-FCardUpgradeConfig
-bHasUpgrade
-UCardData::Upgrade
-UCardVariantData compatibility shim
+CardType
+→ ECardFaceVisualShape
+   Attack / Skill / Power
+   Status / Curse → Skill visual shape
+
+CardColor + VisualShape
+→ Background
+
+CardColor
+→ CostOrb
+
+CardRarity
+→ Common / Uncommon / Rare visual rarity
+
+VisualRarity + VisualShape
+→ Frame
+
+VisualRarity
+→ Banner / TypePlate
+
+bUpgraded
+→ "+" / #7FFF00
 ```
 
-Six production assets migrated and validated:
+`FallbackFrame` is not a normal Status/Curse production path.
+
+## Style configuration boundary
+
+`UCardFaceStyleSet` is a narrow authored Presentation configuration asset, not a Registry, Service, singleton, Gameplay definition, runtime discovery system, or universal skin framework.
+
+Ownership:
 
 ```text
-DA_Card_Strike
-DA_Card_Defend
-DA_Card_PommelStrike
-DA_Card_TwinStrike
-DA_Card_Uppercut
-DA_Card_Inflame
+WBP_BattleCard_Native
+→ EditDefaultsOnly CardFaceStyleSet reference
+
+UCardFaceStyleSet
+→ ColorStyles
+→ shared RarityStyles
+→ shared Attack/Skill/Power TypeLayouts
+→ trimmed TextureRegion placements
+
+pure resolver
+→ consumes frozen DTO metadata + StyleSet.Config
 ```
 
-After final `UCardVariantData` removal:
+Forbidden:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build: PASS
-full Editor restart: DONE
-all six production DA_Card_* assets open normally: PASS
+CardData / CardInstance → StyleSet reference
+CardColor → hard-coded LoadObject path
+Global Visual Registry
+TMap iteration fallback
+missing Green/Blue/etc. → Red fallback
 ```
 
-## Validation evidence
+This slice only requires complete production authoring for `Red`. Green / Blue / Purple / Colorless / Curse configuration may remain absent until the corresponding confirmed future content enters production.
 
-Sticky PASS evidence for the sealed Upgrade surface:
+## Widget / degradation contract
+
+Core fail-closed surface remains:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build
-SlayTheSpireDemo.CardUpgrade
-SlayTheSpireDemo.Phase6UIA3.DynamicText
-SlayTheSpireDemo.UIA3.ImmediatePreview
-SlayTheSpireDemo.Phase6C
-SlayTheSpireDemo.Phase6UIA2N.R4
-focused PIE
+Btn_Card
+Txt_CardName
+Txt_Cost
+Txt_CardDescription
+Txt_CardType
+Img_CardArt
 ```
 
-Focused PIE confirmed:
+Decorative / optional presentation surface:
 
 ```text
-normal card
-→ authored name / default title color
-
-same runtime card upgraded
-→ authored name + "+"
-→ #7FFF00 upgraded title
-→ upgraded numeric text
-→ actual Gameplay uses the same upgraded values
+Img_CardShadow
+Img_CardBackground
+Img_CardFrame
+Img_CardBanner
+Img_TypeLeft
+Img_TypeCenter
+Img_TypeRight
+Img_CostOrb
+OV_CardType
 ```
+
+Missing decorative controls, missing textures, an unconfigured valid ColorStyle, or `CardFaceStyleSet == nullptr` may degrade/hide visuals but must not disable Gameplay/input.
+
+Null StyleSet specifically keeps core DTO refresh, frozen CardArt and card request behavior functional while clearing/hiding decorative CFV state.
+
+## Geometry ownership
+
+```text
+WBP Designer
+→ fixed 150 × 210 canonical card geometry
+→ fixed Name / Cost / Description / interaction geometry
+
+FCardFaceTypeLayout
+→ PortraitRect
+→ TypePlateRect
+
+FCardFaceTextureRegion.Placement
+→ sole trimmed texture placement authority
+→ sole Frame placement authority
+```
+
+Color does not own a separate layout. `OV_CardType` receives `TypePlateRect` so the type plate and type text move as one presentation unit.
+
+## CFV implementation slices
+
+```text
+CFV-1 — Card Metadata Contract
+CFV-2 — Card Face Shell
+CFV-3 — StyleSet + Pure Resolver
+CFV-4 — Production StyleSet / Asset Authoring
+CFV-5 — Visual Acceptance
+```
+
+Current next slice, once explicitly authorized:
+
+```text
+CFV-1 — Card Metadata Contract
+```
+
+Its scope is limited to Rarity + CardColor semantic metadata, authoring validation, current/frozen/historical propagation, exact continuity updates, and focused Automation/Blueprint compile-save evidence. It does not include StyleSet implementation, card-face shell layout, texture authoring, or PIE.
+
+## Planned CFV-1 gates
+
+```text
+1. SlayTheSpireDemoEditor Win64 Development Build once
+2. SlayTheSpireDemo.CFV.CardMetadataContract once
+3. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once
+```
+
+If the new CFV test does not directly exercise the Native exact-identity comparison path, add only:
+
+```text
+SlayTheSpireDemo.Phase6UIA2N.R8.CardPlayed.ExactIdentityFinishAndCancel
+```
+
+Do not automatically run full R8, Phase6R, A2D5, Shipping, broad scenario replay, or manual PIE for CFV-1.
+
+Blueprint asset gate after the reflected DTO change:
+
+```text
+Compile + Save WBP_BattleCard_Native
+```
+
+Only process another dependent Blueprint if UE explicitly reports it affected.
 
 ## Current stop point
 
@@ -169,29 +277,27 @@ same runtime card upgraded
 Card Upgrade STS-Style Refactor
 → COMPLETE / VALIDATED / SEALED
 
+Card Face Visual Style
+→ DESIGN LOCKED
+→ IMPLEMENTATION NOT AUTHORIZED
+
+CFV-1
+→ NOT STARTED
+→ NOT AUTHORIZED
+
 Phase 8
 → remains deferred
 
 Production Card Expansion
 → technically unblocked
 → NOT STARTED
-→ no Batch / CAP implementation is currently authorized
+→ no new card implementation authorized
 ```
 
-Do not start Bash / Iron Wave / Shrug It Off / Clothesline or CAP-02 merely because they were discussed as possible next directions. A new explicit user request is required before starting another implementation slice.
-
-## Preserved non-goals / future independent capabilities
+Next action:
 
 ```text
-repeatable upgrade / UpgradeCount / Searing Blow
-UpgradedDescriptionOverride
-effect count/type structural replacement
-universal Upgrade Delta / Upgrade Context
-second authored upgraded DisplayName
-Armaments content implementation
-Phase 8 implementation
-save/load/run-deck persistence
-campfire/reward/shop upgrade UX
+WAIT FOR EXPLICIT USER AUTHORIZATION TO START CFV-1
 ```
 
-These are not pending defects in the sealed ordinary-card upgrade foundation.
+No Build, Automation, Blueprint mutation, asset authoring, or PIE belongs to this checkpoint/status-sync step.
