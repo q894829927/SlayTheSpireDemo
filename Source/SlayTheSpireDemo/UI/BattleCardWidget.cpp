@@ -54,7 +54,10 @@ namespace
 			return;
 		}
 
-		Image->SetBrush(FSlateBrush());
+		// Clear only the resource object through UMG. Constructing an FSlateBrush
+		// directly would make the runtime module depend on SlateCore solely for
+		// this presentation cleanup path.
+		Image->SetBrushResourceObject(nullptr);
 		Image->SetVisibility(ESlateVisibility::Hidden);
 
 		if (bClearCanvasPlacement)
