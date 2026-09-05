@@ -18,7 +18,7 @@ Card Upgrade STS-Style Refactor:
 COMPLETE / VALIDATED / SEALED
 
 Card Face Visual Style (CFV):
-DESIGN LOCKED / IMPLEMENTATION THROUGH CFV-4 COMPLETE
+COMPLETE / USER-ACCEPTED / SEALED
 
 CFV-1 — Card Metadata Contract:
 COMPLETE / VALIDATED / SEALED
@@ -33,7 +33,7 @@ CFV-4 — Production StyleSet / Asset Authoring:
 COMPLETE / USER-VALIDATED / SEALED
 
 CFV-5 — Visual Acceptance:
-NOT AUTHORIZED
+COMPLETE / USER-ACCEPTED / SEALED
 ```
 
 ## Current authority and execution records
@@ -51,6 +51,7 @@ docs/CFV1Validation.md
 docs/CFV2CardFaceShellExecution.md
 docs/CFV3StyleSetResolverExecution.md
 docs/CFV4ProductionStyleSetExecution.md
+docs/CFV5VisualAcceptance.md
 ```
 
 Current implementation branch:
@@ -59,7 +60,7 @@ Current implementation branch:
 cfv3-style-set-resolver
 ```
 
-This checkpoint supersedes the earlier CFV-2-era authorization snapshot. Historical slice-specific evidence remains in the execution records above.
+This checkpoint supersedes the earlier CFV-2-era and CFV-4-era authorization snapshots. Historical slice-specific evidence remains in the execution records above.
 
 ## Locked semantic model
 
@@ -207,11 +208,29 @@ CommonStyle.PowerFrame      CONFIGURED / NOT COVERED
 UncommonStyle.SkillFrame    CONFIGURED / NOT COVERED
 ```
 
-These two coverage gaps do not reopen CFV-4 authoring and must not be relabeled as independently validated without an actual matching card or focused fixture.
+These two coverage gaps remain accurately labeled and do not reopen the accepted CFV production scope.
+
+## CFV-5 final visual acceptance
+
+The user explicitly reported that no current visual or functional issue has been detected and accepted the production card-face result.
+
+Acceptance is recorded in:
+
+```text
+docs/CFV5VisualAcceptance.md
+```
+
+CFV-5 does not claim new Build or Automation evidence beyond already sealed predecessor gates. No CFV-3 gate was rerun solely for final visual acceptance.
 
 ## Current stop point
 
 ```text
+CFV-1
+→ COMPLETE / VALIDATED / SEALED
+
+CFV-2
+→ predecessor implementation recorded
+
 CFV-3
 → COMPLETE / VALIDATED / SEALED
 
@@ -219,16 +238,15 @@ CFV-4
 → COMPLETE / USER-VALIDATED / SEALED
 
 CFV-5
-→ NOT AUTHORIZED
+→ COMPLETE / USER-ACCEPTED / SEALED
+
+Card Face Visual Style
+→ COMPLETE / USER-ACCEPTED / SEALED
 
 Production Card Expansion
 → no new authorization implied by this checkpoint
 ```
 
-Next gated work:
+There is no remaining CFV implementation slice.
 
-```text
-CFV-5 — Visual Acceptance
-```
-
-Do not begin CFV-5, reopen sealed Gameplay/Presentation/Upgrade ownership, or modify the sealed CFV-3 resolver contract unless the user explicitly authorizes that work or a concrete acceptance finding requires a targeted correction.
+Future card content should consume the sealed metadata / resolver / StyleSet / Widget contract. Reopen only the narrow affected boundary if a concrete later requirement invalidates it; do not redesign CFV merely because new cards or additional CardColor assets are authored.
