@@ -1200,6 +1200,18 @@ bool UBattleHUDWidget::IsNativeCardSnapshotValid(const FPresentationCardSnapshot
 		|| Snapshot.CardType == ECardType::Power
 		|| Snapshot.CardType == ECardType::Status
 		|| Snapshot.CardType == ECardType::Curse;
+	const bool bRarityValid = Snapshot.Rarity == ECardRarity::Basic
+		|| Snapshot.Rarity == ECardRarity::Common
+		|| Snapshot.Rarity == ECardRarity::Uncommon
+		|| Snapshot.Rarity == ECardRarity::Rare
+		|| Snapshot.Rarity == ECardRarity::Special
+		|| Snapshot.Rarity == ECardRarity::Curse;
+	const bool bCardColorValid = Snapshot.CardColor == ECardColor::Red
+		|| Snapshot.CardColor == ECardColor::Green
+		|| Snapshot.CardColor == ECardColor::Blue
+		|| Snapshot.CardColor == ECardColor::Purple
+		|| Snapshot.CardColor == ECardColor::Colorless
+		|| Snapshot.CardColor == ECardColor::Curse;
 	const bool bTargetTypeValid = Snapshot.TargetType == ECardTargetType::None
 		|| Snapshot.TargetType == ECardTargetType::Self
 		|| Snapshot.TargetType == ECardTargetType::Enemy;
@@ -1208,6 +1220,8 @@ bool UBattleHUDWidget::IsNativeCardSnapshotValid(const FPresentationCardSnapshot
 		&& !Snapshot.DisplayName.IsEmpty()
 		&& Snapshot.Cost >= 0
 		&& bCardTypeValid
+		&& bRarityValid
+		&& bCardColorValid
 		&& bTargetTypeValid;
 }
 
@@ -1218,8 +1232,11 @@ bool UBattleHUDWidget::DoesNativeCardViewMatchSnapshot(
 	return View.RuntimeId == Snapshot.RuntimeId
 		&& View.CardId == Snapshot.CardId
 		&& View.DisplayName.EqualTo(Snapshot.DisplayName)
+		&& View.bUpgraded == Snapshot.bUpgraded
 		&& View.Cost == Snapshot.Cost
 		&& View.CardType == Snapshot.CardType
+		&& View.Rarity == Snapshot.Rarity
+		&& View.CardColor == Snapshot.CardColor
 		&& View.TargetType == Snapshot.TargetType
 		&& View.Description.EqualTo(Snapshot.Description)
 		&& View.CardArt.Get() == Snapshot.CardArt.Get();
