@@ -214,7 +214,6 @@ bool FWave1ACommittedExhaustEventTest::RunTest(const FString& Parameters)
 		Fixture.Battle->RequestPlayCard(Card, nullptr).IsAcceptedForResolution()
 	);
 	Fixture.Flush();
-	UBattleEventDispatcher::OnEventDispatchedForTesting.Clear();
 
 	TestEqual(TEXT("Exactly one CardExhausted event"), EventCount, 1);
 	TestTrue(TEXT("Event keeps exact runtime Card pointer"), EventCard == Card);
@@ -249,6 +248,7 @@ bool FWave1ACommittedExhaustEventTest::RunTest(const FString& Parameters)
 	);
 	Fixture.Flush();
 	TestEqual(TEXT("Rejected replay emits no duplicate CardExhausted"), EventCount, CountBeforeRejectedReplay);
+	UBattleEventDispatcher::OnEventDispatchedForTesting.Clear();
 	return true;
 }
 
