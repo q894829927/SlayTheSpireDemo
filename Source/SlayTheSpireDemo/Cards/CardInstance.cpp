@@ -61,6 +61,16 @@ ECardType UCardInstance::GetCardType() const
 	return IsValid(Definition.Get()) ? Definition->CardType : ECardType::Attack;
 }
 
+ECardRarity UCardInstance::GetRarity() const
+{
+	return IsValid(Definition.Get()) ? Definition->Rarity : ECardRarity::Common;
+}
+
+ECardColor UCardInstance::GetCardColor() const
+{
+	return IsValid(Definition.Get()) ? Definition->CardColor : ECardColor::Red;
+}
+
 ECardTargetType UCardInstance::GetTargetType() const
 {
 	return IsValid(Definition.Get()) ? Definition->TargetType : ECardTargetType::None;
