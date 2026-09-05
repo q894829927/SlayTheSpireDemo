@@ -5,10 +5,9 @@ Date: 2026-09-05
 Status:
 
 ```text
-IMPLEMENTED ON BRANCH
-TYPE-PLATE IMAGE PATH REMOVED BY USER DECISION
-REVALIDATION PENDING AFTER REFLECTED BINDING CHANGE
-NOT SEALED
+COMPLETE
+VALIDATED
+SEALED
 ```
 
 Branch:
@@ -172,17 +171,25 @@ missing optional decorative controls
 upgrade state does not alter static CFV selection
 ```
 
-## Validation state
+## Validation evidence
 
-The user previously reported Build + both CFV-3 Automation suites PASS before the type-plate image path was removed. Because the latest change removes reflected Widget bindings and StyleSet fields, those gates are invalidated once and must be rerun.
-
-Required revalidation:
+User-reported local validation after the final reflected binding simplification:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build
-SlayTheSpireDemo.CFV.VisualResolver
-SlayTheSpireDemo.CFV.WidgetStyle
-Compile + Save + Reopen the production card Widget
+SlayTheSpireDemoEditor Win64 Development Build      PASS
+SlayTheSpireDemo.CFV.VisualResolver                 PASS
+SlayTheSpireDemo.CFV.WidgetStyle                    PASS
+Production card Widget modification / compile-save PASS
 ```
 
-No broad regression suite is required. After the production `UCardFaceStyleSet` is authored and assigned, perform one focused PIE visual check to judge the real Skill/Power result before deciding whether any geometry split is necessary.
+The earlier type-plate image bindings and StyleSet fields were removed before this final validation, so no stale pre-removal gate is being reused.
+
+CFV-3 is therefore sealed. Do not rerun these gates unless a later change invalidates the resolver/widget-style contract.
+
+## Next authorized work
+
+```text
+CFV-4 — Production StyleSet / Asset Authoring
+```
+
+The next useful visual gate is one focused PIE after a production `UCardFaceStyleSet` is authored and assigned. Use that real resolver-driven result to decide whether Skill/Power needs any additional geometry adjustment; do not add speculative layout splits beforehand.
