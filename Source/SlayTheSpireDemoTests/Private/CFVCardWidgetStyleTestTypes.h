@@ -54,4 +54,9 @@ public:
 	{
 		CardFaceStyleSet = StyleSet;
 	}
+
+	void RefreshForTesting()
+	{
+		RefreshFromCardView();
+	}
 };
