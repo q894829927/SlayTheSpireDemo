@@ -1,4 +1,4 @@
-# Codex Goal Checkpoint — Card Face Visual Style
+# Codex Goal Checkpoint — Production Card Expansion
 
 Last updated: **2026-09-06**
 
@@ -20,33 +20,59 @@ COMPLETE / VALIDATED / SEALED
 Card Face Visual Style (CFV):
 COMPLETE / USER-ACCEPTED / SEALED
 
-CFV-1 — Card Metadata Contract:
-COMPLETE / VALIDATED / SEALED
+Production Card Expansion:
+NEXT ACTIVE GOAL
 
-CFV-2 — Card Face Shell:
-PREDECESSOR IMPLEMENTED; SEE EXECUTION RECORD
-
-CFV-3 — StyleSet + Pure Resolver:
-COMPLETE / VALIDATED / SEALED
-
-CFV-4 — Production StyleSet / Asset Authoring:
-COMPLETE / USER-VALIDATED / SEALED
-
-CFV-5 — Visual Acceptance:
-COMPLETE / USER-ACCEPTED / SEALED
+Wave 1A — Exhaust Fact Surface:
+DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED
 ```
 
-## Current authority and execution records
+## Current branch
 
-Design authority:
+```text
+card-expansion-wave1a-exhaust-fact
+```
+
+Branch base:
+
+```text
+main
+```
+
+`main` already contains the sealed CFV result and final CFV checkpoint merge.
+
+---
+
+## Current authority chain
+
+Long-term Ironclad card architecture:
+
+```text
+docs/IroncladCardArchitecturePlan.md
+```
+
+Current ordering amendment:
+
+```text
+docs/IroncladCardArchitecturePlanWave1Amendment.md
+```
+
+Current next-active dedicated authority:
+
+```text
+docs/CardExpansionWave1AExhaustFactSurface.md
+```
+
+Sealed ordinary-card upgrade authority:
+
+```text
+docs/CardUpgradeSTSStyleRefactor.md
+```
+
+Sealed card-face authority/evidence:
 
 ```text
 docs/CardFaceVisualStyleImplementation.md
-```
-
-Execution / validation records:
-
-```text
 docs/CFV1Validation.md
 docs/CFV2CardFaceShellExecution.md
 docs/CFV3StyleSetResolverExecution.md
@@ -54,199 +80,247 @@ docs/CFV4ProductionStyleSetExecution.md
 docs/CFV5VisualAcceptance.md
 ```
 
-Current implementation branch:
+Future independent Card trigger-source design:
 
 ```text
-cfv3-style-set-resolver
+docs/CardTriggerSourceExpansionDesign.md
 ```
 
-This checkpoint supersedes the earlier CFV-2-era and CFV-4-era authorization snapshots. Historical slice-specific evidence remains in the execution records above.
+The current ordering amendment supersedes stale scheduling language in older planning docs when it conflicts with this checkpoint. It does not silently expand implementation scope.
 
-## Locked semantic model
+---
+
+## Current production card baseline
+
+Current production CardData set:
 
 ```text
-CardType
-CardRarity
-CardColor
-Upgrade State
+Attack
+- Strike
+- Pommel Strike
+- Twin Strike
+- Uppercut
+
+Skill
+- Defend
+
+Power
+- Inflame
 ```
 
-The axes remain orthogonal.
+These six are existing baseline content and must not be recreated as part of Wave 1A.
+
+Ordinary upgrade support for current typed Damage / Block / Draw / ApplyStatus effect fields is already sealed. Do not reopen the old Foundation-0 upgrade design.
+
+---
+
+## Exhaust capability split
+
+Do not use “Exhaust is implemented” without qualification.
+
+### Existing: self-exhaust after play
 
 ```text
-ECardColor:
-Red / Green / Blue / Purple / Colorless / Curse
-
-migration defaults:
-Rarity    = Common
-CardColor = Red
+UCardData::DefaultDestination = Exhaust
+→ normal play lifecycle
+→ FinishCardPlay
+→ PlayArea → ExhaustPile authoritative commit
 ```
 
-Migration defaults are serialization fallbacks only. Production content owns its explicit semantic metadata.
+The zone mutation already exists.
 
-## Locked visual resolver model
+### Missing: exact CardExhausted gameplay fact
+
+Current `BattleEvent` surface does not yet expose `CardExhausted`.
+
+Wave 1A adds only:
 
 ```text
-CardType
-→ ECardFaceVisualShape
-→ Attack / Skill / Power
-→ Status / Curse use Skill visual shape
-
-CardColor + VisualShape
-→ Background
-
-CardColor
-→ CostOrb
-
-CardRarity
-→ CommonVisual / UncommonVisual / RareVisual
-
-VisualRarity + VisualShape
-→ Frame
-
-VisualRarity
-→ Banner
-
-bUpgraded
-→ display-name "+" / upgraded title color
+successful self-exhaust commit
+→ exact immutable FCardExhaustedEvent
+→ Dispatcher
 ```
 
-The current sealed production shell does **not** use:
+### Deferred: targeted exhaust
 
 ```text
-TypeLeft
-TypeCenter
-TypeRight
-CardShadow
+select/specify exact CardInstance
+→ explicit Exhaust mutation/action
 ```
 
-Rarity no longer owns a TypePlate image path. `Txt_CardType` remains the card-type visual inside fixed Designer geometry.
+Needed later by Burning Pact / Fiend Fire / Second Wind / related cards.
 
-## CFV-3 sealed runtime boundary
+Targeted exhaust is not part of Wave 1A.
 
-`UCardFaceStyleSet` remains a narrow authored Presentation configuration asset.
+---
 
-The pure resolver consumes frozen card-face metadata plus the StyleSet and does not perform:
+## Wave 1A locked producer boundary
+
+`DeckRuntime` remains mutation owner only.
+
+Required ordering:
 
 ```text
-Gameplay query
-BattleManager query
-LoadObject
-texture pixel parsing
-TMap iteration fallback
-CardId branch
-missing ColorStyle → Red fallback
+FinishCardPlay / current card-play composition boundary
+→ request zone move commit
+→ receive exact typed commit result
+→ if committed && ToZone == ExhaustPile
+   → build FCardExhaustedEvent
+   → dispatch
 ```
 
-`UBattleCardWidget` consumes the resolved presentation only. Missing decorative configuration may degrade/hide decorative surfaces but must not disable core DTO content or input behavior.
-
-CFV-3 focused validation is sealed:
+Forbidden:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build      PASS
-SlayTheSpireDemo.CFV.VisualResolver                 PASS
-SlayTheSpireDemo.CFV.WidgetStyle                    PASS
-Production card Widget modification / compile-save PASS
+DeckRuntime directly dispatches BattleEvent
+DefaultDestination == Exhaust → assume commit success
+dispatch before mutation
+CardId / DisplayName special case
 ```
 
-Do not repeat those gates unless a later change modifies the resolver contract, reflected StyleSet layout, or reflected Widget bindings.
+The event must describe a committed fact, not play intent.
 
-## CFV-4 production StyleSet state
+---
 
-Production asset:
+## Wave 1A production validation card
+
+Default validation card:
 
 ```text
-DA_CardFaceStyleSet
+Seeing Red
 ```
 
-Authored configuration:
+Reason:
 
 ```text
-ColorStyles[Red]
-├─ AttackBackground
-├─ SkillBackground
-├─ PowerBackground
-└─ CostOrb
-
-CommonStyle
-├─ Banner
-├─ AttackFrame
-├─ SkillFrame
-└─ PowerFrame
-
-UncommonStyle
-├─ Banner
-├─ AttackFrame
-├─ SkillFrame
-└─ PowerFrame
+Gain Energy
++ self Exhaust
 ```
 
-Production Widget assignment:
+This keeps the validation card independent of selection, targeted exhaust, multi-enemy, reactive Power and Card Trigger Source Expansion.
+
+If a generic authored GainEnergy CardEffect adapter is missing, implement the narrowest adapter that only builds the already-existing `GainEnergyAction`. Do not special-case Seeing Red in PlayCardAction or Energy owner code.
+
+---
+
+## Explicit Wave 1A non-goals
 
 ```text
-Class Defaults
-→ Battle HUD | Card | Style
-→ Card Face Style Set
-→ DA_CardFaceStyleSet
+targeted exhaust
+bulk exhaust
+selection
+Burning Pact full card
+Shockwave / multi-enemy
+Feel No Pain
+Dark Embrace
+Sentinel
+Card Trigger Source Expansion
+generic authored Continuation
+Ethereal
+universal zone-event bus
+CFV redesign
+ordinary Upgrade redesign
+Phase 8 implementation
 ```
 
-User-reported focused PIE inspection is complete for the currently authored production set.
-
-Representative coverage:
+Reactive Powers and Card-owned trigger sources remain separate concepts:
 
 ```text
-Strike / Pommel Strike / Twin Strike → Attack path
-Defend                              → Skill path
-Inflame                             → Power path
-Uppercut / Inflame                  → Uncommon visual path
+Feel No Pain / Dark Embrace
+→ ongoing Power source reacts to any CardExhausted event
+
+Sentinel
+→ exact CardInstance acts as a Card trigger source
+→ future Card Trigger Source Expansion
 ```
 
-Configured but not independently covered:
+Do not merge these two mechanisms.
+
+---
+
+## Required Wave 1A gates
+
+Focused Automation target:
 
 ```text
-CommonStyle.PowerFrame      CONFIGURED / NOT COVERED
-UncommonStyle.SkillFrame    CONFIGURED / NOT COVERED
+SlayTheSpireDemo.CardExpansion.Wave1A.ExhaustFact
 ```
 
-These two coverage gaps remain accurately labeled and do not reopen the accepted CFV production scope.
-
-## CFV-5 final visual acceptance
-
-The user explicitly reported that no current visual or functional issue has been detected and accepted the production card-face result.
-
-Acceptance is recorded in:
+Minimum required checks:
 
 ```text
-docs/CFV5VisualAcceptance.md
+successful Exhaust commit → exactly one CardExhausted event
+exact exhausted runtime card identity preserved
+commit occurs before dispatch
+Discard destination → zero CardExhausted
+Removed destination → zero CardExhausted
+failed/rejected move → zero CardExhausted
+no duplicate event
+zero-listener CardExhausted is valid
 ```
 
-CFV-5 does not claim new Build or Automation evidence beyond already sealed predecessor gates. No CFV-3 gate was rerun solely for final visual acceptance.
+If C++ changes, required:
+
+```text
+SlayTheSpireDemoEditor Win64 Development Build PASS
+```
+
+Production acceptance:
+
+```text
+Seeing Red authored
+→ Gain Energy resolves normally
+→ self-exhaust commits normally
+→ existing Exhaust presentation remains correct
+→ focused event evidence confirms exactly one CardExhausted
+→ no resolution fault
+```
+
+Do not rerun unrelated sealed CFV or Upgrade test suites unless Wave 1A actually changes those contracts.
+
+---
+
+## Revised Wave 1 path
+
+```text
+Wave 1A — Exhaust Fact Surface
+→ NEXT ACTIVE SLICE
+
+Wave 1B — Targeted Exhaust Primitive
+→ FUTURE / NOT AUTHORIZED
+
+Wave 1C — Selection + Targeted Exhaust Composition
+→ FUTURE / NOT AUTHORIZED
+
+Wave 1D — Reactive Exhaust Powers
+→ FUTURE / NOT AUTHORIZED
+
+Card Trigger Source Expansion
+→ FUTURE INDEPENDENT FOUNDATION / NOT AUTHORIZED
+
+Shockwave full card
+→ DEFERRED TO MULTI-ENEMY CAPABILITY
+```
+
+---
 
 ## Current stop point
 
 ```text
-CFV-1
-→ COMPLETE / VALIDATED / SEALED
-
-CFV-2
-→ predecessor implementation recorded
-
-CFV-3
-→ COMPLETE / VALIDATED / SEALED
-
-CFV-4
-→ COMPLETE / USER-VALIDATED / SEALED
-
-CFV-5
-→ COMPLETE / USER-ACCEPTED / SEALED
-
-Card Face Visual Style
-→ COMPLETE / USER-ACCEPTED / SEALED
-
 Production Card Expansion
-→ no new authorization implied by this checkpoint
+→ planning transition complete
+
+Wave 1A design
+→ LOCKED
+
+Wave 1A implementation
+→ NOT STARTED
 ```
 
-There is no remaining CFV implementation slice.
+The next implementation work must follow:
 
-Future card content should consume the sealed metadata / resolver / StyleSet / Widget contract. Reopen only the narrow affected boundary if a concrete later requirement invalidates it; do not redesign CFV merely because new cards or additional CardColor assets are authored.
+```text
+docs/CardExpansionWave1AExhaustFactSurface.md
+```
+
+Do not start Wave 1B/1C/1D, Card Trigger Source Expansion, multi-enemy or Phase 8 as part of Wave 1A.
