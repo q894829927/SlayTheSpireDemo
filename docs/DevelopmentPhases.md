@@ -267,23 +267,37 @@ Phase 8 may be resumed later as an integration gate after card architecture has 
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; NEW CARD AUTHORING NOT STARTED**
+Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A DESIGN LOCKED / IMPLEMENTATION NOT STARTED**
 
-Current authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
+Upgrade authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
 
-The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for CFV or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
+Card-expansion authority chain:
 
-The user removed Phase 8 as a prerequisite for Card Expansion. The upgrade foundation/refactor is now complete; production card authoring may be separately authorized without waiting for Phase 8.
+- `docs/IroncladCardArchitecturePlan.md`
+- `docs/IroncladCardArchitecturePlanWave1Amendment.md`
+- `docs/CardExpansionWave1AExhaustFactSurface.md`
+
+The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for Card Expansion or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
+
+Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion is now active at Wave 1A. Wave 1B/1C/1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
 
 ## Card Face Visual Style
 
-Status: **DESIGN LOCKED / IMPLEMENTATION NOT AUTHORIZED**
+Status: **COMPLETE / USER-ACCEPTED / SEALED**
 
 Authority: `docs/CardFaceVisualStyleImplementation.md`.
 
-The locked CFV model keeps `CardType`, `CardRarity`, `CardColor` and Upgrade State orthogonal. `CardColor` is semantic card metadata rather than character identity; Rarity remains shared across colors/classes; `CardType` derives a Presentation-only Attack/Skill/Power visual shape. Current and historical frozen card views carry Rarity and CardColor, while the Native card consumes those frozen facts through a pure resolver and a narrow `UCardFaceStyleSet` Presentation configuration asset.
+Execution / acceptance evidence:
 
-This slice only requires complete production authoring for the existing Red style plus shared rarity/layout assets. Green / Blue / Purple / Colorless / Curse configuration is intentionally incremental for future confirmed multi-class content. Exact 512 texture mappings, trimmed placement ownership, optional decorative bindings, Widget application tests and focused production-map visual acceptance are locked planned contracts. No CFV implementation or validation has started; CFV-1 still requires explicit authorization.
+- `docs/CFV1Validation.md`
+- `docs/CFV2CardFaceShellExecution.md`
+- `docs/CFV3StyleSetResolverExecution.md`
+- `docs/CFV4ProductionStyleSetExecution.md`
+- `docs/CFV5VisualAcceptance.md`
+
+The sealed CFV model keeps `CardType`, `CardRarity`, `CardColor` and Upgrade State orthogonal. `CardColor` is semantic card metadata rather than character identity; Rarity remains shared across colors/classes; `CardType` derives a Presentation-only Attack/Skill/Power visual shape. The Native card consumes frozen metadata through the pure resolver and narrow `UCardFaceStyleSet` Presentation configuration asset.
+
+Current Red production authoring is accepted. Future card content must consume this sealed metadata / resolver / StyleSet / Widget contract. Additional CardColor assets may be authored incrementally when real multi-class content requires them; normal card expansion does not reopen CFV architecture or rerun sealed CFV gates unless those contracts actually change.
 
 ## Card Trigger Source Expansion
 
@@ -291,7 +305,7 @@ Status: **DESIGN DRAFT / FUTURE INDEPENDENT FOUNDATION SLICE / IMPLEMENTATION NO
 
 Authority: `docs/CardTriggerSourceExpansionDesign.md`.
 
-This slice must be implemented independently before Sentinel/Card-trigger consumers. It adds a typed Card trigger-source provider and a deterministic comparison key while preserving sealed Status/Relic ordering.
+This slice must be implemented independently before Sentinel/Card-trigger consumers. It adds a typed Card trigger-source provider and a deterministic comparison key while preserving sealed Status/Relic ordering. The former Phase-8 prerequisite has been superseded by the current Card Expansion ordering amendment; removing that prerequisite does not authorize this slice.
 
 ## Phase 6UI-B — Advanced UX / Tooling
 
