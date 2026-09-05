@@ -127,6 +127,12 @@ struct SLAYTHESPIREDEMO_API FPresentationCardSnapshot
 	ECardType CardType = ECardType::Attack;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardRarity Rarity = ECardRarity::Common;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
+	ECardColor CardColor = ECardColor::Red;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Card")
 	ECardTargetType TargetType = ECardTargetType::None;
 
 	// Stable plain semantic description retained for historical identity checks.
