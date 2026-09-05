@@ -24,7 +24,7 @@ Production Card Expansion:
 ACTIVE
 
 Wave 1A — Exhaust Fact Surface:
-DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED
+DESIGN LOCKED / IMPLEMENTATION IN PROGRESS / VALIDATION PENDING
 ```
 
 ## Current branch
@@ -33,7 +33,7 @@ DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED
 main
 ```
 
-Wave 1A planning/documentation was merged into `main`. Current implementation work must continue directly on `main` unless the user explicitly changes the workflow.
+Wave 1A implementation continues directly on `main` unless the user explicitly changes the workflow.
 
 ---
 
@@ -51,7 +51,7 @@ Current ordering amendment:
 docs/IroncladCardArchitecturePlanWave1Amendment.md
 ```
 
-Current next-active dedicated authority:
+Current Wave 1A dedicated authority:
 
 ```text
 docs/CardExpansionWave1AExhaustFactSurface.md
@@ -86,7 +86,7 @@ The current ordering amendment supersedes stale scheduling language in older pla
 
 ## Current production card baseline
 
-Current production CardData set:
+Current production CardData set remains 6 assets:
 
 ```text
 Attack
@@ -102,9 +102,9 @@ Power
 - Inflame
 ```
 
-These six are existing baseline content and must not be recreated as part of Wave 1A.
+Seeing Red is the planned Wave 1A production validation asset and is not yet counted in this baseline until the `.uasset` is authored and validated.
 
-Ordinary upgrade support for current typed Damage / Block / Draw / ApplyStatus effect fields is already sealed. Do not reopen the old Foundation-0 upgrade design.
+Ordinary upgrade support for current typed Damage / Block / Draw / ApplyStatus effect fields is already sealed. Wave 1A adds the narrow typed GainEnergy CardEffect adapter without reopening the upgrade model.
 
 ---
 
@@ -112,7 +112,7 @@ Ordinary upgrade support for current typed Damage / Block / Draw / ApplyStatus e
 
 Do not use “Exhaust is implemented” without qualification.
 
-### Existing: self-exhaust after play
+### Existing before Wave 1A: self-exhaust after play
 
 ```text
 UCardData::DefaultDestination = Exhaust
@@ -121,19 +121,29 @@ UCardData::DefaultDestination = Exhaust
 → PlayArea → ExhaustPile authoritative commit
 ```
 
-The zone mutation already exists.
+### Wave 1A source implementation now in progress
 
-### Missing: exact CardExhausted gameplay fact
-
-Current `BattleEvent` surface does not yet expose `CardExhausted`.
-
-Wave 1A adds only:
+The current Wave 1A C++ work establishes:
 
 ```text
 successful self-exhaust commit
 → exact immutable FCardExhaustedEvent
+→ BattleEventDispatcher
+```
+
+Current producer ownership remains:
+
+```text
+UPlayCardAction
+→ explicitly passes battle-scoped Dispatcher + combatants
+→ UFinishCardPlayAction
+→ authoritative DeckRuntime destination commit
+→ committed CardZoneChanged Presentation record when available
+→ FCardExhaustedEvent from held Card + exact commit result
 → Dispatcher
 ```
+
+`DeckRuntime` remains unaware of Dispatcher/Event orchestration.
 
 ### Deferred: targeted exhaust
 
@@ -150,17 +160,28 @@ Targeted exhaust is not part of Wave 1A.
 
 ## Wave 1A locked producer boundary
 
-`DeckRuntime` remains mutation owner only.
-
 Required ordering:
 
 ```text
 FinishCardPlay / current card-play composition boundary
+→ validate Exhaust event wiring before Exhaust commit
 → request zone move commit
 → receive exact typed commit result
+→ existing committed Presentation record when available
 → if committed && ToZone == ExhaustPile
    → build FCardExhaustedEvent from held Card + committed result
-   → dispatch
+   → dispatch with the current Presentation writer
+```
+
+Failure semantics:
+
+```text
+invalid Exhaust event wiring
+→ fault before Exhaust commit
+
+successful Exhaust commit + Dispatch failure
+→ RequestResolutionFault
+→ do not rollback committed Exhaust
 ```
 
 Forbidden:
@@ -170,9 +191,10 @@ DeckRuntime directly dispatches BattleEvent
 DefaultDestination == Exhaust → assume commit success
 dispatch before mutation
 CardId / DisplayName special case
+world/actor search for Dispatcher
 ```
 
-The event must describe a committed fact, not play intent.
+The event describes a committed fact, not play intent. Its scalar identity/zone fields come from the exact commit result; the runtime Card pointer comes from the producer's already-held Card reference.
 
 ---
 
@@ -184,16 +206,17 @@ Default validation card:
 Seeing Red
 ```
 
-Reason:
+Locked authored values:
 
 ```text
-Gain Energy
-+ self Exhaust
+BaseCost       = 1
+UpgradedCost   = 0
+BaseAmount     = 2
+UpgradedAmount = 2
+DefaultDestination = Exhaust
 ```
 
-This keeps the validation card independent of selection, targeted exhaust, multi-enemy, reactive Power and Card Trigger Source Expansion.
-
-`UGainEnergyAction` already exists; Wave 1A adds the narrow authored `UGainEnergyCardEffect` adapter required to construct it from typed Base/Upgraded values. Do not special-case Seeing Red in PlayCardAction or Energy owner code.
+`UGainEnergyAction` already exists. Wave 1A now adds `UGainEnergyCardEffect`, which only resolves typed Base/Upgraded authored values and builds the existing Action. It does not implement a fake ImmediatePreview operation and contains no Seeing Red/CardId branch.
 
 ---
 
@@ -228,49 +251,52 @@ Sentinel
 → future Card Trigger Source Expansion
 ```
 
-Do not merge these two mechanisms.
+Do not merge these mechanisms.
 
 ---
 
 ## Required Wave 1A gates
 
-Focused Automation target:
+Focused Automation source has been added under:
 
 ```text
-SlayTheSpireDemo.CardExpansion.Wave1A.ExhaustFact
+SlayTheSpireDemo.CardExpansion.Wave1A.ExhaustFact.*
+SlayTheSpireDemo.CardExpansion.Wave1A.GainEnergyCardEffect
 ```
 
-Minimum required checks:
+Required checks remain:
 
 ```text
 successful Exhaust commit → exactly one CardExhausted event
 exact exhausted runtime card identity preserved
-event payload fields match the exact committed mutation result
+event payload fields match the committed zone facts
 commit occurs before dispatch
+committed CardZoneChanged record precedes event observation when writer is available
 Discard destination → zero CardExhausted
 Removed destination → zero CardExhausted
-failed/rejected move → zero CardExhausted
-no duplicate event
+rejected replay → no duplicate event
 zero-listener CardExhausted is valid
 GainEnergy adapter resolves Base/Upgraded authored amount correctly
 GainEnergy preview argument matches the same effective amount
 ```
 
-If C++ changes, required:
+Because C++ changed, required before seal:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development Build PASS
+focused Wave 1A Automation PASS
 ```
 
-Production acceptance:
+Production acceptance still requires:
 
 ```text
-Seeing Red authored
+Seeing Red production asset authored
 → Gain Energy resolves normally
 → self-exhaust commits normally
 → existing Exhaust presentation remains correct
 → focused event evidence confirms exactly one CardExhausted
 → no resolution fault
+→ focused PIE PASS
 ```
 
 Do not rerun unrelated sealed CFV or Upgrade test suites unless Wave 1A actually changes those contracts.
@@ -281,7 +307,7 @@ Do not rerun unrelated sealed CFV or Upgrade test suites unless Wave 1A actually
 
 ```text
 Wave 1A — Exhaust Fact Surface
-→ NEXT ACTIVE SLICE
+→ IMPLEMENTATION IN PROGRESS / VALIDATION PENDING
 
 Wave 1B — Targeted Exhaust Primitive
 → FUTURE / NOT AUTHORIZED
@@ -310,14 +336,11 @@ Production Card Expansion
 Wave 1A design
 → LOCKED
 
-Wave 1A implementation
-→ NOT STARTED
+Wave 1A C++ source
+→ IMPLEMENTATION IN PROGRESS
+
+Wave 1A Build / Automation / production asset / PIE
+→ PENDING
 ```
 
-The next implementation work must follow:
-
-```text
-docs/CardExpansionWave1AExhaustFactSurface.md
-```
-
-Do not start Wave 1B/1C/1D, Card Trigger Source Expansion, multi-enemy or Phase 8 as part of Wave 1A.
+Continue only with Wave 1A validation and Seeing Red production authoring. Do not start Wave 1B/1C/1D, Card Trigger Source Expansion, multi-enemy or Phase 8 as part of this slice.
