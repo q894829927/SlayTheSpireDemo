@@ -42,17 +42,11 @@ bool FCFVVisualResolverTest::RunTest(const FString& Parameters)
 	UTexture2D* CommonBanner = MakeTexture();
 	UTexture2D* UncommonBanner = MakeTexture();
 	UTexture2D* RareBanner = MakeTexture();
-	UTexture2D* TypeLeft = MakeTexture();
-	UTexture2D* TypeCenter = MakeTexture();
-	UTexture2D* TypeRight = MakeTexture();
 
 	Config.CommonStyle.AttackFrame = MakeRegion(CommonAttackFrame);
 	Config.CommonStyle.SkillFrame = MakeRegion(CommonSkillFrame);
 	Config.CommonStyle.PowerFrame = MakeRegion(CommonPowerFrame);
 	Config.CommonStyle.Banner = MakeRegion(CommonBanner);
-	Config.CommonStyle.TypeLeft = TypeLeft;
-	Config.CommonStyle.TypeCenter = TypeCenter;
-	Config.CommonStyle.TypeRight = TypeRight;
 	Config.UncommonStyle.Banner = MakeRegion(UncommonBanner);
 	Config.RareStyle.Banner = MakeRegion(RareBanner);
 
@@ -152,15 +146,6 @@ bool FCFVVisualResolverTest::RunTest(const FString& Parameters)
 			Config);
 		TestTrue(TEXT("Semantic rarity selects expected visual rarity style"), Resolved.BannerRegion.Texture.Get() == RarityCase.Banner);
 	}
-
-	const FResolvedCardFaceStyle CommonResolved = ResolveCardFaceStyle(
-		ECardColor::Red,
-		ECardType::Attack,
-		ECardRarity::Common,
-		Config);
-	TestTrue(TEXT("TypeLeft comes from shared rarity style"), CommonResolved.TypeLeft == TypeLeft);
-	TestTrue(TEXT("TypeCenter comes from shared rarity style"), CommonResolved.TypeCenter == TypeCenter);
-	TestTrue(TEXT("TypeRight comes from shared rarity style"), CommonResolved.TypeRight == TypeRight);
 
 	FCardFaceStyleConfig MissingColorConfig = Config;
 	MissingColorConfig.ColorStyles.Empty();
