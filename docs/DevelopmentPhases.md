@@ -15,7 +15,7 @@ This document records project progress, implementation history and durable phase
 - **Phase 7 Relics 7A–7F are complete, validated and sealed.** Current status authority is summarized in `docs/CODEX_GOAL_CHECKPOINT.md`; individual evidence remains in the dedicated Phase 7 implementation/validation documents.
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
 - **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
-- **Card Face Visual Style (CFV) has a revised STS-reference design; implementation is not authorized.** Authority: `docs/CardFaceVisualStyleImplementation.md`. This is a bounded Native card-face presentation initiative following the sealed upgrade model.
+- **Card Face Visual Style (CFV) is DESIGN LOCKED / IMPLEMENTATION NOT AUTHORIZED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The locked model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
 - **Production Card Expansion authoring is unblocked but not started; no new implementation is authorized.** Phase 8 remains deferred and is not its prerequisite.
 
 ## Phase 1 — Minimal Combat Loop
@@ -277,13 +277,13 @@ The user removed Phase 8 as a prerequisite for Card Expansion. The upgrade found
 
 ## Card Face Visual Style
 
-Status: **DESIGN REVISED — STS CARD-FACE REFERENCE / IMPLEMENTATION NOT AUTHORIZED**
+Status: **DESIGN LOCKED / IMPLEMENTATION NOT AUTHORIZED**
 
 Authority: `docs/CardFaceVisualStyleImplementation.md`.
 
-The requested design uses the supplied Strike reference: red card body, overlapping top-left cost orb and title banner, type-specific portrait/frame geometry, type plate at the portrait lower edge, and a lower description area. Semantic Rarity propagates through current and historical frozen views; the Native card resolves visual style and layout from class-default configuration. Upgrade state remains orthogonal.
+The locked CFV model keeps `CardType`, `CardRarity`, `CardColor` and Upgrade State orthogonal. `CardColor` is semantic card metadata rather than character identity; Rarity remains shared across colors/classes; `CardType` derives a Presentation-only Attack/Skill/Power visual shape. Current and historical frozen card views carry Rarity and CardColor, while the Native card consumes those frozen facts through a pure resolver and a narrow `UCardFaceStyleSet` Presentation configuration asset.
 
-The revision specifies exact 512 texture package mappings, portrait Alpha alignment, optional decorative bindings, Widget application tests and focused Designer/production-map PIE acceptance. These are planned contracts, not completed implementation or validation. The current request authorizes documentation revision only; do not automatically begin CFV-1 or card expansion.
+This slice only requires complete production authoring for the existing Red style plus shared rarity/layout assets. Green / Blue / Purple / Colorless / Curse configuration is intentionally incremental for future confirmed multi-class content. Exact 512 texture mappings, trimmed placement ownership, optional decorative bindings, Widget application tests and focused production-map visual acceptance are locked planned contracts. No CFV implementation or validation has started; CFV-1 still requires explicit authorization.
 
 ## Card Trigger Source Expansion
 
