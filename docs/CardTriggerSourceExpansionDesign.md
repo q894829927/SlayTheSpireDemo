@@ -259,5 +259,10 @@ new Presentation ownership
 DESIGN ONLY.
 IMPLEMENTATION NOT AUTHORIZED.
 
-Do not implement this slice before Phase 8 is COMPLETE / VALIDATED / SEALED unless the user explicitly changes the ordering.
+The former Phase-8 prerequisite has been superseded by:
+docs/IroncladCardArchitecturePlanWave1Amendment.md
+
+Card Trigger Source Expansion remains independently unauthorized.
+Implement only when an explicitly authorized Card-owned trigger consumer
+requires it.
 ```

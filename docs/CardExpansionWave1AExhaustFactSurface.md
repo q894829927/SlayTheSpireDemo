@@ -137,7 +137,7 @@ FinishCardPlay / current card-play composition boundary
 → request PlayArea → configured destination commit
 → receive exact typed zone-move commit result
 → if commit succeeded AND ToZone == ExhaustPile
-   → build immutable FCardExhaustedEvent from committed result
+   → build immutable FCardExhaustedEvent from held Card + committed result
    → dispatch
 → otherwise
    → no CardExhausted event
@@ -149,7 +149,7 @@ FinishCardPlay / current card-play composition boundary
 zone mutation
 → commit result says Exhaust succeeded
 → existing committed Presentation record when available
-→ construct immutable event from the same commit result
+→ construct immutable event from held Card + the same commit result
 → dispatch event
 ```
 
@@ -169,6 +169,45 @@ DefaultDestination == Exhaust
 → assume success
 → dispatch without checking commit result
 ```
+
+Dispatch 沿用现有 `ShuffleDeckAction` contract，显式传入当前 resolution 的 Presentation writer：
+
+```cpp
+Dispatcher->Dispatch(
+    Event,
+    Queue,
+    Combatants,
+    nullptr,
+    &PresentationWriter
+);
+```
+
+Wave 1A 没有 listener，但这样保证未来 Feel No Pain / Dark Embrace 等 reaction action 能自然继承当前 resolution 的 Presentation writer。
+
+Dispatch 失败策略 — locked：
+
+```text
+successful Exhaust commit
+→ Dispatch(CardExhausted) returns false
+→ RequestResolutionFault(...)
+→ Finish()
+→ return
+→ DO NOT rollback committed Exhaust
+```
+
+两类错误必须区分，不得混用同一处理：
+
+```text
+Dispatcher wiring invalid
+→ fail/fault BEFORE commit
+
+Dispatch itself fails after commit
+→ fault resolution
+→ committed Exhaust remains authoritative
+→ never rollback
+```
+
+这与 `ShuffleDeckAction` 的 sealed 语义一致（ShuffleDeckAction.cpp:103-114）：Gameplay commit 成功即为 authority；dispatch 失败只请求 ResolutionFault，绝不回滚已 committed 的事实。
 
 ### 3.3 Dispatcher propagation — explicit battle-scoped dependency
 
@@ -244,7 +283,7 @@ Wave 1A event 必须描述 **已经发生的 exact committed fact**，而不是�
 最低 payload：
 
 ```text
-CardInstance / exact runtime card identity
+Card / already-held UCardInstance* typed reference
 CardRuntimeId
 CardId / immutable definition identity when already available from committed subject
 FromZone = CommitResult.FromZone
@@ -262,7 +301,7 @@ ToZone   == ExhaustPile
 
 但这是 **当前 producer 的 committed result invariant**，不是 `FCardExhaustedEvent` payload schema 的硬编码来源。这样未来 targeted-exhaust 从 Hand / Discard 等合法来源产生同一事件时，无需改变 Event 类型。
 
-实现时优先直接携带能够唯一指向该战斗中具体 CardInstance 的 typed reference / snapshot；不要只靠 `CardId`。
+Event 必须直接携带能够唯一指向该战斗中具体 CardInstance 的 typed reference；不要只靠 `CardId`。
 
 不得加入尚无真实 consumer 的字段：
 
@@ -276,7 +315,30 @@ Power-specific data
 Sentinel-specific data
 ```
 
-如果现有 zone commit result 已提供足够的 exact runtime identity，则 event 从该 commit result 构建；不要在 dispatch 时重新遍历 Deck 查找卡牌。
+Event 构造来源 — locked：
+
+```text
+FCardExhaustedEvent
+← already-held UCardInstance* Card
++ exact FCardZoneMutationResult
+
+Card pointer
+→ from the producer's already-held Card reference
+
+CardRuntimeId / CardId
+FromZone / ToZone
+FromIndex / ToIndex if included
+→ copied from CommitResult
+```
+
+`FCardZoneMutationResult` 本身不携带 `UCardInstance*`；对象引用只来自 producer 已持有的 Card 引用，其余字段从 commit result 复制。构造前必须校验一致：
+
+```text
+Card->GetRuntimeId() == CommitResult.CardRuntimeId
+Card->GetCardId()    == CommitResult.CardId
+```
+
+禁止在 dispatch 时重新遍历 Deck 查找卡牌。
 
 ---
 
@@ -441,6 +503,8 @@ BuildPreviewArguments
 ValidatePreviewConfiguration
 ```
 
+`BuildImmediatePreviewOperations` 明确**不要求**。卡面基础动态数字由 `BuildPreviewArguments` 提供：`FBattleTextResolver::ResolveCardRichDescriptionForImmediatePreview` 先执行 `BuildCardDescriptionArguments` 构造基础卡面数字，`FImmediatePreviewOperation` 只用于覆盖随当前目标/战斗状态变化的数值（BattleTextResolver.cpp:356-385）。Seeing Red 的 “Gain 2 Energy” 由基础数字即可表达，当前没有即时 override 需求；现有 `UDrawCardEffect` 同样没有 override 该接口。不得为了接口完整制造没有真实语义的 fake preview operation。
+
 `UGainEnergyAction::Initialize(Battle, Amount)` 不获得升级语义；升级只在 CardEffect adapter 处通过 `Context.Card->IsUpgraded()` 解析为 effective authored amount，然后把普通整数 Amount 交给现有 Action。
 
 禁止：
@@ -455,7 +519,17 @@ Widget / Presentation 驱动 Energy mutation
 
 ### 9.2 Seeing Red Wave 1A boundary
 
-具体卡牌 base/upgraded 数值属于 content authoring；实现时应按项目现有 typed Base/Upgraded 字段 author，不新增第二套 upgrade representation。
+具体卡牌数值按 STS 原卡 author，使用项目现有 typed Base/Upgraded 字段，不新增第二套 upgrade representation：
+
+```text
+BaseCost       = 1
+UpgradedCost   = 0
+
+BaseAmount     = 2
+UpgradedAmount = 2
+```
+
+升级只改变费用 1 → 0，Energy 仍为 2。这正好体现已 sealed 的“没有 magic fallback，不变的字段也显式 author”原则：Energy 显式 `2/2`，费用显式 `1/0`。
 
 卡牌应：
 
@@ -496,6 +570,15 @@ SlayTheSpireDemo.CardExpansion.Wave1A.ExhaustFact
 [ ] one self-exhaust play cannot double-dispatch
 [ ] existing Discard / Removed destination behavior unchanged
 [ ] event may have zero listeners without fault
+```
+
+GainEnergy adapter 覆盖：
+
+```text
+[ ] base card builds GainEnergyAction with BaseAmount
+[ ] upgraded card builds GainEnergyAction with UpgradedAmount
+[ ] preview argument uses the same effective authored amount
+[ ] adapter contains no CardId-specific behavior
 ```
 
 测试优先使用 transient test CardData 验证 fact surface，不把生产 Seeing Red 资产作为 C++ contract test 的唯一 fixture。

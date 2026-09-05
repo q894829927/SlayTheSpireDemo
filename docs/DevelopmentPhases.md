@@ -15,8 +15,8 @@ This document records project progress, implementation history and durable phase
 - **Phase 7 Relics 7A–7F are complete, validated and sealed.** Current status authority is summarized in `docs/CODEX_GOAL_CHECKPOINT.md`; individual evidence remains in the dedicated Phase 7 implementation/validation documents.
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
 - **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
-- **Card Face Visual Style (CFV) is DESIGN LOCKED / IMPLEMENTATION NOT AUTHORIZED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The locked model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
-- **Production Card Expansion authoring is unblocked but not started; no new implementation is authorized.** Phase 8 remains deferred and is not its prerequisite.
+- **Card Face Visual Style (CFV) is COMPLETE / USER-ACCEPTED / SEALED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The sealed model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
+- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED. Authority: `docs/CardExpansionWave1AExhaustFactSurface.md`. Phase 8 remains deferred and is not its prerequisite.
 
 ## Phase 1 — Minimal Combat Loop
 
