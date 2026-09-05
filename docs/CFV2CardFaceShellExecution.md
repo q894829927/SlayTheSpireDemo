@@ -7,6 +7,7 @@ Status:
 ```text
 IMPLEMENTATION AUTHORIZED
 LOCAL UMG ASSET AUTHORING REQUIRED
+ATLAS TRIM EVIDENCE RECORDED
 VALIDATION PENDING
 NOT SEALED
 ```
@@ -181,22 +182,21 @@ These are canonical starting values. Adjust only when the actual shell requires 
 
 CFV-2 does not yet implement `FCardFaceTypeLayout`. Instead, author/measure the final geometry in Designer and record the results for CFV-3 migration.
 
-Starting references from the locked authority:
+The following texture placements are now exact atlas-derived values, not estimates:
 
 ```text
-Attack Frame ≈ Position (9, 31), Size (131, 92.5)
-Skill Frame  ≈ Position (9, 30.5), Size (131.5, 91.5)
-Power Frame  ≈ Position (7.5, 3), Size (134.5, 119)
+Attack Common Frame = Position (9.5, 31), Size (131, 92.5)
+Skill Common Frame  = Position (9, 30.5), Size (131.5, 91.5)
+Power Common Frame  = Position (7.5, 3), Size (134.5, 119)
 
-Banner       ≈ Position (-6, 5.5), Size (162, 38.5)
-Cost Orb     ≈ Position (-9.5, -8.5), Size (36, 35.5)
-
-TypePlate center ≈ (75, 115), height 11.5
+Common Banner = Position (-6, 5.5), Size (162, 38.5)
+Red Cost Orb  = Position (-9.5, -8.5), Size (36, 35.5)
+Card Shadow   = Position (0, 0), Size (150, 210)
 ```
 
-Do not treat these estimates as acceptance evidence. Final values must be read from the saved Designer result.
+They are valid trim-placement evidence for the cropped textures, but they still do not by themselves define the final `PortraitRect` or final `TypePlateRect`.
 
-### Final evidence — fill after authoring
+### Final Designer evidence — fill after local authoring
 
 ```text
 Attack PortraitRect = PENDING
@@ -223,13 +223,21 @@ Use:
 ```text
 OV_CardType
 ├─ HB_CardTypePlate
-│  ├─ Img_TypeLeft   = Auto, target width ≈ 7, height 11.5
+│  ├─ Img_TypeLeft   = Auto, target width 7, height 11.5
 │  ├─ Img_TypeCenter = Fill, height 11.5
-│  └─ Img_TypeRight  = Auto, target width ≈ 7.5, height 11.5
+│  └─ Img_TypeRight  = Auto, target width 7.5, height 11.5
 └─ Txt_CardType
 ```
 
-`OV_CardType` is the future owner of `TypePlateRect`; bottom plate and text must move together.
+Atlas-derived Common-piece placement reference on the 150 × 210 canonical body:
+
+```text
+common_left   = Position (61, 109.5), Size (7, 11.5)
+common_center = Position (67.5, 109.5), Size (16, 11.5)
+common_right  = Position (83, 109.5), Size (7.5, 11.5)
+```
+
+These three values describe the trimmed source pieces. `OV_CardType` remains the future owner of the final semantic `TypePlateRect`, so the center section may expand in the WBP to fit the type label; do not treat the summed source width as the final wrapper width without Designer evidence.
 
 Do not create separate Red/Green/Blue type-plate geometry.
 
@@ -237,34 +245,35 @@ Do not create separate Red/Green/Blue type-plate geometry.
 
 ## 8. Texture trim placement evidence
 
-CFV-2 may use the existing cropped CardUI textures as visual guides for shell measurement, but it does not establish runtime selection logic.
-
-For each used 512-cropped texture, record canonical placement using the locked atlas conversion rule:
+The locked conversion is:
 
 ```text
-Source canvas = 512 × 512
 Canonical body origin O = (106, 46)
-Canonical body size   = (300, 420)
-Uniform scale S       = 0.5
+Uniform scale S = 0.5
 
 TrimTopLeft = (offset.x, orig.height - offset.y - size.height)
 LocalPosition = (TrimTopLeft - O) * S
-LocalSize     = size * S
+LocalSize = size * S
 ```
 
-Evidence table:
+The current 512 atlas entries give:
 
-| Layer | Texture | Final Position | Final Size | Status |
-|---|---|---:|---:|---|
-| Shadow | `card_shadow` | PENDING | PENDING | PENDING |
-| Red Attack Background guide | `bg_attack_red` | PENDING | PENDING | PENDING |
-| Red Skill Background guide | `bg_skill_red` | PENDING | PENDING | PENDING |
-| Red Power Background guide | `bg_power_red` | PENDING | PENDING | PENDING |
-| Common Attack Frame guide | `frame_attack_common` | PENDING | PENDING | PENDING |
-| Common Skill Frame guide | `frame_skill_common` | PENDING | PENDING | PENDING |
-| Common Power Frame guide | `frame_power_common` | PENDING | PENDING | PENDING |
-| Common Banner guide | `banner_common` | PENDING | PENDING | PENDING |
-| Red Cost Orb guide | `card_red_orb` | PENDING | PENDING | PENDING |
+| Layer | Texture | Atlas size / offset | Canonical Position | Canonical Size | Evidence |
+|---|---|---|---:|---:|---|
+| Shadow | `card_shadow` | `300×420 / (106,46)` | `(0,0)` | `150×210` | RECORDED |
+| Red Attack Background guide | `bg_attack_red` | `302×419 / (106,46)` | `(0,0.5)` | `151×209.5` | RECORDED |
+| Red Skill Background guide | `bg_skill_red` | `299×419 / (106,46)` | `(0,0.5)` | `149.5×209.5` | RECORDED |
+| Red Power Background guide | `bg_power_red` | `299×419 / (106,46)` | `(0,0.5)` | `149.5×209.5` | RECORDED |
+| Common Attack Frame guide | `frame_attack_common` | `262×185 / (125,219)` | `(9.5,31)` | `131×92.5` | RECORDED |
+| Common Skill Frame guide | `frame_skill_common` | `263×183 / (124,222)` | `(9,30.5)` | `131.5×91.5` | RECORDED |
+| Common Power Frame guide | `frame_power_common` | `269×238 / (121,222)` | `(7.5,3)` | `134.5×119` | RECORDED |
+| Common Banner guide | `banner_common` | `324×77 / (94,378)` | `(-6,5.5)` | `162×38.5` | RECORDED |
+| Red Cost Orb guide | `card_red_orb` | `72×71 / (87,412)` | `(-9.5,-8.5)` | `36×35.5` | RECORDED |
+| Common Type Left | `common_left` | `14×23 / (228,224)` | `(61,109.5)` | `7×11.5` | RECORDED |
+| Common Type Center | `common_center` | `32×23 / (241,224)` | `(67.5,109.5)` | `16×11.5` | RECORDED |
+| Common Type Right | `common_right` | `15×23 / (272,224)` | `(83,109.5)` | `7.5×11.5` | RECORDED |
+
+The Red background and shadow source entries use `orig = 512×512`, so the locked body-origin conversion applies directly.
 
 Do not use `MatchSize` / native texture pixel size as card layout authority.
 
@@ -272,7 +281,7 @@ Do not use `MatchSize` / native texture pixel size as card layout authority.
 
 ## 9. Required compile/save gate
 
-After the shell has been authored:
+After the shell has been authored locally in UE5.8:
 
 ```text
 WBP_BattleCard_Native
@@ -301,7 +310,7 @@ Do not mark CFV-2 complete until all are true:
 [ ] no unintended parent clipping
 [ ] final Attack / Skill / Power PortraitRect recorded
 [ ] final Attack / Skill / Power TypePlateRect recorded
-[ ] used texture trim placements recorded
+[x] used 512 texture trim placements recorded
 [ ] WBP Compile PASS
 [ ] WBP Save PASS
 [ ] close/reopen structure check PASS
