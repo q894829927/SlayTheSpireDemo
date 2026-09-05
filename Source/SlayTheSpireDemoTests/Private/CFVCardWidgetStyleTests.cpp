@@ -25,9 +25,6 @@ namespace CFVCardWidgetStyle
 		TObjectPtr<UImage> Background;
 		TObjectPtr<UImage> Frame;
 		TObjectPtr<UImage> Banner;
-		TObjectPtr<UImage> TypeLeft;
-		TObjectPtr<UImage> TypeCenter;
-		TObjectPtr<UImage> TypeRight;
 		TObjectPtr<UImage> CostOrb;
 	};
 
@@ -91,16 +88,10 @@ namespace CFVCardWidgetStyle
 		TextureCanvas->AddChildToCanvas(Surface.Banner);
 		TextureCanvas->AddChildToCanvas(Surface.CostOrb);
 
-		Surface.TypeLeft = NewObject<UImage>(Surface.Card);
-		Surface.TypeCenter = NewObject<UImage>(Surface.Card);
-		Surface.TypeRight = NewObject<UImage>(Surface.Card);
 		Surface.Card->ConfigureDecorative(
 			Surface.Background,
 			Surface.Frame,
 			Surface.Banner,
-			Surface.TypeLeft,
-			Surface.TypeCenter,
-			Surface.TypeRight,
 			Surface.CostOrb);
 		return Surface;
 	}
@@ -164,27 +155,15 @@ bool FCFVCardWidgetStyleTest::RunTest(const FString& Parameters)
 	UTexture2D* CommonSkillFrame = MakeTexture();
 	UTexture2D* CommonPowerFrame = MakeTexture();
 	UTexture2D* CommonBanner = MakeTexture();
-	UTexture2D* CommonLeft = MakeTexture();
-	UTexture2D* CommonCenter = MakeTexture();
-	UTexture2D* CommonRight = MakeTexture();
 	StyleSet->Config.CommonStyle.AttackFrame = MakeRegion(CommonAttackFrame, FVector2D(19.0, 62.0), FVector2D(262.0, 185.0));
 	StyleSet->Config.CommonStyle.SkillFrame = MakeRegion(CommonSkillFrame, FVector2D(18.0, 61.0), FVector2D(263.0, 183.0));
 	StyleSet->Config.CommonStyle.PowerFrame = MakeRegion(CommonPowerFrame, FVector2D(15.0, 6.0), FVector2D(269.0, 238.0));
 	StyleSet->Config.CommonStyle.Banner = MakeRegion(CommonBanner, FVector2D(-12.0, 11.0), FVector2D(324.0, 77.0));
-	StyleSet->Config.CommonStyle.TypeLeft = CommonLeft;
-	StyleSet->Config.CommonStyle.TypeCenter = CommonCenter;
-	StyleSet->Config.CommonStyle.TypeRight = CommonRight;
 
 	UTexture2D* RareAttackFrame = MakeTexture();
 	UTexture2D* RareBanner = MakeTexture();
-	UTexture2D* RareLeft = MakeTexture();
-	UTexture2D* RareCenter = MakeTexture();
-	UTexture2D* RareRight = MakeTexture();
 	StyleSet->Config.RareStyle.AttackFrame = MakeRegion(RareAttackFrame, FVector2D(19.0, 62.0), FVector2D(262.0, 185.0));
 	StyleSet->Config.RareStyle.Banner = MakeRegion(RareBanner, FVector2D(-12.0, 11.0), FVector2D(324.0, 77.0));
-	StyleSet->Config.RareStyle.TypeLeft = RareLeft;
-	StyleSet->Config.RareStyle.TypeCenter = RareCenter;
-	StyleSet->Config.RareStyle.TypeRight = RareRight;
 
 	FProbeSurface Probe = MakeProbe(true);
 	if (!TestNotNull(TEXT("Widget style probe exists"), Probe.Card.Get()))
@@ -205,9 +184,6 @@ bool FCFVCardWidgetStyleTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Red Rare Attack resolves Rare attack frame"), GetImageResource(Probe.Frame) == RareAttackFrame);
 	TestTrue(TEXT("Red Rare Attack resolves Rare banner"), GetImageResource(Probe.Banner) == RareBanner);
 	TestTrue(TEXT("Red Rare Attack resolves Red orb"), GetImageResource(Probe.CostOrb) == RedOrb);
-	TestTrue(TEXT("Rare type-left resolves"), GetImageResource(Probe.TypeLeft) == RareLeft);
-	TestTrue(TEXT("Rare type-center resolves"), GetImageResource(Probe.TypeCenter) == RareCenter);
-	TestTrue(TEXT("Rare type-right resolves"), GetImageResource(Probe.TypeRight) == RareRight);
 	TestTrue(TEXT("Frozen CardArt remains independent of StyleSet"), GetImageResource(Probe.Art) == ArtA);
 	TestEqual(TEXT("Background is non-hit-testable when visible"), Probe.Background->GetVisibility(), ESlateVisibility::HitTestInvisible);
 
