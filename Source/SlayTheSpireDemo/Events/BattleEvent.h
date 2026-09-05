@@ -32,8 +32,8 @@ struct FCardExhaustedEvent
 	UCardInstance* Card = nullptr;
 	int32 CardRuntimeId = INDEX_NONE;
 	FName CardId = NAME_None;
-	ECardZone FromZone = ECardZone::PlayArea;
-	ECardZone ToZone = ECardZone::ExhaustPile;
+	ECardZone FromZone{};
+	ECardZone ToZone{};
 };
 
 struct FBattleEvent
