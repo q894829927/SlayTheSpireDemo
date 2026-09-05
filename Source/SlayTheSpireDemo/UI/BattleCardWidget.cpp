@@ -98,23 +98,6 @@ namespace
 		}
 		Image->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
-
-	void ApplyFixedTexture(UImage* Image, UTexture2D* Texture)
-	{
-		if (!IsValid(Image))
-		{
-			return;
-		}
-
-		if (!IsValid(Texture))
-		{
-			ClearImage(Image, false);
-			return;
-		}
-
-		Image->SetBrushFromTexture(Texture, false);
-		Image->SetVisibility(ESlateVisibility::HitTestInvisible);
-	}
 }
 
 void UBattleCardWidget::NativeOnInitialized()
@@ -309,9 +292,6 @@ void UBattleCardWidget::RefreshVisualStyle()
 	ApplyTextureRegion(Img_CardFrame, Resolved.FrameRegion);
 	ApplyTextureRegion(Img_CardBanner, Resolved.BannerRegion);
 	ApplyTextureRegion(Img_CostOrb, Resolved.CostOrbRegion);
-	ApplyFixedTexture(Img_TypeLeft, Resolved.TypeLeft);
-	ApplyFixedTexture(Img_TypeCenter, Resolved.TypeCenter);
-	ApplyFixedTexture(Img_TypeRight, Resolved.TypeRight);
 }
 
 void UBattleCardWidget::ClearDecorativeVisualStyle()
@@ -320,9 +300,6 @@ void UBattleCardWidget::ClearDecorativeVisualStyle()
 	ClearImage(Img_CardFrame, true);
 	ClearImage(Img_CardBanner, true);
 	ClearImage(Img_CostOrb, true);
-	ClearImage(Img_TypeLeft, false);
-	ClearImage(Img_TypeCenter, false);
-	ClearImage(Img_TypeRight, false);
 }
 
 void UBattleCardWidget::HandleCardClicked()
