@@ -18,10 +18,10 @@ Card Upgrade STS-Style Refactor:
 COMPLETE / VALIDATED / SEALED
 
 Card Face Visual Style (CFV):
-DESIGN LOCKED / CFV-1 IMPLEMENTATION AUTHORIZED
+DESIGN LOCKED
 
 CFV-1 Card Metadata Contract:
-SOURCE IMPLEMENTED / VALIDATION PENDING / NOT SEALED
+COMPLETE / VALIDATED / SEALED
 
 CFV-2+:
 NOT AUTHORIZED
@@ -36,13 +36,19 @@ UNBLOCKED / NOT STARTED / NO NEW IMPLEMENTATION AUTHORIZED
 docs/CardFaceVisualStyleImplementation.md
 ```
 
-The user explicitly authorized CFV-1 on 2026-09-05. That authorization is limited to the locked CFV-1 Card Metadata Contract slice. CFV-2, Card Expansion, and later CFV slices still require separate explicit authorization.
+CFV-1 validation evidence:
+
+```text
+docs/CFV1Validation.md
+```
 
 Implementation branch:
 
 ```text
 cfv1-card-metadata-contract
 ```
+
+The user explicitly authorized CFV-1 on 2026-09-05 and subsequently reported all locked CFV-1 validation gates passing locally. CFV-1 is therefore sealed. CFV-2, Card Expansion, and later CFV slices still require separate explicit authorization.
 
 The sealed Card Upgrade authority remains:
 
@@ -94,9 +100,9 @@ Curse
 
 These remain explicit content-authoring values; the data model does not implicitly couple `ECardType::Curse` to `ECardColor::Curse`.
 
-## CFV-1 implemented source contract
+## CFV-1 sealed contract
 
-The implementation branch now carries:
+CFV-1 now permanently establishes:
 
 ```text
 ECardRarity
@@ -118,7 +124,18 @@ RichDescription intentionally excluded from generic continuity comparison
 
 `FCardReadView` remains unchanged; Rarity/CardColor are read through `Source.Card` / `UCardInstance` at the formal Hand freeze boundary.
 
-The focused CFV Automation test also directly exercises the Native exact-identity and Native frozen-enum validation paths. Therefore the conditional extra R8 identity gate is not required unless the focused CFV test itself fails in a way that specifically points to that historical path.
+Validation evidence reported PASS:
+
+```text
+SlayTheSpireDemoEditor Win64 Development Build
+SlayTheSpireDemo.CFV.CardMetadataContract
+SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged
+WBP_BattleCard_Native Compile + Save
+```
+
+The focused CFV test directly exercises Native exact identity, so the conditional extra R8 identity gate was not required.
+
+CFV-1 gates are sticky. Do not rerun them unless a later change directly invalidates a sealed contract.
 
 ## Locked visual architecture
 
@@ -179,7 +196,7 @@ TMap iteration fallback
 missing Green/Blue/etc. → Red fallback
 ```
 
-This slice only requires complete production authoring for `Red`. Green / Blue / Purple / Colorless / Curse configuration may remain absent until the corresponding confirmed future content enters production.
+This CFV plan only requires complete production authoring for `Red`. Green / Blue / Purple / Colorless / Curse configuration may remain absent until the corresponding confirmed future content enters production.
 
 ## Widget / degradation contract
 
@@ -233,42 +250,12 @@ Color does not own a separate layout. `OV_CardType` receives `TypePlateRect` so 
 ## CFV implementation slices
 
 ```text
-CFV-1 — Card Metadata Contract
-CFV-2 — Card Face Shell
-CFV-3 — StyleSet + Pure Resolver
-CFV-4 — Production StyleSet / Asset Authoring
-CFV-5 — Visual Acceptance
+CFV-1 — Card Metadata Contract        COMPLETE / VALIDATED / SEALED
+CFV-2 — Card Face Shell               NOT AUTHORIZED
+CFV-3 — StyleSet + Pure Resolver      NOT AUTHORIZED
+CFV-4 — Production StyleSet / Assets  NOT AUTHORIZED
+CFV-5 — Visual Acceptance             NOT AUTHORIZED
 ```
-
-Current active slice:
-
-```text
-CFV-1 — Card Metadata Contract
-```
-
-Its scope is limited to Rarity + CardColor semantic metadata, authoring validation, current/frozen/historical propagation, exact continuity updates, and focused Automation/Blueprint compile-save evidence. It does not include StyleSet implementation, card-face shell layout, texture authoring, or PIE.
-
-## CFV-1 remaining gates
-
-Run in this order and only once unless a gate fails and is directly invalidated by the fix:
-
-```text
-1. SlayTheSpireDemoEditor Win64 Development Build once
-2. SlayTheSpireDemo.CFV.CardMetadataContract once
-3. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once
-```
-
-The focused CFV test now directly exercises Native exact identity, so do not add the conditional R8 identity test by default.
-
-Do not automatically run full R8, Phase6R, A2D5, Shipping, broad scenario replay, or manual PIE for CFV-1.
-
-Blueprint asset gate after the reflected DTO change:
-
-```text
-Compile + Save WBP_BattleCard_Native
-```
-
-Only process another dependent Blueprint if UE explicitly reports it affected.
 
 ## Current stop point
 
@@ -278,12 +265,9 @@ Card Upgrade STS-Style Refactor
 
 Card Face Visual Style
 → DESIGN LOCKED
-→ CFV-1 IMPLEMENTATION AUTHORIZED
 
 CFV-1
-→ SOURCE IMPLEMENTED
-→ VALIDATION PENDING
-→ NOT SEALED
+→ COMPLETE / VALIDATED / SEALED
 
 CFV-2+
 → NOT AUTHORIZED
@@ -300,7 +284,7 @@ Production Card Expansion
 Next action:
 
 ```text
-RUN CFV-1 BUILD + FOCUSED AUTOMATION + WBP COMPILE/SAVE GATES
+WAIT FOR EXPLICIT USER AUTHORIZATION TO START CFV-2
 ```
 
-Do not begin CFV-2 until CFV-1 is validated/sealed and the user explicitly authorizes the next slice.
+Do not begin CFV-2, StyleSet implementation, card-face shell mutation, texture authoring, visual PIE, or Production Card Expansion until separately authorized.
