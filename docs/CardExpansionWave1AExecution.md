@@ -103,6 +103,12 @@ GainEnergy base/upgraded Gameplay amount
 GainEnergy base/upgraded preview amount
 ```
 
+## Validation availability at this source state
+
+No GitHub Actions run was automatically created for the current direct-to-main Wave 1A commits. Therefore this record does **not** claim a Build or Automation PASS from remote CI.
+
+Production `.uasset` files in this repository are tracked through Git LFS. `DA_Card_SeeingRed.uasset` must therefore be authored/saved through Unreal Editor in a workspace with Git LFS available; a text-only GitHub contents edit cannot produce the real production asset object.
+
 ## Still pending before seal
 
 No validation pass is claimed by this file yet.
