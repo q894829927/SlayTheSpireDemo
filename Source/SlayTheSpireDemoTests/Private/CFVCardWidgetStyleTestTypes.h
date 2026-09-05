@@ -36,17 +36,11 @@ public:
 		UImage* Background,
 		UImage* Frame,
 		UImage* Banner,
-		UImage* TypeLeft,
-		UImage* TypeCenter,
-		UImage* TypeRight,
 		UImage* CostOrb)
 	{
 		Img_CardBackground = Background;
 		Img_CardFrame = Frame;
 		Img_CardBanner = Banner;
-		Img_TypeLeft = TypeLeft;
-		Img_TypeCenter = TypeCenter;
-		Img_TypeRight = TypeRight;
 		Img_CostOrb = CostOrb;
 	}
 
