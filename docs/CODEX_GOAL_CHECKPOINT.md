@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Card Face Visual Style
 
-Last updated: **2026-09-05**
+Last updated: **2026-09-06**
 
 ## Current status
 
@@ -18,52 +18,51 @@ Card Upgrade STS-Style Refactor:
 COMPLETE / VALIDATED / SEALED
 
 Card Face Visual Style (CFV):
-DESIGN LOCKED
+COMPLETE / USER-ACCEPTED / SEALED
 
-CFV-1 Card Metadata Contract:
+CFV-1 — Card Metadata Contract:
 COMPLETE / VALIDATED / SEALED
 
-CFV-2 Card Face Shell:
-IMPLEMENTATION AUTHORIZED / ASSET AUTHORING IN PROGRESS / NOT SEALED
+CFV-2 — Card Face Shell:
+PREDECESSOR IMPLEMENTED; SEE EXECUTION RECORD
 
-CFV-3+:
-NOT AUTHORIZED
+CFV-3 — StyleSet + Pure Resolver:
+COMPLETE / VALIDATED / SEALED
 
-Production Card Authoring:
-UNBLOCKED / NOT STARTED / NO NEW IMPLEMENTATION AUTHORIZED
+CFV-4 — Production StyleSet / Asset Authoring:
+COMPLETE / USER-VALIDATED / SEALED
+
+CFV-5 — Visual Acceptance:
+COMPLETE / USER-ACCEPTED / SEALED
 ```
 
-## Current authority
+## Current authority and execution records
+
+Design authority:
 
 ```text
 docs/CardFaceVisualStyleImplementation.md
 ```
 
-CFV-1 validation evidence:
+Execution / validation records:
 
 ```text
 docs/CFV1Validation.md
+docs/CFV2CardFaceShellExecution.md
+docs/CFV3StyleSetResolverExecution.md
+docs/CFV4ProductionStyleSetExecution.md
+docs/CFV5VisualAcceptance.md
 ```
 
 Current implementation branch:
 
 ```text
-cfv2-card-face-shell
+cfv3-style-set-resolver
 ```
 
-The user explicitly authorized CFV-2 on 2026-09-05 after confirming CFV-1 had been fast-forwarded into `main`. CFV-2 authorization is limited to the locked Card Face Shell slice: canonical UMG shell construction plus geometry measurement/evidence. CFV-3 StyleSet/resolver work, CFV-4 production style authoring, CFV-5 visual acceptance, Card Expansion, and any later implementation remain separately gated.
+This checkpoint supersedes the earlier CFV-2-era and CFV-4-era authorization snapshots. Historical slice-specific evidence remains in the execution records above.
 
-The sealed Card Upgrade authority remains:
-
-```text
-docs/CardUpgradeSTSStyleRefactor.md
-```
-
-It is predecessor/background authority only and must not be reopened for CFV unless a concrete future requirement directly invalidates one of its locked contracts.
-
-## Locked CFV model
-
-Semantic / frozen axes:
+## Locked semantic model
 
 ```text
 CardType
@@ -72,12 +71,9 @@ CardColor
 Upgrade State
 ```
 
-Core rules:
+The axes remain orthogonal.
 
 ```text
-CardColor != character identity
-CardType / CardRarity / CardColor / bUpgraded remain orthogonal
-
 ECardColor:
 Red / Green / Blue / Purple / Colorless / Curse
 
@@ -86,67 +82,15 @@ Rarity    = Common
 CardColor = Red
 ```
 
-The defaults exist for backward-compatible serialization only. Production CardData must explicitly author its real metadata when it enters the CFV production-authoring slice.
+Migration defaults are serialization fallbacks only. Production content owns its explicit semantic metadata.
 
-Status / Curse standard production convention:
-
-```text
-Status
-→ CardType  = Status
-→ CardColor = Colorless
-
-Curse
-→ CardType  = Curse
-→ CardColor = Curse
-→ Rarity    = Curse
-```
-
-These remain explicit content-authoring values; the data model does not implicitly couple `ECardType::Curse` to `ECardColor::Curse`.
-
-## CFV-1 sealed contract
-
-CFV-1 permanently establishes:
-
-```text
-ECardRarity
-ECardColor
-UCardData.Rarity / CardColor
-UCardData::IsDataValid enum-domain validation
-UCardInstance::GetRarity / GetCardColor
-FPresentationCardSnapshot.Rarity / CardColor
-FBattleHUDCardView.Rarity / CardColor
-formal/current Hand freeze propagation
-historical snapshot propagation
-PresentationCardView mapper propagation
-Native frozen-payload validation
-Diagnostic frozen-payload validation
-Native exact continuity: bUpgraded + Rarity + CardColor
-Diagnostic exact continuity: bUpgraded + Rarity + CardColor
-RichDescription intentionally excluded from generic continuity comparison
-```
-
-`FCardReadView` remains unchanged; Rarity/CardColor are read through `Source.Card` / `UCardInstance` at the formal Hand freeze boundary.
-
-Validation evidence reported PASS:
-
-```text
-SlayTheSpireDemoEditor Win64 Development Build
-SlayTheSpireDemo.CFV.CardMetadataContract
-SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged
-WBP_BattleCard_Native Compile + Save
-```
-
-The focused CFV test directly exercises Native exact identity, so the conditional extra R8 identity gate was not required.
-
-CFV-1 gates are sticky. Do not rerun them unless a later change directly invalidates a sealed contract.
-
-## Locked visual architecture
+## Locked visual resolver model
 
 ```text
 CardType
 → ECardFaceVisualShape
-   Attack / Skill / Power
-   Status / Curse → Skill visual shape
+→ Attack / Skill / Power
+→ Status / Curse use Skill visual shape
 
 CardColor + VisualShape
 → Background
@@ -155,204 +99,154 @@ CardColor
 → CostOrb
 
 CardRarity
-→ Common / Uncommon / Rare visual rarity
+→ CommonVisual / UncommonVisual / RareVisual
 
 VisualRarity + VisualShape
 → Frame
 
 VisualRarity
-→ Banner / TypePlate
+→ Banner
 
 bUpgraded
-→ "+" / #7FFF00
+→ display-name "+" / upgraded title color
 ```
 
-`FallbackFrame` is not a normal Status/Curse production path.
-
-## Style configuration boundary
-
-`UCardFaceStyleSet` is a narrow authored Presentation configuration asset, not a Registry, Service, singleton, Gameplay definition, runtime discovery system, or universal skin framework.
-
-Ownership:
+The current sealed production shell does **not** use:
 
 ```text
-WBP_BattleCard_Native
-→ EditDefaultsOnly CardFaceStyleSet reference
-
-UCardFaceStyleSet
-→ ColorStyles
-→ shared RarityStyles
-→ shared Attack/Skill/Power TypeLayouts
-→ trimmed TextureRegion placements
-
-pure resolver
-→ consumes frozen DTO metadata + StyleSet.Config
+TypeLeft
+TypeCenter
+TypeRight
+CardShadow
 ```
 
-Forbidden:
+Rarity no longer owns a TypePlate image path. `Txt_CardType` remains the card-type visual inside fixed Designer geometry.
+
+## CFV-3 sealed runtime boundary
+
+`UCardFaceStyleSet` remains a narrow authored Presentation configuration asset.
+
+The pure resolver consumes frozen card-face metadata plus the StyleSet and does not perform:
 
 ```text
-CardData / CardInstance → StyleSet reference
-CardColor → hard-coded LoadObject path
-Global Visual Registry
+Gameplay query
+BattleManager query
+LoadObject
+texture pixel parsing
 TMap iteration fallback
-missing Green/Blue/etc. → Red fallback
+CardId branch
+missing ColorStyle → Red fallback
 ```
 
-This CFV plan only requires complete production authoring for `Red`. Green / Blue / Purple / Colorless / Curse configuration may remain absent until the corresponding confirmed future content enters production.
+`UBattleCardWidget` consumes the resolved presentation only. Missing decorative configuration may degrade/hide decorative surfaces but must not disable core DTO content or input behavior.
 
-## Widget / degradation contract
-
-Core fail-closed surface remains:
+CFV-3 focused validation is sealed:
 
 ```text
-Btn_Card
-Txt_CardName
-Txt_Cost
-Txt_CardDescription
-Txt_CardType
-Img_CardArt
+SlayTheSpireDemoEditor Win64 Development Build      PASS
+SlayTheSpireDemo.CFV.VisualResolver                 PASS
+SlayTheSpireDemo.CFV.WidgetStyle                    PASS
+Production card Widget modification / compile-save PASS
 ```
 
-Decorative / optional presentation surface:
+Do not repeat those gates unless a later change modifies the resolver contract, reflected StyleSet layout, or reflected Widget bindings.
+
+## CFV-4 production StyleSet state
+
+Production asset:
 
 ```text
-Img_CardShadow
-Img_CardBackground
-Img_CardFrame
-Img_CardBanner
-Img_TypeLeft
-Img_TypeCenter
-Img_TypeRight
-Img_CostOrb
-OV_CardType
+DA_CardFaceStyleSet
 ```
 
-Missing decorative controls, missing textures, an unconfigured valid ColorStyle, or `CardFaceStyleSet == nullptr` may degrade/hide visuals but must not disable Gameplay/input.
-
-Null StyleSet specifically keeps core DTO refresh, frozen CardArt and card request behavior functional while clearing/hiding decorative CFV state.
-
-## Geometry ownership
+Authored configuration:
 
 ```text
-WBP Designer
-→ fixed 150 × 210 canonical card geometry
-→ fixed Name / Cost / Description / interaction geometry
+ColorStyles[Red]
+├─ AttackBackground
+├─ SkillBackground
+├─ PowerBackground
+└─ CostOrb
 
-FCardFaceTypeLayout
-→ PortraitRect
-→ TypePlateRect
+CommonStyle
+├─ Banner
+├─ AttackFrame
+├─ SkillFrame
+└─ PowerFrame
 
-FCardFaceTextureRegion.Placement
-→ sole trimmed texture placement authority
-→ sole Frame placement authority
+UncommonStyle
+├─ Banner
+├─ AttackFrame
+├─ SkillFrame
+└─ PowerFrame
 ```
 
-Color does not own a separate layout. `OV_CardType` receives `TypePlateRect` so the type plate and type text move as one presentation unit.
-
-## CFV-2 active shell contract
-
-CFV-2 may modify only the production card Widget shell and record geometry evidence. The current saved baseline is the 16-control `WBP_BattleCard_Native` documented in `docs/WBPSavedBlueprintSnapshot.md`.
-
-Target shell:
+Production Widget assignment:
 
 ```text
-SB_Card
-└─ Btn_Card
-   └─ OV_Card
-      └─ CN_CardFace
-         ├─ Img_CardShadow
-         ├─ Img_CardBackground
-         ├─ Img_CardArt
-         ├─ Img_CardFrame
-         ├─ Img_CardBanner
-         ├─ SB_CardName
-         │  └─ Txt_CardName
-         ├─ OV_CardType
-         │  ├─ HB_CardTypePlate
-         │  │  ├─ Img_TypeLeft
-         │  │  ├─ Img_TypeCenter
-         │  │  └─ Img_TypeRight
-         │  └─ Txt_CardType
-         ├─ Img_CostOrb
-         ├─ Txt_Cost
-         └─ Txt_CardDescription
+Class Defaults
+→ Battle HUD | Card | Style
+→ Card Face Style Set
+→ DA_CardFaceStyleSet
 ```
 
-CFV-2 rules:
+User-reported focused PIE inspection is complete for the currently authored production set.
+
+Representative coverage:
 
 ```text
-root remains 150 × 210
-move existing core widgets where practical; do not recreate merely to rename
-preserve core BindWidget names and identity
-new decorative surfaces are presentation-only
-no StyleSet implementation
-no resolver implementation
-no CardColor/Rarity runtime texture selection
-no production texture authoring gate
-no visual PIE acceptance
+Strike / Pommel Strike / Twin Strike → Attack path
+Defend                              → Skill path
+Inflame                             → Power path
+Uppercut / Inflame                  → Uncommon visual path
 ```
 
-Geometry evidence to record before CFV-2 can seal:
+Configured but not independently covered:
 
 ```text
-Attack PortraitRect
-Skill PortraitRect
-Power PortraitRect
-Attack/Skill/Power TypePlateRect
-used 512-cropped texture trim placements
-final ZOrder / hit-test arrangement
+CommonStyle.PowerFrame      CONFIGURED / NOT COVERED
+UncommonStyle.SkillFrame    CONFIGURED / NOT COVERED
 ```
 
-The authority's initial positions are authoring starting points, not PASS evidence.
+These two coverage gaps remain accurately labeled and do not reopen the accepted CFV production scope.
 
-## CFV implementation slices
+## CFV-5 final visual acceptance
+
+The user explicitly reported that no current visual or functional issue has been detected and accepted the production card-face result.
+
+Acceptance is recorded in:
 
 ```text
-CFV-1 — Card Metadata Contract        COMPLETE / VALIDATED / SEALED
-CFV-2 — Card Face Shell               AUTHORIZED / IN PROGRESS
-CFV-3 — StyleSet + Pure Resolver      NOT AUTHORIZED
-CFV-4 — Production StyleSet / Assets  NOT AUTHORIZED
-CFV-5 — Visual Acceptance             NOT AUTHORIZED
+docs/CFV5VisualAcceptance.md
 ```
+
+CFV-5 does not claim new Build or Automation evidence beyond already sealed predecessor gates. No CFV-3 gate was rerun solely for final visual acceptance.
 
 ## Current stop point
 
 ```text
-Card Upgrade STS-Style Refactor
-→ COMPLETE / VALIDATED / SEALED
-
-Card Face Visual Style
-→ DESIGN LOCKED
-
 CFV-1
 → COMPLETE / VALIDATED / SEALED
 
 CFV-2
-→ IMPLEMENTATION AUTHORIZED
-→ ASSET AUTHORING IN PROGRESS
-→ NOT VALIDATED
-→ NOT SEALED
+→ predecessor implementation recorded
 
-CFV-3+
-→ NOT AUTHORIZED
+CFV-3
+→ COMPLETE / VALIDATED / SEALED
 
-Phase 8
-→ remains deferred
+CFV-4
+→ COMPLETE / USER-VALIDATED / SEALED
+
+CFV-5
+→ COMPLETE / USER-ACCEPTED / SEALED
+
+Card Face Visual Style
+→ COMPLETE / USER-ACCEPTED / SEALED
 
 Production Card Expansion
-→ technically unblocked
-→ NOT STARTED
-→ no new card implementation authorized
+→ no new authorization implied by this checkpoint
 ```
 
-Next action:
+There is no remaining CFV implementation slice.
 
-```text
-AUTHOR WBP_BattleCard_Native CARD-FACE SHELL
-→ Compile + Save
-→ capture final shell / geometry evidence
-→ STOP before CFV-3
-```
-
-Do not begin StyleSet implementation, resolver code, production texture authoring, visual PIE, or Production Card Expansion during CFV-2.
+Future card content should consume the sealed metadata / resolver / StyleSet / Widget contract. Reopen only the narrow affected boundary if a concrete later requirement invalidates it; do not redesign CFV merely because new cards or additional CardColor assets are authored.
