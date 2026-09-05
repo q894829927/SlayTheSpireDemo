@@ -27,6 +27,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Presentation")
 	TObjectPtr<UTexture2D> CardArt = nullptr;
 
+	// Backward-compatible serialization defaults only. Production content must
+	// explicitly author its semantic rarity/color when migrated in CFV-4.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
+	ECardRarity Rarity = ECardRarity::Common;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
+	ECardColor CardColor = ECardColor::Red;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Rules")
 	ECardType CardType = ECardType::Attack;
 
