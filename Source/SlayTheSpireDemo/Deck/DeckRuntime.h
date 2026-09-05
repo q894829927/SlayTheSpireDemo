@@ -25,6 +25,7 @@ public:
 
 	FCardZoneMutationResult TryDrawTopCardCommit(UCardInstance*& OutCard);
 	FCardZoneMutationResult TryDiscardCardCommit(UCardInstance* Card);
+	FCardZoneMutationResult TryExhaustHandCardCommit(UCardInstance* Card);
 	FCardZoneMutationResult TryMoveHandCardToPlayAreaCommit(UCardInstance* Card);
 	FCardZoneMutationResult TryReturnPlayAreaCardToHandAtIndexCommit(UCardInstance* Card, int32 HandIndex);
 	FCardZoneMutationResult TryMovePlayAreaCardToDestinationCommit(UCardInstance* Card, ECardDestination Destination);
