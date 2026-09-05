@@ -14,6 +14,28 @@ enum class ECardType : uint8
 };
 
 UENUM(BlueprintType)
+enum class ECardRarity : uint8
+{
+	Basic UMETA(DisplayName = "Basic"),
+	Common UMETA(DisplayName = "Common"),
+	Uncommon UMETA(DisplayName = "Uncommon"),
+	Rare UMETA(DisplayName = "Rare"),
+	Special UMETA(DisplayName = "Special"),
+	Curse UMETA(DisplayName = "Curse")
+};
+
+UENUM(BlueprintType)
+enum class ECardColor : uint8
+{
+	Red UMETA(DisplayName = "Red"),
+	Green UMETA(DisplayName = "Green"),
+	Blue UMETA(DisplayName = "Blue"),
+	Purple UMETA(DisplayName = "Purple"),
+	Colorless UMETA(DisplayName = "Colorless"),
+	Curse UMETA(DisplayName = "Curse")
+};
+
+UENUM(BlueprintType)
 enum class ECardTargetType : uint8
 {
 	None UMETA(DisplayName = "None"),
