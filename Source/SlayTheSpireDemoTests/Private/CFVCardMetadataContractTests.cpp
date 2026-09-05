@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "CFVCardMetadataTestTypes.h"
 #include "Battle/BattleManager.h"
 #include "Cards/CardData.h"
 #include "Cards/CardInstance.h"
@@ -98,6 +99,55 @@ bool FCFVCardMetadataContractTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Historical mapper preserves rarity"), HistoricalView.Rarity, ECardRarity::Rare);
 	TestEqual(TEXT("Historical mapper preserves color"), HistoricalView.CardColor, ECardColor::Green);
 	TestTrue(TEXT("Historical mapper preserves upgraded state"), HistoricalView.bUpgraded);
+
+	UCFVCardMetadataProbeWidget* NativeProbe =
+		NewObject<UCFVCardMetadataProbeWidget>(GetTransientPackage());
+	if (!TestNotNull(TEXT("Native continuity probe exists"), NativeProbe))
+	{
+		return false;
+	}
+	TestTrue(
+		TEXT("Native snapshot validator accepts legal CFV metadata"),
+		NativeProbe->InvokeIsNativeCardSnapshotValid(Historical));
+	TestTrue(
+		TEXT("Native exact identity accepts matching upgraded/rarity/color"),
+		NativeProbe->InvokeDoesNativeCardViewMatchSnapshot(HistoricalView, Historical));
+
+	FBattleHUDCardView RichDescriptionMismatch = HistoricalView;
+	RichDescriptionMismatch.RichDescription = FText::FromString(TEXT("Target-specific rich text may differ."));
+	TestTrue(
+		TEXT("Native exact identity intentionally ignores RichDescription"),
+		NativeProbe->InvokeDoesNativeCardViewMatchSnapshot(RichDescriptionMismatch, Historical));
+
+	FBattleHUDCardView UpgradedMismatch = HistoricalView;
+	UpgradedMismatch.bUpgraded = false;
+	TestFalse(
+		TEXT("Native exact identity rejects upgraded-state mismatch"),
+		NativeProbe->InvokeDoesNativeCardViewMatchSnapshot(UpgradedMismatch, Historical));
+
+	FBattleHUDCardView RarityMismatch = HistoricalView;
+	RarityMismatch.Rarity = ECardRarity::Uncommon;
+	TestFalse(
+		TEXT("Native exact identity rejects rarity mismatch"),
+		NativeProbe->InvokeDoesNativeCardViewMatchSnapshot(RarityMismatch, Historical));
+
+	FBattleHUDCardView ColorMismatch = HistoricalView;
+	ColorMismatch.CardColor = ECardColor::Red;
+	TestFalse(
+		TEXT("Native exact identity rejects CardColor mismatch"),
+		NativeProbe->InvokeDoesNativeCardViewMatchSnapshot(ColorMismatch, Historical));
+
+	FPresentationCardSnapshot InvalidFrozenRarity = Historical;
+	InvalidFrozenRarity.Rarity = static_cast<ECardRarity>(0xFE);
+	TestFalse(
+		TEXT("Native snapshot validator rejects invalid frozen rarity"),
+		NativeProbe->InvokeIsNativeCardSnapshotValid(InvalidFrozenRarity));
+
+	FPresentationCardSnapshot InvalidFrozenColor = Historical;
+	InvalidFrozenColor.CardColor = static_cast<ECardColor>(0xFE);
+	TestFalse(
+		TEXT("Native snapshot validator rejects invalid frozen CardColor"),
+		NativeProbe->InvokeIsNativeCardSnapshotValid(InvalidFrozenColor));
 
 #if WITH_EDITOR
 	UCardData* InvalidRarity = MakeCard(
