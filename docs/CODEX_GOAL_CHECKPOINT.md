@@ -21,7 +21,7 @@ Card Face Visual Style (CFV):
 COMPLETE / USER-ACCEPTED / SEALED
 
 Production Card Expansion:
-NEXT ACTIVE GOAL
+ACTIVE
 
 Wave 1A — Exhaust Fact Surface:
 DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED
@@ -30,16 +30,10 @@ DESIGN LOCKED / NEXT ACTIVE SLICE / IMPLEMENTATION NOT STARTED
 ## Current branch
 
 ```text
-card-expansion-wave1a-exhaust-fact
-```
-
-Branch base:
-
-```text
 main
 ```
 
-`main` already contains the sealed CFV result and final CFV checkpoint merge.
+Wave 1A planning/documentation was merged into `main`. Current implementation work must continue directly on `main` unless the user explicitly changes the workflow.
 
 ---
 
@@ -165,7 +159,7 @@ FinishCardPlay / current card-play composition boundary
 → request zone move commit
 → receive exact typed commit result
 → if committed && ToZone == ExhaustPile
-   → build FCardExhaustedEvent
+   → build FCardExhaustedEvent from held Card + committed result
    → dispatch
 ```
 
@@ -199,7 +193,7 @@ Gain Energy
 
 This keeps the validation card independent of selection, targeted exhaust, multi-enemy, reactive Power and Card Trigger Source Expansion.
 
-If a generic authored GainEnergy CardEffect adapter is missing, implement the narrowest adapter that only builds the already-existing `GainEnergyAction`. Do not special-case Seeing Red in PlayCardAction or Energy owner code.
+`UGainEnergyAction` already exists; Wave 1A adds the narrow authored `UGainEnergyCardEffect` adapter required to construct it from typed Base/Upgraded values. Do not special-case Seeing Red in PlayCardAction or Energy owner code.
 
 ---
 
@@ -251,12 +245,15 @@ Minimum required checks:
 ```text
 successful Exhaust commit → exactly one CardExhausted event
 exact exhausted runtime card identity preserved
+event payload fields match the exact committed mutation result
 commit occurs before dispatch
 Discard destination → zero CardExhausted
 Removed destination → zero CardExhausted
 failed/rejected move → zero CardExhausted
 no duplicate event
 zero-listener CardExhausted is valid
+GainEnergy adapter resolves Base/Upgraded authored amount correctly
+GainEnergy preview argument matches the same effective amount
 ```
 
 If C++ changes, required:
@@ -308,7 +305,7 @@ Shockwave full card
 
 ```text
 Production Card Expansion
-→ planning transition complete
+→ ACTIVE
 
 Wave 1A design
 → LOCKED
