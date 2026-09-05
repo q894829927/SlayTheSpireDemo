@@ -14,7 +14,9 @@ This document records project progress, implementation history and durable phase
 - **Phase 6UI-A Playable Battle UI is complete, validated and sealed.**
 - **Phase 7 Relics 7A–7F are complete, validated and sealed.** Current status authority is summarized in `docs/CODEX_GOAL_CHECKPOINT.md`; individual evidence remains in the dedicated Phase 7 implementation/validation documents.
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
-- **Card Expansion / Upgrade Foundation is the NEXT ACTIVE GOAL, design-refined, but implementation is not yet authorized.** Authority: `docs/CardUpgradeFoundationDesign.md`.
+- **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
+- **Card Face Visual Style (CFV) has a revised STS-reference design; implementation is not authorized.** Authority: `docs/CardFaceVisualStyleImplementation.md`. This is a bounded Native card-face presentation initiative following the sealed upgrade model.
+- **Production Card Expansion authoring is unblocked but not started; no new implementation is authorized.** Phase 8 remains deferred and is not its prerequisite.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -265,37 +267,23 @@ Phase 8 may be resumed later as an integration gate after card architecture has 
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **NEXT ACTIVE GOAL / DESIGN REFINED / IMPLEMENTATION NOT AUTHORIZED**
+Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; NEW CARD AUTHORING NOT STARTED**
 
-Authority: `docs/CardUpgradeFoundationDesign.md`.
+Current authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
 
-The user explicitly changed the ordering: Upgrade Foundation no longer waits for Phase 8 seal.
+The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for CFV or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
 
-Current sequence:
+The user removed Phase 8 as a prerequisite for Card Expansion. The upgrade foundation/refactor is now complete; production card authoring may be separately authorized without waiting for Phase 8.
 
-```text
-Phase 7A–7F sealed
-→ Card Expansion / Upgrade Foundation
-→ first formal upgraded-card batch
-→ later Ironclad capability/card slices
-→ deferred Phase 8 can be resumed later
-```
+## Card Face Visual Style
 
-Core direction:
+Status: **DESIGN REVISED — STS CARD-FACE REFERENCE / IMPLEMENTATION NOT AUTHORIZED**
 
-```text
-normal card
-→ exactly-one Single upgrade state
+Authority: `docs/CardFaceVisualStyleImplementation.md`.
 
-repeatable definition
-→ immutable RepeatableUpgradeCapability policy
-→ exactly-one Repeatable runtime state
+The requested design uses the supplied Strike reference: red card body, overlapping top-left cost orb and title banner, type-specific portrait/frame geometry, type plate at the portrait lower edge, and a lower description area. Semantic Rarity propagates through current and historical frozen views; the Native card resolves visual style and layout from class-default configuration. Upgrade state remains orthogonal.
 
-actual gameplay + A3 + committed card-face
-→ same typed effective card/effect view
-```
-
-The first Upgrade slice keeps Effect type/order/count unchanged and changes typed authored parameters only.
+The revision specifies exact 512 texture package mappings, portrait Alpha alignment, optional decorative bindings, Widget application tests and focused Designer/production-map PIE acceptance. These are planned contracts, not completed implementation or validation. The current request authorizes documentation revision only; do not automatically begin CFV-1 or card expansion.
 
 ## Card Trigger Source Expansion
 
