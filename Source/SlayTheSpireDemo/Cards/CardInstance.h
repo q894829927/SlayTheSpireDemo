@@ -32,6 +32,8 @@ public:
 	FText GetDisplayName() const;
 	UTexture2D* GetCardArt() const;
 	ECardType GetCardType() const;
+	ECardRarity GetRarity() const;
+	ECardColor GetCardColor() const;
 	ECardTargetType GetTargetType() const;
 
 	// Ordinary upgrades keep one shared Description / Destination / Effects
