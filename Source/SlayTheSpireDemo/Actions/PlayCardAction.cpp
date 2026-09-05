@@ -248,7 +248,13 @@ void UPlayCardAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	UFinishCardPlayAction* FinishPlayAction = NewObject<UFinishCardPlayAction>(Queue);
-	FinishPlayAction->Initialize(Deck.Get(), Card.Get(), Source.Get());
+	FinishPlayAction->Initialize(
+		Deck.Get(),
+		Card.Get(),
+		Source.Get(),
+		ResolvedEventDispatcher,
+		RawEventCombatants
+	);
 	FinishPlayAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	FollowUpActions.Add(FinishPlayAction);
 
