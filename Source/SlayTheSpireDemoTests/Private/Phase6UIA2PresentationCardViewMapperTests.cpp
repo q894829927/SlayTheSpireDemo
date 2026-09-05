@@ -21,6 +21,8 @@ namespace Phase6UIA2PresentationCardViewMapper
 		Test.TestEqual(FString::Printf(TEXT("%s upgraded state"), Prefix), View.bUpgraded, Snapshot.bUpgraded);
 		Test.TestEqual(FString::Printf(TEXT("%s Cost"), Prefix), View.Cost, Snapshot.Cost);
 		Test.TestEqual(FString::Printf(TEXT("%s CardType"), Prefix), View.CardType, Snapshot.CardType);
+		Test.TestEqual(FString::Printf(TEXT("%s Rarity"), Prefix), View.Rarity, Snapshot.Rarity);
+		Test.TestEqual(FString::Printf(TEXT("%s CardColor"), Prefix), View.CardColor, Snapshot.CardColor);
 		Test.TestEqual(FString::Printf(TEXT("%s TargetType"), Prefix), View.TargetType, Snapshot.TargetType);
 		Test.TestTrue(FString::Printf(TEXT("%s Description"), Prefix), View.Description.EqualTo(Snapshot.Description));
 		Test.TestTrue(FString::Printf(TEXT("%s RichDescription"), Prefix), View.RichDescription.EqualTo(Snapshot.RichDescription));
@@ -47,6 +49,8 @@ bool FPhase6UIA2PresentationCardViewMapperTest::RunTest(const FString& Parameter
 	Snapshot.bUpgraded = true;
 	Snapshot.Cost = 2;
 	Snapshot.CardType = ECardType::Skill;
+	Snapshot.Rarity = ECardRarity::Rare;
+	Snapshot.CardColor = ECardColor::Green;
 	Snapshot.TargetType = ECardTargetType::Self;
 	Snapshot.Description = FText::FromString(TEXT("Stable presentation description"));
 	Snapshot.RichDescription = FText::FromString(TEXT("Stable <PreviewIncrease>rich</> presentation description"));
