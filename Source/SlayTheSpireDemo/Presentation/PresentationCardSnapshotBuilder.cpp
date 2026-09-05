@@ -28,6 +28,8 @@ bool PresentationCardSnapshot::TryBuild(
 	OutSnapshot.bUpgraded = Card->IsUpgraded();
 	OutSnapshot.Cost = Card->GetCurrentCost();
 	OutSnapshot.CardType = Card->GetCardType();
+	OutSnapshot.Rarity = Card->GetRarity();
+	OutSnapshot.CardColor = Card->GetCardColor();
 	OutSnapshot.TargetType = Card->GetTargetType();
 	OutSnapshot.Description = FBattleTextResolver::ResolveCardDescription(Card, Source);
 	OutSnapshot.RichDescription = FBattleTextResolver::ResolveCardRichDescription(Card, Source);
