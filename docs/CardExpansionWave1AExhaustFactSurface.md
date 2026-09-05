@@ -108,6 +108,8 @@ generic targeted-exhaust effect
 
 Targeted exhaust 作为后续独立 slice 设计和验证。
 
+`True Grit` 是混合消费者：基础行为与升级后 selection 需求不能借 Wave 1B 提前合并。Wave 1B 只建立 targeted-exhaust primitive；需要玩家选择的行为仍属于 Wave 1C。
+
 ---
 
 ## 3. Event producer boundary — locked
@@ -146,9 +148,12 @@ FinishCardPlay / current card-play composition boundary
 ```text
 zone mutation
 → commit result says Exhaust succeeded
-→ construct immutable event
+→ existing committed Presentation record when available
+→ construct immutable event from the same commit result
 → dispatch event
 ```
+
+这与现有 `ShuffleDeckAction` 的 sealed precedent 保持一致：Gameplay commit 是 authority；Presentation record 可以先记录同一 committed fact；BattleEvent 随后 dispatch。
 
 绝不允许：
 
@@ -165,7 +170,58 @@ DefaultDestination == Exhaust
 → dispatch without checking commit result
 ```
 
-### 3.3 Future targeted-exhaust reuse
+### 3.3 Dispatcher propagation — explicit battle-scoped dependency
+
+Wave 1A 锁定 `BattleEventDispatcher` 的获取方式：**由已有 card-play composition boundary 显式解析并传入 cleanup action**，不得在 `UFinishCardPlayAction` 内通过 world / actor 搜索重新发现。
+
+当前 `UPlayCardAction` 已有：
+
+```text
+ResolvedEventDispatcher
+RawEventCombatants
+```
+
+因此实现形状应为：
+
+```text
+UPlayCardAction
+→ resolves battle-scoped Dispatcher + authoritative combatant context
+→ constructs UFinishCardPlayAction
+→ passes Dispatcher + combatant context explicitly
+
+UFinishCardPlayAction
+→ stores only resolution-scoped references needed for dispatch
+→ commits destination
+→ dispatches only from committed result
+```
+
+推荐增加窄 overload，而不是让 `FinishCardPlayAction` 变成 locator：
+
+```cpp
+Initialize(
+    UDeckRuntime* Deck,
+    UCardInstance* Card,
+    ACombatant* PresentationCardSource,
+    UBattleEventDispatcher* EventDispatcher,
+    const TArray<ACombatant*>& EventCombatants
+);
+```
+
+既有 overload 可保留供旧测试/兼容路径使用，但 Wave 1A 的真实 self-exhaust producer 必须获得显式 battle-scoped event wiring。
+
+禁止：
+
+```text
+GetAllActorsOfClass / world search
+name-based lookup
+CardId-based dispatcher routing
+DeckRuntime owning Dispatcher
+adding another subsystem locator to FCardPlayContext
+```
+
+若将要执行 Exhaust destination，而所需 event wiring 无效，应在 mutation 前 fail/fault；不得先成功 Exhaust commit，再因为本应已知的 Dispatcher wiring 缺失而把 committed fact 静默丢掉。
+
+### 3.4 Future targeted-exhaust reuse
 
 未来 targeted-exhaust action 应复用同一规则：
 
@@ -191,9 +247,20 @@ Wave 1A event 必须描述 **已经发生的 exact committed fact**，而不是�
 CardInstance / exact runtime card identity
 CardRuntimeId
 CardId / immutable definition identity when already available from committed subject
-FromZone = PlayArea
-ToZone   = ExhaustPile
+FromZone = CommitResult.FromZone
+ToZone   = CommitResult.ToZone
 ```
+
+`FromZone / ToZone` 必须从 authoritative `FCardZoneMutationResult` 派生，不能在 Event constructor 中把 `PlayArea` 写死成通用 Exhaust 事实。
+
+Wave 1A 当前 self-exhaust producer 的预期真实结果仍然是：
+
+```text
+FromZone == PlayArea
+ToZone   == ExhaustPile
+```
+
+但这是 **当前 producer 的 committed result invariant**，不是 `FCardExhaustedEvent` payload schema 的硬编码来源。这样未来 targeted-exhaust 从 Hand / Discard 等合法来源产生同一事件时，无需改变 Event 类型。
 
 实现时优先直接携带能够唯一指向该战斗中具体 CardInstance 的 typed reference / snapshot；不要只靠 `CardId`。
 
@@ -241,7 +308,7 @@ CardExhausted event dispatched
 → resolution continues normally
 ```
 
-事件存在本身即是本 slice 的 Gameplay fact surface。
+这不是无效工作：Wave 1A 的交付物就是稳定的 **post-commit fact contract**。后续 targeted-exhaust、Feel No Pain / Dark Embrace、Sentinel 等消费者应依赖已经 sealed 的事实面，而不是各自在自身实现中重新解释 zone mutation。
 
 ---
 
@@ -331,7 +398,7 @@ primitive commit
 
 Wave 1A 只选择一张依赖现有 primitive + self-exhaust 的真实生产卡。
 
-默认推荐：
+默认验证卡：
 
 ```text
 Seeing Red
@@ -344,19 +411,49 @@ Gain Energy
 + self Exhaust
 ```
 
-`GainEnergyAction` 已存在，因此它不会额外引入 Block、selection、multi-enemy、targeted-exhaust、new trigger source 等新能力。
+`UGainEnergyAction` 已存在，但当前 `Cards/Effects/` 中没有 `UGainEnergyCardEffect`。因此 Wave 1A 存在一个已确认的最窄 content-adapter 缺口。
 
-备选：
+### 9.1 GainEnergy CardEffect adapter — required and narrow
+
+新增：
 
 ```text
-Impervious
+UGainEnergyCardEffect
+→ only resolves authored effective amount
+→ only builds existing UGainEnergyAction
 ```
 
-但 Wave 1A 默认只 author 一张验证卡，不为了覆盖更多内容扩大 slice。
+它必须沿用当前 ordinary-upgrade typed field 模式：
 
-### Seeing Red Wave 1A boundary
+```text
+DescriptionArgumentName = Energy
+BaseAmount
+UpgradedAmount
+GetEffectiveAmount(bool bIsUpgraded)
+```
 
-仅验证当前项目已支持的普通 single-upgrade model。
+并实现与现有 typed Effect 一致的最窄接口：
+
+```text
+BuildActions
+GetPreviewArgumentNames
+BuildPreviewArguments
+ValidatePreviewConfiguration
+```
+
+`UGainEnergyAction::Initialize(Battle, Amount)` 不获得升级语义；升级只在 CardEffect adapter 处通过 `Context.Card->IsUpgraded()` 解析为 effective authored amount，然后把普通整数 Amount 交给现有 Action。
+
+禁止：
+
+```text
+CardId == SeeingRed 特判
+CardData 直接 mutate Energy
+PlayCardAction 直接 mutate Energy
+Widget / Presentation 驱动 Energy mutation
+第二套 upgrade representation
+```
+
+### 9.2 Seeing Red Wave 1A boundary
 
 具体卡牌 base/upgraded 数值属于 content authoring；实现时应按项目现有 typed Base/Upgraded 字段 author，不新增第二套 upgrade representation。
 
@@ -366,10 +463,13 @@ Impervious
 CardType           = Skill
 CardColor          = Red
 DefaultDestination = Exhaust
-Effects            = existing Gain Energy composition
+Effects
+└─ GainEnergyCardEffect
 ```
 
-如果当前项目没有可 authored 的 GainEnergy `UCardEffect`，不得为了赶 Seeing Red 在 CardId 分支里直接改 Energy。此时应把“最窄 GainEnergy CardEffect adapter”作为 Wave 1A 的必要 content adapter 单独实现，并保持它只负责构建既有 `GainEnergyAction`；不要把 Energy mutation 写进 CardData/Widget/PlayCardAction 特判。
+Seeing Red 只作为 production validation consumer；不得以它的 CardId 驱动任何 generic Exhaust/Event 行为。
+
+备选 `Impervious` 不再作为默认 Wave 1A validation card，除非 Seeing Red asset authoring 出现与本 slice 无关的不可用阻塞；即便切换验证卡也不得扩大 Gameplay scope。
 
 ---
 
@@ -384,15 +484,29 @@ SlayTheSpireDemo.CardExpansion.Wave1A.ExhaustFact
 最低覆盖：
 
 ```text
-[ ] successful PlayArea → ExhaustPile commit emits exactly one CardExhausted
+[ ] successful self-exhaust commit emits exactly one CardExhausted
 [ ] event refers to the exact exhausted runtime card
+[ ] event CardRuntimeId / CardId match the commit result
+[ ] event FromZone / ToZone equal the exact commit result values
+[ ] current self-exhaust path proves FromZone == PlayArea and ToZone == ExhaustPile
 [ ] event is emitted only after commit success
+[ ] event dispatch observes the already-committed Exhaust zone state
 [ ] non-Exhaust destination emits zero CardExhausted events
 [ ] failed / rejected move emits zero CardExhausted events
 [ ] one self-exhaust play cannot double-dispatch
 [ ] existing Discard / Removed destination behavior unchanged
 [ ] event may have zero listeners without fault
 ```
+
+测试优先使用 transient test CardData 验证 fact surface，不把生产 Seeing Red 资产作为 C++ contract test 的唯一 fixture。
+
+可复用现有：
+
+```text
+UBattleEventDispatcher::OnEventDispatchedForTesting
+```
+
+在 event observation hook 中检查 Deck/commit-derived identity，可直接证明“commit before dispatch”。若当前 Presentation writer 可用，也应沿用现有 Shuffle ordering precedent，确认对应 committed `CardZoneChanged` record 已先于 Event dispatch 存在。
 
 如果实现修改了 existing event dispatch ordering 或 shared dispatcher code，再补跑已有相关 ordering regression；不要无原因重跑整个历史测试矩阵。
 
@@ -457,9 +571,12 @@ Phase 8 implementation
 
 ```text
 [ ] producer boundary remains outside DeckRuntime
+[ ] Dispatcher + combatant context are passed explicitly from battle/card-play composition
+[ ] no world/actor search is introduced for Dispatcher discovery
 [ ] commit always precedes dispatch
 [ ] CardExhausted exists as a typed immutable BattleEvent payload
 [ ] exact runtime card identity is preserved
+[ ] FromZone / ToZone are derived from exact commit result
 [ ] only successful Exhaust commits emit the event
 [ ] no double-dispatch
 [ ] no CardId branch
@@ -467,6 +584,7 @@ Phase 8 implementation
 [ ] no selection capability
 [ ] no reactive Power implementation
 [ ] no Card Trigger Source implementation
+[ ] UGainEnergyCardEffect only adapts typed authored values to existing UGainEnergyAction
 [ ] focused Automation PASS
 [ ] required Build PASS if C++ changed
 [ ] Seeing Red production asset authored
