@@ -5,7 +5,7 @@
 状态：
 
 ```text
-DESIGN REVISED — CARD COLOR / MULTI-CLASS READY
+DESIGN LOCKED
 IMPLEMENTATION NOT AUTHORIZED
 ```
 
@@ -2461,8 +2461,8 @@ Presentation 仍只消费冻结事实。
 [x] one focused production-map PIE path retained
 [x] implementation evidence still not claimed
 
-[ ] user final review of this revised authority
-[ ] CFV design status promoted to DESIGN LOCKED
+[x] user final review of this revised authority
+[x] CFV design status promoted to DESIGN LOCKED
 [ ] CFV-1 implementation authorized
 [ ] CFV-1 Card Metadata Contract implemented/validated
 [ ] CFV-2 Card Face Shell implemented/validated
@@ -2476,10 +2476,10 @@ Presentation 仍只消费冻结事实。
 
 ```text
 CARD FACE VISUAL STYLE
-DESIGN REVISED — CARD COLOR / MULTI-CLASS READY
+DESIGN LOCKED
 IMPLEMENTATION NOT AUTHORIZED
 ```
 
-本次只修订 authority 文档。
+本次只完成设计封板与状态同步；不实施 CFV-1。
 
 未经用户明确授权，不开始 CFV-1，也不自动进入后续阶段。
