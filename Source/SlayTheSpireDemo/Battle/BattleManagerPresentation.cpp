@@ -281,6 +281,8 @@ bool ABattleManager::TryFreezePresentationStateSnapshot(
 				: EffectiveDisplayName;
 			FrozenCard.bUpgraded = Card->IsUpgraded();
 			FrozenCard.CardType = Card->GetCardType();
+			FrozenCard.Rarity = Card->GetRarity();
+			FrozenCard.CardColor = Card->GetCardColor();
 			FrozenCard.CardArt = Card->GetCardArt();
 		}
 		else
