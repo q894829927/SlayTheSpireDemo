@@ -5,22 +5,32 @@
 状态：
 
 ```text
-DESIGN REVISED — STS CARD-FACE REFERENCE
+DESIGN REVISED — CARD COLOR / MULTI-CLASS READY
 IMPLEMENTATION NOT AUTHORIZED
 ```
 
 本文件是 Card Face Visual Style（CFV）专项改造的 dedicated authority。
 
-2026-09-05 修订：采用用户提供的《杀戮尖塔》「打击」卡面作为视觉验收参考，补齐卡面几何、卡图裁剪、optional binding、Widget 应用测试、唯一素材映射及可执行 PIE 场景。本轮授权是修改设计文档；C++、UMG、材质、CardData 的实施尚未授权。文中新增类型、测试入口和资产均是待实施要求，不代表已存在或已验证。
-
-本阶段只负责：
+2026-09-05 本轮修订依据：
 
 ```text
-卡牌语义 Rarity
+未来多职业已确认是项目真实需求
+且不同职业 / CardColor 将使用不同卡面素材
+```
+
+因此，本轮在尚未开始 CFV 实现的低成本窗口内，显式把 `CardColor` 纳入 immutable card semantic metadata，并把卡面素材配置从 Ironclad-only Widget CDO 平铺字段收敛为一个轻量 `UCardFaceStyleSet` Presentation 配置资产。
+
+这不是 Universal Registry，也不是 Character system implementation。本轮只建立真实已确认的扩展轴，并只 author 当前生产需要的 `Red` 风格；Green / Blue / Purple / Colorless / Curse 的生产素材配置留待后续增量内容阶段。
+
+本轮仍然只负责：
+
+```text
+CardType / CardRarity / CardColor 语义 metadata
 → Frozen Presentation 传播
 → Native Card Widget 静态视觉样式解析
 → 类型相关卡图窗口 / 裁剪 / 卡面布局
-→ 生产 WBP 卡面素材配置
+→ CardFaceStyleSet 配置结构
+→ 当前 Red 生产卡面素材 authoring
 ```
 
 不得重新打开已 seal 的 Gameplay / BattleAction / Presentation Timeline / A3 Preview / Card Upgrade ownership 边界。
@@ -29,7 +39,18 @@ IMPLEMENTATION NOT AUTHORIZED
 
 ## 1. 目标
 
-在不改变现有 Gameplay 架构的前提下，使卡牌根据 `CardType`、`CardRarity` 和当前固定 Ironclad/Red 视觉主题显示对应的：
+在不改变现有 Gameplay 架构的前提下，使卡牌根据：
+
+```text
+CardType
+CardRarity
+CardColor
+Upgrade State
+```
+
+组合得到正确卡面。
+
+视觉目标包括：
 
 ```text
 背景
@@ -38,64 +59,121 @@ IMPLEMENTATION NOT AUTHORIZED
 类型标签底板
 费用宝石
 阴影
+卡图窗口 / 裁剪
+中文标题 / 类型 / 描述排版
 ```
 
-并保持升级表现与稀有度/类型视觉完全正交。
+采用参考图的整体构图：卡身、左上费用球、顶部标题丝带、上半部卡图窗口、紧贴卡图下沿的类型标签、下半部描述区。不能退化为普通 VerticalBox 内容列表，也不能把费用重新放回正文流。
 
-采用参考图的整体构图：红色卡身；左上角叠压卡身与标题的费用球；顶部横向标题丝带；上半部卡图窗口；紧贴卡图下沿的类型标签；下半部深色描述区。不能把这些组件排成普通垂直列表，也不能把费用放回内容区。
-
-最终视觉规则：
+最终语义与视觉规则：
 
 ```text
 CardType
-→ Background + Portrait window / clipping + Frame placement
+→ VisualCardShape
+→ Portrait/Layout geometry
 
-CardType + semantic Rarity
-→ rarity-specific Frame
+CardColor + VisualCardShape
+→ Background
 
-semantic Rarity
-→ Visual Rarity Style
+CardColor
+→ CostOrb
+
+CardRarity
+→ VisualRarityStyle
+
+VisualRarityStyle + VisualCardShape
+→ Frame
+
+VisualRarityStyle
 → Banner
 → TypePlate
-
-fixed Ironclad theme
-→ red background family
-→ card_red_orb
-→ card shadow
 
 bUpgraded
 → DisplayName + "+"
 → upgraded title color #7FFF00
 ```
 
+`CardType`、`CardRarity`、`CardColor`、`bUpgraded` 必须保持正交。
+
 ---
 
-## 2. 设计参考与正交维度
+## 2. 设计参考与多职业边界
 
-视觉主参考为本次用户提供的图片；素材尺寸、裁切原点参考仓库的 `Content/SlayTheSpireDemo/UI/images/cardui/cardui.atlas` 与对应 Cropped PNG。无需从第三方 API 推断当前素材的布局。
+视觉主参考为用户提供的《杀戮尖塔》“打击”卡面；素材尺寸与裁切原点参考仓库：
+
+```text
+Content/SlayTheSpireDemo/UI/images/cardui/cardui.atlas
+Content/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/...
+```
 
 ![用户提供的打击卡面参考](references/CardFaceVisualStyle/StrikeReference.png)
 
-该图锁定构图、相对层次、中文阅读层级和 Ironclad/Red 外观；截图里的数字、卡名、鼠标指针和场景背景不作为 Gameplay 配置或待复刻 UI 元素。截图不能直接给出所有类型的精确坐标；Attack / Skill / Power 分别使用其真实图框轮廓，具体布局按 §15 author。
+该图锁定构图、相对层次、中文阅读层级和当前 Red 风格，不把截图中的鼠标、场景背景或具体数值视为待复刻 Gameplay UI 元素。
 
-本项目保持以下维度正交：
+参考 Slay the Spire 的卡面分解，本项目采用以下正交轴：
 
 ```text
 CardType
 CardRarity
-CardColor / Theme
+CardColor
 Upgrade State
 ```
 
-当前项目只有 Ironclad 风格，因此本阶段：
+### 2.1 CardColor 不是职业 enum
+
+禁止定义：
 
 ```text
-不新增 CardColor
-不新增 CharacterTheme
-不建立多角色 Visual Registry
+Ironclad
+Silent
+Defect
+Watcher
 ```
 
-本轮固定使用 Red / Ironclad Theme；未来出现第二个真实角色 consumer 后，再单独设计 CardColor/Theme。
+作为卡牌视觉颜色 enum。
+
+采用：
+
+```text
+Red
+Green
+Blue
+Purple
+Colorless
+Curse
+```
+
+原因：卡面跟卡本身的颜色走，而不是跟当前玩家职业走。
+
+允许未来出现：
+
+```text
+Ironclad 持有 Colorless card
+Silent 持有 Curse card
+跨职业获得 Red card
+```
+
+这些卡仍按自己的 `CardColor` 渲染。
+
+### 2.2 多职业是已确认未来需求
+
+因此本轮允许：
+
+```text
+ECardColor semantic metadata
+UCardFaceStyleSet presentation config asset
+Color-aware resolver contract
+```
+
+但本轮不实现：
+
+```text
+Silent / Defect / Watcher Gameplay/content
+角色选择系统
+多职业初始牌组
+跨职业奖励规则
+Green / Blue / Purple 的完整生产视觉 authoring
+```
 
 ---
 
@@ -134,7 +212,7 @@ RuntimeId
 bUpgraded
 ```
 
-静态元数据通过 Definition getter 读取，不在 runtime instance 复制第二份 authoritative value。
+静态 metadata 通过 Definition getter 读取，不在 runtime instance 复制第二份 authoritative value。
 
 当前 Frozen Presentation 存在两条正式路径：
 
@@ -151,11 +229,13 @@ UCardInstance
 → FBattleHUDCardView
 ```
 
-CFV 新增 Rarity 必须同时进入两条路径。
+CFV 新增 Rarity 与 CardColor 必须同时进入两条路径。
+
+本阶段仍不向 `FCardReadView` 复制 Rarity / CardColor；formal Hand freeze 继续通过 `Source.Card` / `UCardInstance` 读取 Definition metadata。
 
 ---
 
-## 4. 语义 Rarity Contract
+## 4. 语义 Metadata Contract
 
 ### 4.1 ECardRarity
 
@@ -192,40 +272,107 @@ CardType = Attack
 Rarity   = Uncommon
 ```
 
-禁止从 `CardType` 自动推导 `Rarity`，也禁止从 `Rarity` 自动改写 `CardType`。
+禁止从 `CardType` 自动推导 `Rarity`，也禁止反向自动改写 `CardType`。
 
-例如：
+### 4.2 ECardColor
 
-```text
-CardType = Curse
-Rarity   = Curse
+新增：
+
+```cpp
+UENUM(BlueprintType)
+enum class ECardColor : uint8
+{
+    Red,
+    Green,
+    Blue,
+    Purple,
+    Colorless,
+    Curse
+};
 ```
 
-应由资产显式 author，而不是代码隐式强制。
+`ECardColor` 表示卡牌自身的视觉颜色族 / card pool color，不表示当前角色实例。
 
-### 4.2 迁移默认值
-
-新增字段默认：
+### 4.3 Rarity 迁移默认值
 
 ```cpp
 ECardRarity Rarity = ECardRarity::Common;
 ```
 
-该默认值是：
+含义：
 
 ```text
 serialized / backward-compatible migration default
 ```
 
-不是：
+不表示所有旧卡语义上都是 Common。
 
-```text
-所有旧卡语义上都属于 Common
+CFV-4 必须显式 author 当前生产卡的真实 Rarity。
+
+### 4.4 CardColor 迁移默认值
+
+```cpp
+ECardColor CardColor = ECardColor::Red;
 ```
 
-这样现有 `.uasset` 和未显式设置 Rarity 的 transient Automation fixture 在新增字段后继续稳定加载。
+含义同样只是：
 
-CFV-4 再显式 author 生产卡的真实 Rarity。
+```text
+serialized / backward-compatible migration default
+```
+
+原因是当前生产 CardData 均属于现有 Ironclad/Red 内容；这样新增字段后，旧 `.uasset`、transient fixture 与历史 Automation 不会因为默认颜色缺失而改变当前视觉。
+
+明确：
+
+```text
+Default Red
+≠ 所有未来卡牌默认语义上属于 Red
+```
+
+CFV-4 必须显式 author 当前生产卡 `CardColor = Red`。
+
+### 4.5 Status / Curse 的显式 authoring
+
+对未来 STS-compatible 内容，推荐生产 authoring：
+
+```text
+Status card
+CardType  = Status
+CardColor = Colorless
+Rarity    = Special / 对应内容实际 rarity
+
+Curse card
+CardType  = Curse
+CardColor = Curse
+Rarity    = Curse
+```
+
+这些值必须由 CardData 显式 author；底层代码不得从 `CardType` 自动写 `CardColor` 或 `Rarity`。
+
+特别说明：
+
+```text
+ECardType::Curse
+= “这张卡的内容类型是 Curse”
+
+ECardColor::Curse
+= “这张卡使用 Curse 颜色视觉族”
+```
+
+二者只是同名语义值，仍然完全正交。
+
+禁止：
+
+```text
+if CardType == Curse
+    force CardColor = Curse
+
+if CardColor == Curse
+    force CardType = Curse
+```
+
+理论上底层数据模型允许其他组合；具体内容是否合法由内容设计与生产 authoring 决定，而不是 enum setter side effect 决定。
 
 ---
 
@@ -236,12 +383,16 @@ CFV-4 再显式 author 生产卡的真实 Rarity。
 ```cpp
 UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
 ECardRarity Rarity = ECardRarity::Common;
+
+UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Identity")
+ECardColor CardColor = ECardColor::Red;
 ```
 
-`UCardInstance` 只增加：
+`UCardInstance` 只增加 getter：
 
 ```cpp
 ECardRarity GetRarity() const;
+ECardColor GetCardColor() const;
 ```
 
 语义：
@@ -249,18 +400,24 @@ ECardRarity GetRarity() const;
 ```text
 valid Definition
 → Definition->Rarity
+→ Definition->CardColor
 
 invalid Definition
-→ Common defensive fallback
+→ Common / Red defensive getter fallback
 ```
 
-禁止在 `UCardInstance` 再增加一份 mutable/serialized `Rarity`。
+禁止在 `UCardInstance` 增加第二份 mutable/serialized：
+
+```text
+Rarity
+CardColor
+```
 
 ---
 
 ## 6. CardData Editor Validation
 
-`ECardRarity` 作为 authored semantic metadata，必须进入 `UCardData::IsDataValid()`。
+`ECardRarity` 与 `ECardColor` 都属于 authored semantic metadata，必须进入 `UCardData::IsDataValid()`。
 
 形成三层防御：
 
@@ -275,7 +432,7 @@ FPresentationCardSnapshot validation
 
 Layer 3
 Visual Resolver
-→ defensive fallback only
+→ defensive fallback / hide only
 ```
 
 合法 Rarity：
@@ -289,46 +446,60 @@ Special
 Curse
 ```
 
+合法 CardColor：
+
+```text
+Red
+Green
+Blue
+Purple
+Colorless
+Curse
+```
+
 非法 enum payload 必须在 CardData Editor validation 阶段报错。
 
 Resolver fallback 不能替代 authoring validation。
 
 ---
 
-## 7. Frozen Presentation Rarity 数据链
+## 7. Frozen Presentation Metadata 数据链
 
 新增：
 
 ```cpp
 FPresentationCardSnapshot::Rarity = ECardRarity::Common;
+FPresentationCardSnapshot::CardColor = ECardColor::Red;
+
 FBattleHUDCardView::Rarity = ECardRarity::Common;
+FBattleHUDCardView::CardColor = ECardColor::Red;
 ```
 
 完整链路：
 
 ```text
-UCardData::Rarity
+UCardData::Rarity / CardColor
         ↓
-UCardInstance::GetRarity()
+UCardInstance::GetRarity() / GetCardColor()
         │
         ├─ Current / Formal Hand
         │      ↓
         │ ABattleManager::TryFreezePresentationStateSnapshot
         │      ↓
-        │ FBattleHUDCardView::Rarity
+        │ FBattleHUDCardView::Rarity / CardColor
         │
         └─ Historical / Committed Presentation
                ↓
         PresentationCardSnapshot::TryBuild
                ↓
-        FPresentationCardSnapshot::Rarity
+        FPresentationCardSnapshot::Rarity / CardColor
                ↓
         PresentationCardView::MakePresentationOnlyCardView
                ↓
-        FBattleHUDCardView::Rarity
+        FBattleHUDCardView::Rarity / CardColor
 ```
 
-本阶段不向 `FCardReadView` 增加 Rarity；formal Hand freeze 继续通过 `Source.Card` / `UCardInstance` 读取静态 metadata。
+历史卡面必须只消费 frozen metadata，不允许根据当前玩家职业、当前 BattleManager 或 CardId 重新推断 Color。
 
 ---
 
@@ -336,14 +507,14 @@ UCardInstance::GetRarity()
 
 ### 8.1 enum domain validation
 
-以下函数必须增加 Rarity enum domain 检查：
+以下函数必须同时增加 Rarity 与 CardColor enum domain 检查：
 
 ```text
 IsNativeCardSnapshotValid
 IsDiagnosticCardSnapshotValid
 ```
 
-非法 Rarity 必须 fail closed。
+非法值必须 fail closed。
 
 ### 8.2 exact card-face continuity
 
@@ -352,6 +523,7 @@ IsDiagnosticCardSnapshotValid
 ```cpp
 View.bUpgraded == Snapshot.bUpgraded
 View.Rarity == Snapshot.Rarity
+View.CardColor == Snapshot.CardColor
 ```
 
 涉及：
@@ -365,26 +537,20 @@ DoesDiagnosticCardViewMatchSnapshot
 
 ```text
 bUpgraded
-→ 已是正式 frozen presentation fact
-→ 决定卡牌名称 "+" 与标题颜色
+→ 决定卡牌名称 "+" 与升级标题颜色
 
 Rarity
-→ 新增正式 frozen presentation fact
-→ 决定卡面静态视觉
+→ 决定 Frame / Banner / TypePlate
+
+CardColor
+→ 决定 Background / CostOrb
 ```
 
 ### 8.3 RichDescription 明确排除
 
 generic Hand identity / continuity comparison **不得加入 `RichDescription`**。
 
-理由：
-
-```text
-CardPlayed target-specific committed RichDescription
-可能合法地不同于 source-side Hand baseline
-```
-
-因此合同锁定：
+合同保持：
 
 ```text
 RichDescription
@@ -392,13 +558,13 @@ RichDescription
 → generic Hand identity comparison 故意不比较
 ```
 
-禁止实现者因“exact continuity”而自行把 `RichDescription` 纳入 equality。
+因为 CardPlayed target-specific committed RichDescription 可以合法不同于 source-side Hand baseline。
 
 ---
 
 ## 9. Semantic Rarity → Visual Rarity Style
 
-项目当前只使用三套可见 rarity style：
+项目继续只有三套可见 rarity style：
 
 ```text
 CommonVisual
@@ -406,7 +572,7 @@ UncommonVisual
 RareVisual
 ```
 
-语义 Rarity 映射：
+映射：
 
 ```text
 Basic
@@ -422,6 +588,8 @@ Rare
 → RareVisual
 ```
 
+Rarity style 全职业共享，不复制进 Red / Green / Blue / Purple color style。
+
 禁止在 `UCardData` 增加：
 
 ```text
@@ -429,90 +597,203 @@ VisualRarity
 BannerTexture
 FrameTexture
 BackgroundTexture
+StyleSet reference
 ```
-
-视觉折叠只属于 Presentation Resolver。
 
 ---
 
-## 10. 卡牌类型视觉规则
+## 10. CardType → VisualCardShape
 
-### 10.1 Background
+正常内容路径不再使用 `FallbackFrame` 作为 Status / Curse 的主规则。
+
+新增轻量 Presentation-only shape 概念：
 
 ```text
-Attack
+AttackShape
+SkillShape
+PowerShape
+```
+
+语义映射：
+
+```text
+ECardType::Attack
+→ AttackShape
+
+ECardType::Skill
+→ SkillShape
+
+ECardType::Power
+→ PowerShape
+
+ECardType::Status
+→ SkillShape
+
+ECardType::Curse
+→ SkillShape
+```
+
+该映射只表示：
+
+```text
+Frame family
+Portrait geometry family
+TypePlate geometry family
+Background type slot
+```
+
+不能把它理解为把 Status / Curse 语义改成 Skill。
+
+例如：
+
+```text
+CardType  = Curse
+CardColor = Curse
+Rarity    = Curse
+
+CardType
+→ SkillShape
+
+CardColor
+→ Curse ColorStyle
+
+Rarity
+→ CommonVisual
+```
+
+三者分别解析。
+
+非法 `ECardType` 直接调用 resolver 时，可以 defensive fallback 到 `SkillShape`，但正式 frozen payload validation 仍必须拒绝非法 CardType。
+
+---
+
+## 11. CardColor → Color Visual Style
+
+Color 只选择职业/颜色相关资源，不改变 canonical layout。
+
+每个 ColorStyle 负责：
+
+```text
+AttackBackground
+SkillBackground
+PowerBackground
+CostOrb
+```
+
+概念结构：
+
+```cpp
+USTRUCT(BlueprintType)
+struct FCardColorVisualStyle
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTextureRegion AttackBackground;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTextureRegion SkillBackground;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTextureRegion PowerBackground;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTextureRegion CostOrb;
+};
+```
+
+未来组合示例：
+
+```text
+Red + Attack
 → bg_attack_red
+→ card_red_orb
 
-Skill
-→ bg_skill_red
+Green + Skill
+→ bg_skill_green
+→ card_green_orb
 
-Power
-→ bg_power_red
-
-Status / Curse
-→ FallbackBackground
+Blue + Power
+→ bg_power_blue
+→ card_blue_orb
 ```
 
-### 10.2 Frame
+Color 不拥有：
 
 ```text
-Attack
-→ resolved rarity style.AttackFrame
-
-Skill
-→ resolved rarity style.SkillFrame
-
-Power
-→ resolved rarity style.PowerFrame
-
-Status / Curse
-→ FallbackFrame
+Frame
+Banner
+TypePlate
+AttackLayout / SkillLayout / PowerLayout
 ```
 
-`FallbackFrame` 是 Presentation 配置槽，不是 Gameplay 概念。
-
-当前允许：
+因此禁止：
 
 ```text
-FallbackFrame == nullptr
-→ Img_CardFrame Hidden
-→ Gameplay/Input unaffected
+RedAttackLayout
+GreenAttackLayout
+BlueAttackLayout
+...
 ```
 
-后续加入 Status / Curse 通用边框素材后：
-
-```text
-只配置 WBP Class Defaults
-→ 不修改 resolver 规则
-```
-
-### 10.3 Banner / TypePlate
-
-Banner 与 TypePlate 继续按 resolved visual rarity style：
-
-```text
-CommonVisual
-→ banner_common
-→ common_left / common_center / common_right
-
-UncommonVisual
-→ banner_uncommon
-→ uncommon_left / uncommon_center / uncommon_right
-
-RareVisual
-→ banner_rare
-→ rare_left / rare_center / rare_right
-```
-
-Status / Curse 即使使用 fallback background/frame，也仍允许按 Rarity 显示对应 Banner / TypePlate。
+不同 Color 的同一 Shape 必须共享同一 canonical geometry；每张 texture region 自带的 Position/Size 只用于恢复 atlas trim placement，不代表语义 layout 不同。
 
 ---
 
-## 11. Visual Style 数据结构
+## 12. Trimmed Texture Primitive
 
-本阶段不建立 DataAsset / Registry。
+Cropped Texture 已失去原 AtlasRegion 的 `orig / offset` runtime metadata，因此 Presentation 配置需要保存 texture 与 canonical trim placement 的配对。
 
-使用轻量 Presentation struct：
+新增轻量 primitive：
+
+```cpp
+USTRUCT(BlueprintType)
+struct FCardFaceLayerPlacement
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FVector2D Position = FVector2D::ZeroVector;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FVector2D Size = FVector2D::ZeroVector;
+};
+
+USTRUCT(BlueprintType)
+struct FCardFaceTextureRegion
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    TObjectPtr<UTexture2D> Texture = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceLayerPlacement Placement;
+};
+```
+
+原则：
+
+```text
+一个被 atlas trim 过的视觉资源
+= Texture + canonical placement
+```
+
+禁止把：
+
+```text
+Texture 放在一个 struct
+Placement 放在另一张不相关表
+运行时再按 TextureSize 猜位置
+```
+
+Resolver 不读取纹理像素、不解析 atlas、不从 PNG metadata 动态恢复位置。
+
+---
+
+## 13. Rarity Visual Style
+
+使用全职业共享：
 
 ```cpp
 USTRUCT(BlueprintType)
@@ -521,16 +802,16 @@ struct FCardRarityVisualStyle
     GENERATED_BODY()
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    TObjectPtr<UTexture2D> Banner = nullptr;
+    FCardFaceTextureRegion Banner;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    TObjectPtr<UTexture2D> AttackFrame = nullptr;
+    FCardFaceTextureRegion AttackFrame;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    TObjectPtr<UTexture2D> SkillFrame = nullptr;
+    FCardFaceTextureRegion SkillFrame;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
-    TObjectPtr<UTexture2D> PowerFrame = nullptr;
+    FCardFaceTextureRegion PowerFrame;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly)
     TObjectPtr<UTexture2D> TypeLeft = nullptr;
@@ -543,103 +824,267 @@ struct FCardRarityVisualStyle
 };
 ```
 
-由 `UBattleCardWidget` / `WBP_BattleCard_Native` CDO 保存：
-
-```text
-CommonStyle
-UncommonStyle
-RareStyle
-
-AttackBackground
-SkillBackground
-PowerBackground
-FallbackBackground
-FallbackFrame
-CostOrb
-CardShadow
-```
-
-外层 CDO style/config 属性使用 `EditDefaultsOnly`。
-
-### 11.1 单一配置所有者
-
-采用一个 lightweight `FCardFaceStyleConfig` 聚合上述字段，保存在 `UBattleCardWidget` 的 `EditDefaultsOnly` 属性中，由生产 WBP CDO author。不要同时保留一份平铺字段与一份 struct 副本。
-
-另包含本次已有明确 consumer 的卡面配置：
-
-```text
-AttackLayout / SkillLayout / PowerLayout / FallbackLayout
-    → PortraitRect、FramePlacement、TypePlateRect、DescriptionRect
-    → Portrait fitting / source-alpha contract
-CommonLayout
-    → RootSize、Background placement、Banner placement、Cost placement、Shadow placement
-```
-
-`FCardFaceLayerPlacement` 只描述局部位置和尺寸；每个 rarity frame、banner 的 trim placement 与对应纹理成对 author，因为不同 rarity 的 Cropped 外接矩形可能略有不同。Rarity 切换只补偿素材裁切差异，不改变该类型的卡图窗口、文字区域或根尺寸。§15 定义坐标换算。
-
-布局属于 UI 配置，不得写入 CardData、CardInstance 或 frozen DTO。本轮优先使用现有带 Alpha 的 portrait 纹理，不建立新的动态材质 / mask 系统。生产卡图若不符合 §15.3 轮廓要求，应先修正该 UI 纹理的 Alpha，再继续视觉验收。
+TypePlate 三段使用固定 canonical widget size，本轮不把原始 PNG BrushSize 当 layout authority。
 
 ---
 
-## 12. Resolver 必须与 Widget 生命周期解耦
+## 14. Type Layout 与固定 WBP Geometry
 
-视觉计算不能依赖：
+### 14.1 固定 canonical geometry 归 WBP Designer
+
+以下固定几何继续由 `WBP_BattleCard_Native` Designer 持有：
 
 ```text
-NativeOnInitialized
-NativeConstruct
-真实 WBP 加载
-真实 Texture asset 加载
+RootSize = 150 × 210
+Name 基准区域
+Cost text 基准区域
+Description 基准区域
+Shadow ZOrder / card-face ZOrder
+Button hit area
+共同交互 geometry
 ```
 
-推荐纯 Presentation resolver：
+不把整张卡的所有布局数值搬进 StyleSet。
+
+### 14.2 只有真正随 Shape 改变的几何进入 Type Layout
+
+```cpp
+USTRUCT(BlueprintType)
+struct FCardFaceTypeLayout
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceLayerPlacement PortraitRect;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceLayerPlacement FrameAnchor;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceLayerPlacement TypePlateRect;
+};
+```
+
+StyleSet 只保存：
+
+```text
+AttackLayout
+SkillLayout
+PowerLayout
+```
+
+`Status / Curse` 通过 `SkillShape` 使用 `SkillLayout`。
+
+如果后续视觉证明 DescriptionRect 必须按 Shape 有真实差异，再基于实际 evidence 增加；当前不提前做 Red/Green/职业专属 DescriptionLayout。
+
+---
+
+## 15. UCardFaceStyleSet — 单一 Presentation 配置资产
+
+由于未来多职业已确认，本轮允许引入一个很窄的 Presentation DataAsset：
+
+```cpp
+UCLASS(BlueprintType)
+class UCardFaceStyleSet : public UDataAsset
+{
+    GENERATED_BODY()
+
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceStyleConfig Config;
+};
+```
+
+其中：
+
+```cpp
+USTRUCT(BlueprintType)
+struct FCardFaceStyleConfig
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    TMap<ECardColor, FCardColorVisualStyle> ColorStyles;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardRarityVisualStyle CommonStyle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardRarityVisualStyle UncommonStyle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardRarityVisualStyle RareStyle;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTypeLayout AttackLayout;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTypeLayout SkillLayout;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTypeLayout PowerLayout;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    FCardFaceTextureRegion CardShadow;
+};
+```
+
+生产 `WBP_BattleCard_Native` 只持有：
+
+```cpp
+UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Battle HUD|Card|Style")
+TObjectPtr<UCardFaceStyleSet> CardFaceStyleSet;
+```
+
+### 15.1 DataAsset 定性
+
+`UCardFaceStyleSet` 是：
+
+```text
+authored presentation configuration asset
+```
+
+不是：
+
+```text
+Registry
+Service
+Global singleton
+Gameplay definition
+runtime discovery system
+Universal Skin System
+```
+
+禁止：
+
+```text
+CardData → StyleSet reference
+CardInstance → StyleSet reference
+CardColor → hard-coded LoadObject path
+GetMutableDefault / singleton 查 StyleSet
+全局 Visual Registry
+```
+
+正确 ownership：
+
+```text
+WBP_BattleCard_Native
+→ EditDefaultsOnly UCardFaceStyleSet reference
+
+UBattleCardWidget
+→ 只读取该显式配置
+
+pure resolver
+→ 只消费 FCardFaceStyleConfig 参数
+```
+
+### 15.2 本轮 populate 范围
+
+本轮只要求：
+
+```text
+Red ColorStyle
+→ production complete
+→ strict mapping required
+```
+
+以下 Color key 允许结构存在但未配置：
+
+```text
+Green
+Blue
+Purple
+Colorless
+Curse
+```
+
+本轮这些不属于 CFV-4 non-null requirement。
+
+若未来某个颜色进入生产内容：
+
+```text
+author 对应 ColorStyle
+→ 增加该 color 的 focused strict mapping gate
+→ 不修改 DTO / Widget / Resolver architecture
+```
+
+对于有效但未配置的 ColorStyle：
+
+```text
+color-specific Background / CostOrb
+→ null / Hidden
+
+shared Frame / Banner / TypePlate / text / CardArt
+→ 仍可正常显示
+
+Gameplay / Input
+→ unaffected
+```
+
+禁止静默把 Green / Blue / Curse 渲染成 Red 来掩盖缺配置。
+
+---
+
+## 16. Pure Visual Resolver
+
+视觉计算必须与 Widget lifecycle 解耦。
+
+推荐：
 
 ```cpp
 FResolvedCardFaceStyle ResolveCardFaceStyle(
+    ECardColor CardColor,
     ECardType CardType,
     ECardRarity Rarity,
     const FCardFaceStyleConfig& Config);
+```
+
+resolver 内部逻辑分三步：
+
+```text
+ResolveVisualCardShape(CardType)
+ResolveVisualRarity(Rarity)
+ResolveColorStyle(CardColor)
 ```
 
 概念输出：
 
 ```text
 FResolvedCardFaceStyle
-├─ Background
-├─ Frame
-├─ Banner
+├─ VisualShape
+├─ BackgroundRegion
+├─ FrameRegion
+├─ BannerRegion
 ├─ TypeLeft
 ├─ TypeCenter
 ├─ TypeRight
-├─ CostOrb
-└─ Shadow
+├─ CostOrbRegion
+├─ ShadowRegion
+└─ TypeLayout
 ```
 
-同时返回 resolved layer placements、该类型的 PortraitRect / DescriptionRect 等轻量布局值。Resolver 只选择配置和计算布局，不访问纹理像素、不根据加载后的 TextureSize 决定布局、不创建 Widget、不查询 Gameplay。
-
-`RefreshFromCardView()` 用 `CurrentCardView.CardType / Rarity` 解析一次结果，再分别交给核心内容/卡图刷新和装饰刷新。`UBattleCardWidget::RefreshVisualStyle()` 只负责应用纹理、placement 和可见性；`RefreshCardArtwork()` 负责 frozen `CardArt` 的 Brush 和该类型的 PortraitRect。普通文本和 A3 RichText 仍走既有核心内容路径。
-
-Automation 可使用 transient `UTexture2D` pointer identity probe 测试，不依赖 WBP / NativeConstruct。
-
-有效 enum 的映射按 §9–10；独立调用 Resolver 遇到非法 Rarity 时使用 CommonVisual，非法 CardType 使用 FallbackLayout / Background / Frame。这只是视觉防御，不代替 §6/8 的 authored/frozen payload validation。
-
-禁止：
+Resolver：
 
 ```text
-CardId branch
-DisplayName branch
-LoadObject("/Game/...")
-字符串拼 asset path
-Universal Visual Registry
+不创建 Widget
+不访问 Gameplay
+不查询 BattleManager
+不 LoadObject
+不读取纹理像素
+不根据 TextureSize 决定 canonical layout
 ```
+
+Automation 可直接构造 transient `FCardFaceStyleConfig` 和 transient `UTexture2D` pointer identity probe，不依赖真实 WBP / NativeConstruct / asset load。
+
+非法 enum 直接调用 resolver 时只做 defensive fallback；正式 authored/frozen validation 仍负责 fail closed。
 
 ---
 
-## 13. Core Surface 与 Decorative Surface
+## 17. Core Surface 与 Decorative Surface
 
-### 13.1 Core fail-closed surface
+### 17.1 Core fail-closed surface
 
-继续保持现有核心绑定：
+继续保持：
 
 ```text
 Btn_Card
@@ -657,7 +1102,7 @@ invalid Native card surface
 → input disabled
 ```
 
-### 13.2 Decorative presentation surface
+### 17.2 Decorative presentation surface
 
 新增：
 
@@ -672,121 +1117,148 @@ Img_TypeRight
 Img_CostOrb
 ```
 
-这些控件在生产 `WBP_BattleCard_Native` 中应完整配置，但：
+新增 decorative `UImage` 使用：
+
+```cpp
+UPROPERTY(meta = (BindWidgetOptional))
+```
+
+缺失 decorative control / texture：
 
 ```text
-缺失 decorative control
-→ visual degradation/fallback
+visual degradation / fallback / hide
 → 不得改变 Gameplay/Input authority
-
-缺失 style texture
-→ visual fallback/hide
-→ gameplay/input unaffected
 ```
 
-禁止：
-
-```text
-missing banner/frame texture
-→ card cannot click
-```
-
-所有新增 decorative `UImage` 明确使用 `UPROPERTY(meta = (BindWidgetOptional))`，并逐项检查有效性。用于定位的新增容器也不得进入 `bNativeBindingsValid` 核心有效性判定。Core 继续使用现有 `BindWidget`。
-
-背景、图框、丝带等不得参与 Gameplay playability 判定。生产资产缺少必需装饰时，CFV 资产验收失败；运行时仍保留卡牌操作能力。这两个结果分别记录。
+生产 `WBP_BattleCard_Native` 仍必须完整提供本轮需要的 decorative controls；缺控件是 CFV asset acceptance failure，但不是 card input fail-closed condition。
 
 ---
 
-## 14. Visual Fallback Contract
+## 18. Visual Fallback / Clear-Restore Contract
 
-视觉资源缺失与 UMG 核心绑定缺失必须区分。
-
-规则：
+正常内容映射：
 
 ```text
-missing Background texture
-→ FallbackBackground
+Attack → AttackShape
+Skill  → SkillShape
+Power  → PowerShape
+Status → SkillShape
+Curse  → SkillShape
+```
 
-missing FallbackBackground
+`FallbackFrame` 不再是 Status/Curse 正常路径。
+
+缺资源规则：
+
+```text
+missing selected Background
 → Img_CardBackground Hidden
 
-missing rarity Frame
-→ FallbackFrame
-
-missing FallbackFrame
+missing selected Frame
 → Img_CardFrame Hidden
 
 missing Banner
 → Img_CardBanner Hidden
 
 missing TypePlate piece
-→ corresponding decorative piece Hidden（保留其显式布局尺寸）
+→ corresponding piece Hidden
 
 missing CostOrb / Shadow
-→ corresponding decorative image hidden
+→ corresponding image Hidden
+
+missing CardArt
+→ clear old Brush + Img_CardArt Hidden
 ```
 
 任何 style texture 缺失都不得阻止 card input 或 Gameplay request。
 
-每次刷新都覆盖全部 resolved 槽：有效纹理 → 设置新 Brush、恢复 `HitTestInvisible`；空纹理 → 清空旧 Brush/ResourceObject 后设为 `Hidden`。禁止仅在非空时更新导致复用 Widget 保留上一张卡的纹理，也禁止使用 MatchSize 把 512/1024 素材原始像素尺寸写回布局。
+每次刷新必须覆盖全部 resolved 槽：
 
-卡图为空 → 清空旧 Brush，隐藏 `Img_CardArt`；卡图恢复 → 应用当前 frozen CardArt 并恢复可见。卡图 Alpha 不符合图框轮廓时不得关闭输入，但生产视觉 Gate 必须报告越界；不允许靠保留上一张卡的卡图或背景遮挡来掩盖错误。
+```text
+有效纹理
+→ Set Brush ResourceObject
+→ apply canonical placement
+→ HitTestInvisible
+
+空纹理
+→ clear old Brush / ResourceObject
+→ Hidden
+```
+
+禁止仅在 non-null 时更新导致复用 Widget 保留上一张卡的：
+
+```text
+Background
+Frame
+Banner
+TypePlate
+CostOrb
+CardArt
+placement
+```
+
+禁止 `MatchSize` 把 512/1024 原始素材像素尺寸写回 150×210 卡面 layout。
 
 ---
 
-## 15. WBP_BattleCard_Native 目标层级
+## 19. WBP_BattleCard_Native 目标层级与 Geometry Ownership
 
-### 15.1 目标层级与绘制顺序
+### 19.1 建议层级
 
-保留 `SB_Card → Btn_Card` 的根尺寸、点击入口和动画锚点；内部结构如下，Canvas 子项用显式 ZOrder 保证绘制顺序：
+保留 `SB_Card → Btn_Card` 根尺寸、点击入口和现有动画锚点。
+
+建议收敛为：
 
 ```text
 SB_Card
 └─ Btn_Card
    └─ OV_Card
-      ├─ Img_CardShadow
-      │
       └─ CN_CardFace
+         ├─ Img_CardShadow
          ├─ Img_CardBackground
          ├─ Img_CardArt
          ├─ Img_CardFrame
+         ├─ Img_CardBanner
          │
-         ├─ OV_CardName
-         │  ├─ Img_CardBanner
-         │  └─ SB_CardName
-         │     └─ Txt_CardName
+         ├─ SB_CardName
+         │  └─ Txt_CardName
          │
-         ├─ OV_CardType
-         │  ├─ HB_CardTypePlate
-         │  │  ├─ Img_TypeLeft
-         │  │  ├─ Img_TypeCenter
-         │  │  └─ Img_TypeRight
-         │  └─ Txt_CardType
+         ├─ HB_CardTypePlate
+         │  ├─ Img_TypeLeft
+         │  ├─ Img_TypeCenter
+         │  └─ Img_TypeRight
+         ├─ Txt_CardType
          │
-         ├─ OV_Cost
-         │  ├─ Img_CostOrb
-         │  └─ Txt_Cost
-         │
+         ├─ Img_CostOrb
+         ├─ Txt_Cost
          └─ Txt_CardDescription
 ```
 
-`OV_Cost` 绘制在标题丝带和卡图之上；文字绘制在各自底板之上。`Img_CardFrame` 只包围卡图区域；红色卡身外沿属于 Background。类型标签紧贴卡图下沿，不占一行独立正文空间。
+把需要 absolute trim placement 的 decorative image 直接放在 `CN_CardFace` 下，避免把 texture placement 与 `UOverlaySlot` 能力混淆。
 
-### 15.2 坐标、尺寸与 trim placement
+核心 Text / Art Widget 可以移动，但保留现有绑定名与对象 identity，尽量不删除后重新创建同名控件。
 
-根卡片固定布局尺寸：
+### 19.2 根尺寸
 
 ```text
 150 × 210
 ```
 
-`150 × 210` 是 layout/geometry 尺寸；hover/选中/播放只沿用现有 render transform。费用球、丝带可超出根矩形绘制，不能扩大根 DesiredSize、手牌槽间距或动画锚点。父级卡面不设整树 `ClipToBounds`，避免切掉左上球和丝带；卡图裁剪单独处理。
+这是 layout/geometry 尺寸。
 
-本轮统一使用 §21 CFV-4 映射的 **512** Cropped 素材，保存它们的 trim placement。离线 authoring 换算规则：
+hover / selected / playback 继续沿用现有 render transform；费用球和 Banner 可以视觉超出 body，但不得扩大 Hand slot DesiredSize 或改变播放动画锚点。
+
+父级不对整棵卡面做 `ClipToBounds`；卡图轮廓单独处理。
+
+### 19.3 Atlas trim authoring
+
+本轮生产资源统一使用 CFV-4 指定的 512 Cropped 版本。
+
+离线 authoring 换算继续使用：
 
 ```text
-Source canvas = 512 × 512（仅适用于本轮选定且已检查 orig 的条目）
-Canonical body origin O = (106, 46)   // 原画布左上坐标系
+Source canvas = 512 × 512
+Canonical body origin O = (106, 46)
 Canonical body size   = (300, 420)
 Uniform scale S       = 0.5
 
@@ -795,55 +1267,64 @@ LocalPosition = (TrimTopLeft - O) * S
 LocalSize     = size * S
 ```
 
-`offset` 是原画布中的裁切偏移，`xy` 是图集内坐标，不能混用。原画布 512 高不能直接当作卡身高；512/1024 条目也不能混用，例如 1024 orb 的 `orig` 与 512 orb 不同。坐标在配置中保存；运行时不解析 atlas，也不读取 PNG 来重建布局。
+`offset` 与 atlas `xy` 不得混用。
 
-初始配置依据如下（这些是实施起点，尚未通过视觉 Gate；个别 0.5 px 差异以该资源的 atlas 原值为准）：
+换算结果写入相应 `FCardFaceTextureRegion.Placement`；运行时不解析 atlas。
 
-| 层 | 根卡片局部位置 / 尺寸 | 约束 |
+### 19.4 Type Layout 初始值
+
+以下仅作为 CFV-2 authoring 起点，不提前宣称最终视觉 PASS：
+
+| Shape / 层 | 初始局部位置 / 尺寸 | 约束 |
 |---|---|---|
-| Background / Shadow | 由各自 trim 换算，主体约 `150 × 210` | 保持红色卡身比例；阴影只影响绘制 |
-| Attack Frame | 约 `(9, 31)` / `131 × 92.5` | 保留下沿斜角；按 rarity 补偿 trim 差 |
-| Skill Frame | 约 `(9, 30.5)` / `131.5 × 91.5` | 使用 Skill 图框自身轮廓 |
-| Power Frame | 约 `(7.5, 3)` / `134.5 × 119` | 保留椭圆；上部被标题丝带叠压 |
-| Banner | 约 `(-6, 5.5)` / `162 × 38.5` | 横跨卡身；不是正文背景 |
-| Name | 初始 Rect `(22, 7, 106, 25)` | 居中，避开费用球；不随文字增长撑宽卡牌 |
-| Cost Orb | 约 `(-9.5, -8.5)` / `36 × 35.5` | 左上角压住卡身与 Banner |
-| Cost text | 居中于 Orb 的可见内圈 | 大号费用数字，无独立底色 |
-| TypePlate | 初始中心约 `(75, 115)`，高 `11.5` | 按各类型图框下沿作局部微调 |
-| Description | 初始 Rect `(17, 133, 116, 57)` | 位于下半部深色区，短文案垂直居中；多行自动换行 |
+| Attack Frame | 约 `(9, 31)` / `131 × 92.5` | 保留下沿斜角 |
+| Skill Frame | 约 `(9, 30.5)` / `131.5 × 91.5` | Status/Curse 也复用此 Shape geometry |
+| Power Frame | 约 `(7.5, 3)` / `134.5 × 119` | 保留椭圆 |
+| Banner | 约 `(-6, 5.5)` / `162 × 38.5` | rarity-specific trim compensation |
+| Name | 初始 Rect `(22, 7, 106, 25)` | Designer 固定基准区 |
+| Cost Orb | 约 `(-9.5, -8.5)` / `36 × 35.5` | Color-specific texture region |
+| TypePlate | 初始中心约 `(75, 115)`，高 `11.5` | 由 Type Layout 微调 |
+| Description | 初始 Rect `(17, 133, 116, 57)` | Designer 固定基准区，若真实 evidence 需要再按 Shape 扩展 |
 
-CFV-2 必须用三种生产 CardArt 完成各 `PortraitRect` / 内缘对齐和必要的局部微调，将最终 Rect 与 placement 记录为实施布局表；CFV-3 将这些值收敛到同一 CDO 配置，CFV-4 验证真实素材。记录与上述初值的差异。根尺寸、类型窗口语义和费用/标题的叠压关系不变；不是用一个 Frame Rect 拉伸全部类型。
+Color 不改变以上 canonical geometry；不同 color texture 的 placement 只补偿其自身 trim 差异。
 
-### 15.3 卡图轮廓与 Alpha
+### 19.5 卡图轮廓与 Alpha
 
-本轮选择 **复用带 Alpha 的原卡图 + 类型专属 PortraitRect + 对应图框覆盖内缘**。已有 Strike / Defend / Inflame 的原始 portrait PNG 为 `500 × 380`，实际存在透明角和边缘；但仅存在 Alpha 通道不等于轮廓已与每种图框严格吻合。
+本轮采用：
 
-- `Img_CardArt` 始终使用 frozen `FBattleHUDCardView.CardArt`，不得用 CardId/DisplayName 重新查图。
-- 按类型 author PortraitRect，保留图中人物/主体，卡图的有效轮廓与图框内缘贴合；不能把整张卡片尺寸传给 CardArt 或 frame，也不能把所有类型的 portrait 强行套入同一窗口。
-- 透明 frame 只能覆盖接缝，**不能裁掉窗口外的非透明像素**。CFV-2/4 必须同时检查透明区与可见内缘；若生产 UI portrait 仍越界，修正该 portrait 的 Alpha/裁切导入，不更改 Gameplay metadata 或 frozen identity。
-- 本轮不增加通用 mask material / shader 系统。若现有源图无法通过局部 Alpha authoring 达到目标，应记录具体素材问题后修订该局部方案，不能宣称矩形 ClipToBounds 已实现椭圆裁剪。
-- Status/Curse 使用 FallbackLayout（Skill 布局）与黑色背景；FallbackFrame 为空时只隐藏图框，卡图和文字仍可显示。该 fallback 不承诺未提供素材的完整原作 Status/Curse 外观。
+```text
+frozen CardArt
++ VisualCardShape-specific PortraitRect
++ 对应 Frame 覆盖接缝
+```
 
-### 15.4 类型标签与交互
+规则：
 
-类型标签：
+- `Img_CardArt` 始终使用 frozen `FBattleHUDCardView.CardArt`；不得用 CardId / DisplayName / 当前职业查图。
+- Attack / Skill / Power 使用各自 PortraitRect；Status / Curse 使用 SkillShape PortraitRect。
+- 透明 Frame 不能真正裁掉窗口外非透明像素。
+- 如果当前代表生产卡 `T_strike / T_defend / T_inflame` 的 UI portrait Alpha / crop 与目标图框不吻合，本 CFV 明确授权仅对这些 UI CardArt texture 的 Alpha / 裁切导入做必要修正。
+- 该授权只涉及 UI texture presentation，不得修改 CardData Gameplay metadata、Runtime identity、Effect 或 frozen semantics。
+- 本轮不建立 per-color / universal mask material；若大量后续素材证明需要统一 mask，再基于真实 consumer 单独设计。
+
+### 19.6 TypePlate 与交互
 
 ```text
 HB_CardTypePlate
-├─ Img_TypeLeft   → 固定 7 × 11.5，Auto slot
-├─ Img_TypeCenter → Fill，固定高 11.5，只横向伸展
-└─ Img_TypeRight  → 固定 7.5 × 11.5，Auto slot
+├─ Img_TypeLeft   → 固定 7 × 11.5 / Auto
+├─ Img_TypeCenter → Fill / 固定高 11.5
+└─ Img_TypeRight  → 固定 7.5 × 11.5 / Auto
 ```
 
-三段宽度由标签文字测量加固定 padding 得到；不让原始 Texture BrushSize 自动决定 UI 尺寸。图框自带的底部底座与 TypePlate 对齐，避免双重标签错位。标签文字使用既有中文类型文本。
+Decorative leaf 使用 `HitTestInvisible`；祖先容器不得截断 `Btn_Card` 命中。
 
-装饰叶子设 `HitTestInvisible`；`OV_Card` / `CN_CardFace` 等祖先用 `SelfHitTestInvisible`，不能使 `Btn_Card` 连同子树失去命中。Button Normal/Hovered/Pressed 的默认矩形皮肤与 ContentPadding 不得盖住或挤动卡面；按现有输入协议保留反馈，状态反馈不能改写稀有度样式或升级标题颜色。历史播放卡继续由 HUD 设置整卡 `HitTestInvisible`。
+Button Normal/Hovered/Pressed 的默认矩形 brush / ContentPadding 不得覆盖、挤动或重新着色 rarity / upgrade visual semantics。
 
 ---
 
-## 16. UMG 迁移约束
+## 20. UMG 迁移约束与 Refresh 分层
 
-现有 Native binding 名称必须保留：
+必须保留现有 core binding 名称：
 
 ```text
 Btn_Card
@@ -854,20 +1335,14 @@ Txt_CardType
 Img_CardArt
 ```
 
-CFV-2 重排层级时：
-
-```text
-优先移动已有 Widget
-而不是删除后重新创建同名 Widget
-```
-
-目的：减少 BindWidget、Blueprint GUID、序列化层面的无意义变化。
+CFV-2 优先移动已有 Widget，而不是删除后新建同名 Widget。
 
 旧：
 
 ```text
 BG_Card
 VB_CardContent
+Img_CostBase（若仍存在）
 ```
 
 新路径验证前不得立即删除。
@@ -876,31 +1351,30 @@ VB_CardContent
 
 ```text
 建立新视觉层
-→ 接入并验证
+→ 接入
 → Collapse 旧 fallback
-→ 再验证
+→ 验证
 → 最后删除旧层
 ```
 
-最终生产树只能保留一套可见 CardArt/Name/Cost/Description；旧 `Img_CostBase` 如仍存在，应随费用球迁移清除或 Collapse，不与 `Img_CostOrb` 叠出两套底图。旧层删除以新层 Gate 为依据，不额外安排一次相同 PIE。CFV-2 只记录布局并保留可读中间态，CFV-3/4 才接管为 CDO 样式；不能让空配置先隐藏全部生产卡面后停工。
+最终生产树只能有一套可见 CardArt / Name / Cost / Description。
 
----
-
-## 17. RefreshFromCardView 分层
-
-为了保护已有 transient Card Probe 和 A3 测试，核心内容刷新与视觉刷新必须解耦。
-
-推荐：
+### 20.1 RefreshFromCardView 分层
 
 ```text
 RefreshFromCardView()
-├─ ResolveCardFaceStyle(CurrentCardView.CardType, CurrentCardView.Rarity, Config)
+├─ ResolveCardFaceStyle(
+│      CurrentCardView.CardColor,
+│      CurrentCardView.CardType,
+│      CurrentCardView.Rarity,
+│      StyleSet.Config)
+│
 ├─ RefreshCoreCardContent()
 │  ├─ Name
 │  ├─ Cost
 │  ├─ Description
 │  ├─ Type
-│  └─ RefreshCardArtwork(resolved PortraitRect + frozen CardArt)
+│  └─ RefreshCardArtwork(resolved TypeLayout + frozen CardArt)
 │
 └─ RefreshVisualStyle()
    ├─ Background
@@ -911,17 +1385,29 @@ RefreshFromCardView()
    └─ Shadow
 ```
 
-旧测试 probe 继续只需要注入现有核心 surface。
+旧 transient Card Probe / A3 tests 继续只需要注入 core surface。
 
-不得要求旧 DTO/A3 测试为了 CFV 创建 Shadow/Banner/TypePlate 等假的 `UImage`。
+不得要求旧 DTO / A3 测试为了 CFV 创建 decorative fake UImage。
 
-生产 `WBP_BattleCard_Native` 则应完整提供 decorative surface。
+`SetCardView()` 在 Construct 前后都必须最终得到相同状态；同一 Widget 连续接收不同 DTO 时不得残留旧样式。
 
-两类刷新分别处理所需控件，decorative 的空引用/空纹理不得造成核心内容 early return。`SetCardView()` 无论在 Construct 前后发生均可在控件就绪后得到相同结果；同一 Widget 连续接收不同 DTO 时不得残留旧样式。`ApplyImmediatePreview` / `ClearImmediatePreview` 仍只更新描述，不能重建正式手牌、触发结构 `OnChanged` 或改变静态布局。历史卡只消费 frozen view。
+`ApplyImmediatePreview / ClearImmediatePreview` 仍只更新描述，不得修改：
+
+```text
+CardColor
+Rarity
+Frame
+Banner
+TypePlate
+Background
+CardArt
+root geometry
+formal Hand Widget identity
+```
 
 ---
 
-## 18. Upgrade 与 CFV 完全正交
+## 21. Upgrade 与 CFV 完全正交
 
 已 seal 的升级表现保持：
 
@@ -942,20 +1428,26 @@ UCardInstance::bUpgraded semantics
 Upgrade action
 typed Base/Upgraded values
 Dynamic Text
-A3 Preview gameplay semantics
+A3 Preview Gameplay semantics
 ```
 
 最终组合：
 
 ```text
-CardType
+CardColor + VisualCardShape
 → Background
 
-CardType + Rarity
+CardColor
+→ CostOrb
+
+VisualRarity + VisualCardShape
 → Frame
 
-Rarity
+VisualRarity
 → Banner / TypePlate
+
+VisualCardShape
+→ Portrait geometry
 
 bUpgraded
 → "+" / #7FFF00
@@ -963,104 +1455,79 @@ bUpgraded
 CardArt
 → Artwork
 
-Cost
-→ Cost text
-
 Description
 → RichText
 ```
 
 ---
 
-## 19. 字体策略
+## 22. 字体策略
 
-中文标题、类型和正文使用同一简体中文字体族，费用数字保留参考图的大号数字风格。CFV-4 负责实际字体 authoring：
+中文标题、类型和正文使用同一简体中文字体族；费用数字保留参考图的大号数字风格。
 
-```text
-Txt_CardName
-Txt_CardType
-Txt_Cost
-Txt_CardDescription
-```
-
-调整：
-
-```text
-Font Family
-字号
-Letter Spacing
-Outline Size
-Outline Color
-Horizontal Alignment
-Vertical Alignment
-```
-
-`Txt_CardDescription` 是 `URichTextBlock`，因此需同步确认：
-
-```text
-Default RichText Style
-PreviewIncrease
-PreviewDecrease
-现有其他 semantic value styles
-```
-
-使用相同字体族和合理字号/基线。
-
-具体落点（字号为 `150 × 210` 卡面的初值，CFV-2/4 视觉排版可微调并记录最终值）：
+CFV-4 author：
 
 | 控件 / 样式 | UE Font 包路径 | 初始字号 / 排版 |
 |---|---|---|
-| `Txt_CardName` | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Bold_Font` | 14，居中，深色 Outline 1；基态浅色，升级仍为 `#7FFF00` |
-| `Txt_CardType` | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Bold_Font` | 8，居中，深灰文字，无粗描边 |
-| `Txt_Cost` | `/Game/SlayTheSpireDemo/UI/font/Kreon-Bold_Font` | 23，居中，浅色数字、深色 Outline 1 |
-| Description Default / numeric styles | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Medium_Font` | 11，浅米色正文，左对齐、在描述区域垂直居中、自动换行 |
+| `Txt_CardName` | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Bold_Font` | 14，居中，深色 Outline 1；升级仍 `#7FFF00` |
+| `Txt_CardType` | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Bold_Font` | 8，居中 |
+| `Txt_Cost` | `/Game/SlayTheSpireDemo/UI/font/Kreon-Bold_Font` | 23，居中，深色 Outline 1 |
+| Description Default / numeric styles | `/Game/SlayTheSpireDemo/UI/font/zhs/SourceHanSerifSC-Medium_Font` | 11，自动换行 |
 
-富文本实际修改 `/Game/SlayTheSpireDemo/Data/DT_BattleCardTextStyles` 中的 Default、PreviewIncrease、PreviewDecrease 及已有 semantic rows，并检查 WBP 是否设置了覆盖字体的 DefaultTextStyle。只改 WBP 的外观属性不能代替修改被使用的表行。所有描述表行的 Font/Size/Outline/基线一致；保留现有逐数值增减颜色和 tag 名，不给整句话着色。
+`Txt_CardDescription` 是 `URichTextBlock`，必须同步确认：
 
-Name 单行必须容纳当前最长生产名称及 `+`；Description 必须容纳当前最长、多段生产描述。不要固定旧 `WrapTextAt = 100` 导致新描述区域仍按旧宽度换行，也不要为容纳文案自动改变卡牌外形。正文中 `造成6点伤害。` 的内容仍由 Gameplay 文本解析提供，不在 WBP 写死参考图文案。
+```text
+DT_BattleCardTextStyles
+Default
+PreviewIncrease
+PreviewDecrease
+其他现有 semantic rows
+```
 
-本阶段不修改 `BattleTextResolver` 的语义解析。
+所有描述行保持统一 Font / Size / Outline / baseline，并保留既有 per-value semantic color/tag。
 
----
+Name 单行必须容纳当前最长生产名称及 `+`；Description 必须容纳当前最长、多段生产描述。
 
-## 20. 生产 CardData Rarity 迁移
-
-CFV-4 显式 author 当前生产卡的语义 Rarity。
-
-当前目标：
-
-| Card | Rarity |
-|---|---|
-| Strike | Basic |
-| Defend | Basic |
-| Pommel Strike | Common |
-| Twin Strike | Common |
-| Uppercut | Uncommon |
-| Inflame | Uncommon |
-
-默认 `Common` 只负责迁移安全，不替代本表的正式 authoring。
-
-CFV-4 必须按以下完整包路径加载实际生产资产，断言 CardId 对应、CardType 与 Rarity。不要用 transient fixture 的值代替资产 Gate：
-
-| 生产 CardData 包路径 | CardType | Rarity |
-|---|---|---|
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Strike` | Attack | Basic |
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend` | Skill | Basic |
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike` | Attack | Common |
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_TwinStrike` | Attack | Common |
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Uppercut` | Attack | Uncommon |
-| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/powers/DA_Card_Inflame` | Power | Uncommon |
+本阶段不修改 `BattleTextResolver` 语义解析。
 
 ---
 
-# 21. 实施阶段
+## 23. 当前生产 CardData Metadata 迁移
 
-## CFV-1 — Rarity Contract
+CFV-4 显式 author 当前六张生产卡：
+
+| Card | CardType | Rarity | CardColor |
+|---|---|---|---|
+| Strike | Attack | Basic | Red |
+| Defend | Skill | Basic | Red |
+| Pommel Strike | Attack | Common | Red |
+| Twin Strike | Attack | Common | Red |
+| Uppercut | Attack | Uncommon | Red |
+| Inflame | Power | Uncommon | Red |
+
+完整包路径：
+
+| 生产 CardData 包路径 | CardType | Rarity | CardColor |
+|---|---|---|---|
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Strike` | Attack | Basic | Red |
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_Defend` | Skill | Basic | Red |
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_PommelStrike` | Attack | Common | Red |
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_TwinStrike` | Attack | Common | Red |
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/Attacks/DA_Card_Uppercut` | Attack | Uncommon | Red |
+| `/Game/SlayTheSpireDemo/Data/Cards/Ironclad/powers/DA_Card_Inflame` | Power | Uncommon | Red |
+
+`Common / Red` 默认值只负责 migration safety，不替代显式生产 authoring。
+
+---
+
+# 24. 实施阶段
+
+## CFV-1 — Card Metadata Contract
 
 目标：
 
 ```text
-建立 semantic Rarity
+建立 semantic Rarity + CardColor
 + authoring validation
 + current/frozen/historical propagation
 + continuity enforcement
@@ -1086,29 +1553,32 @@ focused Automation tests
 
 ```text
 ECardRarity domain
+ECardColor domain
 UCardData::IsDataValid
 UCardInstance::GetRarity
-Snapshot.Rarity
-HUDView.Rarity
+UCardInstance::GetCardColor
+Snapshot.Rarity / CardColor
+HUDView.Rarity / CardColor
 formal Hand freeze
 historical mapper
-bUpgraded continuity comparison
-Rarity continuity comparison
-invalid Rarity fail-closed
-RichDescription explicit comparison exclusion
+bUpgraded continuity
+Rarity continuity
+CardColor continuity
+invalid enum fail-closed
+RichDescription comparison exclusion
 ```
 
 ### CFV-1 AUTOMATED GATES
 
 ```text
 1. SlayTheSpireDemoEditor Win64 Development Build once
-2. SlayTheSpireDemo.CFV.RarityContract once
+2. SlayTheSpireDemo.CFV.CardMetadataContract once
 3. SlayTheSpireDemo.Phase6UIA2C.Record.CardZoneChanged once
 ```
 
-如果 `SlayTheSpireDemo.CFV.RarityContract` 没有直接覆盖 Native exact-identity comparison，则额外跑一个最小直接受影响的 R8 identity test；否则不增加历史 suite。
+如果新的 CFV contract test 没有直接覆盖 Native exact-identity comparison，则额外跑一个最小直接受影响的 R8 identity test；否则不增加历史 suite。
 
-禁止为了信心扩展到：
+禁止扩展到：
 
 ```text
 Phase6R
@@ -1120,23 +1590,21 @@ broad Scenario replay
 
 ### CFV-1 Editor Asset Gate
 
-`FPresentationCardSnapshot` / `FBattleHUDCardView` 是 BlueprintType；Build 后：
+`FPresentationCardSnapshot / FBattleHUDCardView` 是 BlueprintType；Build 后：
 
 ```text
 Compile + Save WBP_BattleCard_Native
 ```
 
-只有 UE 明确指出其他直接依赖 Blueprint 需要重编译/保存时，才处理对应资产。
+只有 UE 明确指出其他直接依赖 Blueprint 需要处理时，才额外 Compile / Save 对应资产。
 
 不得全项目 Blueprint resave。
 
-### CFV-1 MANUAL PIE GATES
+### CFV-1 MANUAL PIE
 
 ```text
 none required
 ```
-
-CFV-1 尚未改变玩家实际视觉。
 
 ---
 
@@ -1145,7 +1613,8 @@ CFV-1 尚未改变玩家实际视觉。
 目标：
 
 ```text
-完成新的 UMG 卡面层级
+完成 canonical UMG card-face shell
++ Attack / Skill / Power Shape geometry authoring
 ```
 
 工作：
@@ -1162,116 +1631,118 @@ CostOrb
 Description
 ```
 
-调整 WBP hierarchy、图层 slot、portrait Alpha 对齐与文字排版初值，不实现 Style Resolver。用现有真实素材作 Designer 配置以保留可读中间态；最终纹理 authority 在 CFV-3/4 收敛为 CDO。
-
 要求：
 
 ```text
+固定公共 geometry 归 WBP Designer
+Color 不产生独立 layout
+Type-dependent geometry 只分 Attack/Skill/Power
+Status/Curse 复用 SkillShape
 优先移动已有 core widgets
-保留现有 BindWidget 名称
-新增 decorative widgets 使用 Img_ 前缀
-旧 BG_Card/VB_CardContent 暂不立即删除
+保留 existing BindWidget names
+new decorative widgets 使用 Img_ 前缀
+旧层先 Collapse 后删除
 ```
 
-### CFV-2 AUTOMATED / EDITOR ASSET GATES
+### CFV-2 GATES
 
 ```text
 WBP_BattleCard_Native Compile PASS
 WBP_BattleCard_Native Save
 core BindWidget contract intact
-逐项核对目标容器和 decorative 控件的名称、类、父子关系及 ZOrder
-根尺寸 150 × 210；旧层状态明确；同一核心控件不重复创建
-保存三种类型的最终 PortraitRect / trim placements / 文本区域布局表
+decorative controls / ZOrder / hit-test contract correct
+root 150 × 210
+保存最终 Attack/Skill/Power PortraitRect / FrameAnchor / TypePlateRect
+保存各已使用 512 texture region trim placements
 ```
 
-不运行 broad Gameplay regression。
-
-### CFV-2 MANUAL PIE GATES
-
-无独立 PIE Gate；布局在 CFV-5 集中作一次视觉验收。这里的 Designer authoring/Compile 不等于视觉验收通过。
+无独立 PIE；最终视觉集中在 CFV-5。
 
 ---
 
-## CFV-3 — Pure Visual Resolver
+## CFV-3 — StyleSet + Pure Resolver
 
 目标：
 
 ```text
-CardType + Rarity + fixed Ironclad config
+CardColor + CardType + CardRarity
 → deterministic FResolvedCardFaceStyle
 ```
 
 实现：
 
 ```text
+FCardFaceLayerPlacement
+FCardFaceTextureRegion
+FCardColorVisualStyle
 FCardRarityVisualStyle
-FCardFaceStyleConfig（如实现需要，保持 lightweight）
+FCardFaceTypeLayout
+FCardFaceStyleConfig
+UCardFaceStyleSet
 FResolvedCardFaceStyle
 pure resolver
 RefreshVisualStyle()
-RefreshCardArtwork() / 类型布局应用
+RefreshCardArtwork()
 new decorative BindWidgetOptional references
-独立 CFV decorative test probe
+independent CFV decorative probe
 ```
 
-必须测试：
+### Resolver 自动测试
+
+分别验证三个正交轴：
 
 ```text
-Attack × CommonVisual
-Attack × UncommonVisual
-Attack × RareVisual
+CardColor selection
+Red / Green / Blue / Purple / Colorless / Curse
+→ transient sentinel ColorStyle 选择正确
 
-Skill × CommonVisual
-Skill × UncommonVisual
-Skill × RareVisual
+CardType → Shape
+Attack → AttackShape
+Skill  → SkillShape
+Power  → PowerShape
+Status → SkillShape
+Curse  → SkillShape
 
-Power × CommonVisual
-Power × UncommonVisual
-Power × RareVisual
+Rarity → VisualRarity
+Basic/Common/Special/Curse → CommonVisual
+Uncommon → UncommonVisual
+Rare → RareVisual
 ```
 
-同时验证 semantic → visual rarity mapping：
+再做少量组合验证：
 
 ```text
-Basic   → CommonVisual
-Common  → CommonVisual
-Special → CommonVisual
-Curse   → CommonVisual
-Uncommon→ UncommonVisual
-Rare    → RareVisual
+Red + Attack + Basic
+Green + Skill + Rare
+Blue + Power + Uncommon
+CurseColor + CurseType + CurseRarity
 ```
 
-并验证：
+证明三个轴独立组合，不需要穷举 6×5×6 全矩阵。
+
+### WidgetStyle 自动测试
+
+同一 Widget：
 
 ```text
-Status / Curse
-→ FallbackBackground
-→ FallbackFrame
+Red Rare Attack
+→ transient Green Basic Skill
+→ valid-but-unconfigured Blue
+→ restore Red Power
 ```
 
-缺失 FallbackFrame 时：
+必须验证：
 
 ```text
-Frame = nullptr
-→ Widget hides Img_CardFrame
+Brush.ResourceObject 与当前 resolved config 一致
+Hidden / HitTestInvisible 正确切换
+旧 Brush / placement / CardArt 不残留
+missing optional decorative controls 不阻断 core content
+MatchSize 不改变 150×210 root
+SetCardView Construct 前后结果一致
+bUpgraded 不改变 Color/Rarity/Shape/Layout
+Preview Apply/Clear 不改变静态 style
 ```
-
-新增最小 Widget 应用断言，纳入 `SlayTheSpireDemo.CFV.WidgetStyle`：
-
-```text
-同一 Widget: Rare Attack → Basic Skill → 无资源 → 恢复 Power
-→ 各 Image Brush.ResourceObject 与当前配置严格一致
-→ Hidden / HitTestInvisible 正确切换，旧 Brush 清空
-→ 不残留前一张卡的 Frame / CardArt / Banner / TypePlate / placement
-
-有效纹理不能通过 MatchSize 改变 150 × 210 根布局
-缺少全部 optional 控件仍能刷新核心内容，并保留既有选牌请求边界
-构造前/后 SetCardView 顺序不影响最终核心内容与样式
-升级前后 Rarity / Frame / Banner / TypePlate / 布局不变，标题按 frozen bUpgraded 更新
-Preview Apply/Clear 不更改静态样式、根尺寸或正式 Hand Widget identity
-```
-
-测试使用新 CFV probe，不给旧 A3/DTO probe 增加装饰控件前提。纹理指针断言不代替 Alpha 轮廓与最终排版的手动观察。
 
 ### CFV-3 AUTOMATED GATES
 
@@ -1282,35 +1753,43 @@ SlayTheSpireDemo.CFV.WidgetStyle once
 Compile + Save + Reopen WBP_BattleCard_Native once after reflected config/bindings change
 ```
 
-### CFV-3 MANUAL PIE GATES
-
-```text
-none required
-```
-
-上述三个 CFV Automation 前缀（含 CFV-1 RarityContract）均为待新增测试；实施时把实际测试文件、用例数和命令写入证据，不提前标为 PASS。
+无独立 PIE。
 
 ---
 
-## CFV-4 — Production Asset Authoring
+## CFV-4 — Production StyleSet / Asset Authoring
 
 目标：
 
 ```text
-把真实 Cropped 素材严格配置进 WBP_BattleCard_Native CDO
-并 author 当前生产 CardData Rarity
+创建并配置生产 UCardFaceStyleSet
+只完整 author Red ColorStyle
+严格配置共享 Rarity styles / Type layouts / Shadow
+显式 author 六张生产 CardData Rarity + CardColor
 ```
 
-### CFV-4 唯一生产资源表
+建议生产 StyleSet 资产：
 
-以下是实际存在的 Cropped 512 PNG / `.uasset` 包路径。表内 PNG 尺寸只供 authoring 对照，不能用作运行时 DesiredSize。ObjectPath 在包路径后追加同名对象（例如 `.../card_red_orb.card_red_orb`）。
+```text
+/Game/SlayTheSpireDemo/UI/Styles/DA_CardFaceStyleSet
+```
+
+`WBP_BattleCard_Native` CDO 的 `CardFaceStyleSet` 指向该资产。
+
+### CFV-4 Red ColorStyle 唯一生产资源表
 
 | 配置槽 | 完整 UE 包路径 | PNG 尺寸 |
 |---|---|---|
-| `AttackBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_attack_red` | 302 × 419 |
-| `SkillBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_skill_red` | 299 × 419 |
-| `PowerBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_power_red` | 299 × 419 |
-| `FallbackBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_skill_black` | 299 × 419 |
+| `ColorStyles[Red].AttackBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_attack_red` | 302 × 419 |
+| `ColorStyles[Red].SkillBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_skill_red` | 299 × 419 |
+| `ColorStyles[Red].PowerBackground` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/bg_power_red` | 299 × 419 |
+| `ColorStyles[Red].CostOrb` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/card_red_orb` | 72 × 71 |
+| `CardShadow` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/card_shadow` | 300 × 420 |
+
+### CFV-4 Shared Rarity Style 资源表
+
+| 配置槽 | 完整 UE 包路径 | PNG 尺寸 |
+|---|---|---|
 | `CommonStyle.AttackFrame` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui2/512/frame_attack_common` | 262 × 185 |
 | `UncommonStyle.AttackFrame` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/frame_attack_uncommon` | 263 × 185 |
 | `RareStyle.AttackFrame` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui2/512/frame_attack_rare` | 262 × 185 |
@@ -1332,174 +1811,229 @@ none required
 | `RareStyle.TypeLeft` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/rare_left` | 14 × 23 |
 | `RareStyle.TypeCenter` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/rare_center` | 32 × 23 |
 | `RareStyle.TypeRight` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/rare_right` | 15 × 23 |
-| `CostOrb` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui/512/card_red_orb` | 72 × 71 |
-| `CardShadow` | `/Game/SlayTheSpireDemo/UI/Textures/CardUI/Cropped/cardui4/512/card_shadow` | 300 × 420 |
-| `FallbackFrame` | `nullptr` | 当前唯一允许空的生产 frame 槽 |
 
-本轮不混用 1024 同名资源。纹理导入使用 UI 适用的压缩/过滤和保留 Alpha 的设置；透明边缘不得出现黑边或白边。全部配置纹理应与保存的 trim placement 同步校验。
-
-配置目标包括：
-
-```text
-bg_attack_red
-bg_skill_red
-bg_power_red
-
-frame_attack_common
-frame_attack_uncommon
-frame_attack_rare
-
-frame_skill_common
-frame_skill_uncommon
-frame_skill_rare
-
-frame_power_common
-frame_power_uncommon
-frame_power_rare
-
-banner_common
-banner_uncommon
-banner_rare
-
-common_left / common_center / common_right
-uncommon_left / uncommon_center / uncommon_right
-rare_left / rare_center / rare_right
-
-card_red_orb
-card_shadow
-FallbackBackground
-FallbackFrame（后续素材未加入前允许为空）
-```
+Green / Blue / Purple / Colorless / Curse 本轮允许没有生产 ColorStyle，不进入 strict non-null Gate。
 
 ### CFV-4 Strict Mapping Gate
 
-采用严格 asset mapping 验证，而不是只检查 non-null。
-
-必须验证类似：
+新增：
 
 ```text
-Common.AttackFrame   == frame_attack_common
-Common.SkillFrame    == frame_skill_common
-Common.PowerFrame    == frame_power_common
-
-Uncommon.AttackFrame == frame_attack_uncommon
-Uncommon.SkillFrame  == frame_skill_uncommon
-Uncommon.PowerFrame  == frame_power_uncommon
-
-Rare.AttackFrame     == frame_attack_rare
-Rare.SkillFrame      == frame_skill_rare
-Rare.PowerFrame      == frame_power_rare
-
-Common.Banner        == banner_common
-Uncommon.Banner      == banner_uncommon
-Rare.Banner          == banner_rare
-
-Common.TypeLeft/Center/Right
-→ common_left/common_center/common_right
-
-Uncommon.TypeLeft/Center/Right
-→ uncommon_left/uncommon_center/uncommon_right
-
-Rare.TypeLeft/Center/Right
-→ rare_left/rare_center/rare_right
-
-CostOrb == card_red_orb
-Shadow  == card_shadow
-AttackBackground == bg_attack_red
-SkillBackground  == bg_skill_red
-PowerBackground  == bg_power_red
+SlayTheSpireDemo.CFV.AssetAuthoring
 ```
 
-该 Gate 同时验证：
+必须严格验证：
 
 ```text
-不能把 rare texture 配到 uncommon slot
-不能把 Attack frame 配到 Skill/Power slot
-不能漏配正式 9 组合中的生产 slot
+DA_CardFaceStyleSet exists
+WBP_BattleCard_Native.CardFaceStyleSet == DA_CardFaceStyleSet
+
+Red.AttackBackground == bg_attack_red
+Red.SkillBackground  == bg_skill_red
+Red.PowerBackground  == bg_power_red
+Red.CostOrb           == card_red_orb
+
+Common/Uncommon/Rare × Attack/Skill/Power Frame
+→ 与上表逐项严格一致
+
+Common/Uncommon/Rare Banner
+→ 与上表逐项严格一致
+
+Common/Uncommon/Rare TypeLeft/Center/Right
+→ 与上表逐项严格一致
+
+CardShadow == card_shadow
+
+Attack/Skill/Power TypeLayout
+→ 与 CFV-2 最终 authoring 表一致
+
+所有 FCardFaceTextureRegion
+→ Texture 与 trim Placement 成对正确
 ```
 
-`FallbackFrame` 在对应素材正式加入前允许为空，因此当前不作为 non-null failure。
+不得只检查 short name / non-null。
 
-未来主动更换生产素材时，应同步更新 strict mapping test。
+该 Gate 还验证：
 
-### CFV-4 AUTOMATED / EDITOR ASSET GATES
+```text
+六张生产 CardData
+→ CardId / CardType / Rarity / CardColor
+→ UCardData::IsDataValid PASS
 
-新增 `SlayTheSpireDemo.CFV.AssetAuthoring`，一次验证：
+生产 WBP
+→ core/decorative 控件类型正确
+→ 无第二套可见旧卡面
 
-- 生产类 `/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard_Native` 的 CDO 配置与上表完整路径逐项严格相等；同时核对 trim placements / 三类型布局值，不仅比较 short name 或 non-null。
-- §20 六张真实 CardData 的 CardId/CardType/Rarity，以及 `UCardData::IsDataValid()` 结果。
-- 生产 WBP 必须具备全部 core/decorative 控件及预期类型；核心绑定不能依赖新的 optional 控件，树中没有第二套可见旧卡面。
-- §19 WBP Font、RichText style table 绑定及各表行的 Font/Size/Outline 一致性，保留现有语义颜色与 tag。
-- CardData、纹理、字体、RichText 表先 Save；最后 WBP Compile → Save → Reopen。若 CFV-3 之后仅资产变化，不重复 Editor Build；新增此 Gate 的 C++ 测试必须包含在 CFV-3 build 批次，或因实际新增代码只补一次必要 Build。
+RichText/font authoring
+→ 与 §22 contract 一致
+```
 
-测试中的精确资产加载属于 Editor-only 资产验收，不允许把测试路径加载逻辑搬入 runtime Resolver。
+### CFV-4 CardArt Alpha 授权边界
 
-### CFV-4 MANUAL PIE GATES
+如果 Strike / Defend / Inflame 的 UI CardArt Alpha/crop 与对应 Shape 图框不吻合：
 
-无独立 PIE；三类卡图 Alpha 与排版在 CFV-5 一次观察。AssetAuthoring PASS 不等于视觉 Gate PASS。
+```text
+允许修改 UI texture Alpha / crop import
+```
+
+但不得修改：
+
+```text
+CardId
+CardType
+Rarity
+CardColor
+Effects
+Gameplay values
+Runtime identity
+```
+
+修改后记录具体 texture 与原因。
+
+### CFV-4 Build Budget
+
+若 CFV-3 build 后仅做 asset authoring：
+
+```text
+不重复 Editor Build
+```
+
+只有实际新增/修改 C++ 测试代码时补一次必要 Build。
+
+无独立 PIE。
 
 ---
 
 ## CFV-5 — Visual Acceptance
 
-### CFV-5 AUTOMATED GATES
-
-前置：CFV-1 RarityContract、CFV-3 VisualResolver/WidgetStyle、CFV-4 AssetAuthoring 均实际 PASS。复用有效证据；CFV-5 不为了最终编号重跑这些 Gate，也不重复手测九种类型×稀有度组合。
-
-### CFV-5 MANUAL VISUAL / PIE GATES
-
-#### A. Rare 只读 Designer 样本
-
-现有生产卡没有 Rare，也没有 Uncommon Skill。使用真实生产卡验证类型，另用一个 detached frozen DTO 验证 Rare 静态外观，禁止为凑组合修改生产 CardData Rarity。
-
-CFV-4 准备一个本地验收用 `UUserWidget` Blueprint：`/Game/SlayTheSpireDemo/UI/Validation/WBP_CFVCardFacePreview`。它不进入生产引用链，默认不提交、不打包；不引入新的插件或 Gameplay 调试 API。最小内容：
+前置：
 
 ```text
-Designer:
-  PreviewCard = 一个 WBP_BattleCard_Native 子控件
-
-Variable:
-  PreviewCardView : FBattleHUDCardView（供该预览资产 Defaults 编辑）
-
-PreConstruct:
-  IsDesignTime → Branch True
-      → PreviewCard.SetCardView(PreviewCardView)
-  False → 无操作
+CFV-1 CardMetadataContract PASS
+CFV-3 VisualResolver PASS
+CFV-3 WidgetStyle PASS
+CFV-4 AssetAuthoring PASS
 ```
 
-不绑定选牌事件，不接入 HUD/Gameplay/Queue。预览值只属于这个隔离资产；生产 `WBP_BattleCard_Native` 不添加第二份 Rarity authority。
+复用 sticky evidence，不为了最终编号重跑。
 
-操作：打开该资产，配置 `CardType=Attack`、`Rarity=Rare`、`bUpgraded=false`、`RuntimeId=INDEX_NONE`、`bGameplayPlayable=false`、`DisplayName=打击`、`Cost=1`、`Description=造成6点伤害。`、`RichDescription` 为空、`CardArt=/Game/SlayTheSpireDemo/UI/Textures/red/attack/T_strike`，Compile/Save 后刷新 Designer。在 `150 × 210` 逻辑尺寸观察 Rare 图框、丝带和标签；确认装配与正文阅读区域正确。这里只验视觉，预览文案不进入生产卡牌文本。
+### A. 正式 Validation Preview Asset
 
-#### B. 一次生产地图 focused PIE
-
-资产/地图：
+保留：
 
 ```text
-/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleCard_Native
+/Game/SlayTheSpireDemo/UI/Validation/WBP_CFVCardFacePreview
+```
+
+它是 committed validation asset：
+
+```text
+只消费 detached FBattleHUDCardView + production CardFaceStyleSet
+不接 Gameplay
+不接 HUD
+不接 Queue
+不绑定选牌事件
+不得成为生产引用链依赖
+```
+
+用途：在没有真实生产 Rare / 非 Red 卡时，重复验证 frozen DTO 的静态组合能力。
+
+本轮至少配置一个：
+
+```text
+CardType = Attack
+CardColor = Red
+Rarity = Rare
+bUpgraded = false
+DisplayName = 打击
+Cost = 1
+CardArt = T_strike
+```
+
+验证 Rare frame / banner / typeplate / layout。
+
+未来新增 Green / Blue / Purple style 后继续复用同一 Preview Asset，而不是新增每职业 WBP。
+
+### B. 一次 focused production-map PIE
+
+地图：
+
+```text
 /Game/SlayTheSpireDemo/Maps/L_BattleTest
 ```
 
-1. 记录地图中 BattleManager 的原 `DebugStartingDeck`、`OpeningHandDrawCount`、`DeckDebugSeed`；仅在未保存的关卡实例中临时将起始牌组设为 §20 的 Strike / Defend / Inflame 各一张，OpeningHandDrawCount=3，Seed=1337。保留 Native HUD 默认和已有 Gameplay 规则；不修改 CardData。开局必能观察三种实际类型，不依赖随机抽到测试卡。
-2. 启动一次 PIE，在通常游戏窗口尺寸观察 **Strike=Attack+Basic、Defend=Skill+Basic、Inflame=Power+Uncommon**。对照参考图检查费用球/丝带叠压、红色卡身、卡图与图框内缘、类型标签落点、下半部正文和阴影；三种类型无卡图越界、拉伸、接缝漏底、文字裁切或旧层重复显示。
-3. 玩家回合、队列空闲时，在 PIE 的 BattleManager Details 中调用现有 **Test Upgrade First Hand Card**（`ABattleManager::TestUpgradeFirstHandCard`，必要时先 Eject）。记录该首张卡身份。观察同一 runtime card 出现 `+` / `#7FFF00` 和升级数值，而 Frame/Banner/TypePlate/根尺寸不变；不直接写 `bUpgraded`。
-4. 返回游戏控制，按现有合法选牌/选目标操作先打出 Inflame，再选择 Strike 并指向敌人。观察 Strength 支持的 A3 数值高亮、中文字体基线与换行；提交 Strike，观察 **Hand → PlayArea → Discard** 连贯移动。手牌与历史播放卡的图框、卡图、名称、尺寸保持一致，无起点跳动、A→B→A 闪回或双重卡面。之后用 Defend 的 Self 目标操作确认卡面重排后的点击/反馈仍正常。
-5. 结束 PIE，将临时关卡属性恢复原值，确认没有把验收牌组保存进生产地图。记录最小视觉结果与升级卡身份；失败只给具体卡/步骤/观察，一张对应静态截图或一段针对移动问题的短观察即可，不重复截图取证。
-
-最终检查包含当前最长生产名称（含 `+`）/多段描述的 Designer 排版，复用 CFV-2/4 authoring 观察，不为此追加完整战斗。Rare Designer 样本只关闭静态视觉 Gate；真实交互和历史播放仍由本次 PIE 关闭。
-
-若不能用可用 UE 工具执行上述 Designer/PIE，明确标记 `USER ACTION REQUIRED` 并交付上述最小步骤；自动测试或静态截图不得替代未执行的出牌动画/交互观察。
+在未保存的关卡实例临时设置：
 
 ```text
-one Rare Designer observation + one focused production-map PIE pass
-→ record actual evidence
-→ restore temporary validation configuration
-→ STOP
+Strike
+Defend
+Inflame
+OpeningHandDrawCount = 3
+DeckDebugSeed = 1337
 ```
+
+观察：
+
+```text
+Strike  = Red + Attack + Basic
+Defend  = Red + Skill + Basic
+Inflame = Red + Power + Uncommon
+```
+
+确认：
+
+```text
+Red Background 正确
+red orb 正确
+Attack / Skill / Power frame 正确
+rarity banner/typeplate 正确
+卡图 Alpha / frame 内缘正确
+标题 / 类型 / 描述无裁切
+shadow / cost overlap 正确
+旧层无重复显示
+输入区域仍正确
+```
+
+然后用现有 `TestUpgradeFirstHandCard` 升级同一 runtime card：
+
+```text
+名称出现 +
+标题 #7FFF00
+升级数值正确
+CardColor / Rarity / Frame / Banner / TypePlate / layout 不变
+```
+
+再通过合法操作打出 Inflame、Strike，确认 A3 Preview 与：
+
+```text
+Hand → PlayArea → Discard
+```
+
+历史播放卡保持 frozen：
+
+```text
+CardColor
+Rarity
+CardType/Shape
+CardArt
+name/size
+```
+
+无跳变、无旧卡面残留。
+
+结束 PIE 后恢复临时地图设置且不保存。
+
+如果无法自动执行视觉步骤，标记：
+
+```text
+USER ACTION REQUIRED
+```
+
+自动测试不能替代未执行的交互/动画观察。
 
 ---
 
-## 22. Validation Policy
+## 25. Validation Policy
 
 遵循 `docs/ValidationExecutionPolicy.md`：
 
@@ -1514,7 +2048,7 @@ Build once
 
 Passing Gate sticky。
 
-失败时：
+失败：
 
 ```text
 identify failed Gate
@@ -1534,13 +2068,29 @@ broad Scenario A-E
 architecture re-review
 ```
 
-除非当前失败直接 implicate 对应 shared contract。
+除非失败直接 implicate 对应 shared contract。
 
 ---
 
-## 23. 明确非目标
+## 26. Scope / Non-Goals
 
-CFV 不做：
+### 26.1 本轮明确允许
+
+因为未来多职业 + 不同卡面素材已经确认，本轮明确允许：
+
+```text
+ECardColor semantic metadata
+Rarity + CardColor frozen propagation
+CardColor-aware pure resolver
+UCardFaceStyleSet presentation DataAsset structure
+Red production ColorStyle authoring
+shared Rarity styles
+Attack/Skill/Power Type layouts
+committed CFV validation preview asset
+必要的代表生产 CardArt Alpha/crop UI 修正
+```
+
+### 26.2 本轮仍不做
 
 ```text
 Card Expansion
@@ -1549,15 +2099,19 @@ Card Expansion
 新 Modifier Pipeline
 Phase 8 implementation
 
-CardColor / Character Theme system
-Silent / Defect / Watcher
+Silent / Defect / Watcher Gameplay/content implementation
+character selection system
+character-owned visual lookup
+Green / Blue / Purple full production authoring
+Colorless / Curse production card content implementation
 
-Visual Style DataAsset
 Visual Registry
 Universal Skin System
+runtime style discovery
+CardColor → LoadObject path
+CardData → StyleSet reference
 
 CardId / DisplayName style branch
-string path LoadObject
 
 奖励池
 商店
@@ -1569,63 +2123,95 @@ UpgradeLevel
 Repeatable Upgrade
 
 Gameplay ↔ Widget reverse query
-FCardReadView rarity duplication
+FCardReadView Rarity/CardColor duplication
 ```
 
 ---
 
-## 24. 长期扩展边界
+## 27. 长期扩展边界
 
-未来只有在出现第二个真实角色视觉 consumer 后，才引入：
-
-```text
-CardColor / Theme
-```
-
-届时可自然扩展为：
+未来增加 Silent / Defect / Watcher 时，正常路径应是：
 
 ```text
-Theme
-├─ AttackBackground
-├─ SkillBackground
-├─ PowerBackground
-├─ CostOrb
-└─ RarityStyles
+新增生产 CardData
+→ 显式 author CardColor = Green / Blue / Purple
+
+补对应 UCardFaceStyleSet.ColorStyles[color]
+→ AttackBackground
+→ SkillBackground
+→ PowerBackground
+→ CostOrb
+
+增加该 Color 的 focused strict asset mapping
 ```
 
-当前 CFV 固定 Ironclad/Red，不提前建立多角色 framework。
+以下内容**不应**因为新增职业而重新设计：
+
+```text
+FPresentationCardSnapshot
+FBattleHUDCardView
+UBattleCardWidget ownership
+WBP hierarchy
+RarityStyle
+TypeLayout
+pure resolver signature
+Upgrade presentation contract
+```
+
+如果未来某个职业真的需要不同 canonical geometry，必须由实际素材 evidence 单独提出，而不是提前引入 `RedAttackLayout / GreenAttackLayout`。
 
 ---
 
-## 25. 最终架构
+## 28. 最终架构
 
 ```text
-                     UCardData
-                  ┌─────┴─────┐
-                  │           │
-              CardType      Rarity
-                  │           │
-                  │           ↓
-                  │    Semantic Rarity
-                  │           ↓
-                  │    Visual Rarity Style
-                  │           │
-                  ↓           ↓
-             Background      Banner
-                  │          TypePlate
-                  └─────┬─────┘
-                        ↓
-                       Frame
+                         UCardData
+              ┌────────────┼────────────┐
+              │            │            │
+          CardType      CardRarity   CardColor
+              │            │            │
+              │            │            │
+              ↓            ↓            ↓
+       VisualCardShape  VisualRarity   ColorStyle
+              │            │            │
+              │            │            ├─ Background family
+              │            │            └─ CostOrb
+              │            │
+              │            ├─ Banner
+              │            └─ TypePlate
+              │
+              ├─ Portrait/Layout geometry
+              │
+              └──────┬───────────────┐
+                     │               │
+               + VisualRarity   + ColorStyle
+                     │               │
+                     ↓               ↓
+                   Frame         Background
 
-CardType ──────────────→ PortraitRect / type layout
-CardArt ───────────────→ alpha-aware Artwork
-Cost ─────────────────→ Cost text
-fixed Ironclad theme ─→ CostOrb / Shadow
-Description ──────────→ RichText
-bUpgraded ────────────→ "+" / #7FFF00
+CardArt ─────────────────────────────→ alpha-aware Artwork
+bUpgraded ───────────────────────────→ "+" / #7FFF00
+Description ─────────────────────────→ RichText
 ```
 
-Gameplay authority 保持不变：
+配置 ownership：
+
+```text
+WBP_BattleCard_Native
+→ canonical fixed geometry
+→ EditDefaultsOnly CardFaceStyleSet reference
+
+UCardFaceStyleSet
+→ ColorStyles
+→ shared RarityStyles
+→ shared TypeLayouts
+→ trimmed TextureRegion placements
+
+pure resolver
+→ consumes frozen DTO metadata + StyleSet.Config
+```
+
+Gameplay authority 保持：
 
 ```text
 CardData / CardInstance
@@ -1637,54 +2223,57 @@ CardData / CardInstance
 → BattleEvent
 ```
 
-Presentation 只消费冻结事实：
-
-```text
-Gameplay
-→ frozen DTO
-→ ViewModel
-→ UBattleCardWidget
-→ pure Visual Resolver
-→ UMG decorative surfaces
-```
+Presentation 仍只消费冻结事实。
 
 ---
 
-## 26. 当前 Stop State
+## 29. 当前 Stop State
 
 ```text
 [x] Card Upgrade STS-style Refactor SEALED
 [x] CFV requirements identified
 [x] STS-inspired semantic rarity model reviewed
-[x] Basic/Common/Uncommon/Rare/Special/Curse contract locked
-[x] Common migration default locked
+[x] future multi-class / different card-face assets confirmed as concrete requirement
+[x] ECardColor semantic axis decided
+[x] Red/Green/Blue/Purple/Colorless/Curse enum contract decided
+[x] CardColor != character identity locked
+[x] Common Rarity migration default locked
+[x] Red CardColor migration default locked
+[x] Status/Curse explicit CardColor authoring rule locked
+[x] ECardType::Curse vs ECardColor::Curse orthogonality locked
 [x] CardData authoring validation requirement locked
-[x] current Hand + historical Presentation propagation path locked
-[x] bUpgraded + Rarity continuity comparison locked
-[x] RichDescription generic identity exclusion locked
-[x] Status/Curse fallback background/frame contract locked
-[x] FallbackFrame may remain null until later asset authoring
-[x] pure resolver / Widget lifecycle separation locked
-[x] core vs decorative surface failure policy locked
-[x] old transient probe protection locked
-[x] STS reference image and target layering specified
-[x] 512 atlas trim placement / type layout / portrait Alpha contract specified
-[x] UMG target hierarchy specified
-[x] Img_TypeLeft/Center/Right naming locked
-[x] move-existing-widget migration rule locked
-[x] CFV-1 narrow Level-2 validation strategy locked
-[x] CFV-4 strict production asset mapping Gate locked
-[x] exact 512 package paths / production CardData rarity assertions specified
-[x] BindWidgetOptional / clear-hide-restore Widget application tests specified
-[x] Chinese font / RichText style asset ownership specified
-[x] actual production card samples / isolated Rare Designer sample specified
-[x] one focused A3 → CardPlayed → Discard PIE path specified
-[x] validation strategy revised; no execution evidence claimed
+[x] current Hand + historical Presentation Rarity/CardColor path defined
+[x] bUpgraded + Rarity + CardColor continuity comparison defined
+[x] RichDescription generic identity exclusion retained
+[x] CardType → VisualCardShape mapping defined
+[x] Status/Curse → SkillShape normal visual path defined
+[x] FallbackFrame removed from normal Status/Curse path
+[x] ColorStyle owns Background family + CostOrb only
+[x] RarityStyle remains shared across colors/classes
+[x] Color does not own layout
+[x] trimmed TextureRegion primitive defined
+[x] fixed WBP geometry vs TypeLayout ownership defined
+[x] UCardFaceStyleSet explicitly justified by confirmed multi-class need
+[x] UCardFaceStyleSet classified as config asset, not Registry
+[x] Red-only production authoring scope locked
+[x] Green/Blue/Purple/Colorless/Curse may remain unconfigured this slice
+[x] valid-but-unconfigured ColorStyle runtime hide behavior defined
+[x] pure resolver / Widget lifecycle separation retained
+[x] core vs decorative failure policy retained
+[x] old transient probe protection retained
+[x] CardArt Alpha/crop UI-only repair boundary authorized
+[x] formal /UI/Validation/WBP_CFVCardFacePreview retained
+[x] CFV-1 narrow Level-2 validation strategy updated for Rarity + CardColor
+[x] CFV-4 strict Red + shared-style mapping Gate defined
+[x] one focused production-map PIE path retained
+[x] implementation evidence still not claimed
 
+[ ] user final review of this revised authority
+[ ] CFV design status promoted to DESIGN LOCKED
 [ ] CFV-1 implementation authorized
-[ ] CFV-1 Rarity Contract implemented/validated
+[ ] CFV-1 Card Metadata Contract implemented/validated
 [ ] CFV-2 Card Face Shell implemented/validated
-[ ] CFV-3 Visual Resolver implemented/validated
+[ ] CFV-3 StyleSet + Visual Resolver implemented/validated
 [ ] CFV-4 Production Asset Authoring implemented/validated
 [ ] CFV-5 Visual Acceptance
 [ ] CFV sealed
@@ -1694,8 +2283,10 @@ Gameplay
 
 ```text
 CARD FACE VISUAL STYLE
-DESIGN REVISED — STS CARD-FACE REFERENCE
+DESIGN REVISED — CARD COLOR / MULTI-CLASS READY
 IMPLEMENTATION NOT AUTHORIZED
 ```
+
+本次只修订 authority 文档。
 
 未经用户明确授权，不开始 CFV-1，也不自动进入后续阶段。
