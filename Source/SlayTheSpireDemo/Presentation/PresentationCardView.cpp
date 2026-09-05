@@ -12,6 +12,8 @@ FBattleHUDCardView PresentationCardView::MakePresentationOnlyCardView(
 	View.bUpgraded = Snapshot.bUpgraded;
 	View.Cost = Snapshot.Cost;
 	View.CardType = Snapshot.CardType;
+	View.Rarity = Snapshot.Rarity;
+	View.CardColor = Snapshot.CardColor;
 	View.TargetType = Snapshot.TargetType;
 	View.Description = Snapshot.Description;
 	View.RichDescription = Snapshot.RichDescription;
