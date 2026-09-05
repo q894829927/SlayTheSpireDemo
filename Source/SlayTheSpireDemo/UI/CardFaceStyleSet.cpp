@@ -88,9 +88,6 @@ FResolvedCardFaceStyle ResolveCardFaceStyle(
 	const FCardRarityVisualStyle& RarityStyle = ResolveRarityStyle(Rarity, Config);
 	Resolved.FrameRegion = ResolveFrame(RarityStyle, Resolved.VisualShape);
 	Resolved.BannerRegion = RarityStyle.Banner;
-	Resolved.TypeLeft = RarityStyle.TypeLeft.Get();
-	Resolved.TypeCenter = RarityStyle.TypeCenter.Get();
-	Resolved.TypeRight = RarityStyle.TypeRight.Get();
 
 	return Resolved;
 }
