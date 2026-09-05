@@ -111,15 +111,6 @@ protected:
 	TObjectPtr<UImage> Img_CardBanner;
 
 	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UImage> Img_TypeLeft;
-
-	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UImage> Img_TypeCenter;
-
-	UPROPERTY(meta = (BindWidgetOptional))
-	TObjectPtr<UImage> Img_TypeRight;
-
-	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UImage> Img_CostOrb;
 
 private:
