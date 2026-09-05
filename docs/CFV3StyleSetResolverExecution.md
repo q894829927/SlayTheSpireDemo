@@ -6,7 +6,8 @@ Status:
 
 ```text
 IMPLEMENTED ON BRANCH
-LOCAL BUILD / AUTOMATION / WBP ASSET WIRING PENDING
+TYPE-PLATE IMAGE PATH REMOVED BY USER DECISION
+REVALIDATION PENDING AFTER REFLECTED BINDING CHANGE
 NOT SEALED
 ```
 
@@ -31,14 +32,19 @@ Current production observations supersede the earlier speculative geometry split
 
 ```text
 CardName position      = fixed Widget Designer geometry
-CardTypePlate position = fixed Widget Designer geometry
+OV_CardType position   = fixed Widget Designer geometry
+Txt_CardType           = retained as the only card-type visual
 Cost position          = fixed Widget Designer geometry
 Description position   = fixed Widget Designer geometry
 CardArt rect            = fixed for this first resolver pass
 Img_CardShadow          = removed / not used in the current production shell
+HB_CardTypePlate        = removed / not used
+Img_TypeLeft            = removed / not used
+Img_TypeCenter          = removed / not used
+Img_TypeRight           = removed / not used
 ```
 
-CFV-3 therefore does not move `OV_CardType`, text, description, or CardArt at runtime. If the actual Skill/Power result later proves that a Shape-specific portrait/layout difference is necessary, add only the evidenced geometry at that point.
+`OV_CardType` remains as a fixed Designer layout wrapper around `Txt_CardType`. CFV-3 does not move it at runtime. Rarity no longer owns type-plate image resources; rarity visual selection is limited to Frame + Banner.
 
 The cropped atlas layers still carry placement because Attack/Skill/Power background/frame PNGs have different trim bounds. Those placements are authored in the current internal **300 x 420 texture-design space**; the WBP ScaleBox owns the presentation scaling to the external 150 x 210 card size.
 
@@ -79,7 +85,7 @@ Rarity + visual shape
 → Frame
 
 Rarity
-→ Banner + TypeLeft/Center/Right
+→ Banner
 ```
 
 No resolver path performs:
@@ -107,9 +113,6 @@ Optional decorative bindings:
 Img_CardBackground
 Img_CardFrame
 Img_CardBanner
-Img_TypeLeft
-Img_TypeCenter
-Img_TypeRight
 Img_CostOrb
 ```
 
@@ -146,7 +149,7 @@ missing CardFaceStyleSet
 
 Same-widget refresh explicitly clears old Brush and placement before missing styles can leave stale visuals.
 
-## Focused Automation added
+## Focused Automation
 
 ```text
 SlayTheSpireDemo.CFV.VisualResolver
@@ -169,16 +172,17 @@ missing optional decorative controls
 upgrade state does not alter static CFV selection
 ```
 
-## Local gates still required
+## Validation state
 
-Do not mark CFV-3 sealed until the user runs:
+The user previously reported Build + both CFV-3 Automation suites PASS before the type-plate image path was removed. Because the latest change removes reflected Widget bindings and StyleSet fields, those gates are invalidated once and must be rerun.
+
+Required revalidation:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development Build
 SlayTheSpireDemo.CFV.VisualResolver
 SlayTheSpireDemo.CFV.WidgetStyle
+Compile + Save + Reopen the production card Widget
 ```
 
-Then Compile + Save the production card Widget after the reflected bindings/property change.
-
-No broad regression suite and no CFV-3 PIE are required before asset wiring. A focused PIE/visual check becomes useful immediately after a production `UCardFaceStyleSet` is authored and assigned, because the user explicitly wants to judge the real Skill/Power visual result before deciding whether any geometry split is warranted.
+No broad regression suite is required. After the production `UCardFaceStyleSet` is authored and assigned, perform one focused PIE visual check to judge the real Skill/Power result before deciding whether any geometry split is necessary.
