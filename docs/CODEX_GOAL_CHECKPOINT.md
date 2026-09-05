@@ -23,7 +23,10 @@ DESIGN LOCKED
 CFV-1 Card Metadata Contract:
 COMPLETE / VALIDATED / SEALED
 
-CFV-2+:
+CFV-2 Card Face Shell:
+IMPLEMENTATION AUTHORIZED / ASSET AUTHORING IN PROGRESS / NOT SEALED
+
+CFV-3+:
 NOT AUTHORIZED
 
 Production Card Authoring:
@@ -42,13 +45,13 @@ CFV-1 validation evidence:
 docs/CFV1Validation.md
 ```
 
-Implementation branch:
+Current implementation branch:
 
 ```text
-cfv1-card-metadata-contract
+cfv2-card-face-shell
 ```
 
-The user explicitly authorized CFV-1 on 2026-09-05 and subsequently reported all locked CFV-1 validation gates passing locally. CFV-1 is therefore sealed. CFV-2, Card Expansion, and later CFV slices still require separate explicit authorization.
+The user explicitly authorized CFV-2 on 2026-09-05 after confirming CFV-1 had been fast-forwarded into `main`. CFV-2 authorization is limited to the locked Card Face Shell slice: canonical UMG shell construction plus geometry measurement/evidence. CFV-3 StyleSet/resolver work, CFV-4 production style authoring, CFV-5 visual acceptance, Card Expansion, and any later implementation remain separately gated.
 
 The sealed Card Upgrade authority remains:
 
@@ -102,7 +105,7 @@ These remain explicit content-authoring values; the data model does not implicit
 
 ## CFV-1 sealed contract
 
-CFV-1 now permanently establishes:
+CFV-1 permanently establishes:
 
 ```text
 ECardRarity
@@ -247,11 +250,67 @@ FCardFaceTextureRegion.Placement
 
 Color does not own a separate layout. `OV_CardType` receives `TypePlateRect` so the type plate and type text move as one presentation unit.
 
+## CFV-2 active shell contract
+
+CFV-2 may modify only the production card Widget shell and record geometry evidence. The current saved baseline is the 16-control `WBP_BattleCard_Native` documented in `docs/WBPSavedBlueprintSnapshot.md`.
+
+Target shell:
+
+```text
+SB_Card
+└─ Btn_Card
+   └─ OV_Card
+      └─ CN_CardFace
+         ├─ Img_CardShadow
+         ├─ Img_CardBackground
+         ├─ Img_CardArt
+         ├─ Img_CardFrame
+         ├─ Img_CardBanner
+         ├─ SB_CardName
+         │  └─ Txt_CardName
+         ├─ OV_CardType
+         │  ├─ HB_CardTypePlate
+         │  │  ├─ Img_TypeLeft
+         │  │  ├─ Img_TypeCenter
+         │  │  └─ Img_TypeRight
+         │  └─ Txt_CardType
+         ├─ Img_CostOrb
+         ├─ Txt_Cost
+         └─ Txt_CardDescription
+```
+
+CFV-2 rules:
+
+```text
+root remains 150 × 210
+move existing core widgets where practical; do not recreate merely to rename
+preserve core BindWidget names and identity
+new decorative surfaces are presentation-only
+no StyleSet implementation
+no resolver implementation
+no CardColor/Rarity runtime texture selection
+no production texture authoring gate
+no visual PIE acceptance
+```
+
+Geometry evidence to record before CFV-2 can seal:
+
+```text
+Attack PortraitRect
+Skill PortraitRect
+Power PortraitRect
+Attack/Skill/Power TypePlateRect
+used 512-cropped texture trim placements
+final ZOrder / hit-test arrangement
+```
+
+The authority's initial positions are authoring starting points, not PASS evidence.
+
 ## CFV implementation slices
 
 ```text
 CFV-1 — Card Metadata Contract        COMPLETE / VALIDATED / SEALED
-CFV-2 — Card Face Shell               NOT AUTHORIZED
+CFV-2 — Card Face Shell               AUTHORIZED / IN PROGRESS
 CFV-3 — StyleSet + Pure Resolver      NOT AUTHORIZED
 CFV-4 — Production StyleSet / Assets  NOT AUTHORIZED
 CFV-5 — Visual Acceptance             NOT AUTHORIZED
@@ -269,7 +328,13 @@ Card Face Visual Style
 CFV-1
 → COMPLETE / VALIDATED / SEALED
 
-CFV-2+
+CFV-2
+→ IMPLEMENTATION AUTHORIZED
+→ ASSET AUTHORING IN PROGRESS
+→ NOT VALIDATED
+→ NOT SEALED
+
+CFV-3+
 → NOT AUTHORIZED
 
 Phase 8
@@ -284,7 +349,10 @@ Production Card Expansion
 Next action:
 
 ```text
-WAIT FOR EXPLICIT USER AUTHORIZATION TO START CFV-2
+AUTHOR WBP_BattleCard_Native CARD-FACE SHELL
+→ Compile + Save
+→ capture final shell / geometry evidence
+→ STOP before CFV-3
 ```
 
-Do not begin CFV-2, StyleSet implementation, card-face shell mutation, texture authoring, visual PIE, or Production Card Expansion until separately authorized.
+Do not begin StyleSet implementation, resolver code, production texture authoring, visual PIE, or Production Card Expansion during CFV-2.

@@ -7,6 +7,7 @@
 #include "BattleCardWidget.generated.h"
 
 class UButton;
+class UCardFaceStyleSet;
 class UImage;
 class URichTextBlock;
 class UTextBlock;
@@ -61,9 +62,17 @@ protected:
 	virtual void NativeDestruct() override;
 
 	void RefreshFromCardView();
+	void RefreshCardArtwork();
+	void RefreshVisualStyle();
+	void ClearDecorativeVisualStyle();
 
 	UFUNCTION()
 	void HandleCardClicked();
+
+	// Explicit authored Presentation configuration. Null is a supported visual
+	// degradation path and must never disable core card content/input.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Battle HUD|Card|Style")
+	TObjectPtr<UCardFaceStyleSet> CardFaceStyleSet;
 
 	// Presentation-only style. The authored DisplayName remains unchanged;
 	// upgraded instances are rendered as "DisplayName+" in the Widget and use
@@ -88,6 +97,21 @@ protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> Img_CardArt;
+
+	// CFV decorative surfaces are intentionally optional. Production assets are
+	// expected to provide them, but transient probes and legacy tests do not have
+	// to create fake decorative Widgets.
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> Img_CardBackground;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> Img_CardFrame;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> Img_CardBanner;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UImage> Img_CostOrb;
 
 private:
 	// Use a native-only name distinct from the duplicated Legacy Blueprint's

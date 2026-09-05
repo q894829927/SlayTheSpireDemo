@@ -1,9 +1,12 @@
 #include "BattleCardWidget.h"
 
+#include "CardFaceStyleSet.h"
 #include "Components/Button.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
+#include "Engine/Texture2D.h"
 
 namespace
 {
@@ -42,6 +45,58 @@ namespace
 	const FText& GetVisibleCardDescription(const FBattleHUDCardView& View)
 	{
 		return View.RichDescription.IsEmpty() ? View.Description : View.RichDescription;
+	}
+
+	void ClearImage(UImage* Image, bool bClearCanvasPlacement)
+	{
+		if (!IsValid(Image))
+		{
+			return;
+		}
+
+		// Clear only the resource object through UMG. Constructing an FSlateBrush
+		// directly would make the runtime module depend on SlateCore solely for
+		// this presentation cleanup path.
+		Image->SetBrushResourceObject(nullptr);
+		Image->SetVisibility(ESlateVisibility::Hidden);
+
+		if (bClearCanvasPlacement)
+		{
+			if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Image->Slot))
+			{
+				CanvasSlot->SetAutoSize(false);
+				CanvasSlot->SetPosition(FVector2D::ZeroVector);
+				CanvasSlot->SetSize(FVector2D::ZeroVector);
+			}
+		}
+	}
+
+	void ApplyTextureRegion(UImage* Image, const FCardFaceTextureRegion& Region)
+	{
+		if (!IsValid(Image))
+		{
+			return;
+		}
+
+		UTexture2D* Texture = Region.Texture.Get();
+		const bool bValidPlacement =
+			Region.Placement.Size.X > KINDA_SMALL_NUMBER
+			&& Region.Placement.Size.Y > KINDA_SMALL_NUMBER;
+		if (!IsValid(Texture) || !bValidPlacement)
+		{
+			ClearImage(Image, true);
+			return;
+		}
+
+		Image->SetBrushFromTexture(Texture, false);
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Image->Slot))
+		{
+			CanvasSlot->SetAutoSize(false);
+			CanvasSlot->SetAlignment(FVector2D::ZeroVector);
+			CanvasSlot->SetPosition(Region.Placement.Position);
+			CanvasSlot->SetSize(Region.Placement.Size);
+		}
+		Image->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }
 
@@ -167,7 +222,7 @@ void UBattleCardWidget::RefreshFromCardView()
 {
 	// Keep SetCardView order-independent for tests and future presentation-only
 	// creation. NativeOnInitialized still owns the fail-closed runtime contract;
-	// this helper simply refuses to touch a partial Designer surface.
+	// this helper simply refuses to touch a partial core Designer surface.
 	if (!IsValid(Txt_CardName)
 		|| !IsValid(Txt_Cost)
 		|| !IsValid(Txt_CardDescription)
@@ -197,7 +252,54 @@ void UBattleCardWidget::RefreshFromCardView()
 	// with editor-facing English metadata during a native refresh.
 	Txt_CardType->SetText(GetCardTypeDisplayText(CurrentCardView.CardType));
 
-	Img_CardArt->SetBrushFromTexture(CurrentCardView.CardArt.Get());
+	RefreshCardArtwork();
+	RefreshVisualStyle();
+}
+
+void UBattleCardWidget::RefreshCardArtwork()
+{
+	if (!IsValid(Img_CardArt))
+	{
+		return;
+	}
+
+	UTexture2D* CardArt = CurrentCardView.CardArt.Get();
+	if (!IsValid(CardArt))
+	{
+		ClearImage(Img_CardArt, false);
+		return;
+	}
+
+	Img_CardArt->SetBrushFromTexture(CardArt, false);
+	Img_CardArt->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+void UBattleCardWidget::RefreshVisualStyle()
+{
+	if (!IsValid(CardFaceStyleSet))
+	{
+		ClearDecorativeVisualStyle();
+		return;
+	}
+
+	const FResolvedCardFaceStyle Resolved = ResolveCardFaceStyle(
+		CurrentCardView.CardColor,
+		CurrentCardView.CardType,
+		CurrentCardView.Rarity,
+		CardFaceStyleSet->Config);
+
+	ApplyTextureRegion(Img_CardBackground, Resolved.BackgroundRegion);
+	ApplyTextureRegion(Img_CardFrame, Resolved.FrameRegion);
+	ApplyTextureRegion(Img_CardBanner, Resolved.BannerRegion);
+	ApplyTextureRegion(Img_CostOrb, Resolved.CostOrbRegion);
+}
+
+void UBattleCardWidget::ClearDecorativeVisualStyle()
+{
+	ClearImage(Img_CardBackground, true);
+	ClearImage(Img_CardFrame, true);
+	ClearImage(Img_CardBanner, true);
+	ClearImage(Img_CostOrb, true);
 }
 
 void UBattleCardWidget::HandleCardClicked()
