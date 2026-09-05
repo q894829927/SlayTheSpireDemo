@@ -5,6 +5,7 @@
 #include "FinishCardPlayAction.generated.h"
 
 class ACombatant;
+class UBattleEventDispatcher;
 class UCardInstance;
 class UDeckRuntime;
 
@@ -16,6 +17,13 @@ class SLAYTHESPIREDEMO_API UFinishCardPlayAction : public UBattleAction
 public:
 	void Initialize(UDeckRuntime* InDeck, UCardInstance* InCard);
 	void Initialize(UDeckRuntime* InDeck, UCardInstance* InCard, ACombatant* InPresentationCardSource);
+	void Initialize(
+		UDeckRuntime* InDeck,
+		UCardInstance* InCard,
+		ACombatant* InPresentationCardSource,
+		UBattleEventDispatcher* InEventDispatcher,
+		const TArray<ACombatant*>& InEventCombatants
+	);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
@@ -27,4 +35,10 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<ACombatant> PresentationCardSource = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleEventDispatcher> EventDispatcher = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<ACombatant>> EventCombatants;
 };
