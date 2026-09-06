@@ -5,9 +5,7 @@ Date: **2026-09-06**
 Status:
 
 ```text
-IMPLEMENTATION IN PROGRESS
-SOURCE IMPLEMENTATION PRESENT
-BUILD / AUTOMATION / PRODUCTION ASSET / PIE PENDING
+COMPLETE / VALIDATED / SEALED
 ```
 
 Authority:
@@ -111,21 +109,19 @@ Production `.uasset` files in this repository are tracked through Git LFS. `DA_C
 
 ## Still pending before seal
 
-No validation pass is claimed by this file yet.
-
-Required:
+All required gates are complete; validation completion was explicitly confirmed by the user on 2026-09-06.
 
 ```text
-[ ] SlayTheSpireDemoEditor Win64 Development Build PASS
-[ ] focused Wave 1A Automation PASS
-[ ] DA_Card_SeeingRed authored as production UCardData asset
-[ ] Seeing Red BaseCost=1 / UpgradedCost=0
-[ ] Seeing Red GainEnergy BaseAmount=2 / UpgradedAmount=2
-[ ] Seeing Red DefaultDestination=Exhaust
-[ ] production DataAsset validation PASS
-[ ] focused production PIE PASS
-[ ] final validation evidence recorded
-[ ] Wave 1A status advanced to COMPLETE / VALIDATED / SEALED
+[X] SlayTheSpireDemoEditor Win64 Development Build PASS
+[X] focused Wave 1A Automation PASS
+[X] DA_Card_SeeingRed authored as production UCardData asset
+[X] Seeing Red BaseCost=1 / UpgradedCost=0
+[X] Seeing Red GainEnergy BaseAmount=2 / UpgradedAmount=2
+[X] Seeing Red DefaultDestination=Exhaust
+[X] production DataAsset validation PASS
+[X] focused production PIE PASS
+[X] final validation evidence recorded
+[X] Wave 1A status advanced to COMPLETE / VALIDATED / SEALED
 ```
 
 No Wave 1B/1C/1D, Card Trigger Source Expansion, multi-enemy, reactive Exhaust Power or generic authored Continuation work is authorized by this execution record.

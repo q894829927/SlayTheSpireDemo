@@ -27,7 +27,10 @@ Wave 1A — Exhaust Fact Surface:
 COMPLETE / VALIDATED / SEALED
 
 Wave 1B — Targeted Exhaust Primitive:
-SOURCE MERGED TO MAIN / VALIDATION NEXT / NOT SEALED
+COMPLETE / VALIDATED / SEALED
+
+Wave 1C — Selection Primitive:
+DESIGN LOCKED / IMPLEMENTATION AUTHORITY / NOT STARTED
 ```
 
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline now includes `DA_Card_SeeingRed`.
@@ -50,7 +53,7 @@ The former development branch was:
 card-expansion-wave1b-targeted-exhaust
 ```
 
-Wave 1B source has now been merged into `main` for focused validation. Do not continue implementation on the old branch.
+Wave 1B source was merged into `main`, validated and sealed. Do not continue implementation on the old branch.
 
 ---
 
@@ -80,6 +83,12 @@ Current Wave 1B authority / execution record:
 ```text
 docs/CardExpansionWave1BTargetedExhaustPrimitive.md
 docs/CardExpansionWave1BExecution.md
+```
+
+Current Wave 1C authority:
+
+```text
+docs/CardExpansionWave1CSelectionPrimitive.md
 ```
 
 Future Card trigger-source design remains independently unauthorized:
@@ -156,7 +165,7 @@ The negative wiring test explicitly declares its expected ResolutionFault log me
 
 ---
 
-## Wave 1B validation next
+## Wave 1B sealed
 
 Automated gates:
 
@@ -178,7 +187,7 @@ missing event wiring → ResolutionFault before commit
 DeckRuntime mutation owner does not dispatch Event by itself
 ```
 
-Do not rerun sealed Wave 1A, CFV or Upgrade suites unless a concrete failure invalidates those contracts.
+Wave 1B is complete, validated and sealed. Do not rerun sealed Wave 1A, CFV or Upgrade suites unless a concrete failure invalidates those contracts.
 
 ---
 
@@ -188,14 +197,11 @@ Do not rerun sealed Wave 1A, CFV or Upgrade suites unless a concrete failure inv
 Wave 1A
 → COMPLETE / VALIDATED / SEALED
 
-Wave 1B source
-→ MERGED TO MAIN
-
-Wave 1B validation
-→ NEXT
+Wave 1B
+→ COMPLETE / VALIDATED / SEALED
 
 Wave 1C
-→ NOT AUTHORIZED
+→ DESIGN LOCKED / IMPLEMENTATION AUTHORITY
 ```
 
-After Wave 1B build + focused Automation pass, record validation evidence and seal Wave 1B before beginning Selection + Targeted Exhaust composition.
+Wave 1B is sealed. Wave 1C (Selection Primitive) is the next authorized slice but is not yet implemented.

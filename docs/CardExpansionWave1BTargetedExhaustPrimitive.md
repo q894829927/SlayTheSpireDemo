@@ -5,15 +5,13 @@ Date: **2026-09-06**
 Status:
 
 ```text
-AUTHORIZED
-IMPLEMENTATION IN PROGRESS
-VALIDATION DEFERRED BY USER
+COMPLETE / VALIDATED / SEALED
 ```
 
 Branch:
 
 ```text
-card-expansion-wave1b-targeted-exhaust
+main (merged 03d7941)
 ```
 
 Base:
@@ -30,7 +28,7 @@ docs/IroncladCardArchitecturePlanWave1Amendment.md
 docs/CardExpansionWave1AExhaustFactSurface.md
 ```
 
-Wave 1A source implementation is present on the branch base, but its Build / Automation / production asset / PIE validation is still pending. Wave 1B must not describe Wave 1A as COMPLETE / VALIDATED / SEALED.
+Wave 1A was subsequently validated and sealed. Wave 1B was validated and sealed on 2026-09-06.
 
 ---
 
