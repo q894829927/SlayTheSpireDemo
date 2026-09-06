@@ -34,6 +34,10 @@ void USelectExhaustHandCardEffect::BuildActions(
 	Request.SelectionSource = TEXT("SelectExhaustHandCard");
 	Request.MinCount = 1;
 	Request.MaxCount = 1;
+	// This effect represents a mandatory authored cost: when at least one other
+	// Hand card exists, the player must choose exactly one before later Effects
+	// (for example Burning Pact's Draw) may continue.
+	Request.CancelPolicy = ESelectionCancelPolicy::Forbidden;
 
 	for (const TObjectPtr<UCardInstance>& HandCard : Context.Deck->GetHandCards())
 	{
