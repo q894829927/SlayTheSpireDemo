@@ -177,6 +177,30 @@ FCardZoneMutationResult UDeckRuntime::TryDiscardCardCommit(UCardInstance* Card)
 	return Result;
 }
 
+FCardZoneMutationResult UDeckRuntime::TryExhaustHandCardCommit(UCardInstance* Card)
+{
+	FCardZoneMutationResult Result;
+	if (!IsValid(Card))
+	{
+		return Result;
+	}
+
+	const int32 FromIndex = FindCardIndex(Hand, Card);
+	if (FromIndex == INDEX_NONE)
+	{
+		return Result;
+	}
+
+	const int32 ToIndex = ExhaustPile.Num();
+	Hand.RemoveAt(FromIndex);
+	ExhaustPile.Add(Card);
+	Result = MakeZoneResult(Card, ECardZone::Hand, ECardZone::ExhaustPile, FromIndex, ToIndex);
+
+	UE_LOG(LogTemp, Log, TEXT("[Deck] Exhausted exact target %s from Hand to ExhaustPile."), *Card->GetDebugLabel());
+	LogState(TEXT("AfterTargetedExhaust"));
+	return Result;
+}
+
 FCardZoneMutationResult UDeckRuntime::TryMoveHandCardToPlayAreaCommit(UCardInstance* Card)
 {
 	FCardZoneMutationResult Result;
