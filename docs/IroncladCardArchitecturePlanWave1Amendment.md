@@ -145,7 +145,7 @@ Sentinel (not old Wave 1 list, but same exhaust domain)
 
 ## 4. Revised Wave 1 ordering
 
-### Wave 1A — Exhaust Fact Surface — NEXT ACTIVE SLICE
+### Wave 1A — Exhaust Fact Surface — COMPLETE / VALIDATED / SEALED
 
 Dedicated authority：
 
@@ -165,7 +165,7 @@ existing self-exhaust commit path
 
 明确不包含 targeted exhaust、selection、reactive Power、Card Trigger Source、multi-enemy。
 
-### Wave 1B — Targeted Exhaust Primitive — FUTURE
+### Wave 1B — Targeted Exhaust Primitive — COMPLETE / VALIDATED / SEALED
 
 目标：
 
@@ -178,7 +178,7 @@ arbitrary specified CardInstance / authored candidate set
 
 此 slice 建立 targeted exhaust primitive，但不把 selection UI/choice 语义塞进 Exhaust primitive。
 
-### Wave 1C — Selection + Targeted Exhaust Composition — FUTURE
+### Wave 1C — Selection + Targeted Exhaust Composition — DESIGN LOCKED / NEXT ACTIVE SLICE
 
 典型卡：
 
@@ -357,10 +357,16 @@ Production Card Expansion
 → STARTS WITH Wave 1A
 
 Wave 1A — Exhaust Fact Surface
-→ NEXT ACTIVE SLICE
+→ COMPLETE / VALIDATED / SEALED
 
-Wave 1B / 1C / 1D
-→ NOT AUTHORIZED BY THIS AMENDMENT
+Wave 1B — Targeted Exhaust Primitive
+→ COMPLETE / VALIDATED / SEALED
+
+Wave 1C — Selection Primitive
+→ DESIGN LOCKED / NEXT ACTIVE SLICE (`docs/CardExpansionWave1CSelectionPrimitive.md`)
+
+Wave 1D — Reactive Exhaust Powers
+→ NOT AUTHORIZED (superseded: 1A/1B sealed; 1C design-locked under its own authority)
 
 Card Trigger Source Expansion
 → FUTURE INDEPENDENT FOUNDATION
@@ -410,7 +416,7 @@ primitive capability
 当前唯一 next-active dedicated authority：
 
 ```text
-docs/CardExpansionWave1AExhaustFactSurface.md
+docs/CardExpansionWave1CSelectionPrimitive.md
 ```
 
-先完成、验证、seal Wave 1A，再决定 Wave 1B/1C/1D 的具体授权和顺序。
+Wave 1A / Wave 1B 已完成、验证、seal。下一步实现 Wave 1C-A Selection Primitive，再验证并 seal 后再用 Burning Pact 作为首个消费者（Wave 1C-B）。Wave 1D 需单独授权。
