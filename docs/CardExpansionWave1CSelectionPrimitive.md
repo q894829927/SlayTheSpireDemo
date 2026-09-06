@@ -1,8 +1,8 @@
 # Card Expansion — Wave 1C Selection Primitive
 
-Date: **2026-09-06**
+Date: **2026-09-07**
 
-Status: **WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL; 1C-B COMPLETE / VALIDATED / READY FOR SEAL**
+Status: **WAVE 1C-A / 1C-B IMPLEMENTATION UPDATED; BUILD + AUTOMATION + PIE REVALIDATION REQUIRED BEFORE SEAL**
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Wave 1C introduces the generic selection primitive required by cards whose resol
 
 Wave 1B only establishes targeted exhaust primitive. Player-driven selection must not be merged into Wave 1B consumers.
 
-The goal of Wave 1C is to define a reusable gameplay-owned selection flow before implementing individual consumers such as Burning Pact.
+The goal of Wave 1C is to define a reusable gameplay-owned selection flow and close the first playable consumer path with Burning Pact-shaped composition.
 
 ---
 
@@ -25,15 +25,19 @@ Gameplay Action / Resolver
         v
 SelectionResolver
         |
-        | Presentation request
+        | UI-safe read/request facade
         v
-Widget / UI
+Native HUD / ViewModel
         |
-        | User input result
+        | RuntimeId-only player input
+        v
+Gameplay selection request facade
+        |
+        | Build validated SelectionResult
         v
 SelectionResolver
         |
-        | Validate + produce SelectionResult
+        | Resume awaiting Action
         v
 BattleActionQueue continuation
 ```
@@ -42,12 +46,13 @@ BattleActionQueue continuation
 
 Presentation layer must not:
 
-- store gameplay pending selection state
+- store authoritative gameplay pending-selection objects
 - decide valid candidates
 - mutate cards/zones
 - directly execute gameplay continuation
+- enqueue authoritative BattleActions
 
-Widget is only an input submission surface.
+The Native HUD/ViewModel is only an input submission surface. The Wave 1C bridge exposes stable card RuntimeIds and cancelability, never authoritative candidate `UObject*` pointers.
 
 ---
 
@@ -58,13 +63,23 @@ A SelectionRequest contains:
 - selection source
 - candidate runtime objects
 - minimum / maximum selection count
-- validation rules
-- authored continuation (the `UAuthoredContinuation` definition object)
+- request-level cancellation policy
+- authored continuation passed alongside the request into the resolver
 
-> Note: the earlier "continuation identifier" wording is superseded by the actual
-> Wave 1C-A implementation. `FSelectionRequest` carries no string identifier;
-> the typed, stateless `UAuthoredContinuation` is passed alongside the request
-> into `USelectionResolver::BeginSelection`, matching the locked §2.6 contract.
+Current cancellation policy:
+
+```text
+ESelectionCancelPolicy::Allowed
+  -> generic legal cancel path
+
+ESelectionCancelPolicy::Forbidden
+  -> mandatory choice; cancel is rejected and the awaiting Action remains pending
+```
+
+> The earlier "continuation identifier" wording is superseded by the actual
+> Wave 1C-A implementation. `FSelectionRequest` carries no string continuation
+> identifier; the typed, stateless `UAuthoredContinuation` is passed alongside
+> the request into `USelectionResolver::BeginSelection`.
 
 The request is created by Gameplay before Presentation interaction begins.
 
@@ -72,7 +87,7 @@ The request is created by Gameplay before Presentation interaction begins.
 
 ## Selection Result Contract
 
-SelectionResult is produced only after Gameplay validation.
+SelectionResult is accepted only through Gameplay validation.
 
 Validation includes:
 
@@ -82,6 +97,8 @@ Validation includes:
 - runtime state is still valid
 
 Invalid selection must not mutate gameplay state.
+
+For the Native single-card Hand bridge, Presentation submits only a RuntimeId. `BattleSelectionRequest` resolves that RuntimeId back to the exact pending Gameplay candidate and then constructs `FSelectionResult` inside Gameplay.
 
 ---
 
@@ -96,7 +113,10 @@ SelectionResult
 Gameplay Resolver
       |
       v
-Resume authored continuation
+Resume awaiting SelectionRequestAction
+      |
+      v
+Authored Continuation builds dependent Actions
       |
       v
 BattleActionQueue
@@ -117,16 +137,28 @@ Presentation cannot bypass BattleActionQueue ordering.
 
 ## Cancel / Invalid Semantics
 
-### Cancel
+### Allowed cancel
 
-Cancel is a valid resolution path.
+When the authored request uses `ESelectionCancelPolicy::Allowed`:
 
-Rules:
-
+- cancellation is a legal resolution path
 - clear pending selection
 - do not mutate gameplay state
 - do not emit ResolutionFault
-- queue returns to defined waiting/resume state
+- finish the waiting SelectionRequestAction and resume the queue
+
+### Forbidden cancel
+
+When the authored request uses `ESelectionCancelPolicy::Forbidden`:
+
+- `SubmitCancel()` returns false
+- a submitted `Cancelled` result is rejected
+- pending request remains active
+- awaiting SelectionRequestAction does not `Finish()`
+- later queued Effects cannot continue
+- no gameplay mutation and no ResolutionFault
+
+This prevents mandatory card costs such as Burning Pact's exhaust step from being skipped while a later Draw Effect still resolves.
 
 ### Invalid
 
@@ -144,25 +176,59 @@ Rules:
 - emit controlled failure information
 - preserve deterministic state
 
+The production Native Hand bridge does not submit arbitrary object pointers; an invalid/non-candidate RuntimeId is rejected before a `SelectionResult` is constructed.
+
+---
+
+## Native HUD input bridge
+
+Wave 1C now closes the playable input gap without reopening the sealed A2/A3 ownership model.
+
+```text
+UBattleCardWidget click
+→ UBattleHUDWidget::SelectCard(RuntimeId)
+→ if no pending Gameplay selection:
+     unchanged normal card-play / fast-presentation path
+→ if a pending single-card Gameplay selection exists:
+     UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId
+     → BattleSelectionRequest::SubmitPendingCardSelection
+     → USelectionResolver::SubmitResult
+```
+
+Important boundaries:
+
+```text
+- ordinary Resolving input remains locked
+- only an actual pending single-card request activates the alternate click route
+- UI never receives candidate UObject pointers
+- non-candidate RuntimeIds are rejected
+- historical A2 display remains frozen until normal committed Presentation catches up
+```
+
 ---
 
 ## Wave 1C Scope Split
 
 ### Wave 1C-A — Selection Primitive
 
-Implement only:
+Implements:
 
-- SelectionRequest
+- SelectionRequest / SelectionResult
 - SelectionResolver
-- SelectionResult
+- request-level cancel policy
 - queue continuation contract
+- generic allowed-cancel behavior
 - automation coverage
 
-### Wave 1C-B — First Consumer
+### Wave 1C-B — First Consumer / playable bridge
 
-Use Burning Pact as the first consumer.
+Uses Burning Pact as the first consumer shape and implements:
 
-Do not implement multiple consumers before the primitive is validated.
+- reusable `USelectExhaustHandCardEffect`
+- mandatory select-one-Hand-card semantics
+- `UExhaustSelectedContinuation`
+- Native HUD RuntimeId-only pending card selection route
+- transient full Burning Pact Automation shape (`SelectExhaust -> Draw`)
 
 ### Wave 1C-C — Expansion
 
@@ -171,31 +237,43 @@ Future consumers may reuse the primitive:
 - True Grit upgraded behavior
 - Exhume style selection
 - other player-choice cards
+- future multi-select UI where a real consumer requires it
 
 ---
 
 ## Validation Gate
 
-Required automation coverage:
+Required automation coverage after the 2026-09-07 closure changes:
 
 - request creation
 - candidate generation
 - valid selection
 - invalid selection rejection
-- cancel path
+- allowed cancel path
+- mandatory cancel rejection while queue remains held
 - continuation resume ordering
+- Burning Pact base: exhaust one -> draw 2 -> FinishCardPlay
+- Burning Pact upgraded: exhaust one -> draw 3 -> FinishCardPlay
+- Effects order is `[SelectExhaust, Draw]`
+- Native HUD C++ card-click route submits a pending candidate while the ActionQueue is intentionally busy
 
-Wave 1C implementation is not considered complete until ownership boundaries and deterministic continuation behavior are verified.
+Required manual validation:
+
+- Editor Development build
+- focused `SlayTheSpireDemo.CardExpansion.Wave1C` Automation
+- Native production HUD PIE: play the test Burning Pact card, click another Hand card, observe exact exhaust then draw and normal return to input
+
+The previous 7/7 result predates these closure changes and is historical evidence only. The updated implementation must be re-run before Wave 1C is marked validated/sealed again.
 
 ---
 
 ## Wave 1C-B Design Details (locked)
 
-This section records the design decisions locked for Wave 1C-B (Burning Pact as the first consumer) before implementation.
-
 ### Delivery shape
 
-Wave 1C-B delivers a **reusable orthogonal CardEffect**, not a hard-coded card. A concrete card (`UCardData`) is just an authored `Effects[]` array composed of these Effects. Production `DA_Card_BurningPact` asset authoring is deferred to the user in Unreal Editor.
+Wave 1C-B delivers a **reusable orthogonal CardEffect**, not a hard-coded card. A concrete card (`UCardData`) remains an authored `Effects[]` array composed of these Effects.
+
+The repository branch may contain owner-authored `DA_Card_BurningPact.uasset` / `L_BattleTest.umap` changes for ad-hoc testing. Those binary assets are **not part of this C++ closure change, are not inspected or modified here, and are not accepted as Wave 1C production validation evidence**. Production asset authoring/acceptance remains a separate user-owned step.
 
 ### New Effect — select-and-exhaust
 
@@ -205,114 +283,86 @@ A single composable Effect owns the "select a Hand card, then exhaust it" capabi
 USelectExhaustHandCardEffect
   candidates = current Hand cards minus the played card (computed in BuildActions)
   behavior:
-    - has burnable cards  -> select one -> exhaust it
+    - has burnable cards  -> mandatory select one -> exhaust it
     - no burnable cards   -> skip burning entirely (no selection, no exhaust, no fault)
 ```
 
-Candidate timing (important):
+Candidate timing:
 
 ```text
 Candidates are computed in BuildActions as "current Hand cards, excluding the
-played card (Context.Card)". This is deterministic and correct regardless of
-whether the played card has physically left Hand yet, because the Effect knows
-Context.Card directly and simply skips it when enumerating.
+played card (Context.Card)". This is deterministic regardless of whether the
+played card has physically left Hand yet.
 
-  has burnable candidates (hand minus played card is non-empty)
-      -> enqueue USelectionRequestAction(candidates, min=1, max=1)
-  no burnable candidates (hand minus played card is empty)
-      -> skip burning entirely (no selection, no exhaust, no fault)
+has burnable candidates
+  -> enqueue USelectionRequestAction(candidates, min=1, max=1,
+     CancelPolicy=Forbidden)
+
+no burnable candidates
+  -> skip burning entirely
 ```
 
-Selection mode (deferred): Burning Pact uses manual player choice. The reusable
-`ESelectMode` enum with a `Random` branch is intentionally NOT authored in 1C-B;
-it will be introduced only when a real random-exhaust consumer (e.g. Fiend Fire
-style) needs it.
+### Selection mode
+
+Burning Pact uses manual player choice. Random selection remains deferred until a real random-exhaust consumer requires it.
 
 ```text
-Manual  -> USelectionRequestAction (pause for player choice; Gameplay-owned)   [1C-B]
-Random  -> deterministic battle RNG picks the card                            [deferred, not in 1C-B]
+Manual  -> USelectionRequestAction + Native pending-card input bridge   [Wave 1C]
+Random  -> deterministic battle RNG                                    [deferred]
 ```
 
-### Determinism requirement
-
-```
-Random selection MUST use the battle-local deterministic RNG stream (reproducible
-for the same initial state + input sequence + RNG seed). No per-frame, timer, or
-non-deterministic random source is allowed.
-```
-
-### RNG access point (implementation TODO)
+### Determinism requirement for future Random mode
 
 ```text
-Current battle-scoped deterministic RNG is UDeckRuntime::RandomStream
-(FRandomStream, initialized from InitialSeed in InitializeFromDefinitions; used
-by ShuffleDrawPileWithBattleRng via RandomStream.RandRange). It is currently a
-private member. Before implementing Random selection, add the smallest read/use
-surface on UDeckRuntime (e.g. a battle-scoped rand-range helper) so the Effect
-consumes the SAME stream, never a fresh or per-frame random source.
+Random selection MUST use the battle-local deterministic RNG stream. No
+per-frame, timer, or fresh non-deterministic random source is allowed.
 ```
 
-### STS reference (Burning Pact selection is manual, not random)
+Current battle RNG remains `UDeckRuntime::RandomStream`; expose the smallest shared battle-scoped helper only when Random selection becomes an authorized consumer requirement.
+
+### STS reference
 
 ```text
-STS Burning Pact: "Exhaust 1 card. Draw 2 (3) cards." — the exhausted card is
-chosen BY THE PLAYER. Random selection exists only as a reusable mode for future
-cards, not for Burning Pact.
+Burning Pact: "Exhaust 1 card. Draw 2 (3) cards."
 ```
+
+The exhausted card is chosen by the player; the choice is mandatory when a valid candidate exists.
 
 ### Ordering is authored, not baked into the Effect
 
-```
-The Effect does not decide whether exhaust or draw happens first. Ordering comes
-from the card's Effects[] array.
-
+```text
 Burning Pact = [
-  USelectExhaustHandCardEffect,    // select one -> exhaust (skip if none)
+  USelectExhaustHandCardEffect,    // mandatory select one -> exhaust
   UDrawCardEffect(DrawCount 2/3)   // then draw
 ]
 ```
 
+`PlayCardAction` authors these Effects in order. `USelectionRequestAction` holds the queue; resolving the selection inserts the exhaust continuation before the already-authored Draw Action. Draw therefore cannot run before the mandatory selection completes.
+
 ### Exhaust / Draw remain orthogonal
 
+```text
+USelectionRequestAction  -> does not know exhaust details
+UExhaustCardAction       -> does not know who selected it or that draw follows
+UDrawCardsAction         -> does not know what preceded it
+USelectExhaustHandCardEffect -> composition point connecting selection -> exhaust
 ```
-Action-layer primitives stay orthogonal:
 
-  USelectionRequestAction  -> does not know exhaust details (only "select a thing")
-  UExhaustCardAction       -> does not know who selected it, nor that draw follows
-  UDrawCardsAction         -> does not know what preceded it
-```
-
-The composable `USelectExhaustHandCardEffect` IS the authored composition point:
-it knows both "select which card" and "exhaust the selected card", and bridges
-them locally. This is exactly the allocation described in
-`IroncladCardArchitecturePlan.md` §2.3 — the effect/composition layer may know
-multiple public capability contracts, while the primitive Actions stay neutral.
+### Numerical content used by transient Automation
 
 ```text
-Select   (Action primitive)   -> neutral; doesn't know exhaust
-Exhaust  (Action primitive)   -> neutral; doesn't know selection or draw
-Draw     (Action primitive)   -> neutral
-USelectExhaustHandCardEffect  -> composition point that connects selection -> exhaust
+Burning Pact:  BaseCost 1; exhaust 1 Hand card; draw 2
+Burning Pact+: Cost 1;     exhaust 1 Hand card; draw 3
+DefaultDestination = Discard
 ```
 
-The Effect is the composition point at the same level as the existing
-`UDamageCardEffect` / `UDrawCardEffect` / `UGainEnergyCardEffect`, and may be
-reused by future cards (e.g. Fiend Fire-style random exhaust).
-
-### Numerical content (STS canon)
+### Not implemented / not sealed by this slice
 
 ```text
-Burning Pact: BaseCost 1; exhaust 1 Hand card; draw 2
-Burning Pact+: BaseCost 1; exhaust 1 Hand card; draw 3
-```
-
-### Not implemented in 1C-B
-
-```text
-- no production DA_Card_BurningPact asset (user-authored later)
-- no Random selection mode (ESelectMode.Random is deferred; only Manual in 1C-B)
+- no acceptance of repository-local test .uasset/.umap as production content
+- no Random selection mode
 - no selection-into-other-moves (Exhume / True Grit selection)
 - no bulk exhaust (Fiend Fire / Second Wind)
 - no reactive exhaust powers (Feel No Pain / Dark Embrace)
-- no multi-consumer generalization before the first consumer is validated
+- no generic multi-select Native UI before a real consumer requires it
 ```
