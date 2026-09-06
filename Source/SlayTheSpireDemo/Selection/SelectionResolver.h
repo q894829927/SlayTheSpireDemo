@@ -31,6 +31,7 @@ public:
 
 	bool HasPendingSelection() const;
 	const FSelectionRequest* GetPendingRequest() const;
+	bool CanCancelPendingSelection() const;
 
 	// Begins a selection. Fails if a selection is already pending or the request
 	// is malformed (empty candidate set, inverted min/max bounds). When it
@@ -45,7 +46,7 @@ public:
 	// Validates a submitted result against the pending request. On success the
 	// requested continuation builds the dependent batch into OutActions and the
 	// pending selection is cleared. Returns false for cancelled/invalid results
-	// (pending selection is cleared but no Actions are produced).
+	// (pending selection is cleared only when cancellation is permitted).
 	bool TryResolveSelection(
 		const FSelectionResult& Result,
 		TArray<UBattleAction*>& OutActions
@@ -57,11 +58,14 @@ public:
 	// Returns false when no selection is pending.
 	bool SubmitResult(const FSelectionResult& Result);
 
-	// Resumes the current awaiting Action as a cancellation (no mutation, no fault).
+	// Resumes the current awaiting Action as a cancellation only when the active
+	// request explicitly permits cancellation. Forbidden cancellation leaves the
+	// request and awaiting Action pending.
 	bool SubmitCancel();
 
-	// Cancels the pending selection without mutation or fault.
-	void CancelSelection();
+	// Internal Action-side cancellation boundary. Honors the active request's
+	// cancellation policy and returns false without changing state when forbidden.
+	bool CancelSelection();
 
 private:
 	bool ValidateRequest(const FSelectionRequest& Request, FString& OutReason) const;
