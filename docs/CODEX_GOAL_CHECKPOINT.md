@@ -24,25 +24,33 @@ Production Card Expansion:
 ACTIVE
 
 Wave 1A — Exhaust Fact Surface:
-SOURCE IMPLEMENTATION PRESENT / VALIDATION PENDING / NOT SEALED
+COMPLETE / VALIDATED / SEALED
 
 Wave 1B — Targeted Exhaust Primitive:
-AUTHORIZED / IMPLEMENTATION IN PROGRESS / VALIDATION DEFERRED BY USER
+SOURCE MERGED TO MAIN / VALIDATION NEXT / NOT SEALED
 ```
 
+Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline now includes `DA_Card_SeeingRed`.
+
 ## Current branch
+
+```text
+main
+```
+
+Wave 1B merge commit:
+
+```text
+03d7941746e91b065fe247a2d18d5969da03872f
+```
+
+The former development branch was:
 
 ```text
 card-expansion-wave1b-targeted-exhaust
 ```
 
-Branch base:
-
-```text
-main@57ea2dabaee80a9a9048869a9c84c066c08b2e13
-```
-
-The user explicitly authorized starting Wave 1B before Wave 1A validation. This changes scheduling only. It does not upgrade Wave 1A to COMPLETE / VALIDATED / SEALED and does not authorize Wave 1C or later slices.
+Wave 1B source has now been merged into `main` for focused validation. Do not continue implementation on the old branch.
 
 ---
 
@@ -60,7 +68,7 @@ Wave-1 ordering amendment:
 docs/IroncladCardArchitecturePlanWave1Amendment.md
 ```
 
-Wave 1A authority / source record:
+Wave 1A authority / execution record:
 
 ```text
 docs/CardExpansionWave1AExhaustFactSurface.md
@@ -74,236 +82,120 @@ docs/CardExpansionWave1BTargetedExhaustPrimitive.md
 docs/CardExpansionWave1BExecution.md
 ```
 
-Sealed ordinary-card upgrade authority:
-
-```text
-docs/CardUpgradeSTSStyleRefactor.md
-```
-
-Future independent Card trigger-source design:
+Future Card trigger-source design remains independently unauthorized:
 
 ```text
 docs/CardTriggerSourceExpansionDesign.md
 ```
 
-When old scheduling language conflicts with this checkpoint, the explicit Wave 1B user authorization recorded here wins only for Wave 1B.
-
 ---
 
-## Current production card baseline
+## Wave 1A sealed result
 
-Production CardData remains six validated assets:
+Wave 1A established:
 
 ```text
-Attack
-- Strike
-- Pommel Strike
-- Twin Strike
-- Uppercut
-
-Skill
-- Defend
-
-Power
-- Inflame
+self-exhaust authoritative commit
+→ exact FCardExhaustedEvent
+→ BattleEventDispatcher
 ```
 
-Seeing Red is still a pending Wave 1A production validation asset and is not part of the validated production baseline yet.
-
----
-
-## Wave 1A dependency state
-
-Wave 1A source currently provides:
+and added the narrow authored adapter:
 
 ```text
-EBattleEventType::CardExhausted
-FCardExhaustedEvent
-FBattleEvent::MakeCardExhausted(...)
-self-exhaust producer in UFinishCardPlayAction
-explicit Dispatcher/combatant propagation
 UGainEnergyCardEffect
-focused Wave 1A Automation source
+→ existing UGainEnergyAction
 ```
 
-Wave 1A evidence still pending:
+Production validation card:
 
 ```text
-Editor Build
-focused Automation execution
-Seeing Red production asset
-production DataAsset validation
-PIE acceptance
-final seal record
+Seeing Red / 盛怒
+BaseCost       = 1
+UpgradedCost   = 0
+BaseAmount     = 2
+UpgradedAmount = 2
+DefaultDestination = Exhaust
 ```
 
-Wave 1B may consume the present CardExhausted source contract provisionally, but no document may claim that dependency is sealed until those gates actually pass.
+Do not reopen Wave 1A during Wave 1B validation unless a concrete Wave 1B failure directly implicates the sealed contract.
 
 ---
 
-## Wave 1B locked scope
+## Wave 1B source now on main
 
-Wave 1B establishes only:
+Implemented narrow capability:
 
 ```text
-already-specified exact UCardInstance* currently in Hand
-→ UDeckRuntime::TryExhaustHandCardCommit
-→ exact FCardZoneMutationResult
+exact UCardInstance currently in Hand
 → UExhaustCardAction
-→ committed CardZoneChanged Presentation record when available
-→ same FCardExhaustedEvent contract
+→ UDeckRuntime::TryExhaustHandCardCommit
+→ Hand → ExhaustPile authoritative commit
+→ exact FCardZoneMutationResult
+→ committed CardZoneChanged record when available
+→ same FCardExhaustedEvent rule
 → Dispatcher
 ```
 
-The DeckRuntime commit is intentionally:
+`UExhaustCardAction` retains the exact typed `FCardZoneMutationResult` for future authored composition. Wave 1B does not implement generic Continuation.
+
+Locked boundaries remain:
 
 ```text
-Hand → ExhaustPile
+no Selection
+no Burning Pact full card
+no True Grit selection behavior
+no bulk Exhaust
+no AnyZone universal movement API
+no Feel No Pain / Dark Embrace
+no Sentinel / Card Trigger Source Expansion
+no Wave 1C
 ```
 
-It is not a universal AnyZone mutation API.
-
-`UExhaustCardAction` retains:
-
-```cpp
-const FCardZoneMutationResult& GetCommitResult() const;
-```
-
-This typed result surface exists for a future Wave 1C authored Continuation. Wave 1B does not implement that Continuation.
+The negative wiring test explicitly declares its expected ResolutionFault log messages so the intended fault path is not misclassified as an Automation failure.
 
 ---
 
-## Wave 1B producer / failure rules
+## Wave 1B validation next
 
-Required ordering:
-
-```text
-exact target still in Hand
-→ validate explicit event wiring
-→ authoritative Hand → ExhaustPile commit
-→ retain exact typed CommitResult
-→ verify exact target identity / source / destination facts
-→ CardZoneChanged Presentation record when available
-→ CardExhausted from held Card + the same CommitResult
-→ Dispatch with current Presentation writer
-```
-
-Failure semantics:
+Automated gates:
 
 ```text
-stale/non-Hand target
-→ fail-soft
-→ no commit
-→ no CardExhausted
-
-missing event wiring
-→ ResolutionFault before commit
-
-Dispatch failure after successful commit
-→ ResolutionFault
-→ committed Exhaust remains authoritative
-→ no rollback
+SlayTheSpireDemoEditor Win64 Development Build PASS
+SlayTheSpireDemo.CardExpansion.Wave1B.TargetedExhaust PASS
 ```
 
-DeckRuntime remains unaware of Dispatcher and does not emit Gameplay events itself.
+Focused suite covers:
+
+```text
+exact Hand target → ExhaustPile commit
+non-target Hand card remains untouched
+typed CommitResult preserves exact identity and zone facts
+CardExhausted observes already-committed state
+Presentation and Event agree with CommitResult
+stale target → no duplicate commit/event
+missing event wiring → ResolutionFault before commit
+DeckRuntime mutation owner does not dispatch Event by itself
+```
+
+Do not rerun sealed Wave 1A, CFV or Upgrade suites unless a concrete failure invalidates those contracts.
 
 ---
 
-## Wave 1B focused Automation source
-
-Authored prefix:
+## Stop point
 
 ```text
-SlayTheSpireDemo.CardExpansion.Wave1B.TargetedExhaust
+Wave 1A
+→ COMPLETE / VALIDATED / SEALED
+
+Wave 1B source
+→ MERGED TO MAIN
+
+Wave 1B validation
+→ NEXT
+
+Wave 1C
+→ NOT AUTHORIZED
 ```
 
-Cases currently authored:
-
-```text
-CommitAndEvent
-WiringFailureBeforeCommit
-DeckRuntimeMutationOnly
-```
-
-Coverage intent:
-
-```text
-exact specified target only
-Hand → ExhaustPile exact CommitResult
-another Hand card untouched
-Action typed result matches commit
-exactly one CardExhausted
-Event payload matches CommitResult
-Presentation CardZoneChanged matches CommitResult
-commit observed before dispatch
-stale retry produces no duplicate event
-missing wiring faults before mutation
-DeckRuntime-only commit dispatches no event
-```
-
-Per user instruction these tests are not being run yet. No PASS claim is authorized.
-
----
-
-## Explicit Wave 1B non-goals
-
-```text
-SelectionRequest / SelectionResult
-Burning Pact full card
-True Grit selection path
-Fiend Fire bulk exhaust
-Second Wind bulk/filter exhaust
-bulk Exhaust Action
-Exhaust CardEffect that discovers/chooses targets
-generic authored Continuation
-arbitrary-zone targeted exhaust
-Feel No Pain
-Dark Embrace
-Sentinel
-Card Trigger Source Expansion
-Ethereal
-multi-enemy
-Phase 8 implementation
-new UI
-```
-
----
-
-## Revised active path
-
-```text
-Wave 1A — Exhaust Fact Surface
-→ SOURCE PRESENT / VALIDATION PENDING
-
-Wave 1B — Targeted Exhaust Primitive
-→ CURRENT ACTIVE BRANCH SLICE
-→ SOURCE IMPLEMENTATION IN PROGRESS
-→ VALIDATION DEFERRED
-
-Wave 1C — Selection + Targeted Exhaust Composition
-→ FUTURE / NOT AUTHORIZED
-
-Wave 1D — Reactive Exhaust Powers
-→ FUTURE / NOT AUTHORIZED
-
-Card Trigger Source Expansion
-→ FUTURE INDEPENDENT FOUNDATION / NOT AUTHORIZED
-```
-
----
-
-## Current stop point
-
-Wave 1B source work may continue only until the dedicated 1B authority stop point is satisfied:
-
-```text
-DeckRuntime Hand-targeted Exhaust commit
-UExhaustCardAction
-typed exact result accessor
-CardZoneChanged projection
-same CardExhausted dispatch contract
-focused Automation source
-execution record
-```
-
-Do not start Wave 1C from this authorization. Do not claim Wave 1A or Wave 1B sealed without actual validation evidence.
+After Wave 1B build + focused Automation pass, record validation evidence and seal Wave 1B before beginning Selection + Targeted Exhaust composition.
