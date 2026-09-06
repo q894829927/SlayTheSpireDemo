@@ -20,6 +20,12 @@ const FSelectionRequest* USelectionResolver::GetPendingRequest() const
 	return bHasPendingSelection ? &PendingRequest : nullptr;
 }
 
+bool USelectionResolver::CanCancelPendingSelection() const
+{
+	return bHasPendingSelection
+		&& PendingRequest.CancelPolicy == ESelectionCancelPolicy::Allowed;
+}
+
 bool USelectionResolver::BeginSelection(
 	const FSelectionRequest& Request,
 	const UAuthoredContinuation* Continuation,
@@ -71,9 +77,16 @@ bool USelectionResolver::TryResolveSelection(
 		return false;
 	}
 
-	// Cancelled is a legal resolution path: clear pending, no mutation, no fault.
+	// Cancelled is a legal primitive path only when the authored request permits
+	// it. A mandatory choice remains pending so Presentation cannot skip a
+	// required Gameplay cost and allow later queued effects to continue.
 	if (Result.Status == ESelectionStatus::Cancelled)
 	{
+		if (!CanCancelPendingSelection())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Selection] Cancellation rejected: active request is mandatory."));
+			return false;
+		}
 		ClearPendingSelectionInternal();
 		return false;
 	}
@@ -133,6 +146,12 @@ bool USelectionResolver::SubmitResult(const FSelectionResult& Result)
 		return false;
 	}
 
+	if (Result.Status == ESelectionStatus::Cancelled && !CanCancelPendingSelection())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] SubmitResult rejected: mandatory selection cannot be cancelled."));
+		return false;
+	}
+
 	USelectionRequestAction* Action = PendingAction.Get();
 	Action->ResolvePendingSelection(Result);
 	return true;
@@ -146,14 +165,26 @@ bool USelectionResolver::SubmitCancel()
 		return false;
 	}
 
+	if (!CanCancelPendingSelection())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] SubmitCancel rejected: active request is mandatory."));
+		return false;
+	}
+
 	USelectionRequestAction* Action = PendingAction.Get();
 	Action->CancelPendingSelection();
 	return true;
 }
 
-void USelectionResolver::CancelSelection()
+bool USelectionResolver::CancelSelection()
 {
+	if (!CanCancelPendingSelection())
+	{
+		return false;
+	}
+
 	ClearPendingSelectionInternal();
+	return true;
 }
 
 void USelectionResolver::ClearPendingSelectionInternal()
