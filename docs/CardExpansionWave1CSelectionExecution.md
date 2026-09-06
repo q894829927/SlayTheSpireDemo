@@ -1,17 +1,17 @@
 # Card Expansion — Wave 1C-A Selection Primitive Execution Record
 
-Date: **2026-09-06**
+Date: **2026-09-07**
 
 Status:
 
 ```text
-COMPLETE / VALIDATED / READY FOR SEAL
+IMPLEMENTATION UPDATED / REVALIDATION REQUIRED
 ```
 
 Branch:
 
 ```text
-main
+Wave-1C
 ```
 
 Authority:
@@ -20,67 +20,88 @@ Authority:
 docs/CardExpansionWave1CSelectionPrimitive.md
 ```
 
-This record covers only the Wave 1C-A primitive slice (SelectionRequest / SelectionResolver / SelectionResult / authored Continuation / queue resume contract). Wave 1C-B (Burning Pact as first consumer) is outside this record.
+The original Wave 1C-A implementation passed its five focused Automation cases on 2026-09-06. The 2026-09-07 closure changed the request contract and resolver/action cancellation behavior, so that earlier `5/5 PASS` is historical evidence only and must be rerun for the current branch head.
 
 ---
 
-## Implemented source surface
+## Current primitive source surface
 
 Selection DTOs (`Source/SlayTheSpireDemo/Selection/SelectionTypes.h`):
 
 ```text
 FSelectionCandidate    RuntimeObject / RuntimeSequence / SelectionKey
 ESelectionStatus       Pending / Resolved / Cancelled / Invalid
+ESelectionCancelPolicy Allowed / Forbidden
 FSelectionResult       Status / SelectedObjects / Reason
-FSelectionRequest      SelectionSource / MinCount / MaxCount / Candidates
+FSelectionRequest      SelectionSource / MinCount / MaxCount / CancelPolicy / Candidates
 ```
 
-Authored Continuation contract (`Source/SlayTheSpireDemo/Selection/AuthoredContinuation.h`):
+Authored Continuation contract:
 
 ```text
-UAuthoredContinuation  abstract, immutable/stateless definition object
+UAuthoredContinuation
 BuildNextActions(Result, Queue, OutActions) -> bool
 ```
 
-Narrow resolver (`Source/SlayTheSpireDemo/Selection/SelectionResolver.h/.cpp`):
+Gameplay resolver:
 
 ```text
-USelectionResolver     Gameplay-owned owner of the single active pending selection
+USelectionResolver
 Initialize(QueueAccess)
-BeginSelection(Request, Continuation)
+BeginSelection(Request, Continuation, PendingAction)
 TryResolveSelection(Result, OutActions)
+SubmitResult(Result)
+SubmitCancel()
+CanCancelPendingSelection()
 CancelSelection()
 HasPendingSelection() / GetPendingRequest()
 ```
 
-Queue-lifecycle owner (`Source/SlayTheSpireDemo/Actions/SelectionRequestAction.h/.cpp`):
+Queue-lifecycle owner:
 
 ```text
-USelectionRequestAction  BattleAction; Execute begins selection and holds without Finish
-ResolvePendingSelection(Result)  validate -> front-insert continuation batch -> Finish
-CancelPendingSelection()         clear pending -> Finish
-IsAwaitingSelection()
-```
-
-Determinism / ownership points frozen by this slice:
-
-```text
-- Selection state belongs to Gameplay (resolver), never Presentation.
-- The Action owns the queue lifecycle; it never pumps the queue itself.
-- Execute deliberately does NOT call Finish when it begins a selection, so the
-  existing asynchronous Action model keeps it as CurrentAction and releases the
-  pump frame. Resolve/Cancel then Finish and the existing HandleActionFinished
-  resume path advances the queue. No frame-time dependency is introduced.
-- Cancel is a legal path: no mutation, no ResolutionFault, pending cleared.
-- Invalid is a contract violation: no mutation, controlled failure info, pending
-  cleared, no fault.
-- Continuation is typed / authored / local / immutable / stateless; it returns a
-  batch, never drives the queue.
+USelectionRequestAction
+Execute -> begins selection and intentionally holds without Finish
+ResolvePendingSelection -> validate/build continuation/front-insert -> Finish
+CancelPendingSelection -> Finish only when Gameplay cancellation policy permits it
 ```
 
 ---
 
-## Focused Automation validation
+## Current cancellation contract
+
+Generic primitive requests default to:
+
+```text
+CancelPolicy = Allowed
+```
+
+Therefore the existing generic `CancelIsLegalPath` behavior remains part of Wave 1C-A:
+
+```text
+allowed cancel
+→ clear pending
+→ no mutation
+→ no ResolutionFault
+→ waiting Action finishes
+→ queue resumes
+```
+
+Wave 1C now additionally supports consumer-authored mandatory requests:
+
+```text
+CancelPolicy = Forbidden
+→ cancel request rejected
+→ pending selection retained
+→ waiting Action remains current/unfinished
+→ queue remains held
+```
+
+The mandatory path is exercised by the Wave 1C-B SelectExhaust consumer tests rather than changing the meaning of the existing generic allowed-cancel test.
+
+---
+
+## Focused Automation inventory
 
 Prefix:
 
@@ -88,7 +109,7 @@ Prefix:
 SlayTheSpireDemo.CardExpansion.Wave1C.Selection
 ```
 
-Cases (5):
+Existing cases (5):
 
 ```text
 ResolveBuildsContinuation
@@ -98,36 +119,42 @@ MalformedRequestRejected
 CountBoundsEnforced
 ```
 
-Result:
+Historical pre-closure result:
 
 ```text
-5/5 PASS (EXIT CODE 0)
+5/5 PASS (2026-09-06, previous branch head)
 ```
 
-Coverage:
+Current branch requirement:
+
+```text
+[ ] rerun all 5 primitive cases after CancelPolicy/resolver/action changes
+```
+
+Required preserved behavior:
 
 ```text
 request creation / BeginSelection sets pending
-Action holds (does not Finish) while awaiting selection; queue stays busy
+Action holds while awaiting selection; queue stays busy
 Resolver exposes the pending request
 valid resolved selection -> continuation batch built and executed
-foreign object not in candidate set -> rejected, no dependent work, no fault
-cancel -> clears pending, no mutation, no fault
-selected count outside [min,max] -> rejected
-malformed request (empty candidates / inverted bounds / max>candidate count) rejected
-second concurrent request rejected while one is pending
-invalid/cancel never requests ResolutionFault
+foreign object rejection does not mutate Gameplay
+allowed cancel clears pending without fault
+selected count outside [min,max] rejected
+malformed request rejected
+second concurrent request rejected
 ```
 
 ---
 
-## Seal gate
+## Current seal gate
 
 ```text
-[X] Editor Development Build PASS
-[X] focused Wave 1C-A Selection Automation PASS (5/5)
-[X] source review of resolver / continuation / action ownership PASS
+[ ] Editor Development Build PASS on current Wave-1C head
+[ ] focused Wave 1C-A Selection Automation PASS (5/5) on current head
+[ ] combined Wave 1C focused suite PASS (expected 11 total cases)
+[ ] Native HUD PIE closure gate from Wave 1C-B
 [ ] Final user seal confirmation
 ```
 
-No Wave 1C-B (Burning Pact) implementation is included in this slice.
+Do not restore `COMPLETE / VALIDATED / READY FOR SEAL` until the current branch head passes these gates.
