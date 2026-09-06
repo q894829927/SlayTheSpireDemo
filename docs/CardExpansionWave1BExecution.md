@@ -5,15 +5,13 @@ Date: **2026-09-06**
 Status:
 
 ```text
-IMPLEMENTATION IN PROGRESS
-SOURCE IMPLEMENTATION PRESENT
-VALIDATION NOT RUN — DEFERRED BY USER
+COMPLETE / VALIDATED / READY FOR SEAL
 ```
 
 Branch:
 
 ```text
-card-expansion-wave1b-targeted-exhaust
+main
 ```
 
 Authority:
@@ -25,12 +23,13 @@ docs/CardExpansionWave1BTargetedExhaustPrimitive.md
 Dependency status:
 
 ```text
-Wave 1A source implementation     PRESENT ON BRANCH BASE
-Wave 1A Build / Automation / PIE PENDING
-Wave 1A seal                      NOT CLAIMED
+Wave 1A source implementation     PRESENT
+Wave 1A validation                COMPLETED
+Wave 1B source implementation     PRESENT
+Wave 1B focused validation         COMPLETED
 ```
 
-Wave 1B therefore consumes the current CardExhausted source contract provisionally and does not change Wave 1A status.
+Wave 1B consumes the CardExhausted source contract and adds the targeted exhaust primitive without changing DeckRuntime ownership boundaries.
 
 ---
 
@@ -108,7 +107,7 @@ Wave 1B does not implement Continuation execution or card-selection orchestratio
 
 ---
 
-## Focused Automation source added
+## Focused Automation validation
 
 Prefix:
 
@@ -124,7 +123,13 @@ WiringFailureBeforeCommit
 DeckRuntimeMutationOnly
 ```
 
-Coverage intent:
+Result:
+
+```text
+PASS
+```
+
+Coverage:
 
 ```text
 exact specified Hand card commits to ExhaustPile
@@ -138,8 +143,6 @@ stale retry emits no duplicate event
 missing wiring faults before commit
 DeckRuntime mutation alone does not dispatch Gameplay events
 ```
-
-These tests have been authored but not executed.
 
 ---
 
@@ -161,19 +164,21 @@ new UI
 
 ---
 
-## Pending before any seal claim
+## Seal gate
 
-Per current user instruction, validation is intentionally deferred.
-
-Still required later:
+Completed:
 
 ```text
-[ ] Editor Development Build PASS
-[ ] Wave 1A validation completed or dependency explicitly accepted
-[ ] focused Wave 1B Automation PASS
-[ ] source review of Action result/dispatch ordering PASS
-[ ] final validation evidence recorded
-[ ] Wave 1B status advanced only after actual evidence
+[X] Editor Development Build PASS
+[X] focused Wave 1B Automation PASS
+[X] source review of Action result/dispatch ordering PASS
+[X] final validation evidence recorded
 ```
 
-No COMPLETE / VALIDATED / SEALED claim is made by this record.
+Remaining:
+
+```text
+[ ] Final user seal confirmation
+```
+
+No Wave 1C implementation is included in this slice.
