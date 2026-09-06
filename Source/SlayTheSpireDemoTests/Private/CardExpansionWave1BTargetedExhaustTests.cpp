@@ -335,6 +335,16 @@ bool FWave1BWiringFailureBeforeCommitTest::RunTest(const FString& Parameters)
 	UExhaustCardAction* Action = NewObject<UExhaustCardAction>(Queue);
 	TArray<ACombatant*> NoCombatants;
 	Action->Initialize(Deck, Target, Fixture.Player, nullptr, NoCombatants);
+	AddExpectedError(
+		TEXT("Resolution fault requested: ExhaustCardAction requires explicit event wiring before exhausting"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
+	AddExpectedError(
+		TEXT("Resolution faulted. Reason=ExhaustCardAction requires explicit event wiring before exhausting"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
 	if (!TestTrue(TEXT("Wiring-failure Action enqueued"), Queue->AddToBack(Action))
 		|| !TestTrue(TEXT("Wiring-failure Action processed"), Queue->StartProcessing()))
 	{
