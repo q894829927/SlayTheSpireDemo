@@ -340,8 +340,13 @@ bool FWave1BWiringFailureBeforeCommitTest::RunTest(const FString& Parameters)
 		EAutomationExpectedErrorFlags::Contains,
 		1
 	);
-	AddExpectedError(
-		TEXT("Resolution faulted. Reason=ExhaustCardAction requires explicit event wiring before exhausting"),
+	AddExpectedErrorPlain(
+		TEXT("[ActionQueue] Resolution faulted. Reason=ExhaustCardAction requires explicit event wiring before exhausting"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
+	AddExpectedErrorPlain(
+		TEXT("[Battle] Resolution faulted. Reason=ExhaustCardAction requires explicit event wiring before exhausting"),
 		EAutomationExpectedErrorFlags::Contains,
 		1
 	);
