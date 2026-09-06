@@ -30,7 +30,7 @@ Wave 1B — Targeted Exhaust Primitive:
 COMPLETE / VALIDATED / SEALED
 
 Wave 1C — Selection Primitive:
-DESIGN LOCKED / IMPLEMENTATION AUTHORITY / NOT STARTED
+WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL; 1C-B NOT STARTED
 ```
 
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline now includes `DA_Card_SeeingRed`.
@@ -85,10 +85,11 @@ docs/CardExpansionWave1BTargetedExhaustPrimitive.md
 docs/CardExpansionWave1BExecution.md
 ```
 
-Current Wave 1C authority:
+Current Wave 1C authority / execution record:
 
 ```text
 docs/CardExpansionWave1CSelectionPrimitive.md
+docs/CardExpansionWave1CSelectionExecution.md
 ```
 
 Future Card trigger-source design remains independently unauthorized:
@@ -200,8 +201,11 @@ Wave 1A
 Wave 1B
 → COMPLETE / VALIDATED / SEALED
 
-Wave 1C
-→ DESIGN LOCKED / IMPLEMENTATION AUTHORITY
+Wave 1C-A
+→ COMPLETE / VALIDATED / READY FOR SEAL
+
+Wave 1C-B
+→ NOT STARTED (Burning Pact first consumer)
 ```
 
-Wave 1B is sealed. Wave 1C (Selection Primitive) is the next authorized slice but is not yet implemented.
+Wave 1C-A Selection Primitive is implemented and validated (5/5 Automation PASS). Next: seal 1C-A confirmation, then Wave 1C-B (Burning Pact) as the first consumer.

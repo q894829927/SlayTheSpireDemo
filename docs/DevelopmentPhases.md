@@ -16,7 +16,7 @@ This document records project progress, implementation history and durable phase
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
 - **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
 - **Card Face Visual Style (CFV) is COMPLETE / USER-ACCEPTED / SEALED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The sealed model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
-- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is COMPLETE / VALIDATED / SEALED. Wave 1B — Targeted Exhaust Primitive is COMPLETE / VALIDATED / SEALED. Wave 1C — Selection Primitive is DESIGN LOCKED / IMPLEMENTATION AUTHORITY / NOT STARTED. Phase 8 remains deferred and is not a prerequisite.
+- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is COMPLETE / VALIDATED / SEALED. Wave 1B — Targeted Exhaust Primitive is COMPLETE / VALIDATED / SEALED. Wave 1C — Selection Primitive: Wave 1C-A COMPLETE / VALIDATED / READY FOR SEAL; Wave 1C-B (Burning Pact) not started. Phase 8 remains deferred and is not a prerequisite.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -267,7 +267,7 @@ Phase 8 may be resumed later as an integration gate after card architecture has 
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A SEALED, WAVE 1B SEALED, WAVE 1C DESIGN LOCKED / NOT STARTED**
+Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A SEALED, WAVE 1B SEALED, WAVE 1C-A COMPLETE, WAVE 1C-B NOT STARTED**
 
 Upgrade authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
 
@@ -277,11 +277,11 @@ Card-expansion authority chain:
 - `docs/IroncladCardArchitecturePlanWave1Amendment.md`
 - `docs/CardExpansionWave1AExhaustFactSurface.md` — Wave 1A (sealed)
 - `docs/CardExpansionWave1BTargetedExhaustPrimitive.md` — Wave 1B (sealed)
-- `docs/CardExpansionWave1CSelectionPrimitive.md` — Wave 1C (design locked / not started)
+- `docs/CardExpansionWave1CSelectionPrimitive.md` — Wave 1C (1C-A complete; 1C-B not started)
 
 The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for Card Expansion or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
 
-Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A (Exhaust Fact Surface) and Wave 1B (Targeted Exhaust Primitive). Wave 1C (Selection Primitive) is design locked and the next authorized slice. Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
+Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A (Exhaust Fact Surface) and Wave 1B (Targeted Exhaust Primitive), and completed Wave 1C-A (Selection Primitive). Wave 1C-B (Burning Pact first consumer) is the next authorized slice. Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
 
 ## Card Face Visual Style
 
