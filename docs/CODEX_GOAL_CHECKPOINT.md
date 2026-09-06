@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Production Card Expansion
 
-Last updated: **2026-09-06**
+Last updated: **2026-09-07**
 
 ## Current status
 
@@ -29,16 +29,16 @@ COMPLETE / VALIDATED / SEALED
 Wave 1B — Targeted Exhaust Primitive:
 COMPLETE / VALIDATED / SEALED
 
-Wave 1C — Selection Primitive:
-WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL; 1C-B COMPLETE / VALIDATED / READY FOR SEAL
+Wave 1C — Selection Primitive / First Consumer Closure:
+IMPLEMENTATION UPDATED / BUILD + AUTOMATION + NATIVE HUD PIE REVALIDATION REQUIRED
 ```
 
-Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline now includes `DA_Card_SeeingRed`.
+Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline includes `DA_Card_SeeingRed`.
 
 ## Current branch
 
 ```text
-main
+Wave-1C
 ```
 
 Wave 1B merge commit:
@@ -47,13 +47,15 @@ Wave 1B merge commit:
 03d7941746e91b065fe247a2d18d5969da03872f
 ```
 
-The former development branch was:
+The former Wave 1B development branch was:
 
 ```text
 card-expansion-wave1b-targeted-exhaust
 ```
 
 Wave 1B source was merged into `main`, validated and sealed. Do not continue implementation on the old branch.
+
+Wave 1C is currently under revalidation after the 2026-09-07 playable-selection/cancel/E2E closure changes. Do not mark it sealed from the earlier 7/7 result.
 
 ---
 
@@ -78,18 +80,19 @@ docs/CardExpansionWave1AExhaustFactSurface.md
 docs/CardExpansionWave1AExecution.md
 ```
 
-Current Wave 1B authority / execution record:
+Wave 1B authority / execution record:
 
 ```text
 docs/CardExpansionWave1BTargetedExhaustPrimitive.md
 docs/CardExpansionWave1BExecution.md
 ```
 
-Current Wave 1C authority / execution record:
+Current Wave 1C authority / execution records:
 
 ```text
 docs/CardExpansionWave1CSelectionPrimitive.md
 docs/CardExpansionWave1CSelectionExecution.md
+docs/CardExpansionWave1CSelectExhaustExecution.md
 ```
 
 Future Card trigger-source design remains independently unauthorized:
@@ -128,11 +131,11 @@ UpgradedAmount = 2
 DefaultDestination = Exhaust
 ```
 
-Do not reopen Wave 1A during Wave 1B validation unless a concrete Wave 1B failure directly implicates the sealed contract.
+Do not reopen Wave 1A during Wave 1C validation unless a concrete failure directly implicates the sealed contract.
 
 ---
 
-## Wave 1B source now on main
+## Wave 1B source on main
 
 Implemented narrow capability:
 
@@ -147,9 +150,9 @@ exact UCardInstance currently in Hand
 → Dispatcher
 ```
 
-`UExhaustCardAction` retains the exact typed `FCardZoneMutationResult` for future authored composition. Wave 1B does not implement generic Continuation.
+`UExhaustCardAction` retains the exact typed `FCardZoneMutationResult` for future authored composition. Wave 1B does not own selection semantics.
 
-Locked boundaries remain:
+Locked Wave 1B boundaries remain:
 
 ```text
 no Selection
@@ -159,7 +162,6 @@ no bulk Exhaust
 no AnyZone universal movement API
 no Feel No Pain / Dark Embrace
 no Sentinel / Card Trigger Source Expansion
-no Wave 1C
 ```
 
 The negative wiring test explicitly declares its expected ResolutionFault log messages so the intended fault path is not misclassified as an Automation failure.
@@ -192,6 +194,102 @@ Wave 1B is complete, validated and sealed. Do not rerun sealed Wave 1A, CFV or U
 
 ---
 
+## Wave 1C current implementation
+
+### Selection primitive
+
+```text
+FSelectionRequest / FSelectionResult
+USelectionResolver
+USelectionRequestAction hold/resume lifecycle
+UAuthoredContinuation
+```
+
+Selection state remains Gameplay-owned.
+
+### Request-level cancel policy
+
+```text
+ESelectionCancelPolicy::Allowed
+→ generic legal cancel path
+
+ESelectionCancelPolicy::Forbidden
+→ mandatory request cannot release the waiting Action through cancel
+```
+
+`USelectExhaustHandCardEffect` uses `Forbidden`, preventing Burning Pact from skipping its exhaust step and continuing into the already-authored Draw Effect.
+
+### Native pending-card input bridge
+
+```text
+Native Hand card click
+→ UBattleHUDWidget::SelectCard(RuntimeId)
+→ UBattleHUDViewModel pending-selection helper
+→ BattleSelectionRequest Gameplay facade
+→ USelectionResolver::SubmitResult
+```
+
+The bridge is RuntimeId-only. UI does not receive authoritative candidate pointers and does not touch the ActionQueue. Ordinary busy-resolution input remains unchanged when no pending selection exists.
+
+### Burning Pact transient Automation shape
+
+```text
+Cost 1
+Effects = [SelectExhaust, Draw]
+Base Draw 2
+Upgraded Draw 3
+DefaultDestination = Discard
+```
+
+The test fixture is transient C++ content. It intentionally does not use or validate a repository binary `DA_Card_BurningPact` asset.
+
+### Owner-authored binary test content
+
+The `Wave-1C` branch may contain user-authored:
+
+```text
+Content/.../DA_Card_BurningPact.uasset
+Content/.../Maps/L_BattleTest.umap
+```
+
+These files are ad-hoc test content owned by the user. The 2026-09-07 closure change does not inspect, modify, or treat them as production acceptance evidence. Production asset acceptance remains separate.
+
+---
+
+## Current Wave 1C validation inventory
+
+Expected focused Automation inventory after the closure changes:
+
+```text
+5 Selection primitive cases
+6 SelectExhaust / Burning Pact cases
+= 11 total Wave 1C cases
+```
+
+New cases cover:
+
+```text
+mandatory cancel rejection
+base exhaust -> draw 2
+upgraded exhaust -> draw 3
+Effects order
+FinishCardPlay completion
+Native HUD C++ pending-card click route
+```
+
+The earlier `7/7 PASS` result predates these changes. It remains historical evidence only and does not validate the current branch head.
+
+Required current gates:
+
+```text
+[ ] SlayTheSpireDemoEditor Win64 Development Build
+[ ] SlayTheSpireDemo.CardExpansion.Wave1C focused Automation (expected 11 cases)
+[ ] production Native HUD PIE selection smoke
+[ ] user seal confirmation after the above pass
+```
+
+---
+
 ## Stop point
 
 ```text
@@ -201,11 +299,10 @@ Wave 1A
 Wave 1B
 → COMPLETE / VALIDATED / SEALED
 
-Wave 1C-A
-→ COMPLETE / VALIDATED / READY FOR SEAL
-
-Wave 1C-B
-→ COMPLETE / VALIDATED / READY FOR SEAL (Select-Exhaust consumer, Burning Pact shape)
+Wave 1C-A / 1C-B current branch
+→ IMPLEMENTATION UPDATED
+→ REVALIDATION REQUIRED
+→ NOT SEALED
 ```
 
-Wave 1C-A Selection Primitive and Wave 1C-B Select-Exhaust consumer are implemented and validated (7/7 Automation PASS, no regression). Execution record: `docs/CardExpansionWave1CSelectExhaustExecution.md`. Next: user seal confirmation for 1C-A and 1C-B, then production `DA_Card_BurningPact` asset authoring in Unreal Editor (deferred to user).
+Next action is not more feature expansion. First re-run the current Wave 1C build/Automation/Native HUD PIE gates. Only after those pass should Wave 1C be marked validated/sealed or production card content be accepted.
