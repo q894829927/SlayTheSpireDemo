@@ -19,6 +19,7 @@ class UCardInstance;
 class UDeckRuntime;
 class URelicContainer;
 class URelicData;
+class USelectionResolver;
 class UStatusData;
 class UTurnEndedAction;
 struct FBattleReadSnapshot;
@@ -159,6 +160,10 @@ public:
 	uint64 AllocateRuntimeSequence();
 	URelicContainer* GetPlayerRelicContainer();
 	const URelicContainer* GetPlayerRelicContainer() const;
+
+	// Gameplay-owned selection authority (Wave 1C). Present only after a battle
+	// has started; nullptr otherwise.
+	USelectionResolver* GetSelectionResolver() const;
 
 	bool TryResolveCombatantPresentationId(
 		const ACombatant* Combatant,
@@ -301,6 +306,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> DeckRuntime = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USelectionResolver> SelectionResolver = nullptr;
 
 	UPROPERTY(Transient)
 	TObjectPtr<URelicContainer> PlayerRelicContainer = nullptr;

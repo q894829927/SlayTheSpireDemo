@@ -1,8 +1,9 @@
 #include "SelectionResolver.h"
 
 #include "AuthoredContinuation.h"
-#include "../Actions/BattleActionQueue.h"
 #include "../Actions/BattleAction.h"
+#include "../Actions/BattleActionQueue.h"
+#include "../Actions/SelectionRequestAction.h"
 
 void USelectionResolver::Initialize(FSelectionResolverQueueAccess InQueueAccess)
 {
@@ -21,7 +22,8 @@ const FSelectionRequest* USelectionResolver::GetPendingRequest() const
 
 bool USelectionResolver::BeginSelection(
 	const FSelectionRequest& Request,
-	const UAuthoredContinuation* Continuation
+	const UAuthoredContinuation* Continuation,
+	USelectionRequestAction* InPendingAction
 )
 {
 	if (bHasPendingSelection)
@@ -43,8 +45,15 @@ bool USelectionResolver::BeginSelection(
 		return false;
 	}
 
+	if (!IsValid(InPendingAction))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] BeginSelection rejected: missing awaiting Action."));
+		return false;
+	}
+
 	PendingRequest = Request;
 	PendingContinuation = Continuation;
+	PendingAction = InPendingAction;
 	bHasPendingSelection = true;
 	return true;
 }
@@ -65,9 +74,7 @@ bool USelectionResolver::TryResolveSelection(
 	// Cancelled is a legal resolution path: clear pending, no mutation, no fault.
 	if (Result.Status == ESelectionStatus::Cancelled)
 	{
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
@@ -79,9 +86,7 @@ bool USelectionResolver::TryResolveSelection(
 			TEXT("[Selection] TryResolveSelection rejected: invalid status %d."),
 			static_cast<int32>(Result.Status)
 		);
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
@@ -89,9 +94,7 @@ bool USelectionResolver::TryResolveSelection(
 	if (!ValidateResult(Result, Reason))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected invalid result: %s"), *Reason);
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
@@ -99,9 +102,7 @@ bool USelectionResolver::TryResolveSelection(
 	if (!IsValid(Queue))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected: no authoritative queue available."));
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
@@ -109,32 +110,58 @@ bool USelectionResolver::TryResolveSelection(
 	if (!IsValid(Continuation))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected: continuation lost."));
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
 	if (!Continuation->BuildNextActions(Result, Queue, OutActions))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Selection] Continuation declined to build dependent actions."));
-		bHasPendingSelection = false;
-		PendingRequest = FSelectionRequest{};
-		PendingContinuation = nullptr;
+		ClearPendingSelectionInternal();
 		return false;
 	}
 
-	bHasPendingSelection = false;
-	PendingRequest = FSelectionRequest{};
-	PendingContinuation = nullptr;
+	ClearPendingSelectionInternal();
+	return true;
+}
+
+bool USelectionResolver::SubmitResult(const FSelectionResult& Result)
+{
+	if (!bHasPendingSelection || !IsValid(PendingAction.Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] SubmitResult rejected: no awaiting selection Action."));
+		return false;
+	}
+
+	USelectionRequestAction* Action = PendingAction.Get();
+	Action->ResolvePendingSelection(Result);
+	return true;
+}
+
+bool USelectionResolver::SubmitCancel()
+{
+	if (!bHasPendingSelection || !IsValid(PendingAction.Get()))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] SubmitCancel rejected: no awaiting selection Action."));
+		return false;
+	}
+
+	USelectionRequestAction* Action = PendingAction.Get();
+	Action->CancelPendingSelection();
 	return true;
 }
 
 void USelectionResolver::CancelSelection()
 {
+	ClearPendingSelectionInternal();
+}
+
+void USelectionResolver::ClearPendingSelectionInternal()
+{
 	bHasPendingSelection = false;
 	PendingRequest = FSelectionRequest{};
 	PendingContinuation = nullptr;
+	PendingAction = nullptr;
 }
 
 bool USelectionResolver::ValidateRequest(const FSelectionRequest& Request, FString& OutReason) const

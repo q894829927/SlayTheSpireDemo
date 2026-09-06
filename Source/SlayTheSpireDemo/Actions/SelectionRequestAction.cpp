@@ -29,7 +29,7 @@ void USelectionRequestAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!Resolver->BeginSelection(Request, Continuation.Get()))
+	if (!Resolver->BeginSelection(Request, Continuation.Get(), this))
 	{
 		// Malformed request or an already-pending selection: fail soft, no hold.
 		Finish();

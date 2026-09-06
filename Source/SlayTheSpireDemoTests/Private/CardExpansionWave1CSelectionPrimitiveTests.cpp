@@ -201,25 +201,26 @@ bool FWave1CSelectionPrimitiveRequestValidationTest::RunTest(const FString& Para
 
 	UWave1CTestContinuation* Continuation = NewObject<UWave1CTestContinuation>(Fixture.World);
 	Continuation->Configure(nullptr, TEXT("Dependent"), 1);
+	USelectionRequestAction* DummyAction = NewObject<USelectionRequestAction>(Fixture.World);
 
 	FSelectionRequest EmptyRequest = Fixture.BuildRequest(0, 1, 1);
-	TestFalse(TEXT("Empty candidate set rejected"), Fixture.Resolver->BeginSelection(EmptyRequest, Continuation));
+	TestFalse(TEXT("Empty candidate set rejected"), Fixture.Resolver->BeginSelection(EmptyRequest, Continuation, DummyAction));
 	TestFalse(TEXT("No pending selection after empty request"), Fixture.Resolver->HasPendingSelection());
 
 	FSelectionRequest InvertedBounds = Fixture.BuildRequest(2, 2, 1);
-	TestFalse(TEXT("Inverted min/max bounds rejected"), Fixture.Resolver->BeginSelection(InvertedBounds, Continuation));
+	TestFalse(TEXT("Inverted min/max bounds rejected"), Fixture.Resolver->BeginSelection(InvertedBounds, Continuation, DummyAction));
 	TestFalse(TEXT("No pending selection after inverted bounds"), Fixture.Resolver->HasPendingSelection());
 
 	FSelectionRequest OutOfRange = Fixture.BuildRequest(2, 1, 3);
-	TestFalse(TEXT("Max beyond candidate count rejected"), Fixture.Resolver->BeginSelection(OutOfRange, Continuation));
+	TestFalse(TEXT("Max beyond candidate count rejected"), Fixture.Resolver->BeginSelection(OutOfRange, Continuation, DummyAction));
 	TestFalse(TEXT("No pending selection after out-of-range bounds"), Fixture.Resolver->HasPendingSelection());
 
 	FSelectionRequest Valid = Fixture.BuildRequest(2, 1, 1);
-	TestTrue(TEXT("Valid request accepted"), Fixture.Resolver->BeginSelection(Valid, Continuation));
+	TestTrue(TEXT("Valid request accepted"), Fixture.Resolver->BeginSelection(Valid, Continuation, DummyAction));
 	TestTrue(TEXT("Pending selection set"), Fixture.Resolver->HasPendingSelection());
 
 	FSelectionRequest Second = Fixture.BuildRequest(2, 1, 1);
-	TestFalse(TEXT("Second concurrent request rejected"), Fixture.Resolver->BeginSelection(Second, Continuation));
+	TestFalse(TEXT("Second concurrent request rejected"), Fixture.Resolver->BeginSelection(Second, Continuation, DummyAction));
 	return true;
 }
 

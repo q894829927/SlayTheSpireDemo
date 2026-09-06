@@ -8,6 +8,7 @@
 class UAuthoredContinuation;
 class UBattleAction;
 class UBattleActionQueue;
+class USelectionRequestAction;
 
 DECLARE_DELEGATE_RetVal_OneParam(UBattleActionQueue*, FSelectionResolverQueueAccess, const USelectionResolver*);
 
@@ -32,10 +33,13 @@ public:
 	const FSelectionRequest* GetPendingRequest() const;
 
 	// Begins a selection. Fails if a selection is already pending or the request
-	// is malformed (empty candidate set, inverted min/max bounds).
+	// is malformed (empty candidate set, inverted min/max bounds). When it
+	// succeeds the resolver retains a weak handle to the awaiting Action so it can
+	// resume it from a later SubmitResult / SubmitCancel.
 	bool BeginSelection(
 		const FSelectionRequest& Request,
-		const UAuthoredContinuation* Continuation
+		const UAuthoredContinuation* Continuation,
+		USelectionRequestAction* InPendingAction
 	);
 
 	// Validates a submitted result against the pending request. On success the
@@ -47,18 +51,31 @@ public:
 		TArray<UBattleAction*>& OutActions
 	);
 
+	// Resumes the current awaiting Action with a player-submitted result. This is
+	// the deterministic Gameplay submit surface; it delegates completion back to
+	// the awaiting USelectionRequestAction (which owns the queue lifecycle).
+	// Returns false when no selection is pending.
+	bool SubmitResult(const FSelectionResult& Result);
+
+	// Resumes the current awaiting Action as a cancellation (no mutation, no fault).
+	bool SubmitCancel();
+
 	// Cancels the pending selection without mutation or fault.
 	void CancelSelection();
 
 private:
 	bool ValidateRequest(const FSelectionRequest& Request, FString& OutReason) const;
 	bool ValidateResult(const FSelectionResult& Result, FString& OutReason) const;
+	void ClearPendingSelectionInternal();
 
 	UPROPERTY(Transient)
 	FSelectionRequest PendingRequest;
 
 	UPROPERTY(Transient)
 	TObjectPtr<const UAuthoredContinuation> PendingContinuation = nullptr;
+
+	UPROPERTY(Transient)
+	TObjectPtr<USelectionRequestAction> PendingAction = nullptr;
 
 	bool bHasPendingSelection = false;
 	FSelectionResolverQueueAccess QueueAccess;

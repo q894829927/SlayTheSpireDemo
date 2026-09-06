@@ -30,7 +30,7 @@ Wave 1B — Targeted Exhaust Primitive:
 COMPLETE / VALIDATED / SEALED
 
 Wave 1C — Selection Primitive:
-WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL; 1C-B NOT STARTED
+WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL; 1C-B COMPLETE / VALIDATED / READY FOR SEAL
 ```
 
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. The validated production baseline now includes `DA_Card_SeeingRed`.
@@ -205,7 +205,7 @@ Wave 1C-A
 → COMPLETE / VALIDATED / READY FOR SEAL
 
 Wave 1C-B
-→ NOT STARTED (Burning Pact first consumer)
+→ COMPLETE / VALIDATED / READY FOR SEAL (Select-Exhaust consumer, Burning Pact shape)
 ```
 
-Wave 1C-A Selection Primitive is implemented and validated (5/5 Automation PASS). Next: seal 1C-A confirmation, then Wave 1C-B (Burning Pact) as the first consumer.
+Wave 1C-A Selection Primitive and Wave 1C-B Select-Exhaust consumer are implemented and validated (7/7 Automation PASS, no regression). Execution record: `docs/CardExpansionWave1CSelectExhaustExecution.md`. Next: user seal confirmation for 1C-A and 1C-B, then production `DA_Card_BurningPact` asset authoring in Unreal Editor (deferred to user).
