@@ -46,6 +46,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
 
+	// Wave 1C asynchronous Gameplay selection is intentionally separate from the
+	// normal caught-up card-play binding. These helpers query/submit through the
+	// Battle selection request facade using RuntimeId only; the ViewModel never
+	// stores authoritative candidate UObject pointers.
+	bool HasPendingCardSelection() const;
+	bool IsPendingCardSelectionCandidate(int32 RuntimeId) const;
+	bool SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId);
+	bool CanCancelPendingCardSelection() const;
+	bool SubmitPendingCardSelectionCancel();
+
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Preview")
 	bool SetPreviewTargetById(int32 TargetId);
 
