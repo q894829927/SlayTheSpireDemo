@@ -424,7 +424,7 @@ Prefer a small coherent source slice such as:
 ```text
 Source/SlayTheSpireDemo/Battle/BattleImmediatePreview.h          new DTOs
 Source/SlayTheSpireDemo/Battle/BattleManager.h                   public Query declaration
-Source/SlayTheSpireDemo/Battle/BattleManagerUIA3Preview.cpp      Query implementation
+Source/SlayTheSpireDemo/Battle/BattleManagerPreview.cpp          Query implementation
 Source/SlayTheSpireDemo/Cards/Effects/CardEffect.h               narrow read-only operation hook
 Source/SlayTheSpireDemo/Cards/Effects/DamageCardEffect.*         Damage contribution
 Source/SlayTheSpireDemo/Cards/Effects/GainBlockCardEffect.*      Block contribution
