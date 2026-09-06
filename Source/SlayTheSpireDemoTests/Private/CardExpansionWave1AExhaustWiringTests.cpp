@@ -56,6 +56,18 @@ bool FWave1AExhaustWiringFailureBeforeCommitTest::RunTest(const FString& Paramet
 	UFinishCardPlayAction* FinishAction = NewObject<UFinishCardPlayAction>(Queue);
 	FinishAction->Initialize(Deck, Card);
 	TestTrue(TEXT("Finish action enqueues"), Queue->AddToBack(FinishAction));
+
+	AddExpectedError(
+		TEXT("Resolution fault requested: FinishCardPlayAction requires explicit event wiring before exhausting"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
+	AddExpectedError(
+		TEXT("Resolution faulted. Reason=FinishCardPlayAction requires explicit event wiring before exhausting"),
+		EAutomationExpectedErrorFlags::Contains,
+		1
+	);
+
 	Queue->StartProcessing();
 	UBattleEventDispatcher::OnEventDispatchedForTesting.Clear();
 
