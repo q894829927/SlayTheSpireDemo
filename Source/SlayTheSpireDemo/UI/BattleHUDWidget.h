@@ -103,6 +103,9 @@ protected:
 	bool BeginNativeHandToDiscardPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeHandToExhaustPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
 	bool BeginNativeDrawToHandPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
@@ -209,6 +212,7 @@ protected:
 		None,
 		CardPlayed,
 		HandToDiscard,
+		HandToExhaust,
 		DrawToHand,
 		PlayAreaToDestination
 	};
