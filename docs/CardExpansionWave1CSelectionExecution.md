@@ -5,7 +5,7 @@ Date: **2026-09-07**
 Status:
 
 ```text
-IMPLEMENTATION UPDATED / REVALIDATION REQUIRED
+COMPLETE / VALIDATED / SEALED
 ```
 
 Branch:
@@ -20,11 +20,11 @@ Authority:
 docs/CardExpansionWave1CSelectionPrimitive.md
 ```
 
-The original Wave 1C-A implementation passed its five focused Automation cases on 2026-09-06. The 2026-09-07 closure changed the request contract and resolver/action cancellation behavior, so that earlier `5/5 PASS` is historical evidence only and must be rerun for the current branch head.
+The original Wave 1C-A implementation passed five focused Automation cases on 2026-09-06. The 2026-09-07 closure then changed the request contract and resolver/action cancellation behavior, requiring revalidation. That revalidation has now been completed on the current Wave-1C branch by the user: Editor Development Build PASS, the combined Wave 1C focused Automation suite PASS, and the Native HUD PIE closure gates PASS.
 
 ---
 
-## Current primitive source surface
+## Sealed primitive source surface
 
 Selection DTOs (`Source/SlayTheSpireDemo/Selection/SelectionTypes.h`):
 
@@ -66,9 +66,11 @@ ResolvePendingSelection -> validate/build continuation/front-insert -> Finish
 CancelPendingSelection -> Finish only when Gameplay cancellation policy permits it
 ```
 
+Selection-generated continuation Actions inherit the active committed-presentation writer at the common `USelectionRequestAction` continuation boundary. This keeps post-selection Gameplay mutation and Presentation records in the same resolution.
+
 ---
 
-## Current cancellation contract
+## Sealed cancellation contract
 
 Generic primitive requests default to:
 
@@ -76,7 +78,7 @@ Generic primitive requests default to:
 CancelPolicy = Allowed
 ```
 
-Therefore the existing generic `CancelIsLegalPath` behavior remains part of Wave 1C-A:
+Therefore the generic `CancelIsLegalPath` behavior remains part of Wave 1C-A:
 
 ```text
 allowed cancel
@@ -87,7 +89,7 @@ allowed cancel
 → queue resumes
 ```
 
-Wave 1C now additionally supports consumer-authored mandatory requests:
+Wave 1C additionally supports consumer-authored mandatory requests:
 
 ```text
 CancelPolicy = Forbidden
@@ -97,19 +99,19 @@ CancelPolicy = Forbidden
 → queue remains held
 ```
 
-The mandatory path is exercised by the Wave 1C-B SelectExhaust consumer tests rather than changing the meaning of the existing generic allowed-cancel test.
+The mandatory path is exercised by the Wave 1C-B SelectExhaust consumer tests rather than changing the meaning of the generic allowed-cancel test.
 
 ---
 
 ## Focused Automation inventory
 
-Prefix:
+Primitive prefix:
 
 ```text
 SlayTheSpireDemo.CardExpansion.Wave1C.Selection
 ```
 
-Existing cases (5):
+Primitive cases (5):
 
 ```text
 ResolveBuildsContinuation
@@ -119,19 +121,13 @@ MalformedRequestRejected
 CountBoundsEnforced
 ```
 
-Historical pre-closure result:
+Current validation result:
 
 ```text
-5/5 PASS (2026-09-06, previous branch head)
+5/5 primitive cases PASS as part of the current Wave 1C focused suite
 ```
 
-Current branch requirement:
-
-```text
-[ ] rerun all 5 primitive cases after CancelPolicy/resolver/action changes
-```
-
-Required preserved behavior:
+Preserved behavior:
 
 ```text
 request creation / BeginSelection sets pending
@@ -143,18 +139,23 @@ allowed cancel clears pending without fault
 selected count outside [min,max] rejected
 malformed request rejected
 second concurrent request rejected
+mandatory cancel cannot release a Forbidden request
 ```
 
 ---
 
-## Current seal gate
+## Final seal evidence
+
+User-confirmed local validation on **2026-09-07**:
 
 ```text
-[ ] Editor Development Build PASS on current Wave-1C head
-[ ] focused Wave 1C-A Selection Automation PASS (5/5) on current head
-[ ] combined Wave 1C focused suite PASS (expected 11 total cases)
-[ ] Native HUD PIE closure gate from Wave 1C-B
-[ ] Final user seal confirmation
+[x] SlayTheSpireDemoEditor Win64 Development Build PASS
+[x] focused Wave 1C-A Selection Automation PASS (5/5)
+[x] combined SlayTheSpireDemo.CardExpansion.Wave1C Automation PASS (13/13)
+[x] Native HUD PIE closure gate PASS
+[x] final user validation confirmation received
 ```
 
-Do not restore `COMPLETE / VALIDATED / READY FOR SEAL` until the current branch head passes these gates.
+The earlier pre-closure `5/5 PASS` remains historical evidence only; the seal above is based on the revalidated current branch behavior.
+
+Wave 1C-A is complete, validated and sealed.
