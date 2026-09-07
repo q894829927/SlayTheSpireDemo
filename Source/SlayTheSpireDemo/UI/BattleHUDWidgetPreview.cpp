@@ -8,6 +8,10 @@
 
 void UBattleHUDWidget::OnWidgetRebuilt()
 {
+	if (IsValid(ViewModel))
+	{
+		ViewModel->ClearPendingCardSelectionInputState();
+	}
 	Super::OnWidgetRebuilt();
 
 	// A3 uses dedicated Preview delegates. Inspection remains independently bound
@@ -34,6 +38,10 @@ void UBattleHUDWidget::OnWidgetRebuilt()
 
 void UBattleHUDWidget::BeginDestroy()
 {
+	if (IsValid(ViewModel))
+	{
+		ViewModel->ClearPendingCardSelectionInputState();
+	}
 	if (IsValid(Combatant_PlayerPresentation))
 	{
 		Combatant_PlayerPresentation->OnPreviewRequested.RemoveDynamic(
