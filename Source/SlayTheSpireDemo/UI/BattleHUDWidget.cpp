@@ -26,7 +26,6 @@ namespace
 	const FVector2D NativeDrawCardFallbackTranslation(-420.0f, 90.0f);
 	const FVector2D NativeHandCardFallbackTranslation(-300.0f, 120.0f);
 	const FVector2D NativeDiscardCardFallbackTranslation(420.0f, 90.0f);
-	const FVector2D NativeExhaustCardFallbackTranslation(420.0f, -90.0f);
 
 	bool AreNativeStatusViewsEqual(
 		const FBattleHUDStatusView& Left,
@@ -1073,9 +1072,6 @@ bool UBattleHUDWidget::BeginNativeHandToExhaustPresentation(
 	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
 	UBattleCardWidget* HistoricalHandCard = nullptr;
 	if (!IsValid(ViewModel)
-		|| !IsValid(OV_PlayArea)
-		|| !IsValid(Txt_ExhaustCount)
-		|| CardWidgetClass == nullptr
 		|| Payload.ToIndex != ViewModel->ExhaustCount
 		|| ActiveNativeZoneCardWidget.IsValid()
 		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
@@ -1083,12 +1079,7 @@ bool UBattleHUDWidget::BeginNativeHandToExhaustPresentation(
 		return false;
 	}
 
-	// The played card is intentionally retained in OV_PlayArea until its later
-	// PlayArea->Destination record. Selection-driven Hand->Exhaust must be able
-	// to animate beside that retained visual while still owning only one active
-	// zone transient.
-	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(PresentationCard) || !CommitNativePresentationOwnership(Record.Type, Token))
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -1096,32 +1087,26 @@ bool UBattleHUDWidget::BeginNativeHandToExhaustPresentation(
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::HandToExhaust;
 	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
 	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
-	ActiveNativeZoneCardWidget = PresentationCard;
-	UOverlaySlot* ExhaustMotionSlot = OV_PlayArea->AddChildToOverlay(PresentationCard);
-	if (!IsValid(ExhaustMotionSlot))
-	{
-		ActiveNativeZoneCardWidget.Reset();
-		ResetNativeCardRecordState();
-		AbortNativePresentationStart();
-		return false;
-	}
-	ExhaustMotionSlot->SetHorizontalAlignment(HAlign_Center);
-	ExhaustMotionSlot->SetVerticalAlignment(VAlign_Center);
+
+	// Exhaust is presented on the formal historical Hand widget itself. Keeping
+	// both translations at zero preserves the Hand layout while opacity fades
+	// from fully visible to invisible; the Controller removes the exact card from
+	// the formal Hand only after this Record completes and is reduced.
 	ConfigureNativeCardAnimation(
-		PresentationCard,
 		HistoricalHandCard,
-		Txt_ExhaustCount,
-		NativeHandCardFallbackTranslation,
-		NativeExhaustCardFallbackTranslation,
+		nullptr,
+		nullptr,
+		FVector2D::ZeroVector,
+		FVector2D::ZeroVector,
 		1.0f,
-		0.72f,
 		1.0f,
-		0.15f);
-	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
+		1.0f,
+		0.0f);
+
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
+		NormalizeNativeCardTransform(HistoricalHandCard);
 		HistoricalHandCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
-		PresentationCard->RemoveFromParent();
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -2493,7 +2478,6 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 		switch (ActiveNativeCardPresentationKind)
 		{
 		case ENativeCardPresentationKind::HandToDiscard:
-		case ENativeCardPresentationKind::HandToExhaust:
 			if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
 			{
 				HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
@@ -2501,6 +2485,13 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 			if (UBattleCardWidget* ZoneCard = ActiveNativeZoneCardWidget.Get())
 			{
 				ZoneCard->RemoveFromParent();
+			}
+			break;
+		case ENativeCardPresentationKind::HandToExhaust:
+			if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
+			{
+				NormalizeNativeCardTransform(HistoricalCard);
+				HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
 			}
 			break;
 		case ENativeCardPresentationKind::DrawToHand:
@@ -2529,6 +2520,14 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 
 void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 {
+	if (ActiveNativeCardPresentationKind == ENativeCardPresentationKind::HandToExhaust)
+	{
+		if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
+		{
+			NormalizeNativeCardTransform(HistoricalCard);
+			HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
+		}
+	}
 	if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
 	{
 		DrawnCard->RemoveFromParent();
