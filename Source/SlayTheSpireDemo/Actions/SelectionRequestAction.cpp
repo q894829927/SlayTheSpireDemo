@@ -81,6 +81,27 @@ void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Re
 		return;
 	}
 
+	// Continuation Actions are created after the original PlayCardAction has
+	// already built and stamped its follow-up batch. They therefore must inherit
+	// the still-active resolution writer here, at the generic selection boundary,
+	// or their committed Presentation facts would be silently lost.
+	for (UBattleAction* ContinuationAction : ContinuationBatch)
+	{
+		if (!IsValid(ContinuationAction)
+			|| ContinuationAction->IsFinished()
+			|| ContinuationAction->GetOuter() != Queue)
+		{
+			Queue->RequestResolutionFault(FString::Printf(
+				TEXT("SelectionRequestAction received an invalid continuation Action for %s."),
+				*Request.SelectionSource.ToString()
+			));
+			bAwaitingSelection = false;
+			Finish();
+			return;
+		}
+		ContinuationAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
+	}
+
 	if (ContinuationBatch.Num() > 0 && !Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
 	{
 		Queue->RequestResolutionFault(FString::Printf(
