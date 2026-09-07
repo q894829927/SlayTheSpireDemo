@@ -197,6 +197,9 @@ private:
 	TMap<FName, TWeakObjectPtr<ACombatant>> LiveCombatantBindings;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
 	TArray<int32> PendingCardSelectionRuntimeIds;
+	FName PendingCardSelectionSource = NAME_None;
+	int32 PendingCardSelectionRequiredCount = 0;
+	TArray<int32> PendingCardSelectionCandidateRuntimeIds;
 	int64 LiveBindingBattleId = 0;
 	int64 LiveBindingStateRevision = 0;
 	EBattleState DisplayedBattleState = static_cast<EBattleState>(0);
