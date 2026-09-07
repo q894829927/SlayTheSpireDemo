@@ -4,13 +4,14 @@
 
 class ABattleManager;
 
-// UI-safe read view for the currently pending single-card selection. RuntimeIds
+// UI-safe read view for the currently pending exact-N card selection. RuntimeIds
 // are stable input identities only; authoritative candidate UObject pointers
 // remain inside Gameplay's SelectionResolver.
 struct SLAYTHESPIREDEMO_API FPendingCardSelectionReadView
 {
 	FName SelectionSource = NAME_None;
 	TArray<int32> CandidateRuntimeIds;
+	int32 RequiredCount = 0;
 	bool bCanCancel = false;
 };
 
@@ -24,6 +25,15 @@ namespace BattleSelectionRequest
 		FPendingCardSelectionReadView& OutView
 	);
 
+	// Exact-N submit surface. RuntimeIds are validated for count, uniqueness and
+	// candidate membership, then authoritative CardInstances are rebuilt in the
+	// request's stable candidate order before the SelectionResult is submitted.
+	bool SubmitPendingCardSelection(
+		ABattleManager* Battle,
+		const TArray<int32>& CardRuntimeIds
+	);
+
+	// Compatibility wrapper for the sealed single-card path.
 	bool SubmitPendingCardSelection(
 		ABattleManager* Battle,
 		int32 CardRuntimeId
