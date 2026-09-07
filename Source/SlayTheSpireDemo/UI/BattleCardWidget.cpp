@@ -218,6 +218,23 @@ void UBattleCardWidget::ClearImmediatePreview()
 	}
 }
 
+void UBattleCardWidget::SetPendingSelectionPresentation(
+	bool bSelectionActive,
+	bool bCandidate,
+	bool bSelected
+)
+{
+	if (!bSelectionActive)
+	{
+		SetRenderOpacity(1.0f);
+		SetRenderScale(FVector2D(1.0f, 1.0f));
+		return;
+	}
+
+	SetRenderOpacity(bCandidate ? 1.0f : 0.45f);
+	SetRenderScale(bSelected ? FVector2D(1.06f, 1.06f) : FVector2D(1.0f, 1.0f));
+}
+
 void UBattleCardWidget::RefreshFromCardView()
 {
 	// Keep SetCardView order-independent for tests and future presentation-only
