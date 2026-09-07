@@ -317,7 +317,6 @@ void UBattleHUDWidget::RefreshHand()
 				LogTemp,
 				Error,
 				TEXT("[BattleHUD][Native] Failed to create formal Hand card RuntimeId=%d CardId=%s."),
-				CardView.RuntimeId,
 				*CardView.CardId.ToString());
 			continue;
 		}
@@ -702,9 +701,6 @@ void UBattleHUDWidget::RefreshPresentationAvailabilityFromViewModel()
 		return;
 	}
 
-	// PresentationUnavailable is an independent ViewModel-driven UI state, not a
-	// terminal Record. It must never surface the ResolutionFault overlay merely
-	// because a stale/terminal outcome existed in an earlier displayed snapshot.
 	if (IsValid(Overlay_Terminal))
 	{
 		Overlay_Terminal->SetVisibility(ESlateVisibility::Collapsed);
@@ -885,7 +881,6 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	case EBattlePresentationRecordType::ResolutionFault:
 		return BeginNativeTerminalPresentation(Record, Token);
 	default:
-		// R11+ Records remain on the Controller's immediate-fallback path.
 		return false;
 	}
 }
@@ -1077,13 +1072,16 @@ bool UBattleHUDWidget::BeginNativeHandToExhaustPresentation(
 		|| !IsValid(Txt_ExhaustCount)
 		|| CardWidgetClass == nullptr
 		|| Payload.ToIndex != ViewModel->ExhaustCount
-		|| NativePlayedCardWidget.IsValid()
 		|| ActiveNativeZoneCardWidget.IsValid()
 		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
 	{
 		return false;
 	}
 
+	// The played card is intentionally retained in OV_PlayArea until its later
+	// PlayArea->Destination record. Selection-driven Hand->Exhaust must be able
+	// to animate beside that retained visual while still owning only one active
+	// zone transient.
 	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
 	if (!IsValid(PresentationCard) || !CommitNativePresentationOwnership(Record.Type, Token))
 	{
@@ -2366,38 +2364,25 @@ void UBattleHUDWidget::CleanupNativePresentationVisualsOnDestruct()
 
 void UBattleHUDWidget::FinishNativeTerminalPresentation()
 {
-	// Begin already exposed the committed terminal visual. Keep it visible until
-	// the Controller reduces this exact terminal Record and the historical
-	// ViewModel refresh takes formal ownership of the same outcome.
 }
 
 void UBattleHUDWidget::CancelNativeTerminalPresentation()
 {
-	// The active terminal Record has not been reduced yet, so ViewModel still
-	// represents the historical surface. Restore from that state instead of
-	// inferring an inverse terminal transition.
 	RefreshTerminalFromViewModel();
 	RefreshPresentationAvailabilityFromViewModel();
 }
 
 void UBattleHUDWidget::CleanupNativeTerminalPresentationOnDestruct()
 {
-	// Local teardown only. Do not historical-restore or notify normal completion.
-	// The Widget is leaving the tree, so there is no terminal transient to retain.
 }
 
 void UBattleHUDWidget::FinishNativeStatusPresentation()
 {
-	// Begin already applied the frozen committed After. Normal completion keeps
-	// that visual until Controller reduction/refresh takes formal ownership.
 	ResetNativeStatusPresentationState();
 }
 
 void UBattleHUDWidget::CancelNativeStatusPresentation()
 {
-	// Never reverse-compute B -> A. The current ViewModel still represents the
-	// historical snapshot for the active Record, so rebuild both formal rows from
-	// it exactly and discard any presentation-only create/update/remove residue.
 	RefreshStatusRows();
 	ResetNativeStatusPresentationState();
 }
