@@ -136,6 +136,14 @@ namespace
 			Snapshot.bCanEndTurn = false;
 			return true;
 
+		case EBattleState::Defeat:
+			break;
+		default:
+			break;
+		}
+
+		switch (Record.Type)
+		{
 		case EBattlePresentationRecordType::Defeat:
 			if (Record.Terminal.WinnerPresentationId.IsNone()
 				|| Record.Terminal.DefeatedPresentationId.IsNone()
@@ -993,6 +1001,22 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 			}
 			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
 			++WorkingPresentationSnapshot.DiscardCount;
+			return true;
+		}
+
+		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
+			&& Record.CardZoneChanged.ToZone == ECardZone::ExhaustPile)
+		{
+			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
+			if (HandIndex == INDEX_NONE
+				|| HandIndex != Record.CardZoneChanged.FromIndex
+				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId
+				|| Record.CardZoneChanged.ToIndex != WorkingPresentationSnapshot.ExhaustCount)
+			{
+				return false;
+			}
+			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
+			++WorkingPresentationSnapshot.ExhaustCount;
 			return true;
 		}
 
