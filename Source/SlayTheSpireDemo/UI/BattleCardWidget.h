@@ -39,6 +39,15 @@ public:
 	void ApplyImmediatePreview(const FImmediateCardPreview& Preview);
 	void ClearImmediatePreview();
 
+	// C0-5 Presentation-only exact-N selection feedback. This never changes the
+	// frozen card DTO or Gameplay playability; it only dims non-candidates and
+	// slightly scales a locally selected RuntimeId.
+	void SetPendingSelectionPresentation(
+		bool bSelectionActive,
+		bool bCandidate,
+		bool bSelected
+	);
+
 	UFUNCTION(BlueprintPure, Category = "Battle HUD|Card")
 	int32 GetRuntimeId() const { return CurrentCardView.RuntimeId; }
 
