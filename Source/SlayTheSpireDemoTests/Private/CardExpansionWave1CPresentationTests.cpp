@@ -213,6 +213,16 @@ bool FWave1CBurningPactPresentationRecordOrderTest::RunTest(const FString& Param
 	}
 	TestTrue(TEXT("Selection waits before presentation envelope seals"), Resolver->HasPendingSelection());
 
+	const int32 ExpectedChosenFromIndex = Deck->GetHandCards().IndexOfByPredicate(
+		[ChosenCard](const TObjectPtr<UCardInstance>& Card)
+		{
+			return Card.Get() == ChosenCard;
+		});
+	if (!TestTrue(TEXT("Chosen card has a live Hand index before exhaust"), ExpectedChosenFromIndex != INDEX_NONE))
+	{
+		return false;
+	}
+
 	FSelectionResult Result;
 	Result.Status = ESelectionStatus::Resolved;
 	Result.SelectedObjects.Add(ChosenCard);
@@ -255,19 +265,31 @@ bool FWave1CBurningPactPresentationRecordOrderTest::RunTest(const FString& Param
 		ECardZone::DiscardPile,
 		PlayedCard->GetRuntimeId());
 
-	TestTrue(TEXT("CardPlayed record exists"), CardPlayedIndex != INDEX_NONE);
-	TestTrue(TEXT("Selected Hand card emits Hand->Exhaust record"), ExhaustIndex != INDEX_NONE);
-	TestTrue(TEXT("First draw record exists"), FirstDrawIndex != INDEX_NONE);
-	TestTrue(TEXT("Second draw record exists"), SecondDrawIndex != INDEX_NONE);
-	TestTrue(TEXT("FinishCardPlay destination record exists"), FinishIndex != INDEX_NONE);
+	const bool bAllRecordsFound =
+		TestTrue(TEXT("CardPlayed record exists"), CardPlayedIndex != INDEX_NONE)
+		&& TestTrue(TEXT("Selected Hand card emits Hand->Exhaust record"), ExhaustIndex != INDEX_NONE)
+		&& TestTrue(TEXT("First draw record exists"), FirstDrawIndex != INDEX_NONE)
+		&& TestTrue(TEXT("Second draw record exists"), SecondDrawIndex != INDEX_NONE)
+		&& TestTrue(TEXT("FinishCardPlay destination record exists"), FinishIndex != INDEX_NONE);
+	if (!bAllRecordsFound)
+	{
+		return false;
+	}
+
 	TestTrue(
 		TEXT("Presentation order is CardPlayed -> Exhaust -> Draw -> Draw -> Finish"),
 		CardPlayedIndex < ExhaustIndex
 			&& ExhaustIndex < FirstDrawIndex
 			&& FirstDrawIndex < SecondDrawIndex
 			&& SecondDrawIndex < FinishIndex);
-	TestEqual(TEXT("Hand exhaust record preserves exact FromIndex"), Envelope.Records[ExhaustIndex].CardZoneChanged.FromIndex, 0);
-	TestEqual(TEXT("Hand exhaust record targets current Exhaust index"), Envelope.Records[ExhaustIndex].CardZoneChanged.ToIndex, 0);
+	TestEqual(
+		TEXT("Hand exhaust record preserves exact FromIndex"),
+		Envelope.Records[ExhaustIndex].CardZoneChanged.FromIndex,
+		ExpectedChosenFromIndex);
+	TestEqual(
+		TEXT("Hand exhaust record targets current Exhaust index"),
+		Envelope.Records[ExhaustIndex].CardZoneChanged.ToIndex,
+		0);
 	return true;
 }
 
