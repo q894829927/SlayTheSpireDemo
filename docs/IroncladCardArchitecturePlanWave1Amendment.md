@@ -1,12 +1,12 @@
 # Ironclad Card Architecture Plan — Wave 1 Amendment
 
-日期：**2026-09-07**
+日期：**2026-09-08**
 
 状态：
 
 ```text
 CURRENT ORDERING AMENDMENT
-POST-WAVE-1C MERGE SYNC
+WAVE 1C-C0 DESIGN LOCKED / ACTIVE ON main
 SUPERSEDES STALE FOUNDATION-0 / WAVE-1 SCHEDULING ONLY
 ```
 
@@ -230,37 +230,102 @@ CardPlayed
 → PlayArea → destination
 ```
 
-### Wave 1C-C — Second Consumer Expansion — NEXT ACTIVE / NOT STARTED
+### Wave 1C-C0 — Select-Exhaust Generalization — DESIGN LOCKED / IMPLEMENTATION AUTHORIZED / ACTIVE ON main
 
-目标不是重新设计 Selection，而是证明 Wave 1C 的 primitive 可被第二个真实消费者复用，并只在真实需求出现时补最窄的新 primitive。
+Dedicated authority：
 
-当前优先 consumer：
+```text
+docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
+```
+
+C0 在正式 True Grit consumer 之前，先把当前 `USelectExhaustHandCardEffect` 从 Burning Pact 的窄形状：
+
+```text
+Player / exactly 1
+```
+
+泛化为 Blueprint-authored：
+
+```text
+BaseSelectionMode
+BaseSelectionCount
+UpgradedSelectionMode
+UpgradedSelectionCount
+
+Mode = Player | Random
+Count = exactly N
+```
+
+升级继续使用 sealed ordinary-card 显式 Base/Upgraded 值规则，不使用 sentinel/fallback。
+
+C0 locked behavior：
+
+```text
+Player
+→ Native HUD exact-N unique RuntimeId selection
+→ reaching N auto-submits
+
+Random
+→ no pending player UI
+→ deterministic battle RNG
+→ choose N unique candidates without replacement
+
+both
+→ canonicalize selected membership to stable candidate order
+→ same FSelectionResult / authored Continuation
+→ UExhaustCardAction × N
+```
+
+Additional C0 rules：
+
+```text
+count == 0
+→ no-op
+
+no candidate
+→ no-op
+
+configured count > candidate count
+→ clamp to all valid candidates
+
+selected objects
+→ must be unique by authoritative identity
+
+multi-exhaust
+→ one exact UExhaustCardAction per selected card
+→ no BulkExhaustAction
+
+Presentation
+→ preserve sealed in-place Hand→Exhaust fade per card
+```
+
+Existing `USelectExhaustHandCardEffect` UCLASS identity is retained for serialized Burning Pact compatibility. Default Base/Upgraded values remain `Player / 1`, preserving current Burning Pact behavior without a card-specific branch.
+
+C0 is being implemented directly on `main` by explicit user authorization. It is not sealed until its dedicated Build / Automation / PIE gates pass.
+
+### Wave 1C-C1 — True Grit Consumer — WAITING FOR C0 SEAL / NOT STARTED
+
+True Grit remains the preferred first real consumer after C0:
 
 ```text
 True Grit
-Base     → Block + random valid Hand-card Exhaust
-Upgraded → Block + manual valid Hand-card Exhaust
+Base     → Block + Random / 1 Hand Exhaust
+Upgraded → Block + Player / 1 Hand Exhaust
 ```
 
-它复用：
+Expected composition after C0 seal：
 
 ```text
-CAP-04 sealed manual Selection
-CAP-06 sealed targeted Exhaust
-existing Block
+GainBlockCardEffect
++
+USelectExhaustHandCardEffect
+  Base     = Random / 1
+  Upgraded = Player / 1
 ```
 
-并首次形成真实需求：
+C1 should primarily be content composition. If core True Grit behavior still requires a card-specific Gameplay Action after C0, C0 must be reviewed for an incomplete generic contract unless a concrete card rule justifies the exception.
 
-```text
-CAP-12 deterministic battle RNG
-→ ChooseIndex(Count)
-→ domain-neutral random choice
-```
-
-Random primitive 不得知道 True Grit、Hand、Exhaust 或 CardId。Wave 1C-C implementation 尚未开始；在写代码前应先新增 dedicated Wave 1C-C design/execution authority。
-
-Exhume 暂不作为 1C-C 首选，因为它还会同时要求 ExhaustPile selection + non-Hand zone move surface（CAP-05），扩大 slice。
+Exhume remains deferred because it additionally requires ExhaustPile selection + non-Hand zone movement (CAP-05), which would broaden the slice.
 
 ### Wave 1D — Reactive Exhaust Powers — FUTURE
 
@@ -358,7 +423,7 @@ DeckRuntime directly owns Dispatcher
 CardId-specific event emission
 ```
 
-Wave 1A / 1B 已证明 self-exhaust 与 targeted exhaust 两个真实 producer 可遵守同一 committed-fact 规则。未来第三种 producer 出现时，再按实际重复决定是否继续抽共享 helper，不提前造 universal zone-event framework。
+Wave 1A / 1B 已证明 self-exhaust 与 targeted exhaust 两个真实 producer 可遵守同一 committed-fact 规则。C0 multi-select 继续使用多个现有 exact `UExhaustCardAction`，不引入新的 bulk producer。
 
 ---
 
@@ -429,13 +494,19 @@ Wave 1C-B — Burning Pact First Consumer Closure
 → COMPLETE / VALIDATED / SEALED
 → MERGED TO MAIN (PR #16)
 
-Wave 1C-C — Second Consumer Expansion
-→ NEXT ACTIVE / NOT STARTED
-→ preferred first consumer: True Grit
-→ dedicated authority must be authored before implementation
+Wave 1C-C0 — Select-Exhaust Generalization
+→ DESIGN LOCKED
+→ IMPLEMENTATION AUTHORIZED
+→ ACTIVE DIRECTLY ON main
+→ NOT SEALED
+→ authority: docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
+
+Wave 1C-C1 — True Grit
+→ NEXT AFTER C0 SEAL
+→ NOT STARTED
 
 Wave 1D — Reactive Exhaust Powers
-→ FUTURE / NOT AUTHORIZED BY THIS ORDERING SYNC
+→ FUTURE / NOT AUTHORIZED BY C0
 
 Card Trigger Source Expansion
 → FUTURE INDEPENDENT FOUNDATION
@@ -469,6 +540,16 @@ primitive capability
 → exact BattleEvent when a real consumer/fact surface exists
 ```
 
+C0 additionally locks：
+
+```text
+Random decides selected membership only
+candidate order decides stable multi-exhaust execution order
+UI stores RuntimeIds only
+Selection resolver rejects duplicate selected objects
+multiple selected cards remain multiple exact Exhaust commits
+```
+
 不得为了 Card Expansion：
 
 ```text
@@ -478,6 +559,7 @@ primitive capability
 把 Widget 变成 Gameplay authority
 把 FCardPlayContext / FTriggerContext 扩成 service locator
 建立 UniversalResultBus / mutable property bag
+建立 TrueGrit-specific selection/exhaust Action
 ```
 
 ---
@@ -489,25 +571,32 @@ primitive capability
 ```text
 main
 → contains Wave 1A / 1B / 1C sealed implementation
+→ Wave 1C-C0 direct development authorized
 
-Wave 1C-C
-→ NEXT ACTIVE
-→ dedicated design/execution authority does not exist yet
+Wave 1C-C0
+→ DESIGN LOCKED
+→ IMPLEMENTATION ACTIVE
+→ NOT SEALED
 ```
 
-下一步不是继续修改 Wave 1C sealed 文档，也不是直接实现 Wave 1D。
-
-下一步应先 author 一份 dedicated Wave 1C-C authority，明确：
+当前唯一 next-active dedicated authority：
 
 ```text
-True Grit Base / Upgraded composition
-eligible Hand candidate rule
-played-card exclusion rule
-empty-candidate behavior
-deterministic RNG ownership/API boundary
-random vs manual authored mode
-Presentation expectations
-focused Automation + PIE seal gates
+docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
 ```
 
-该 dedicated authority 审定后，再进入 Wave 1C-C 实现。
+C0 必须先完成并通过其 authority 中定义的：
+
+```text
+Editor Development Build
+C0 focused Automation
+existing Wave 1C 13/13 regression
+Native HUD Player multi-select PIE
+Native HUD Random multi-select PIE
+Burning Pact regression PIE
+user seal confirmation
+```
+
+之后才进入 Wave 1C-C1 / True Grit。
+
+Wave 1D、Card Trigger Source Expansion、multi-enemy、Exhume zone-move surface 与 Phase 8 均不因 C0 授权而自动展开。
