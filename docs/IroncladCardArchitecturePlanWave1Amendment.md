@@ -1,11 +1,12 @@
 # Ironclad Card Architecture Plan — Wave 1 Amendment
 
-日期：**2026-09-06**
+日期：**2026-09-07**
 
 状态：
 
 ```text
 CURRENT ORDERING AMENDMENT
+POST-WAVE-1C MERGE SYNC
 SUPERSEDES STALE FOUNDATION-0 / WAVE-1 SCHEDULING ONLY
 ```
 
@@ -74,7 +75,9 @@ repeatable upgrade / Searing Blow special runtime semantics
 
 ## 2. Current production card baseline
 
-当前 `main` 生产 CardData 为 6 张：
+当前 `main` 已包含旧基线卡牌以及后续 Card Expansion 内容。
+
+旧基线为：
 
 ```text
 Attack
@@ -90,9 +93,19 @@ Power
 - Inflame
 ```
 
-这些卡已经用于既有 Gameplay / Upgrade / CFV validation。
+后续已进入 `main` 的 Wave 内容包括：
 
-Production Card Expansion 从这里继续，不重做这 6 张。
+```text
+Wave 1A
+- Seeing Red
+
+Wave 1C merge / PR #16 repository content
+- Burning Pact asset
+```
+
+Wave 1C 的通用行为 seal 仍以 C++ / Automation / PIE 合同为 authority；二进制 CardData 资产本身不取代 generic architecture authority。
+
+Production Card Expansion 从当前 `main` 继续，不重做这些已存在内容。
 
 ---
 
@@ -160,17 +173,17 @@ existing self-exhaust commit path
 → exact FCardExhaustedEvent
 → Dispatcher
 → focused Automation
-→ one self-exhaust production card (default: Seeing Red)
+→ one self-exhaust production card (Seeing Red)
 ```
 
 明确不包含 targeted exhaust、selection、reactive Power、Card Trigger Source、multi-enemy。
 
 ### Wave 1B — Targeted Exhaust Primitive — COMPLETE / VALIDATED / SEALED
 
-目标：
+已建立：
 
 ```text
-arbitrary specified CardInstance / authored candidate set
+exact UCardInstance currently in Hand
 → authoritative Exhaust mutation
 → typed exact CommitResult
 → same CardExhausted event rule
@@ -178,26 +191,76 @@ arbitrary specified CardInstance / authored candidate set
 
 此 slice 建立 targeted exhaust primitive，但不把 selection UI/choice 语义塞进 Exhaust primitive。
 
-### Wave 1C — Selection + Targeted Exhaust Composition — DESIGN LOCKED / NEXT ACTIVE SLICE
+### Wave 1C — Selection + Targeted Exhaust Composition — COMPLETE / VALIDATED / SEALED / MERGED TO MAIN
 
-典型卡：
+Dedicated authorities：
 
 ```text
-Burning Pact
-True Grit upgraded selection path
-Exhume-related selection/move composition where applicable
+docs/CardExpansionWave1CSelectionPrimitive.md
+docs/CardExpansionWave1CSelectionExecution.md
+docs/CardExpansionWave1CSelectExhaustExecution.md
 ```
 
-正确方向：
+Merge：
+
+```text
+PR #16
+main merge commit: a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523
+```
+
+Wave 1C-A 已封板 generic Selection primitive；Wave 1C-B 已用 Burning Pact 作为首个真实 consumer 完成 playable closure。
+
+已封板方向：
 
 ```text
 SelectionRequest
 → SelectionResult
 → authored orchestration
-→ targeted Exhaust / Move Action
+→ targeted Exhaust Action
 → typed Result
-→ authored Continuation when dependent follow-up exists
+→ dependent Actions in normal BattleActionQueue order
 ```
+
+以及 committed Presentation closure：
+
+```text
+CardPlayed
+→ Hand → ExhaustPile
+→ DrawPile → Hand ...
+→ PlayArea → destination
+```
+
+### Wave 1C-C — Second Consumer Expansion — NEXT ACTIVE / NOT STARTED
+
+目标不是重新设计 Selection，而是证明 Wave 1C 的 primitive 可被第二个真实消费者复用，并只在真实需求出现时补最窄的新 primitive。
+
+当前优先 consumer：
+
+```text
+True Grit
+Base     → Block + random valid Hand-card Exhaust
+Upgraded → Block + manual valid Hand-card Exhaust
+```
+
+它复用：
+
+```text
+CAP-04 sealed manual Selection
+CAP-06 sealed targeted Exhaust
+existing Block
+```
+
+并首次形成真实需求：
+
+```text
+CAP-12 deterministic battle RNG
+→ ChooseIndex(Count)
+→ domain-neutral random choice
+```
+
+Random primitive 不得知道 True Grit、Hand、Exhaust 或 CardId。Wave 1C-C implementation 尚未开始；在写代码前应先新增 dedicated Wave 1C-C design/execution authority。
+
+Exhume 暂不作为 1C-C 首选，因为它还会同时要求 ExhaustPile selection + non-Hand zone move surface（CAP-05），扩大 slice。
 
 ### Wave 1D — Reactive Exhaust Powers — FUTURE
 
@@ -234,7 +297,7 @@ this exact CardInstance
 → reacts when the exact instance is the committed event subject
 ```
 
-该 foundation 仍需单独授权和 sealed，不属于 Wave 1A。
+该 foundation 仍需单独授权和 sealed，不属于 Wave 1A–1C。
 
 ---
 
@@ -251,7 +314,7 @@ played card
 → PlayArea → ExhaustPile
 ```
 
-当前 mutation 已存在。
+当前 mutation 已存在并已在 Wave 1A 形成 exact `CardExhausted` fact surface。
 
 ### Targeted exhaust
 
@@ -260,9 +323,9 @@ a card mechanic selects/specifies another exact CardInstance
 → explicit Exhaust mutation/action
 ```
 
-当前尚未作为 generic authored capability 实现。
+当前 generic Hand targeted-exhaust capability 已由 Wave 1B 实现并 seal，Wave 1C 已证明它可以通过 generic Selection composition 被玩家选择驱动。
 
-不要再用“Exhaust 已实现”笼统描述两者。
+不要再用“Exhaust 已实现”笼统描述 self-exhaust 与 targeted exhaust 两条不同路径。
 
 ---
 
@@ -272,7 +335,7 @@ a card mechanic selects/specifies another exact CardInstance
 
 ```text
 self-exhaust card-play cleanup
-future targeted ExhaustCardAction
+targeted ExhaustCardAction
 future bulk exhaust action
 future Ethereal cleanup
 ```
@@ -295,7 +358,7 @@ DeckRuntime directly owns Dispatcher
 CardId-specific event emission
 ```
 
-是否以后抽出共享 helper，等第二个真实 producer 出现后按实际重复代码决定，不提前造 universal zone-event framework。
+Wave 1A / 1B 已证明 self-exhaust 与 targeted exhaust 两个真实 producer 可遵守同一 committed-fact 规则。未来第三种 producer 出现时，再按实际重复决定是否继续抽共享 helper，不提前造 universal zone-event framework。
 
 ---
 
@@ -336,7 +399,7 @@ Seeing Red
 → Gain Energy + self Exhaust
 ```
 
-Wave 1A 默认只选 **Seeing Red** 作为 production validation card，以控制 slice 大小。
+Wave 1A 使用 Seeing Red 作为 production validation card，以控制 slice 大小。
 
 Wave 1A seal 后，其余只依赖已 sealed primitive 的 self-exhaust cards 可以作为后续 content-only batch author，而不需要再次重新设计 CardExhausted event surface。
 
@@ -353,20 +416,26 @@ Card Upgrade STS-Style Refactor
 Card Face Visual Style
 → COMPLETE / USER-ACCEPTED / SEALED
 
-Production Card Expansion
-→ STARTS WITH Wave 1A
-
 Wave 1A — Exhaust Fact Surface
 → COMPLETE / VALIDATED / SEALED
 
 Wave 1B — Targeted Exhaust Primitive
 → COMPLETE / VALIDATED / SEALED
 
-Wave 1C — Selection Primitive
-→ DESIGN LOCKED / NEXT ACTIVE SLICE (`docs/CardExpansionWave1CSelectionPrimitive.md`)
+Wave 1C-A — Selection Primitive
+→ COMPLETE / VALIDATED / SEALED
+
+Wave 1C-B — Burning Pact First Consumer Closure
+→ COMPLETE / VALIDATED / SEALED
+→ MERGED TO MAIN (PR #16)
+
+Wave 1C-C — Second Consumer Expansion
+→ NEXT ACTIVE / NOT STARTED
+→ preferred first consumer: True Grit
+→ dedicated authority must be authored before implementation
 
 Wave 1D — Reactive Exhaust Powers
-→ NOT AUTHORIZED (superseded: 1A/1B sealed; 1C design-locked under its own authority)
+→ FUTURE / NOT AUTHORIZED BY THIS ORDERING SYNC
 
 Card Trigger Source Expansion
 → FUTURE INDEPENDENT FOUNDATION
@@ -384,6 +453,7 @@ Phase 8 Combo Architecture Validation
 ```cpp
 if (CardId == "SeeingRed")
 if (CardId == "BurningPact")
+if (CardId == "TrueGrit")
 if (CardId == "FeelNoPain")
 if (CardId == "Sentinel")
 ```
@@ -404,6 +474,7 @@ primitive capability
 ```text
 重开 sealed CFV
 重开 ordinary Upgrade architecture
+重开 Wave 1A / 1B / 1C-A / 1C-B sealed contracts without a concrete regression
 把 Widget 变成 Gameplay authority
 把 FCardPlayContext / FTriggerContext 扩成 service locator
 建立 UniversalResultBus / mutable property bag
@@ -413,10 +484,30 @@ primitive capability
 
 ## 11. Stop / next authority
 
-当前唯一 next-active dedicated authority：
+当前状态：
 
 ```text
-docs/CardExpansionWave1CSelectionPrimitive.md
+main
+→ contains Wave 1A / 1B / 1C sealed implementation
+
+Wave 1C-C
+→ NEXT ACTIVE
+→ dedicated design/execution authority does not exist yet
 ```
 
-Wave 1A / Wave 1B 已完成、验证、seal。下一步实现 Wave 1C-A Selection Primitive，再验证并 seal 后再用 Burning Pact 作为首个消费者（Wave 1C-B）。Wave 1D 需单独授权。
+下一步不是继续修改 Wave 1C sealed 文档，也不是直接实现 Wave 1D。
+
+下一步应先 author 一份 dedicated Wave 1C-C authority，明确：
+
+```text
+True Grit Base / Upgraded composition
+eligible Hand candidate rule
+played-card exclusion rule
+empty-candidate behavior
+deterministic RNG ownership/API boundary
+random vs manual authored mode
+Presentation expectations
+focused Automation + PIE seal gates
+```
+
+该 dedicated authority 审定后，再进入 Wave 1C-C 实现。
