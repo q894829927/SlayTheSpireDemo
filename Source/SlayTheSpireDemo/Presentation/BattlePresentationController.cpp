@@ -136,14 +136,6 @@ namespace
 			Snapshot.bCanEndTurn = false;
 			return true;
 
-		case EBattleState::Defeat:
-			break;
-		default:
-			break;
-		}
-
-		switch (Record.Type)
-		{
 		case EBattlePresentationRecordType::Defeat:
 			if (Record.Terminal.WinnerPresentationId.IsNone()
 				|| Record.Terminal.DefeatedPresentationId.IsNone()
