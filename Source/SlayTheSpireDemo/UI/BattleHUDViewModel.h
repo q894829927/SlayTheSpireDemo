@@ -9,6 +9,7 @@
 class ABattleManager;
 class ACombatant;
 class UCardInstance;
+struct FPendingCardSelectionReadView;
 struct FPresentationStateSnapshot;
 enum class EBattleState : uint8;
 enum class EGameplayRequestFailureReason : uint8;
@@ -51,8 +52,13 @@ public:
 	// Battle selection request facade using RuntimeId only; the ViewModel never
 	// stores authoritative candidate UObject pointers.
 	bool HasPendingCardSelection() const;
+	bool TryGetPendingCardSelectionReadView(FPendingCardSelectionReadView& OutView) const;
 	bool IsPendingCardSelectionCandidate(int32 RuntimeId) const;
+	bool SubmitPendingCardSelectionByRuntimeIds(const TArray<int32>& RuntimeIds);
 	bool SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId);
+	bool IsPendingCardSelectionRuntimeIdSelected(int32 RuntimeId) const;
+	int32 GetPendingCardSelectionSelectedCount() const;
+	void ClearPendingCardSelectionInputState();
 	bool CanCancelPendingCardSelection() const;
 	bool SubmitPendingCardSelectionCancel();
 
@@ -190,6 +196,7 @@ private:
 	TMap<int32, TWeakObjectPtr<UCardInstance>> LiveCardBindings;
 	TMap<FName, TWeakObjectPtr<ACombatant>> LiveCombatantBindings;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
+	TArray<int32> PendingCardSelectionRuntimeIds;
 	int64 LiveBindingBattleId = 0;
 	int64 LiveBindingStateRevision = 0;
 	EBattleState DisplayedBattleState = static_cast<EBattleState>(0);
