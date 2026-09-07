@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Production Card Expansion
 
-Last updated: **2026-09-07**
+Last updated: **2026-09-08**
 
 ## Current status
 
@@ -32,11 +32,16 @@ COMPLETE / VALIDATED / SEALED
 Wave 1C — Selection Primitive / First Consumer Closure:
 COMPLETE / VALIDATED / SEALED / MERGED TO MAIN
 
-Wave 1C-C — Second Consumer Expansion:
-NEXT ACTIVE / NOT STARTED
+Wave 1C-C0 — Select-Exhaust Generalization:
+DESIGN LOCKED / IMPLEMENTATION AUTHORIZED / ACTIVE ON MAIN / NOT SEALED
+
+Wave 1C-C1 — True Grit Consumer:
+NEXT AFTER C0 SEAL / NOT STARTED
 ```
 
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. Wave 1B was subsequently validated and sealed. Wave 1C current-head revalidation was explicitly confirmed by the user on 2026-09-07 after the playable-selection, mandatory-cancel and committed-Presentation closure fixes.
+
+Wave 1C-C0 design was explicitly locked and implementation on `main` was authorized by the user on 2026-09-08. C0 generalizes the existing Select-Exhaust effect before True Grit is authored.
 
 ---
 
@@ -81,6 +86,8 @@ card-expansion-wave1b-targeted-exhaust
 
 Wave 1B and Wave 1C source are now on `main`; do not continue implementation on the old development branches.
 
+Wave 1C-C0 is intentionally being developed directly on `main` per explicit user authorization. No Wave 1C-C0 feature branch is required.
+
 ---
 
 ## Current authority chain
@@ -119,7 +126,13 @@ docs/CardExpansionWave1CSelectionExecution.md
 docs/CardExpansionWave1CSelectExhaustExecution.md
 ```
 
-A dedicated Wave 1C-C execution/design record has not been authored yet. It must be created before implementation begins.
+Current Wave 1C-C0 dedicated authority:
+
+```text
+docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
+```
+
+This C0 authority is design-locked and implementation-authorized. True Grit production CardData is intentionally deferred to C1 after C0 is sealed.
 
 Future Card trigger-source design remains independently unauthorized:
 
@@ -342,6 +355,60 @@ The former 5/5 and 7/7 results remain historical pre-closure evidence only. The 
 
 ---
 
+## Wave 1C-C0 locked implementation target
+
+C0 generalizes the existing `USelectExhaustHandCardEffect` without renaming its UCLASS.
+
+Blueprint-authored effective contract:
+
+```text
+BaseSelectionMode
+BaseSelectionCount
+UpgradedSelectionMode
+UpgradedSelectionCount
+
+Mode = Player | Random
+Count = exactly N, authored >= 0
+```
+
+Core locked behavior:
+
+```text
+Player
+→ Native HUD exact-N unique RuntimeId selection
+→ auto-submit when N reached
+
+Random
+→ no pending UI
+→ deterministic battle RNG
+→ choose N unique candidates without replacement
+
+both
+→ canonicalize selected set to candidate order
+→ same FSelectionResult / authored Continuation
+→ UExhaustCardAction × N
+```
+
+Additional correctness requirements:
+
+```text
+- Resolver rejects duplicate selected objects
+- UI remains RuntimeId-only
+- count > candidates clamps to all candidates
+- count 0 / no candidates is a no-op
+- each real Exhaust remains an independent commit/event
+- existing in-place fade Presentation remains unchanged
+- existing Burning Pact defaults remain Player / 1 for Base and Upgrade
+```
+
+Full authority and seal gates:
+
+```text
+docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
+```
+
+---
+
 ## Repository content merged with Wave 1C
 
 PR #16 merged the user-authored binary content that was present on the Wave 1C branch:
@@ -368,11 +435,17 @@ Wave 1C-A / 1C-B
 → COMPLETE / VALIDATED / SEALED
 → MERGED TO MAIN (PR #16 / a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523)
 
-Wave 1C-C
-→ NEXT ACTIVE
+Wave 1C-C0
+→ DESIGN LOCKED
+→ IMPLEMENTATION AUTHORIZED
+→ ACTIVE DIRECTLY ON main
+→ NOT SEALED
+
+Wave 1C-C1 / True Grit
+→ WAITING FOR C0 SEAL
 → NOT STARTED
 ```
 
-The next work is not a Wave 1C repair. Author a dedicated Wave 1C-C design/execution record first, then implement a second real consumer of the sealed Selection/Exhaust surface. The current preferred first consumer is True Grit because its upgraded path reuses manual Hand selection while its base path provides the first real requirement for deterministic random Hand choice.
+The next implementation work is C0 only. Do not author production True Grit CardData until C0 passes its Build, focused Automation, existing Wave 1C 13/13 regression, Player multi-select PIE, Random multi-select PIE and Burning Pact regression PIE gates.
 
-Wave 1D Reactive Exhaust Powers, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain separate future slices and are not implicitly authorized by this checkpoint sync.
+Wave 1D Reactive Exhaust Powers, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain separate future slices and are not implicitly authorized by the C0 design lock.
