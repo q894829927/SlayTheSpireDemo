@@ -209,12 +209,12 @@ protected:
 
 	enum class ENativeCardPresentationKind : uint8
 	{
-		None,
-		CardPlayed,
-		HandToDiscard,
-		HandToExhaust,
-		DrawToHand,
-		PlayAreaToDestination
+		None = 0,
+		CardPlayed = 1,
+		HandToDiscard = 2,
+		DrawToHand = 3,
+		PlayAreaToDestination = 4,
+		HandToExhaust = 5
 	};
 
 	ENativeCardPresentationKind GetActiveNativeCardPresentationKind() const
