@@ -1,6 +1,10 @@
 #include "BattleHUDWidget.h"
 
+#include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
+#include "../Battle/BattleSelectionRequest.h"
+#include "Components/HorizontalBox.h"
+#include "Components/TextBlock.h"
 #include "Containers/Ticker.h"
 
 bool UBattleHUDWidget::SelectCard(
@@ -13,14 +17,49 @@ bool UBattleHUDWidget::SelectCard(
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 	}
 
-	// Wave 1C is an input exception to the ordinary caught-up card-play path: the
-	// current Gameplay resolution is intentionally busy while it waits for one of
-	// the authored Hand candidates. Reuse the same Native card click, but route it
-	// through the ViewModel/Battle selection request facade instead of attempting
-	// another card play or skipping Presentation.
-	if (ViewModel->HasPendingCardSelection())
+	FPendingCardSelectionReadView PendingView;
+	if (ViewModel->TryGetPendingCardSelectionReadView(PendingView))
 	{
-		return ViewModel->SubmitPendingCardSelectionByRuntimeId(RuntimeId);
+		const bool bAccepted = ViewModel->SubmitPendingCardSelectionByRuntimeId(RuntimeId);
+
+		FPendingCardSelectionReadView UpdatedView;
+		const bool bStillPending = ViewModel->TryGetPendingCardSelectionReadView(UpdatedView);
+		if (IsValid(HB_Hand))
+		{
+			for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+			{
+				if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
+				{
+					const int32 CardRuntimeId = CardWidget->GetRuntimeId();
+					const bool bCandidate = bStillPending
+						&& UpdatedView.CandidateRuntimeIds.Contains(CardRuntimeId);
+					const bool bSelected = bStillPending
+						&& ViewModel->IsPendingCardSelectionRuntimeIdSelected(CardRuntimeId);
+					CardWidget->SetPendingSelectionPresentation(
+						bStillPending,
+						bCandidate,
+						bSelected
+					);
+				}
+			}
+		}
+
+		if (IsValid(Txt_Feedback))
+		{
+			if (bStillPending && UpdatedView.RequiredCount > 1)
+			{
+				Txt_Feedback->SetText(FText::Format(
+					NSLOCTEXT("BattleHUDWidget", "PendingCardSelectionProgress", "选择卡牌 {0}/{1}"),
+					FText::AsNumber(ViewModel->GetPendingCardSelectionSelectedCount()),
+					FText::AsNumber(UpdatedView.RequiredCount)
+				));
+			}
+			else
+			{
+				RefreshFeedback();
+			}
+		}
+		return bAccepted;
 	}
 
 	if (!bAllowFastPresentationCatchUp)
@@ -92,7 +131,7 @@ void UBattleHUDWidget::RetryPendingFastCardSelection()
 
 	if (ViewModel->HasPendingCardSelection())
 	{
-		ViewModel->SubmitPendingCardSelectionByRuntimeId(RuntimeId);
+		SelectCard(RuntimeId, false);
 		return;
 	}
 
