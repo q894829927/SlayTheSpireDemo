@@ -7,25 +7,29 @@
 
 namespace
 {
-	bool IsSupportedSingleCardRequest(const FSelectionRequest* Request)
+	bool IsSupportedExactCardRequest(const FSelectionRequest* Request)
 	{
 		if (Request == nullptr
-			|| Request->MinCount != 1
-			|| Request->MaxCount != 1
+			|| Request->MinCount <= 0
+			|| Request->MinCount != Request->MaxCount
+			|| Request->MaxCount > Request->Candidates.Num()
 			|| Request->Candidates.Num() == 0)
 		{
 			return false;
 		}
 
+		TSet<int32> SeenRuntimeIds;
 		for (const FSelectionCandidate& Candidate : Request->Candidates)
 		{
 			const UCardInstance* Card = Cast<UCardInstance>(Candidate.RuntimeObject.Get());
 			if (!IsValid(Card)
 				|| Candidate.RuntimeSequence == INDEX_NONE
-				|| Candidate.RuntimeSequence != Card->GetRuntimeId())
+				|| Candidate.RuntimeSequence != Card->GetRuntimeId()
+				|| SeenRuntimeIds.Contains(Candidate.RuntimeSequence))
 			{
 				return false;
 			}
+			SeenRuntimeIds.Add(Candidate.RuntimeSequence);
 		}
 		return true;
 	}
@@ -44,12 +48,13 @@ bool BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
 
 	const USelectionResolver* Resolver = Battle->GetSelectionResolver();
 	const FSelectionRequest* Request = IsValid(Resolver) ? Resolver->GetPendingRequest() : nullptr;
-	if (!IsSupportedSingleCardRequest(Request))
+	if (!IsSupportedExactCardRequest(Request))
 	{
 		return false;
 	}
 
 	OutView.SelectionSource = Request->SelectionSource;
+	OutView.RequiredCount = Request->MinCount;
 	OutView.bCanCancel = Resolver->CanCancelPendingSelection();
 	OutView.CandidateRuntimeIds.Reserve(Request->Candidates.Num());
 	for (const FSelectionCandidate& Candidate : Request->Candidates)
@@ -61,42 +66,85 @@ bool BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
 
 bool BattleSelectionRequest::SubmitPendingCardSelection(
 	ABattleManager* Battle,
-	int32 CardRuntimeId
+	const TArray<int32>& CardRuntimeIds
 )
 {
-	if (!IsValid(Battle) || CardRuntimeId == INDEX_NONE)
+	if (!IsValid(Battle))
 	{
 		return false;
 	}
 
 	USelectionResolver* Resolver = Battle->GetSelectionResolver();
 	const FSelectionRequest* Request = IsValid(Resolver) ? Resolver->GetPendingRequest() : nullptr;
-	if (!IsSupportedSingleCardRequest(Request))
+	if (!IsSupportedExactCardRequest(Request)
+		|| CardRuntimeIds.Num() != Request->MinCount)
 	{
 		return false;
 	}
 
-	const FSelectionCandidate* Candidate = Request->Candidates.FindByPredicate(
-		[CardRuntimeId](const FSelectionCandidate& Item)
+	TSet<int32> RequestedRuntimeIds;
+	for (const int32 RuntimeId : CardRuntimeIds)
+	{
+		if (RuntimeId == INDEX_NONE
+			|| RequestedRuntimeIds.Contains(RuntimeId))
 		{
-			return Item.RuntimeSequence == CardRuntimeId;
+			return false;
 		}
-	);
-	if (Candidate == nullptr)
-	{
-		return false;
-	}
 
-	UCardInstance* Card = Cast<UCardInstance>(Candidate->RuntimeObject.Get());
-	if (!IsValid(Card) || Card->GetRuntimeId() != CardRuntimeId)
-	{
-		return false;
+		const bool bIsCandidate = Request->Candidates.ContainsByPredicate(
+			[RuntimeId](const FSelectionCandidate& Candidate)
+			{
+				return Candidate.RuntimeSequence == RuntimeId;
+			}
+		);
+		if (!bIsCandidate)
+		{
+			return false;
+		}
+		RequestedRuntimeIds.Add(RuntimeId);
 	}
 
 	FSelectionResult Result;
 	Result.Status = ESelectionStatus::Resolved;
-	Result.SelectedObjects.Add(Card);
+	Result.SelectedObjects.Reserve(CardRuntimeIds.Num());
+
+	// Rebuild in authoritative candidate order. Player click order is not an
+	// implicit Gameplay ordering control for later Exhaust/Trigger resolution.
+	for (const FSelectionCandidate& Candidate : Request->Candidates)
+	{
+		if (!RequestedRuntimeIds.Contains(Candidate.RuntimeSequence))
+		{
+			continue;
+		}
+
+		UCardInstance* Card = Cast<UCardInstance>(Candidate.RuntimeObject.Get());
+		if (!IsValid(Card)
+			|| Card->GetRuntimeId() != Candidate.RuntimeSequence)
+		{
+			return false;
+		}
+		Result.SelectedObjects.Add(Card);
+	}
+
+	if (Result.SelectedObjects.Num() != CardRuntimeIds.Num())
+	{
+		return false;
+	}
 	return Resolver->SubmitResult(Result);
+}
+
+bool BattleSelectionRequest::SubmitPendingCardSelection(
+	ABattleManager* Battle,
+	int32 CardRuntimeId
+)
+{
+	if (CardRuntimeId == INDEX_NONE)
+	{
+		return false;
+	}
+	TArray<int32> RuntimeIds;
+	RuntimeIds.Add(CardRuntimeId);
+	return SubmitPendingCardSelection(Battle, RuntimeIds);
 }
 
 bool BattleSelectionRequest::SubmitPendingSelectionCancel(ABattleManager* Battle)
