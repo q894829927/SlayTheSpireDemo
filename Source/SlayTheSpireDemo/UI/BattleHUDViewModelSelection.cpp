@@ -42,7 +42,7 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeIds(
 	const bool bSubmitted = BattleSelectionRequest::SubmitPendingCardSelection(Battle, RuntimeIds);
 	if (bSubmitted)
 	{
-		PendingCardSelectionRuntimeIds.Reset();
+		ClearPendingCardSelectionInputState();
 	}
 	return bSubmitted;
 }
@@ -58,13 +58,17 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId)
 		return false;
 	}
 
-	// Remove stale local ids if the pending request changed underneath the UI.
-	PendingCardSelectionRuntimeIds.RemoveAll(
-		[&View](int32 SelectedRuntimeId)
-		{
-			return !View.CandidateRuntimeIds.Contains(SelectedRuntimeId);
-		}
-	);
+	const bool bRequestChanged =
+		PendingCardSelectionSource != View.SelectionSource
+		|| PendingCardSelectionRequiredCount != View.RequiredCount
+		|| PendingCardSelectionCandidateRuntimeIds != View.CandidateRuntimeIds;
+	if (bRequestChanged)
+	{
+		PendingCardSelectionRuntimeIds.Reset();
+		PendingCardSelectionSource = View.SelectionSource;
+		PendingCardSelectionRequiredCount = View.RequiredCount;
+		PendingCardSelectionCandidateRuntimeIds = View.CandidateRuntimeIds;
+	}
 
 	const int32 ExistingIndex = PendingCardSelectionRuntimeIds.Find(RuntimeId);
 	if (ExistingIndex != INDEX_NONE)
@@ -75,7 +79,7 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId)
 
 	if (PendingCardSelectionRuntimeIds.Num() >= View.RequiredCount)
 	{
-		PendingCardSelectionRuntimeIds.Reset();
+		ClearPendingCardSelectionInputState();
 		return false;
 	}
 
@@ -91,7 +95,7 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId)
 	const bool bSubmitted = SubmitPendingCardSelectionByRuntimeIds(CompletedRuntimeIds);
 	if (!bSubmitted)
 	{
-		PendingCardSelectionRuntimeIds.Reset();
+		ClearPendingCardSelectionInputState();
 	}
 	return bSubmitted;
 }
@@ -110,6 +114,9 @@ int32 UBattleHUDViewModel::GetPendingCardSelectionSelectedCount() const
 void UBattleHUDViewModel::ClearPendingCardSelectionInputState()
 {
 	PendingCardSelectionRuntimeIds.Reset();
+	PendingCardSelectionSource = NAME_None;
+	PendingCardSelectionRequiredCount = 0;
+	PendingCardSelectionCandidateRuntimeIds.Reset();
 }
 
 bool UBattleHUDViewModel::CanCancelPendingCardSelection() const
@@ -125,7 +132,7 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionCancel()
 		&& BattleSelectionRequest::SubmitPendingSelectionCancel(Battle);
 	if (bCancelled)
 	{
-		PendingCardSelectionRuntimeIds.Reset();
+		ClearPendingCardSelectionInputState();
 	}
 	return bCancelled;
 }
