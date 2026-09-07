@@ -29,7 +29,7 @@ void USelectionRequestAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!Resolver->BeginSelection(Request, Continuation.Get()))
+	if (!Resolver->BeginSelection(Request, Continuation.Get(), this))
 	{
 		// Malformed request or an already-pending selection: fail soft, no hold.
 		Finish();
@@ -60,14 +60,46 @@ void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Re
 		return;
 	}
 
+	// A mandatory request must remain the current Action when Presentation tries
+	// to cancel it. This guard also protects direct Action-side callers instead
+	// of relying only on USelectionResolver::SubmitCancel().
+	if (Result.Status == ESelectionStatus::Cancelled
+		&& !Resolver->CanCancelPendingSelection())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction cancel ignored: active request is mandatory."));
+		return;
+	}
+
 	TArray<UBattleAction*> ContinuationBatch;
 	if (!Resolver->TryResolveSelection(Result, ContinuationBatch))
 	{
-		// Cancelled or invalid selection: no dependent work, no fault. Finish and
-		// let the queue resume with whatever was already pending.
+		// Legal cancellation or invalid selection: no dependent work, no fault.
+		// Mandatory cancellation was handled above and therefore never reaches
+		// this finish path.
 		bAwaitingSelection = false;
 		Finish();
 		return;
+	}
+
+	// Continuation Actions are created after the original PlayCardAction has
+	// already built and stamped its follow-up batch. They therefore must inherit
+	// the still-active resolution writer here, at the generic selection boundary,
+	// or their committed Presentation facts would be silently lost.
+	for (UBattleAction* ContinuationAction : ContinuationBatch)
+	{
+		if (!IsValid(ContinuationAction)
+			|| ContinuationAction->IsFinished()
+			|| ContinuationAction->GetOuter() != Queue)
+		{
+			Queue->RequestResolutionFault(FString::Printf(
+				TEXT("SelectionRequestAction received an invalid continuation Action for %s."),
+				*Request.SelectionSource.ToString()
+			));
+			bAwaitingSelection = false;
+			Finish();
+			return;
+		}
+		ContinuationAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	}
 
 	if (ContinuationBatch.Num() > 0 && !Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))
@@ -93,9 +125,10 @@ void USelectionRequestAction::CancelPendingSelection()
 		return;
 	}
 
-	if (IsValid(Resolver.Get()))
+	if (!IsValid(Resolver.Get()) || !Resolver->CancelSelection())
 	{
-		Resolver->CancelSelection();
+		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction cancel ignored: cancellation is not permitted."));
+		return;
 	}
 
 	bAwaitingSelection = false;

@@ -103,6 +103,9 @@ protected:
 	bool BeginNativeHandToDiscardPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeHandToExhaustPresentation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token);
 	bool BeginNativeDrawToHandPresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
@@ -206,11 +209,12 @@ protected:
 
 	enum class ENativeCardPresentationKind : uint8
 	{
-		None,
-		CardPlayed,
-		HandToDiscard,
-		DrawToHand,
-		PlayAreaToDestination
+		None = 0,
+		CardPlayed = 1,
+		HandToDiscard = 2,
+		DrawToHand = 3,
+		PlayAreaToDestination = 4,
+		HandToExhaust = 5
 	};
 
 	ENativeCardPresentationKind GetActiveNativeCardPresentationKind() const

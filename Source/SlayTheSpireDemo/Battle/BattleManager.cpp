@@ -19,6 +19,7 @@
 #include "../Modifiers/ModifierTypes.h"
 #include "../Relics/RelicContainer.h"
 #include "../Relics/RelicData.h"
+#include "../Selection/SelectionResolver.h"
 #include "../Status/StatusContainer.h"
 #include "../Status/StatusData.h"
 #include "../Status/StatusInstance.h"
@@ -264,6 +265,16 @@ void ABattleManager::StartBattle()
 	ActionQueue->OnQueueEmpty.AddUObject(this, &ABattleManager::HandleActionQueueEmpty);
 	ActionQueue->OnResolutionIdle.AddUObject(this, &ABattleManager::HandleActionQueueResolutionIdle);
 	ActionQueue->OnResolutionFaulted.AddUObject(this, &ABattleManager::HandleActionQueueResolutionFaulted);
+
+	SelectionResolver = NewObject<USelectionResolver>(this);
+	SelectionResolver->Initialize(
+		FSelectionResolverQueueAccess::CreateLambda(
+			[this](const USelectionResolver*) -> UBattleActionQueue*
+			{
+				return ActionQueue.Get();
+			}
+		)
+	);
 
 	EventDispatcher = NewObject<UBattleEventDispatcher>(this);
 	if (!HasValidEventDispatcher())
@@ -972,6 +983,11 @@ URelicContainer* ABattleManager::GetPlayerRelicContainer()
 const URelicContainer* ABattleManager::GetPlayerRelicContainer() const
 {
 	return PlayerRelicContainer.Get();
+}
+
+USelectionResolver* ABattleManager::GetSelectionResolver() const
+{
+	return SelectionResolver.Get();
 }
 
 bool ABattleManager::InitializeRelicsForBattle()

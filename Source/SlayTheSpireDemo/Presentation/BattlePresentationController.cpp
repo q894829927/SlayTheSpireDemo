@@ -996,6 +996,22 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 			return true;
 		}
 
+		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
+			&& Record.CardZoneChanged.ToZone == ECardZone::ExhaustPile)
+		{
+			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
+			if (HandIndex == INDEX_NONE
+				|| HandIndex != Record.CardZoneChanged.FromIndex
+				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId
+				|| Record.CardZoneChanged.ToIndex != WorkingPresentationSnapshot.ExhaustCount)
+			{
+				return false;
+			}
+			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
+			++WorkingPresentationSnapshot.ExhaustCount;
+			return true;
+		}
+
 		if (Record.CardZoneChanged.FromZone == ECardZone::PlayArea)
 		{
 			switch (Record.CardZoneChanged.ToZone)

@@ -8,9 +8,22 @@ bool UBattleHUDWidget::SelectCard(
 	bool bAllowFastPresentationCatchUp
 )
 {
-	if (!bAllowFastPresentationCatchUp
-		|| RuntimeId == INDEX_NONE
-		|| !IsValid(ViewModel))
+	if (RuntimeId == INDEX_NONE || !IsValid(ViewModel))
+	{
+		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
+	}
+
+	// Wave 1C is an input exception to the ordinary caught-up card-play path: the
+	// current Gameplay resolution is intentionally busy while it waits for one of
+	// the authored Hand candidates. Reuse the same Native card click, but route it
+	// through the ViewModel/Battle selection request facade instead of attempting
+	// another card play or skipping Presentation.
+	if (ViewModel->HasPendingCardSelection())
+	{
+		return ViewModel->SubmitPendingCardSelectionByRuntimeId(RuntimeId);
+	}
+
+	if (!bAllowFastPresentationCatchUp)
 	{
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 	}
@@ -74,6 +87,12 @@ void UBattleHUDWidget::RetryPendingFastCardSelection()
 
 	if (RuntimeId == INDEX_NONE || !IsValid(ViewModel))
 	{
+		return;
+	}
+
+	if (ViewModel->HasPendingCardSelection())
+	{
+		ViewModel->SubmitPendingCardSelectionByRuntimeId(RuntimeId);
 		return;
 	}
 

@@ -32,6 +32,16 @@ enum class ESelectionStatus : uint8
 	Invalid
 };
 
+// Cancellation is a consumer-authored rule, not a Presentation decision.
+// Allowed preserves the generic primitive's legal cancel path. Forbidden is
+// used by mandatory choices such as Burning Pact's "Exhaust 1 card" step.
+UENUM(BlueprintType)
+enum class ESelectionCancelPolicy : uint8
+{
+	Allowed,
+	Forbidden
+};
+
 // Immutable-by-contract player-choice result. SelectedObjects are the exact
 // runtime objects the player chose; they are validated against the pending
 // request before any continuation is built. A Cancelled or Invalid result must
@@ -53,8 +63,8 @@ struct SLAYTHESPIREDEMO_API FSelectionResult
 
 // A Gameplay-authored selection request. It is created before Presentation
 // interaction begins and owns only the candidate set plus the selection count
-// constraints. It holds no pending mutable state; that belongs to the resolver
-// that owns the active selection.
+// constraints and cancellation policy. It holds no pending mutable state; that
+// belongs to the resolver that owns the active selection.
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FSelectionRequest
 {
@@ -68,6 +78,9 @@ struct SLAYTHESPIREDEMO_API FSelectionRequest
 
 	UPROPERTY(BlueprintReadOnly, Category = "Selection")
 	int32 MaxCount = 1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Selection")
+	ESelectionCancelPolicy CancelPolicy = ESelectionCancelPolicy::Allowed;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Selection")
 	TArray<FSelectionCandidate> Candidates;
