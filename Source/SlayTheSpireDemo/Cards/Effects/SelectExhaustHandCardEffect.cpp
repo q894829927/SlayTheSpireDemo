@@ -9,6 +9,16 @@
 #include "../../Selection/ExhaustSelectedContinuation.h"
 #include "../../Selection/SelectionResolver.h"
 
+ESelectExhaustSelectionMode USelectExhaustHandCardEffect::GetEffectiveSelectionMode(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedSelectionMode : BaseSelectionMode;
+}
+
+int32 USelectExhaustHandCardEffect::GetEffectiveSelectionCount(bool bIsUpgraded) const
+{
+	return bIsUpgraded ? UpgradedSelectionCount : BaseSelectionCount;
+}
+
 void USelectExhaustHandCardEffect::BuildActions(
 	const FCardPlayContext& Context,
 	TArray<UBattleAction*>& OutActions
@@ -23,6 +33,23 @@ void USelectExhaustHandCardEffect::BuildActions(
 		return;
 	}
 
+	const bool bIsUpgraded = Context.Card->IsUpgraded();
+	const ESelectExhaustSelectionMode EffectiveMode = GetEffectiveSelectionMode(bIsUpgraded);
+	const int32 AuthoredSelectionCount = GetEffectiveSelectionCount(bIsUpgraded);
+	if (AuthoredSelectionCount <= 0)
+	{
+		return;
+	}
+
+	// C0-1 establishes the authored mode contract. Deterministic Random execution
+	// is intentionally deferred to C0-6 so C0-1~3 do not invent an interim RNG
+	// path or silently use a non-battle random source.
+	if (EffectiveMode != ESelectExhaustSelectionMode::Player)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] SelectExhaust Random mode is authored but not executable until Wave 1C-C0 random-choice implementation."));
+		return;
+	}
+
 	USelectionResolver* Resolver = Context.Battle->GetSelectionResolver();
 	if (!IsValid(Resolver))
 	{
@@ -32,11 +59,6 @@ void USelectExhaustHandCardEffect::BuildActions(
 
 	FSelectionRequest Request;
 	Request.SelectionSource = TEXT("SelectExhaustHandCard");
-	Request.MinCount = 1;
-	Request.MaxCount = 1;
-	// This effect represents a mandatory authored cost: when at least one other
-	// Hand card exists, the player must choose exactly one before later Effects
-	// (for example Burning Pact's Draw) may continue.
 	Request.CancelPolicy = ESelectionCancelPolicy::Forbidden;
 
 	for (const TObjectPtr<UCardInstance>& HandCard : Context.Deck->GetHandCards())
@@ -69,6 +91,14 @@ void USelectExhaustHandCardEffect::BuildActions(
 		return;
 	}
 
+	const int32 RequiredCount = FMath::Min(AuthoredSelectionCount, Request.Candidates.Num());
+	if (RequiredCount <= 0)
+	{
+		return;
+	}
+	Request.MinCount = RequiredCount;
+	Request.MaxCount = RequiredCount;
+
 	UExhaustSelectedContinuation* Continuation = NewObject<UExhaustSelectedContinuation>(Context.ActionOuter);
 	Continuation->Initialize(
 		Context.Deck,
@@ -95,4 +125,12 @@ void USelectExhaustHandCardEffect::BuildPreviewArguments(
 
 void USelectExhaustHandCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
+	if (BaseSelectionCount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("SelectExhaustHandCardEffect BaseSelectionCount cannot be negative.")));
+	}
+	if (UpgradedSelectionCount < 0)
+	{
+		OutErrors.Add(FText::FromString(TEXT("SelectExhaustHandCardEffect UpgradedSelectionCount cannot be negative.")));
+	}
 }

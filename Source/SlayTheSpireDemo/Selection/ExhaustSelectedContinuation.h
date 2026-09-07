@@ -9,13 +9,15 @@ class UBattleEventDispatcher;
 class UCardInstance;
 class UDeckRuntime;
 
-// Concrete authored Continuation for the "select one Hand card, then exhaust it"
-// composition. It is immutable/stateless: it holds only stable battle-scoped
-// wiring captured at BuildActions time, never resolution-local mutable state.
+// Concrete authored Continuation for the "select one or more Hand cards, then
+// exhaust them" composition. It is immutable/stateless: it holds only stable
+// battle-scoped wiring captured at BuildActions time, never resolution-local
+// mutable state.
 //
-// BuildNextActions reads the exact chosen UCardInstance from the resolved
-// SelectionResult and builds one UExhaustCardAction for it. It does not decide
-// what happens after the exhaust (e.g. draw) — that is authored by card order.
+// BuildNextActions validates all selected objects first, then builds one
+// UExhaustCardAction per selected UCardInstance in result order. It does not
+// decide what happens after the exhaust batch; later authored card Effects keep
+// that responsibility.
 UCLASS(NotBlueprintable)
 class SLAYTHESPIREDEMO_API UExhaustSelectedContinuation : public UAuthoredContinuation
 {

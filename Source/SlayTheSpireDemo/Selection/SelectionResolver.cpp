@@ -226,18 +226,27 @@ bool USelectionResolver::ValidateResult(const FSelectionResult& Result, FString&
 		return false;
 	}
 
+	TSet<const UObject*> SeenSelectedObjects;
 	for (const TObjectPtr<UObject>& Selected : Result.SelectedObjects)
 	{
-		if (!IsValid(Selected.Get()))
+		UObject* SelectedObject = Selected.Get();
+		if (!IsValid(SelectedObject))
 		{
 			OutReason = TEXT("selected object is invalid");
 			return false;
 		}
 
+		if (SeenSelectedObjects.Contains(SelectedObject))
+		{
+			OutReason = TEXT("selected object appears more than once");
+			return false;
+		}
+		SeenSelectedObjects.Add(SelectedObject);
+
 		const bool bInCandidateSet = PendingRequest.Candidates.ContainsByPredicate(
-			[&Selected](const FSelectionCandidate& Candidate)
+			[SelectedObject](const FSelectionCandidate& Candidate)
 			{
-				return Candidate.RuntimeObject.Get() == Selected.Get();
+				return Candidate.RuntimeObject.Get() == SelectedObject;
 			}
 		);
 		if (!bInCandidateSet)

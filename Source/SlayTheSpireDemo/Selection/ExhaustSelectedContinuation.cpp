@@ -33,18 +33,26 @@ bool UExhaustSelectedContinuation::BuildNextActions(
 	OutActions.Reset();
 
 	if (Result.Status != ESelectionStatus::Resolved
-		|| Result.SelectedObjects.Num() != 1
+		|| Result.SelectedObjects.Num() == 0
 		|| !IsValid(Queue)
 		|| !IsValid(Deck.Get()))
 	{
 		return false;
 	}
 
-	UCardInstance* ChosenCard = Cast<UCardInstance>(Result.SelectedObjects[0].Get());
-	if (!IsValid(ChosenCard))
+	TArray<UCardInstance*> SelectedCards;
+	SelectedCards.Reserve(Result.SelectedObjects.Num());
+	TSet<const UCardInstance*> SeenCards;
+	for (const TObjectPtr<UObject>& SelectedObject : Result.SelectedObjects)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] ExhaustSelectedContinuation skipped: selected object is not a card."));
-		return false;
+		UCardInstance* ChosenCard = Cast<UCardInstance>(SelectedObject.Get());
+		if (!IsValid(ChosenCard) || SeenCards.Contains(ChosenCard))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[Selection] ExhaustSelectedContinuation rejected an invalid or duplicate selected card."));
+			return false;
+		}
+		SeenCards.Add(ChosenCard);
+		SelectedCards.Add(ChosenCard);
 	}
 
 	TArray<ACombatant*> RawEventCombatants;
@@ -58,14 +66,18 @@ bool UExhaustSelectedContinuation::BuildNextActions(
 		RawEventCombatants.Add(Combatant.Get());
 	}
 
-	UExhaustCardAction* ExhaustAction = NewObject<UExhaustCardAction>(Queue);
-	ExhaustAction->Initialize(
-		Deck.Get(),
-		ChosenCard,
-		PresentationCardSource.Get(),
-		EventDispatcher.Get(),
-		RawEventCombatants
-	);
-	OutActions.Add(ExhaustAction);
+	OutActions.Reserve(SelectedCards.Num());
+	for (UCardInstance* ChosenCard : SelectedCards)
+	{
+		UExhaustCardAction* ExhaustAction = NewObject<UExhaustCardAction>(Queue);
+		ExhaustAction->Initialize(
+			Deck.Get(),
+			ChosenCard,
+			PresentationCardSource.Get(),
+			EventDispatcher.Get(),
+			RawEventCombatants
+		);
+		OutActions.Add(ExhaustAction);
+	}
 	return true;
 }

@@ -4,24 +4,47 @@
 #include "CardEffect.h"
 #include "SelectExhaustHandCardEffect.generated.h"
 
-// Composable "select one Hand card, then exhaust it" Effect (Wave 1C-B).
+// Authored selection mode for the reusable Hand Select-Exhaust composition.
+// Player mode is executable in C0-1~3. Random is an authored value now so Base
+// and Upgraded configuration is stable before the deterministic RNG path lands
+// in C0-6; BuildActions fails soft for Random until that later step is complete.
+UENUM(BlueprintType)
+enum class ESelectExhaustSelectionMode : uint8
+{
+	Player,
+	Random
+};
+
+// Composable "choose exactly N Hand cards, then exhaust them" Effect.
 //
-// BuildActions computes the candidate set as "current Hand cards, excluding the
-// played card (Context.Card)", then:
-//   - non-empty candidates -> enqueue a USelectionRequestAction whose authored
-//     UExhaustSelectedContinuation builds the UExhaustCardAction for the chosen card;
-//   - empty candidates -> skip burning entirely (no selection, no exhaust, no fault).
-//
-// The Effect is the authored composition point: it knows both selection and
-// exhaust, bridging them locally, while the primitive Actions stay neutral.
-// Ordering after this Effect (e.g. draw) is authored by the owning card's
-// Effects[] array, not decided here.
+// C0 keeps the existing UCLASS identity for serialized Burning Pact
+// compatibility while generalizing its authored Base/Upgraded configuration.
+// Candidate discovery remains current Hand cards excluding Context.Card.
 UCLASS(EditInlineNew, DefaultToInstanced)
 class SLAYTHESPIREDEMO_API USelectExhaustHandCardEffect : public UCardEffect
 {
 	GENERATED_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
+	ESelectExhaustSelectionMode BaseSelectionMode = ESelectExhaustSelectionMode::Player;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect", meta = (ClampMin = "0"))
+	int32 BaseSelectionCount = 1;
+
+	// No sentinel/fallback semantics. If upgrade leaves the mode unchanged,
+	// author the same explicit value as BaseSelectionMode.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Upgrade")
+	ESelectExhaustSelectionMode UpgradedSelectionMode = ESelectExhaustSelectionMode::Player;
+
+	// No sentinel/fallback semantics. If upgrade leaves the count unchanged,
+	// author the same explicit value as BaseSelectionCount.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Upgrade", meta = (ClampMin = "0"))
+	int32 UpgradedSelectionCount = 1;
+
+	ESelectExhaustSelectionMode GetEffectiveSelectionMode(bool bIsUpgraded) const;
+	int32 GetEffectiveSelectionCount(bool bIsUpgraded) const;
+
 	virtual void BuildActions(
 		const FCardPlayContext& Context,
 		TArray<UBattleAction*>& OutActions
