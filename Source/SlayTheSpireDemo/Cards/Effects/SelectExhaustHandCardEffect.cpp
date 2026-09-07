@@ -6,6 +6,7 @@
 #include "../../Actions/RandomSelectionAction.h"
 #include "../../Actions/SelectionRequestAction.h"
 #include "../../Battle/BattleManager.h"
+#include "../../Battle/BattleTextTypes.h"
 #include "../../Deck/DeckRuntime.h"
 #include "../../Selection/ExhaustSelectedContinuation.h"
 #include "../../Selection/SelectionResolver.h"
@@ -128,6 +129,10 @@ void USelectExhaustHandCardEffect::BuildActions(
 
 void USelectExhaustHandCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const
 {
+	if (!DescriptionArgumentName.IsNone())
+	{
+		OutNames.Add(DescriptionArgumentName);
+	}
 }
 
 void USelectExhaustHandCardEffect::BuildPreviewArguments(
@@ -135,10 +140,23 @@ void USelectExhaustHandCardEffect::BuildPreviewArguments(
 	FPreviewTextArgumentBuilder& OutArguments
 ) const
 {
+	if (DescriptionArgumentName.IsNone())
+	{
+		return;
+	}
+
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	OutArguments.AddInteger(
+		DescriptionArgumentName,
+		GetEffectiveSelectionCount(bIsUpgraded)
+	);
 }
 
 void USelectExhaustHandCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
+	// NAME_None is a deliberate legacy-compatible dynamic-text opt-out. When a
+	// semantic name is authored, the shared card-text validator enforces that the
+	// description template actually uses it.
 	if (BaseSelectionCount < 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("SelectExhaustHandCardEffect BaseSelectionCount cannot be negative.")));
