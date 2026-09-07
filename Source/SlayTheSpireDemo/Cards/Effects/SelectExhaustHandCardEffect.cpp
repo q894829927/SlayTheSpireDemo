@@ -3,6 +3,7 @@
 #include "../CardInstance.h"
 #include "../CardPlayContext.h"
 #include "../../Actions/BattleActionQueue.h"
+#include "../../Actions/RandomSelectionAction.h"
 #include "../../Actions/SelectionRequestAction.h"
 #include "../../Battle/BattleManager.h"
 #include "../../Deck/DeckRuntime.h"
@@ -38,22 +39,6 @@ void USelectExhaustHandCardEffect::BuildActions(
 	const int32 AuthoredSelectionCount = GetEffectiveSelectionCount(bIsUpgraded);
 	if (AuthoredSelectionCount <= 0)
 	{
-		return;
-	}
-
-	// C0-1 establishes the authored mode contract. Deterministic Random execution
-	// is intentionally deferred to C0-6 so C0-1~3 do not invent an interim RNG
-	// path or silently use a non-battle random source.
-	if (EffectiveMode != ESelectExhaustSelectionMode::Player)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] SelectExhaust Random mode is authored but not executable until Wave 1C-C0 random-choice implementation."));
-		return;
-	}
-
-	USelectionResolver* Resolver = Context.Battle->GetSelectionResolver();
-	if (!IsValid(Resolver))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] SelectExhaust build skipped: Battle has no SelectionResolver."));
 		return;
 	}
 
@@ -107,9 +92,38 @@ void USelectExhaustHandCardEffect::BuildActions(
 		Context.EventCombatants
 	);
 
-	USelectionRequestAction* Action = NewObject<USelectionRequestAction>(Context.ActionOuter);
-	Action->Initialize(Resolver, Request, Continuation);
-	OutActions.Add(Action);
+	switch (EffectiveMode)
+	{
+	case ESelectExhaustSelectionMode::Player:
+	{
+		USelectionResolver* Resolver = Context.Battle->GetSelectionResolver();
+		if (!IsValid(Resolver))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[CardEffect] SelectExhaust Player build skipped: Battle has no SelectionResolver."));
+			return;
+		}
+
+		USelectionRequestAction* Action = NewObject<USelectionRequestAction>(Context.ActionOuter);
+		Action->Initialize(Resolver, Request, Continuation);
+		OutActions.Add(Action);
+		return;
+	}
+
+	case ESelectExhaustSelectionMode::Random:
+	{
+		FSelectionRandomIndexChooser RandomIndexChooser;
+		RandomIndexChooser.BindUObject(Context.Deck, &UDeckRuntime::TryChooseRandomIndex);
+
+		URandomSelectionAction* Action = NewObject<URandomSelectionAction>(Context.ActionOuter);
+		Action->Initialize(Request, Continuation, RandomIndexChooser);
+		OutActions.Add(Action);
+		return;
+	}
+
+	default:
+		UE_LOG(LogTemp, Warning, TEXT("[CardEffect] SelectExhaust build skipped: unsupported selection mode."));
+		return;
+	}
 }
 
 void USelectExhaustHandCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNames) const

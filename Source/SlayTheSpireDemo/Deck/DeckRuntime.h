@@ -17,6 +17,27 @@ class SLAYTHESPIREDEMO_API UDeckRuntime : public UObject
 public:
 	void InitializeFromDefinitions(const TArray<TObjectPtr<UCardData>>& Definitions, int32 Seed);
 
+	// C0 domain-neutral access to the battle-scoped deterministic RNG stream.
+	// The caller supplies only a cardinality and receives an index in [0, Count).
+	// Count <= 0 fails; Count == 1 resolves to 0 without advancing the stream.
+	// This API deliberately knows nothing about cards, zones, targets or effects.
+	bool TryChooseRandomIndex(int32 Count, int32& OutIndex)
+	{
+		OutIndex = INDEX_NONE;
+		if (Count <= 0)
+		{
+			return false;
+		}
+		if (Count == 1)
+		{
+			OutIndex = 0;
+			return true;
+		}
+
+		OutIndex = RandomStream.RandRange(0, Count - 1);
+		return OutIndex >= 0 && OutIndex < Count;
+	}
+
 	bool HasCardsInDrawPile() const;
 	bool HasCardsInDiscardPile() const;
 	bool IsHandFull() const;

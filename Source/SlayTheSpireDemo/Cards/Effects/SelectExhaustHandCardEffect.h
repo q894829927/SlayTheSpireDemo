@@ -5,9 +5,8 @@
 #include "SelectExhaustHandCardEffect.generated.h"
 
 // Authored selection mode for the reusable Hand Select-Exhaust composition.
-// Player mode is executable in C0-1~3. Random is an authored value now so Base
-// and Upgraded configuration is stable before the deterministic RNG path lands
-// in C0-6; BuildActions fails soft for Random until that later step is complete.
+// Player opens the exact-N pending Selection UI path; Random resolves the same
+// exact-N request synchronously through deterministic battle RNG with no UI.
 UENUM(BlueprintType)
 enum class ESelectExhaustSelectionMode : uint8
 {
