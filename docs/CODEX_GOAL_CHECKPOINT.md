@@ -30,7 +30,10 @@ Wave 1B — Targeted Exhaust Primitive:
 COMPLETE / VALIDATED / SEALED
 
 Wave 1C — Selection Primitive / First Consumer Closure:
-COMPLETE / VALIDATED / SEALED
+COMPLETE / VALIDATED / SEALED / MERGED TO MAIN
+
+Wave 1C-C — Second Consumer Expansion:
+NEXT ACTIVE / NOT STARTED
 ```
 
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. Wave 1B was subsequently validated and sealed. Wave 1C current-head revalidation was explicitly confirmed by the user on 2026-09-07 after the playable-selection, mandatory-cancel and committed-Presentation closure fixes.
@@ -40,14 +43,28 @@ Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06
 ## Current branch
 
 ```text
-Wave-1C
+main
 ```
 
-Current validated Wave 1C implementation head before these final documentation commits:
+Wave 1C merge:
+
+```text
+PR #16
+Merge commit: a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523
+```
+
+Validated Wave 1C implementation head before the final documentation-only commits:
 
 ```text
 64a405a414c009d508ec352bb200a47775016578
 fix(wave1c): fade exhausted hand card in place
+```
+
+Final Wave 1C documentation head merged by PR #16:
+
+```text
+b29a7c794d75546957b443e039329225c4a853d8
+docs(wave1c): record final seal checkpoint
 ```
 
 Wave 1B merge commit:
@@ -62,7 +79,7 @@ The former Wave 1B development branch was:
 card-expansion-wave1b-targeted-exhaust
 ```
 
-Wave 1B source is on `main`; do not continue implementation on the old branch.
+Wave 1B and Wave 1C source are now on `main`; do not continue implementation on the old development branches.
 
 ---
 
@@ -101,6 +118,8 @@ docs/CardExpansionWave1CSelectionPrimitive.md
 docs/CardExpansionWave1CSelectionExecution.md
 docs/CardExpansionWave1CSelectExhaustExecution.md
 ```
+
+A dedicated Wave 1C-C execution/design record has not been authored yet. It must be created before implementation begins.
 
 Future Card trigger-source design remains independently unauthorized:
 
@@ -319,26 +338,24 @@ User-confirmed local validation on **2026-09-07**:
 [x] final user validation confirmation received
 ```
 
-The former 5/5 and 7/7 results remain historical pre-closure evidence only. The current Wave 1C seal is based on the revalidated current implementation above.
+The former 5/5 and 7/7 results remain historical pre-closure evidence only. The current Wave 1C seal is based on the revalidated implementation above.
 
 ---
 
-## Owner-authored binary test content
+## Repository content merged with Wave 1C
 
-The `Wave-1C` branch contains user-authored:
+PR #16 merged the user-authored binary content that was present on the Wave 1C branch:
 
 ```text
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_BurningPact.uasset
 Content/SlayTheSpireDemo/Maps/L_BattleTest.umap
 ```
 
-Those files were not modified by the C++ closure fixes. The Wave 1C reusable behavior seal is established by the C++/Automation/PIE contract, not by treating these binary files as generic architecture authority.
-
-Their inclusion in a merge to `main` remains a separate repository-content decision.
+They are now repository content on `main`. They were not modified by the C++ closure fixes, and they do not replace the reusable C++/Automation/PIE contracts as architecture authority.
 
 ---
 
-## Stop point
+## Stop point / next active slice
 
 ```text
 Wave 1A
@@ -349,8 +366,13 @@ Wave 1B
 
 Wave 1C-A / 1C-B
 → COMPLETE / VALIDATED / SEALED
+→ MERGED TO MAIN (PR #16 / a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523)
+
+Wave 1C-C
+→ NEXT ACTIVE
+→ NOT STARTED
 ```
 
-Wave 1C no longer requires implementation or validation work before merge. The next repository operation is to decide whether the owner-authored `.uasset/.umap` changes should be included in `main`, then merge the validated Wave-1C branch accordingly.
+The next work is not a Wave 1C repair. Author a dedicated Wave 1C-C design/execution record first, then implement a second real consumer of the sealed Selection/Exhaust surface. The current preferred first consumer is True Grit because its upgraded path reuses manual Hand selection while its base path provides the first real requirement for deterministic random Hand choice.
 
-Do not start Wave 1C-C or unrelated card expansion as part of the merge operation.
+Wave 1D Reactive Exhaust Powers, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain separate future slices and are not implicitly authorized by this checkpoint sync.
