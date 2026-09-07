@@ -33,11 +33,5 @@ namespace BattleSelectionRequest
 		const TArray<int32>& CardRuntimeIds
 	);
 
-	// Compatibility wrapper for the sealed single-card path.
-	bool SubmitPendingCardSelection(
-		ABattleManager* Battle,
-		int32 CardRuntimeId
-	);
-
 	bool SubmitPendingSelectionCancel(ABattleManager* Battle);
 }
