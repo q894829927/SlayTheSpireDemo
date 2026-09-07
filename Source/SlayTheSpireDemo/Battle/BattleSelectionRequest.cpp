@@ -133,20 +133,6 @@ bool BattleSelectionRequest::SubmitPendingCardSelection(
 	return Resolver->SubmitResult(Result);
 }
 
-bool BattleSelectionRequest::SubmitPendingCardSelection(
-	ABattleManager* Battle,
-	int32 CardRuntimeId
-)
-{
-	if (CardRuntimeId == INDEX_NONE)
-	{
-		return false;
-	}
-	TArray<int32> RuntimeIds;
-	RuntimeIds.Add(CardRuntimeId);
-	return SubmitPendingCardSelection(Battle, RuntimeIds);
-}
-
 bool BattleSelectionRequest::SubmitPendingSelectionCancel(ABattleManager* Battle)
 {
 	if (!IsValid(Battle))
