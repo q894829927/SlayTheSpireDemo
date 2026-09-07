@@ -5,7 +5,7 @@ Date: **2026-09-07**
 Status:
 
 ```text
-IMPLEMENTATION UPDATED / LOCAL REVALIDATION REQUIRED
+COMPLETE / VALIDATED / SEALED
 ```
 
 Branch:
@@ -20,17 +20,15 @@ Authority:
 docs/CardExpansionWave1CSelectionPrimitive.md
 ```
 
-This record supersedes the earlier 2026-09-06 `7/7 PASS / READY FOR SEAL` status for the current branch head. The previous result remains historical evidence for the pre-closure implementation, but the 2026-09-07 UI/cancel/E2E changes require a fresh build, focused Automation run and Native HUD PIE acceptance before sealing.
+This record supersedes the earlier pre-closure `7/7 PASS / READY FOR SEAL` state. The 2026-09-07 playable-selection, mandatory-cancel, committed-Presentation and Native HUD fixes have now been revalidated on the current Wave-1C branch by the user.
 
-Repository-local `DA_Card_BurningPact.uasset` and `L_BattleTest.umap` changes are owner-authored ad-hoc test content. They are intentionally not modified, inspected, or counted as production validation evidence by this closure change.
+Repository-local `DA_Card_BurningPact.uasset` and `L_BattleTest.umap` remain owner-authored test content. They were not modified by the C++ closure fixes and are not used as the Automation authority for the reusable behavior contract.
 
 ---
 
-## Closure problems addressed
+## Sealed closure
 
 ### 1. Playable Native HUD selection bridge
-
-Before this change, `USelectionRequestAction` correctly held the ActionQueue while waiting, but the Native HUD normal card-input path remained locked in `Resolving` and had no request route into the pending selection.
 
 Implemented:
 
@@ -57,11 +55,11 @@ Boundary properties:
 
 ```text
 - normal Resolving input remains locked
-- the alternate click path exists only while a supported pending card selection exists
+- alternate click path exists only while a supported pending card selection exists
 - ViewModel/HUD receives RuntimeIds only, not candidate UObject pointers
 - non-candidate RuntimeIds are rejected
 - UI never constructs/enqueues BattleActions
-- historical committed Presentation ownership is unchanged
+- historical committed Presentation ownership remains Gameplay/Controller driven
 ```
 
 ### 2. Request-level mandatory cancel policy
@@ -99,11 +97,45 @@ perform no mutation
 emit no ResolutionFault
 ```
 
-This closes the previous Burning Pact loophole where cancel could have allowed the already-authored Draw Action to continue without paying the exhaust requirement.
+This prevents Burning Pact from skipping its exhaust requirement and continuing into Draw.
 
-### 3. Full transient Burning Pact Automation shape
+### 3. Selection continuation Presentation writer propagation
 
-The focused 1C-B test source now authors a transient Burning Pact-shaped `UCardData` instead of relying on a binary production asset:
+Selection-generated dependent Actions inherit the current committed-Presentation writer at the common `USelectionRequestAction` continuation boundary.
+
+Therefore:
+
+```text
+selection resolves
+→ UExhaustCardAction is created
+→ same resolution Presentation writer is inherited
+→ Hand → ExhaustPile CardZoneChanged record is committed
+→ later Draw records remain ordered after the exhaust record
+```
+
+### 4. Hand → Exhaust Presentation reducer and Native HUD playback
+
+`UBattlePresentationController` now reduces exact `Hand → ExhaustPile` records using RuntimeId/CardId/index validation and updates the historical working Hand before later Draw records are played.
+
+The Native HUD presents a selected Hand card exhaust as an in-place fade:
+
+```text
+selected formal Hand card
+→ translation stays 0
+→ scale stays 1
+→ opacity 1 → 0 over the Native presentation duration
+→ record completes
+→ Controller formally removes the exact card from Hand
+→ Draw presentation continues
+```
+
+There is no Hand-to-Exhaust movement animation. Cancel/destruct cleanup restores the historical card transform/opacity when necessary.
+
+This fixes the previous visible failure where the exhausted card could remain in the displayed Hand until FinalSnapshot correction and cause subsequent Draw records to miss their expected Hand index.
+
+### 5. Full transient Burning Pact Automation shape
+
+The focused test source authors a transient Burning Pact-shaped `UCardData` rather than depending on a binary card asset:
 
 ```text
 CardType = Skill
@@ -116,11 +148,9 @@ Effects = [
 ]
 ```
 
-This keeps binary asset authoring independent while testing the actual Gameplay composition contract.
-
 ---
 
-## Updated focused Automation inventory
+## Final focused Automation inventory
 
 Prefix:
 
@@ -128,7 +158,7 @@ Prefix:
 SlayTheSpireDemo.CardExpansion.Wave1C
 ```
 
-Existing primitive cases (5):
+Selection primitive cases (5):
 
 ```text
 Selection.ResolveBuildsContinuation
@@ -138,7 +168,7 @@ Selection.MalformedRequestRejected
 Selection.CountBoundsEnforced
 ```
 
-Updated SelectExhaust / Burning Pact cases (6):
+SelectExhaust / Burning Pact Gameplay + input cases (6):
 
 ```text
 SelectExhaust.ExhaustsChosenCard
@@ -149,13 +179,20 @@ BurningPact.UpgradedExhaustThenDraw3
 BurningPact.NativeHUDPendingCardClick
 ```
 
-Total expected focused inventory after this change:
+Committed-Presentation regression cases (2):
 
 ```text
-11 cases
+BurningPact.PresentationRecordOrder
+Presentation.HandExhaustReducer
 ```
 
-New coverage includes:
+Final focused inventory:
+
+```text
+5 + 6 + 2 = 13 cases
+```
+
+Coverage includes:
 
 ```text
 mandatory request advertises Forbidden cancellation
@@ -168,47 +205,57 @@ upgrade: exact selected card exhausts before Draw-3
 played card finishes to Discard
 PlayArea is empty after FinishCardPlay
 ActionQueue returns idle without ResolutionFault
-Native HUD C++ SelectCard(RuntimeId) accepts a valid pending candidate while the
-ordinary card-play path is otherwise in a busy resolution
+Native HUD C++ SelectCard(RuntimeId) accepts a valid pending candidate during the waiting resolution
 non-candidate HUD click cannot release the pending request
+committed Presentation order is CardPlayed → Hand→Exhaust → Draw → Draw → Finish
+Controller reducer accepts exact Hand→Exhaust and rejects stale destination index
 ```
-
-### Validation status
-
-These tests were authored/updated in GitHub during this closure change, but this environment does not execute the Unreal Editor build or Automation runner. Therefore no new PASS claim is recorded here.
-
-Required rerun:
-
-```text
-[ ] SlayTheSpireDemoEditor Win64 Development Build
-[ ] SlayTheSpireDemo.CardExpansion.Wave1C focused Automation (expected 11 cases)
-[ ] Native HUD production PIE: play test Burning Pact, click another Hand card,
-    observe selected card exhaust -> Draw 2/3 -> normal resolution completion
-```
-
-The old `7/7 PASS` result applies only to the pre-2026-09-07 implementation and must not be used to seal this new branch head.
 
 ---
 
-## Source surface changed by the closure
+## Final validation evidence
+
+User-confirmed local validation on **2026-09-07**:
+
+```text
+[x] SlayTheSpireDemoEditor Win64 Development Build PASS
+[x] SlayTheSpireDemo.CardExpansion.Wave1C focused Automation PASS (13/13)
+[x] Native production HUD PIE base Burning Pact PASS
+[x] Native production HUD PIE Burning Pact+ PASS
+[x] mandatory selection cannot be skipped/cancelled into Draw PASS
+[x] exhausted card fades in place and disappears before Draw playback PASS
+[x] Draw 2 / Draw 3 presentation playback PASS
+[x] exhausted card no longer reappears at the end of Hand PASS
+[x] normal HUD interaction returns after resolution PASS
+```
+
+The previous `7/7 PASS` result is retained only as historical evidence. The seal is based on the current branch revalidation above.
+
+---
+
+## Sealed source surface
 
 ```text
 Source/SlayTheSpireDemo/Selection/SelectionTypes.h
 Source/SlayTheSpireDemo/Selection/SelectionResolver.h/.cpp
 Source/SlayTheSpireDemo/Actions/SelectionRequestAction.cpp
-Source/SlayTheSpireDemo/Cards/Effects/SelectExhaustHandCardEffect.cpp
+Source/SlayTheSpireDemo/Selection/ExhaustSelectedContinuation.h/.cpp
+Source/SlayTheSpireDemo/Cards/Effects/SelectExhaustHandCardEffect.h/.cpp
 Source/SlayTheSpireDemo/Battle/BattleSelectionRequest.h/.cpp
+Source/SlayTheSpireDemo/Presentation/BattlePresentationController.cpp
 Source/SlayTheSpireDemo/UI/BattleHUDViewModel.h
 Source/SlayTheSpireDemo/UI/BattleHUDViewModelSelection.cpp
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.h/.cpp
 Source/SlayTheSpireDemo/UI/BattleHUDWidgetFastInput.cpp
 Source/SlayTheSpireDemoTests/Private/CardExpansionWave1CSelectExhaustTests.cpp
+Source/SlayTheSpireDemoTests/Private/CardExpansionWave1CPresentationTests.cpp
 ```
 
 ---
 
-## Scope retained
+## Scope retained after seal
 
-Still outside this code slice:
+Still outside Wave 1C:
 
 ```text
 - no Random selection mode
@@ -216,8 +263,7 @@ Still outside this code slice:
 - no Exhume / True Grit consumer expansion
 - no bulk exhaust
 - no reactive exhaust powers
-- no acceptance or modification of owner-authored DA_Card_BurningPact.uasset
-- no acceptance or modification of owner-authored L_BattleTest.umap changes
+- no generic AnyZone movement abstraction
 ```
 
-Production card asset acceptance remains a separate user-owned step. The C++ transient definition is the authoritative Automation fixture for the Burning Pact behavior contract until that content step is explicitly validated.
+The reusable C++/Gameplay/Presentation contract is sealed. Repository-local owner-authored binary test content remains a separate content-acceptance concern and is not what establishes the Wave 1C behavioral seal.
