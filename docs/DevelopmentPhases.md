@@ -16,7 +16,7 @@ This document records project progress, implementation history and durable phase
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
 - **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
 - **Card Face Visual Style (CFV) is COMPLETE / USER-ACCEPTED / SEALED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The sealed model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
-- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is COMPLETE / VALIDATED / SEALED. Wave 1B — Targeted Exhaust Primitive is COMPLETE / VALIDATED / SEALED. Wave 1C — Selection Primitive: Wave 1C-A COMPLETE / VALIDATED / READY FOR SEAL; Wave 1C-B (Select-Exhaust consumer, Burning Pact shape) COMPLETE / VALIDATED / READY FOR SEAL. Phase 8 remains deferred and is not a prerequisite.
+- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is COMPLETE / VALIDATED / SEALED. Wave 1B — Targeted Exhaust Primitive is COMPLETE / VALIDATED / SEALED. Wave 1C-A — Selection Primitive and Wave 1C-B — Select-Exhaust/Burning Pact consumer closure are COMPLETE / VALIDATED / SEALED and merged to `main` by PR #16 (`a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523`). Wave 1C-C — Second Consumer Expansion is NEXT ACTIVE / NOT STARTED. Phase 8 remains deferred and is not a prerequisite.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -267,7 +267,7 @@ Phase 8 may be resumed later as an integration gate after card architecture has 
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A SEALED, WAVE 1B SEALED, WAVE 1C-A COMPLETE / VALIDATED / READY FOR SEAL, WAVE 1C-B COMPLETE / VALIDATED / READY FOR SEAL**
+Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A SEALED, WAVE 1B SEALED, WAVE 1C-A SEALED, WAVE 1C-B SEALED / MERGED TO MAIN; WAVE 1C-C NEXT ACTIVE / NOT STARTED**
 
 Upgrade authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
 
@@ -277,11 +277,11 @@ Card-expansion authority chain:
 - `docs/IroncladCardArchitecturePlanWave1Amendment.md`
 - `docs/CardExpansionWave1AExhaustFactSurface.md` — Wave 1A (sealed)
 - `docs/CardExpansionWave1BTargetedExhaustPrimitive.md` — Wave 1B (sealed)
-- `docs/CardExpansionWave1CSelectionPrimitive.md` — Wave 1C (1C-A and 1C-B complete / validated / ready for seal)
+- `docs/CardExpansionWave1CSelectionPrimitive.md` — Wave 1C-A / 1C-B (complete / validated / sealed; merged to `main` by PR #16)
 
 The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for Card Expansion or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
 
-Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A (Exhaust Fact Surface) and Wave 1B (Targeted Exhaust Primitive), and completed Wave 1C-A (Selection Primitive) and Wave 1C-B (Select-Exhaust consumer, Burning Pact shape). Production `DA_Card_BurningPact` asset authoring, Wave 1C-C consumers, Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
+Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A (Exhaust Fact Surface), Wave 1B (Targeted Exhaust Primitive), Wave 1C-A (Selection Primitive) and Wave 1C-B (Select-Exhaust consumer / Burning Pact closure). PR #16 merged Wave 1C to `main`, including the repository-local Burning Pact asset and `L_BattleTest` content present on that branch. Wave 1C-C is the next active slice but implementation has not started; its dedicated authority should be authored first. Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
 
 ## Card Face Visual Style
 
