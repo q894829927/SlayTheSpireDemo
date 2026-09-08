@@ -23,39 +23,70 @@ void UDeferredSelectionAction::Initialize(USelectionCandidateSource* InSource, U
 
 void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 {
-	if (!IsValid(Queue) || RequestedCount <= 0) { Finish(); return; }
-	if (!IsValid(CandidateSource) || !IsValid(Continuation)
-		|| (Mode == EDeferredSelectionMode::Player && !IsValid(Resolver))
-		|| (Mode == EDeferredSelectionMode::Random && !RandomChooser.IsBound()))
+	if (!IsValid(Queue) || RequestedCount <= 0)
 	{
-		Queue->RequestResolutionFault(TEXT("DeferredSelection missing runtime dependency."));
-		Finish(); return;
+		Finish();
+		return;
 	}
+
+	if (!IsValid(CandidateSource) || !IsValid(Continuation))
+	{
+		Queue->RequestResolutionFault(TEXT("DeferredSelection missing CandidateSource or Continuation."));
+		Finish();
+		return;
+	}
+
 	FSelectionRequest Request;
 	const ESelectionCandidateBuildStatus Status = CandidateSource->BuildCandidates(Request.Candidates);
-	if (Status == ESelectionCandidateBuildStatus::NoCandidates) { Finish(); return; }
+	if (Status == ESelectionCandidateBuildStatus::NoCandidates)
+	{
+		Finish();
+		return;
+	}
 	if (Status != ESelectionCandidateBuildStatus::Success || Request.Candidates.IsEmpty())
 	{
 		Queue->RequestResolutionFault(TEXT("DeferredSelection candidate capture failed."));
-		Finish(); return;
+		Finish();
+		return;
 	}
+
+	// A real non-empty Player decision must always cross the shared interactive
+	// boundary. An unbound boundary is a framework wiring error, not permission
+	// to expose a pending request against stale Presentation state. Zero-count and
+	// legal empty-candidate cases have already returned above and create no fence.
+	if (Mode == EDeferredSelectionMode::Player)
+	{
+		if (!IsValid(Resolver) || !BoundaryAccess.IsBound())
+		{
+			Queue->RequestResolutionFault(TEXT("DeferredSelection Player mode requires a Resolver and interactive Presentation boundary."));
+			Finish();
+			return;
+		}
+	}
+	else if (!RandomChooser.IsBound())
+	{
+		Queue->RequestResolutionFault(TEXT("DeferredSelection Random mode requires an authoritative RNG provider."));
+		Finish();
+		return;
+	}
+
 	check(CountPolicy == ESelectionCountPolicy::ExactNClampToAvailable);
 	Request.MinCount = Request.MaxCount = FMath::Min(RequestedCount, Request.Candidates.Num());
 	Request.CancelPolicy = CancelPolicy;
 	Request.SelectionSource = SelectionSource;
+
 	FPresentationRecordWriter Writer = GetPresentationRecordWriter();
 	UBattleAction* Next = nullptr;
 	if (Mode == EDeferredSelectionMode::Player)
 	{
-		if (BoundaryAccess.IsBound())
+		Writer = BoundaryAccess.Execute(this);
+		if (!Queue->RebindPendingPresentationRecordWriter(this, Writer))
 		{
-			Writer = BoundaryAccess.Execute(this);
-			if (!Queue->RebindPendingPresentationRecordWriter(this, Writer))
-			{
-				Queue->RequestResolutionFault(TEXT("DeferredSelection could not rebind the continuation tail."));
-				Finish(); return;
-			}
+			Queue->RequestResolutionFault(TEXT("DeferredSelection could not rebind the continuation tail."));
+			Finish();
+			return;
 		}
+
 		USelectionRequestAction* Selection = NewObject<USelectionRequestAction>(Queue);
 		Selection->Initialize(Resolver, Request, Continuation);
 		Next = Selection;
@@ -66,6 +97,7 @@ void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 		Selection->Initialize(Request, Continuation, RandomChooser);
 		Next = Selection;
 	}
+
 	Next->SetPresentationRecordWriter(Writer);
 	if (!Queue->AddToFront(Next))
 	{
