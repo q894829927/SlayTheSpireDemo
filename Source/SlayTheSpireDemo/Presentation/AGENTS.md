@@ -59,7 +59,9 @@ Reducer application order MUST always remain the committed `PresentationSequence
 
 Visible playback normally follows the same order. The only authorized exception is an explicitly committed, complete and Controller-validated `PresentationGroup`: the Controller may co-present/look ahead to that group's own frozen members from the already sealed Envelope without reducing those future members early. This exception MUST NOT consume, skip, reorder or mark interleaved ungrouped Records as played, and MUST NOT be inferred from CardId, Effect type, destination, adjacency, timing or Widget state.
 
-If a future group member is visually consumed before its reducer cursor is reached, its formal historical visual MUST remain Presentation-suppressed by exact committed identity until that member is reduced. Intermediate `ApplyPresentationSnapshot` / HUD rebuilds must not make the already-consumed visual reappear. Suppression is Presentation-only state and must be cleared on exact member reduction or global reconciliation boundaries such as Skip, collapse, envelope replacement/completion, battle replacement or Presentation-unavailable fallback.
+Before a non-contiguous group is offered for co-presentation, Controller preflight MUST prove not only chronological reducer validity but also future-member visual independence. If any interleaved ungrouped Record directly moves, plays, replaces, or otherwise modifies an exact group member whose own reducer cursor has not yet been reached, the entire group is ineligible for lookahead and degrades to sequential playback. A dry-run reducer that merely succeeds is not sufficient evidence that early visible consumption is safe.
+
+If a future group member is visually consumed before its reducer cursor is reached, its formal historical visual MUST remain Presentation-suppressed by exact committed identity until that member is reduced. Intermediate `ApplyPresentationSnapshot` / HUD rebuilds must not make the already-consumed visual reappear. Suppression is Presentation-only state and must be cleared on exact member reduction or global reconciliation boundaries such as Skip, active-envelope failure reconciliation, envelope replacement/completion, battle replacement or Presentation-unavailable fallback.
 
 Each Envelope applies its own FinalSnapshot. Do not rebuild display state from latest Gameplay after playback catches up. Refresh only latest-revision live input bindings after the Controller reaches the newest matching `(BattleId, StateRevision)`.
 
@@ -80,10 +82,16 @@ The existing hardening applies identically to every playback unit:
 - cancellation that targets only the currently tracked unit;
 - Widget replacement/destruction that cannot cancel playback owned by a newer Widget.
 
+Normal group completion and group timeout are different terminal paths. A group timeout MUST NOT call the ordinary single-record/group-success completion path and MUST NOT reduce only the leader. After exact-token validation, timeout handling cancels the exact tracked group unit, cleans every child visual, discards `VisuallyPresented` ownership for that failed unit, and atomically reconciles the current `ActiveEnvelope` to its own `FinalSnapshot` while clearing all group suppression/handoff state owned by that envelope.
+
+Active-group timeout reconciliation MUST preserve already queued later Envelopes. Do not reuse a helper whose semantics reset the whole playback queue (for example a global collapse/skip helper) if that would discard valid backlog. After the current envelope is reconciled and marked complete, normal playback may continue with the next queued envelope.
+
+No intermediate ViewModel/HUD broadcast may occur between clearing failed-group suppression and applying the active envelope final snapshot if that gap could make a previously suppressed historical card reappear for a frame.
+
 Cancel/reconcile restores the historical ViewModel/sealed-snapshot contract. It must not commit Gameplay, fake normal completion or complete a stale token.
 
 ## Failure Separation
 
 `PresentationUnavailable` is a visible UI-only state. `ResolutionFault` is a Gameplay/framework resolution failure. They are not interchangeable.
 
-Presentation backlog, malformed/incomplete group metadata, group rejection, timeout, missing callback, Widget loss, skip or disablement causes Presentation fallback/catch-up only. These failures do not request a Gameplay `ResolutionFault` by themselves.
+Presentation backlog, malformed/incomplete/interfered group metadata, group rejection, timeout, missing callback, Widget loss, skip or disablement causes Presentation fallback/catch-up only. These failures do not request a Gameplay `ResolutionFault` by themselves.
