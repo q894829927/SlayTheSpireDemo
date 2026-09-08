@@ -7,6 +7,7 @@ Status:
 ```text
 PLANNED / OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
 COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
+G8 EARLY-INPUT / PRESENTATION-PIPELINING PHASE PLANNED /
 UI-FOUNDATION-FIRST / BEHAVIOR-SAFE STAGING /
 NO PRODUCTION IMPLEMENTATION YET / NOT VALIDATED / NOT SEALED
 ```
@@ -43,6 +44,8 @@ The implementation must also correct the UI architecture issues that caused the 
 - implicit recovery scope;
 - historical state and transient interaction/ownership lifecycle coupled too tightly.
 
+A later G8 phase builds on that foundation to permit a new legal player request while older explicitly NonBlocking visual work is still running.
+
 ## 2. Staging rule
 
 Every landed stage must preserve production behavior, not merely compile.
@@ -58,6 +61,8 @@ or any equivalent behavior gap.
 
 Infrastructure may land dormant before activation. Production ownership switches only after all required downstream consumers exist.
 
+G8 follows the same rule: early input may not be enabled until blocking interaction barriers and exact revision readiness are explicitly represented and tested.
+
 ## 3. Existing architecture to preserve
 
 Do not weaken these existing contracts while refactoring:
@@ -71,6 +76,8 @@ Do not weaken these existing contracts while refactoring:
 - Base Widget exact-token/deferred-callback/cancellation hardening remains the Controller-facing visual boundary;
 - no Effect/CardId-specific Presentation branches;
 - production `.uasset` / `.umap` changes are not required by this redesign.
+
+G8 additionally preserves strict serial authoritative Gameplay: a newer card request may be accepted only after the older Gameplay resolution has completed and the newer exact revision is genuinely request-eligible.
 
 ## 4. G0-A — Incremental ViewModel/HUD dirty propagation
 
@@ -846,6 +853,8 @@ related focused Controller/Presentation tests as needed
 
 No card/map production asset change is implied.
 
+G8 may additionally affect Controller scheduling/input-readiness code and focused tests around overlapping visual jobs. Exact production files should be selected only after G0-G7 has stabilized the ownership/transition boundaries.
+
 ## 16. Explicit non-goals
 
 This plan does not authorize:
@@ -859,6 +868,7 @@ This plan does not authorize:
 - keeping both position-handoff and ownership as competing authoritative systems;
 - treating request/resolver disappearance as lifecycle completion;
 - making ownership updates dependent on historical snapshot publication;
+- treating `Gameplay request-eligible` alone as enough to unlock input;
 - marking Build/Automation/PIE PASS without execution evidence.
 
 ## 17. Start condition
@@ -876,3 +886,194 @@ zero-member/no-history reconciliation
 ```
 
 Do not start visible Group playback first. The UI identity/reconciliation foundation must be stable before parallel playback is enabled.
+
+G8 does not block G0-G7. It begins only after the G0-G7 production path has fresh build/Automation/PIE evidence and the generic multi-instance transition/ownership system is stable enough to support overlapping jobs.
+
+## 18. G8 — Presentation Pipelining / Early Input
+
+### Goal
+
+Support Slay-the-Spire-style responsiveness without concurrent authoritative Gameplay resolutions:
+
+```text
+play A
+→ A Gameplay resolution completes
+→ exact next revision becomes legally interactive
+→ A still has NonBlocking visual work running
+→ player plays B
+→ A/B visuals overlap
+```
+
+Authoritative order remains:
+
+```text
+A Gameplay commit / triggers / resolution complete
+→ B request accepted
+→ B Gameplay commit / triggers / resolution
+```
+
+G8 changes Presentation scheduling and interaction readiness only.
+
+### 18.1 G8-A — Persistent PresentationPlaybackJob scheduler
+
+Replace the assumption that all visual lifetime is owned by one blocking active playback slot.
+
+Introduce behavior equivalent to:
+
+```cpp
+struct FPresentationPlaybackJob
+{
+    FPresentationPlaybackToken Token;
+    int64 BattleId;
+    int64 SourceResolutionId;
+    int64 SourceStateRevision;
+    EPresentationInteractionPolicy InteractionPolicy;
+    // visual children / ownership handles / completion state
+};
+```
+
+and:
+
+```cpp
+enum class EPresentationInteractionPolicy : uint8
+{
+    Blocking,
+    NonBlocking
+};
+```
+
+Requirements:
+
+- multiple NonBlocking jobs may coexist;
+- one job cannot overwrite another job's transition instance/state;
+- existing G4/G6 per-child transition engine is reused;
+- stale token callbacks affect only the exact job;
+- record/reducer completion and visual-job completion become distinct lifetimes.
+
+Initial G8-A may keep all existing jobs classified Blocking. The scheduler can land dormant before early input is enabled.
+
+### 18.2 G8-B — Explicit InteractionBarrier classification
+
+Define which Presentation must complete before the player has a trustworthy interaction surface.
+
+A barrier is semantic Presentation policy, not CardId-specific logic.
+
+Likely blocking examples:
+
+```text
+Draw/Hand catch-up needed before a Selection candidate set is usable
+pending Selection presentation
+pending target-choice presentation
+current-revision visual transfer that owns the exact card/target needed for the next interaction
+terminal/recovery boundaries
+```
+
+Candidate NonBlocking examples:
+
+```text
+damage numbers
+hit flashes
+late played-card pile cleanup
+a card already detached from Hand flying to its destination
+pure cosmetic status VFX that does not define the next decision surface
+```
+
+Classification must default conservatively. Unknown/new Presentation types remain Blocking until explicitly proven safe.
+
+### 18.3 G8-C — InteractionReadyWatermark
+
+Introduce a runtime-comparable input-readiness watermark separate from Selection ownership completion watermark.
+
+Behavior equivalent to:
+
+```text
+InteractionReady(BattleId, StateRevision) =
+    authoritative Gameplay is request-eligible for exact revision
+    AND read/display interaction state corresponds to exact revision
+    AND every InteractionBarrier required for that revision is cleared
+```
+
+Input unlock is driven by this watermark, not by generic Presentation-idle state and not by Gameplay eligibility alone.
+
+Requirements:
+
+- stale readiness from revision R cannot unlock R+1;
+- a pending Selection/target boundary remains blocking even if Gameplay has already produced the request;
+- clearing an unrelated old NonBlocking job is not required for readiness;
+- reaching InteractionReady is monotonic only within the exact scoped BattleId/revision lifecycle and is invalidated by battle/revision replacement according to normal rules.
+
+### 18.4 G8-D — Enable cross-resolution NonBlocking overlap
+
+After scheduler + barriers + readiness watermark are validated, enable a narrow set of proven-safe jobs as NonBlocking.
+
+Target flow:
+
+```text
+Resolution A reducer/read state reaches interactive revision R
+→ required barriers for R clear
+→ InteractionReady(R)
+→ Hand/input unlock
+→ A cosmetic job continues
+→ player submits B
+→ Resolution B begins
+```
+
+Visual ownership must remain exact:
+
+```text
+A owner = Transition    // older job still active
+B/C/D owner = Hand      // current interactive Hand
+```
+
+Older visual jobs must not steal current Hand Widget identity or block unrelated current Hand cards.
+
+Enable categories incrementally. Do not convert every animation to NonBlocking in one patch.
+
+### 18.5 G8-E — Recovery, skip and replacement hardening
+
+Define exact behavior for overlapping jobs under:
+
+```text
+job timeout/failure
+active-envelope recovery
+global Skip
+Widget replacement
+battle replacement
+PresentationUnavailable
+```
+
+Requirements:
+
+- battle replacement cancels all older-battle jobs/barriers;
+- stale job callbacks cannot complete a newer job/barrier;
+- failure of an old NonBlocking cosmetic job does not relock already-ready current input;
+- failure of a current-revision Blocking job follows explicit barrier recovery and cannot silently unlock an incomplete decision surface;
+- global Skip/collapse leaves one coherent displayed authoritative state and no ghost transition visuals;
+- ownership reconciliation remains scoped by exact BattleId/RuntimeId/lifecycle identity.
+
+### 18.6 G8 acceptance gates
+
+Automated/focused coverage must prove:
+
+- A Gameplay resolution is complete before B request is accepted;
+- B may be submitted while an explicitly NonBlocking A visual job remains alive;
+- A/B visual jobs can coexist without a single global animation owner;
+- input remains locked while any exact current-revision InteractionBarrier remains;
+- Draw→Selection and target-choice boundaries still block until their correct visual surface exists;
+- stale InteractionReady watermark cannot unlock a newer revision;
+- older Transition-owned card visuals do not re-enter or corrupt the current Hand;
+- old job callback cannot finish/cancel a newer job;
+- old NonBlocking job failure cannot relock an already-ready newer revision;
+- skip/recovery/battle replacement leaves no ghost visuals or permanent input lock;
+- Gameplay/event/trigger/reducer order is identical to authored serial behavior.
+
+Manual PIE must additionally demonstrate the intended feel:
+
+```text
+play A
+→ while A's proven-safe tail animation is visibly still running
+→ click/play B successfully
+→ both visuals remain coherent
+```
+
+The first G8 release should keep the NonBlocking allowlist narrow and conservative. Responsiveness must never come from simply setting `bInputLocked = false` whenever Gameplay reports request eligibility.
