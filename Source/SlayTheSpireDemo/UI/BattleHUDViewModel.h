@@ -56,6 +56,8 @@ public:
 	bool IsPendingCardSelectionCandidate(int32 RuntimeId) const;
 	bool SubmitPendingCardSelectionByRuntimeIds(const TArray<int32>& RuntimeIds);
 	bool SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId);
+	bool CanConfirmPendingCardSelection() const;
+	bool ConfirmPendingCardSelection();
 	bool IsPendingCardSelectionRuntimeIdSelected(int32 RuntimeId) const;
 	int32 GetPendingCardSelectionSelectedCount() const;
 	void ClearPendingCardSelectionInputState();
