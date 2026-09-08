@@ -225,40 +225,6 @@ When a meaningful phase changes:
 - keep status consistent across the relevant documents;
 - do not add daily implementation trivia to this root file.
 
-## Multi-Agent Workflow
-
-The primary Sol agent remains the sole owner of:
-
-- architecture;
-- phase sequencing and predecessor gates;
-- edit boundaries;
-- cross-module decisions;
-- integration and conflict resolution;
-- acceptance claims and final sealing.
-
-Project-scoped custom agents are defined under `.codex/agents/`:
-
-- `implementation_worker`: primary bounded implementation worker for an already-approved scope. It may modify C++, Blueprint/UMG, tests or documentation only within the explicit edit boundary assigned by Sol;
-- `repo_explorer`: read-only investigator for a concrete codebase, asset, contract or regression-surface unknown;
-- `test_runner`: build, Automation, log and regression validation worker for an explicitly assigned validation scope;
-- `architecture_reviewer`: independent read-only reviewer of affected architectural invariants and regression risk.
-
-All project custom subagents use `gpt-5.6-luna`. Reasoning effort is role-specific: implementation/review use higher effort, exploration/testing use lower effort. The project agent concurrency limit is intentionally low to reduce duplicated context and quota consumption.
-
-### Agent invocation policy
-
-Use subagents only when the work has a concrete bounded scope. Do not automatically start every available role, and do not use an explorer to repeat repository facts already established by current documents or a trustworthy checkpoint.
-
-Sol must assign each implementation worker an explicit ownership boundary covering files, assets or behavior. Never allow two write-capable agents to modify overlapping files or the same behavioral ownership boundary concurrently. Read-only investigation and review may run in parallel only when they have distinct, useful questions.
-
-An implementation worker may continue across adjacent edits while the approved boundary and contracts remain unchanged. It must return architectural ambiguity, cross-module ownership changes or requests outside that boundary to Sol rather than expanding scope independently.
-
-Use `repo_explorer` only when a concrete unknown would materially affect implementation or review. Use `architecture_reviewer` after a meaningful coherent change set or when architectural risk warrants independent review. Use `test_runner` for a meaningful validation scope rather than repeatedly rerunning unchanged checks after every small edit.
-
-Subagent completion is not acceptance. Sol must inspect and integrate the result, resolve conflicts, and decide whether the required build, Automation, Blueprint compile/save, PIE, packaged-game or other acceptance evidence actually satisfies the applicable contract.
-
-A subagent does not own architecture. If its task requires changing authoritative state ownership, `BattleActionQueue` semantics, Modifier/Event/Trigger contracts, Gameplay/Presentation boundaries, Presentation Record/Envelope semantics or phase ordering, it must return the issue to Sol instead of redesigning independently.
-
 ### Goal checkpoint policy
 
 When work must pause, finish the smallest coherent edit when safe, leave the working tree resumable, and update `docs/CODEX_GOAL_CHECKPOINT.md` with the current HEAD, exact completed state, next action, known blockers and validation already performed. On resume, treat the checkpoint as navigation aid and verify it against the working tree and durable source documents before relying on it.
