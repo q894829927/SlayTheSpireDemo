@@ -10,61 +10,49 @@ NARROW COMPATIBILITY AMENDMENT / EFFECTIVE
 
 This amendment supersedes only the dynamic-description requirements in section 15 of `CardExpansionWave1CC0SelectExhaustGeneralization.md`.
 
-## Why the amendment is required
+## Default contract
 
-The sealed Burning Pact asset already exists on `main` and its current description hard-codes the single-card wording rather than referencing new dynamic Select-Exhaust arguments.
-
-The existing card-text validator deliberately rejects an Effect that declares a dynamic argument which the card description does not use. Therefore making newly-added description arguments mandatory by default would invalidate the existing Burning Pact asset unless that binary asset were resaved.
-
-C0 must not require a binary migration merely to add optional authored text values.
-
-## Amended contract
-
-`USelectExhaustHandCardEffect` exposes two optional dynamic-description argument names:
-
-```text
-DescriptionArgumentName
-SelectionModeDescriptionArgumentName
-```
-
-### Count argument
-
-```text
-DescriptionArgumentName == None
-→ explicit dynamic-count opt-out / legacy-compatible mode
-→ no count argument is declared or contributed
-
-DescriptionArgumentName != None
-→ declare that semantic argument
-→ Base card contributes BaseSelectionCount
-→ Upgraded card contributes UpgradedSelectionCount
-→ existing card-level text validation requires the description template to use the declared argument
-```
-
-### Selection-mode phrase argument
-
-```text
-SelectionModeDescriptionArgumentName == None
-→ explicit dynamic-mode-text opt-out / legacy-compatible mode
-→ no mode-text argument is declared or contributed
-
-SelectionModeDescriptionArgumentName != None
-→ declare that semantic argument
-→ Base card uses BaseSelectionMode
-→ Upgraded card uses UpgradedSelectionMode
-→ Random contributes localized text "随机消耗"
-→ Player contributes localized text "消耗"
-→ existing card-level text validation requires the description template to use the declared argument
-```
-
-The two argument names are independent. A card may opt into either one or both. Existing duplicate-description-argument validation still applies, so the two semantic names must not collide when both are authored.
-
-For new Blueprint-authored cards that want count and selection-mode text to change across upgrade, the intended configuration is:
+`USelectExhaustHandCardEffect` exposes two dynamic-description argument names with semantic defaults:
 
 ```text
 DescriptionArgumentName = Exhaust
 SelectionModeDescriptionArgumentName = ExhaustMode
-Description = "{ExhaustMode}{Exhaust}张牌。"
+```
+
+A newly-created Effect therefore starts in a directly usable state and does not require authors to replace `None` before using dynamic description text.
+
+### Count argument
+
+```text
+DescriptionArgumentName = Exhaust
+→ Base card contributes BaseSelectionCount
+→ Upgraded card contributes UpgradedSelectionCount
+→ description template references {Exhaust}
+```
+
+Authors may explicitly clear `DescriptionArgumentName` to `None` only when intentionally opting out of dynamic count text for legacy content.
+
+### Selection-mode phrase argument
+
+```text
+SelectionModeDescriptionArgumentName = ExhaustMode
+→ Base card uses BaseSelectionMode
+→ Upgraded card uses UpgradedSelectionMode
+→ Random contributes localized text "随机消耗"
+→ Player contributes localized text "消耗"
+→ description template references {ExhaustMode}
+```
+
+Authors may explicitly clear `SelectionModeDescriptionArgumentName` to `None` only when intentionally opting out of dynamic mode text for legacy content.
+
+The two semantic names remain independently authorable. Existing duplicate-description-argument validation applies, so they must not collide when both are enabled.
+
+## Intended authoring
+
+For normal new Select-Exhaust content, no manual argument-name setup is required. The intended description template is:
+
+```text
+{ExhaustMode}{Exhaust}张牌。
 ```
 
 Example authored gameplay values:
@@ -85,6 +73,19 @@ Upgraded → "消耗1张牌。"
 
 This does not introduce sentinel semantics for gameplay values. `BaseSelectionMode`, `BaseSelectionCount`, `UpgradedSelectionMode`, and `UpgradedSelectionCount` remain explicit authored gameplay values exactly as locked by C0.
 
+## Legacy content
+
+Legacy hard-coded descriptions can still opt out deliberately by authoring:
+
+```text
+DescriptionArgumentName = None
+SelectionModeDescriptionArgumentName = None
+```
+
+`None` is therefore an explicit authored compatibility choice, not the default for a newly-created Effect.
+
+The existing Burning Pact binary asset is not modified by this text/code amendment. If that asset is later re-authored to use the semantic defaults, its description template should also be updated in Unreal to reference `{Exhaust}` and `{ExhaustMode}` as appropriate.
+
 ## C0-8 stable-order completion note
 
 No new generic SelectionResolver ordering rule is added for C0-8.
@@ -102,11 +103,11 @@ Random
 
 This keeps generic Selection capable of supporting a future consumer whose selected-object order is semantically meaningful, while Select-Exhaust remains set-style and deterministic.
 
-Existing focused Automation coverage asserts the Player canonical order and Random canonical Exhaust order. The C0 description coverage also verifies Base/Upgraded count and selection-mode text resolution. These tests require local execution before C0 can be marked validated or sealed.
+Existing focused Automation coverage asserts the Player canonical order and Random canonical Exhaust order. The C0 description coverage also verifies semantic default argument names plus Base/Upgraded count and selection-mode text resolution. These tests require local execution before C0 can be marked validated or sealed.
 
 ## Binary scope
 
-This amendment does not authorize or require changes to:
+This amendment does not authorize changes to:
 
 ```text
 Content/SlayTheSpireDemo/Data/Cards/Ironclad/Skills/DA_Card_BurningPact.uasset
