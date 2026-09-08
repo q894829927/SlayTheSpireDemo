@@ -97,9 +97,31 @@ selection boundary/revision
 RuntimeId
 owner
 Pending vs Confirmed phase
+completion watermark
 ```
 
 A stale prior selection/battle callback must not mutate newer ownership merely because RuntimeId matches.
+
+### Confirmed lifecycle completion watermark
+
+A Confirmed lifecycle MUST have a runtime-comparable completion watermark. Clearing the pending request/resolver is **not** sufficient, because normal confirmation clears the request before its continuation Presentation is displayed.
+
+Behavior must be equivalent to one of these modes:
+
+```text
+Recorded Presentation mode
+→ watermark = owning/continuation ResolutionId
+→ reached only when that Resolution is Presentation-complete,
+  collapsed/reconciled to its FinalSnapshot, or otherwise formally completed
+
+Direct/no-history mode
+→ watermark = authoritative post-confirm StateRevision/baseline edge
+→ reached only when that post-confirm baseline is the displayed state
+```
+
+The exact storage type may be a tagged/optional struct, but it must preserve `(BattleId, SelectionGeneration, boundary/revision)` scope and distinguish recorded-resolution completion from direct-state completion.
+
+A selected RuntimeId may be cleared earlier if the displayed Hand already proves it was consumed. The watermark is required specifically for the fallback case where the RuntimeId still exists in Hand and Presentation needs to know whether any destination outcome can still arrive.
 
 ### Formal Hand slot stability while owner != Hand
 
@@ -149,6 +171,38 @@ The generic transition presenter may transactionally reparent/take the exact vis
 
 Do not silently reuse `OV_PlayArea` as SelectionArea.
 
+## Ownership State Channel and Snapshot Ordering
+
+Card Presentation ownership is transient Presentation state with its **own** mutation/dirty channel. It MUST NOT rely on `FPresentationStateSnapshot` publication as its only notification source.
+
+Behavior must provide an event/change descriptor equivalent to:
+
+```text
+OnCardPresentationOwnershipChanged
+or
+TransientPresentationDirty(CardOwnership, RuntimeIds...)
+```
+
+The exact API may differ, but these changes must update affected surfaces immediately even when historical state did not change:
+
+```text
+Hand → SelectionArea(Pending)       // select click
+SelectionArea → Hand                // deselect
+Pending → Confirmed                 // Confirm
+SelectionArea → Transition          // playback accepted
+Transition → ConsumedPendingReducer // group child completion
+```
+
+Ownership state may live inside `UBattleHUDViewModel` or in a dedicated transient Presentation state object owned beside it. Either way:
+
+- it is not copied from `FPresentationStateSnapshot`;
+- normal `ApplyPresentationSnapshot()` MUST NOT overwrite/reset ownership merely because historical fields or revision changed;
+- snapshot application first copies historical display state, then reconciles ownership against the new displayed state and completion watermarks;
+- ownership reconciliation produces its own ownership dirty notification;
+- if historical and ownership changes happen in one operation, publish them coherently/batched so Hand and SelectionArea never observe a transient duplicate-visible or ghost state.
+
+Formal Hand presentation must listen to ownership dirty changes because visibility/input can change without Hand array changes. SelectionArea presentation must listen to the same lifecycle channel because its visuals can appear/disappear without any historical snapshot publication.
+
 ## Ownership Reconciliation
 
 Presentation ownership MUST be recoverable even when animation never starts or fails.
@@ -161,13 +215,22 @@ RuntimeId absent from displayed Hand
 → clear stale SelectionArea/Transition/Consumed ownership
 ```
 
+For a RuntimeId that still exists in Hand, recovery to `Hand` is permitted only when all are true:
+
 ```text
-RuntimeId still in displayed Hand
-AND confirmed selection lifecycle definitively ended
-AND no destination ownership remains pending
-→ degradation recovery
+confirmed lifecycle completion watermark is reached
+AND no destination ownership/transition remains pending
+AND entry still belongs to the exact BattleId + SelectionGeneration + boundary
+```
+
+Then:
+
+```text
+degradation recovery
 → owner = Hand
 ```
+
+Request/resolver disappearance alone MUST NOT satisfy the watermark.
 
 This reconciliation is required for Widget decline, unsupported destination, malformed/zero-member continuation, no-history/direct-baseline mode, timeout, skip/collapse, Widget replacement and battle replacement.
 
@@ -271,6 +334,6 @@ Energy/cost remain valid ImmediatePreview DTO fields for Gameplay-owned legality
 
 Inspection and Preview are separate lifecycles. Do not reuse combatant/status inspection events as PreviewTarget ownership merely because hover may drive both.
 
-On BattleId/StateRevision change, clear ordinary card selection, legal targets, PreviewTarget and Preview according to their own lifecycle. Card-selection Presentation ownership follows its explicit BattleId/SelectionGeneration reconciliation contract rather than being implicitly destroyed by every historical field update.
+On BattleId/StateRevision change, clear ordinary card selection, legal targets, PreviewTarget and Preview according to their own lifecycle. Card-selection Presentation ownership follows its explicit BattleId/SelectionGeneration/completion-watermark reconciliation contract rather than being implicitly destroyed by every historical field update.
 
 On accepted authoritative ordinary-card submission, restore/clear pre-commit card-face Preview before committed playback takes visual ownership.
