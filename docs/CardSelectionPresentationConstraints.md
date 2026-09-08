@@ -5,7 +5,8 @@ Date: **2026-09-08**
 Status:
 
 ```text
-PARTIALLY IMPLEMENTED / PARALLEL GROUP REDESIGN AUTHORIZED / GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
+PARTIALLY IMPLEMENTED / PARALLEL GROUP REDESIGN CONTRACTS HARDENED /
+GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
 ```
 
 Scope: define the shared Native HUD / Presentation contract for player card-selection interactions before implementation continues.
@@ -103,6 +104,53 @@ shared selected-card transition
 ```
 
 The Effect does not choose or trigger an animation directly.
+
+### 4.1 Confirmed source handoff is a lease
+
+On explicit Confirm, Selection freezes an exact Presentation source handoff for every confirmed RuntimeId. Conceptually:
+
+```text
+RuntimeId
+→ confirmed source position / transform data
+→ outstanding handoff lease
+```
+
+This handoff lease is independent from group suppression and from reducer state. It survives formal Hand rebuilds until an actual destination transition successfully takes visual ownership of that exact RuntimeId.
+
+A handoff MUST NOT be consumed merely because:
+
+- group metadata validates;
+- group preflight starts;
+- one or more group children prepare successfully;
+- another child fails preparation;
+- the Base Widget declines group playback;
+- Controller marks the group sequentially disabled.
+
+For group playback, all children are prepared transactionally. Only after every child is valid, the hardened Group playback unit is accepted, and durable group suppression owns continuity may the group consume/transfer all relevant source handoff leases.
+
+For sequential SingleRecord playback, only the exact member whose generic destination transition successfully begins may consume its own handoff. Remaining confirmed members retain theirs.
+
+### 4.2 Sequential fallback must preserve confirmed positions
+
+Group degradation is not allowed to fall back to the old broken visual behavior.
+
+If grouped playback is unavailable or fails before accepted ownership:
+
+```text
+A/B/C confirmed
+→ all handoff leases remain
+→ A SingleRecord starts from confirmed A position
+→ consume only A handoff
+→ reducer/HUD may rebuild Hand
+→ B/C formal Widgets are restored to their exact confirmed source positions
+→ B SingleRecord starts from confirmed B position
+→ consume only B handoff
+→ ...
+```
+
+This restoration is generic Selection source-handoff behavior, not Effect-specific animation and not a second destination transition implementation.
+
+A formal Hand rebuild MUST preserve the frozen child/slot structure while applying outstanding handoff positioning. The handoff may only disappear when the exact destination transition accepts ownership or a global Presentation reconciliation invalidates the Selection visual lifecycle.
 
 ## 5. Destination transitions are generic, not Effect-specific
 
@@ -220,15 +268,70 @@ group member visual starts
 → publish/reconcile snapshot
 ```
 
-Suppression is transient Presentation state only. It does not remove the card from Gameplay or rewrite the historical snapshot. Formal Hand rendering MUST honor the suppression set so `RefreshHand()` cannot visibly recreate an already-consumed future group member.
+Suppression is transient Presentation state only. It does not remove the card from Gameplay or rewrite the historical snapshot.
 
-Suppression identity MUST be exact and battle/resolution scoped. For card Selection it is keyed by the exact selected RuntimeId plus the active group/member ownership; CardId or Hand index is insufficient.
+### 7.2 Suppressed Hand members retain formal slots
+
+For the initial grouped implementation, suppression MUST preserve exact historical Hand structure:
+
+```text
+one frozen Hand entry
+↔ one formal HB_Hand child at the same index
+```
+
+A suppressed future member therefore remains a formal card Widget with:
+
+```text
+Visibility = Hidden
+Input = disabled
+Slot/index = retained
+```
+
+It MUST NOT be omitted from `RefreshHand()`, removed from `HB_Hand`, or set `Collapsed` while that frozen Hand entry still exists. This preserves existing exact historical Hand lookups that depend on child count and index matching the frozen ViewModel Hand.
+
+Using `Collapsed` or skipping creation is permitted only after a separate architecture change explicitly replaces all child-count/index-dependent Hand contracts and tests; it is not part of this grouped Selection implementation.
+
+### 7.3 Future-member interference preflight
+
+Chronological reducer preflight is necessary but not sufficient for non-contiguous visual lookahead.
+
+Before co-presenting a group, Controller MUST inspect interleaved ungrouped Records in the sealed Envelope for direct interaction with any group member whose own reducer Record lies in the future.
+
+For the first implementation, the group is ineligible if an interleaved ungrouped exact-card Record directly moves, plays, replaces, or otherwise modifies one of those future member RuntimeIds. At minimum:
+
+```text
+CardZoneChanged with future-member RuntimeId
+→ interference
+
+CardPlayed with future-member RuntimeId
+→ interference
+```
+
+Future exact-card Presentation record types must either participate in the same interference predicate or conservatively disable group lookahead until their semantics are classified.
+
+Example:
+
+```text
+A Hand→Exhaust [Group G]
+B Hand→Discard [ungrouped]
+B Discard→Hand [ungrouped]
+B Hand→Exhaust [Group G]
+```
+
+Even if dry-run reduction is completely valid, Group G MUST degrade to sequential playback because visually consuming B before the interleaved B records would be observably unsafe.
+
+Ungrouped records that do not touch future member identity, such as unrelated Damage/Status/Energy or another card's zone record, do not by themselves disable the group.
+
+### 7.4 Suppression cleanup boundaries
+
+Suppression identity MUST be exact and battle/resolution scoped. For card Selection it is keyed by the exact selected RuntimeId plus active group/member ownership; CardId or Hand index is insufficient.
 
 All retained group suppression MUST be cleared on global reconciliation boundaries, including:
 
 - exact member reduction for that member;
 - sequential fallback before any group visual ownership is accepted;
-- Skip / collapse / timeout catch-up as applicable;
+- group timeout active-envelope reconciliation;
+- Skip / global collapse;
 - Widget loss/replacement;
 - Envelope completion/replacement;
 - battle replacement;
@@ -266,7 +369,7 @@ The implementation MUST NOT add:
 
 The selected-card move and the played-card cleanup are separate committed facts and must remain separate generic Presentation transitions.
 
-## 9. Gameplay / Presentation separation
+## 9. Gameplay / Presentation separation and failure reconciliation
 
 Gameplay mutation MUST remain independent of animation completion.
 
@@ -281,6 +384,27 @@ Gameplay commits validated Selection continuation
 Animation callbacks MUST NOT perform authoritative Hand/DrawPile/Discard/Exhaust mutation.
 
 Presentation failure or skip/catch-up may reconcile visuals according to existing policy, but MUST NOT invent a different Gameplay result.
+
+### 9.1 Group timeout is not normal completion
+
+A timed-out Group playback unit MUST NOT be treated as if its leader or the whole group completed normally.
+
+Required timeout path:
+
+```text
+validate exact active Group token
+→ cancel exact Base-Widget playback unit
+→ clean every group child visual
+→ do not mark group members VisuallyPresented
+→ atomically clear failed-group suppression/handoff ownership
+→ reconcile current ActiveEnvelope directly to its own FinalSnapshot
+→ mark that envelope Presentation-complete
+→ preserve and continue later queued Envelopes
+```
+
+The timeout path MUST NOT call a normal `CompleteActiveRecord()`-style routine that reduces only the first member, and MUST NOT reuse a global collapse/skip helper if that helper discards later valid Presentation backlog.
+
+Clearing suppression and applying the active envelope final snapshot must not emit an intermediate HUD refresh that could reveal a previously suppressed historical member for one frame.
 
 ## 10. Interaction boundary and input-event consumption
 
@@ -382,11 +506,14 @@ The implementation SHOULD proceed through separable compile/test stages and must
 1. explicit group metadata and writer-scoped correlation for direct Selection continuation Actions only;
 2. complete-group validation with exact-one-eligible-record-per-selected-member eligibility;
 3. Controller-owned non-contiguous group lookahead without reducer reordering;
-4. visually-consumed-but-not-reduced suppression across intermediate historical snapshots;
-5. one `UBattleHUDWidgetBase` tracked playback-unit hardening path shared by Record and Group playback;
-6. one generic N-child card-zone transition engine used by both SingleRecord and grouped playback;
-7. Selection layer supplying exact RuntimeId source handoff only;
-8. focused Automation plus manual PIE only for the genuinely visual concurrency/no-flash behavior.
+4. future-member interference preflight for interleaved exact-card Records;
+5. visually-consumed-but-not-reduced suppression across intermediate historical snapshots;
+6. retained formal Hand slots using `Hidden`, never omitted/`Collapsed`, for still-historical suppressed members;
+7. one `UBattleHUDWidgetBase` tracked playback-unit hardening path shared by Record and Group playback;
+8. dedicated group-timeout active-envelope reconciliation that preserves later backlog;
+9. one generic N-child card-zone transition engine used by both SingleRecord and grouped playback;
+10. Selection layer supplying exact RuntimeId source handoff leases that survive group failure and Hand rebuild until actual transition ownership;
+11. focused Automation plus manual PIE only for the genuinely visual concurrency/no-flash behavior.
 
 The phase MUST NOT:
 
@@ -394,7 +521,10 @@ The phase MUST NOT:
 - make trigger reaction Actions inherit Selection group metadata;
 - add Effect/Card-specific animation branches;
 - let Widget code scan future Envelope Records;
-- preserve the old per-Record deferred/reposition patch as the multi-select solution.
+- omit/Collapse still-historical suppressed Hand children;
+- consume confirmed handoff during partial group preparation;
+- use the old broken sequential path as an acceptable degradation behavior;
+- preserve an ad-hoc per-Record deferred timer/retry patch as the multi-select concurrency solution.
 
 ## 15. Acceptance gates
 
@@ -409,10 +539,15 @@ Implementation is not complete until focused coverage and PIE demonstrate at min
 - Gameplay, event dispatch, `PresentationSequence` and reducer order remain canonical;
 - a valid multi-member Selection group starts its member destination animations together rather than `N × duration` serial playback;
 - non-contiguous group lookahead co-presents only exact tagged members and later still presents interleaved ungrouped Records;
+- an interleaved exact-card Record touching a future group member disables group co-presentation even when chronological reducer dry-run succeeds;
 - already visually consumed future members remain suppressed through intermediate `ApplyPresentationSnapshot` / Hand rebuilds until their own reducer record is consumed;
-- incomplete, duplicate or otherwise malformed group membership degrades to normal sequential playback without Gameplay fault;
+- a suppressed still-historical Hand member retains one formal `HB_Hand` child/slot at the exact frozen index, uses `Hidden`, and cannot receive input;
+- incomplete, duplicate or otherwise malformed group membership degrades to sequential playback without Gameplay fault;
 - one selected object producing zero eligible members or more than one matching eligible member disables grouped playback for that group;
 - `ExpectedMemberCount <= 1` remains normal SingleRecord Controller playback;
+- if the second/Nth group child fails preparation, all prepared group children roll back, no handoff is consumed, no group suppression remains, and sequential A/B/C each starts from its own confirmed Selection position across Hand rebuilds;
+- a sequential member consumes only its own handoff after its exact generic destination transition actually starts;
+- Group timeout cancels the exact playback unit, cleans all children, performs active-envelope final-snapshot reconciliation, clears group transient state atomically, and preserves later queued Envelopes;
 - Record and Group callbacks share the same base-Widget exact-token/deferred-completion/cancellation hardening and stale callbacks cannot cross unit ownership;
 - the Selection animation path is reusable and contains no Warcry/CardId/Effect-specific branch;
 - Warcry's one-member Hand→DrawPile uses the same generic transition child engine without requiring Group playback;
