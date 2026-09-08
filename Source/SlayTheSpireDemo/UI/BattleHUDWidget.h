@@ -262,7 +262,7 @@ protected:
 	}
 
 	void RefreshHUDFromViewModel();
-	void RefreshHand();
+	virtual void RefreshHand();
 	void RefreshCombatants();
 	void RefreshStatusRows();
 	void RefreshEnergy();
