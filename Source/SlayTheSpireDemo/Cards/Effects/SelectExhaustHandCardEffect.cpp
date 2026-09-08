@@ -190,13 +190,13 @@ FText USelectExhaustHandCardEffect::GetAutoDescriptionFormat(const FCardEffectPr
 		return NSLOCTEXT(
 			"CardEffect",
 			"SelectExhaustRandomDescriptionFormat",
-			"随机消耗 {Count} 张手牌。");
+			"消耗 {Count} 张随机手牌。");
 	case ESelectExhaustSelectionMode::Player:
 	default:
 		return NSLOCTEXT(
 			"CardEffect",
 			"SelectExhaustPlayerDescriptionFormat",
-			"选择 {Count} 张手牌消耗。");
+			"消耗 {Count} 张手牌。");
 	}
 }
 

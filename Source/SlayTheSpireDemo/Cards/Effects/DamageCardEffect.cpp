@@ -110,7 +110,7 @@ FText UDamageCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContex
 			NSLOCTEXT(
 				"CardEffect",
 				"DamageMultipleDescriptionFormat",
-				"造成 {Value} 点伤害，共 {Hits} 次。"),
+				"造成 {Value} 点伤害 {Hits} 次。"),
 			FormatArguments);
 	}
 

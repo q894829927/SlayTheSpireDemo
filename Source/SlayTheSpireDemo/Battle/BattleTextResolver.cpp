@@ -251,7 +251,10 @@ namespace
 		}
 		if (Card->ResolveDestination() == ECardDestination::Exhaust)
 		{
-			Lines.Add(NSLOCTEXT("CardDescription", "Exhaust", "消耗。"));
+			const FText ExhaustText = NSLOCTEXT("CardDescription", "Exhaust", "消耗。");
+			Lines.Add(bRich
+				? FText::Format(FText::AsCultureInvariant(TEXT("<Exhaust>{0}</>")), ExhaustText)
+				: ExhaustText);
 		}
 		return FText::Join(FText::FromString(TEXT("\n")), Lines);
 	}

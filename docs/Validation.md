@@ -4,6 +4,8 @@ This document records trusted historical validation evidence and the rules for m
 
 ## Automatic Card Descriptions — 2026-09-08
 
+Follow-up Exhaust color change: card-final Exhaust RichDescription now uses the `Exhaust` style in `DT_BattleCardTextStyles`, sRGB `#EFC851` / RGB(239, 200, 81). UE tool save and readback confirmed linear RGBA approximately (0.863157, 0.577580, 0.082283, 1), with Default font/size preserved. Standard project generation and Development Editor build PASS; affected `SlayTheSpireDemo.Cards.AutomaticDescription.CompositionAndPreview` PASS (1 passed, 0 failed, 0 warnings). Report: `Saved/AutomationReports/ExhaustKeywordColor/index.json`. Plain descriptions remain markup-free. Visual PIE not performed; minimal user check is SeeingRed's final “消耗。” in Native `L_BattleTest`, expected gold with unchanged size.
+
 User-requested refactor, detailed contract: `docs/AutomaticCardDescriptions.md`. Standard UE 5.8 project generation and Development Editor Win64 build PASS after user closed Live Coding and an explicit BattleManager include fixed independent GainEnergyCardEffect compilation. Final build log: `Saved/Logs/AutomaticCardDescriptionsBuild.log`.
 
 Focused Automation: `Cards.AutomaticDescription`, `UIA3.RichCardTextBaseline`, `CardExpansion.Wave1CC0.Description`, `Phase6UIA3.DynamicText`, `UIA3.CardPlayedRichHandoff` (all prefixed `SlayTheSpireDemo.`): **18 passed, 0 failed, 0 warnings**. Evidence: `Saved/AutomationReports/AutomaticCardDescriptions/index.json`.

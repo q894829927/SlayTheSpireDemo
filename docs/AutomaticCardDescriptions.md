@@ -64,6 +64,8 @@
 
 Effect 只贡献自身语句；卡牌 resolver 按数组顺序组合并追加本牌“消耗。”。同一语句内的视觉自动折行由 UMG 可用宽度控制，不能为修复排版在 Effect 中插入硬换行或改写数值。
 
+本牌末尾“消耗。”的富文本使用 `DT_BattleCardTextStyles` 的 `Exhaust` 行，颜色为 sRGB `RGB(239, 200, 81)` / `#EFC851`，不透明。DataTable 的 LinearColor 存储经过 sRGB→线性转换的值，字体及字号沿用 Default 行。纯文本保持“消耗。”，仅 RichDescription 加 `<Exhaust>…</>`，并保留本地化 FText 历史。消耗其他手牌的 Effect 句子保持原有颜色。
+
 ## AUTOMATED GATES
 
 1. 按项目标准先生成项目文件，再构建 Development Editor Win64。
