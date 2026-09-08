@@ -102,6 +102,14 @@ protected:
 	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
 	virtual void NativeOnBattleHUDViewModelChanged();
 
+	// Exact dirty payload for the Native change currently being dispatched. It is
+	// scoped to the synchronous Native delegate callback and is never sourced from
+	// mutable Blueprint OnChanged listener ordering.
+	EBattleHUDDirtyFlags GetCurrentNativeViewModelDirtyFlags() const
+	{
+		return CurrentNativeViewModelDirtyFlags;
+	}
+
 	// Development diagnostic only. Called when a presentation Record is declined
 	// by the native/Blueprint playback surface before Controller immediate fallback.
 	// It must not mutate ViewModel, Gameplay, presentation state or Widget ownership.
@@ -113,8 +121,7 @@ protected:
 	void BP_OnViewModelChanged();
 
 private:
-	UFUNCTION()
-	void HandleViewModelChanged();
+	void HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags);
 
 	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);
 	void CancelTrackedPresentationPlayback();
@@ -122,6 +129,7 @@ private:
 
 	bool bHasTrackedPresentationPlayback = false;
 	FPresentationPlaybackToken TrackedPresentationPlaybackToken;
+	EBattleHUDDirtyFlags CurrentNativeViewModelDirtyFlags = EBattleHUDDirtyFlags::All;
 
 	// Prevents a normal completion/explicit Skip from being interpreted as a
 	// fail-safe visual cancellation when Controller state updates synchronously
