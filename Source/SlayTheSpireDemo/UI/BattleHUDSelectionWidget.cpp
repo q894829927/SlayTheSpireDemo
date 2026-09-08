@@ -4,6 +4,9 @@
 #include "BattleHUDViewModel.h"
 #include "../Battle/BattleSelectionRequest.h"
 #include "Components/Button.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/Border.h"
+#include "Components/CanvasPanel.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -45,6 +48,8 @@ void UBattleHUDSelectionWidget::NativeConstruct()
 
 void UBattleHUDSelectionWidget::NativeDestruct()
 {
+	SetSelectionLayoutActive(false);
+	ResetSharedSelectionCardVisuals();
 	if (bSelectionAwareDelegatesBound)
 	{
 		if (IsValid(Btn_Confirm))
@@ -71,7 +76,99 @@ void UBattleHUDSelectionWidget::NativeTick(
 	float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	UpdateSelectionCardPositions();
 	UpdateSharedHandToDrawPileAnimation(InDeltaTime);
+}
+
+bool UBattleHUDSelectionWidget::SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp)
+{
+	const bool bAccepted = Super::SelectCard(RuntimeId, bAllowFastPresentationCatchUp);
+	RefreshSharedSelectionPresentation();
+	UpdateSelectionCardPositions();
+	return bAccepted;
+}
+
+void UBattleHUDSelectionWidget::SetPlayedCardSelectionHidden(bool bHidden)
+{
+	if (UBattleCardWidget* PlayedCard = GetNativePlayedCardWidget())
+	{
+		PlayedCard->SetVisibility(bHidden ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible);
+	}
+}
+
+void UBattleHUDSelectionWidget::SetSelectionLayoutActive(bool bActive)
+{
+	if (!bActive)
+	{
+		if (SelectionBackdrop) SelectionBackdrop->SetVisibility(ESlateVisibility::Collapsed);
+		for (const auto& Entry : SelectionOriginalLayouts)
+			if (UCanvasPanelSlot* CanvasSlot = Entry.Key.Get()) CanvasSlot->SetLayout(Entry.Value);
+		for (const auto& Entry : SelectionOriginalZOrders)
+			if (UCanvasPanelSlot* CanvasSlot = Entry.Key.Get()) CanvasSlot->SetZOrder(Entry.Value);
+		SelectionOriginalLayouts.Reset();
+		SelectionOriginalZOrders.Reset();
+		return;
+	}
+	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
+	if (!Root || !SelectionOriginalZOrders.IsEmpty()) return;
+	if (!SelectionBackdrop)
+	{
+		SelectionBackdrop = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		SelectionBackdrop->SetBrushColor(FLinearColor(0.0f, 0.0f, 0.0f, 0.72f));
+		UCanvasPanelSlot* BackdropSlot = Root->AddChildToCanvas(SelectionBackdrop);
+		BackdropSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
+		BackdropSlot->SetOffsets(FMargin(0.0f));
+	}
+	int32 BackdropZ = 0;
+	for (UWidget* Child : Root->GetAllChildren())
+		if (Child != SelectionBackdrop)
+			if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Child->Slot)) BackdropZ = FMath::Max(BackdropZ, CanvasSlot->GetZOrder());
+	CastChecked<UCanvasPanelSlot>(SelectionBackdrop->Slot)->SetZOrder(BackdropZ + 1);
+	SelectionBackdrop->SetVisibility(ESlateVisibility::HitTestInvisible);
+	const TArray<UWidget*> Foreground = { HB_Hand, Btn_Confirm, Btn_Cancel, Txt_Feedback };
+	for (UWidget* Surface : Foreground)
+	{
+		if (!Surface) continue;
+		UWidget* RootChild = Surface;
+		while (RootChild->GetParent() && RootChild->GetParent() != Root) RootChild = RootChild->GetParent();
+		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(RootChild->Slot))
+		{
+			SelectionOriginalZOrders.FindOrAdd(CanvasSlot, CanvasSlot->GetZOrder());
+			CanvasSlot->SetZOrder(BackdropZ + 2);
+			if (RootChild == Surface && (Surface == Btn_Confirm || Surface == Txt_Feedback))
+			{
+				SelectionOriginalLayouts.Add(CanvasSlot, CanvasSlot->GetLayout());
+				CanvasSlot->SetAnchors(FAnchors(0.5f, Surface == Btn_Confirm ? 0.65f : 0.16f));
+				CanvasSlot->SetAlignment(FVector2D(0.5f, 0.5f));
+				CanvasSlot->SetPosition(FVector2D::ZeroVector);
+			}
+		}
+	}
+}
+
+void UBattleHUDSelectionWidget::UpdateSelectionCardPositions()
+{
+	if (!bSelectionVisualMode || !IsValid(HB_Hand) || !IsValid(ViewModel)) return;
+	const FGeometry& HUDGeometry = GetCachedGeometry();
+	if (HUDGeometry.GetLocalSize().SizeSquared() <= 0.0f) return;
+	int32 SelectedIndex = 0;
+	const int32 SelectedCount = ViewModel->GetPendingCardSelectionSelectedCount();
+	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+	{
+		UBattleCardWidget* Card = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
+		if (!Card) continue;
+		if (!ViewModel->IsPendingCardSelectionRuntimeIdSelected(Card->GetRuntimeId()))
+		{
+			Card->SetRenderTranslation(FVector2D::ZeroVector);
+			continue;
+		}
+		const FGeometry& Geometry = Card->GetCachedGeometry();
+		const FVector2D Target = HUDGeometry.GetAccumulatedLayoutTransform().TransformPoint(
+			HUDGeometry.GetLocalSize() * FVector2D(0.5f, 0.42f)
+			+ FVector2D((SelectedIndex++ - (SelectedCount - 1) * 0.5f) * 190.0f, 0.0f));
+		const FVector2D Origin = Geometry.GetAccumulatedLayoutTransform().TransformPoint(Geometry.GetLocalSize() * 0.5f);
+		Card->SetRenderTranslation((Target - Origin) / Geometry.GetAccumulatedLayoutTransform().GetScale());
+	}
 }
 
 void UBattleHUDSelectionWidget::NativeOnBattleHUDViewModelChanged()
@@ -88,7 +185,29 @@ bool UBattleHUDSelectionWidget::BeginPresentationRecordPlayback_Implementation(
 		&& Record.CardZoneChanged.FromZone == ECardZone::Hand
 		&& Record.CardZoneChanged.ToZone == ECardZone::DrawPile)
 	{
-		return BeginSharedHandToDrawPilePresentation(Record, Token);
+		const bool bStarted = BeginSharedHandToDrawPilePresentation(Record, Token);
+		if (!bStarted)
+		{
+			ConfirmedCardCenters.Remove(Record.CardZoneChanged.Card.RuntimeId);
+			SetPlayedCardSelectionHidden(!ConfirmedCardCenters.IsEmpty());
+		}
+		return bStarted;
+	}
+	if (Record.Type == EBattlePresentationRecordType::CardZoneChanged)
+	{
+		if (ConfirmedCardCenters.Contains(Record.CardZoneChanged.Card.RuntimeId) && IsValid(HB_Hand))
+		{
+			for (UWidget* Child : HB_Hand->GetAllChildren())
+				if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child))
+					if (Card->GetRuntimeId() == Record.CardZoneChanged.Card.RuntimeId)
+						Card->SetVisibility(ESlateVisibility::Visible);
+		}
+		ConfirmedCardCenters.Remove(Record.CardZoneChanged.Card.RuntimeId);
+		if (Record.CardZoneChanged.FromZone == ECardZone::PlayArea)
+		{
+			ConfirmedCardCenters.Reset();
+			SetPlayedCardSelectionHidden(false);
+		}
 	}
 
 	return Super::BeginPresentationRecordPlayback_Implementation(Record, Token);
@@ -99,6 +218,9 @@ void UBattleHUDSelectionWidget::CancelPresentationRecordPlayback_Implementation(
 {
 	if (bSharedTransferActive && Token == SharedTransferToken)
 	{
+		// Preserve Native skip cleanup of the retained played-card visual as well
+		// as this subclass's transfer. A catch-up must not leave a played card behind.
+		Super::CancelPresentationRecordPlayback_Implementation(Token);
 		CancelSharedHandToDrawPilePresentation();
 		return;
 	}
@@ -121,6 +243,19 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked()
 	{
 		if (ViewModel->HasPendingCardSelection())
 		{
+			ConfirmedCardCenters.Reset();
+			if (IsValid(HB_Hand))
+			{
+				for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+				{
+					UBattleCardWidget* Card = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
+					if (Card && ViewModel->IsPendingCardSelectionRuntimeIdSelected(Card->GetRuntimeId()))
+					{
+						const FGeometry& Geometry = Card->GetCachedGeometry();
+						ConfirmedCardCenters.Add(Card->GetRuntimeId(), Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5f));
+					}
+				}
+			}
 			if (ViewModel->ConfirmPendingCardSelection())
 			{
 				ResetSharedSelectionCardVisuals();
@@ -128,6 +263,7 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked()
 			}
 			else
 			{
+				ConfirmedCardCenters.Reset();
 				RefreshSharedSelectionPresentation();
 			}
 		}
@@ -177,6 +313,10 @@ void UBattleHUDSelectionWidget::RefreshSharedSelectionPresentation()
 
 	FPendingCardSelectionReadView PendingView;
 	const bool bPending = ViewModel->TryGetPendingCardSelectionReadView(PendingView);
+	if (!bPending && !ViewModel->bInputLocked && !HasActiveNativePresentation()) ConfirmedCardCenters.Reset();
+	bSelectionVisualMode = bPending;
+	SetSelectionLayoutActive(bPending);
+	SetPlayedCardSelectionHidden(bPending || !ConfirmedCardCenters.IsEmpty() || bSharedTransferActive);
 	if (IsValid(HB_Hand))
 	{
 		for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
@@ -192,6 +332,8 @@ void UBattleHUDSelectionWidget::RefreshSharedSelectionPresentation()
 					bPending,
 					bCandidate,
 					bSelected);
+				if (!bPending) CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
+				if (!bPending && ConfirmedCardCenters.Contains(RuntimeId)) CardWidget->SetVisibility(ESlateVisibility::Hidden);
 			}
 		}
 	}
@@ -244,12 +386,16 @@ void UBattleHUDSelectionWidget::ResetSharedSelectionCardVisuals()
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
 		{
 			CardWidget->SetPendingSelectionPresentation(false, false, false);
+			CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
+			if (ConfirmedCardCenters.Contains(CardWidget->GetRuntimeId())) CardWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
 
 void UBattleHUDSelectionWidget::ClearSharedSelectionControlsAfterSubmit()
 {
+	bSelectionVisualMode = false;
+	SetSelectionLayoutActive(false);
 	if (IsValid(Btn_Confirm))
 	{
 		Btn_Confirm->SetIsEnabled(false);
@@ -310,6 +456,7 @@ bool UBattleHUDSelectionWidget::BeginSharedHandToDrawPilePresentation(
 
 	SharedTransferHistoricalCard = HistoricalHandCard;
 	SharedTransferHistoricalVisibility = HistoricalHandCard->GetVisibility();
+	if (ConfirmedCardCenters.Contains(Payload.Card.RuntimeId)) SharedTransferHistoricalVisibility = ESlateVisibility::Visible;
 	SharedTransferMovingCard = MovingCard;
 	SharedTransferToken = Token;
 	SharedTransferElapsedSeconds = 0.0f;
@@ -318,7 +465,13 @@ bool UBattleHUDSelectionWidget::BeginSharedHandToDrawPilePresentation(
 	bSharedTransferGeometryInitialized = false;
 	bSharedTransferActive = true;
 
-	MovingCard->SetRenderTranslation(SharedSelectionHandFallbackTranslation);
+	if (const FVector2D* Center = ConfirmedCardCenters.Find(Payload.Card.RuntimeId))
+	{
+		const FGeometry& AreaGeometry = OV_PlayArea->GetCachedGeometry();
+		if (AreaGeometry.GetLocalSize().SizeSquared() > 0.0f)
+			SharedTransferStartTranslation = FVector2D(AreaGeometry.AbsoluteToLocal(*Center)) - FVector2D(AreaGeometry.GetLocalSize() * 0.5f);
+	}
+	MovingCard->SetRenderTranslation(SharedTransferStartTranslation);
 	MovingCard->SetRenderScale(FVector2D(1.0f, 1.0f));
 	MovingCard->SetRenderOpacity(1.0f);
 	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
@@ -361,14 +514,14 @@ void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaS
 	}
 
 	UBattleCardWidget* MovingCard = SharedTransferMovingCard.Get();
-	auto ResolveAnchorTranslation = [MovingCard](UWidget* Anchor, const FVector2D& Fallback) -> FVector2D
+	auto ResolveAnchorTranslation = [this](UWidget* Anchor, const FVector2D& Fallback) -> FVector2D
 	{
 		if (!IsValid(Anchor))
 		{
 			return Fallback;
 		}
 		const FGeometry& AnchorGeometry = Anchor->GetCachedGeometry();
-		const FGeometry& CardGeometry = MovingCard->GetCachedGeometry();
+		const FGeometry& CardGeometry = OV_PlayArea->GetCachedGeometry();
 		if (AnchorGeometry.GetLocalSize().SizeSquared() <= 0.0f
 			|| CardGeometry.GetLocalSize().SizeSquared() <= 0.0f)
 		{
@@ -376,10 +529,8 @@ void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaS
 		}
 		const FVector2D AnchorAbsolute = AnchorGeometry.LocalToAbsolute(
 			AnchorGeometry.GetLocalSize() * 0.5f);
-		const FVector2D CardAbsolute = CardGeometry.LocalToAbsolute(
-			CardGeometry.GetLocalSize() * 0.5f);
 		return FVector2D(CardGeometry.AbsoluteToLocal(AnchorAbsolute))
-			- FVector2D(CardGeometry.AbsoluteToLocal(CardAbsolute));
+			- FVector2D(CardGeometry.GetLocalSize() * 0.5f);
 	};
 
 	if (!bSharedTransferGeometryInitialized)
@@ -387,6 +538,15 @@ void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaS
 		SharedTransferStartTranslation = ResolveAnchorTranslation(
 			SharedTransferHistoricalCard.Get(),
 			SharedSelectionHandFallbackTranslation);
+		if (const FVector2D* ConfirmedCenter = ConfirmedCardCenters.Find(MovingCard->GetRuntimeId()))
+		{
+			const FGeometry& AreaGeometry = OV_PlayArea->GetCachedGeometry();
+			if (AreaGeometry.GetLocalSize().SizeSquared() > 0.0f)
+			{
+				SharedTransferStartTranslation = FVector2D(AreaGeometry.AbsoluteToLocal(*ConfirmedCenter))
+					- FVector2D(AreaGeometry.GetLocalSize() * 0.5f);
+			}
+		}
 		SharedTransferEndTranslation = ResolveAnchorTranslation(
 			Txt_DrawCount,
 			SharedSelectionDrawPileFallbackTranslation);
@@ -406,7 +566,7 @@ void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaS
 		EasedAlpha));
 	const float Scale = FMath::Lerp(1.0f, 0.72f, EasedAlpha);
 	MovingCard->SetRenderScale(FVector2D(Scale, Scale));
-	MovingCard->SetRenderOpacity(FMath::Lerp(1.0f, 0.15f, EasedAlpha));
+	MovingCard->SetRenderOpacity(1.0f - FMath::Clamp((LinearAlpha - 0.85f) / 0.15f, 0.0f, 1.0f));
 }
 
 void UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentation(
@@ -432,17 +592,21 @@ void UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentation(
 	}
 	if (IsValid(SharedTransferMovingCard))
 	{
+		ConfirmedCardCenters.Remove(SharedTransferMovingCard->GetRuntimeId());
 		SharedTransferMovingCard->RemoveFromParent();
 	}
 
 	const FPresentationPlaybackToken CompletedToken = SharedTransferToken;
 	ResetSharedHandToDrawPileState();
 	ResetNativePresentationOwnership();
+	SetPlayedCardSelectionHidden(!ConfirmedCardCenters.IsEmpty());
 	NotifyPresentationFinished(CompletedToken);
 }
 
 void UBattleHUDSelectionWidget::CancelSharedHandToDrawPilePresentation()
 {
+	ConfirmedCardCenters.Reset();
+	SetPlayedCardSelectionHidden(false);
 	const bool bOwnsNativePresentation =
 		bSharedTransferActive
 		&& HasActiveNativePresentation()

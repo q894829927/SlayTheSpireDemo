@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "BattleHUDWidget.h"
+#include "Components/CanvasPanelSlot.h"
 #include "BattleHUDSelectionWidget.generated.h"
 
 class UBattleCardWidget;
@@ -19,6 +20,7 @@ class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDWidget
 	GENERATED_BODY()
 
 public:
+	virtual bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true) override;
 #if WITH_DEV_AUTOMATION_TESTS
 	// Exact-token presentation lifecycle probe, matching the existing Native HUD
 	// test pattern. Production playback still completes through the timer path.
@@ -50,6 +52,15 @@ private:
 	void RefreshSharedSelectionPresentation();
 	void ResetSharedSelectionCardVisuals();
 	void ClearSharedSelectionControlsAfterSubmit();
+	void UpdateSelectionCardPositions();
+	void SetPlayedCardSelectionHidden(bool bHidden);
+	void SetSelectionLayoutActive(bool bActive);
+	UPROPERTY(Transient)
+	TObjectPtr<class UBorder> SelectionBackdrop = nullptr;
+	TMap<TWeakObjectPtr<UCanvasPanelSlot>, FAnchorData> SelectionOriginalLayouts;
+	TMap<TWeakObjectPtr<UCanvasPanelSlot>, int32> SelectionOriginalZOrders;
+	TMap<int32, FVector2D> ConfirmedCardCenters;
+	bool bSelectionVisualMode = false;
 
 	bool BeginSharedHandToDrawPilePresentation(
 		const FPresentationRecord& Record,

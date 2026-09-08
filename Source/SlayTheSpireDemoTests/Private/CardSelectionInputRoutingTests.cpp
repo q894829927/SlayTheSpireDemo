@@ -14,6 +14,8 @@
 #include "UI/BattleHUDViewModel.h"
 #include "UI/BattleHUDWidget.h"
 #include "Engine/World.h"
+#include "CardSelectionPresentationTestTypes.h"
+#include "Components/Button.h"
 
 namespace CardSelectionInputRoutingTest
 {
@@ -193,6 +195,50 @@ bool FSelectionPendingBoundaryBlocksOrdinaryCardPlayTest::RunTest(const FString&
 	TestTrue(TEXT("Gameplay selection stays pending after swallowed click"),
 		Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
 	TestFalse(TEXT("No resolution fault"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSelectionProductionConfirmRoutingTest,
+	"SlayTheSpireDemo.CardSelection.Presentation.Input.ProductionConfirmRouting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSelectionProductionConfirmRoutingTest::RunTest(const FString& Parameters)
+{
+	UClass* ProductionHUD = LoadClass<UBattleHUDWidget>(nullptr,
+		TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C"));
+	if (!TestNotNull(TEXT("Production Native HUD loads"), ProductionHUD)) return false;
+	TestTrue(TEXT("Production HUD inherits shared selection routing and transfer"),
+		ProductionHUD->IsChildOf(UBattleHUDSelectionWidget::StaticClass()));
+	FFixture Fixture;
+	UCardData* SelectionCard = Fixture.CreateSelectionCard(TEXT("ConfirmSelection"));
+	SelectionCard->DefaultDestination = ECardDestination::Exhaust;
+	UCardData* CandidateCard = Fixture.CreateCard(TEXT("ConfirmCandidate"), ECardTargetType::Enemy);
+	if (!TestTrue(TEXT("Fixture starts"), Fixture.Start({ SelectionCard, CandidateCard }))) return false;
+	UCardInstance* Played = Fixture.FindHandCard(TEXT("ConfirmSelection"));
+	UCardInstance* Candidate = Fixture.FindHandCard(TEXT("ConfirmCandidate"));
+	if (!Played || !Candidate) return false;
+	TestTrue(TEXT("Selection play accepted"), Fixture.Battle->RequestPlayCard(Played, nullptr).IsAcceptedForResolution());
+	UBattleHUDViewModel* VM = NewObject<UBattleHUDViewModel>(Fixture.World);
+	if (!TestTrue(TEXT("ViewModel initialized at decision"), VM->Initialize(Fixture.Battle, false))) return false;
+	UCardSelectionPresentationHUDProbe* HUD = NewObject<UCardSelectionPresentationHUDProbe>(Fixture.World);
+	HUD->SetTestWorld(Fixture.World);
+	HUD->SetViewModel(VM);
+	UButton* Confirm = NewObject<UButton>(HUD);
+	HUD->BindConfirmButtonForTesting(Confirm);
+	TestFalse(TEXT("Confirm disabled before choosing"), Confirm->GetIsEnabled());
+	TestTrue(TEXT("Enemy-target card can be chosen as a card, without enemy targeting"), HUD->SelectCard(Candidate->GetRuntimeId()));
+	TestTrue(TEXT("Candidate click leaves Gameplay pending"), VM->HasPendingCardSelection());
+	TestTrue(TEXT("Confirm enabled at exact count"), Confirm->GetIsEnabled());
+	const FText FeedbackBefore = VM->LastFeedback;
+	Confirm->OnClicked.Broadcast();
+	TestFalse(TEXT("Actual bound Confirm submits pending selection"), Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
+	UDeckRuntime* Deck = Fixture.Battle->GetDeckRuntimeForTesting();
+	TestEqual(TEXT("Chosen card enters DrawPile"), Deck->GetDrawCount(), 1);
+	TestEqual(TEXT("Chosen exact identity is on top"), Deck->GetDrawCards().Last().Get(), Candidate);
+	TestEqual(TEXT("Played card uses authored Exhaust cleanup"), Deck->GetExhaustCount(), 1);
+	TestTrue(TEXT("Confirm never produces ordinary legal-target feedback"), VM->LastFeedback.EqualTo(FeedbackBefore));
+	TestFalse(TEXT("Submitted Confirm is disabled immediately"), Confirm->GetIsEnabled());
 	return true;
 }
 

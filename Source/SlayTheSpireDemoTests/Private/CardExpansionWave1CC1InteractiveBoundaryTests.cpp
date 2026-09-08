@@ -212,8 +212,12 @@ bool FWave1CC1DrawBeforeSelectionPresentationBoundaryTest::RunTest(const FString
 
 	Fixture.Deliveries.Reset();
 	TestTrue(
-		TEXT("Selecting the newly drawn card resolves the exact pending choice"),
+		TEXT("Selecting the newly drawn card stages the exact pending choice"),
 		ViewModel->SubmitPendingCardSelectionByRuntimeId(NewlyDrawnRuntimeId));
+	Fixture.Battle->FlushScheduledReadStateReadyForTesting();
+	TestEqual(TEXT("Candidate click emits no continuation before Confirm"), Fixture.Deliveries.Num(), 0);
+	TestTrue(TEXT("Choice remains pending until explicit Confirm"), ViewModel->HasPendingCardSelection());
+	TestTrue(TEXT("Explicit Confirm resolves the newly drawn choice"), ViewModel->ConfirmPendingCardSelection());
 	Fixture.Battle->FlushScheduledReadStateReadyForTesting();
 
 	if (!TestEqual(TEXT("Exactly one post-selection Presentation envelope is delivered"), Fixture.Deliveries.Num(), 1))

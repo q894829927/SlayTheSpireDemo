@@ -5,7 +5,7 @@ Date: **2026-09-08**
 Status:
 
 ```text
-USER-AUTHORIZED / PRE-IMPLEMENTATION CONSTRAINTS / NOT SEALED
+IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE PENDING / NOT SEALED
 ```
 
 Scope: define the shared Native HUD / Presentation contract for player card-selection interactions before implementation continues.
@@ -338,3 +338,25 @@ Implementation is not complete until focused coverage and PIE demonstrate at min
 - Gameplay remains authoritative if Presentation is skipped/degraded according to existing policy.
 
 No Build, Automation, or PIE gate may be marked PASS without actual execution evidence.
+
+## 16. Production integration and confirmation repair — 2026-09-08
+
+The production `WBP_BattleHUD_Native` still inherited `UBattleHUDWidget`, bypassing the shared Selection subclass. Candidate clicks could select transient RuntimeIds, but the production Confirm delegate called ordinary card-play confirmation and displayed `Choose a legal target.` Reparented the existing Native asset to `UBattleHUDSelectionWidget` in UE, compiled and saved it. No Legacy or card/map assets changed.
+
+The shared HUD now dims the background, raises the selectable Hand and confirmation controls, and positions selected formal cards centrally in canonical Hand order. Deselect restores the card's Hand transform. Temporary Canvas layout/Z changes restore on submit, cancellation and destruction. Selection never submits on the final candidate click.
+
+Confirmation captures visual centers by RuntimeId before clearing transient input. Committed Hand→DrawPile records fly from those centers to the DrawPile anchor in record order. Anchor calculations use the stationary PlayArea coordinate space; they do not measure offsets relative to the moving/scaled card. Played-card visuals are hidden during selection/transfer, restored before ordinary cleanup, and retain the existing generic PlayArea→Exhaust animation. No separate played-card fade was added.
+
+AUTOMATED GATES:
+
+- Standard bundled UE project generation and Development Editor build.
+- `SlayTheSpireDemo.CardSelection.Presentation` (including production asset ancestry and the actual selection Confirm delegate).
+- `SlayTheSpireDemo.CardExpansion.Wave1CC0.Selection.NativeHUDExactNClick` for multi-selection confirmation.
+- `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` for authoritative move/order and interactive boundary.
+- `SlayTheSpireDemo.Phase6UIA2N.R8.Zone.PlayAreaDestinationsAndDestruct` for reused generic cleanup.
+
+MANUAL PIE GATES — USER ACTION REQUIRED:
+
+In the existing Native `L_BattleTest`, play the authored Warcry. Let Draw finish. Verify the selection background dims and Warcry is hidden; select a Hand card (including an attack or the newly drawn card), verify it is centered and Confirm enables without submitting; click the selected card again to deselect, then reselect and explicitly Confirm. Observe the selected card flying to the lower-left draw pile, followed by Warcry reappearing and disappearing through normal Exhaust. Expect Draw +1, Exhaust +1, no legal-target feedback, no duplicate/flashback and input restored. One short recording or explicit observation of this sequence is sufficient. This manual gate is not implied by Automation.
+
+Validation evidence: bundled project generation and Editor build passed (`Saved/Logs/SelectionPresentationBuild.log`). After adding retained-played-card skip cleanup, the runtime rebuild passed (`SelectionPresentationFinalBuild.log`); a test-only sequence-token correction also built successfully (`SelectionPresentationTestBuild.log`). The closed-scope Automation run reported **11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). The failure was the older Draw-before-selection test assuming candidate click immediately submitted. Updated it to assert no continuation before explicit Confirm, rebuilt the changed test (`SelectionBoundaryConfirmTestBuild.log`), and reran only that gate: **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). Runtime code was unchanged after the first test run. All required automated gates now have passing evidence; no manual PIE acceptance is claimed.

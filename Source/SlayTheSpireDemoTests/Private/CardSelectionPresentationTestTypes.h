@@ -24,6 +24,8 @@ public:
 		UOverlay* InPlayArea,
 		UTextBlock* InDrawCount);
 	void InvokeNativeTickForTesting(float DeltaSeconds);
+	void BindConfirmButtonForTesting(class UButton* Button);
+	void FinishNativeForTesting(const FPresentationPlaybackToken& Token) { FinishNativePresentation(Token); }
 
 	virtual UWorld* GetWorld() const override;
 

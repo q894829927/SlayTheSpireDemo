@@ -138,17 +138,38 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 		return false;
 	}
 
+	// Retain a real played-card transient across the decision, as production does.
+	const FPresentationCardSnapshot PlayedSnapshot = MakeSnapshot(709, TEXT("GenericPlayedCard"));
+	Fixture.ViewModel->Player.PresentationId = TEXT("Player");
+	Fixture.ViewModel->Energy = 3;
+	Fixture.AddFormalCard(PlayedSnapshot);
+	FPresentationRecord PlayedRecord;
+	PlayedRecord.BattleId = 9201;
+	PlayedRecord.ResolutionId = 9202;
+	PlayedRecord.PresentationSequence = 1;
+	PlayedRecord.Type = EBattlePresentationRecordType::CardPlayed;
+	PlayedRecord.CardPlayed.Card = PlayedSnapshot;
+	PlayedRecord.CardPlayed.SourcePresentationId = TEXT("Player");
+	PlayedRecord.CardPlayed.HandIndexBefore = 0;
+	PlayedRecord.CardPlayed.PlayAreaIndexAfter = 0;
+	PlayedRecord.CardPlayed.EnergyBefore = 3;
+	PlayedRecord.CardPlayed.EnergyAfter = 2;
+	PlayedRecord.CardPlayed.CostPaid = 1;
+	if (!TestTrue(TEXT("Played-card visual starts"), Fixture.HUD->PlayPresentationRecord(PlayedRecord, MakeToken(1, 1)))) return false;
+	Fixture.HUD->FinishNativeForTesting(MakeToken(1, 1));
+	FTSTicker::GetCoreTicker().Tick(0.0f);
+	TestEqual(TEXT("Played-card visual is retained before selection transfer"), Fixture.PlayArea->GetChildrenCount(), 1);
 	const FPresentationCardSnapshot Snapshot = MakeSnapshot(710, TEXT("GenericSelectedCard"));
 	if (!TestTrue(TEXT("Formal Hand card is prepared"), Fixture.AddFormalCard(Snapshot))) return false;
 	UWidget* Historical = Fixture.Hand->GetChildAt(0);
 	const ESlateVisibility HistoricalVisibilityBefore = Historical->GetVisibility();
-	const FPresentationRecord Record = MakeHandToDrawRecord(Snapshot, 1, Fixture.ViewModel->DrawCount);
-	const FPresentationPlaybackToken Token = MakeToken(1, 1);
+	const FPresentationRecord Record = MakeHandToDrawRecord(Snapshot, 2, Fixture.ViewModel->DrawCount);
+	const FPresentationPlaybackToken Token = MakeToken(2, 2);
 
 	TestTrue(TEXT("Generic Hand->DrawPile Record starts Native transfer"), Fixture.HUD->PlayPresentationRecord(Record, Token));
 	TestEqual(TEXT("Historical selected card is hidden while transfer owns its visual"), Historical->GetVisibility(), ESlateVisibility::Hidden);
-	TestEqual(TEXT("One transient moving card exists in PlayArea"), Fixture.PlayArea->GetChildrenCount(), 1);
-	UBattleCardWidget* Moving = Cast<UBattleCardWidget>(Fixture.PlayArea->GetChildAt(0));
+	TestEqual(TEXT("Transfer coexists with the retained played-card visual"), Fixture.PlayArea->GetChildrenCount(), 2);
+	UBattleCardWidget* Moving = Cast<UBattleCardWidget>(Fixture.PlayArea->GetChildAt(1));
 	if (!TestNotNull(TEXT("Moving visual is a card"), Moving)) return false;
 	const FVector2D StartTranslation = Moving->GetRenderTransform().Translation;
 	Fixture.HUD->InvokeNativeTickForTesting(0.25f);
@@ -158,12 +179,12 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 
 	Fixture.HUD->SkipPresentation();
 	TestEqual(TEXT("Cancel restores exact historical Hand card visibility"), Historical->GetVisibility(), HistoricalVisibilityBefore);
-	TestEqual(TEXT("Cancel removes transient moving card"), Fixture.PlayArea->GetChildrenCount(), 0);
+	TestEqual(TEXT("Skip removes both moving and retained played-card visuals"), Fixture.PlayArea->GetChildrenCount(), 0);
 
 	if (!TestTrue(TEXT("Formal Hand card can be prepared again"), Fixture.AddFormalCard(Snapshot))) return false;
 	Historical = Fixture.Hand->GetChildAt(0);
-	const FPresentationPlaybackToken FinishToken = MakeToken(1, 2);
-	const FPresentationPlaybackToken StaleFinishToken = MakeToken(1, 99);
+	const FPresentationPlaybackToken FinishToken = MakeToken(2, 3);
+	const FPresentationPlaybackToken StaleFinishToken = MakeToken(2, 99);
 	TestTrue(TEXT("Second generic transfer starts"), Fixture.HUD->PlayPresentationRecord(Record, FinishToken));
 	Fixture.HUD->FinishSharedHandToDrawPilePresentationForTesting(StaleFinishToken);
 	TestEqual(TEXT("Stale Finish keeps historical Hand card hidden"), Historical->GetVisibility(), ESlateVisibility::Hidden);

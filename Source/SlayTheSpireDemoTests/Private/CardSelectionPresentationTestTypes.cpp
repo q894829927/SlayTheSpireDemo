@@ -4,6 +4,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
 #include "Components/TextBlock.h"
+#include "Components/Button.h"
 #include "Engine/World.h"
 #include "UI/BattleHUDViewModel.h"
 
@@ -33,4 +34,10 @@ void UCardSelectionPresentationHUDProbe::InvokeNativeTickForTesting(float DeltaS
 UWorld* UCardSelectionPresentationHUDProbe::GetWorld() const
 {
 	return TestWorld.Get();
+}
+
+void UCardSelectionPresentationHUDProbe::BindConfirmButtonForTesting(UButton* Button)
+{
+	Btn_Confirm = Button;
+	NativeConstruct();
 }
