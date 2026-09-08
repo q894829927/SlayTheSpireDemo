@@ -18,6 +18,17 @@ class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDWidget
 {
 	GENERATED_BODY()
 
+public:
+#if WITH_DEV_AUTOMATION_TESTS
+	// Exact-token presentation lifecycle probe, matching the existing Native HUD
+	// test pattern. Production playback still completes through the timer path.
+	void FinishSharedHandToDrawPilePresentationForTesting(
+		const FPresentationPlaybackToken& ExpectedToken)
+	{
+		FinishSharedHandToDrawPilePresentation(ExpectedToken);
+	}
+#endif
+
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
