@@ -63,6 +63,23 @@ namespace CardSelectionPresentationTest
 		return Record;
 	}
 
+	FPresentationRecord MakeHandToExhaustRecord(
+		const FPresentationCardSnapshot& Snapshot,
+		int64 Sequence)
+	{
+		FPresentationRecord Record;
+		Record.BattleId = 9201;
+		Record.ResolutionId = 9202;
+		Record.PresentationSequence = Sequence;
+		Record.Type = EBattlePresentationRecordType::CardZoneChanged;
+		Record.CardZoneChanged.Card = Snapshot;
+		Record.CardZoneChanged.FromZone = ECardZone::Hand;
+		Record.CardZoneChanged.ToZone = ECardZone::ExhaustPile;
+		Record.CardZoneChanged.FromIndex = 0;
+		Record.CardZoneChanged.ToIndex = 0;
+		return Record;
+	}
+
 	FPresentationPlaybackToken MakeToken(int64 Sequence, int64 Generation)
 	{
 		FPresentationPlaybackToken Token;
@@ -195,6 +212,50 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 	TestEqual(TEXT("Exact Finish removes transient moving card"), Fixture.PlayArea->GetChildrenCount(), 0);
 	TestEqual(TEXT("Finish still does not mutate frozen DrawCount directly"), Fixture.ViewModel->DrawCount, 4);
 	FTSTicker::GetCoreTicker().Tick(0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSharedSelectionHandToExhaustPresentationTest,
+	"SlayTheSpireDemo.CardSelection.Presentation.HandToExhaust.FadesInPlace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSharedSelectionHandToExhaustPresentationTest::RunTest(const FString& Parameters)
+{
+	FFixture Fixture;
+	if (!TestNotNull(TEXT("World exists"), Fixture.World)
+		|| !TestNotNull(TEXT("HUD exists"), Fixture.HUD)
+		|| !TestNotNull(TEXT("ViewModel exists"), Fixture.ViewModel))
+	{
+		return false;
+	}
+
+	const FPresentationCardSnapshot Snapshot = MakeSnapshot(711, TEXT("GenericExhaustedCard"));
+	Fixture.ViewModel->ExhaustCount = 0;
+	if (!TestTrue(TEXT("Formal Hand card is prepared"), Fixture.AddFormalCard(Snapshot))) return false;
+
+	UBattleCardWidget* Historical = Cast<UBattleCardWidget>(Fixture.Hand->GetChildAt(0));
+	if (!TestNotNull(TEXT("Historical Hand card exists"), Historical)) return false;
+	const FVector2D ConfirmedTranslation(240.0f, -180.0f);
+	Historical->SetRenderTranslation(ConfirmedTranslation);
+	const FPresentationRecord Record = MakeHandToExhaustRecord(Snapshot, 3);
+	const FPresentationPlaybackToken Token = MakeToken(3, 1);
+
+	TestTrue(TEXT("Hand->Exhaust starts on the formal Hand card"), Fixture.HUD->PlayPresentationRecord(Record, Token));
+	TestTrue(
+		TEXT("Confirmed card keeps its selection-area position at animation start"),
+		Historical->GetRenderTransform().Translation.Equals(ConfirmedTranslation));
+
+	Fixture.HUD->InvokeNativeTickForTesting(0.25f);
+	TestTrue(
+		TEXT("Generic Exhaust fade keeps the card in place"),
+		Historical->GetRenderTransform().Translation.Equals(ConfirmedTranslation));
+	TestTrue(
+		TEXT("Generic Exhaust fade changes opacity without adding movement"),
+		Historical->GetRenderOpacity() > 0.0f && Historical->GetRenderOpacity() < 1.0f);
+
+	Fixture.HUD->FinishNativeForTesting(Token);
+	TestEqual(TEXT("Finished Exhaust card is collapsed until the reducer refreshes Hand"), Historical->GetVisibility(), ESlateVisibility::Collapsed);
 	return true;
 }
 

@@ -1,14 +1,14 @@
 # Codex Goal Checkpoint — Production Card Expansion
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-09**
 
 ## Current resumable task — Selection Presentation production repair
 
 HEAD verified: `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Changes are uncommitted. Contract and evidence: `docs/CardSelectionPresentationConstraints.md` section 16 and `docs/Validation.md`.
 
-Completed: production Native HUD reparented/compiled/saved in UE; shared explicit Confirm routing now active; dimmed selection backdrop, centered formal selected cards, RuntimeId visual handoff to DrawPile, retained played-card hide/restore, and inherited generic Exhaust cleanup. Skip cleans both the moving and retained played-card visuals. No card/map/Legacy edits.
+Completed: production Native HUD reparented/compiled/saved in UE; shared explicit Confirm routing now active; dimmed selection backdrop, centered formal selected cards, RuntimeId visual handoff to DrawPile, retained played-card hide/restore, and inherited generic Exhaust cleanup. Confirmed Hand cards now retain their selection-area render position through the handoff, so the existing generic Hand→Exhaust fade consumes the formal widget in place. Skip cleans both the moving and retained played-card visuals. No card/map/Legacy edits.
 
-Validation performed: standard project generation and Editor builds PASS. Closed-scope run 11 PASS / 1 old click-to-submit assumption FAIL; updated only that test to explicit Confirm, rebuilt, rerun 1/1 PASS. Exact reports: `Saved/AutomationReports/SelectionPresentationRepair/index.json`, `Saved/AutomationReports/SelectionBoundaryConfirm/index.json`. All required automated gates have passing evidence; do not rerun unless invalidated.
+Validation performed: standard project generation and final Editor build PASS after the in-place Exhaust fix (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`). The final focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed 4/4, including the new `HandToExhaust.FadesInPlace` contract, with no warnings (`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`). Earlier explicit-Confirm evidence remains in `Saved/AutomationReports/SelectionBoundaryConfirm/index.json`.
 
 Next action / remaining blocker: **USER ACTION REQUIRED** — one manual Native `L_BattleTest` Warcry visual pass following section 16. Verify centered selection/deselect, confirmation, selected-card flight, played card reappearance/generic Exhaust, no flashback and restored input. No manual acceptance yet. Earlier entries below are historical navigation only.
 

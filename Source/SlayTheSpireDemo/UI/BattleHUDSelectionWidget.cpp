@@ -332,8 +332,15 @@ void UBattleHUDSelectionWidget::RefreshSharedSelectionPresentation()
 					bPending,
 					bCandidate,
 					bSelected);
-				if (!bPending) CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
-				if (!bPending && ConfirmedCardCenters.Contains(RuntimeId)) CardWidget->SetVisibility(ESlateVisibility::Hidden);
+				// An explicit Confirm ends the selection overlay before the committed
+				// CardZoneChanged record starts. Keep a confirmed card's render
+				// translation and visibility intact so a Hand->Exhaust record can
+				// consume the same formal widget at the position where the player
+				// confirmed it. The transfer-to-DrawPile path hides it only after it
+				// has created its moving presentation copy.
+				const bool bConfirmedCard = !bPending && ConfirmedCardCenters.Contains(RuntimeId);
+				if (!bConfirmedCard) CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
+				if (bConfirmedCard) CardWidget->SetVisibility(ESlateVisibility::Visible);
 			}
 		}
 	}
@@ -386,8 +393,17 @@ void UBattleHUDSelectionWidget::ResetSharedSelectionCardVisuals()
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
 		{
 			CardWidget->SetPendingSelectionPresentation(false, false, false);
-			CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
-			if (ConfirmedCardCenters.Contains(CardWidget->GetRuntimeId())) CardWidget->SetVisibility(ESlateVisibility::Hidden);
+			// Keep confirmed cards where they are. The committed zone record owns
+			// the next visual: DrawPile creates a transfer copy from this position,
+			// while Exhaust fades this formal Hand widget in place.
+			if (!ConfirmedCardCenters.Contains(CardWidget->GetRuntimeId()))
+			{
+				CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
+			}
+			else
+			{
+				CardWidget->SetVisibility(ESlateVisibility::Visible);
+			}
 		}
 	}
 }
