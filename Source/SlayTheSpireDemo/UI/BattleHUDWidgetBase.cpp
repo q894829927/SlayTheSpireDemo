@@ -103,22 +103,24 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 {
 	if (ViewModel == InViewModel)
 	{
-		HandleViewModelChanged();
+		HandleNativeViewModelChanged(EBattleHUDDirtyFlags::All);
 		return;
 	}
 
 	if (IsValid(ViewModel))
 	{
-		ViewModel->OnChanged.RemoveDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
+		ViewModel->OnNativeChanged.RemoveAll(this);
 	}
 
 	ViewModel = InViewModel;
 	if (IsValid(ViewModel))
 	{
-		ViewModel->OnChanged.AddDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
+		ViewModel->OnNativeChanged.AddUObject(
+			this,
+			&UBattleHUDWidgetBase::HandleNativeViewModelChanged);
 	}
 
-	HandleViewModelChanged();
+	HandleNativeViewModelChanged(EBattleHUDDirtyFlags::All);
 }
 
 void UBattleHUDWidgetBase::SetPresentationController(
@@ -425,11 +427,11 @@ void UBattleHUDWidgetBase::NativeDestruct()
 
 	// Stop observing ViewModel changes before NotifyWidgetLost. That controller
 	// callback may synchronously SkipPresentation/collapse to a newer historical
-	// snapshot and broadcast OnChanged; a Widget already leaving the tree must not
-	// redraw Hand/Status/other UMG children during that teardown catch-up.
+	// snapshot and publish a Native dirty event; a Widget already leaving the tree
+	// must not redraw Hand/Status/other UMG children during teardown catch-up.
 	if (IsValid(ViewModel))
 	{
-		ViewModel->OnChanged.RemoveDynamic(this, &UBattleHUDWidgetBase::HandleViewModelChanged);
+		ViewModel->OnNativeChanged.RemoveAll(this);
 	}
 
 	if (IsValid(PresentationController))
@@ -441,7 +443,7 @@ void UBattleHUDWidgetBase::NativeDestruct()
 	Super::NativeDestruct();
 }
 
-void UBattleHUDWidgetBase::HandleViewModelChanged()
+void UBattleHUDWidgetBase::HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags)
 {
 	// During Controller-owned playback, the ViewModel advances only after a Record
 	// completes or after a fail-safe collapse/timeout/unavailable transition. If
@@ -453,6 +455,9 @@ void UBattleHUDWidgetBase::HandleViewModelChanged()
 		CancelTrackedPresentationPlayback();
 	}
 
+	TGuardValue<EBattleHUDDirtyFlags> ScopedDirtyFlags(
+		CurrentNativeViewModelDirtyFlags,
+		DirtyFlags);
 	NativeOnBattleHUDViewModelChanged();
 }
 
