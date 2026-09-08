@@ -2,6 +2,16 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Automatic Card Descriptions — 2026-09-08
+
+User-requested refactor, detailed contract: `docs/AutomaticCardDescriptions.md`. Standard UE 5.8 project generation and Development Editor Win64 build PASS after user closed Live Coding and an explicit BattleManager include fixed independent GainEnergyCardEffect compilation. Final build log: `Saved/Logs/AutomaticCardDescriptionsBuild.log`.
+
+Focused Automation: `Cards.AutomaticDescription`, `UIA3.RichCardTextBaseline`, `CardExpansion.Wave1CC0.Description`, `Phase6UIA3.DynamicText`, `UIA3.CardPlayedRichHandoff` (all prefixed `SlayTheSpireDemo.`): **18 passed, 0 failed, 0 warnings**. Evidence: `Saved/AutomationReports/AutomaticCardDescriptions/index.json`.
+
+After UE-supported saving of five Chinese Status DisplayName assets, only the invalidated `SlayTheSpireDemo.Cards.AutomaticDescription.ExistingAssets` gate was rerun: **1 passed, 0 failed, 0 warnings**. This loaded eight existing production cards, base and upgraded, and confirmed generated Chinese text. Evidence: `Saved/AutomationReports/AutomaticCardDescriptionAssetsChinese/index.json`; save log: `Saved/Logs/LocalizeCardStatusNames.log`. No subsequent C++ changes.
+
+**MANUAL PIE — USER ACTION REQUIRED:** one Native `L_BattleTest` card-face readability pass for multi-line text, Exhaust line and hover-preview coloring, as specified in the dedicated document. No PIE or packaged-game acceptance is claimed.
+
 ## Validation Rules
 
 After C++ changes:

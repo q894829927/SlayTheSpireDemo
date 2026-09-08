@@ -30,6 +30,25 @@ public:
 		const FCardEffectPreviewContext& Context,
 		FPreviewTextArgumentBuilder& OutArguments
 	) const PURE_VIRTUAL(UCardEffect::BuildPreviewArguments, );
+
+	// Returns the localized card-face sentence contributed by this Effect. The
+	// returned format keeps semantic argument names (for example {Damage}) so
+	// the card description resolver can fill the final preview values later.
+	virtual FText GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+	{
+		return FText::GetEmpty();
+	}
+
+	// Automatic descriptions use the same deterministic values as the legacy
+	// preview path unless an Effect needs a different local argument contract.
+	virtual void BuildAutoDescriptionArguments(
+		const FCardEffectPreviewContext& Context,
+		FPreviewTextArgumentBuilder& OutArguments
+	) const
+	{
+		BuildPreviewArguments(Context, OutArguments);
+	}
+
 	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 		PURE_VIRTUAL(UCardEffect::ValidatePreviewConfiguration, );
 

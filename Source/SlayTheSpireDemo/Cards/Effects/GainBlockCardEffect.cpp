@@ -71,6 +71,23 @@ void UGainBlockCardEffect::BuildPreviewArguments(
 		EffectiveAmount);
 }
 
+FText UGainBlockCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		return FText::GetEmpty();
+	}
+
+	FFormatNamedArguments FormatArguments;
+	FormatArguments.Add(
+		TEXT("Value"),
+		FFormatArgumentValue(FText::FromString(
+			FString::Printf(TEXT("{%s}"), *DescriptionArgumentName.ToString()))));
+	return FText::Format(
+		NSLOCTEXT("CardEffect", "BlockDescriptionFormat", "获得 {Value} 点格挡。"),
+		FormatArguments);
+}
+
 void UGainBlockCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
 	if (DescriptionArgumentName.IsNone())

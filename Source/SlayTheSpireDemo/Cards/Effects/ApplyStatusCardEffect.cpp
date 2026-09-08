@@ -61,6 +61,34 @@ void UApplyStatusCardEffect::BuildPreviewArguments(
 	OutArguments.AddInteger(DescriptionArgumentName, GetEffectiveAmount(bIsUpgraded));
 }
 
+FText UApplyStatusCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+{
+	if (DescriptionArgumentName.IsNone() || !IsValid(StatusDefinition))
+	{
+		return FText::GetEmpty();
+	}
+
+	FFormatNamedArguments FormatArguments;
+	FormatArguments.Add(
+		TEXT("Value"),
+		FFormatArgumentValue(FText::FromString(
+			FString::Printf(TEXT("{%s}"), *DescriptionArgumentName.ToString()))));
+	FormatArguments.Add(TEXT("Status"), FFormatArgumentValue(StatusDefinition->DisplayName));
+
+	const bool bTargetsSelf = IsValid(Context.Card)
+		&& Context.Card->GetTargetType() == ECardTargetType::Self;
+	if (bTargetsSelf)
+	{
+		return FText::Format(
+			NSLOCTEXT("CardEffect", "ApplyStatusSelfDescriptionFormat", "获得 {Value} 层{Status}。"),
+			FormatArguments);
+	}
+
+	return FText::Format(
+		NSLOCTEXT("CardEffect", "ApplyStatusEnemyDescriptionFormat", "给予 {Value} 层{Status}。"),
+		FormatArguments);
+}
+
 void UApplyStatusCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
 	if (DescriptionArgumentName.IsNone())

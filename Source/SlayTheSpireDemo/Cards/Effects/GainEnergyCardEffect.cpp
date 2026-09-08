@@ -1,4 +1,5 @@
 #include "GainEnergyCardEffect.h"
+#include "../../Battle/BattleManager.h"
 
 #include "../CardInstance.h"
 #include "../CardPlayContext.h"
@@ -45,6 +46,23 @@ void UGainEnergyCardEffect::BuildPreviewArguments(
 {
 	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
 	OutArguments.AddInteger(DescriptionArgumentName, GetEffectiveAmount(bIsUpgraded));
+}
+
+FText UGainEnergyCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		return FText::GetEmpty();
+	}
+
+	FFormatNamedArguments FormatArguments;
+	FormatArguments.Add(
+		TEXT("Value"),
+		FFormatArgumentValue(FText::FromString(
+			FString::Printf(TEXT("{%s}"), *DescriptionArgumentName.ToString()))));
+	return FText::Format(
+		NSLOCTEXT("CardEffect", "EnergyDescriptionFormat", "获得 {Value} 点能量。"),
+		FormatArguments);
 }
 
 void UGainEnergyCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const

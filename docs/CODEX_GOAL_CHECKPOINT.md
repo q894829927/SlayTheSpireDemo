@@ -2,6 +2,16 @@
 
 Last updated: **2026-09-08**
 
+## Latest user-requested side refactor — Automatic Card Descriptions
+
+HEAD verified: `5128e2f936416eb16fc8e4f9d7d45272a66368f7`. This refactor is uncommitted in the working tree; existing staged Interior/environment work and user-edited BurningPact / untracked TrueGrit remain preserved. No card assets or maps were saved by this refactor; five Status DisplayName assets were localized through UE Python.
+
+Implemented: default Effect-ordered localized Chinese descriptions, per-effect argument isolation, upgraded values/hit counts/selection modes, automatic Exhaust, explicit custom-template compatibility, focused tests and documentation. Durable scope and acceptance: `docs/AutomaticCardDescriptions.md`.
+
+Completed validation: standard project generation; Development Editor Win64 build PASS; focused Automation 18/18 PASS; after status-name asset edits only ExistingAssets rerun 1/1 PASS. Reports and exact prefixes are recorded in `docs/Validation.md`. Do not rerun these passing gates without invalidation.
+
+Next action / remaining blocker: USER ACTION REQUIRED, one visual Native `L_BattleTest` pass confirming Chinese multi-line descriptions fit and hover-preview styling remains readable. Await user observation before marking this refactor visually accepted. No further phase work is implied. Earlier card-expansion checkpoint below remains historical navigation for that initiative.
+
 ## Current status
 
 ```text

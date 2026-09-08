@@ -4,6 +4,8 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
+- **Automatic Card Descriptions — implemented / automated gates PASS / manual PIE pending (2026-09-08).** User-requested refactor; Effect-ordered localized Chinese descriptions are the default, with automatic Exhaust and per-effect preview arguments. Editor build and 18 focused tests passed; after Chinese status-name asset edits, the affected existing-assets test alone passed again. Scope and acceptance: `docs/AutomaticCardDescriptions.md`.
+
 - UE5.8 C++ project and runtime module exist.
 - Phases 1–6C and the Phase 6R test-module extraction are complete.
 - UI-A0 and UI-A1 are complete.

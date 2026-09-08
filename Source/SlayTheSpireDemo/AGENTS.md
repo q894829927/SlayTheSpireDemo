@@ -32,6 +32,8 @@ Resolution budget is checked before dequeuing the next action. A Queue resolutio
 
 Card effects capture base intent and build reusable actions; they do not control the queue or own unrelated battle rules. Card destination is resolved at cleanup Execute-time and delegated to `UDeckRuntime`.
 
+New or changed CardEffects must implement and maintain their localized Chinese automatic descriptions in the same change as their behavior. Follow `Source/SlayTheSpireDemo/Cards/AGENTS.md` and the fixed-text catalog in `docs/AutomaticCardDescriptions.md`; an Effect without its corresponding description is incomplete.
+
 Status reapplication preserves its `RuntimeSequence`; removal followed by recreation receives a new sequence. `ReduceStatusAction` targets an exact runtime Status instance.
 
 ## Modifiers

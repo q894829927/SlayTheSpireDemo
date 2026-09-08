@@ -47,6 +47,7 @@ public:
 		const FCardEffectPreviewContext& Context,
 		FPreviewTextArgumentBuilder& OutArguments
 	) const override;
+	virtual FText GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const override;
 	virtual void ValidatePreviewConfiguration(TArray<FText>& OutErrors) const override;
 	virtual void BuildImmediatePreviewOperations(
 		const FCardEffectPreviewContext& Context,

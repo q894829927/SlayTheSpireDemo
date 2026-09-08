@@ -86,6 +86,39 @@ void UDamageCardEffect::BuildPreviewArguments(
 		EffectiveAmount);
 }
 
+FText UDamageCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+{
+	if (DescriptionArgumentName.IsNone())
+	{
+		return FText::GetEmpty();
+	}
+
+	FFormatNamedArguments FormatArguments;
+	FormatArguments.Add(
+		TEXT("Value"),
+		FFormatArgumentValue(FText::FromString(
+			FString::Printf(TEXT("{%s}"), *DescriptionArgumentName.ToString()))));
+
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	const int32 EffectiveHitCount = GetEffectiveHitCount(bIsUpgraded);
+	if (EffectiveHitCount > 1)
+	{
+		FormatArguments.Add(
+			TEXT("Hits"),
+			FFormatArgumentValue(FText::AsNumber(EffectiveHitCount)));
+		return FText::Format(
+			NSLOCTEXT(
+				"CardEffect",
+				"DamageMultipleDescriptionFormat",
+				"造成 {Value} 点伤害，共 {Hits} 次。"),
+			FormatArguments);
+	}
+
+	return FText::Format(
+		NSLOCTEXT("CardEffect", "DamageDescriptionFormat", "造成 {Value} 点伤害。"),
+		FormatArguments);
+}
+
 void UDamageCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
 	if (DescriptionArgumentName.IsNone())

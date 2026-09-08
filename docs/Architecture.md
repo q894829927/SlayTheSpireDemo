@@ -95,6 +95,8 @@ UCardData
 
 Effects are immutable shared definitions that capture base intent. Mutable-state-dependent outcomes resolve at Action Execute-time. FinishCardPlay delegates authoritative movement to DeckRuntime.
 
+Card descriptions default to localized sentences contributed by each Effect in array order, followed by the card's Exhaust keyword when applicable. Each contribution resolves read-only preview arguments independently; target-specific overrides are scoped by EffectIndex. Shared definitions remain immutable and the resulting FText follows the existing frozen snapshot pipeline. Explicit custom-template mode retains the old authored Description contract. See `docs/AutomaticCardDescriptions.md`.
+
 Draw uses a two-level Action model:
 
 ```text

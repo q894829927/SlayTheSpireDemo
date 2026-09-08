@@ -181,6 +181,36 @@ void USelectExhaustHandCardEffect::BuildPreviewArguments(
 	}
 }
 
+FText USelectExhaustHandCardEffect::GetAutoDescriptionFormat(const FCardEffectPreviewContext& Context) const
+{
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	switch (GetEffectiveSelectionMode(bIsUpgraded))
+	{
+	case ESelectExhaustSelectionMode::Random:
+		return NSLOCTEXT(
+			"CardEffect",
+			"SelectExhaustRandomDescriptionFormat",
+			"随机消耗 {Count} 张手牌。");
+	case ESelectExhaustSelectionMode::Player:
+	default:
+		return NSLOCTEXT(
+			"CardEffect",
+			"SelectExhaustPlayerDescriptionFormat",
+			"选择 {Count} 张手牌消耗。");
+	}
+}
+
+void USelectExhaustHandCardEffect::BuildAutoDescriptionArguments(
+	const FCardEffectPreviewContext& Context,
+	FPreviewTextArgumentBuilder& OutArguments
+) const
+{
+	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
+	OutArguments.AddInteger(
+		FName(TEXT("Count")),
+		GetEffectiveSelectionCount(bIsUpgraded));
+}
+
 void USelectExhaustHandCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
 	// NAME_None remains a deliberate legacy-compatible dynamic-text opt-out for
