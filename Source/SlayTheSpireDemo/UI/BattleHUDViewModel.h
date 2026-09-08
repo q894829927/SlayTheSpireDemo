@@ -16,6 +16,10 @@ enum class EGameplayRequestFailureReason : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDViewModelChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDPreviewChanged);
+DECLARE_MULTICAST_DELEGATE_OneParam(
+	FBattleHUDCardPresentationOwnershipChanged,
+	const TArray<int32>&
+);
 
 UCLASS(BlueprintType)
 class SLAYTHESPIREDEMO_API UBattleHUDViewModel : public UObject
@@ -99,6 +103,41 @@ public:
 	void EnterPresentationUnavailable(const FText& Reason);
 	bool IsPresentationDisplayOwned() const;
 	void SetPresentationDisplayOwned(bool bOwned);
+
+	// G0-C dormant Presentation-ownership infrastructure. These APIs are native
+	// Presentation state only; Gameplay selection/card-zone truth remains owned
+	// by BattleManager and the selection facade. Production Selection does not
+	// switch to these owners until the later G5 migration.
+	int64 BeginCardPresentationSelectionLifecycle(int64 SelectionBoundaryRevision);
+	bool SetPendingCardPresentationSelection(
+		int64 SelectionGeneration,
+		int32 RuntimeId,
+		bool bSelected);
+	bool ConfirmCardPresentationSelection(
+		int64 SelectionGeneration,
+		const TArray<int32>& RuntimeIds);
+	bool TryTransferCardPresentationOwnership(
+		int64 SelectionGeneration,
+		int32 RuntimeId,
+		ECardPresentationOwner ExpectedOwner,
+		ECardPresentationOwner NewOwner);
+	bool ArmRecordedCardPresentationCompletion(
+		int64 SelectionGeneration,
+		int64 ResolutionId);
+	bool ArmDirectCardPresentationCompletion(
+		int64 SelectionGeneration,
+		int64 PostConfirmStateRevision);
+	void MarkPresentationResolutionCompleted(int64 InBattleId, int64 ResolutionId);
+	void ReconcileCardPresentationOwnership();
+	ECardPresentationOwner GetCardPresentationOwner(int32 RuntimeId) const;
+	bool TryGetCardPresentationOwnershipEntry(
+		int32 RuntimeId,
+		FCardPresentationOwnershipEntry& OutEntry) const;
+
+	// Independent transient Presentation notification. Select/deselect/Confirm,
+	// transition ownership and reconciliation may publish here even when no
+	// historical FPresentationStateSnapshot field changed.
+	FBattleHUDCardPresentationOwnershipChanged OnCardPresentationOwnershipChanged;
 
 	// Native consumers use this descriptor to reconcile only the HUD surfaces
 	// affected by the most recent OnChanged publication. OnChanged itself remains
@@ -207,6 +246,11 @@ private:
 	UCardInstance* FindHandCardByRuntimeId(int32 RuntimeId) const;
 	ACombatant* FindLegalTargetById(int32 TargetId) const;
 
+	bool IsCardPresentationCompletionWatermarkReached(
+		const FCardPresentationOwnershipEntry& Entry) const;
+	void PublishCardPresentationOwnershipChanged(const TArray<int32>& ChangedRuntimeIds);
+	void ResetCardPresentationOwnershipState(bool bNotify);
+
 	TWeakObjectPtr<ABattleManager> BattleManager;
 	TMap<int32, TWeakObjectPtr<UCardInstance>> LiveCardBindings;
 	TMap<FName, TWeakObjectPtr<ACombatant>> LiveCombatantBindings;
@@ -221,4 +265,14 @@ private:
 	bool bDisplayedSnapshotCanEndTurn = false;
 	bool bPresentationDisplayOwned = false;
 	EBattleHUDDirtyFlags LastChangeFlags = EBattleHUDDirtyFlags::All;
+
+	// G0-C transient Presentation ownership storage. This is deliberately not
+	// copied from FPresentationStateSnapshot and is never Gameplay authority.
+	TMap<int32, FCardPresentationOwnershipEntry> CardPresentationOwnershipEntries;
+	int64 NextCardPresentationSelectionGeneration = 1;
+	int64 ActiveCardPresentationSelectionGeneration = 0;
+	int64 ActiveCardPresentationSelectionBattleId = 0;
+	int64 ActiveCardPresentationSelectionBoundaryRevision = 0;
+	int64 CompletedPresentationResolutionBattleId = 0;
+	TSet<int64> CompletedPresentationResolutionIds;
 };
