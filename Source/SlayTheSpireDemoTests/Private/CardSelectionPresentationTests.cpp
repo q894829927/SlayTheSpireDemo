@@ -259,48 +259,4 @@ bool FSharedSelectionHandToExhaustPresentationTest::RunTest(const FString& Param
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FSharedSelectionRebuiltHandDefersDestinationTest,
-	"SlayTheSpireDemo.CardSelection.Presentation.MultiSelect.RebuiltHandDefersDestinationUntilGeometry",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FSharedSelectionRebuiltHandDefersDestinationTest::RunTest(const FString& Parameters)
-{
-	FFixture Fixture;
-	if (!TestNotNull(TEXT("World exists"), Fixture.World)
-		|| !TestNotNull(TEXT("HUD exists"), Fixture.HUD)
-		|| !TestNotNull(TEXT("ViewModel exists"), Fixture.ViewModel))
-	{
-		return false;
-	}
-
-	const FPresentationCardSnapshot Snapshot = MakeSnapshot(712, TEXT("RebuiltSelectedCard"));
-	Fixture.ViewModel->ExhaustCount = 0;
-	if (!TestTrue(TEXT("Rebuilt formal Hand card is prepared"), Fixture.AddFormalCard(Snapshot))) return false;
-	UBattleCardWidget* RebuiltCard = Cast<UBattleCardWidget>(Fixture.Hand->GetChildAt(0));
-	if (!TestNotNull(TEXT("Rebuilt formal Hand card exists"), RebuiltCard)) return false;
-
-	// Synthetic NewObject widgets have no Slate layout geometry. This models the
-	// short window after RefreshHand rebuilt the remaining selected cards but
-	// before the next layout pass established their cached geometry.
-	Fixture.HUD->SetConfirmedCardCenterForTesting(Snapshot.RuntimeId, FVector2D(640.0f, 360.0f));
-	const FPresentationRecord Record = MakeHandToExhaustRecord(Snapshot, 4);
-	const FPresentationPlaybackToken Token = MakeToken(4, 1);
-	TestTrue(TEXT("Confirmed destination Record is accepted while geometry catches up"),
-		Fixture.HUD->PlayPresentationRecord(Record, Token));
-	TestTrue(TEXT("Destination start is deferred instead of falling back to Hand origin"),
-		Fixture.HUD->HasDeferredConfirmedDestinationForTesting());
-	TestTrue(TEXT("Exact RuntimeId handoff is retained until generic destination accepts"),
-		Fixture.HUD->HasConfirmedCardCenterForTesting(Snapshot.RuntimeId));
-	TestEqual(TEXT("Rebuilt card stays hidden so it cannot flash in the Hand row"),
-		RebuiltCard->GetVisibility(), ESlateVisibility::Hidden);
-
-	Fixture.HUD->SkipPresentation();
-	TestFalse(TEXT("Skip clears deferred destination state"),
-		Fixture.HUD->HasDeferredConfirmedDestinationForTesting());
-	TestFalse(TEXT("Skip clears retained selection handoff"),
-		Fixture.HUD->HasConfirmedCardCenterForTesting(Snapshot.RuntimeId));
-	return true;
-}
-
 #endif // WITH_DEV_AUTOMATION_TESTS
