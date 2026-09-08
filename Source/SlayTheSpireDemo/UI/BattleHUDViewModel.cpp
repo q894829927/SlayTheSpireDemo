@@ -39,6 +39,127 @@ namespace
 			return FText::FromString(TEXT("Action rejected."));
 		}
 	}
+
+	bool AreStatusViewsEqual(const FBattleHUDStatusView& Left, const FBattleHUDStatusView& Right)
+	{
+		return Left.StatusId == Right.StatusId
+			&& Left.RuntimeSequence == Right.RuntimeSequence
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.Description.EqualTo(Right.Description)
+			&& Left.Amount == Right.Amount
+			&& Left.bUseAtlasIcon == Right.bUseAtlasIcon
+			&& Left.UVOffset == Right.UVOffset
+			&& Left.UVScale == Right.UVScale
+			&& Left.TrimOffset == Right.TrimOffset
+			&& Left.TrimScale == Right.TrimScale;
+	}
+
+	bool AreStatusArraysEqual(
+		const TArray<FBattleHUDStatusView>& Left,
+		const TArray<FBattleHUDStatusView>& Right)
+	{
+		if (Left.Num() != Right.Num())
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Left.Num(); ++Index)
+		{
+			if (!AreStatusViewsEqual(Left[Index], Right[Index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool AreRelicViewsEqual(const FBattleHUDRelicView& Left, const FBattleHUDRelicView& Right)
+	{
+		return Left.RelicId == Right.RelicId
+			&& Left.RuntimeSequence == Right.RuntimeSequence
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.Description.EqualTo(Right.Description)
+			&& Left.bShowCounter == Right.bShowCounter
+			&& Left.Counter == Right.Counter
+			&& Left.CounterMax == Right.CounterMax
+			&& Left.Icon.Get() == Right.Icon.Get();
+	}
+
+	bool AreRelicArraysEqual(
+		const TArray<FBattleHUDRelicView>& Left,
+		const TArray<FBattleHUDRelicView>& Right)
+	{
+		if (Left.Num() != Right.Num())
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Left.Num(); ++Index)
+		{
+			if (!AreRelicViewsEqual(Left[Index], Right[Index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool AreCombatantCoreViewsEqual(
+		const FBattleHUDCombatantView& Left,
+		const FBattleHUDCombatantView& Right)
+	{
+		return Left.PresentationId == Right.PresentationId
+			&& Left.bPlayer == Right.bPlayer
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.HP == Right.HP
+			&& Left.MaxHP == Right.MaxHP
+			&& Left.Block == Right.Block
+			&& Left.bDead == Right.bDead
+			&& AreRelicArraysEqual(Left.Relics, Right.Relics);
+	}
+
+	bool AreCardViewsEqual(const FBattleHUDCardView& Left, const FBattleHUDCardView& Right)
+	{
+		return Left.RuntimeId == Right.RuntimeId
+			&& Left.CardId == Right.CardId
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.bUpgraded == Right.bUpgraded
+			&& Left.Cost == Right.Cost
+			&& Left.CardType == Right.CardType
+			&& Left.Rarity == Right.Rarity
+			&& Left.CardColor == Right.CardColor
+			&& Left.TargetType == Right.TargetType
+			&& Left.Description.EqualTo(Right.Description)
+			&& Left.RichDescription.EqualTo(Right.RichDescription)
+			&& Left.CardArt.Get() == Right.CardArt.Get()
+			&& Left.bGameplayPlayable == Right.bGameplayPlayable
+			&& Left.UnplayableReason.EqualTo(Right.UnplayableReason);
+	}
+
+	bool AreCardArraysEqual(
+		const TArray<FBattleHUDCardView>& Left,
+		const TArray<FBattleHUDCardView>& Right)
+	{
+		if (Left.Num() != Right.Num())
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Left.Num(); ++Index)
+		{
+			if (!AreCardViewsEqual(Left[Index], Right[Index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool AreIntentViewsEqual(const FBattleHUDIntentView& Left, const FBattleHUDIntentView& Right)
+	{
+		return Left.Type == Right.Type
+			&& Left.DisplayName.EqualTo(Right.DisplayName)
+			&& Left.BaseAmount == Right.BaseAmount
+			&& Left.bHasCurrentResolvedDamageAmount == Right.bHasCurrentResolvedDamageAmount
+			&& Left.CurrentResolvedDamageAmount == Right.CurrentResolvedDamageAmount;
+	}
 }
 
 bool UBattleHUDViewModel::Initialize(
@@ -50,7 +171,7 @@ bool UBattleHUDViewModel::Initialize(
 	if (!IsValid(InBattleManager))
 	{
 		LastFeedback = FText::FromString(TEXT("Battle HUD has no BattleManager."));
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::All);
 		return false;
 	}
 
@@ -77,7 +198,6 @@ bool UBattleHUDViewModel::Initialize(
 		{
 			RefreshLiveInputBindingsIfCaughtUp();
 		}
-		BroadcastChanged();
 		return true;
 	}
 
@@ -87,7 +207,7 @@ bool UBattleHUDViewModel::Initialize(
 	InteractionState = EBattleHUDInteractionState::Resolving;
 	bInputLocked = true;
 	bCanEndTurn = false;
-	BroadcastChanged();
+	BroadcastChanged(EBattleHUDDirtyFlags::All);
 	return true;
 }
 
@@ -121,6 +241,7 @@ void UBattleHUDViewModel::Shutdown()
 	DiscardCount = 0;
 	ExhaustCount = 0;
 	EnemyIntent = FBattleHUDIntentView{};
+	LastChangeFlags = EBattleHUDDirtyFlags::All;
 }
 
 bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
@@ -128,7 +249,7 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	if (!CanAcceptSelectionInput() || !IsLiveBindingCurrent())
 	{
 		SetFeedback(EGameplayRequestFailureReason::ResolutionBusy);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -144,7 +265,7 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	if (DisplayedCard == nullptr || !IsValid(Card) || !IsValid(Battle))
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidCard);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -152,7 +273,7 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	if (!Validation.bAllowed)
 	{
 		SetFeedback(Validation.FailureReason);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -177,19 +298,28 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 
 		ClearSelectionInternal();
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-		BroadcastChanged();
+		BroadcastChanged(
+			EBattleHUDDirtyFlags::Input
+			| EBattleHUDDirtyFlags::Combatants
+			| EBattleHUDDirtyFlags::Feedback);
 		return false;
 
 	default:
 		ClearSelectionInternal();
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-		BroadcastChanged();
+		BroadcastChanged(
+			EBattleHUDDirtyFlags::Input
+			| EBattleHUDDirtyFlags::Combatants
+			| EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
 	bInputLocked = false;
 	bCanEndTurn = bDisplayedSnapshotCanEndTurn && Battle->QueryEndPlayerTurn().bAllowed;
-	BroadcastChanged();
+	BroadcastChanged(
+		EBattleHUDDirtyFlags::Input
+		| EBattleHUDDirtyFlags::Combatants
+		| EBattleHUDDirtyFlags::Feedback);
 	return true;
 }
 
@@ -214,7 +344,10 @@ void UBattleHUDViewModel::CancelSelection()
 			bCanEndTurn = bDisplayedSnapshotCanEndTurn && Battle->QueryEndPlayerTurn().bAllowed;
 		}
 	}
-	BroadcastChanged();
+	BroadcastChanged(
+		EBattleHUDDirtyFlags::Input
+		| EBattleHUDDirtyFlags::Combatants
+		| EBattleHUDDirtyFlags::Feedback);
 }
 
 bool UBattleHUDViewModel::SelectTargetById(int32 TargetId)
@@ -223,7 +356,7 @@ bool UBattleHUDViewModel::SelectTargetById(int32 TargetId)
 		bInputLocked || !IsLiveBindingCurrent())
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -231,7 +364,7 @@ bool UBattleHUDViewModel::SelectTargetById(int32 TargetId)
 	if (!IsValid(Target))
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -244,7 +377,7 @@ bool UBattleHUDViewModel::ConfirmSelectedCard()
 		bInputLocked || !IsLiveBindingCurrent())
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -253,7 +386,7 @@ bool UBattleHUDViewModel::ConfirmSelectedCard()
 	if (DisplayedCard == nullptr || !IsValid(Card))
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidCard);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -263,7 +396,7 @@ bool UBattleHUDViewModel::ConfirmSelectedCard()
 	}
 
 	SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
-	BroadcastChanged();
+	BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 	return false;
 }
 
@@ -272,7 +405,7 @@ bool UBattleHUDViewModel::RequestEndTurn()
 	if (!CanAcceptSelectionInput() || !IsLiveBindingCurrent())
 	{
 		SetFeedback(EGameplayRequestFailureReason::ResolutionBusy);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -280,7 +413,7 @@ bool UBattleHUDViewModel::RequestEndTurn()
 	if (!IsValid(Battle))
 	{
 		SetFeedback(EGameplayRequestFailureReason::InvalidBattle);
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -288,6 +421,7 @@ bool UBattleHUDViewModel::RequestEndTurn()
 	if (!Result.IsAcceptedForResolution())
 	{
 		SetFeedback(Result.FailureReason);
+		EBattleHUDDirtyFlags DirtyFlags = EBattleHUDDirtyFlags::Feedback;
 		// Rejection creates no Resolution and does not give the HUD permission to
 		// replace its display from mutable state. Existing caught-up bindings remain
 		// usable only if their exact revision still matches.
@@ -296,8 +430,9 @@ bool UBattleHUDViewModel::RequestEndTurn()
 			ClearLiveInputBindings();
 			bInputLocked = true;
 			bCanEndTurn = false;
+			DirtyFlags |= EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants;
 		}
-		BroadcastChanged();
+		BroadcastChanged(DirtyFlags);
 		return false;
 	}
 
@@ -305,7 +440,10 @@ bool UBattleHUDViewModel::RequestEndTurn()
 	ClearFeedback();
 	ClearLiveInputBindings();
 	SetResolving();
-	BroadcastChanged();
+	BroadcastChanged(
+		EBattleHUDDirtyFlags::Input
+		| EBattleHUDDirtyFlags::Combatants
+		| EBattleHUDDirtyFlags::Feedback);
 	return true;
 }
 
@@ -338,9 +476,55 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 )
 {
 	// Pure historical display copy. No runtime/query/data-asset access belongs in
-	// this function.
-	const bool bRevisionChanged = BattleId != Snapshot.BattleId
-		|| StateRevision != Snapshot.StateRevision;
+	// this function. Dirty flags describe display reconciliation only; the full
+	// immutable snapshot still becomes the ViewModel's exact historical state.
+	const bool bBattleChanged = BattleId != Snapshot.BattleId;
+	const bool bRevisionChanged = bBattleChanged || StateRevision != Snapshot.StateRevision;
+	EBattleHUDDirtyFlags DirtyFlags = bBattleChanged
+		? EBattleHUDDirtyFlags::All
+		: EBattleHUDDirtyFlags::None;
+
+	if (!bBattleChanged)
+	{
+		if (!AreCardArraysEqual(HandCards, Snapshot.HandCards))
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Hand;
+		}
+		if (!AreCombatantCoreViewsEqual(Player, Snapshot.Player)
+			|| !AreCombatantCoreViewsEqual(Enemy, Snapshot.Enemy))
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Combatants;
+		}
+		if (!AreStatusArraysEqual(Player.Statuses, Snapshot.Player.Statuses)
+			|| !AreStatusArraysEqual(Enemy.Statuses, Snapshot.Enemy.Statuses))
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Statuses;
+		}
+		if (Energy != Snapshot.Energy || MaxEnergy != Snapshot.MaxEnergy)
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Energy;
+		}
+		if (DrawCount != Snapshot.DrawCount
+			|| DiscardCount != Snapshot.DiscardCount
+			|| ExhaustCount != Snapshot.ExhaustCount)
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::PileCounts;
+		}
+		if (!AreIntentViewsEqual(EnemyIntent, Snapshot.EnemyIntent))
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Intent;
+		}
+		if (Outcome != Snapshot.Outcome)
+		{
+			DirtyFlags |= EBattleHUDDirtyFlags::Terminal;
+		}
+	}
+
+	const int32 PreviousSelectedCardRuntimeId = SelectedCardRuntimeId;
+	const int32 PreviousLegalTargetCount = LegalTargets.Num();
+	const EBattleHUDInteractionState PreviousInteractionState = InteractionState;
+	const bool bPreviousInputLocked = bInputLocked;
+	const bool bPreviousCanEndTurn = bCanEndTurn;
 
 	BattleId = Snapshot.BattleId;
 	StateRevision = Snapshot.StateRevision;
@@ -380,7 +564,29 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 		bCanEndTurn = false;
 	}
 
-	BroadcastChanged();
+	if (bRevisionChanged
+		|| bResetInteraction
+		|| PreviousSelectedCardRuntimeId != SelectedCardRuntimeId
+		|| PreviousLegalTargetCount != LegalTargets.Num()
+		|| PreviousInteractionState != InteractionState
+		|| bPreviousInputLocked != bInputLocked
+		|| bPreviousCanEndTurn != bCanEndTurn)
+	{
+		DirtyFlags |= EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants;
+	}
+	if (bBattleChanged || PreviousInteractionState == EBattleHUDInteractionState::PresentationUnavailable)
+	{
+		DirtyFlags |= EBattleHUDDirtyFlags::PresentationAvailability;
+	}
+	if (DirtyFlags == EBattleHUDDirtyFlags::None)
+	{
+		// A structurally identical publication still represents a legitimate
+		// historical boundary. Keep the compatibility OnChanged edge but avoid
+		// granting permission to rebuild any Native formal surface.
+		BroadcastChanged(EBattleHUDDirtyFlags::None);
+		return;
+	}
+	BroadcastChanged(DirtyFlags);
 }
 
 bool UBattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()
@@ -444,7 +650,10 @@ bool UBattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()
 		InteractionState = EBattleHUDInteractionState::Terminal;
 		bInputLocked = true;
 		bCanEndTurn = false;
-		BroadcastChanged();
+		BroadcastChanged(
+			EBattleHUDDirtyFlags::Input
+			| EBattleHUDDirtyFlags::Combatants
+			| EBattleHUDDirtyFlags::Terminal);
 		return true;
 	}
 
@@ -453,7 +662,7 @@ bool UBattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()
 		InteractionState = EBattleHUDInteractionState::Resolving;
 		bInputLocked = true;
 		bCanEndTurn = false;
-		BroadcastChanged();
+		BroadcastChanged(EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants);
 		return true;
 	}
 
@@ -461,7 +670,7 @@ bool UBattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()
 	InteractionState = EBattleHUDInteractionState::Idle;
 	bInputLocked = false;
 	bCanEndTurn = bDisplayedSnapshotCanEndTurn && Battle->QueryEndPlayerTurn().bAllowed;
-	BroadcastChanged();
+	BroadcastChanged(EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants);
 	return true;
 }
 
@@ -475,7 +684,12 @@ void UBattleHUDViewModel::EnterPresentationUnavailable(const FText& Reason)
 	LastFeedback = Reason.IsEmpty()
 		? FText::FromString(TEXT("Committed Presentation is unavailable for this battle."))
 		: Reason;
-	BroadcastChanged();
+	BroadcastChanged(
+		EBattleHUDDirtyFlags::Input
+		| EBattleHUDDirtyFlags::Combatants
+		| EBattleHUDDirtyFlags::Feedback
+		| EBattleHUDDirtyFlags::Terminal
+		| EBattleHUDDirtyFlags::PresentationAvailability);
 }
 
 bool UBattleHUDViewModel::IsPresentationDisplayOwned() const
@@ -516,7 +730,7 @@ void UBattleHUDViewModel::HandleReadStateReady(uint64 InBattleId, uint64 InState
 		}
 		else
 		{
-			BroadcastChanged();
+			BroadcastChanged(EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants);
 		}
 	}
 
@@ -632,7 +846,10 @@ bool UBattleHUDViewModel::SubmitSelectedCard(ACombatant* Target)
 		ClearSelectionInternal();
 		bInputLocked = true;
 		bCanEndTurn = false;
-		BroadcastChanged();
+		BroadcastChanged(
+			EBattleHUDDirtyFlags::Input
+			| EBattleHUDDirtyFlags::Combatants
+			| EBattleHUDDirtyFlags::Feedback);
 		return false;
 	}
 
@@ -640,6 +857,7 @@ bool UBattleHUDViewModel::SubmitSelectedCard(ACombatant* Target)
 	if (!Result.IsAcceptedForResolution())
 	{
 		SetFeedback(Result.FailureReason);
+		EBattleHUDDirtyFlags DirtyFlags = EBattleHUDDirtyFlags::Feedback;
 		if (!IsLiveBindingCurrent())
 		{
 			ClearSelectionInternal();
@@ -647,8 +865,9 @@ bool UBattleHUDViewModel::SubmitSelectedCard(ACombatant* Target)
 			InteractionState = EBattleHUDInteractionState::Resolving;
 			bInputLocked = true;
 			bCanEndTurn = false;
+			DirtyFlags |= EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants;
 		}
-		BroadcastChanged();
+		BroadcastChanged(DirtyFlags);
 		return false;
 	}
 
@@ -656,7 +875,10 @@ bool UBattleHUDViewModel::SubmitSelectedCard(ACombatant* Target)
 	ClearFeedback();
 	ClearLiveInputBindings();
 	SetResolving();
-	BroadcastChanged();
+	BroadcastChanged(
+		EBattleHUDDirtyFlags::Input
+		| EBattleHUDDirtyFlags::Combatants
+		| EBattleHUDDirtyFlags::Feedback);
 	return true;
 }
 
@@ -696,8 +918,9 @@ void UBattleHUDViewModel::ClearFeedback()
 	LastFeedback = FText::GetEmpty();
 }
 
-void UBattleHUDViewModel::BroadcastChanged()
+void UBattleHUDViewModel::BroadcastChanged(EBattleHUDDirtyFlags DirtyFlags)
 {
+	LastChangeFlags = DirtyFlags;
 	OnChanged.Broadcast();
 }
 
