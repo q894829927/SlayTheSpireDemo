@@ -3,7 +3,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Actions/BattleActionQueue.h"
-#include "Actions/DeferredHandSelectionAction.h"
+#include "Actions/DeferredSelectionAction.h"
 #include "Actions/DrawCardAction.h"
 #include "Battle/BattleManager.h"
 #include "Battle/BattleSelectionRequest.h"
@@ -17,6 +17,7 @@
 #include "Presentation/PresentationCardView.h"
 #include "Presentation/PresentationTypes.h"
 #include "Selection/MoveSelectedHandCardsToDrawPileTopContinuation.h"
+#include "Selection/SelectionCandidateSource.h"
 #include "Selection/SelectionResolver.h"
 #include "Engine/World.h"
 
@@ -43,6 +44,38 @@ namespace CardExpansionWave1CC1DrawPileTopTest
 		Card.DisplayName = FText::FromString(CardId);
 		Card.Description = FText::FromString(TEXT("C1 reducer card."));
 		return Card;
+	}
+
+	FSelectionInteractiveBoundaryAccess MakeNoPresentationBoundary()
+	{
+		return FSelectionInteractiveBoundaryAccess::CreateLambda(
+			[](const UBattleAction*)
+			{
+				return FPresentationRecordWriter{};
+			});
+	}
+
+	UDeferredSelectionAction* MakeCurrentHandPlayerSelection(
+		UBattleActionQueue* Queue,
+		UDeckRuntime* Deck,
+		USelectionResolver* Resolver,
+		UAuthoredContinuation* Continuation,
+		int32 RequestedCount,
+		FName SelectionSource)
+	{
+		UCurrentHandSelectionSource* CandidateSource = NewObject<UCurrentHandSelectionSource>(Queue);
+		CandidateSource->Initialize(Deck);
+		UDeferredSelectionAction* Deferred = NewObject<UDeferredSelectionAction>(Queue);
+		Deferred->Initialize(
+			CandidateSource,
+			Resolver,
+			Continuation,
+			RequestedCount,
+			ESelectionCancelPolicy::Forbidden,
+			SelectionSource,
+			EDeferredSelectionMode::Player,
+			MakeNoPresentationBoundary());
+		return Deferred;
 	}
 
 	struct FBattleFixture
@@ -82,14 +115,10 @@ namespace CardExpansionWave1CC1DrawPileTopTest
 			if (IsValid(World)) World->DestroyWorld(false);
 		}
 
-		UCardData* CreateEffectCard(
-			const TCHAR* CardId,
-			int32 BaseCount,
-			int32 UpgradedCount)
+		UCardData* CreateEffectCard(const TCHAR* CardId, int32 BaseCount, int32 UpgradedCount)
 		{
 			UCardData* Card = MakePlainCard(World, CardId);
-			USelectHandCardToDrawPileTopEffect* Effect =
-				NewObject<USelectHandCardToDrawPileTopEffect>(Card);
+			USelectHandCardToDrawPileTopEffect* Effect = NewObject<USelectHandCardToDrawPileTopEffect>(Card);
 			Effect->BaseSelectionCount = BaseCount;
 			Effect->UpgradedSelectionCount = UpgradedCount;
 			Card->Effects.Add(Effect);
@@ -100,10 +129,7 @@ namespace CardExpansionWave1CC1DrawPileTopTest
 		{
 			if (!IsValid(Battle) || Definitions.Num() == 0) return false;
 			Battle->DebugStartingDeck.Reset();
-			for (UCardData* Definition : Definitions)
-			{
-				Battle->DebugStartingDeck.Add(Definition);
-			}
+			for (UCardData* Definition : Definitions) Battle->DebugStartingDeck.Add(Definition);
 			Battle->OpeningHandDrawCount = Definitions.Num();
 			Battle->StartBattle();
 			Battle->FlushScheduledReadStateReadyForTesting();
@@ -118,10 +144,7 @@ namespace CardExpansionWave1CC1DrawPileTopTest
 			if (!IsValid(Deck)) return nullptr;
 			for (const TObjectPtr<UCardInstance>& Card : Deck->GetHandCards())
 			{
-				if (IsValid(Card.Get()) && Card->GetCardId() == CardId)
-				{
-					return Card.Get();
-				}
+				if (IsValid(Card.Get()) && Card->GetCardId() == CardId) return Card.Get();
 			}
 			return nullptr;
 		}
@@ -147,28 +170,24 @@ bool FWave1CC1HandToDrawTopCommitTest::RunTest(const FString& Parameters)
 	UCardInstance* DrawnA = nullptr;
 	UCardInstance* DrawnB = nullptr;
 	if (!TestTrue(TEXT("First setup draw commits"), Deck->TryDrawTopCardCommit(DrawnA).bCommitted)
-		|| !TestTrue(TEXT("Second setup draw commits"), Deck->TryDrawTopCardCommit(DrawnB).bCommitted))
-	{
-		return false;
-	}
-	if (!TestNotNull(TEXT("First drawn card exists"), DrawnA)
+		|| !TestTrue(TEXT("Second setup draw commits"), Deck->TryDrawTopCardCommit(DrawnB).bCommitted)
+		|| !TestNotNull(TEXT("First drawn card exists"), DrawnA)
 		|| !TestNotNull(TEXT("Second drawn card exists"), DrawnB))
 	{
 		return false;
 	}
 
 	UCardInstance* Selected = Deck->GetHandCards()[0].Get();
-	const int32 ExpectedFromIndex = 0;
 	const int32 ExpectedToIndex = Deck->GetDrawCount();
 	const int32 HandCountBefore = Deck->GetHandCount();
 	const FCardZoneMutationResult Result = Deck->TryMoveHandCardToDrawPileTopCommit(Selected);
 	TestTrue(TEXT("Exact Hand->DrawPileTop mutation commits"), Result.bCommitted);
 	TestEqual(TEXT("From zone is Hand"), Result.FromZone, ECardZone::Hand);
 	TestEqual(TEXT("To zone is DrawPile"), Result.ToZone, ECardZone::DrawPile);
-	TestEqual(TEXT("FromIndex is exact current Hand index"), Result.FromIndex, ExpectedFromIndex);
+	TestEqual(TEXT("FromIndex is exact current Hand index"), Result.FromIndex, 0);
 	TestEqual(TEXT("ToIndex is pre-insertion DrawCount"), Result.ToIndex, ExpectedToIndex);
 	TestEqual(TEXT("Hand removes exactly one card"), Deck->GetHandCount(), HandCountBefore - 1);
-	TestTrue(TEXT("Moved exact CardInstance is DrawPile top"), Deck->GetDrawCards().Num() > 0 && Deck->GetDrawCards().Last().Get() == Selected);
+	TestTrue(TEXT("Moved exact CardInstance is DrawPile top"), Deck->GetDrawCards().Last().Get() == Selected);
 
 	UCardInstance* NextDraw = nullptr;
 	TestTrue(TEXT("Immediate draw from top commits"), Deck->TryDrawTopCardCommit(NextDraw).bCommitted);
@@ -177,7 +196,6 @@ bool FWave1CC1HandToDrawTopCommitTest::RunTest(const FString& Parameters)
 	const int32 DrawCountBeforeRejects = Deck->GetDrawCount();
 	const int32 HandCountBeforeRejects = Deck->GetHandCount();
 	TestFalse(TEXT("Null exact target is rejected"), Deck->TryMoveHandCardToDrawPileTopCommit(nullptr).bCommitted);
-
 	UCardInstance* Foreign = NewObject<UCardInstance>(GetTransientPackage());
 	Foreign->Initialize(A, 9999, false);
 	TestFalse(TEXT("Foreign non-Hand target is rejected"), Deck->TryMoveHandCardToDrawPileTopCommit(Foreign).bCommitted);
@@ -215,14 +233,12 @@ bool FWave1CC1DeferredUsesCurrentHandTest::RunTest(const FString& Parameters)
 	QueueAccess.BindLambda([Queue](const USelectionResolver*) { return Queue; });
 	Resolver->Initialize(QueueAccess);
 
-	UMoveSelectedHandCardsToDrawPileTopContinuation* Continuation =
-		NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(Queue);
+	UMoveSelectedHandCardsToDrawPileTopContinuation* Continuation = NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(Queue);
 	Continuation->Initialize(Deck, nullptr);
-
 	UDrawCardAction* Draw = NewObject<UDrawCardAction>(Queue);
 	Draw->Initialize(Deck);
-	UDeferredHandSelectionAction* Deferred = NewObject<UDeferredHandSelectionAction>(Queue);
-	Deferred->Initialize(Deck, Resolver, Continuation, 2, FName(TEXT("C1DeferredCurrentHand")));
+	UDeferredSelectionAction* Deferred = MakeCurrentHandPlayerSelection(
+		Queue, Deck, Resolver, Continuation, 2, FName(TEXT("C1DeferredCurrentHand")));
 
 	TArray<UBattleAction*> Batch{ Draw, Deferred };
 	if (!TestTrue(TEXT("Draw then Deferred batch enqueues"), Queue->AddBatchToBackPreserveOrder(Batch))
@@ -236,20 +252,15 @@ bool FWave1CC1DeferredUsesCurrentHandTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Deferred request is exact two"), Request->MinCount, 2);
 	TestEqual(TEXT("Deferred request max is exact two"), Request->MaxCount, 2);
 	TestEqual(TEXT("Deferred request sees two current Hand candidates"), Request->Candidates.Num(), 2);
-	TestTrue(
-		TEXT("Newly drawn exact CardInstance is eligible because candidates were read at Execute time"),
-		Request->Candidates.ContainsByPredicate(
-			[ExpectedNewlyDrawn](const FSelectionCandidate& Candidate)
-			{
-				return Candidate.RuntimeObject.Get() == ExpectedNewlyDrawn;
-			}));
+	TestTrue(TEXT("Newly drawn exact CardInstance is eligible because candidates were read at Execute time"),
+		Request->Candidates.ContainsByPredicate([ExpectedNewlyDrawn](const FSelectionCandidate& Candidate)
+		{
+			return Candidate.RuntimeObject.Get() == ExpectedNewlyDrawn;
+		}));
 
 	FSelectionResult Selection;
 	Selection.Status = ESelectionStatus::Resolved;
-	for (const FSelectionCandidate& Candidate : Request->Candidates)
-	{
-		Selection.SelectedObjects.Add(Candidate.RuntimeObject.Get());
-	}
+	for (const FSelectionCandidate& Candidate : Request->Candidates) Selection.SelectedObjects.Add(Candidate.RuntimeObject.Get());
 	UCardInstance* FirstCanonical = Cast<UCardInstance>(Selection.SelectedObjects[0].Get());
 	UCardInstance* SecondCanonical = Cast<UCardInstance>(Selection.SelectedObjects[1].Get());
 	TestTrue(TEXT("Resolved selection submits"), Resolver->SubmitResult(Selection));
@@ -286,14 +297,11 @@ bool FWave1CC1DeferredCountBoundsTest::RunTest(const FString& Parameters)
 	ZeroDeck->TryDrawTopCardCommit(ZeroB);
 	UBattleActionQueue* ZeroQueue = NewObject<UBattleActionQueue>(GetTransientPackage());
 	USelectionResolver* ZeroResolver = NewObject<USelectionResolver>(GetTransientPackage());
-	FSelectionResolverQueueAccess ZeroAccess;
-	ZeroAccess.BindLambda([ZeroQueue](const USelectionResolver*) { return ZeroQueue; });
-	ZeroResolver->Initialize(ZeroAccess);
-	UMoveSelectedHandCardsToDrawPileTopContinuation* ZeroContinuation =
-		NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(ZeroQueue);
+	ZeroResolver->Initialize(FSelectionResolverQueueAccess::CreateLambda([ZeroQueue](const USelectionResolver*) { return ZeroQueue; }));
+	UMoveSelectedHandCardsToDrawPileTopContinuation* ZeroContinuation = NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(ZeroQueue);
 	ZeroContinuation->Initialize(ZeroDeck, nullptr);
-	UDeferredHandSelectionAction* Zero = NewObject<UDeferredHandSelectionAction>(ZeroQueue);
-	Zero->Initialize(ZeroDeck, ZeroResolver, ZeroContinuation, 0, FName(TEXT("C1Zero")));
+	UDeferredSelectionAction* Zero = MakeCurrentHandPlayerSelection(
+		ZeroQueue, ZeroDeck, ZeroResolver, ZeroContinuation, 0, FName(TEXT("C1Zero")));
 	TestTrue(TEXT("Count-zero deferred action enqueues"), ZeroQueue->AddToBack(Zero));
 	TestTrue(TEXT("Count-zero queue starts"), ZeroQueue->StartProcessing());
 	TestFalse(TEXT("Count zero creates no pending selection"), ZeroResolver->HasPendingSelection());
@@ -308,14 +316,11 @@ bool FWave1CC1DeferredCountBoundsTest::RunTest(const FString& Parameters)
 	ClampDeck->TryDrawTopCardCommit(ClampB);
 	UBattleActionQueue* ClampQueue = NewObject<UBattleActionQueue>(GetTransientPackage());
 	USelectionResolver* ClampResolver = NewObject<USelectionResolver>(GetTransientPackage());
-	FSelectionResolverQueueAccess ClampAccess;
-	ClampAccess.BindLambda([ClampQueue](const USelectionResolver*) { return ClampQueue; });
-	ClampResolver->Initialize(ClampAccess);
-	UMoveSelectedHandCardsToDrawPileTopContinuation* ClampContinuation =
-		NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(ClampQueue);
+	ClampResolver->Initialize(FSelectionResolverQueueAccess::CreateLambda([ClampQueue](const USelectionResolver*) { return ClampQueue; }));
+	UMoveSelectedHandCardsToDrawPileTopContinuation* ClampContinuation = NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(ClampQueue);
 	ClampContinuation->Initialize(ClampDeck, nullptr);
-	UDeferredHandSelectionAction* Clamp = NewObject<UDeferredHandSelectionAction>(ClampQueue);
-	Clamp->Initialize(ClampDeck, ClampResolver, ClampContinuation, 5, FName(TEXT("C1Clamp")));
+	UDeferredSelectionAction* Clamp = MakeCurrentHandPlayerSelection(
+		ClampQueue, ClampDeck, ClampResolver, ClampContinuation, 5, FName(TEXT("C1Clamp")));
 	TestTrue(TEXT("Clamp deferred action enqueues"), ClampQueue->AddToBack(Clamp));
 	TestTrue(TEXT("Clamp queue starts"), ClampQueue->StartProcessing());
 	const FSelectionRequest* ClampRequest = ClampResolver->GetPendingRequest();
@@ -346,20 +351,14 @@ bool FWave1CC1EffectConfigAndFinishTest::RunTest(const FString& Parameters)
 
 	FPendingCardSelectionReadView View;
 	if (!TestTrue(TEXT("Effect exposes current-Hand pending selection"),
-		BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Fixture.Battle, View)))
-	{
-		return false;
-	}
+		BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Fixture.Battle, View))) return false;
 	TestEqual(TEXT("Base Blueprint count requires exactly two"), View.RequiredCount, 2);
 	if (!TestTrue(TEXT("At least two candidate RuntimeIds are available"), View.CandidateRuntimeIds.Num() >= 2)) return false;
 
 	const int32 FirstSelectedRuntimeId = View.CandidateRuntimeIds[0];
 	const int32 SecondSelectedRuntimeId = View.CandidateRuntimeIds[1];
-	TestTrue(
-		TEXT("Exact two RuntimeIds submit through Gameplay facade"),
-		BattleSelectionRequest::SubmitPendingCardSelection(
-			Fixture.Battle,
-			{ FirstSelectedRuntimeId, SecondSelectedRuntimeId }));
+	TestTrue(TEXT("Exact two RuntimeIds submit through Gameplay facade"),
+		BattleSelectionRequest::SubmitPendingCardSelection(Fixture.Battle, { FirstSelectedRuntimeId, SecondSelectedRuntimeId }));
 	Fixture.Battle->FlushScheduledReadStateReadyForTesting();
 
 	TestFalse(TEXT("Effect resolution has no fault"), Fixture.Battle->GetActionQueueForTesting()->IsResolutionFaulted());
@@ -367,7 +366,8 @@ bool FWave1CC1EffectConfigAndFinishTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Two selected cards are now on DrawPile"), Deck->GetDrawCount(), 2);
 	TestEqual(TEXT("Only one unselected candidate remains in Hand"), Deck->GetHandCount(), 1);
 	TestEqual(TEXT("Top card is the second canonical selected RuntimeId"), Deck->GetDrawCards().Last()->GetRuntimeId(), SecondSelectedRuntimeId);
-	TestEqual(TEXT("Card directly below top is the first canonical selected RuntimeId"), Deck->GetDrawCards()[Deck->GetDrawCards().Num() - 2]->GetRuntimeId(), FirstSelectedRuntimeId);
+	TestEqual(TEXT("Card directly below top is the first canonical selected RuntimeId"),
+		Deck->GetDrawCards()[Deck->GetDrawCards().Num() - 2]->GetRuntimeId(), FirstSelectedRuntimeId);
 	return true;
 }
 
@@ -379,28 +379,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FWave1CC1DescriptionBaseUpgradeTest::RunTest(const FString& Parameters)
 {
 	UCardData* Definition = MakePlainCard(GetTransientPackage(), TEXT("C1Description"));
-	USelectHandCardToDrawPileTopEffect* Effect =
-		NewObject<USelectHandCardToDrawPileTopEffect>(Definition);
+	USelectHandCardToDrawPileTopEffect* Effect = NewObject<USelectHandCardToDrawPileTopEffect>(Definition);
 	Effect->BaseSelectionCount = 1;
 	Effect->UpgradedSelectionCount = 3;
 	Definition->Effects.Add(Effect);
-
-	TestEqual(
-		TEXT("Description argument has semantic non-None default"),
-		Effect->DescriptionArgumentName,
-		FName(TEXT("DrawPileTopCount")));
+	TestEqual(TEXT("Description argument has semantic non-None default"), Effect->DescriptionArgumentName, FName(TEXT("DrawPileTopCount")));
 
 	UCardInstance* Base = NewObject<UCardInstance>(GetTransientPackage());
 	Base->Initialize(Definition, 1, false);
 	UCardInstance* Upgraded = NewObject<UCardInstance>(GetTransientPackage());
 	Upgraded->Initialize(Definition, 2, true);
-
-	TestEqual(
-		TEXT("Base auto description uses BaseSelectionCount"),
+	TestEqual(TEXT("Base auto description uses BaseSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(Base, nullptr).ToString(),
 		FString(TEXT("将手牌中的 1 张牌放到你的抽牌堆顶部。")));
-	TestEqual(
-		TEXT("Upgraded auto description uses UpgradedSelectionCount"),
+	TestEqual(TEXT("Upgraded auto description uses UpgradedSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(Upgraded, nullptr).ToString(),
 		FString(TEXT("将手牌中的 3 张牌放到你的抽牌堆顶部。")));
 	return true;
@@ -468,13 +460,10 @@ bool FWave1CC1HandToDrawTopReducerTest::RunTest(const FString& Parameters)
 	FPresentationResolutionEnvelope BadToIndex = Envelope;
 	BadToIndex.Records[1].CardZoneChanged.ToIndex = 4;
 	FPresentationStateSnapshot Ignored;
-	TestFalse(TEXT("Reducer rejects stale DrawPile destination index"),
-		Controller->ReduceEnvelopeForTesting(Baseline, BadToIndex, Ignored));
-
+	TestFalse(TEXT("Reducer rejects stale DrawPile destination index"), Controller->ReduceEnvelopeForTesting(Baseline, BadToIndex, Ignored));
 	FPresentationResolutionEnvelope BadFromIndex = Envelope;
 	BadFromIndex.Records[1].CardZoneChanged.FromIndex = 1;
-	TestFalse(TEXT("Reducer rejects stale Hand source index after prior removal"),
-		Controller->ReduceEnvelopeForTesting(Baseline, BadFromIndex, Ignored));
+	TestFalse(TEXT("Reducer rejects stale Hand source index after prior removal"), Controller->ReduceEnvelopeForTesting(Baseline, BadFromIndex, Ignored));
 	return true;
 }
 
