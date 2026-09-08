@@ -1,43 +1,37 @@
 # Card Selection Presentation Constraints
 
-Date: **2026-09-08**
+Date: **2026-09-09**
 
 Status:
 
 ```text
-PARTIALLY IMPLEMENTED / PARALLEL GROUP REDESIGN CONTRACTS HARDENED /
+PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
 GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
 ```
 
-Scope: define the shared Native HUD / Presentation contract for player card-selection interactions before implementation continues.
+Scope: define the shared Native HUD / Presentation contract for current and future player card-selection interactions.
 
-This document is authoritative for the Presentation behavior of current and future player card-selection flows. It complements `docs/CardSelectionRefactorConstraints.md`, which defines Gameplay candidate capture, pending-selection, resolver, continuation, and interactive-boundary rules. The grouped multi-selection rules below are further specified by `docs/SelectionPresentationGroupDesign.md`.
+This document is authoritative for card-selection Presentation behavior. `docs/CardSelectionRefactorConstraints.md` remains authoritative for Gameplay candidate capture, pending requests, resolver/continuation behavior and interactive-boundary rules. `docs/SelectionPresentationGroupDesign.md` specifies the grouped multi-selection implementation in more detail.
 
 ## 1. Core principle
 
-Selection Presentation belongs to the shared Selection interaction framework.
+Selection Presentation belongs to the shared Selection interaction framework, never to an individual card or Effect.
 
-It MUST NOT belong to:
-
-- Warcry;
-- `USelectHandCardToDrawPileTopEffect`;
-- Burning Pact;
-- `USelectExhaustHandCardEffect`;
-- any other individual card or Effect.
+It MUST NOT belong to Warcry, Burning Pact, `USelectHandCardToDrawPileTopEffect`, `USelectExhaustHandCardEffect`, or any other Effect-specific path.
 
 The reusable interaction model is:
 
 ```text
 Player Selection becomes display-eligible
-→ show shared Selection UI
+→ shared Selection UI appears
 → player changes transient selected RuntimeIds
 → required count is satisfied
 → Confirm becomes available
 → player explicitly confirms
 → authoritative SelectionResult is submitted
-→ shared Selection Presentation owns the selected-card visual handoff
-→ committed Gameplay facts determine the destination transition
-→ later authored Effects / played-card cleanup continue through their normal Presentation paths
+→ confirmed selected RuntimeIds keep stable Presentation ownership
+→ committed Gameplay/Presentation facts determine destination transitions
+→ later authored Effects / played-card cleanup continue normally
 ```
 
 No `CardId`-specific Presentation sequence is permitted.
@@ -46,8 +40,6 @@ No `CardId`-specific Presentation sequence is permitted.
 
 Choosing enough cards MUST NOT automatically submit the Selection.
 
-For exact-N Player Selection:
-
 ```text
 selected count < required count
 → Confirm disabled
@@ -55,171 +47,329 @@ selected count < required count
 selected count == required count
 → Confirm enabled
 → Selection remains pending
-→ no authoritative result submitted yet
 
 player presses Confirm
 → submit exactly the currently selected RuntimeIds
 ```
 
-The last candidate click MUST NOT double as confirmation.
+The last candidate click MUST NOT double as confirmation. Deselect/reselect remains transient UI behavior while the request is pending and policy permits it.
 
-The selected RuntimeId set before confirmation is transient UI state only. Gameplay remains authoritative for the pending request and legal frozen candidate set.
+## 3. Authoritative visual continuity model
 
-Selection UI MAY allow deselect/reselect while the request remains pending, subject to the current Selection policy.
+The primary selected-card continuity contract is exact RuntimeId Presentation ownership:
 
-## 3. Shared Selection Presentation lifecycle
+```text
+Hand
+→ SelectionArea
+→ Transition
+→ ConsumedPendingReducer
+→ Done
+```
 
-All Player card selections in scope MUST reuse one shared Presentation lifecycle.
+This is Presentation-only state. It is not a Gameplay zone and MUST NOT mutate authoritative Hand/DrawPile/Discard/Exhaust membership.
 
-The shared layer owns:
+A card may therefore legally be:
 
-- entering the card-selection visual mode;
-- displaying the prompt and candidate affordances;
-- transient selected/unselected visuals;
-- Confirm enabled/disabled state;
-- consuming the explicit Confirm action;
-- freezing the confirmed selected RuntimeIds for visual handoff;
-- leaving/closing the selection overlay;
-- transferring selected card visuals into the committed post-selection transition;
-- preventing the just-finished selection UI from fabricating Gameplay state.
+```text
+Gameplay Zone       = Hand
+Presentation Owner  = SelectionArea
+```
 
-An Effect MUST NOT implement any of those responsibilities itself.
+### 3.1 One visible owner per RuntimeId
 
-## 4. Confirmed-card visual handoff
-
-After confirmation, the selected cards' Presentation visuals are handed from the shared Selection interaction into the normal committed transition path.
-
-The Selection layer identifies the exact selected card visuals by RuntimeId. It MUST NOT infer identity from CardId, widget position, click order, or current Hand array re-enumeration.
-
-The destination and authoritative mutation are determined only by committed Gameplay / Presentation facts, such as `CardZoneChanged`.
+At most one visible Presentation surface owns a RuntimeId at any moment.
 
 Conceptually:
 
-```text
-confirmed selected RuntimeIds
-        +
-committed CardZoneChanged facts
-        ↓
-shared selected-card transition
+```cpp
+enum class ECardPresentationOwner : uint8
+{
+    Hand,
+    SelectionArea,
+    Transition,
+    ConsumedPendingReducer
+};
 ```
 
-The Effect does not choose or trigger an animation directly.
+The exact implementation type may differ, but behavior must be equivalent.
 
-### 4.1 Confirmed source handoff is a lease
+### 3.2 Ownership lifecycle identity
 
-On explicit Confirm, Selection freezes an exact Presentation source handoff for every confirmed RuntimeId. Conceptually:
+RuntimeId identifies the card, but ownership also needs a selection lifecycle identity. Behavior must distinguish at least:
 
 ```text
+BattleId
+SelectionGeneration or equivalent monotonically unique selection lifecycle id
+Selection boundary/revision identity
 RuntimeId
-→ confirmed source position / transform data
-→ outstanding handoff lease
+Owner
+Pending vs Confirmed phase
 ```
 
-This handoff lease is independent from group suppression and from reducer state. It survives formal Hand rebuilds until an actual destination transition successfully takes visual ownership of that exact RuntimeId.
+A stale selection callback, prior battle, prior boundary or prior generation MUST NOT mutate a newer ownership entry merely because RuntimeId matches.
 
-A handoff MUST NOT be consumed merely because:
-
-- group metadata validates;
-- group preflight starts;
-- one or more group children prepare successfully;
-- another child fails preparation;
-- the Base Widget declines group playback;
-- Controller marks the group sequentially disabled.
-
-For group playback, all children are prepared transactionally. Only after every child is valid, the hardened Group playback unit is accepted, and durable group suppression owns continuity may the group consume/transfer all relevant source handoff leases.
-
-For sequential SingleRecord playback, only the exact member whose generic destination transition successfully begins may consume its own handoff. Remaining confirmed members retain theirs.
-
-### 4.2 Sequential fallback must preserve confirmed positions
-
-Group degradation is not allowed to fall back to the old broken visual behavior.
-
-If grouped playback is unavailable or fails before accepted ownership:
+SelectionArea phases are distinct:
 
 ```text
-A/B/C confirmed
-→ all handoff leases remain
-→ A SingleRecord starts from confirmed A position
-→ consume only A handoff
-→ reducer/HUD may rebuild Hand
-→ B/C formal Widgets are restored to their exact confirmed source positions
-→ B SingleRecord starts from confirmed B position
-→ consume only B handoff
-→ ...
+SelectionArea + Pending
+→ visible
+→ selectable/deselectable
+
+SelectionArea + Confirmed
+→ visible
+→ input disabled
+→ waiting for committed/direct-state outcome or transition acceptance
 ```
 
-This restoration is generic Selection source-handoff behavior, not Effect-specific animation and not a second destination transition implementation.
+GroupId may be associated later when known, but is not required to create SelectionArea ownership.
 
-A formal Hand rebuild MUST preserve the frozen child/slot structure while applying outstanding handoff positioning. The handoff may only disappear when the exact destination transition accepts ownership or a global Presentation reconciliation invalidates the Selection visual lifecycle.
+## 4. Shared SelectionArea lifecycle
 
-## 5. Destination transitions are generic, not Effect-specific
+### 4.1 Select
 
-The Selection Presentation framework MUST dispatch the confirmed selected-card visual according to committed zone facts.
+A legal local candidate click transfers visible ownership:
+
+```text
+Hand → SelectionArea
+```
+
+Gameplay remains unchanged.
+
+The historical Hand slot remains structurally present, but its formal Widget is `Hidden` and cannot receive input while owner != Hand.
+
+### 4.2 Deselect
+
+While the request remains pending and policy allows it:
+
+```text
+SelectionArea → Hand
+```
+
+No Gameplay mutation occurs.
+
+### 4.3 Confirm
+
+Confirm freezes the selected RuntimeIds and changes their SelectionArea phase to Confirmed. It MUST NOT destroy the selected visible card objects merely because the interactive overlay closes.
+
+```text
+SelectionArea(Pending)
+→ SelectionArea(Confirmed)
+→ authoritative SelectionResult submit
+```
+
+### 4.4 Destination playback acceptance
+
+Only an actually accepted visible transition transfers ownership:
+
+```text
+SelectionArea → Transition
+```
+
+The destination comes only from committed Presentation facts such as `CardZoneChanged`. The Effect does not choose or trigger animation directly.
+
+### 4.5 Animation finishes before chronological reducer consumption
+
+For a visually consumed future group member:
+
+```text
+Transition → ConsumedPendingReducer
+```
+
+No visible card remains, but Hand still has no right to render that RuntimeId while the chronological working snapshot still contains it.
+
+### 4.6 Reducer/direct-state reconciliation terminates ownership
+
+When the displayed frozen state proves the selected card has been consumed, the ownership entry is cleared independently of whether animation playback succeeded.
+
+This is a non-negotiable rule:
+
+> Presentation ownership must be reconciliable independently of successful animation playback. Animation may transfer visible ownership, but reducer/direct-baseline/final-snapshot reconciliation must always be able to terminate or restore ownership.
+
+## 5. Ownership reconciliation and degradation recovery
+
+Ownership MUST NOT rely solely on a destination animation callback for cleanup.
+
+After each authoritative displayed frozen snapshot/baseline reconciliation, exact ownership entries are reconciled against that displayed state and their lifecycle phase.
+
+### 5.1 RuntimeId no longer exists in displayed Hand
+
+If a Selection-owned RuntimeId no longer exists in the displayed historical Hand:
+
+```text
+destination/reducer/direct-state already consumed it
+→ clear SelectionArea / Transition / ConsumedPendingReducer ownership
+→ destroy/release any stale visible SelectionArea card
+```
+
+This covers:
+
+- normal SingleRecord completion;
+- grouped chronological reducer consumption;
+- Widget decline followed by normal reducer advance;
+- no-history/direct-baseline mode;
+- FinalSnapshot reconciliation;
+- Presentation skip/catch-up.
+
+### 5.2 RuntimeId remains in Hand after confirmed lifecycle definitively ends
+
+If a confirmed selection transaction has definitively ended, no destination ownership remains pending, and the RuntimeId still exists in displayed Hand:
+
+```text
+degradation recovery
+→ owner = Hand
+→ SelectionArea visual is released
+→ formal Hand Widget becomes visible again
+```
+
+This prevents ghost SelectionArea cards for malformed/unsupported cases such as a selected object producing zero eligible destination records.
+
+### 5.3 Widget decline
+
+A Widget declining visible playback MUST NOT strand ownership:
+
+```text
+A owner = SelectionArea
+→ SingleRecord Widget returns false
+→ Controller reduces A normally
+→ displayed Hand no longer contains A
+→ ownership reconciliation clears A
+```
+
+### 5.4 No-history / direct baseline
+
+Recording-disabled Selection remains mandatory Gameplay behavior. It may have no committed recorded destination boundary.
+
+Therefore SelectionArea ownership MUST reconcile from the resulting direct/frozen baseline and MUST NOT wait forever for a Presentation Record that does not exist.
+
+## 6. SelectionArea Host contract
+
+The production SelectionArea is a persistent Presentation surface, not a transform offset inside `HB_Hand`.
+
+Initial implementation contract:
+
+```text
+SelectionAreaHost
+- runtime-created persistent Overlay/Canvas-compatible layer
+- lifetime owned by BattleHUDSelectionWidget / Native HUD instance
+- NOT HB_Hand
+- NOT OV_PlayArea
+- survives RefreshHand / Hand reconciliation
+- survives closing the interactive Selection overlay after Confirm
+- uses stable HUD coordinate space
+```
+
+The Host itself may remain allocated while empty.
+
+Interaction rules:
+
+```text
+Pending selected visual
+→ hit-testable only as required for deselect/reselect
+
+Confirmed selected visual
+→ visible but input disabled / HitTestInvisible
+
+Transition accepted
+→ generic transition presenter takes/reparents or transactionally copies the exact visual
+```
+
+No production `.uasset` change is required merely to provide this runtime Host.
+
+## 7. Formal Hand structural contract
+
+Historical Hand presentation preserves exact frozen Hand child count and index correspondence while index-based historical contracts remain in production.
+
+If a RuntimeId is still present in `WorkingPresentationSnapshot.HandCards` but `PresentationOwner != Hand`:
+
+```text
+one frozen Hand entry
+↔ one formal HB_Hand child at the same index
+Visibility = Hidden
+Input = disabled
+```
+
+The formal child MUST NOT be omitted, removed, or `Collapsed` while the historical Hand entry still exists.
+
+Important distinction:
+
+```text
+formal Hand Widget
+= historical structural slot
+
+SelectionArea visual
+= visible Presentation owner
+```
+
+The formal Hand rebuild/reconcile MUST NOT reconstruct SelectionArea continuity by restoring confirmed transforms or positions.
+
+Legacy `ConfirmedCardCenters`, position handoff data or equivalent may exist temporarily only as migration compatibility implementation detail. They are **not** a second authoritative ownership mechanism and MUST be removed after the production ownership migration is validated.
+
+## 8. Historical index vs visual identity
+
+Committed Hand indexes remain valid historical facts and may validate the frozen snapshot/order.
+
+They MUST NOT be the primary live visual identity.
+
+```text
+Historical index
+→ validates committed historical sequence
+
+RuntimeId
+→ identifies the exact presentation object/ownership entry
+```
+
+A valid state may be:
+
+```text
+WorkingSnapshot.HandCards[2].RuntimeId == A
+PresentationOwner(A) == SelectionArea
+```
+
+Generic destination playback resolves the current visual owner by RuntimeId rather than assuming `HB_Hand.Child[FromIndex]` is the visible source.
+
+## 9. Destination transitions are generic
+
+Selection Presentation dispatches the exact selected RuntimeId according to committed zone facts.
 
 Examples:
 
 ```text
-Hand → DrawPile
-→ selected Hand card flies to the DrawPile visual anchor
+Hand/SelectionArea → DrawPile
+→ visible movement to DrawPile anchor
 
-Hand → DiscardPile
-→ selected Hand card uses the generic Hand→Discard destination transition
+Hand/SelectionArea → DiscardPile
+→ generic discard transition
 
-Hand → ExhaustPile
-→ selected Hand card uses the generic Hand→Exhaust destination transition
+Hand/SelectionArea → ExhaustPile
+→ generic Exhaust transition
 ```
 
-Future candidate zones may reuse the same Selection lifecycle, but each source/destination domain still requires a valid visual surface and transition implementation.
+No Warcry/Burning-Pact/Effect-specific animation branches are permitted.
 
-Adding a new Effect MUST NOT require a second copy of the Selection interaction animation when the same source/destination transition already exists.
+### 9.1 Hand/SelectionArea → DrawPile contract
 
-## 6. Hand → DrawPileTop Presentation contract
-
-For a confirmed Selection whose committed fact is:
+For:
 
 ```text
 CardZoneChanged
 FromZone = Hand
-ToZone   = DrawPile
+ToZone = DrawPile
 RuntimeId = X
 ```
 
 Native Presentation MUST:
 
-1. locate the exact selected Hand card visual for RuntimeId `X`;
-2. detach that visual from normal Hand layout ownership for the transition;
-3. move the card visibly from its Hand position toward the DrawPile visual anchor;
-4. preserve card identity during the flight;
-5. complete the visual transfer at the DrawPile area;
-6. reconcile the Hand layout and DrawCount with the committed snapshot/facts.
+1. resolve the exact current visible owner of RuntimeId X;
+2. transfer that exact visual into the generic transition presenter;
+3. visibly move it toward the DrawPile anchor;
+4. preserve exact card identity during flight;
+5. reconcile displayed Hand/DrawCount from committed facts.
 
-It MUST NOT:
+It MUST NOT use fade-only as the primary DrawPile transition, replay DrawPile→Hand, reuse Discard/Exhaust semantics, mutate Gameplay, or contain Warcry-specific logic.
 
-- use an in-place fade as the primary Hand→DrawPileTop transition;
-- replay a DrawPile→Hand draw animation;
-- reuse Discard/Exhaust semantics when the committed destination is DrawPile;
-- mutate Gameplay to make the animation work;
-- contain Warcry-specific or Effect-specific branches.
+## 10. Multi-selection ordering and explicit Group exception
 
-This transition is a reusable Selection/zone Presentation capability for every future selected Hand card moved to DrawPile.
-
-## 7. Multi-selection ordering and explicit group exception
-
-Gameplay and reducer ordering remain authoritative.
-
-For a frozen candidate set and canonical validated result:
-
-```text
-A, B, C
-```
-
-Gameplay mutation, event dispatch and committed `PresentationSequence` remain in canonical authored order. Reducer application MUST also remain in that exact committed order.
-
-UI click order MUST NOT become a hidden ordering control.
-
-Visible playback normally follows `PresentationSequence`. The authorized exception is an explicitly committed, complete and Controller-validated Selection Presentation Group. Such a group may co-present/look ahead to its own frozen selected-card destination members from the already sealed Envelope so that A/B/C can animate together, including when ungrouped trigger Records are interleaved between those members.
-
-The exception is narrow:
+Gameplay mutation, event dispatch, committed `PresentationSequence` and reducer application remain canonical authored order.
 
 ```text
 Reducer order                    = always PresentationSequence order
@@ -227,360 +377,291 @@ Normal visible playback order    = PresentationSequence order
 Validated explicit group members = may co-present together
 ```
 
+A complete explicit Selection Presentation Group may co-present its own sealed-envelope members, including non-contiguous members separated by unrelated trigger records.
+
 Group lookahead MUST NOT:
 
-- reduce B/C before their chronological cursor;
-- consume, skip or mark interleaved ungrouped Records as played;
+- reduce future members early;
+- consume/skip interleaved ungrouped Records;
 - include untagged Records;
 - infer membership from CardId, Effect, destination, adjacency, timing or click order;
 - expose mutable future Gameplay.
 
-For the first grouped implementation, one-member Selection metadata may still be recorded, but `ExpectedMemberCount <= 1` stays on normal SingleRecord playback. Parallel Group playback is enabled only for a complete validated group with more than one member.
+`ExpectedMemberCount <= 1` remains normal SingleRecord Controller playback initially.
 
-### 7.1 Visually-consumed-but-not-reduced suppression lifetime
+## 11. Controller semantic preflight vs Widget visual preflight
 
-A group child finishing its animation does **not** mean its visual ownership may be forgotten if that member has not yet reached the reducer cursor.
+The Controller deals only with immutable committed semantics. It MUST NOT query or mutate concrete HUD ownership state.
+
+### 11.1 Controller semantic preflight
+
+Controller may validate only sealed-envelope facts such as:
+
+- group identity/metadata;
+- expected member count;
+- record type/zone shape;
+- unique RuntimeIds and `PresentationSequence` values;
+- exact-one-eligible-record-per-selected-member invariant;
+- chronological reducer dry-run;
+- future-member interference;
+- terminal/record validity.
+
+### 11.2 Widget transactional visual preflight
+
+`PlayPresentationGroup(...)` performs visual acceptance using Presentation-owned state:
+
+- exact SelectionArea/current visual owner exists where required;
+- exact visible object is valid;
+- source geometry is valid;
+- destination anchor is valid;
+- every child can be constructed;
+- no ownership is transferred during partial preparation.
+
+Any visual preflight failure returns false and Controller degrades to sequential playback.
+
+Controller MUST NOT cast/query concrete Selection Widget ownership to decide group semantic eligibility.
+
+### 11.3 Group completion ownership
+
+Concrete Presentation/UI state performs:
+
+```text
+Transition → ConsumedPendingReducer
+```
+
+for visually consumed future members before forwarding exact group completion through the hardened Base Widget callback.
+
+Controller records only which record indices were visually presented. It does not directly set/clear card visual ownership.
+
+## 12. Future-member interference
+
+Chronological reducer dry-run is necessary but insufficient.
+
+For each interleaved ungrouped Record before a future member's own reducer position, a direct exact-card operation on that future RuntimeId disables group co-presentation.
+
+At minimum:
+
+```text
+CardZoneChanged touching future RuntimeId → interference
+CardPlayed touching future RuntimeId      → interference
+```
+
+Future exact-card record types must join this classification or conservatively disable lookahead until classified.
 
 Example:
 
 ```text
-A/B/C animate and disappear together
-→ group visual completes
-→ reduce A
-→ ApplyPresentationSnapshot
-→ B/C are still historically in Hand until their own Records are reduced
-```
-
-B/C MUST NOT reappear during that intermediate snapshot.
-
-Required lifecycle:
-
-```text
-group member visual starts
-→ exact RuntimeId becomes Presentation-suppressed from formal Hand display
-→ child animation visually consumes the card
-→ group completion cleans transient child visual
-→ suppression remains active
-→ zero or more interleaved Records / HUD rebuilds may occur
-→ reducer reaches that exact member Record
-→ apply committed member mutation
-→ release suppression for that exact member
-→ publish/reconcile snapshot
-```
-
-Suppression is transient Presentation state only. It does not remove the card from Gameplay or rewrite the historical snapshot.
-
-### 7.2 Suppressed Hand members retain formal slots
-
-For the initial grouped implementation, suppression MUST preserve exact historical Hand structure:
-
-```text
-one frozen Hand entry
-↔ one formal HB_Hand child at the same index
-```
-
-A suppressed future member therefore remains a formal card Widget with:
-
-```text
-Visibility = Hidden
-Input = disabled
-Slot/index = retained
-```
-
-It MUST NOT be omitted from `RefreshHand()`, removed from `HB_Hand`, or set `Collapsed` while that frozen Hand entry still exists. This preserves existing exact historical Hand lookups that depend on child count and index matching the frozen ViewModel Hand.
-
-Using `Collapsed` or skipping creation is permitted only after a separate architecture change explicitly replaces all child-count/index-dependent Hand contracts and tests; it is not part of this grouped Selection implementation.
-
-### 7.3 Future-member interference preflight
-
-Chronological reducer preflight is necessary but not sufficient for non-contiguous visual lookahead.
-
-Before co-presenting a group, Controller MUST inspect interleaved ungrouped Records in the sealed Envelope for direct interaction with any group member whose own reducer Record lies in the future.
-
-For the first implementation, the group is ineligible if an interleaved ungrouped exact-card Record directly moves, plays, replaces, or otherwise modifies one of those future member RuntimeIds. At minimum:
-
-```text
-CardZoneChanged with future-member RuntimeId
-→ interference
-
-CardPlayed with future-member RuntimeId
-→ interference
-```
-
-Future exact-card Presentation record types must either participate in the same interference predicate or conservatively disable group lookahead until their semantics are classified.
-
-Example:
-
-```text
-A Hand→Exhaust [Group G]
+A Hand→Exhaust [G]
 B Hand→Discard [ungrouped]
 B Discard→Hand [ungrouped]
-B Hand→Exhaust [Group G]
+B Hand→Exhaust [G]
 ```
 
-Even if dry-run reduction is completely valid, Group G MUST degrade to sequential playback because visually consuming B before the interleaved B records would be observably unsafe.
+Even if reducer dry-run succeeds, Group G degrades to sequential playback.
 
-Ungrouped records that do not touch future member identity, such as unrelated Damage/Status/Energy or another card's zone record, do not by themselves disable the group.
+Unrelated Damage/Status/Energy/other-card records do not disable grouping merely because they are interleaved.
 
-### 7.4 Suppression cleanup boundaries
+## 13. Group transactional visual transfer
 
-Suppression identity MUST be exact and battle/resolution scoped. For card Selection it is keyed by the exact selected RuntimeId plus active group/member ownership; CardId or Hand index is insufficient.
+Group visual preparation is all-or-nothing.
 
-All retained group suppression MUST be cleared on global reconciliation boundaries, including:
+Before accepting a Group:
 
-- exact member reduction for that member;
-- sequential fallback before any group visual ownership is accepted;
-- group timeout active-envelope reconciliation;
-- Skip / global collapse;
-- Widget loss/replacement;
-- Envelope completion/replacement;
-- battle replacement;
-- PresentationUnavailable/direct-baseline fallback.
+1. prepare every exact child;
+2. validate every current source visual and destination;
+3. do not release SelectionArea ownership during partial preparation.
 
-No intermediate ViewModel/HUD refresh may restore a suppressed member merely because it is still present in the current chronological `WorkingPresentationSnapshot`.
+If child N fails:
 
-## 8. Played-card cleanup is independent from selected-card transfer
+```text
+rollback all prepared children
+→ every member remains owned by SelectionArea
+→ zero member becomes VisuallyPresented
+→ sequential fallback
+```
 
-The card being played and the cards selected by its Effect are separate Presentation responsibilities.
+Only after the whole Group is accepted may all member owners transfer `SelectionArea → Transition` in one transaction and begin together.
+
+## 14. ConsumedPendingReducer continuity
+
+After grouped A/B/C destination animations finish together:
+
+```text
+A owner = ConsumedPendingReducer
+B owner = ConsumedPendingReducer
+C owner = ConsumedPendingReducer
+```
+
+No visible selected visual remains. Historically still-present B/C formal Hand children remain `Hidden` because owner != Hand.
+
+When the chronological reducer later consumes B and the displayed snapshot no longer contains B in Hand, ownership reconciliation removes B's entry.
+
+This replaces ad-hoc independent `SuppressedRuntimeIds` as the primary contract. Any cached suppression representation must be derived from, or behaviorally equivalent to, exact ownership state and cannot become a second source of truth.
+
+## 15. Played-card cleanup is independent
+
+The played card and selected cards are separate Presentation responsibilities.
 
 For Warcry-style resolution:
 
 ```text
-Warcry is in PlayArea
-→ Draw resolves and is presented
-→ shared Player Selection UI appears
-→ player selects card(s)
-→ player presses Confirm
-→ selected card(s) use shared Hand→DrawPile transition
-→ selection presentation ends
-→ Warcry PlayArea visual is visible/available again
-→ normal FinishCardPlay cleanup proceeds
-→ Warcry uses its authored destination
+Warcry in PlayArea
+→ Draw Presentation
+→ Selection UI / SelectionArea
+→ explicit Confirm
+→ selected card SelectionArea→DrawPile generic transition
+→ Warcry later uses ordinary PlayArea→Exhaust cleanup
 ```
 
-If the played card's authored destination is Exhaust, its final disappearance MUST use the existing generic played-card Exhaust Presentation path.
+No dedicated Warcry fade/Exhaust animation is allowed.
 
-The implementation MUST NOT add:
+## 16. Gameplay / Presentation separation and failure reconciliation
 
-- `PlayWarcryFadeOut()`;
-- a Warcry-specific Exhaust animation;
-- an Exhaust animation inside `USelectHandCardToDrawPileTopEffect`;
-- a combined "selected card transfer + Warcry cleanup" hard-coded sequence.
+Animation callbacks MUST NOT mutate authoritative Gameplay zones.
 
-The selected-card move and the played-card cleanup are separate committed facts and must remain separate generic Presentation transitions.
+Presentation failure/skip/catch-up may reconcile visual ownership and displayed frozen state, but MUST NOT invent a different Gameplay result.
 
-## 9. Gameplay / Presentation separation and failure reconciliation
+### 16.1 Group timeout is not normal completion
 
-Gameplay mutation MUST remain independent of animation completion.
+A timed-out Group MUST NOT leader-complete through `CompleteActiveRecord()`.
 
-The intended relationship is:
+Required flow:
 
 ```text
-Gameplay commits validated Selection continuation
-→ Presentation consumes immutable committed facts
-→ selected-card visuals animate to their committed destination
-```
-
-Animation callbacks MUST NOT perform authoritative Hand/DrawPile/Discard/Exhaust mutation.
-
-Presentation failure or skip/catch-up may reconcile visuals according to existing policy, but MUST NOT invent a different Gameplay result.
-
-### 9.1 Group timeout is not normal completion
-
-A timed-out Group playback unit MUST NOT be treated as if its leader or the whole group completed normally.
-
-Required timeout path:
-
-```text
-validate exact active Group token
+validate exact Group token
 → cancel exact Base-Widget playback unit
-→ clean every group child visual
-→ do not mark group members VisuallyPresented
-→ atomically clear failed-group suppression/handoff ownership
-→ reconcile current ActiveEnvelope directly to its own FinalSnapshot
-→ mark that envelope Presentation-complete
-→ preserve and continue later queued Envelopes
+→ clean every group child
+→ do not mark failed members VisuallyPresented
+→ terminate transient ownership belonging to failed active envelope
+→ atomically reconcile ActiveEnvelope to ActiveEnvelope.FinalSnapshot
+→ reconcile card Presentation ownership from that final snapshot
+→ mark current envelope Presentation-complete
+→ preserve later queued Envelopes
+→ continue backlog
 ```
 
-The timeout path MUST NOT call a normal `CompleteActiveRecord()`-style routine that reduces only the first member, and MUST NOT reuse a global collapse/skip helper if that helper discards later valid Presentation backlog.
+No intermediate HUD publication may expose a selected historical card between ownership cleanup and FinalSnapshot application.
 
-Clearing suppression and applying the active envelope final snapshot must not emit an intermediate HUD refresh that could reveal a previously suppressed historical member for one frame.
+### 16.2 Skip / Widget replacement / PresentationUnavailable
 
-## 10. Interaction boundary and input-event consumption
+These boundaries must either restore or terminate ownership through displayed-state reconciliation. No stale SelectionArea visual may survive battle replacement, stale selection generation, Widget loss, global skip/collapse or direct-baseline fallback.
 
-The shared Selection Presentation starts only after the existing interactive Presentation boundary makes the pending Selection display-eligible.
+## 17. Interaction boundary and input-event consumption
 
-A single pointer/input event MUST NOT be reused across interaction-state transitions.
+Selection UI starts only after the existing interactive Presentation boundary makes the request display-eligible.
 
-Required rule:
+One pointer/input event MUST NOT cross interaction-state boundaries.
 
 ```text
-input event fast-forwards / completes prior Presentation
+input fast-forwards prior Presentation
 → Selection becomes visible
-→ that event is consumed
-→ a later input event may select a card
+→ input ends
+→ later input may select
 ```
 
-Likewise:
+Likewise the candidate click that reaches required count only enables Confirm; a later explicit Confirm submits.
 
-```text
-candidate click completes required selection count
-→ Confirm becomes enabled
-→ same click ends there
-→ a later explicit Confirm input submits the Selection
-```
+## 18. Effect contract
 
-This prevents accidental selection or confirmation caused by one event crossing multiple UI states.
-
-## 11. Effect contract
-
-A card Effect may configure Gameplay selection intent only, including:
+An Effect may configure Gameplay selection intent only:
 
 - candidate source;
 - Player/Random mode where supported;
-- requested count/count policy;
+- count/count policy;
 - cancellation policy;
-- semantic SelectionSource/prompt data;
-- authored Continuation.
+- semantic source/prompt data;
+- authored continuation.
 
-A card Effect MUST NOT configure or own:
+It MUST NOT own Confirm behavior, SelectionArea lifetime, destination animation, played-card cleanup, group playback or input-event consumption.
 
-- Confirm button behavior;
-- selection overlay lifetime;
-- selected-card flight animation;
-- destination anchor animation logic;
-- played-card cleanup animation;
-- input-event consumption between Presentation states.
+## 19. C1 / Warcry acceptance flow
 
-## 12. C1 / Warcry explicit acceptance flow
-
-For Wave 1C-C1, the required observable flow is:
+Required observable flow:
 
 ```text
 Warcry played
 → Draw Gameplay commit
-→ Draw Presentation is shown
-→ post-Draw Hand becomes the displayed selectable Hand
-→ shared Selection UI appears
-→ player selects the required card(s)
-→ selection does NOT auto-submit
-→ Confirm becomes available
-→ player presses Confirm
-→ exact selected RuntimeId card visibly flies Hand → DrawPile
-→ selection UI ends
-→ Warcry PlayArea visual is shown/available for cleanup
-→ normal generic PlayArea → Exhaust Presentation runs because Warcry exhausts
+→ Draw Presentation
+→ post-Draw Hand becomes selectable
+→ shared Selection UI
+→ player selects required card
+→ explicit Confirm
+→ selected RuntimeId remains SelectionArea-owned after overlay closes
+→ SingleRecord generic transition takes SelectionArea visual
+→ visible SelectionArea→DrawPile movement
+→ ownership reconciles when destination state is displayed
+→ Warcry ordinary generic PlayArea→Exhaust
 → resolution completes
 ```
 
-Warcry is a one-member Selection destination case. In the first grouped implementation it remains normal SingleRecord Controller playback while reusing the same generic card-transition child engine as multi-member groups.
+Warcry remains a one-member SingleRecord Controller case while reusing the same generic transition child engine as grouped playback.
 
-## 13. Explicitly superseded C1 Presentation requirements
+## 20. Implementation staging contract
 
-Any earlier Wave 1C-C1 plan or note that specifies:
+Every landed stage must preserve production visual behavior, not merely compile.
 
-```text
-Hand → DrawPileTop
-→ in-place opacity fade
-→ no translation
-```
-
-is superseded by this document.
-
-The accepted requirement is now:
+Required order:
 
 ```text
-confirmed selected Hand card
-→ shared Selection Presentation
-→ visible movement to DrawPile anchor
+G0-A incremental ViewModel/HUD dirty propagation
+G0-B RuntimeId-keyed Hand reconcile
+G0-C ownership infrastructure + lifecycle identity + reconciliation + persistent SelectionAreaHost
+     (dormant/compatibility only; do not switch production source ownership yet)
+G1   PresentationGroup metadata + writer-scoped correlation
+G2   Controller semantic group discovery / reducer dry-run / interference
+     (Group visible playback still disabled)
+G3   Base Widget Record-or-Group playback hardening + recovery scopes
+G4   generic card transition engine; source resolver supports Hand | SelectionArea;
+     migrate SingleRecord production paths first
+G5   switch production Selection to durable SelectionArea ownership;
+     retire confirmed-center handoff as primary path
+G6   N-child Group playback + ConsumedPendingReducer + parallel enable
+G7   delete compatibility handoff/old Selection-specific transition code;
+     focused validation and seal work
 ```
 
-Any earlier implication that Warcry needs a dedicated fade/disappear animation is also superseded. Warcry's own final disappearance is the existing generic Exhaust Presentation driven by its normal played-card cleanup fact.
+G0-C/G5 separation is mandatory unless combined into one coherent behavior-safe migration. It is forbidden to hide the formal Hand source in production before the generic SingleRecord transition engine can consume a SelectionArea source.
 
-## 14. Next implementation scope: grouped Selection destination Presentation
+## 21. Acceptance gates
 
-The explicit Confirm and initial single-card handoff work already exist. The next development phase is the grouped parallel redesign described in `docs/SelectionPresentationGroupDesign.md`.
+Implementation is not complete until focused tests and PIE demonstrate at minimum:
 
-The implementation SHOULD proceed through separable compile/test stages and must include:
+- explicit Confirm semantics remain correct;
+- selecting/deselecting transfers exact RuntimeId visible ownership Hand↔SelectionArea without Gameplay mutation;
+- Pending vs Confirmed SelectionArea phases have correct input behavior;
+- SelectionAreaHost survives Hand reconciliation and overlay close after Confirm;
+- formal Hand child count/index remains historical; owner!=Hand uses `Hidden`, never `Collapsed`;
+- Hand reconciliation does not reconstruct SelectionArea continuity through confirmed transforms;
+- Widget decline followed by reducer advance clears ownership with no ghost SelectionArea card;
+- no-history/direct-baseline Selection clears/restores ownership correctly;
+- selected object with zero eligible destination record cannot remain SelectionArea-owned forever;
+- Controller group semantic preflight never queries concrete Widget ownership;
+- Widget group visual preflight is transactional; child-N failure transfers zero ownership;
+- valid multi-member group starts all destination children together;
+- non-contiguous unrelated interleaving is allowed; exact future-member interference disables grouping;
+- visually consumed future members remain `ConsumedPendingReducer`/hidden until exact historical consumption;
+- sequential degradation leaves later confirmed members visibly in SelectionArea rather than flashing to Hand;
+- Group timeout reconciles only the active envelope and preserves later backlog;
+- Record/Group callbacks share exact-token/deferred-completion/cancellation hardening;
+- Warcry SingleRecord consumes SelectionArea source through the generic transition engine;
+- Warcry final cleanup remains ordinary PlayArea→Exhaust;
+- no Effect/CardId-specific animation branch exists;
+- Gameplay remains authoritative through skip/degradation.
 
-1. explicit group metadata and writer-scoped correlation for direct Selection continuation Actions only;
-2. complete-group validation with exact-one-eligible-record-per-selected-member eligibility;
-3. Controller-owned non-contiguous group lookahead without reducer reordering;
-4. future-member interference preflight for interleaved exact-card Records;
-5. visually-consumed-but-not-reduced suppression across intermediate historical snapshots;
-6. retained formal Hand slots using `Hidden`, never omitted/`Collapsed`, for still-historical suppressed members;
-7. one `UBattleHUDWidgetBase` tracked playback-unit hardening path shared by Record and Group playback;
-8. dedicated group-timeout active-envelope reconciliation that preserves later backlog;
-9. one generic N-child card-zone transition engine used by both SingleRecord and grouped playback;
-10. Selection layer supplying exact RuntimeId source handoff leases that survive group failure and Hand rebuild until actual transition ownership;
-11. focused Automation plus manual PIE only for the genuinely visual concurrency/no-flash behavior.
+No Build, Automation or PIE gate may be marked PASS without actual execution evidence.
 
-The phase MUST NOT:
+## 22. Historical pre-redesign implementation note — 2026-09-08
 
-- batch or reorder Gameplay mutations/events for visual convenience;
-- make trigger reaction Actions inherit Selection group metadata;
-- add Effect/Card-specific animation branches;
-- let Widget code scan future Envelope Records;
-- omit/Collapse still-historical suppressed Hand children;
-- consume confirmed handoff during partial group preparation;
-- use the old broken sequential path as an acceptable degradation behavior;
-- preserve an ad-hoc per-Record deferred timer/retry patch as the multi-select concurrency solution.
+The production Selection implementation preceding this redesign used the formal Hand Widget itself as the selected visible card, moved it with render translation, captured confirmed centers by RuntimeId, and used a Selection-subclass Hand→DrawPile transfer. Hand→Exhaust could reuse the first selected formal Widget's confirmed transform, but later serial members could lose that transform when `RefreshHand()` rebuilt the formal Hand.
 
-## 15. Acceptance gates
+That behavior explains the current redesign but is **not** an authoritative future continuity contract. In particular:
 
-Implementation is not complete until focused coverage and PIE demonstrate at minimum:
+```text
+ConfirmedCardCenters
+position-only handoff lease
+RefreshHand restore confirmed transform
+```
 
-- selecting the required count does not auto-submit;
-- Confirm is unavailable before the required count and available at the required count;
-- Confirm submits the exact selected RuntimeIds once;
-- the selected card visual flies from Hand to the DrawPile anchor after confirmation;
-- the selected card is not presented as DrawPile→Hand, Discard, or Exhaust;
-- Hand/DrawCount reconcile to committed facts;
-- Gameplay, event dispatch, `PresentationSequence` and reducer order remain canonical;
-- a valid multi-member Selection group starts its member destination animations together rather than `N × duration` serial playback;
-- non-contiguous group lookahead co-presents only exact tagged members and later still presents interleaved ungrouped Records;
-- an interleaved exact-card Record touching a future group member disables group co-presentation even when chronological reducer dry-run succeeds;
-- already visually consumed future members remain suppressed through intermediate `ApplyPresentationSnapshot` / Hand rebuilds until their own reducer record is consumed;
-- a suppressed still-historical Hand member retains one formal `HB_Hand` child/slot at the exact frozen index, uses `Hidden`, and cannot receive input;
-- incomplete, duplicate or otherwise malformed group membership degrades to sequential playback without Gameplay fault;
-- one selected object producing zero eligible members or more than one matching eligible member disables grouped playback for that group;
-- `ExpectedMemberCount <= 1` remains normal SingleRecord Controller playback;
-- if the second/Nth group child fails preparation, all prepared group children roll back, no handoff is consumed, no group suppression remains, and sequential A/B/C each starts from its own confirmed Selection position across Hand rebuilds;
-- a sequential member consumes only its own handoff after its exact generic destination transition actually starts;
-- Group timeout cancels the exact playback unit, cleans all children, performs active-envelope final-snapshot reconciliation, clears group transient state atomically, and preserves later queued Envelopes;
-- Record and Group callbacks share the same base-Widget exact-token/deferred-completion/cancellation hardening and stale callbacks cannot cross unit ownership;
-- the Selection animation path is reusable and contains no Warcry/CardId/Effect-specific branch;
-- Warcry's one-member Hand→DrawPile uses the same generic transition child engine without requiring Group playback;
-- Warcry cleanup reuses the existing generic Exhaust animation;
-- no dedicated Warcry Exhaust/fade animation exists;
-- Draw → Selection ordering remains correct;
-- input used to cross into Selection or enable Confirm is not reused as the next interaction;
-- Gameplay remains authoritative if Presentation is skipped/degraded according to existing policy.
+are legacy migration details only.
 
-No Build, Automation, or PIE gate may be marked PASS without actual execution evidence.
-
-## 16. Production integration and confirmation repair — 2026-09-08
-
-This section records the pre-group implementation history and validation. It does **not** validate the grouped parallel redesign authorized above. The known serial multi-select visual limitation is the reason the next redesign exists.
-
-The production `WBP_BattleHUD_Native` still inherited `UBattleHUDWidget`, bypassing the shared Selection subclass. Candidate clicks could select transient RuntimeIds, but the production Confirm delegate called ordinary card-play confirmation and displayed `Choose a legal target.` Reparented the existing Native asset to `UBattleHUDSelectionWidget` in UE, compiled and saved it. No Legacy or card/map assets changed.
-
-The shared HUD now dims the background, raises the selectable Hand and confirmation controls, and positions selected formal cards centrally in canonical Hand order. Deselect restores the card's Hand transform. Temporary Canvas layout/Z changes restore on submit, cancellation and destruction. Selection never submits on the final candidate click.
-
-Confirmation captures visual centers by RuntimeId before clearing transient input. Committed Hand→DrawPile records fly from those centers to the DrawPile anchor in record order. Anchor calculations use the stationary PlayArea coordinate space; they do not measure offsets relative to the moving/scaled card. Played-card visuals are hidden during selection/transfer, restored before ordinary cleanup, and retain the existing generic PlayArea→Exhaust animation. No separate played-card fade was added.
-
-The confirmation handoff also preserves the selected formal Hand widget's render translation and visibility. A committed Hand→Exhaust record therefore reuses the existing generic Exhaust opacity fade on that same widget at its confirmed selection position; it is not reset to the Hand layout and no second consume animation is introduced. This works for the first serially presented member but does not solve multi-member concurrency or suppression across later reducer snapshots.
-
-AUTOMATED GATES:
-
-- Standard bundled UE project generation and Development Editor build.
-- `SlayTheSpireDemo.CardSelection.Presentation` (including production asset ancestry and the actual selection Confirm delegate).
-- `SlayTheSpireDemo.CardExpansion.Wave1CC0.Selection.NativeHUDExactNClick` for multi-selection confirmation.
-- `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` for authoritative move/order and interactive boundary.
-- `SlayTheSpireDemo.Phase6UIA2N.R8.Zone.PlayAreaDestinationsAndDestruct` for reused generic cleanup.
-
-MANUAL PIE GATES — USER ACTION REQUIRED:
-
-In the existing Native `L_BattleTest`, play the authored Warcry. Let Draw finish. Verify the selection background dims and Warcry is hidden; select a Hand card (including an attack or the newly drawn card), verify it is centered and Confirm enables without submitting; click the selected card again to deselect, then reselect and explicitly Confirm. Observe the selected card flying to the lower-left draw pile, followed by Warcry reappearing and disappearing through normal Exhaust. Expect Draw +1, Exhaust +1, no legal-target feedback, no duplicate/flashback and input restored. One short recording or explicit observation of this sequence is sufficient. This manual gate is not implied by Automation.
-
-Validation evidence: bundled project generation and Editor build passed (`Saved/Logs/SelectionPresentationBuild.log`). After adding retained-played-card skip cleanup, the runtime rebuild passed (`SelectionPresentationFinalBuild.log`); a test-only sequence-token correction also built successfully (`SelectionPresentationTestBuild.log`). The closed-scope Automation run reported **11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). The failure was the older Draw-before-selection test assuming candidate click immediately submitted. Updated it to assert no continuation before explicit Confirm, rebuilt the changed test (`SelectionBoundaryConfirmTestBuild.log`), and reran only that gate: **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). The follow-up in-place Exhaust repair rebuilt successfully (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`); the final focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed **4/4**, including `HandToExhaust.FadesInPlace`, with no warnings (`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`). No manual PIE acceptance is claimed for the grouped parallel redesign.
+Previously obtained build/Automation/PIE evidence applies only to the code state that produced it. It does not validate the SelectionArea ownership or parallel Group redesign.
