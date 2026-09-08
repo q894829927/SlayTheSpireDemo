@@ -92,7 +92,7 @@ bool FWave1CC0SelectExhaustBaseUpgradeDescriptionCountTest::RunTest(const FStrin
 	USelectExhaustHandCardEffect* Effect = nullptr;
 	UCardData* Definition = MakeCardDefinition(
 		TEXT("C0DynamicSelectExhaustText"),
-		TEXT("{ExhaustMode} {Exhaust} cards."),
+		TEXT("{ExhaustMode}{Exhaust}张牌。"),
 		Effect
 	);
 	if (!TestNotNull(TEXT("Definition exists"), Definition)
@@ -126,14 +126,14 @@ bool FWave1CC0SelectExhaustBaseUpgradeDescriptionCountTest::RunTest(const FStrin
 	UCardInstance* BaseCard = MakeRuntimeCard(Definition, 1, false);
 	UCardInstance* UpgradedCard = MakeRuntimeCard(Definition, 2, true);
 	TestEqual(
-		TEXT("Base card description uses BaseSelectionMode and BaseSelectionCount"),
+		TEXT("Base card description uses Chinese Random mode and BaseSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(BaseCard, nullptr).ToString(),
-		FString(TEXT("Randomly exhaust 2 cards."))
+		FString(TEXT("随机消耗2张牌。"))
 	);
 	TestEqual(
-		TEXT("Upgraded card description uses UpgradedSelectionMode and UpgradedSelectionCount"),
+		TEXT("Upgraded card description uses Chinese Player mode and UpgradedSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(UpgradedCard, nullptr).ToString(),
-		FString(TEXT("Exhaust 3 cards."))
+		FString(TEXT("消耗3张牌。"))
 	);
 	return true;
 }
