@@ -20,6 +20,8 @@
 
 ## 作者操作
 
+Selection execution refactor: SelectExhaust (Player and Random) and SelectHandCardToDrawPileTop now interpret “手牌” at Action Execute time, after preceding Effects commit. Their existing Chinese wording, count/upgrade arguments and description ordering remain valid and unchanged; no serialized Effect properties or production assets are renamed. Scope: `docs/CardSelectionRefactorConstraints.md`.
+
 1. 打开卡牌 Data Asset，保持 `Auto Generate Description` 开启。
 2. 在 `Effects` 中添加、删除、拖动条目，并设置其基础/升级属性。
 3. 将 `Default Destination` 设为 `Exhaust` 可使本牌使用后消耗，同时自动显示对应关键字。

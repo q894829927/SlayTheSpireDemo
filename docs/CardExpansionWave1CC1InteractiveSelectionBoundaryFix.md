@@ -6,8 +6,8 @@ Status:
 
 ```text
 IMPLEMENTATION AUTHORED
-BUILD REQUIRED
-FOCUSED AUTOMATION REQUIRED
+BUILD PASS (2026-09-08 review)
+FOCUSED AUTOMATION PASS (7/7, 2026-09-08 review)
 PIE RECHECK REQUIRED
 C1 NOT SEALED
 ```
@@ -157,8 +157,8 @@ The previously reported C1 Build PASS and 6/6 focused Automation PASS are invali
 Run only the invalidated Gates:
 
 ```text
-[ ] Development Editor Win64 Build PASS
-[ ] SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop 7/7 PASS
+[x] Development Editor Win64 Build PASS
+[x] SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop 7/7 PASS
 [ ] Warcry PIE: Draw visibly completes before Selection becomes interactive
 [ ] newly drawn card is selectable
 [ ] chosen exact card reaches DrawPile top
@@ -166,3 +166,5 @@ Run only the invalidated Gates:
 ```
 
 No unrelated C0/Phase6/Phase7 aggregate rerun is required unless a concrete failure implicates those contracts.
+
+Review validation (2026-09-08, base HEAD `d9d12ec`): fixed the interactive test's missing `Actions/BattleActionQueue.h` include (C2027 and cascading C2661). Standard bundled UE 5.8 project generation and Development Editor build succeeded. Focused prefix passed 7/7, exit code 0; evidence: `Saved/Logs/SelectionBoundaryReview.log`. Manual PIE remains USER ACTION REQUIRED. Review also identified that fast-input skip/retry can submit the same click into the newly exposed selection, and the boundary Action discovers the BattleManager/continuation writer through Queue Outer instead of explicit context. These runtime review findings are not fixed by the include correction.

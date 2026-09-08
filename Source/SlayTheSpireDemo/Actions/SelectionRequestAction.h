@@ -7,6 +7,7 @@
 
 class UAuthoredContinuation;
 class USelectionResolver;
+enum class ESelectionResolveDisposition : uint8;
 
 // BattleAction that owns the suspend/resume lifecycle of one authored player
 // choice.
@@ -37,7 +38,9 @@ public:
 	// Deterministic submit entry points. They revalidate through the resolver,
 	// apply the resulting dependent batch at the Queue front, and Finish.
 	void ResolvePendingSelection(const FSelectionResult& Result);
+	ESelectionResolveDisposition ResolvePendingSelectionWithDisposition(const FSelectionResult& Result);
 	void CancelPendingSelection();
+	void AbandonPendingSelectionForFault();
 
 	bool IsAwaitingSelection() const
 	{

@@ -12,6 +12,20 @@ class USelectionRequestAction;
 
 DECLARE_DELEGATE_RetVal_OneParam(UBattleActionQueue*, FSelectionResolverQueueAccess, const USelectionResolver*);
 
+// The bool TryResolveSelection compatibility surface intentionally only reports
+// a completed resolved result.  The Action-facing path needs the richer
+// disposition so invalid input can remain pending while framework failures can
+// request a Queue fault.
+enum class ESelectionResolveDisposition : uint8
+{
+	Resolved,
+	LegalCancellation,
+	InvalidSubmission,
+	ForbiddenCancellation,
+	NoPendingSelection,
+	InternalFailure
+};
+
 // Gameplay-authoritative owner of the single active pending selection.
 //
 // Selection state belongs to Gameplay. Presentation only submits a
@@ -52,6 +66,11 @@ public:
 		TArray<UBattleAction*>& OutActions
 	);
 
+	ESelectionResolveDisposition ResolveSelection(
+		const FSelectionResult& Result,
+		TArray<UBattleAction*>& OutActions
+	);
+
 	// Resumes the current awaiting Action with a player-submitted result. This is
 	// the deterministic Gameplay submit surface; it delegates completion back to
 	// the awaiting USelectionRequestAction (which owns the queue lifecycle).
@@ -67,9 +86,16 @@ public:
 	// cancellation policy and returns false without changing state when forbidden.
 	bool CancelSelection();
 
+	// Used only when an awaiting Action detects an internal framework failure.
+	// This releases stale resolver ownership before the Queue enters its fault
+	// state; it is never used for invalid player input or forbidden cancellation.
+	void ClearPendingSelectionForFault();
+
 private:
 	bool ValidateRequest(const FSelectionRequest& Request, FString& OutReason) const;
 	bool ValidateResult(const FSelectionResult& Result, FString& OutReason) const;
+	bool ValidatePendingRuntimeDependencies(FString& OutReason) const;
+	void RequestResolutionFault(const FString& Reason) const;
 	void ClearPendingSelectionInternal();
 
 	UPROPERTY(Transient)

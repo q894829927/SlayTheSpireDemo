@@ -8,7 +8,7 @@ bool UBattleHUDViewModel::TryGetPendingCardSelectionReadView(
 ) const
 {
 	ABattleManager* Battle = BattleManager.Get();
-	if (!IsValid(Battle))
+	if (!IsValid(Battle) || !Battle->IsPresentationAvailable())
 	{
 		return false;
 	}
@@ -17,13 +17,9 @@ bool UBattleHUDViewModel::TryGetPendingCardSelectionReadView(
 	// Native committed Presentation is still showing the effects that produced
 	// the candidate Hand. Do not expose that pending request to player input until
 	// the displayed frozen revision reaches the newest sealed boundary.
-	if (bPresentationDisplayOwned)
+	// Direct/no-history display also waits for its frozen read edge; otherwise
+	// a click could submit the new request against the preceding Hand snapshot.
 	{
-		if (!Battle->IsPresentationAvailable())
-		{
-			return false;
-		}
-
 		FPresentationStateSnapshot LatestBaseline;
 		if (!Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
 			|| LatestBaseline.BattleId != BattleId

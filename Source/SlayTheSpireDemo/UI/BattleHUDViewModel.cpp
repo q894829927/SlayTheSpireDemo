@@ -362,6 +362,10 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 	{
 		ClearSelectionInternal();
 	}
+	if (bRevisionChanged)
+	{
+		ClearPendingCardSelectionInputState();
+	}
 
 	if (Outcome != EBattleHUDOutcome::None)
 	{

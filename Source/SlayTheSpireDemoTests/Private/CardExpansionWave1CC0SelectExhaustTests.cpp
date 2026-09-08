@@ -208,7 +208,7 @@ bool FWave1CC0SelectionRejectsDuplicateObjectsTest::RunTest(const FString& Param
 	TArray<UBattleAction*> OutActions;
 	TestFalse(TEXT("Duplicate selected object is rejected by Gameplay resolver"), Resolver->TryResolveSelection(DuplicateResult, OutActions));
 	TestEqual(TEXT("Duplicate rejection builds no continuation Actions"), OutActions.Num(), 0);
-	TestFalse(TEXT("Invalid duplicate result clears the pending request"), Resolver->HasPendingSelection());
+	TestTrue(TEXT("Invalid duplicate result keeps the pending request"), Resolver->HasPendingSelection());
 	return true;
 }
 

@@ -2,7 +2,8 @@
 
 #include "../CardInstance.h"
 #include "../CardPlayContext.h"
-#include "../../Actions/DeferredHandSelectionAction.h"
+#include "../../Actions/DeferredSelectionAction.h"
+#include "../../Selection/SelectionCandidateSource.h"
 #include "../../Battle/BattleManager.h"
 #include "../../Battle/BattleTextTypes.h"
 #include "../../Deck/DeckRuntime.h"
@@ -45,15 +46,14 @@ void USelectHandCardToDrawPileTopEffect::BuildActions(
 		NewObject<UMoveSelectedHandCardsToDrawPileTopContinuation>(Context.ActionOuter);
 	Continuation->Initialize(Context.Deck, Context.Source);
 
-	UDeferredHandSelectionAction* DeferredSelection =
-		NewObject<UDeferredHandSelectionAction>(Context.ActionOuter);
-	DeferredSelection->Initialize(
-		Context.Deck,
-		Resolver,
-		Continuation,
-		EffectiveCount,
-		TEXT("SelectHandCardToDrawPileTop")
-	);
+	UCurrentHandSelectionSource* CandidateSource = NewObject<UCurrentHandSelectionSource>(Context.ActionOuter);
+	CandidateSource->Initialize(Context.Deck);
+	FSelectionInteractiveBoundaryAccess Boundary;
+	Boundary.BindUObject(Context.Battle, &ABattleManager::AdvancePresentationAtInteractiveSelectionBoundary);
+	UDeferredSelectionAction* DeferredSelection = NewObject<UDeferredSelectionAction>(Context.ActionOuter);
+	DeferredSelection->Initialize(CandidateSource, Resolver, Continuation, EffectiveCount,
+		ESelectionCancelPolicy::Forbidden, TEXT("SelectHandCardToDrawPileTop"),
+		EDeferredSelectionMode::Player, Boundary);
 	OutActions.Add(DeferredSelection);
 }
 

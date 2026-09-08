@@ -69,26 +69,34 @@ bool USelectionResolver::TryResolveSelection(
 	TArray<UBattleAction*>& OutActions
 )
 {
+	return ResolveSelection(Result, OutActions) == ESelectionResolveDisposition::Resolved;
+}
+
+ESelectionResolveDisposition USelectionResolver::ResolveSelection(
+	const FSelectionResult& Result,
+	TArray<UBattleAction*>& OutActions
+)
+{
 	OutActions.Reset();
 
 	if (!bHasPendingSelection)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected: no pending selection."));
-		return false;
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] ResolveSelection rejected: no pending selection."));
+		return ESelectionResolveDisposition::NoPendingSelection;
 	}
 
-	// Cancelled is a legal primitive path only when the authored request permits
-	// it. A mandatory choice remains pending so Presentation cannot skip a
-	// required Gameplay cost and allow later queued effects to continue.
+	// Cancellation is a legal primitive path only when the authored request
+	// permits it. A mandatory choice remains pending when cancellation is
+	// submitted, so later authored Effects cannot run past a required choice.
 	if (Result.Status == ESelectionStatus::Cancelled)
 	{
 		if (!CanCancelPendingSelection())
 		{
 			UE_LOG(LogTemp, Warning, TEXT("[Selection] Cancellation rejected: active request is mandatory."));
-			return false;
+			return ESelectionResolveDisposition::ForbiddenCancellation;
 		}
 		ClearPendingSelectionInternal();
-		return false;
+		return ESelectionResolveDisposition::LegalCancellation;
 	}
 
 	if (Result.Status != ESelectionStatus::Resolved)
@@ -96,46 +104,54 @@ bool USelectionResolver::TryResolveSelection(
 		UE_LOG(
 			LogTemp,
 			Warning,
-			TEXT("[Selection] TryResolveSelection rejected: invalid status %d."),
+			TEXT("[Selection] ResolveSelection rejected: invalid status %d."),
 			static_cast<int32>(Result.Status)
 		);
-		ClearPendingSelectionInternal();
-		return false;
+		return ESelectionResolveDisposition::InvalidSubmission;
 	}
 
 	FString Reason;
+	if (!ValidatePendingRuntimeDependencies(Reason))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Selection] Pending runtime dependency failed: %s"), *Reason);
+		RequestResolutionFault(FString::Printf(TEXT("Selection runtime dependency failed for %s: %s."), *PendingRequest.SelectionSource.ToString(), *Reason));
+		ClearPendingSelectionInternal();
+		return ESelectionResolveDisposition::InternalFailure;
+	}
+
 	if (!ValidateResult(Result, Reason))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected invalid result: %s"), *Reason);
-		ClearPendingSelectionInternal();
-		return false;
+		UE_LOG(LogTemp, Warning, TEXT("[Selection] ResolveSelection rejected invalid result: %s"), *Reason);
+		return ESelectionResolveDisposition::InvalidSubmission;
 	}
 
 	UBattleActionQueue* Queue = QueueAccess.IsBound() ? QueueAccess.Execute(this) : nullptr;
 	if (!IsValid(Queue))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected: no authoritative queue available."));
+		UE_LOG(LogTemp, Error, TEXT("[Selection] ResolveSelection failed: no authoritative queue available."));
 		ClearPendingSelectionInternal();
-		return false;
+		return ESelectionResolveDisposition::InternalFailure;
 	}
 
 	const UAuthoredContinuation* Continuation = PendingContinuation.Get();
 	if (!IsValid(Continuation))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] TryResolveSelection rejected: continuation lost."));
+		UE_LOG(LogTemp, Error, TEXT("[Selection] ResolveSelection failed: continuation lost."));
+		RequestResolutionFault(TEXT("Selection continuation was lost while resolving a pending request."));
 		ClearPendingSelectionInternal();
-		return false;
+		return ESelectionResolveDisposition::InternalFailure;
 	}
 
 	if (!Continuation->BuildNextActions(Result, Queue, OutActions))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Selection] Continuation declined to build dependent actions."));
+		UE_LOG(LogTemp, Error, TEXT("[Selection] Continuation failed to build dependent actions."));
+		RequestResolutionFault(FString::Printf(TEXT("Selection continuation failed for %s."), *PendingRequest.SelectionSource.ToString()));
 		ClearPendingSelectionInternal();
-		return false;
+		return ESelectionResolveDisposition::InternalFailure;
 	}
 
 	ClearPendingSelectionInternal();
-	return true;
+	return ESelectionResolveDisposition::Resolved;
 }
 
 bool USelectionResolver::SubmitResult(const FSelectionResult& Result)
@@ -153,8 +169,9 @@ bool USelectionResolver::SubmitResult(const FSelectionResult& Result)
 	}
 
 	USelectionRequestAction* Action = PendingAction.Get();
-	Action->ResolvePendingSelection(Result);
-	return true;
+	const ESelectionResolveDisposition Disposition = Action->ResolvePendingSelectionWithDisposition(Result);
+	return Disposition == ESelectionResolveDisposition::Resolved
+		|| Disposition == ESelectionResolveDisposition::LegalCancellation;
 }
 
 bool USelectionResolver::SubmitCancel()
@@ -185,6 +202,16 @@ bool USelectionResolver::CancelSelection()
 
 	ClearPendingSelectionInternal();
 	return true;
+}
+
+void USelectionResolver::ClearPendingSelectionForFault()
+{
+	USelectionRequestAction* AbandonedAction = PendingAction.Get();
+	ClearPendingSelectionInternal();
+	if (IsValid(AbandonedAction))
+	{
+		AbandonedAction->AbandonPendingSelectionForFault();
+	}
 }
 
 void USelectionResolver::ClearPendingSelectionInternal()
@@ -257,4 +284,30 @@ bool USelectionResolver::ValidateResult(const FSelectionResult& Result, FString&
 	}
 
 	return true;
+}
+
+bool USelectionResolver::ValidatePendingRuntimeDependencies(FString& OutReason) const
+{
+	for (const FSelectionCandidate& Candidate : PendingRequest.Candidates)
+	{
+		if (!IsValid(Candidate.RuntimeObject.Get()))
+		{
+			OutReason = TEXT("a frozen candidate runtime object is no longer valid");
+			return false;
+		}
+	}
+	return true;
+}
+
+void USelectionResolver::RequestResolutionFault(const FString& Reason) const
+{
+	UBattleActionQueue* Queue = QueueAccess.IsBound() ? QueueAccess.Execute(this) : nullptr;
+	if (IsValid(Queue))
+	{
+		Queue->RequestResolutionFault(Reason);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("[Selection] Unable to request resolution fault: no authoritative queue."));
+	}
 }

@@ -147,10 +147,14 @@ void URandomSelectionAction::Execute(UBattleActionQueue* Queue)
 	{
 		UE_LOG(
 			LogTemp,
-			Warning,
-			TEXT("[Selection] RandomSelectionAction continuation declined resolved result for %s."),
+			Error,
+			TEXT("[Selection] RandomSelectionAction continuation failed for %s."),
 			*Request.SelectionSource.ToString()
 		);
+		Queue->RequestResolutionFault(FString::Printf(
+			TEXT("Random selection continuation failed for %s."),
+			*Request.SelectionSource.ToString()
+		));
 		Finish();
 		return;
 	}

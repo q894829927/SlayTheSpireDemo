@@ -24,23 +24,14 @@ FPresentationRecordWriter ABattleManager::AdvancePresentationAtInteractiveSelect
 	// the frozen pre-selection snapshot its own monotonic revision so the UI can
 	// distinguish "before Draw playback" from "Draw visible, choice eligible".
 	AdvanceStateRevision();
+	ScheduleReadStateReadyPublish();
 
 	// Presentation is optional. Gameplay selection continues even when committed
 	// history is disabled or already unavailable.
-	if (!bCommittedPresentationRecordingEnabledForBattle || !bPresentationAvailable)
+	if (!bPresentationAvailable)
 	{
 		return ContinuationWriter;
 	}
-
-	UBattlePresentationRecorder* Recorder = PresentationRecorder.Get();
-	if (!IsValid(Recorder) || !Recorder->HasActiveResolution())
-	{
-		MarkPresentationUnavailable(
-			TEXT("Interactive selection boundary reached without an active Presentation Resolution."));
-		return ContinuationWriter;
-	}
-
-	const EPresentationResolutionOrigin ContinuationOrigin = Recorder->GetActiveOrigin();
 
 	FBattleReadSnapshot ReadSnapshot;
 	const bool bBuiltReadSnapshot = Queue->RunReadSnapshotAtCurrentActionBoundary(
@@ -73,6 +64,19 @@ FPresentationRecordWriter ABattleManager::AdvancePresentationAtInteractiveSelect
 	LatestFrozenPresentationBaseline = FrozenSnapshot;
 	LatestFrozenPresentationBaselineResolutionId = LastSealedPresentationResolutionId;
 	bHasLatestFrozenPresentationBaseline = true;
+
+	// No-history mode still needs the exact new Hand baseline for selection UI.
+	if (!bCommittedPresentationRecordingEnabledForBattle) return ContinuationWriter;
+
+	UBattlePresentationRecorder* Recorder = PresentationRecorder.Get();
+	if (!IsValid(Recorder) || !Recorder->HasActiveResolution())
+	{
+		MarkPresentationUnavailable(
+			TEXT("Interactive selection boundary reached without an active Presentation Resolution."));
+		return ContinuationWriter;
+	}
+
+	const EPresentationResolutionOrigin ContinuationOrigin = Recorder->GetActiveOrigin();
 
 	if (!bPresentationAvailable || !Recorder->IsActiveResolutionValid())
 	{

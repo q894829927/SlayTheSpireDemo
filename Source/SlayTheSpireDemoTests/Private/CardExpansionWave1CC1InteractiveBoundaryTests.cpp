@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Actions/BattleActionQueue.h"
 #include "Battle/BattleManager.h"
 #include "Battle/BattleSelectionRequest.h"
 #include "Cards/CardData.h"

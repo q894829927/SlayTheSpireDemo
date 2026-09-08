@@ -176,9 +176,14 @@ bool FWave1CC0MultiExhaustPresentationRecordOrderTest::RunTest(const FString& Pa
 	TestTrue(TEXT("Reverse click-order membership submits"), BattleSelectionRequest::SubmitPendingCardSelection(Fixture.Battle, ReverseSubmission));
 	Fixture.Battle->FlushScheduledReadStateReadyForTesting();
 
-	if (!TestEqual(TEXT("Exactly one play-resolution envelope delivered"), Fixture.Deliveries.Num(), 1)) return false;
-	const FPresentationResolutionEnvelope& Envelope = Fixture.Deliveries[0];
-	const int32 CardPlayedIndex = Envelope.Records.IndexOfByPredicate(
+	if (!TestEqual(TEXT("Player choice splits prefix and continuation envelopes"), Fixture.Deliveries.Num(), 2)) return false;
+	const FPresentationResolutionEnvelope& Prefix = Fixture.Deliveries[0];
+	const FPresentationResolutionEnvelope& Envelope = Fixture.Deliveries[1];
+	TestTrue(TEXT("Continuation follows prefix identity and revision"),
+		Prefix.ResolutionId < Envelope.ResolutionId && Prefix.FinalStateRevision < Envelope.FinalStateRevision);
+	TestEqual(TEXT("Prefix freezes the still-unexhausted Hand"), Prefix.FinalSnapshot.HandCards.Num(), 3);
+	TestEqual(TEXT("Prefix contains no selected-card exhaust"), Prefix.FinalSnapshot.ExhaustCount, 0);
+	const int32 CardPlayedIndex = Prefix.Records.IndexOfByPredicate(
 		[Played](const FPresentationRecord& Record)
 		{
 			return Record.Type == EBattlePresentationRecordType::CardPlayed
@@ -199,8 +204,7 @@ bool FWave1CC0MultiExhaustPresentationRecordOrderTest::RunTest(const FString& Pa
 	}
 
 	TestTrue(TEXT("Committed presentation preserves canonical multi-exhaust order"),
-		CardPlayedIndex < FirstExhaust
-			&& FirstExhaust < SecondExhaust
+		FirstExhaust < SecondExhaust
 			&& SecondExhaust < ThirdExhaust
 			&& ThirdExhaust < FinishIndex);
 	TestEqual(TEXT("First exhaust appends at Exhaust index 0"), Envelope.Records[FirstExhaust].CardZoneChanged.ToIndex, 0);

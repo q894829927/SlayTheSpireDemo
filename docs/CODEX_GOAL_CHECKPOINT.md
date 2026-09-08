@@ -2,6 +2,18 @@
 
 Last updated: **2026-09-08**
 
+## Current resumable task — Unified Card Selection Refactor
+
+HEAD verified: `6fce24e39c53178b59561be31932659a0a542087`. Dedicated contract/status: `docs/CardSelectionRefactorConstraints.md`. Runtime and focused tests are implemented in the working tree; no commit created by the agent.
+
+Completed: shared Execute-time current-Hand CandidateSource, Player/Random deferred pipeline, explicit boundary injection, compatibility-only old Hand Action, typed resolver failure dispositions, decision revision/direct-mode frozen publication and UI partial-selection clearing. New tests include multi-boundary cleanup, identical choices, source/continuation/insertion failures, no-history and PresentationUnavailable separation. Existing asset/map user edits remain untouched.
+
+Validation performed: project generation and Development Editor Build PASS after user closed Live Coding. Seven specified prefixes: 43 tests, 42 passed, one historical single-envelope assertion failed; unified selection 12/12 PASS. Updated only that old test's split-envelope expectation, rebuilt PASS, reran only MultiExhaustRecordOrder 1/1 PASS. Logs/reports: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`, `Saved/AutomationReports/UnifiedSelection/index.json`, `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. `git diff --check` PASS.
+
+Next action: USER ACTION REQUIRED — Native L_BattleTest focused manual PIE A–D as detailed in section 21 of the design document. Record user observations, then seal only if they pass. Do not rerun passing automated Gates unless an edit/failure invalidates them. Fast-forward click reuse remains deferred. No continuous-card-play implementation, PIE, packaged-game or visual acceptance has been claimed.
+
+## Previous checkpoint context (historical; current task above takes precedence)
+
 ## Latest user-requested side refactor — Automatic Card Descriptions
 
 HEAD verified: `5128e2f936416eb16fc8e4f9d7d45272a66368f7`. This refactor is uncommitted in the working tree; existing staged Interior/environment work and user-edited BurningPact / untracked TrueGrit remain preserved. No card assets or maps were saved by this refactor; five Status DisplayName assets were localized through UE Python.
