@@ -52,8 +52,8 @@ SelectionModeDescriptionArgumentName != None
 → declare that semantic argument
 → Base card uses BaseSelectionMode
 → Upgraded card uses UpgradedSelectionMode
-→ Random contributes localized text equivalent to "Randomly exhaust"
-→ Player contributes localized text equivalent to "Exhaust"
+→ Random contributes localized text "随机消耗"
+→ Player contributes localized text "消耗"
 → existing card-level text validation requires the description template to use the declared argument
 ```
 
@@ -64,7 +64,7 @@ For new Blueprint-authored cards that want count and selection-mode text to chan
 ```text
 DescriptionArgumentName = Exhaust
 SelectionModeDescriptionArgumentName = ExhaustMode
-Description = "{ExhaustMode} {Exhaust} card from your hand."
+Description = "{ExhaustMode}{Exhaust}张牌。"
 ```
 
 Example authored gameplay values:
@@ -79,8 +79,8 @@ UpgradedSelectionCount = 1
 resolve as:
 
 ```text
-Base     → "Randomly exhaust 1 card from your hand."
-Upgraded → "Exhaust 1 card from your hand."
+Base     → "随机消耗1张牌。"
+Upgraded → "消耗1张牌。"
 ```
 
 This does not introduce sentinel semantics for gameplay values. `BaseSelectionMode`, `BaseSelectionCount`, `UpgradedSelectionMode`, and `UpgradedSelectionCount` remain explicit authored gameplay values exactly as locked by C0.
