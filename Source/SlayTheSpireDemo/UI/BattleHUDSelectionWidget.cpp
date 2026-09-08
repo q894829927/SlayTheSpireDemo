@@ -23,14 +23,18 @@ void UBattleHUDSelectionWidget::NativeConstruct()
 
 	if (IsValid(Btn_Confirm))
 	{
-		Btn_Confirm->OnClicked.RemoveDynamic(this, &UBattleHUDWidget::HandleConfirmClicked);
+		Btn_Confirm->OnClicked.RemoveDynamic(
+			this,
+			&UBattleHUDSelectionWidget::HandleConfirmClicked);
 		Btn_Confirm->OnClicked.AddUniqueDynamic(
 			this,
 			&UBattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked);
 	}
 	if (IsValid(Btn_Cancel))
 	{
-		Btn_Cancel->OnClicked.RemoveDynamic(this, &UBattleHUDWidget::HandleCancelClicked);
+		Btn_Cancel->OnClicked.RemoveDynamic(
+			this,
+			&UBattleHUDSelectionWidget::HandleCancelClicked);
 		Btn_Cancel->OnClicked.AddUniqueDynamic(
 			this,
 			&UBattleHUDSelectionWidget::HandleSelectionAwareCancelClicked);
@@ -274,7 +278,8 @@ bool UBattleHUDSelectionWidget::BeginSharedHandToDrawPilePresentation(
 	}
 
 	UBattleCardWidget* MovingCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(MovingCard))
+	if (!IsValid(MovingCard)
+		|| !CommitNativePresentationOwnership(Record.Type, Token))
 	{
 		return false;
 	}
@@ -283,6 +288,7 @@ bool UBattleHUDSelectionWidget::BeginSharedHandToDrawPilePresentation(
 	if (!IsValid(MotionSlot))
 	{
 		MovingCard->RemoveFromParent();
+		AbortNativePresentationStart();
 		return false;
 	}
 	MotionSlot->SetHorizontalAlignment(HAlign_Center);
@@ -392,7 +398,10 @@ void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaS
 void UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentation(
 	const FPresentationPlaybackToken& ExpectedToken)
 {
-	if (!bSharedTransferActive || ExpectedToken != SharedTransferToken)
+	if (!bSharedTransferActive
+		|| ExpectedToken != SharedTransferToken
+		|| !HasActiveNativePresentation()
+		|| GetActiveNativePresentationToken() != ExpectedToken)
 	{
 		return;
 	}
@@ -414,11 +423,17 @@ void UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentation(
 
 	const FPresentationPlaybackToken CompletedToken = SharedTransferToken;
 	ResetSharedHandToDrawPileState();
+	ResetNativePresentationOwnership();
 	NotifyPresentationFinished(CompletedToken);
 }
 
 void UBattleHUDSelectionWidget::CancelSharedHandToDrawPilePresentation()
 {
+	const bool bOwnsNativePresentation =
+		bSharedTransferActive
+		&& HasActiveNativePresentation()
+		&& GetActiveNativePresentationToken() == SharedTransferToken;
+
 	if (UWorld* World = GetWorld(); IsValid(World) && SharedTransferFinishTimer.IsValid())
 	{
 		World->GetTimerManager().ClearTimer(SharedTransferFinishTimer);
@@ -434,6 +449,10 @@ void UBattleHUDSelectionWidget::CancelSharedHandToDrawPilePresentation()
 		SharedTransferMovingCard->RemoveFromParent();
 	}
 	ResetSharedHandToDrawPileState();
+	if (bOwnsNativePresentation)
+	{
+		ResetNativePresentationOwnership();
+	}
 }
 
 void UBattleHUDSelectionWidget::ResetSharedHandToDrawPileState()
