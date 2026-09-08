@@ -53,15 +53,32 @@ Sealed Envelopes awaiting deferred delivery use a battle-scoped bounded FIFO. Pr
 
 ## Controller Ownership
 
-`BattlePresentationController` owns playback sequencing and its bounded post-delivery backlog. Blueprint/Widgets do not reorder Records.
+`BattlePresentationController` owns playback sequencing and its bounded post-delivery backlog. Blueprint/Widgets do not scan future Envelope Records, infer groups, or reorder Records on their own.
+
+Reducer application order MUST always remain the committed `PresentationSequence` order.
+
+Visible playback normally follows the same order. The only authorized exception is an explicitly committed, complete and Controller-validated `PresentationGroup`: the Controller may co-present/look ahead to that group's own frozen members from the already sealed Envelope without reducing those future members early. This exception MUST NOT consume, skip, reorder or mark interleaved ungrouped Records as played, and MUST NOT be inferred from CardId, Effect type, destination, adjacency, timing or Widget state.
+
+If a future group member is visually consumed before its reducer cursor is reached, its formal historical visual MUST remain Presentation-suppressed by exact committed identity until that member is reduced. Intermediate `ApplyPresentationSnapshot` / HUD rebuilds must not make the already-consumed visual reappear. Suppression is Presentation-only state and must be cleared on exact member reduction or global reconciliation boundaries such as Skip, collapse, envelope replacement/completion, battle replacement or Presentation-unavailable fallback.
 
 Each Envelope applies its own FinalSnapshot. Do not rebuild display state from latest Gameplay after playback catches up. Refresh only latest-revision live input bindings after the Controller reaches the newest matching `(BattleId, StateRevision)`.
 
-## Playback Token
+## Playback Unit and Token
 
-Async Blueprint playback returns `true` only when valid playback actually started. Successful completion calls `NotifyPresentationFinished` with the exact active token.
+Controller-facing playback may be a single Record or an explicitly validated group, but `UBattleHUDWidgetBase` remains the hardening boundary for both. Concrete HUDs MUST NOT bypass the base wrapper or notify `BattlePresentationController` directly.
 
-Ignore stale, duplicate, old-Battle, post-Skip and post-replacement callbacks. Timeout completion is bound to the same token/generation. A stale Widget destruction callback must not skip playback owned by a replacement Widget.
+Record and group playback MUST share one tracked Presentation-playback owner, not independent record/group owners. The tracked unit includes exact token identity and unit kind so stale callbacks from a previous group cannot clear or complete a newer single Record, and vice versa.
+
+Async Blueprint/native playback returns `true` only when valid playback actually started. Successful completion calls `NotifyPresentationFinished` with the exact active token through the base Widget surface.
+
+The existing hardening applies identically to every playback unit:
+
+- exact-token ownership before entering concrete playback;
+- deferred completion forwarding so synchronous Widget callbacks cannot re-enter Controller sequencing;
+- stale, duplicate, old-Battle, post-Skip and post-replacement callback rejection;
+- timeout bound to the exact unit token/generation;
+- cancellation that targets only the currently tracked unit;
+- Widget replacement/destruction that cannot cancel playback owned by a newer Widget.
 
 Cancel/reconcile restores the historical ViewModel/sealed-snapshot contract. It must not commit Gameplay, fake normal completion or complete a stale token.
 
@@ -69,4 +86,4 @@ Cancel/reconcile restores the historical ViewModel/sealed-snapshot contract. It 
 
 `PresentationUnavailable` is a visible UI-only state. `ResolutionFault` is a Gameplay/framework resolution failure. They are not interchangeable.
 
-Presentation backlog, timeout, missing callback, Widget loss, skip or disablement causes Presentation catch-up/fallback only.
+Presentation backlog, malformed/incomplete group metadata, group rejection, timeout, missing callback, Widget loss, skip or disablement causes Presentation fallback/catch-up only. These failures do not request a Gameplay `ResolutionFault` by themselves.
