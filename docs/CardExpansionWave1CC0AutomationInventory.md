@@ -7,8 +7,8 @@ Status:
 ```text
 C0-10 PRESENTATION COVERAGE IMPLEMENTED
 C0-11 FOCUSED AUTOMATION COVERAGE IMPLEMENTED
-LOCAL EXECUTION NOT YET RECORDED
-C0 NOT SEALED
+LOCAL EXECUTION PASS (20 / 20)
+C0 COMPLETE / VALIDATED / SEALED
 ```
 
 Authority:
@@ -16,9 +16,10 @@ Authority:
 ```text
 docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
 docs/CardExpansionWave1CC0DescriptionCompatibilityAmendment.md
+docs/CardExpansionWave1CC0Execution.md
 ```
 
-This inventory records the final C0-focused Automation surface after C0-10 / C0-11 implementation.
+This inventory records the final C0-focused Automation surface and its sealed local validation result.
 
 ## C0 focused filter
 
@@ -26,10 +27,10 @@ This inventory records the final C0-focused Automation surface after C0-10 / C0-
 SlayTheSpireDemo.CardExpansion.Wave1CC0
 ```
 
-Expected focused test count:
+Expected and validated focused test count:
 
 ```text
-20
+20 / 20 PASS
 ```
 
 ## Authored configuration / Selection / Continuation
@@ -44,7 +45,7 @@ SlayTheSpireDemo.CardExpansion.Wave1CC0.SelectExhaust.CountClampsToCandidates
 Coverage:
 
 ```text
-- backward-compatible Player / 1 defaults
+- Player / 1 gameplay defaults
 - explicit Base / Upgraded mode and count
 - generic duplicate object rejection
 - Player exactly-N multi-exhaust
@@ -119,12 +120,17 @@ SlayTheSpireDemo.CardExpansion.Wave1CC0.Description.BaseUpgradeCount
 SlayTheSpireDemo.CardExpansion.Wave1CC0.Description.DeclaredArgumentMustBeUsed
 ```
 
-Coverage:
+Coverage at seal:
 
 ```text
-- existing hard-coded Burning Pact wording remains valid without binary migration
-- dynamic {Exhaust} uses BaseSelectionCount / UpgradedSelectionCount
-- declared dynamic argument must be consumed by the authored description
+- DescriptionArgumentName defaults to Exhaust
+- SelectionModeDescriptionArgumentName defaults to ExhaustMode
+- default Player / 1 resolves to Chinese "消耗1张牌。"
+- explicit None remains available only as authored legacy opt-out
+- Base Random / count and Upgraded Player / count resolve independently
+- Random mode text resolves to "随机消耗"
+- Player mode text resolves to "消耗"
+- declared dynamic arguments must be consumed by custom authored descriptions
 ```
 
 ## C0-10 Presentation
@@ -146,36 +152,29 @@ Coverage:
 - stale FromIndex on a later multi-exhaust record is rejected
 ```
 
-These tests lock the Presentation data/reducer contract. They do not replace the required PIE visual checks for the in-place opacity fade.
+These tests lock the Presentation data/reducer contract. Manual PIE separately validated the Native in-place opacity behavior and interaction recovery.
 
 ## Existing sealed Wave 1C regression gate
 
-C0 validation must also rerun the existing sealed Wave 1C suite separately:
+The existing sealed Wave 1C regression suite remains separate from the C0 focused count:
 
 ```text
 SlayTheSpireDemo.CardExpansion.Wave1C
+13 / 13 PASS
 ```
 
-Expected sealed Wave 1C regression count:
+## Final seal gates
+
+User-confirmed final C0 acceptance on **2026-09-08**:
 
 ```text
-13 / 13
+[x] SlayTheSpireDemoEditor Win64 Development Build PASS
+[x] SlayTheSpireDemo.CardExpansion.Wave1CC0 = 20 / 20 PASS
+[x] SlayTheSpireDemo.CardExpansion.Wave1C = 13 / 13 PASS
+[x] Native HUD PIE Player multi-select PASS
+[x] Native HUD PIE Random multi-select PASS
+[x] Native HUD PIE Burning Pact regression PASS
+[x] user validation / seal confirmation
 ```
 
-The Wave 1C suite remains a separate seal gate and is not included in the C0 focused count of 20.
-
-## Remaining validation after C0-10 / C0-11
-
-No further C0 capability implementation is authorized by this inventory.
-
-Before C0 may be sealed, the implementation head still requires:
-
-```text
-[ ] SlayTheSpireDemoEditor Win64 Development Build PASS
-[ ] SlayTheSpireDemo.CardExpansion.Wave1CC0 = 20 / 20 PASS
-[ ] SlayTheSpireDemo.CardExpansion.Wave1C = 13 / 13 PASS
-[ ] Native HUD PIE Player multi-select PASS
-[ ] Native HUD PIE Random multi-select PASS
-[ ] Native HUD PIE Burning Pact regression PASS
-[ ] user validation / seal confirmation
-```
+C0 is sealed. No further C0 capability implementation is implied by this inventory.
