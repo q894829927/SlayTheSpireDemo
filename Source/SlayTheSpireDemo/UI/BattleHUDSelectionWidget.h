@@ -36,6 +36,7 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
+	virtual void RefreshHand() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) override;
