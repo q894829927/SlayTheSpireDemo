@@ -6,6 +6,7 @@ Status:
 
 ```text
 PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
+LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT DEFINED /
 GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
 ```
 
@@ -104,6 +105,7 @@ Selection boundary/revision identity
 RuntimeId
 Owner
 Pending vs Confirmed phase
+CompletionWatermark
 ```
 
 A stale selection callback, prior battle, prior boundary or prior generation MUST NOT mutate a newer ownership entry merely because RuntimeId matches.
@@ -122,6 +124,44 @@ SelectionArea + Confirmed
 ```
 
 GroupId may be associated later when known, but is not required to create SelectionArea ownership.
+
+### 3.3 Confirmed lifecycle completion watermark
+
+A Confirmed lifecycle MUST have a runtime-comparable completion watermark. The disappearance of the pending Selection request/resolver is explicitly **not** that watermark.
+
+Normal happy path is:
+
+```text
+Confirm
+→ request/resolver clears
+→ continuation Gameplay executes
+→ Presentation Envelope seals
+→ Controller later plays/reconciles that continuation
+```
+
+Therefore restoring `SelectionArea(Confirmed) → Hand` merely because the request is no longer pending is forbidden.
+
+Behavior must be equivalent to a tagged watermark with these modes:
+
+```text
+Recorded Presentation mode
+    BattleId
+    SelectionGeneration
+    BoundaryRevision
+    Owning/Continuation ResolutionId
+
+Direct/no-history mode
+    BattleId
+    SelectionGeneration
+    BoundaryRevision
+    authoritative post-confirm StateRevision/baseline watermark
+```
+
+Recorded mode is reached only when the owning/continuation Resolution has been Presentation-completed, collapsed/reconciled to its FinalSnapshot, or otherwise formally completed by Controller policy.
+
+Direct/no-history mode is reached only when the authoritative post-confirm baseline/revision is the displayed state.
+
+A selected RuntimeId may still terminate earlier if displayed Hand state already proves it was consumed. The completion watermark is required specifically to decide the fallback case where the card remains in displayed Hand and Presentation must know that no later destination outcome can still arrive.
 
 ## 4. Shared SelectionArea lifecycle
 
@@ -157,6 +197,8 @@ SelectionArea(Pending)
 → authoritative SelectionResult submit
 ```
 
+Confirm also arms/associates the exact lifecycle with a completion watermark as soon as the relevant recorded Resolution or direct post-confirm state edge is knowable. The lifecycle may temporarily be `Confirmed + completion watermark not yet resolved`, but that state MUST NOT be treated as completed.
+
 ### 4.4 Destination playback acceptance
 
 Only an actually accepted visible transition transfers ownership:
@@ -189,7 +231,7 @@ This is a non-negotiable rule:
 
 Ownership MUST NOT rely solely on a destination animation callback for cleanup.
 
-After each authoritative displayed frozen snapshot/baseline reconciliation, exact ownership entries are reconciled against that displayed state and their lifecycle phase.
+After each authoritative displayed frozen snapshot/baseline reconciliation, exact ownership entries are reconciled against that displayed state, lifecycle phase and completion watermark.
 
 ### 5.1 RuntimeId no longer exists in displayed Hand
 
@@ -210,9 +252,20 @@ This covers:
 - FinalSnapshot reconciliation;
 - Presentation skip/catch-up.
 
-### 5.2 RuntimeId remains in Hand after confirmed lifecycle definitively ends
+This rule does not need to wait for lifecycle completion watermark because the displayed historical state already proves the card is no longer in Hand.
 
-If a confirmed selection transaction has definitively ended, no destination ownership remains pending, and the RuntimeId still exists in displayed Hand:
+### 5.2 RuntimeId remains in Hand after exact completion watermark is reached
+
+Recovery to Hand is legal only when all are true:
+
+```text
+RuntimeId still exists in displayed Hand
+AND ownership entry matches current BattleId + SelectionGeneration + boundary
+AND Confirmed lifecycle completion watermark is resolved and reached
+AND no destination Transition / pending visual ownership remains
+```
+
+Then:
 
 ```text
 degradation recovery
@@ -222,6 +275,26 @@ degradation recovery
 ```
 
 This prevents ghost SelectionArea cards for malformed/unsupported cases such as a selected object producing zero eligible destination records.
+
+The following MUST NOT count as lifecycle completion by themselves:
+
+- pending request removed;
+- resolver no longer pending;
+- Confirm button/overlay closed;
+- Selection input state cleared;
+- group metadata missing/incomplete;
+- one candidate produced no eligible destination Record before the owning Resolution has actually reached its completion watermark.
+
+Recorded zero-member degradation therefore works as:
+
+```text
+Confirm
+→ owner remains SelectionArea(Confirmed)
+→ owning Resolution eventually reaches FinalSnapshot/completion watermark
+→ RuntimeId still in Hand
+→ no destination pending
+→ owner returns to Hand
+```
 
 ### 5.3 Widget decline
 
@@ -235,11 +308,53 @@ A owner = SelectionArea
 → ownership reconciliation clears A
 ```
 
+If the declined/malformed path leaves A in Hand, restoration waits for the exact completion watermark from 5.2 rather than request disappearance.
+
 ### 5.4 No-history / direct baseline
 
 Recording-disabled Selection remains mandatory Gameplay behavior. It may have no committed recorded destination boundary.
 
 Therefore SelectionArea ownership MUST reconcile from the resulting direct/frozen baseline and MUST NOT wait forever for a Presentation Record that does not exist.
+
+Direct-mode lifecycle completion is reached only when the authoritative post-confirm baseline/revision watermark is the displayed state:
+
+```text
+post-confirm direct baseline displayed
+→ if RuntimeId absent from Hand: clear owner
+→ if RuntimeId still in Hand and no destination pending: owner = Hand
+```
+
+### 5.5 Ownership mutation has an independent dirty/event channel
+
+Ownership changes frequently occur without a historical snapshot change and therefore MUST have an independent transient Presentation notification path.
+
+Behavior must expose an event/change descriptor equivalent to:
+
+```text
+OnCardPresentationOwnershipChanged
+or
+TransientPresentationDirty(CardOwnership, ChangedRuntimeIds...)
+```
+
+The exact API/type is flexible, but these transitions must publish ownership dirty state immediately:
+
+```text
+Hand → SelectionArea(Pending)       // select
+SelectionArea → Hand                // deselect
+Pending → Confirmed                 // Confirm
+SelectionArea → Transition          // playback accepted
+Transition → ConsumedPendingReducer // grouped visual completion
+```
+
+Ownership state may live in `UBattleHUDViewModel` or in a dedicated transient Presentation state object owned beside it, but the lifecycle is separate from historical snapshot copying:
+
+- `FPresentationStateSnapshot` does not contain or overwrite transient card Presentation ownership;
+- normal `ApplyPresentationSnapshot()` MUST NOT clear/reset ownership simply because historical values/revision changed;
+- snapshot application copies historical display state first, then runs ownership reconciliation against the new displayed state and completion watermarks;
+- ownership reconciliation emits its own ownership dirty notification;
+- if historical and ownership changes occur in one operation, notifications must be coherent/batched so no transient duplicate-visible or ghost frame is exposed.
+
+Formal Hand visibility/input and SelectionArea visuals must react to ownership dirty changes even when `HandCards` itself is unchanged.
 
 ## 6. SelectionArea Host contract
 
@@ -605,7 +720,9 @@ Required order:
 ```text
 G0-A incremental ViewModel/HUD dirty propagation
 G0-B RuntimeId-keyed Hand reconcile
-G0-C ownership infrastructure + lifecycle identity + reconciliation + persistent SelectionAreaHost
+G0-C ownership infrastructure + lifecycle identity + completion watermark
+     + independent ownership dirty/event channel + reconciliation
+     + persistent SelectionAreaHost
      (dormant/compatibility only; do not switch production source ownership yet)
 G1   PresentationGroup metadata + writer-scoped correlation
 G2   Controller semantic group discovery / reducer dry-run / interference
@@ -629,9 +746,16 @@ Implementation is not complete until focused tests and PIE demonstrate at minimu
 - explicit Confirm semantics remain correct;
 - selecting/deselecting transfers exact RuntimeId visible ownership Hand↔SelectionArea without Gameplay mutation;
 - Pending vs Confirmed SelectionArea phases have correct input behavior;
+- request/resolver disappearance immediately after Confirm does **not** restore owner to Hand;
+- recorded completion watermark is reached only after the owning Resolution is Presentation-complete/collapsed/reconciled;
+- direct/no-history completion watermark is reached only after the post-confirm authoritative baseline is displayed;
+- zero eligible destination record restores to Hand only after its exact lifecycle watermark is reached;
 - SelectionAreaHost survives Hand reconciliation and overlay close after Confirm;
 - formal Hand child count/index remains historical; owner!=Hand uses `Hidden`, never `Collapsed`;
 - Hand reconciliation does not reconstruct SelectionArea continuity through confirmed transforms;
+- ownership mutations update Hand visibility/SelectionArea immediately without requiring a new historical snapshot;
+- `ApplyPresentationSnapshot()` does not overwrite transient ownership and runs reconciliation after historical copy;
+- historical dirty + ownership dirty can publish coherently without a duplicate-visible/ghost frame;
 - Widget decline followed by reducer advance clears ownership with no ghost SelectionArea card;
 - no-history/direct-baseline Selection clears/restores ownership correctly;
 - selected object with zero eligible destination record cannot remain SelectionArea-owned forever;
