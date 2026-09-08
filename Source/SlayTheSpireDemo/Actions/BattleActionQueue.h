@@ -6,6 +6,7 @@
 #include "BattleActionQueue.generated.h"
 
 class UBattleAction;
+struct FPresentationRecordWriter;
 
 DECLARE_MULTICAST_DELEGATE(FOnBattleActionQueueEmpty);
 DECLARE_MULTICAST_DELEGATE(FOnBattleActionQueueResolutionIdle);
@@ -31,6 +32,24 @@ public:
 	bool AddBatchToBackPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool AddBatchToFrontPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool StartProcessing();
+
+	// On an explicitly validated synchronous interactive boundary, a read-only
+	// snapshot operation may observe the already-committed Gameplay state without
+	// treating the still-current boundary Action or its pending tail as normal
+	// command-busy state. The scope never pumps, mutates or advances the Queue.
+	bool RunReadSnapshotAtCurrentActionBoundary(
+		const UBattleAction* BoundaryAction,
+		TFunctionRef<bool()> ReadOperation
+	);
+	bool IsCurrentAction(const UBattleAction* Action) const;
+
+	// After a Presentation segment is sealed at the current interactive boundary,
+	// already-authored tail Actions must inherit the next segment writer before
+	// the current Action finishes. Validation is atomic before any writer changes.
+	bool RebindPendingPresentationRecordWriter(
+		const UBattleAction* BoundaryAction,
+		const FPresentationRecordWriter& Writer
+	);
 
 	// QueueEmpty observers may inspect the completed boundary, but authoritative
 	// macro progression must not synchronously start a new resolution from inside
@@ -90,6 +109,7 @@ private:
 	bool bHasDeferredQueueEmptyContinuation = false;
 	bool bResolutionFaultRequested = false;
 	bool bResolutionFaulted = false;
+	bool bInteractiveSnapshotReadScope = false;
 	int32 ExecutedCountInResolution = 0;
 	int32 MaxActionsPerResolution = DefaultMaxActionsPerResolution;
 	FString ResolutionFaultReason;
