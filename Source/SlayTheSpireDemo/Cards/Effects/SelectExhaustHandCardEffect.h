@@ -33,8 +33,8 @@ public:
 	FName DescriptionArgumentName = NAME_None;
 
 	// Optional dynamic selection-mode phrase argument. NAME_None preserves legacy
-	// content. When authored, Random resolves to "Randomly exhaust" and Player to
-	// "Exhaust", using the effective Base/Upgraded selection mode.
+	// content. When authored, Random resolves to "随机消耗" and Player to "消耗",
+	// using the effective Base/Upgraded selection mode.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
 	FName SelectionModeDescriptionArgumentName = NAME_None;
 
