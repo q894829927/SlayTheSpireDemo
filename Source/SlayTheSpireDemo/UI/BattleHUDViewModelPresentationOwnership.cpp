@@ -1,5 +1,38 @@
 #include "BattleHUDViewModel.h"
 
+namespace
+{
+	bool IsSameRecordedWatermark(
+		const FSelectionPresentationCompletionWatermark& Watermark,
+		int64 BattleId,
+		int64 SelectionGeneration,
+		int64 BoundaryRevision,
+		int64 ResolutionId)
+	{
+		return Watermark.Mode == ESelectionPresentationCompletionMode::RecordedResolution
+			&& Watermark.BattleId == BattleId
+			&& Watermark.SelectionGeneration == SelectionGeneration
+			&& Watermark.BoundaryRevision == BoundaryRevision
+			&& Watermark.ResolutionId == ResolutionId
+			&& Watermark.StateRevision == 0;
+	}
+
+	bool IsSameDirectWatermark(
+		const FSelectionPresentationCompletionWatermark& Watermark,
+		int64 BattleId,
+		int64 SelectionGeneration,
+		int64 BoundaryRevision,
+		int64 StateRevision)
+	{
+		return Watermark.Mode == ESelectionPresentationCompletionMode::DirectStateRevision
+			&& Watermark.BattleId == BattleId
+			&& Watermark.SelectionGeneration == SelectionGeneration
+			&& Watermark.BoundaryRevision == BoundaryRevision
+			&& Watermark.ResolutionId == 0
+			&& Watermark.StateRevision == StateRevision;
+	}
+}
+
 void UBattleHUDViewModel::SetPresentationDisplayOwned(bool bOwned)
 {
 	bPresentationDisplayOwned = bOwned;
@@ -8,9 +41,13 @@ void UBattleHUDViewModel::SetPresentationDisplayOwned(bool bOwned)
 int64 UBattleHUDViewModel::BeginCardPresentationSelectionLifecycle(
 	int64 SelectionBoundaryRevision)
 {
+	// Only one interactive Pending selection lifecycle may be open at a time.
+	// Confirm closes this gate immediately; older Confirmed/Transition owners may
+	// continue to exist independently under their own SelectionGeneration.
 	if (BattleId <= 0
 		|| SelectionBoundaryRevision <= 0
-		|| SelectionBoundaryRevision != StateRevision)
+		|| SelectionBoundaryRevision != StateRevision
+		|| ActiveCardPresentationSelectionGeneration != 0)
 	{
 		return 0;
 	}
@@ -26,6 +63,43 @@ int64 UBattleHUDViewModel::BeginCardPresentationSelectionLifecycle(
 	return Generation;
 }
 
+bool UBattleHUDViewModel::CancelCardPresentationSelectionLifecycle(
+	int64 SelectionGeneration)
+{
+	if (SelectionGeneration <= 0
+		|| SelectionGeneration != ActiveCardPresentationSelectionGeneration
+		|| BattleId != ActiveCardPresentationSelectionBattleId
+		|| StateRevision != ActiveCardPresentationSelectionBoundaryRevision)
+	{
+		return false;
+	}
+
+	TArray<int32> ChangedRuntimeIds;
+	for (const TPair<int32, FCardPresentationOwnershipEntry>& Pair :
+		CardPresentationOwnershipEntries)
+	{
+		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
+		if (Entry.BattleId == BattleId
+			&& Entry.SelectionGeneration == SelectionGeneration
+			&& Entry.SelectionBoundaryRevision == ActiveCardPresentationSelectionBoundaryRevision
+			&& Entry.Phase == ESelectionPresentationVisualPhase::Pending
+			&& Entry.Owner == ECardPresentationOwner::SelectionArea)
+		{
+			ChangedRuntimeIds.Add(Pair.Key);
+		}
+	}
+	for (const int32 RuntimeId : ChangedRuntimeIds)
+	{
+		CardPresentationOwnershipEntries.Remove(RuntimeId);
+	}
+
+	ActiveCardPresentationSelectionGeneration = 0;
+	ActiveCardPresentationSelectionBattleId = 0;
+	ActiveCardPresentationSelectionBoundaryRevision = 0;
+	PublishCardPresentationOwnershipChanged(ChangedRuntimeIds);
+	return true;
+}
+
 bool UBattleHUDViewModel::SetPendingCardPresentationSelection(
 	int64 SelectionGeneration,
 	int32 RuntimeId,
@@ -35,7 +109,8 @@ bool UBattleHUDViewModel::SetPendingCardPresentationSelection(
 		|| RuntimeId == INDEX_NONE
 		|| SelectionGeneration != ActiveCardPresentationSelectionGeneration
 		|| BattleId != ActiveCardPresentationSelectionBattleId
-		|| StateRevision != ActiveCardPresentationSelectionBoundaryRevision)
+		|| StateRevision != ActiveCardPresentationSelectionBoundaryRevision
+		|| FindDisplayedCardByRuntimeId(RuntimeId) == nullptr)
 	{
 		return false;
 	}
@@ -47,6 +122,7 @@ bool UBattleHUDViewModel::SetPendingCardPresentationSelection(
 		if (Existing == nullptr
 			|| Existing->BattleId != BattleId
 			|| Existing->SelectionGeneration != SelectionGeneration
+			|| Existing->SelectionBoundaryRevision != ActiveCardPresentationSelectionBoundaryRevision
 			|| Existing->Phase != ESelectionPresentationVisualPhase::Pending
 			|| Existing->Owner != ECardPresentationOwner::SelectionArea)
 		{
@@ -128,7 +204,9 @@ bool UBattleHUDViewModel::ConfirmCardPresentationSelection(
 		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
 		if (Entry.BattleId == BattleId
 			&& Entry.SelectionGeneration == SelectionGeneration
+			&& Entry.SelectionBoundaryRevision == ActiveCardPresentationSelectionBoundaryRevision
 			&& Entry.Phase == ESelectionPresentationVisualPhase::Pending
+			&& Entry.Owner == ECardPresentationOwner::SelectionArea
 			&& !ConfirmedIds.Contains(Pair.Key))
 		{
 			PendingIdsToRestore.Add(Pair.Key);
@@ -152,6 +230,13 @@ bool UBattleHUDViewModel::ConfirmCardPresentationSelection(
 		Entry.CompletionWatermark.BoundaryRevision = Entry.SelectionBoundaryRevision;
 		ChangedRuntimeIds.Add(RuntimeId);
 	}
+
+	// Confirmation is the end of interactive mutation for this generation. The
+	// resulting Confirmed entries continue independently and are addressed by the
+	// immutable generation stored on each entry.
+	ActiveCardPresentationSelectionGeneration = 0;
+	ActiveCardPresentationSelectionBattleId = 0;
+	ActiveCardPresentationSelectionBoundaryRevision = 0;
 	PublishCardPresentationOwnershipChanged(ChangedRuntimeIds);
 	return true;
 }
@@ -164,23 +249,20 @@ bool UBattleHUDViewModel::TryTransferCardPresentationOwnership(
 {
 	FCardPresentationOwnershipEntry* Entry =
 		CardPresentationOwnershipEntries.Find(RuntimeId);
-	if (Entry == nullptr
+	if (SelectionGeneration <= 0
+		|| Entry == nullptr
 		|| Entry->BattleId != BattleId
 		|| Entry->SelectionGeneration != SelectionGeneration
 		|| Entry->Owner != ExpectedOwner
-		|| Entry->Phase == ESelectionPresentationVisualPhase::None)
+		|| Entry->Phase != ESelectionPresentationVisualPhase::Confirmed
+		|| ExpectedOwner == ECardPresentationOwner::Hand
+		|| NewOwner == ECardPresentationOwner::Hand
+		|| NewOwner == ExpectedOwner)
 	{
 		return false;
 	}
 
-	if (NewOwner == ECardPresentationOwner::Hand)
-	{
-		CardPresentationOwnershipEntries.Remove(RuntimeId);
-	}
-	else
-	{
-		Entry->Owner = NewOwner;
-	}
+	Entry->Owner = NewOwner;
 	PublishCardPresentationOwnershipChanged({ RuntimeId });
 	return true;
 }
@@ -194,11 +276,11 @@ bool UBattleHUDViewModel::ArmRecordedCardPresentationCompletion(
 		return false;
 	}
 
-	TArray<int32> ChangedRuntimeIds;
-	for (TPair<int32, FCardPresentationOwnershipEntry>& Pair :
+	TArray<int32> MatchingRuntimeIds;
+	for (const TPair<int32, FCardPresentationOwnershipEntry>& Pair :
 		CardPresentationOwnershipEntries)
 	{
-		FCardPresentationOwnershipEntry& Entry = Pair.Value;
+		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
 		if (Entry.BattleId != BattleId
 			|| Entry.SelectionGeneration != SelectionGeneration
 			|| Entry.Phase != ESelectionPresentationVisualPhase::Confirmed)
@@ -206,6 +288,32 @@ bool UBattleHUDViewModel::ArmRecordedCardPresentationCompletion(
 			continue;
 		}
 
+		if (Entry.CompletionWatermark.IsResolved()
+			&& !IsSameRecordedWatermark(
+				Entry.CompletionWatermark,
+				Entry.BattleId,
+				Entry.SelectionGeneration,
+				Entry.SelectionBoundaryRevision,
+				ResolutionId))
+		{
+			return false;
+		}
+		MatchingRuntimeIds.Add(Pair.Key);
+	}
+	if (MatchingRuntimeIds.IsEmpty())
+	{
+		return false;
+	}
+
+	TArray<int32> ChangedRuntimeIds;
+	for (const int32 RuntimeId : MatchingRuntimeIds)
+	{
+		FCardPresentationOwnershipEntry& Entry =
+			CardPresentationOwnershipEntries.FindChecked(RuntimeId);
+		if (Entry.CompletionWatermark.IsResolved())
+		{
+			continue;
+		}
 		Entry.CompletionWatermark.Mode =
 			ESelectionPresentationCompletionMode::RecordedResolution;
 		Entry.CompletionWatermark.BattleId = Entry.BattleId;
@@ -213,11 +321,7 @@ bool UBattleHUDViewModel::ArmRecordedCardPresentationCompletion(
 		Entry.CompletionWatermark.BoundaryRevision = Entry.SelectionBoundaryRevision;
 		Entry.CompletionWatermark.ResolutionId = ResolutionId;
 		Entry.CompletionWatermark.StateRevision = 0;
-		ChangedRuntimeIds.Add(Pair.Key);
-	}
-	if (ChangedRuntimeIds.IsEmpty())
-	{
-		return false;
+		ChangedRuntimeIds.Add(RuntimeId);
 	}
 	PublishCardPresentationOwnershipChanged(ChangedRuntimeIds);
 	ReconcileCardPresentationOwnership();
@@ -235,19 +339,51 @@ bool UBattleHUDViewModel::ArmDirectCardPresentationCompletion(
 		return false;
 	}
 
-	TArray<int32> ChangedRuntimeIds;
-	for (TPair<int32, FCardPresentationOwnershipEntry>& Pair :
+	TArray<int32> MatchingRuntimeIds;
+	for (const TPair<int32, FCardPresentationOwnershipEntry>& Pair :
 		CardPresentationOwnershipEntries)
 	{
-		FCardPresentationOwnershipEntry& Entry = Pair.Value;
+		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
 		if (Entry.BattleId != BattleId
 			|| Entry.SelectionGeneration != SelectionGeneration
-			|| Entry.Phase != ESelectionPresentationVisualPhase::Confirmed
-			|| PostConfirmStateRevision < Entry.SelectionBoundaryRevision)
+			|| Entry.Phase != ESelectionPresentationVisualPhase::Confirmed)
 		{
 			continue;
 		}
 
+		// Direct completion is the authoritative state produced after Confirm.
+		// Equal-to-boundary would be immediately reachable and therefore cannot
+		// prove any post-confirm continuation completed.
+		if (PostConfirmStateRevision <= Entry.SelectionBoundaryRevision)
+		{
+			return false;
+		}
+		if (Entry.CompletionWatermark.IsResolved()
+			&& !IsSameDirectWatermark(
+				Entry.CompletionWatermark,
+				Entry.BattleId,
+				Entry.SelectionGeneration,
+				Entry.SelectionBoundaryRevision,
+				PostConfirmStateRevision))
+		{
+			return false;
+		}
+		MatchingRuntimeIds.Add(Pair.Key);
+	}
+	if (MatchingRuntimeIds.IsEmpty())
+	{
+		return false;
+	}
+
+	TArray<int32> ChangedRuntimeIds;
+	for (const int32 RuntimeId : MatchingRuntimeIds)
+	{
+		FCardPresentationOwnershipEntry& Entry =
+			CardPresentationOwnershipEntries.FindChecked(RuntimeId);
+		if (Entry.CompletionWatermark.IsResolved())
+		{
+			continue;
+		}
 		Entry.CompletionWatermark.Mode =
 			ESelectionPresentationCompletionMode::DirectStateRevision;
 		Entry.CompletionWatermark.BattleId = Entry.BattleId;
@@ -255,11 +391,7 @@ bool UBattleHUDViewModel::ArmDirectCardPresentationCompletion(
 		Entry.CompletionWatermark.BoundaryRevision = Entry.SelectionBoundaryRevision;
 		Entry.CompletionWatermark.ResolutionId = 0;
 		Entry.CompletionWatermark.StateRevision = PostConfirmStateRevision;
-		ChangedRuntimeIds.Add(Pair.Key);
-	}
-	if (ChangedRuntimeIds.IsEmpty())
-	{
-		return false;
+		ChangedRuntimeIds.Add(RuntimeId);
 	}
 	PublishCardPresentationOwnershipChanged(ChangedRuntimeIds);
 	ReconcileCardPresentationOwnership();
@@ -285,9 +417,16 @@ void UBattleHUDViewModel::MarkPresentationResolutionCompleted(
 
 void UBattleHUDViewModel::ReconcileCardPresentationOwnership()
 {
+	PublishCardPresentationOwnershipChanged(
+		ReconcileCardPresentationOwnershipInternal());
+}
+
+TArray<int32> UBattleHUDViewModel::ReconcileCardPresentationOwnershipInternal()
+{
+	TArray<int32> EntriesToClear;
 	if (CardPresentationOwnershipEntries.IsEmpty())
 	{
-		return;
+		return EntriesToClear;
 	}
 
 	TSet<int32> DisplayedHandRuntimeIds;
@@ -300,7 +439,6 @@ void UBattleHUDViewModel::ReconcileCardPresentationOwnership()
 		}
 	}
 
-	TArray<int32> EntriesToClear;
 	for (const TPair<int32, FCardPresentationOwnershipEntry>& Pair :
 		CardPresentationOwnershipEntries)
 	{
@@ -329,7 +467,7 @@ void UBattleHUDViewModel::ReconcileCardPresentationOwnership()
 	{
 		CardPresentationOwnershipEntries.Remove(RuntimeId);
 	}
-	PublishCardPresentationOwnershipChanged(EntriesToClear);
+	return EntriesToClear;
 }
 
 ECardPresentationOwner UBattleHUDViewModel::GetCardPresentationOwner(int32 RuntimeId) const
@@ -378,7 +516,7 @@ bool UBattleHUDViewModel::IsCardPresentationCompletionWatermarkReached(
 			&& CompletedPresentationResolutionIds.Contains(Watermark.ResolutionId);
 
 	case ESelectionPresentationCompletionMode::DirectStateRevision:
-		return Watermark.StateRevision > 0
+		return Watermark.StateRevision > Entry.SelectionBoundaryRevision
 			&& BattleId == Watermark.BattleId
 			&& StateRevision >= Watermark.StateRevision;
 
