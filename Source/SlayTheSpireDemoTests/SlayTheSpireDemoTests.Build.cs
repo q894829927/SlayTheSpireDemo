@@ -14,6 +14,7 @@ public class SlayTheSpireDemoTests : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
+			"InputCore",
 			"UMG",
 			"SlayTheSpireDemo"
 		});
