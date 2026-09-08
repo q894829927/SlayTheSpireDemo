@@ -25,18 +25,19 @@ class SLAYTHESPIREDEMO_API USelectExhaustHandCardEffect : public UCardEffect
 	GENERATED_BODY()
 
 public:
-	// Optional dynamic count argument. NAME_None is a deliberate legacy-compatible
-	// opt-out so existing Burning Pact content with hard-coded "Exhaust 1 card"
-	// text does not require a binary asset migration. New authored cards may set
-	// this to e.g. "Exhaust" and reference {Exhaust} in their description.
+	// Dynamic count argument. New Effect instances are immediately authorable with
+	// the semantic default "Exhaust" and descriptions may reference {Exhaust}.
+	// Authors may explicitly clear this to None only when opting out of dynamic
+	// count text for legacy content.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
-	FName DescriptionArgumentName = NAME_None;
+	FName DescriptionArgumentName = FName(TEXT("Exhaust"));
 
-	// Optional dynamic selection-mode phrase argument. NAME_None preserves legacy
-	// content. When authored, Random resolves to "随机消耗" and Player to "消耗",
-	// using the effective Base/Upgraded selection mode.
+	// Dynamic selection-mode phrase argument. New Effect instances default to the
+	// semantic name "ExhaustMode". Random resolves to "随机消耗" and Player to
+	// "消耗", using the effective Base/Upgraded selection mode. Authors may
+	// explicitly clear this to None only when opting out for legacy content.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
-	FName SelectionModeDescriptionArgumentName = NAME_None;
+	FName SelectionModeDescriptionArgumentName = FName(TEXT("ExhaustMode"));
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
 	ESelectExhaustSelectionMode BaseSelectionMode = ESelectExhaustSelectionMode::Player;
