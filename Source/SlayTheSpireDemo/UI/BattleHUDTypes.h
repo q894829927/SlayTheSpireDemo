@@ -21,18 +21,61 @@ enum class EBattleHUDDirtyFlags : uint32
 	Intent = 1u << 7,
 	Terminal = 1u << 8,
 	PresentationAvailability = 1u << 9,
-	All = Hand
-		| Combatants
-		| Statuses
-		| Energy
-		| PileCounts
-		| Input
-		| Feedback
-		| Intent
-		| Terminal
-		| PresentationAvailability
+	All = (1u << 10) - 1u
 };
 ENUM_CLASS_FLAGS(EBattleHUDDirtyFlags);
+
+// Presentation-only visible ownership. Gameplay card zones remain authoritative
+// and intentionally do not gain a Selection zone.
+enum class ECardPresentationOwner : uint8
+{
+	Hand = 0,
+	SelectionArea,
+	Transition,
+	ConsumedPendingReducer
+};
+
+enum class ESelectionPresentationVisualPhase : uint8
+{
+	None = 0,
+	Pending,
+	Confirmed
+};
+
+enum class ESelectionPresentationCompletionMode : uint8
+{
+	Unresolved = 0,
+	RecordedResolution,
+	DirectStateRevision
+};
+
+struct SLAYTHESPIREDEMO_API FSelectionPresentationCompletionWatermark
+{
+	ESelectionPresentationCompletionMode Mode =
+		ESelectionPresentationCompletionMode::Unresolved;
+	int64 BattleId = 0;
+	int64 SelectionGeneration = 0;
+	int64 BoundaryRevision = 0;
+	int64 ResolutionId = 0;
+	int64 StateRevision = 0;
+
+	bool IsResolved() const
+	{
+		return Mode != ESelectionPresentationCompletionMode::Unresolved;
+	}
+};
+
+struct SLAYTHESPIREDEMO_API FCardPresentationOwnershipEntry
+{
+	int64 BattleId = 0;
+	int64 SelectionGeneration = 0;
+	int64 SelectionBoundaryRevision = 0;
+	int32 RuntimeId = INDEX_NONE;
+	ECardPresentationOwner Owner = ECardPresentationOwner::Hand;
+	ESelectionPresentationVisualPhase Phase =
+		ESelectionPresentationVisualPhase::None;
+	FSelectionPresentationCompletionWatermark CompletionWatermark;
+};
 
 UENUM(BlueprintType)
 enum class EBattleHUDInteractionState : uint8
