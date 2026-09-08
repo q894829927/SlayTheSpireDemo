@@ -41,6 +41,14 @@ bool UBattleHUDViewModel::HasPendingCardSelection() const
 	return TryGetPendingCardSelectionReadView(View);
 }
 
+bool UBattleHUDViewModel::HasAuthoritativePendingCardSelection() const
+{
+	ABattleManager* Battle = BattleManager.Get();
+	FPendingCardSelectionReadView IgnoredView;
+	return IsValid(Battle)
+		&& BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Battle, IgnoredView);
+}
+
 bool UBattleHUDViewModel::IsPendingCardSelectionCandidate(int32 RuntimeId) const
 {
 	FPendingCardSelectionReadView View;
