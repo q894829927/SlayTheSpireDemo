@@ -5,11 +5,12 @@ Date: **2026-09-09**
 Status:
 
 ```text
-PLANNED / UI-FOUNDATION-FIRST / NO PRODUCTION IMPLEMENTATION YET /
-NOT BUILT / NOT AUTOMATED / NOT PIE-VALIDATED / NOT SEALED
+PLANNED / OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
+UI-FOUNDATION-FIRST / BEHAVIOR-SAFE STAGING /
+NO PRODUCTION IMPLEMENTATION YET / NOT VALIDATED / NOT SEALED
 ```
 
-Related architecture contracts:
+Related contracts:
 
 - `docs/SelectionPresentationGroupDesign.md`
 - `docs/CardSelectionPresentationConstraints.md`
@@ -17,688 +18,680 @@ Related architecture contracts:
 - `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
 - `Source/SlayTheSpireDemo/UI/AGENTS.md`
 
-This document is the implementation plan for the SelectionArea visual-ownership and grouped parallel-presentation redesign. It also records the UI/Presentation architecture issues that should be corrected before grouped playback is enabled, so the new feature does not become another compatibility layer over full HUD rebuilds and index-owned Widget identity.
+## 1. Objective
 
-No Gameplay `SelectionZone` is introduced. Gameplay remains authoritative for Hand/DrawPile/Discard/Exhaust membership.
-
----
-
-## 1. Why the Hand currently refreshes
-
-The current behavior is an implementation artifact, not a gameplay requirement.
-
-Current path:
+Deliver a reusable card-selection Presentation system in which:
 
 ```text
-Presentation Record finishes
-→ BattlePresentationController reduces Record into WorkingPresentationSnapshot
-→ ViewModel.ApplyPresentationSnapshot(...)
-→ ViewModel.BroadcastChanged()
-→ BattleHUDWidget receives OnChanged
-→ RefreshHUDFromViewModel()
-→ RefreshHand()
-→ HB_Hand.ClearChildren()
-→ recreate every Hand card Widget
+Hand
+→ SelectionArea
+→ Transition
+→ ConsumedPendingReducer
+→ Done
 ```
 
-The important distinction is:
+is the stable visual-ownership lifecycle, and a validated explicit Selection Presentation Group can run N selected-card destination animations concurrently without changing Gameplay or reducer chronology.
+
+The implementation must also correct the UI architecture issues that caused the current multi-select flashback:
+
+- coarse whole-HUD refresh;
+- recreate-all Hand reconciliation;
+- visual identity coupled to array index;
+- Selection Widget owning destination animation;
+- globally single-instance card animation state;
+- implicit recovery scope;
+- historical state and transient interaction/ownership lifecycle coupled too tightly.
+
+## 2. Staging rule
+
+Every landed stage must preserve production behavior, not merely compile.
+
+A stage is not acceptable if it leaves production in an intermediate state where:
 
 ```text
-GOOD:
-Controller keeps a complete chronological WorkingPresentationSnapshot.
-
-BAD:
-Every complete snapshot publication causes the UI to rebuild every surface.
+selected visible owner = SelectionArea
+but current SingleRecord transition can only consume Hand
 ```
 
-The redesign MUST preserve complete historical snapshots while making HUD reconciliation incremental.
+or any equivalent behavior gap.
 
----
+Infrastructure may land dormant before activation. Production ownership switches only after all required downstream consumers exist.
 
-## 2. Architecture findings
+## 3. Existing architecture to preserve
 
-### 2.1 Coarse `OnChanged` causes whole-HUD refresh
+Do not weaken these existing contracts while refactoring:
 
-`UBattleHUDViewModel` currently exposes a broad structural `OnChanged` channel. `UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()` responds by calling `RefreshHUDFromViewModel()`, which refreshes Hand, combatants, statuses, Energy, piles, input, feedback, intent and terminal state regardless of which values actually changed.
+- Gameplay remains deterministic and authoritative;
+- Selection candidate capture occurs at Execute time;
+- Player Selection still requires explicit Presentation boundary and explicit Confirm;
+- trigger reaction ordering remains authored;
+- Presentation consumes immutable committed facts;
+- Controller owns chronological reducer sequencing;
+- Base Widget exact-token/deferred-callback/cancellation hardening remains the Controller-facing visual boundary;
+- no Effect/CardId-specific Presentation branches;
+- production `.uasset` / `.umap` changes are not required by this redesign.
 
-This means a Damage, Energy or Status Record can indirectly recreate Hand Widgets even when Hand did not change.
+## 4. G0-A — Incremental ViewModel/HUD dirty propagation
+
+### Goal
+
+Stop treating every ViewModel change as permission to rebuild every formal HUD surface.
+
+Current artifact:
+
+```text
+ApplyPresentationSnapshot
+→ BroadcastChanged
+→ RefreshHUDFromViewModel
+→ RefreshHand + RefreshStatuses + ...
+```
 
 Target:
 
 ```text
-old ViewModel state + new historical snapshot
-→ calculate exact dirty surfaces
-→ update only dirty surfaces
+old displayed state + new displayed state
+→ exact dirty/change-set
+→ refresh only affected surfaces
 ```
 
-### 2.2 Hand Widget identity is destroyed on every Hand refresh
+### Design
 
-Current `RefreshHand()` removes every child and recreates every card.
-
-That destroys visual continuity for cards that did not leave Hand:
-
-- Widget object identity;
-- cached geometry;
-- render transform;
-- hover/focus state;
-- local presentation state;
-- animation source ownership;
-- delegate bindings.
-
-Target: RuntimeId-keyed reconciliation that preserves existing Widgets for surviving Hand cards.
-
-### 2.3 Historical index and visual identity are conflated
-
-Committed `FromIndex` / `HandIndexBefore` values are valid historical facts and should continue to validate the frozen Hand sequence.
-
-They should NOT be the primary way to locate a live visible Widget.
-
-Required distinction:
+Introduce behavior equivalent to dirty flags/change descriptors for at least:
 
 ```text
-Historical index
-→ validates committed snapshot/order.
-
-RuntimeId
-→ identifies the exact card presentation object.
+Hand
+Combatants
+Statuses
+Energy
+PileCounts
+Input
+Feedback
+Intent
+Terminal
+PresentationAvailability
 ```
 
-A selected card may legitimately satisfy:
+The complete historical `FPresentationStateSnapshot` remains intact. This is a UI reconciliation optimization/ownership fix, not partial historical state.
+
+### Requirements
+
+- Damage-only change does not recreate Hand;
+- Energy-only change does not recreate Hand;
+- Status-only change does not recreate Hand;
+- transient Preview remains on its dedicated channel;
+- battle/revision replacement may still request broad reconciliation when genuinely necessary.
+
+### Tests
+
+- Hand Widget identity unchanged across Damage/Energy/Status-only publication;
+- correct affected surfaces still refresh;
+- PresentationUnavailable/terminal transitions remain correct.
+
+## 5. G0-B — RuntimeId-keyed Hand reconcile
+
+### Goal
+
+Replace unconditional:
 
 ```text
-WorkingSnapshot.HandCards[2].RuntimeId == A
-PresentationOwner(A) == SelectionArea
+HB_Hand.ClearChildren
+→ recreate every card
 ```
 
-while `HB_Hand` keeps only a Hidden structural placeholder for A.
+with stable RuntimeId-keyed reconciliation.
 
-### 2.4 Selection Widget owns too many responsibilities
-
-`UBattleHUDSelectionWidget` currently combines:
-
-- pending-selection input;
-- selection layout/backdrop;
-- Confirm/Cancel behavior;
-- selected-card positioning;
-- confirmed-center capture;
-- played-card visibility;
-- Hand→DrawPile animation;
-- `CardZoneChanged` interception;
-- transfer cleanup.
-
-This couples player interaction to destination animation and makes every new destination/lifecycle change affect the Selection subclass.
-
-Target split:
+### Target algorithm
 
 ```text
-Selection interaction
-→ selected/deselected/Confirm/Cancel only
+Old formal RuntimeIds
+vs
+New HandCards RuntimeIds
 
-SelectionArea presentation
-→ selected RuntimeId visual ownership + layout
-
-Generic card transition presenter
-→ current visual owner → committed destination
+survivor → reuse exact Widget
+missing  → remove exact Widget
+added    → create exact Widget
+order    → reconcile to frozen Hand order
+visibility/input → derived from current Presentation ownership
 ```
 
-### 2.5 Native card transition state is globally single-instance
+### Historical index rule
 
-`UBattleHUDWidget` currently stores one active moving card, one historical Hand card, one timer and one set of start/end animation values.
-
-That data model cannot represent parallel A/B/C transitions safely.
-
-Target:
+Keep:
 
 ```text
-one generic FCardTransitionInstance per RuntimeId
-
-SingleRecord
-→ 1 instance
-
-SelectionGroup
-→ N instances
+Hand index = historical record/snapshot validation
 ```
 
-### 2.6 Historical display state and interaction state are too tightly coupled
-
-`ApplyPresentationSnapshot()` currently copies historical display values and also clears/reinitializes interaction state, live bindings and selection state.
-
-The Controller currently publishes a working snapshot after each reduced Record, so an ordinary historical update can indirectly reset unrelated interaction/presentation continuity.
-
-Target separation:
+Stop using index as primary live visual identity:
 
 ```text
-Historical display state
-    Hand / HP / Block / Status / Energy / pile counts / outcome
-
-Interaction state
-    input lock / ordinary card selection / target choice / preview
-
-SelectionArea visual ownership
-    independent Presentation lifecycle
+RuntimeId = current visual identity
 ```
 
-A historical snapshot application must not implicitly destroy SelectionArea ownership that is intentionally retained across chronological reducer steps.
+### Tests
 
-### 2.7 Status rows use the same full-rebuild pattern
+- surviving B/C retain object identity when A leaves Hand;
+- added/removed RuntimeIds reconcile correctly;
+- frozen order/index remains exact;
+- child count remains equal to historical Hand count;
+- Hidden structural slot remains layout-present.
 
-`RefreshStatusRows()` currently clears and recreates status Widgets.
+## 6. G0-C — Dormant Presentation ownership infrastructure
 
-This is not the direct cause of the current multi-select bug, but it is the same architectural pattern and will cause similar continuity problems for status hover/tooltip/animation work.
+### Goal
 
-Target follow-up: exact identity reconciliation using:
+Introduce the ownership model without yet switching production Selection visuals away from the old path.
+
+### Infrastructure
+
+Behavior equivalent to:
+
+```cpp
+FCardPresentationOwnershipEntry
+{
+    BattleId
+    SelectionGeneration
+    SelectionBoundaryRevision
+    RuntimeId
+    Owner
+    Phase // Pending / Confirmed where applicable
+}
+```
+
+Owner states:
+
+```text
+Hand
+SelectionArea
+Transition
+ConsumedPendingReducer
+```
+
+### Persistent SelectionAreaHost
+
+Create a runtime persistent visual layer:
+
+```text
+SelectionAreaHost
+- NOT HB_Hand
+- NOT OV_PlayArea
+- survives Hand reconciliation
+- survives interactive overlay close
+- stable HUD coordinate space
+```
+
+The Host may exist but production selected cards remain on the current path until G4/G5.
+
+### Ownership reconciliation
+
+Implement/test reconciliation independently of animation:
+
+```text
+owned RuntimeId absent from displayed Hand
+→ clear ownership / stale visual
+```
+
+```text
+owned RuntimeId still in displayed Hand
+AND confirmed lifecycle definitively ended
+AND no destination pending
+→ owner back to Hand
+```
+
+### Lifecycle scope
+
+Reject stale ownership mutation by prior:
+
+```text
+BattleId
+SelectionGeneration
+boundary/revision
+```
+
+### Critical staging rule
+
+G0-C MUST NOT yet hide the production selected formal Hand card or make SelectionArea the production source unless the generic transition source resolver can consume SelectionArea in the same coherent landed change.
+
+## 7. G1 — PresentationGroup metadata + writer-scoped correlation
+
+### Goal
+
+Add explicit committed correlation with no visible behavior change.
+
+### Work
+
+- add `EPresentationGroupKind` / tag fields or equivalent;
+- add writer-scoped `TryAllocatePresentationGroupId`;
+- group counter belongs to active Resolution builder;
+- stale writer validation uses writer BattleId/ResolutionId;
+- `USelectionRequestAction` creates object-type-neutral direct-continuation context;
+- current-Hand selected RuntimeSequences map to exact card RuntimeIds;
+- eligible direct continuation Actions stamp matching group metadata;
+- trigger reactions inherit writer only, never group context.
+
+### Eligibility invariant
+
+Initial group requires:
+
+```text
+one selected RuntimeSequence
+→ exactly one eligible direct CardZoneChanged member
+```
+
+0/2-member shapes disable grouping later.
+
+### Tests
+
+- stale writer cannot allocate in newer Resolution;
+- two Selection decisions get distinct IDs in same Resolution;
+- trigger records ungrouped;
+- canonical selection order, not click order, defines selected identities;
+- no-history Gameplay unchanged.
+
+## 8. G2 — Controller semantic Group discovery, dry-run and interference
+
+### Goal
+
+Teach Controller which groups are semantically safe while leaving visible Group playback disabled.
+
+### Controller may inspect
+
+Only sealed Envelope facts:
+
+- group metadata;
+- expected member count;
+- member record type/zone shape;
+- RuntimeId uniqueness;
+- `PresentationSequence` validity;
+- exact-one-member invariant;
+- chronological reducer dry-run;
+- future-member interference.
+
+### Controller must not inspect
+
+- SelectionArea ownership;
+- concrete Widget existence;
+- geometry;
+- destination anchors;
+- Selection Presenter state.
+
+### Interference
+
+At minimum:
+
+```text
+interleaved CardZoneChanged touching future member → reject group
+interleaved CardPlayed touching future member      → reject group
+```
+
+Unrelated Damage/Status/Energy/other-card records do not reject merely by interleaving.
+
+### Tests
+
+- contiguous 3-member group validates;
+- unrelated non-contiguous group validates;
+- future member leave/return Hand causes semantic visual rejection even if reducer dry-run succeeds;
+- malformed/incomplete groups sequentially disabled;
+- `ExpectedMemberCount <= 1` not offered as Group playback.
+
+## 9. G3 — Base Widget playback-unit hardening + recovery scopes
+
+### Goal
+
+Upgrade Controller↔Widget protocol from one Record to one playback unit:
+
+```text
+SingleRecord OR Group
+```
+
+without weakening exact-token hardening.
+
+### Base Widget
+
+One tracked owner, not independent Record/Group owners.
+
+Token behavior includes unit kind and GroupId where applicable.
+
+Preserve:
+
+- track before concrete Begin;
+- deferred synchronous completion forwarding;
+- exact stale/duplicate rejection;
+- exact cancel;
+- timeout bound to current generation/token;
+- Widget replacement safety.
+
+### Recovery scopes
+
+Implement behaviorally distinct scopes equivalent to:
+
+```text
+ActivePlaybackUnit
+ActiveEnvelope
+EntireBacklog
+```
+
+Group timeout requires ActiveEnvelope reconciliation that preserves later queued envelopes.
+
+### Timeout path
+
+```text
+exact group timeout
+→ cancel exact group unit
+→ clean visual unit
+→ mark no failed member VisuallyPresented
+→ ActiveEnvelope.FinalSnapshot
+→ ownership reconciliation
+→ active envelope complete
+→ later backlog preserved
+```
+
+No leader-only `CompleteActiveRecord()` behavior.
+
+### Tests
+
+- stale Group callback cannot finish newer SingleRecord;
+- stale SingleRecord callback cannot finish newer Group;
+- exact cancellation;
+- active-envelope recovery preserves backlog;
+- global Skip still intentionally clears backlog.
+
+## 10. G4 — Generic card transition engine + SelectionArea-capable source resolver
+
+### Goal
+
+Replace destination animation special cases/single global moving-card state with one generic per-child engine before switching production Selection ownership.
+
+### Child state
+
+Behavior equivalent to:
+
+```cpp
+FCardTransitionInstance
+{
+    RuntimeId
+    FromZone
+    ToZone
+    MovingVisual
+    start/end geometry
+    opacity/scale
+    elapsed
+}
+```
+
+### Source resolver
+
+Must support:
+
+```text
+owner == Hand          → exact Hand visual
+owner == SelectionArea → exact SelectionArea visual
+```
+
+`ConsumedPendingReducer` must not replay.
+
+### Destination resolver
+
+Driven only by committed facts:
+
+- Exhaust;
+- DrawPile;
+- Discard when current generic support is ready;
+- existing played-card destination behavior as appropriate.
+
+### Migration order
+
+Before production SelectionArea switch, migrate existing SingleRecord paths to the generic engine and prove behavior parity.
+
+Warcry remains SingleRecord and is a key migration target once SelectionArea source support exists.
+
+### Tests
+
+- existing Hand→Exhaust parity;
+- existing Hand→Discard parity;
+- Hand→DrawPile visible movement parity;
+- source resolver can consume a test SelectionArea visual;
+- SingleRecord still uses one child;
+- no CardId/Effect branch.
+
+## 11. G5 — Production SelectionArea ownership switch
+
+### Goal
+
+Make the new ownership model production-visible only after G4 can consume it safely.
+
+### Select
+
+```text
+Hand → SelectionArea(Pending)
+```
+
+- formal Hand slot stays Hidden;
+- visible exact card lives in SelectionAreaHost;
+- selected visual supports deselect.
+
+### Confirm
+
+```text
+SelectionArea(Pending)
+→ SelectionArea(Confirmed)
+```
+
+- Confirmed visual remains alive after overlay/backdrop closes;
+- input disabled;
+- authoritative SelectionResult submits;
+- do not reduce ownership to coordinates.
+
+### SingleRecord consumption
+
+```text
+SelectionArea(Confirmed)
+→ generic SingleRecord transition accepts
+→ Transition
+→ displayed-state reconciliation terminates/restores owner
+```
+
+### Widget decline / no-record paths
+
+Ownership reconciliation must close the lifecycle without relying on animation.
+
+### Remove old primary behavior
+
+`ConfirmedCardCenters`, restore-confirmed-transform and Selection-subclass destination animation stop being authoritative/primary.
+
+Temporary compatibility data may remain only if another not-yet-migrated SingleRecord path still requires it and must have explicit deletion target in G7.
+
+### Tests
+
+- select/deselect ownership;
+- Pending/Confirmed input behavior;
+- Host survives Hand reconcile;
+- Host survives overlay close after Confirm;
+- Widget decline leaves no ghost card;
+- no-history/direct baseline leaves no ghost card;
+- selected member with zero eligible destination restores/clears correctly;
+- Warcry SingleRecord SelectionArea→DrawPile works before Group parallel is enabled.
+
+## 12. G6 — N-child Group playback + ConsumedPendingReducer
+
+### Goal
+
+Enable true parallel selected-card destination playback.
+
+### Visual transactional preflight
+
+Controller has already semantically validated the group. Concrete HUD now validates visual state:
+
+- exact owner exists;
+- visible object valid;
+- geometry valid;
+- destination valid;
+- every child constructable.
+
+No durable ownership transfer occurs during partial preparation.
+
+Child N failure:
+
+```text
+rollback every prepared child
+→ zero ownership transferred
+→ return false
+→ sequential SingleRecord fallback
+```
+
+### Accepted Group
+
+```text
+A/B/C SelectionArea→Transition atomically
+→ N children begin in same Native tick
+```
+
+### Normal completion
+
+```text
+future visually consumed members
+→ ConsumedPendingReducer
+→ Base Widget exact Group completion
+```
+
+Controller marks exact record indices VisuallyPresented and resumes chronological reducer from leader.
+
+When B/C reducer records arrive later, no visible Begin occurs; displayed-state reconciliation clears exact ownership after historical consumption.
+
+### Sequential fallback
+
+If Group is unavailable/unsafe/declined before ownership transfer:
+
+```text
+A/B/C stay SelectionArea(Confirmed)
+→ A SingleRecord
+→ B/C remain SelectionArea across Hand reconcile
+→ B SingleRecord
+→ C SingleRecord
+```
+
+No confirmed-position reconstruction.
+
+### Tests
+
+- N children begin same tick;
+- second/Nth child prepare failure transfers zero owner;
+- sequential fallback does not flash B/C to Hand;
+- interleaved unrelated records still play later in chronological order;
+- ConsumedPendingReducer survives intermediate snapshots;
+- exact reducer consumption clears only exact owner.
+
+## 13. G7 — Cleanup, optional Status reconcile, validation and seal preparation
+
+### Mandatory cleanup
+
+Delete or retire superseded production paths after equivalence is proven:
+
+- confirmed-position handoff as primary continuity;
+- Hand rebuild transform restoration;
+- Selection-subclass Hand→DrawPile destination ownership;
+- duplicate independent suppression truth;
+- obsolete single-global-card animation fields/helpers replaced by transition instances.
+
+### Optional adjacent Status cleanup
+
+Status rows currently have a similar recreate-all pattern. If scope/risk allows, add exact identity reconciliation keyed by:
 
 ```text
 TargetPresentationId + StatusId + RuntimeSequence
 ```
 
-Status reconciliation is adjacent cleanup; it is not required to enable the first Selection Group if scope needs to stay small.
+This is not required to enable Selection Group and must not expand the critical path unnecessarily.
 
-### 2.8 Presentation recovery scope is implicit
+### Validation
 
-Current Controller helpers mix several meanings:
+Fresh evidence is required after production code changes:
 
-- fail one active visual;
-- abandon the active Envelope;
-- skip/collapse the whole backlog.
+- Development Editor build;
+- focused Selection Presentation Automation;
+- C0 multi-select regressions affected by shared Selection changes;
+- C1 DrawPileTop/Warcry regressions;
+- existing generic zone/played-card cleanup regressions;
+- manual PIE for true parallel timing/no-flash and Warcry sequence.
 
-Grouped timeout requires a precise active-envelope-only recovery path that preserves later queued Envelopes.
+No prior validation may be reused after relevant shared UI/Presentation code changes.
 
-Target conceptual scope:
+## 14. Acceptance matrix
 
-```cpp
-enum class EPresentationRecoveryScope : uint8
-{
-    ActivePlaybackUnit,
-    ActiveEnvelope,
-    EntireBacklog
-};
-```
+### Foundation
 
-The exact type is optional; the behavioral separation is mandatory.
+- non-Hand changes do not rebuild Hand;
+- surviving Hand RuntimeId preserves Widget object identity;
+- historical child count/index remains exact;
+- visible lookup is RuntimeId/owner-based.
 
----
+### Ownership
 
-## 3. Target architecture
+- exact BattleId/SelectionGeneration lifecycle;
+- Hand↔SelectionArea Pending select/deselect;
+- Confirmed owner survives overlay close;
+- stale generation cannot mutate current owner;
+- Widget decline/no-history/zero-member/global recovery reconciles ownership;
+- no ghost SelectionArea card.
 
-The redesign is organized around three foundations.
+### SingleRecord
 
-### 3.1 Incremental HUD reconciliation
+- generic engine handles Hand source;
+- generic engine handles SelectionArea source;
+- Warcry selected card visibly moves SelectionArea→DrawPile;
+- Warcry played card later uses ordinary generic Exhaust.
 
-```text
-complete historical snapshots remain authoritative
-        ↓
-ViewModel determines actual changed surfaces
-        ↓
-HUD reconciles only those surfaces
-```
+### Group
 
-Do not replace historical snapshots with mutable live reads.
+- semantic validation is Controller-only immutable data;
+- visual validation is Widget/Presenter-only transactional state;
+- safe multi-member transitions start together;
+- unsafe future-member interference degrades;
+- sequential degradation stays in SelectionArea;
+- future consumed members never reappear in Hand.
 
-### 3.2 Card visual ownership
+### Recovery
 
-```text
-Gameplay Zone
-    Hand / DrawPile / Discard / Exhaust / PlayArea
+- Group timeout does not leader-complete;
+- active-envelope recovery preserves later backlog;
+- ownership reconciliation is atomic with final snapshot where required;
+- stale callbacks cannot cross playback-unit ownership.
 
-Presentation Owner
-    Hand / SelectionArea / Transition / ConsumedPendingReducer
-```
+## 15. Files likely affected during implementation
 
-These are separate concepts.
-
-Exact RuntimeId is the visual identity key.
-
-### 3.3 Presentation playback unit
-
-```text
-SingleRecord
-OR
-explicit validated SelectionGroup
-        ↓
-generic N-child card-transition engine
-```
-
-Reducer chronology remains exact committed `PresentationSequence` order.
-
----
-
-## 4. Required pre-Group foundation: G0
-
-G0 is intentionally before Group metadata/playback. Its purpose is to remove the UI assumptions that created the flashback bug.
-
-### G0-A — ViewModel change-set / dirty surfaces
-
-Introduce an incremental historical-display notification contract.
-
-Conceptual flags:
-
-```cpp
-enum class EBattleHUDDirtyFlags : uint32
-{
-    None       = 0,
-    Hand       = 1 << 0,
-    Combatants = 1 << 1,
-    Statuses   = 1 << 2,
-    Energy     = 1 << 3,
-    Piles      = 1 << 4,
-    Input      = 1 << 5,
-    Feedback   = 1 << 6,
-    Intent     = 1 << 7,
-    Terminal   = 1 << 8
-};
-```
-
-Exact implementation may use a struct instead of bit flags.
-
-Requirements:
-
-- compare previous displayed state with the incoming historical snapshot;
-- mark `Hand` dirty only when Hand content/order/card display data actually changes;
-- ordinary Damage/Energy/Status changes do not rebuild Hand;
-- Preview remains on its dedicated transient channel;
-- initial/full-baseline application may request all surfaces.
-
-G0-A must not weaken the frozen historical snapshot contract.
-
-### G0-B — RuntimeId-keyed Hand reconciliation
-
-Replace default `ClearChildren() + recreate all` behavior with exact reconciliation.
-
-Conceptual registry:
-
-```cpp
-TMap<int32, TObjectPtr<UBattleCardWidget>> HandWidgetsByRuntimeId;
-```
-
-For:
+Expected production areas include, subject to actual compile dependencies:
 
 ```text
-Old Hand = [A, B, C, D]
-New Hand = [B, C, D, E]
+Source/SlayTheSpireDemo/Presentation/PresentationTypes.*
+Source/SlayTheSpireDemo/Presentation/BattlePresentationRecorder.*
+Source/SlayTheSpireDemo/Presentation/BattlePresentationController.*
+Source/SlayTheSpireDemo/Actions/SelectionRequestAction.*
+selected card-zone Actions that emit eligible CardZoneChanged records
+Source/SlayTheSpireDemo/UI/BattleHUDViewModel.*
+Source/SlayTheSpireDemo/UI/BattleHUDWidgetBase.*
+Source/SlayTheSpireDemo/UI/BattleHUDWidget.*
+Source/SlayTheSpireDemo/UI/BattleHUDSelectionWidget.*
+Source/SlayTheSpireDemoTests/Private/CardSelectionPresentationTests.cpp
+related focused Controller/Presentation tests as needed
 ```
 
-reconcile as:
+No card/map production asset change is implied.
 
-```text
-A → remove
-B → reuse same Widget
-C → reuse same Widget
-D → reuse same Widget
-E → create
-```
+## 16. Explicit non-goals
 
-Then reconcile container order to match the frozen historical Hand.
+This plan does not authorize:
 
-Requirements:
+- a Gameplay SelectionZone;
+- Gameplay batching/reordering for visual convenience;
+- trigger inheritance of Selection group context;
+- CardId/Effect-specific destination animation;
+- Widget scanning future Envelope records;
+- removal/Collapse of still-historical Hand structural slots before index contracts are deliberately replaced;
+- keeping both position-handoff and ownership as competing authoritative systems;
+- marking Build/Automation/PIE PASS without execution evidence.
 
-- duplicate RuntimeId remains invalid;
-- exact historical order remains authoritative;
-- surviving RuntimeIds preserve Widget identity;
-- Bind/Unbind card request delegate only when actual Widget lifetime changes;
-- full rebuild remains available only as explicit recovery/destruction behavior, not normal Record progression.
+## 17. Start condition
 
-### G0-C — Separate historical index validation from visual lookup
+Implementation should begin at **G0-A**, then **G0-B**.
 
-Keep index validation for committed facts:
-
-```text
-FromIndex / HandIndexBefore
-→ WorkingSnapshot.HandCards[index]
-→ exact RuntimeId/card snapshot validation
-```
-
-Replace visual lookup with RuntimeId ownership lookup:
-
-```text
-RuntimeId
-→ CardVisualRegistry
-→ current owner
-→ exact current visible visual
-```
-
-Do not require:
-
-```text
-visible widget == HB_Hand.GetChildAt(FromIndex)
-```
-
-when Presentation ownership intentionally moved the card to SelectionArea or Transition.
-
-### G0-D — Card visual ownership registry + SelectionArea
-
-Introduce Presentation-only exact RuntimeId ownership.
-
-Conceptual states:
-
-```cpp
-enum class ECardPresentationOwner : uint8
-{
-    Hand,
-    SelectionArea,
-    Transition,
-    ConsumedPendingReducer
-};
-```
-
-Conceptual registry responsibility:
-
-```text
-RuntimeId
-→ owner
-→ visible visual, when owner has one
-```
-
-Requirements:
-
-- one RuntimeId has at most one visible card presentation;
-- Hand formal structural slot may coexist as Hidden placeholder when owner != Hand;
-- selecting a card transfers visible ownership `Hand → SelectionArea` without Gameplay mutation;
-- deselect transfers `SelectionArea → Hand`;
-- Confirm freezes SelectionArea ownership; it does not reduce ownership to coordinates;
-- SelectionArea visual survives ordinary historical Hand reconciliation;
-- `ConsumedPendingReducer` has no visible card but continues to deny Hand visible ownership until exact reducer consumption.
-
-### G0-E — Split Selection interaction from destination presentation
-
-Refactor responsibilities so `UBattleHUDSelectionWidget` no longer owns destination-specific transfer animation.
-
-Target responsibilities:
-
-```text
-UBattleHUDSelectionWidget
-    pending Selection interaction
-    candidate/selected styling
-    Confirm/Cancel
-
-SelectionArea presentation component/layer
-    selected-card visual ownership
-    selected-card layout
-
-Generic CardTransition presenter/engine
-    source owner → committed destination
-```
-
-Remove `Hand→DrawPile` as a Selection-subclass-specific animation after generic equivalence is proven.
-
-Do not remove the old path before focused tests establish equivalent single-card Warcry behavior.
-
-### G0-F — Historical display vs interaction lifecycle separation
-
-Refine ViewModel update APIs so a chronological historical snapshot step does not automatically erase unrelated Presentation ownership.
-
-Conceptually separate:
-
-```text
-ApplyHistoricalSnapshot(...)
-SetPresentationBusy(...)
-ResetInteractionForRevision(...)
-ApplyPresentationOwnership(...)
-```
-
-The exact public API names may differ.
-
-Requirements:
-
-- BattleId/StateRevision boundaries still invalidate stale input;
-- normal Record reduction may keep input locked without destroying SelectionArea/ConsumedPendingReducer ownership;
-- live binding refresh remains latest-revision-only;
-- SelectionArea ownership is transient Presentation state, not frozen Gameplay truth.
-
-### G0-G — Focused recovery-scope API
-
-Before Group timeout is enabled, Controller must distinguish:
-
-```text
-ActivePlaybackUnit failure
-ActiveEnvelope reconciliation
-EntireBacklog Skip/collapse
-```
-
-Requirements:
-
-- active-envelope reconciliation applies only that Envelope's FinalSnapshot;
-- later queued Envelopes are preserved;
-- user/global Skip may still collapse the entire backlog according to existing policy;
-- no recovery helper has hidden broader side effects than its name/contract.
-
-### G0-H — Status keyed reconciliation (adjacent, not Group-blocking)
-
-Prefer after Hand reconciliation or in a follow-up patch:
-
-```text
-(TargetPresentationId, StatusId, RuntimeSequence)
-→ stable Status Widget
-```
-
-Do not delay Selection Group solely for G0-H if G0-A through G0-G are complete and focused regression coverage protects status behavior.
-
----
-
-## 5. G0 acceptance gates
-
-### 5.1 Dirty-surface behavior
-
-- Damage snapshot update does not call/reconcile Hand.
-- Energy-only update does not call/reconcile Hand.
-- Status-only update does not call/reconcile Hand.
-- actual Hand change marks Hand dirty exactly once.
-- initial baseline can request full HUD initialization.
-
-### 5.2 Stable Hand identity
-
-- removing A from `[A,B,C]` preserves the exact B/C Widget objects;
-- adding D creates only D;
-- reordering uses the frozen Hand order without recreating unchanged RuntimeIds;
-- duplicate/invalid RuntimeId fails closed;
-- card-request delegate is not duplicated after repeated reconcile.
-
-### 5.3 Visual identity vs index
-
-- historical `FromIndex` validation still rejects a wrong committed index;
-- a valid RuntimeId owned by SelectionArea can satisfy historical Hand validation without requiring its visible Widget to be the Hand child at that index;
-- visual lookup always resolves by exact RuntimeId/owner.
-
-### 5.4 SelectionArea ownership
-
-- select A: Hand formal slot becomes Hidden; SelectionArea owns the only visible A;
-- deselect A: SelectionArea visual retires and formal Hand A becomes visible again;
-- ordinary Hand reconcile while A is SelectionArea-owned does not steal A back;
-- Confirm preserves the stable SelectionArea visual;
-- no position-only reconstruction is required after a Hand snapshot change.
-
-### 5.5 Interaction separation
-
-- chronological historical snapshot application does not erase retained SelectionArea ownership;
-- revision change still invalidates stale interactive input;
-- Presentation catch-up still keeps Gameplay input fail-closed.
-
-### 5.6 Recovery scope
-
-- active-envelope recovery preserves a later queued Envelope;
-- entire-backlog Skip still clears/collapses backlog according to existing policy;
-- no intermediate refresh exposes a visually consumed card during reconciliation.
-
-No G0 gate may be marked PASS without actual automated/build evidence.
-
----
-
-## 6. Group implementation after G0
-
-After required G0 foundations pass, continue the group design in small stages.
-
-### G1 — Group metadata + writer-scoped correlation
-
-- add `EPresentationGroupKind` / group tag to Presentation records;
-- add writer-scoped GroupId allocation;
-- counter belongs to active Resolution builder;
-- stale writer allocation fails;
-- SelectionRequestAction creates Action-local context for direct continuations only;
-- concrete eligible card-zone Actions stamp only matching selected RuntimeIds;
-- trigger reactions inherit writer but not Selection group context;
-- no visible behavior change.
-
-### G2 — Controller group discovery + interference preflight
-
-- discover exact group members from sealed Envelope;
-- require `ExpectedMemberCount > 1` for Group playback;
-- validate exact-one-eligible-record-per-selected-member;
-- chronological arbitrary-snapshot dry-run;
-- reject future-member interference;
-- group rejection falls back sequentially with SelectionArea ownership unchanged.
-
-### G3 — Base Widget unified playback unit + timeout reconciliation
-
-- one tracked Record-or-Group playback owner;
-- token includes playback unit kind and GroupId where applicable;
-- shared exact-token/deferred completion/stale callback/cancel hardening;
-- dedicated active-envelope failure reconciliation;
-- preserve later PlaybackQueue entries.
-
-### G4 — Generic N-child card-transition engine
-
-- replace global single-card transition state with per-child instances;
-- SingleRecord uses one child;
-- Group uses N children;
-- source lookup uses exact RuntimeId visual owner;
-- destination style remains committed-zone-driven;
-- migrate Selection-specific Hand→DrawPile path into generic engine.
-
-### G5 — SelectionArea + Group integration
-
-- transactionally prepare every group child before ownership transfer;
-- if child N fails, SelectionArea keeps all visible members and sequential fallback begins;
-- accepted Group transfers all exact members `SelectionArea → Transition` in one playback unit;
-- all children begin in the same Native tick;
-- normal single-card Warcry remains SingleRecord Controller playback but uses the same generic child engine.
-
-### G6 — `ConsumedPendingReducer`, cleanup and validation
-
-- grouped child completion moves future members to `ConsumedPendingReducer`;
-- formal historical Hand placeholders remain Hidden;
-- exact reducer member clears its ownership only after applying the committed Record;
-- remove superseded confirmed-center/selection-specific transfer code after equivalence is proven;
-- run focused Automation and manual PIE.
-
----
-
-## 7. Explicit scope boundaries
-
-This plan does NOT authorize:
-
-```text
-new Gameplay SelectionZone
-Gameplay batching/reordering for animation
-trigger ordering changes
-Effect/CardId-specific Presentation branches
-production .uasset or .umap edits
-Legacy HUD restoration/modification
-```
-
-It also does not require all adjacent UI cleanup to land before Group work. The required Group foundation is G0-A through G0-G. G0-H Status reconciliation may follow separately.
-
----
-
-## 8. Recommended commit sequence
-
-Keep patches small enough that each architectural boundary can be reviewed independently.
-
-```text
-Commit 1  G0-A change-set contract + tests
-Commit 2  G0-B Hand RuntimeId reconciler + tests
-Commit 3  G0-C/G0-D card visual registry + SelectionArea ownership
-Commit 4  G0-E Selection interaction/destination responsibility split
-Commit 5  G0-F historical/interaction lifecycle split
-Commit 6  G0-G recovery-scope helper + tests
-
-Commit 7  G1 group metadata/writer correlation
-Commit 8  G2 Controller group preflight/interference
-Commit 9  G3 Base playback-unit hardening
-Commit 10 G4 generic N-child engine
-Commit 11 G5 SelectionArea group integration
-Commit 12 G6 cleanup + docs + focused regression tests
-```
-
-Combine commits only when a real compile dependency makes separation impractical. Do not combine all UI foundation and Group implementation into one refactor commit.
-
----
-
-## 9. Validation order
-
-For every stage that changes production C++:
-
-```text
-1. Development Editor build
-2. smallest focused Automation prefix for changed contract
-3. existing relevant Selection/Presentation regression prefix
-4. manual PIE only after automated contracts pass when visual continuity/concurrency must be observed
-```
-
-Grouped parallel playback is not considered complete until manual PIE verifies:
-
-```text
-select A/B/C
-→ cards visibly live in SelectionArea
-→ Confirm
-→ safe group starts together
-→ no selected card returns to normal Hand
-→ interleaved Presentation remains chronologically correct
-→ input restores
-```
-
-Sequential degradation must also be visibly checked at least once:
-
-```text
-SelectionArea owns A/B/C
-→ Group disabled
-→ A transitions
-→ B/C remain in SelectionArea
-→ B transitions
-→ C transitions
-```
-
-Warcry regression remains:
-
-```text
-Draw
-→ SelectionArea
-→ explicit Confirm
-→ selected card moves to DrawPile through generic transition engine
-→ Warcry ordinary PlayArea→Exhaust cleanup
-```
-
----
-
-## 10. Final implementation objective
-
-The final architecture should no longer depend on full Hand rebuilds to synchronize card visuals.
-
-Target flow:
-
-```text
-Committed historical snapshot
-→ incremental HUD reconcile
-
-RuntimeId
-→ stable card visual identity
-→ explicit Presentation owner
-
-Selection
-→ Hand → SelectionArea
-
-Committed destination
-→ SelectionArea/Hand → Transition
-
-Explicit multi-member group
-→ N generic transition children in parallel
-
-Visual completion before reducer
-→ ConsumedPendingReducer
-
-Exact chronological reducer consumption
-→ ownership cleared
-```
-
-The central rule is:
-
-> Historical snapshots determine what is true; RuntimeId-keyed reconciliation preserves visual identity; Presentation ownership determines which surface may display the card; Groups only decide which committed transitions may be co-presented.
+Do not start visible Group playback first. The UI identity/reconciliation foundation must be stable before parallel playback is enabled.
