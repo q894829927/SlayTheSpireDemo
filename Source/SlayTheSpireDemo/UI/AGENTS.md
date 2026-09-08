@@ -38,6 +38,21 @@ When Presentation is enabled, `OnReadStateReady` must not bypass Presenter/Contr
 
 The generic `OnChanged` channel is structural/frozen HUD state and may rebuild formal surfaces. PreviewTarget/ImmediatePreview changes use the dedicated `OnPreviewChanged` channel and must not trigger `RefreshHand()` or recreate formal Hand Widgets. A2 `CardPlayed` relies on stable historical Hand Widget identity/geometry for its animation start anchor.
 
+## Formal Hand Slot Stability
+
+Historical Hand presentation preserves the frozen Hand array's formal child count and index mapping. Presentation-only suppression MUST NOT change that structural mapping.
+
+For the initial grouped Selection implementation, if a Hand card is visually consumed before its chronological reducer Record removes it from the frozen working Hand:
+
+- `RefreshHand()` still creates/retains exactly one formal card Widget for that frozen Hand entry at the matching index;
+- the suppressed formal Widget uses `ESlateVisibility::Hidden`, so its layout slot remains occupied while it is not drawn or hit-testable;
+- input for the suppressed Widget remains disabled even if a future style or visibility change would otherwise make it interactive;
+- the formal Widget MUST NOT be omitted, removed from `HB_Hand`, or changed to `Collapsed` while the historical Hand entry still exists.
+
+This rule preserves existing exact historical Hand contracts that require `HandCards.Num() == HB_Hand->GetChildrenCount()` and exact index lookup. Any future design that wants to remove/collapse suppressed children must first explicitly replace every child-count/index-dependent historical lookup contract and its tests; it is not an allowed implementation shortcut for grouped Selection.
+
+An outstanding confirmed Selection source-handoff lease is separate from group suppression. If grouped playback degrades to sequential SingleRecord playback, formal Hand rebuilds may restore the exact card's Presentation transform/source position while keeping the same formal child/slot identity. That restoration must not consume the handoff until the exact destination transition successfully takes visual ownership.
+
 ## Committed Presentation
 
 The committed-history flow is:
