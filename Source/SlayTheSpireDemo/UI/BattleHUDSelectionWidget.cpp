@@ -113,16 +113,23 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked()
 		return;
 	}
 
-	if (ViewModel->HasPendingCardSelection())
+	// Authoritative pending selection is a fail-closed input boundary. Candidate
+	// identities and confirmation remain gated by the displayed Presentation
+	// revision, but an unreadable pending request must never fall through to the
+	// ordinary card-play Confirm path.
+	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
-		if (ViewModel->ConfirmPendingCardSelection())
+		if (ViewModel->HasPendingCardSelection())
 		{
-			ResetSharedSelectionCardVisuals();
-			ClearSharedSelectionControlsAfterSubmit();
-		}
-		else
-		{
-			RefreshSharedSelectionPresentation();
+			if (ViewModel->ConfirmPendingCardSelection())
+			{
+				ResetSharedSelectionCardVisuals();
+				ClearSharedSelectionControlsAfterSubmit();
+			}
+			else
+			{
+				RefreshSharedSelectionPresentation();
+			}
 		}
 		return;
 	}
@@ -137,16 +144,23 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareCancelClicked()
 		return;
 	}
 
-	if (ViewModel->HasPendingCardSelection())
+	// Same fail-closed rule as Confirm: while Gameplay owns a pending selection,
+	// Cancel may operate only through the readable selection request. It must not
+	// cancel a normal card-play selection merely because Presentation is one edge
+	// behind the authoritative request.
+	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
-		if (ViewModel->SubmitPendingCardSelectionCancel())
+		if (ViewModel->HasPendingCardSelection())
 		{
-			ResetSharedSelectionCardVisuals();
-			ClearSharedSelectionControlsAfterSubmit();
-		}
-		else
-		{
-			RefreshSharedSelectionPresentation();
+			if (ViewModel->SubmitPendingCardSelectionCancel())
+			{
+				ResetSharedSelectionCardVisuals();
+				ClearSharedSelectionControlsAfterSubmit();
+			}
+			else
+			{
+				RefreshSharedSelectionPresentation();
+			}
 		}
 		return;
 	}
