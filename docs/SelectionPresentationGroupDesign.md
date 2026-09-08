@@ -7,6 +7,7 @@ Status:
 ```text
 DRAFT / OWNERSHIP-LIFECYCLE REVIEW CLOSED IN DESIGN /
 COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
+G8 EARLY-INPUT / PRESENTATION-PIPELINING TARGET DEFINED /
 AUTHORITATIVE CONTRACTS ALIGNED / NO PRODUCTION GROUP CODE IMPLEMENTED /
 NOT VALIDATED / NOT SEALED
 ```
@@ -241,8 +242,8 @@ struct FSelectionPresentationCompletionWatermark
     int64 BattleId;
     int64 SelectionGeneration;
     int64 BoundaryRevision;
-    int64 ResolutionId;        // RecordedResolution
-    int64 StateRevision;       // DirectStateRevision
+    int64 ResolutionId;
+    int64 StateRevision;
 };
 ```
 
@@ -977,9 +978,16 @@ G6   N-child Group playback + ConsumedPendingReducer + parallel enable
 G7   remove compatibility handoff / Selection-specific destination animation
      optional Status keyed reconcile cleanup
      build / automation / PIE / docs / seal work
+
+G8   Presentation pipelining / early input
+     separate blocking interaction barriers from non-blocking visual jobs
+     allow a newer legal player request while older non-blocking visuals remain alive
+     preserve strict Gameplay and reducer chronology
 ```
 
 G0-C must not turn on production SelectionArea ownership before G4 can consume SelectionArea sources. If necessary, G4+G5 may land as one coherent behavior-safe migration rather than exposing a broken intermediate production state.
+
+G8 is explicitly downstream of the G0-G7 ownership/transition foundation. It MUST NOT be used to justify weakening current interactive Presentation boundaries before the earlier stages are validated.
 
 ## 29. Acceptance plan
 
@@ -1045,3 +1053,191 @@ Focused coverage must include:
 - Gameplay/reducer chronology remains authored.
 
 No Build, Automation or PIE result is claimed by this design document.
+
+## 30. G8 target architecture — Presentation Pipelining / Early Input
+
+G8 is a later responsiveness phase intended to support Slay-the-Spire-style input pacing:
+
+```text
+play card A
+→ Gameplay A resolves completely and produces the next legal interaction state
+→ A still has non-blocking visual work on screen
+→ player may already play card B
+→ A/B visual work may overlap
+```
+
+This does **not** permit concurrent authoritative Gameplay resolutions. Gameplay remains serial:
+
+```text
+A Gameplay resolution complete
+→ B request accepted
+→ B Gameplay resolution
+```
+
+Only Presentation lifetimes may overlap across already-committed revisions/resolutions.
+
+### 30.1 Record lifetime and visual lifetime become distinct
+
+G8 explicitly separates:
+
+```text
+committed Record/reducer lifetime
+from
+visual job lifetime
+```
+
+A non-blocking visual may continue after its committed record has been reduced and after a newer Gameplay request becomes legal.
+
+Conceptually:
+
+```cpp
+struct FPresentationPlaybackJob
+{
+    FPresentationPlaybackToken Token;
+    int64 BattleId;
+    int64 SourceResolutionId;
+    int64 SourceStateRevision;
+    EPresentationInteractionPolicy InteractionPolicy;
+    // visual children / ownership references / completion state
+};
+
+enum class EPresentationInteractionPolicy : uint8
+{
+    Blocking,
+    NonBlocking
+};
+```
+
+Exact names/types may differ.
+
+### 30.2 InteractionBarrier
+
+G8 MUST NOT interpret `Gameplay request-eligible` as automatic input unlock.
+
+Some Presentation remains interaction-blocking because the player does not yet have a correct visual decision surface.
+
+Examples that may require a barrier include:
+
+```text
+Draw/Hand catch-up before a Selection that depends on newly drawn cards
+pending Selection presentation
+pending target-choice presentation
+an exact card visual still being transferred when that same visual must become the next interaction source
+terminal/collapse/recovery boundaries
+```
+
+Cosmetic or already-detached work is a candidate for NonBlocking playback, for example:
+
+```text
+damage numbers
+hit flashes
+late PlayArea→destination cleanup
+an already detached card flying toward a pile
+pure status VFX when it does not define the next decision surface
+```
+
+Classification is semantic Presentation policy, not CardId-specific behavior.
+
+### 30.3 InteractionReadyWatermark
+
+G8 introduces a separate readiness watermark. It is **not** the Selection ownership completion watermark from Section 5.
+
+The purpose is to answer:
+
+> Has the exact Gameplay revision reached a state where the player has both authoritative permission and a complete enough visual interaction surface to submit another request?
+
+Conceptually:
+
+```text
+InteractionReady(BattleId, StateRevision) =
+    authoritative Gameplay is request-eligible for that exact revision
+    AND displayed/read-facing interaction state corresponds to that revision
+    AND all InteractionBarriers required for that revision are cleared
+```
+
+Only then may normal player input unlock.
+
+Older NonBlocking `FPresentationPlaybackJob`s may remain alive after this watermark is reached.
+
+### 30.4 Cross-resolution visual overlap
+
+Once `InteractionReady(R)` is reached:
+
+```text
+Resolution A non-blocking visual job ────────────────→
+
+                         player submits B
+                         Resolution B commits
+                         B visual job ────────────────→
+```
+
+The Presenter/visual scheduler therefore eventually needs to track multiple active visual jobs rather than one global active moving-card/record visual.
+
+The existing G4/G6 multi-instance transition engine is a prerequisite and should be reused rather than replaced.
+
+### 30.5 Ownership remains exact during overlap
+
+G8 depends on the ownership model established earlier.
+
+Example:
+
+```text
+A owner = Transition        // older visual still flying
+B/C/D owner = Hand          // current interactive Hand
+```
+
+Hand reconciliation MUST NOT reclaim A merely because a newer Hand snapshot is displayed. Conversely, A's old visual job MUST NOT block B/C/D input unless it owns a declared InteractionBarrier for the current revision.
+
+A stale older job cannot mutate ownership belonging to a newer BattleId/generation/revision.
+
+### 30.6 Controller/scheduler boundary
+
+G8 should evolve from:
+
+```text
+one active playback must finish before controller/UI can become interactive
+```
+
+toward:
+
+```text
+chronological reducer / semantic controller
++
+zero or more active visual jobs
++
+explicit interaction barriers
+```
+
+Reducer chronology remains exact committed order. A visual job being NonBlocking never authorizes reducer reordering, Gameplay batching, trigger reordering or speculative future state.
+
+### 30.7 Failure, skip and battle replacement
+
+Skip/collapse/replacement must have exact policy for both:
+
+```text
+blocking barrier ownership
+non-blocking visual jobs
+```
+
+At minimum:
+
+- battle replacement cancels every older-battle visual job and barrier;
+- stale job callbacks cannot complete a newer barrier/job;
+- global Skip may finish/cancel cosmetic jobs according to explicit policy but must leave the displayed authoritative state coherent;
+- an individual non-blocking job failure must not relock an already reached InteractionReady watermark unless a genuine current-revision barrier is affected.
+
+### 30.8 G8 acceptance target
+
+G8 is complete only when tests/PIE prove at minimum:
+
+- card A Gameplay resolves before card B request is accepted;
+- card B can be played while an explicitly NonBlocking visual from A is still running;
+- A/B visual jobs coexist without sharing one global animation state;
+- input never unlocks before the exact current revision's InteractionBarriers clear;
+- Draw→Selection and target-choice boundaries remain blocking where required;
+- old Resolution visuals cannot consume/corrupt current Hand ownership;
+- stale visual callbacks cannot affect a newer BattleId/revision;
+- reducer/event/trigger order remains identical to the non-pipelined authored order;
+- skip, timeout and battle replacement clean overlapping jobs without ghost visuals or permanent input lock.
+
+G8 is a responsiveness optimization over a correct G0-G7 foundation. It is not a prerequisite for Selection Group correctness and must not be implemented by simply setting `bInputLocked = false` while Presentation is active.
