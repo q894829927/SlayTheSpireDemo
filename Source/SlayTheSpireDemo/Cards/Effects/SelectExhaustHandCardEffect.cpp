@@ -18,10 +18,10 @@ namespace
 		switch (Mode)
 		{
 		case ESelectExhaustSelectionMode::Random:
-			return NSLOCTEXT("SelectExhaustHandCardEffect", "RandomSelectionModeDescription", "Randomly exhaust");
+			return NSLOCTEXT("SelectExhaustHandCardEffect", "RandomSelectionModeDescription", "随机消耗");
 		case ESelectExhaustSelectionMode::Player:
 		default:
-			return NSLOCTEXT("SelectExhaustHandCardEffect", "PlayerSelectionModeDescription", "Exhaust");
+			return NSLOCTEXT("SelectExhaustHandCardEffect", "PlayerSelectionModeDescription", "消耗");
 		}
 	}
 }
