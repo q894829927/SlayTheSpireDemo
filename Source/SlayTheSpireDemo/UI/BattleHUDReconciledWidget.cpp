@@ -6,12 +6,18 @@
 
 void UBattleHUDReconciledWidget::NativeDestruct()
 {
+	if (UBattleHUDViewModel* BoundViewModel = OwnershipBoundViewModel.Get())
+	{
+		BoundViewModel->OnCardPresentationOwnershipChanged.RemoveAll(this);
+	}
+	OwnershipBoundViewModel.Reset();
 	UnbindReconciledHandDelegates();
 	Super::NativeDestruct();
 }
 
 void UBattleHUDReconciledWidget::NativeOnBattleHUDViewModelChanged()
 {
+	EnsureOwnershipDelegateBinding();
 	if (!IsValid(ViewModel))
 	{
 		return;
@@ -150,11 +156,91 @@ void UBattleHUDReconciledWidget::RefreshHand()
 			&UBattleHUDReconciledWidget::HandleReconciledCardRequested);
 		HB_Hand->AddChildToHorizontalBox(CardWidget);
 	}
+
+	ApplyExplicitCardPresentationOwnershipToFormalHand();
 }
 
 void UBattleHUDReconciledWidget::HandleReconciledCardRequested(int32 RuntimeId)
 {
 	SelectCard(RuntimeId, true);
+}
+
+void UBattleHUDReconciledWidget::EnsureOwnershipDelegateBinding()
+{
+	UBattleHUDViewModel* DesiredViewModel = IsValid(ViewModel) ? ViewModel.Get() : nullptr;
+	if (OwnershipBoundViewModel.Get() == DesiredViewModel)
+	{
+		return;
+	}
+
+	if (UBattleHUDViewModel* PreviousViewModel = OwnershipBoundViewModel.Get())
+	{
+		PreviousViewModel->OnCardPresentationOwnershipChanged.RemoveAll(this);
+	}
+	OwnershipBoundViewModel = DesiredViewModel;
+	if (DesiredViewModel != nullptr)
+	{
+		DesiredViewModel->OnCardPresentationOwnershipChanged.AddUObject(
+			this,
+			&UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged);
+	}
+}
+
+void UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged(
+	const TArray<int32>& RuntimeIds)
+{
+	if (!IsValid(ViewModel) || !IsValid(HB_Hand))
+	{
+		return;
+	}
+
+	for (const int32 RuntimeId : RuntimeIds)
+	{
+		for (UWidget* Child : HB_Hand->GetAllChildren())
+		{
+			UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child);
+			if (!IsValid(CardWidget) || CardWidget->GetRuntimeId() != RuntimeId)
+			{
+				continue;
+			}
+
+			FCardPresentationOwnershipEntry Entry;
+			const bool bExplicitNonHandOwner =
+				ViewModel->TryGetCardPresentationOwnershipEntry(RuntimeId, Entry)
+				&& Entry.Owner != ECardPresentationOwner::Hand;
+			CardWidget->SetVisibility(
+				bExplicitNonHandOwner
+					? ESlateVisibility::Hidden
+					: ESlateVisibility::Visible);
+			CardWidget->SetIsEnabled(!bExplicitNonHandOwner);
+			break;
+		}
+	}
+}
+
+void UBattleHUDReconciledWidget::ApplyExplicitCardPresentationOwnershipToFormalHand()
+{
+	if (!IsValid(ViewModel) || !IsValid(HB_Hand))
+	{
+		return;
+	}
+
+	for (UWidget* Child : HB_Hand->GetAllChildren())
+	{
+		UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child);
+		if (!IsValid(CardWidget))
+		{
+			continue;
+		}
+
+		FCardPresentationOwnershipEntry Entry;
+		if (ViewModel->TryGetCardPresentationOwnershipEntry(CardWidget->GetRuntimeId(), Entry)
+			&& Entry.Owner != ECardPresentationOwner::Hand)
+		{
+			CardWidget->SetVisibility(ESlateVisibility::Hidden);
+			CardWidget->SetIsEnabled(false);
+		}
+	}
 }
 
 void UBattleHUDReconciledWidget::UnbindReconciledHandDelegates()
