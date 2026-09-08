@@ -5,6 +5,35 @@
 #include "../Cards/CardTypes.h"
 #include "BattleHUDTypes.generated.h"
 
+// Native-only change descriptor for frozen/read-facing HUD surfaces. The
+// historical snapshot remains complete; these flags only describe which
+// presentation surfaces need reconciliation after a ViewModel mutation.
+enum class EBattleHUDDirtyFlags : uint32
+{
+	None = 0,
+	Hand = 1u << 0,
+	Combatants = 1u << 1,
+	Statuses = 1u << 2,
+	Energy = 1u << 3,
+	PileCounts = 1u << 4,
+	Input = 1u << 5,
+	Feedback = 1u << 6,
+	Intent = 1u << 7,
+	Terminal = 1u << 8,
+	PresentationAvailability = 1u << 9,
+	All = Hand
+		| Combatants
+		| Statuses
+		| Energy
+		| PileCounts
+		| Input
+		| Feedback
+		| Intent
+		| Terminal
+		| PresentationAvailability
+};
+ENUM_CLASS_FLAGS(EBattleHUDDirtyFlags);
+
 UENUM(BlueprintType)
 enum class EBattleHUDInteractionState : uint8
 {
