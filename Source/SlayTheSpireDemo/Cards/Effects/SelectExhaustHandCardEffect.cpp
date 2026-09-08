@@ -11,6 +11,21 @@
 #include "../../Selection/ExhaustSelectedContinuation.h"
 #include "../../Selection/SelectionResolver.h"
 
+namespace
+{
+	FText GetSelectionModeDescriptionText(ESelectExhaustSelectionMode Mode)
+	{
+		switch (Mode)
+		{
+		case ESelectExhaustSelectionMode::Random:
+			return NSLOCTEXT("SelectExhaustHandCardEffect", "RandomSelectionModeDescription", "Randomly exhaust");
+		case ESelectExhaustSelectionMode::Player:
+		default:
+			return NSLOCTEXT("SelectExhaustHandCardEffect", "PlayerSelectionModeDescription", "Exhaust");
+		}
+	}
+}
+
 ESelectExhaustSelectionMode USelectExhaustHandCardEffect::GetEffectiveSelectionMode(bool bIsUpgraded) const
 {
 	return bIsUpgraded ? UpgradedSelectionMode : BaseSelectionMode;
@@ -133,6 +148,10 @@ void USelectExhaustHandCardEffect::GetPreviewArgumentNames(TArray<FName>& OutNam
 	{
 		OutNames.Add(DescriptionArgumentName);
 	}
+	if (!SelectionModeDescriptionArgumentName.IsNone())
+	{
+		OutNames.Add(SelectionModeDescriptionArgumentName);
+	}
 }
 
 void USelectExhaustHandCardEffect::BuildPreviewArguments(
@@ -140,23 +159,33 @@ void USelectExhaustHandCardEffect::BuildPreviewArguments(
 	FPreviewTextArgumentBuilder& OutArguments
 ) const
 {
-	if (DescriptionArgumentName.IsNone())
+	if (DescriptionArgumentName.IsNone() && SelectionModeDescriptionArgumentName.IsNone())
 	{
 		return;
 	}
 
 	const bool bIsUpgraded = IsValid(Context.Card) && Context.Card->IsUpgraded();
-	OutArguments.AddInteger(
-		DescriptionArgumentName,
-		GetEffectiveSelectionCount(bIsUpgraded)
-	);
+	if (!DescriptionArgumentName.IsNone())
+	{
+		OutArguments.AddInteger(
+			DescriptionArgumentName,
+			GetEffectiveSelectionCount(bIsUpgraded)
+		);
+	}
+	if (!SelectionModeDescriptionArgumentName.IsNone())
+	{
+		OutArguments.AddText(
+			SelectionModeDescriptionArgumentName,
+			GetSelectionModeDescriptionText(GetEffectiveSelectionMode(bIsUpgraded))
+		);
+	}
 }
 
 void USelectExhaustHandCardEffect::ValidatePreviewConfiguration(TArray<FText>& OutErrors) const
 {
-	// NAME_None is a deliberate legacy-compatible dynamic-text opt-out. When a
-	// semantic name is authored, the shared card-text validator enforces that the
-	// description template actually uses it.
+	// NAME_None remains a deliberate legacy-compatible dynamic-text opt-out for
+	// both count and selection-mode text. When a semantic name is authored, the
+	// shared card-text validator enforces that the description template uses it.
 	if (BaseSelectionCount < 0)
 	{
 		OutErrors.Add(FText::FromString(TEXT("SelectExhaustHandCardEffect BaseSelectionCount cannot be negative.")));

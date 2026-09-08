@@ -25,12 +25,18 @@ class SLAYTHESPIREDEMO_API USelectExhaustHandCardEffect : public UCardEffect
 	GENERATED_BODY()
 
 public:
-	// Optional dynamic-text argument. NAME_None is a deliberate legacy-compatible
+	// Optional dynamic count argument. NAME_None is a deliberate legacy-compatible
 	// opt-out so existing Burning Pact content with hard-coded "Exhaust 1 card"
 	// text does not require a binary asset migration. New authored cards may set
 	// this to e.g. "Exhaust" and reference {Exhaust} in their description.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
 	FName DescriptionArgumentName = NAME_None;
+
+	// Optional dynamic selection-mode phrase argument. NAME_None preserves legacy
+	// content. When authored, Random resolves to "Randomly exhaust" and Player to
+	// "Exhaust", using the effective Base/Upgraded selection mode.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect|Description")
+	FName SelectionModeDescriptionArgumentName = NAME_None;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Card|Effect")
 	ESelectExhaustSelectionMode BaseSelectionMode = ESelectExhaustSelectionMode::Player;

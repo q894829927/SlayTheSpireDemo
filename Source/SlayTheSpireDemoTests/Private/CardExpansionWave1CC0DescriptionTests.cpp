@@ -54,8 +54,12 @@ bool FWave1CC0SelectExhaustLegacyDescriptionCompatibilityTest::RunTest(const FSt
 	}
 
 	TestTrue(
-		TEXT("New description argument defaults to explicit legacy opt-out"),
+		TEXT("Count description argument defaults to explicit legacy opt-out"),
 		Effect->DescriptionArgumentName.IsNone()
+	);
+	TestTrue(
+		TEXT("Selection-mode description argument defaults to explicit legacy opt-out"),
+		Effect->SelectionModeDescriptionArgumentName.IsNone()
 	);
 
 	TArray<FName> DeclaredNames;
@@ -88,7 +92,7 @@ bool FWave1CC0SelectExhaustBaseUpgradeDescriptionCountTest::RunTest(const FStrin
 	USelectExhaustHandCardEffect* Effect = nullptr;
 	UCardData* Definition = MakeCardDefinition(
 		TEXT("C0DynamicSelectExhaustText"),
-		TEXT("Exhaust {Exhaust} cards."),
+		TEXT("{ExhaustMode} {Exhaust} cards."),
 		Effect
 	);
 	if (!TestNotNull(TEXT("Definition exists"), Definition)
@@ -98,15 +102,19 @@ bool FWave1CC0SelectExhaustBaseUpgradeDescriptionCountTest::RunTest(const FStrin
 	}
 
 	Effect->DescriptionArgumentName = TEXT("Exhaust");
+	Effect->SelectionModeDescriptionArgumentName = TEXT("ExhaustMode");
+	Effect->BaseSelectionMode = ESelectExhaustSelectionMode::Random;
 	Effect->BaseSelectionCount = 2;
+	Effect->UpgradedSelectionMode = ESelectExhaustSelectionMode::Player;
 	Effect->UpgradedSelectionCount = 3;
 
 	TArray<FName> DeclaredNames;
 	Effect->GetPreviewArgumentNames(DeclaredNames);
-	TestEqual(TEXT("Dynamic SelectExhaust declares one argument"), DeclaredNames.Num(), 1);
-	if (DeclaredNames.Num() == 1)
+	TestEqual(TEXT("Dynamic SelectExhaust declares count and mode arguments"), DeclaredNames.Num(), 2);
+	if (DeclaredNames.Num() == 2)
 	{
-		TestEqual(TEXT("Declared semantic argument is Exhaust"), DeclaredNames[0], FName(TEXT("Exhaust")));
+		TestEqual(TEXT("Declared count argument is Exhaust"), DeclaredNames[0], FName(TEXT("Exhaust")));
+		TestEqual(TEXT("Declared mode argument is ExhaustMode"), DeclaredNames[1], FName(TEXT("ExhaustMode")));
 	}
 
 	TArray<FText> ValidationErrors;
@@ -118,12 +126,12 @@ bool FWave1CC0SelectExhaustBaseUpgradeDescriptionCountTest::RunTest(const FStrin
 	UCardInstance* BaseCard = MakeRuntimeCard(Definition, 1, false);
 	UCardInstance* UpgradedCard = MakeRuntimeCard(Definition, 2, true);
 	TestEqual(
-		TEXT("Base card description uses BaseSelectionCount"),
+		TEXT("Base card description uses BaseSelectionMode and BaseSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(BaseCard, nullptr).ToString(),
-		FString(TEXT("Exhaust 2 cards."))
+		FString(TEXT("Randomly exhaust 2 cards."))
 	);
 	TestEqual(
-		TEXT("Upgraded card description uses UpgradedSelectionCount"),
+		TEXT("Upgraded card description uses UpgradedSelectionMode and UpgradedSelectionCount"),
 		FBattleTextResolver::ResolveCardDescription(UpgradedCard, nullptr).ToString(),
 		FString(TEXT("Exhaust 3 cards."))
 	);
@@ -151,12 +159,13 @@ bool FWave1CC0SelectExhaustDeclaredArgumentMustBeUsedTest::RunTest(const FString
 	}
 
 	Effect->DescriptionArgumentName = TEXT("Exhaust");
+	Effect->SelectionModeDescriptionArgumentName = TEXT("ExhaustMode");
 	TArray<FText> ValidationErrors;
 	TestFalse(
-		TEXT("Authored dynamic argument must be referenced by the card description"),
+		TEXT("Authored dynamic arguments must be referenced by the card description"),
 		FBattleTextResolver::ValidateCardDefinition(Definition, ValidationErrors)
 	);
-	TestTrue(TEXT("Unused dynamic argument reports a validation error"), ValidationErrors.Num() > 0);
+	TestTrue(TEXT("Unused dynamic arguments report validation errors"), ValidationErrors.Num() >= 2);
 	return true;
 }
 
