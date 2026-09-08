@@ -1,21 +1,23 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "BattleHUDWidget.h"
+#include "BattleHUDReconciledWidget.h"
 #include "Components/CanvasPanelSlot.h"
 #include "BattleHUDSelectionWidget.generated.h"
 
 class UBattleCardWidget;
+class UOverlay;
 
 /**
  * Shared Native Presentation surface for player card-selection interactions.
  *
  * This class owns only reusable Selection UI/presentation behavior:
- * explicit Confirm/Cancel routing and selected-card visual transfer according
- * to committed zone facts. It contains no CardId/Effect-specific branches.
+ * explicit Confirm/Cancel routing, persistent SelectionArea hosting, and the
+ * staged legacy selected-card transfer compatibility path. It contains no
+ * CardId/Effect-specific branches.
  */
 UCLASS(Blueprintable)
-class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDWidget
+class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDReconciledWidget
 {
 	GENERATED_BODY()
 
@@ -29,6 +31,11 @@ public:
 	{
 		FinishSharedHandToDrawPilePresentation(ExpectedToken);
 	}
+
+	UOverlay* GetSelectionAreaHostForTesting() const
+	{
+		return SelectionAreaHost;
+	}
 #endif
 
 protected:
@@ -36,7 +43,6 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
-	virtual void RefreshHand() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) override;
@@ -50,12 +56,19 @@ private:
 	UFUNCTION()
 	void HandleSelectionAwareCancelClicked();
 
+	bool EnsureSelectionAreaHost();
 	void RefreshSharedSelectionPresentation();
 	void ResetSharedSelectionCardVisuals();
 	void ClearSharedSelectionControlsAfterSubmit();
 	void UpdateSelectionCardPositions();
 	void SetPlayedCardSelectionHidden(bool bHidden);
 	void SetSelectionLayoutActive(bool bActive);
+
+	// G0-C persistent visual host. It is intentionally empty/dormant until G4/G5
+	// switches selected-card production ownership away from formal Hand widgets.
+	UPROPERTY(Transient)
+	TObjectPtr<UOverlay> SelectionAreaHost = nullptr;
+
 	UPROPERTY(Transient)
 	TObjectPtr<class UBorder> SelectionBackdrop = nullptr;
 	TMap<TWeakObjectPtr<UCanvasPanelSlot>, FAnchorData> SelectionOriginalLayouts;
