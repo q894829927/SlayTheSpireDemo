@@ -10,9 +10,10 @@ class UBattleCardWidget;
 /**
  * Shared Native Presentation surface for player card-selection interactions.
  *
- * This class owns only reusable Selection UI/presentation behavior:
- * explicit Confirm/Cancel routing and selected-card visual transfer according
- * to committed zone facts. It contains no CardId/Effect-specific branches.
+ * This class owns only reusable Selection UI and confirmed visual handoff state.
+ * Destination animation remains owned by the generic Native HUD zone handlers;
+ * this layer only preserves exact RuntimeId source positions across reducer-owned
+ * Hand rebuilds and restores them before a committed destination Record starts.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDWidget
@@ -28,6 +29,19 @@ public:
 		const FPresentationPlaybackToken& ExpectedToken)
 	{
 		FinishSharedHandToDrawPilePresentation(ExpectedToken);
+	}
+
+	void SetConfirmedCardCenterForTesting(int32 RuntimeId, const FVector2D& AbsoluteCenter)
+	{
+		ConfirmedCardCenters.Add(RuntimeId, AbsoluteCenter);
+	}
+	bool HasConfirmedCardCenterForTesting(int32 RuntimeId) const
+	{
+		return ConfirmedCardCenters.Contains(RuntimeId);
+	}
+	bool HasDeferredConfirmedDestinationForTesting() const
+	{
+		return bDeferredConfirmedHandDestinationStart;
 	}
 #endif
 
@@ -53,6 +67,11 @@ private:
 	void ResetSharedSelectionCardVisuals();
 	void ClearSharedSelectionControlsAfterSubmit();
 	void UpdateSelectionCardPositions();
+	void UpdateConfirmedCardHandoffPositions();
+	bool TryApplyConfirmedCardCenterToFormalWidget(int32 RuntimeId, bool bHideIfGeometryUnavailable);
+	void ConsumeConfirmedCardHandoff(int32 RuntimeId);
+	void RetryDeferredConfirmedHandDestinationPresentation();
+	void ResetDeferredConfirmedHandDestinationPresentation();
 	void SetPlayedCardSelectionHidden(bool bHidden);
 	void SetSelectionLayoutActive(bool bActive);
 	UPROPERTY(Transient)
@@ -61,6 +80,10 @@ private:
 	TMap<TWeakObjectPtr<UCanvasPanelSlot>, int32> SelectionOriginalZOrders;
 	TMap<int32, FVector2D> ConfirmedCardCenters;
 	bool bSelectionVisualMode = false;
+
+	FPresentationRecord DeferredConfirmedHandDestinationRecord;
+	FPresentationPlaybackToken DeferredConfirmedHandDestinationToken;
+	bool bDeferredConfirmedHandDestinationStart = false;
 
 	bool BeginSharedHandToDrawPilePresentation(
 		const FPresentationRecord& Record,
