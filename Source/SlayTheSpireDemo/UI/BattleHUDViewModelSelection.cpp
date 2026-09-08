@@ -99,27 +99,49 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId)
 		return true;
 	}
 
+	// Exact-N selection and explicit confirmation are separate player intents.
+	// Once N cards are selected, an unselected candidate cannot silently replace
+	// or clear that transient set. The player must deselect one card first.
 	if (PendingCardSelectionRuntimeIds.Num() >= View.RequiredCount)
 	{
-		ClearPendingCardSelectionInputState();
 		return false;
 	}
 
 	PendingCardSelectionRuntimeIds.Add(RuntimeId);
-	if (PendingCardSelectionRuntimeIds.Num() < View.RequiredCount)
+	return true;
+}
+
+bool UBattleHUDViewModel::CanConfirmPendingCardSelection() const
+{
+	FPendingCardSelectionReadView View;
+	if (!TryGetPendingCardSelectionReadView(View)
+		|| View.RequiredCount <= 0
+		|| PendingCardSelectionRuntimeIds.Num() != View.RequiredCount)
 	{
-		return true;
+		return false;
 	}
 
-	// Reaching exactly N auto-submits. Gameplay facade canonicalizes the final
-	// result into authoritative candidate order, so click order is UI-only.
-	const TArray<int32> CompletedRuntimeIds = PendingCardSelectionRuntimeIds;
-	const bool bSubmitted = SubmitPendingCardSelectionByRuntimeIds(CompletedRuntimeIds);
-	if (!bSubmitted)
+	for (const int32 RuntimeId : PendingCardSelectionRuntimeIds)
 	{
-		ClearPendingCardSelectionInputState();
+		if (RuntimeId == INDEX_NONE || !View.CandidateRuntimeIds.Contains(RuntimeId))
+		{
+			return false;
+		}
 	}
-	return bSubmitted;
+	return true;
+}
+
+bool UBattleHUDViewModel::ConfirmPendingCardSelection()
+{
+	if (!CanConfirmPendingCardSelection())
+	{
+		return false;
+	}
+
+	// Gameplay facade canonicalizes this transient UI set into authoritative
+	// candidate order. Click order never controls Gameplay ordering.
+	const TArray<int32> ConfirmedRuntimeIds = PendingCardSelectionRuntimeIds;
+	return SubmitPendingCardSelectionByRuntimeIds(ConfirmedRuntimeIds);
 }
 
 bool UBattleHUDViewModel::IsPendingCardSelectionRuntimeIdSelected(int32 RuntimeId) const
