@@ -2,6 +2,7 @@
 
 #include "BattleActionQueue.h"
 #include "SelectionRequestAction.h"
+#include "../Battle/BattleManager.h"
 #include "../Cards/CardInstance.h"
 #include "../Deck/DeckRuntime.h"
 #include "../Selection/AuthoredContinuation.h"
@@ -76,9 +77,28 @@ void UDeferredHandSelectionAction::Execute(UBattleActionQueue* Queue)
 	Request.MinCount = RequiredCount;
 	Request.MaxCount = RequiredCount;
 
+	// A deferred current-Hand choice is an interactive boundary only when the
+	// Action belongs to a real BattleManager queue. Seal the already-committed
+	// prefix (for Warcry: CardPlayed + Draw) without waiting for playback, then
+	// move the still-authored tail onto the continuation Presentation segment.
+	FPresentationRecordWriter SelectionWriter = GetPresentationRecordWriter();
+	if (ABattleManager* Battle = Cast<ABattleManager>(Queue->GetOuter()))
+	{
+		SelectionWriter = Battle->AdvancePresentationAtInteractiveSelectionBoundary(this);
+		if (!Queue->RebindPendingPresentationRecordWriter(this, SelectionWriter))
+		{
+			Queue->RequestResolutionFault(FString::Printf(
+				TEXT("DeferredHandSelectionAction could not preserve the post-selection Action tail for %s."),
+				*Request.SelectionSource.ToString()
+			));
+			Finish();
+			return;
+		}
+	}
+
 	USelectionRequestAction* SelectionAction = NewObject<USelectionRequestAction>(Queue);
 	SelectionAction->Initialize(Resolver.Get(), Request, Continuation.Get());
-	SelectionAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
+	SelectionAction->SetPresentationRecordWriter(SelectionWriter);
 
 	if (!Queue->AddToFront(SelectionAction))
 	{
