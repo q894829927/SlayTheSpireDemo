@@ -17,6 +17,10 @@ enum class EGameplayRequestFailureReason : uint8;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDViewModelChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDPreviewChanged);
 DECLARE_MULTICAST_DELEGATE_OneParam(
+	FBattleHUDViewModelNativeChanged,
+	EBattleHUDDirtyFlags
+);
+DECLARE_MULTICAST_DELEGATE_OneParam(
 	FBattleHUDCardPresentationOwnershipChanged,
 	const TArray<int32>&
 );
@@ -109,6 +113,7 @@ public:
 	// by BattleManager and the selection facade. Production Selection does not
 	// switch to these owners until the later G5 migration.
 	int64 BeginCardPresentationSelectionLifecycle(int64 SelectionBoundaryRevision);
+	bool CancelCardPresentationSelectionLifecycle(int64 SelectionGeneration);
 	bool SetPendingCardPresentationSelection(
 		int64 SelectionGeneration,
 		int32 RuntimeId,
@@ -134,19 +139,23 @@ public:
 		int32 RuntimeId,
 		FCardPresentationOwnershipEntry& OutEntry) const;
 
+	// Payload-bearing Native change path. Native HUD consumers bind here so one
+	// synchronous/re-entrant Blueprint OnChanged listener cannot overwrite the
+	// dirty descriptor seen by another Native listener.
+	FBattleHUDViewModelNativeChanged OnNativeChanged;
+
 	// Independent transient Presentation notification. Select/deselect/Confirm,
 	// transition ownership and reconciliation may publish here even when no
 	// historical FPresentationStateSnapshot field changed.
 	FBattleHUDCardPresentationOwnershipChanged OnCardPresentationOwnershipChanged;
 
-	// Native consumers use this descriptor to reconcile only the HUD surfaces
-	// affected by the most recent OnChanged publication. OnChanged itself remains
-	// payload-free for Blueprint/backward compatibility.
+	// Compatibility/debug descriptor for the most recent historical publication.
+	// Native HUD code should prefer the payload supplied by OnNativeChanged.
 	EBattleHUDDirtyFlags GetLastChangeFlags() const { return LastChangeFlags; }
 
-	// Structural/frozen HUD state and read-facing interaction changes. Native HUD
-	// should inspect GetLastChangeFlags() instead of assuming every publication
-	// requires a full rebuild.
+	// Structural/frozen HUD state and read-facing interaction changes. This
+	// payload-free Blueprint event remains for compatibility; Native HUD code uses
+	// OnNativeChanged instead.
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
 
@@ -248,6 +257,7 @@ private:
 
 	bool IsCardPresentationCompletionWatermarkReached(
 		const FCardPresentationOwnershipEntry& Entry) const;
+	TArray<int32> ReconcileCardPresentationOwnershipInternal();
 	void PublishCardPresentationOwnershipChanged(const TArray<int32>& ChangedRuntimeIds);
 	void ResetCardPresentationOwnershipState(bool bNotify);
 
