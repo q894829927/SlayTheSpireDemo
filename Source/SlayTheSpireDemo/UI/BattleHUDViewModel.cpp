@@ -218,6 +218,8 @@ void UBattleHUDViewModel::Shutdown()
 		Battle->OnReadStateReady.RemoveAll(this);
 	}
 
+	ResetCardPresentationOwnershipState(false);
+	NextCardPresentationSelectionGeneration = 1;
 	BattleManager.Reset();
 	ClearLiveInputBindings();
 	HandCards.Reset();
@@ -541,6 +543,12 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 	EnemyIntent = Snapshot.EnemyIntent;
 	bDisplayedSnapshotCanEndTurn = Snapshot.bCanEndTurn;
 
+	if (bBattleChanged)
+	{
+		CompletedPresentationResolutionBattleId = BattleId;
+		CompletedPresentationResolutionIds.Reset();
+	}
+
 	ClearLiveInputBindings();
 	if (bResetInteraction || bRevisionChanged)
 	{
@@ -578,6 +586,11 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(
 	{
 		DirtyFlags |= EBattleHUDDirtyFlags::PresentationAvailability;
 	}
+
+	// G0-C: ownership is not copied/reset by the historical snapshot. Reconcile
+	// only after the exact displayed Hand/revision has been accepted.
+	ReconcileCardPresentationOwnership();
+
 	if (DirtyFlags == EBattleHUDDirtyFlags::None)
 	{
 		// A structurally identical publication still represents a legitimate
@@ -678,6 +691,7 @@ void UBattleHUDViewModel::EnterPresentationUnavailable(const FText& Reason)
 {
 	ClearSelectionInternal();
 	ClearLiveInputBindings();
+	ResetCardPresentationOwnershipState(true);
 	InteractionState = EBattleHUDInteractionState::PresentationUnavailable;
 	bInputLocked = true;
 	bCanEndTurn = false;
