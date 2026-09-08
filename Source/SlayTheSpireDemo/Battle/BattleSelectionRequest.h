@@ -20,7 +20,7 @@ struct SLAYTHESPIREDEMO_API FPendingCardSelectionReadView
 // The UI never receives candidate UObject pointers and never touches the queue.
 namespace BattleSelectionRequest
 {
-	bool TryBuildPendingCardSelectionReadView(
+	SLAYTHESPIREDEMO_API bool TryBuildPendingCardSelectionReadView(
 		const ABattleManager* Battle,
 		FPendingCardSelectionReadView& OutView
 	);
@@ -28,10 +28,10 @@ namespace BattleSelectionRequest
 	// Exact-N submit surface. RuntimeIds are validated for count, uniqueness and
 	// candidate membership, then authoritative CardInstances are rebuilt in the
 	// request's stable candidate order before the SelectionResult is submitted.
-	bool SubmitPendingCardSelection(
+	SLAYTHESPIREDEMO_API bool SubmitPendingCardSelection(
 		ABattleManager* Battle,
 		const TArray<int32>& CardRuntimeIds
 	);
 
-	bool SubmitPendingSelectionCancel(ABattleManager* Battle);
+	SLAYTHESPIREDEMO_API bool SubmitPendingSelectionCancel(ABattleManager* Battle);
 }
