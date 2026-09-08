@@ -176,8 +176,8 @@ bool FWave1CC0SelectionRejectsDuplicateObjectsTest::RunTest(const FString& Param
 	USelectionResolver* Resolver = NewObject<USelectionResolver>();
 	USelectionRequestAction* PendingAction = NewObject<USelectionRequestAction>();
 	UExhaustSelectedContinuation* Continuation = NewObject<UExhaustSelectedContinuation>();
-	UObject* CandidateA = NewObject<UObject>();
-	UObject* CandidateB = NewObject<UObject>();
+	UCardInstance* CandidateA = NewObject<UCardInstance>();
+	UCardInstance* CandidateB = NewObject<UCardInstance>();
 	if (!TestNotNull(TEXT("Resolver exists"), Resolver)
 		|| !TestNotNull(TEXT("Pending Action exists"), PendingAction)
 		|| !TestNotNull(TEXT("Continuation exists"), Continuation)
