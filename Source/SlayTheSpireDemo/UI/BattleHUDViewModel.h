@@ -100,8 +100,14 @@ public:
 	bool IsPresentationDisplayOwned() const;
 	void SetPresentationDisplayOwned(bool bOwned);
 
-	// Structural/frozen HUD state. Native HUD may rebuild formal Hand/Status rows
-	// in response to this event.
+	// Native consumers use this descriptor to reconcile only the HUD surfaces
+	// affected by the most recent OnChanged publication. OnChanged itself remains
+	// payload-free for Blueprint/backward compatibility.
+	EBattleHUDDirtyFlags GetLastChangeFlags() const { return LastChangeFlags; }
+
+	// Structural/frozen HUD state and read-facing interaction changes. Native HUD
+	// should inspect GetLastChangeFlags() instead of assuming every publication
+	// requires a full rebuild.
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD")
 	FBattleHUDViewModelChanged OnChanged;
 
@@ -193,7 +199,7 @@ private:
 	void ClearLiveInputBindings();
 	void SetFeedback(EGameplayRequestFailureReason Reason);
 	void ClearFeedback();
-	void BroadcastChanged();
+	void BroadcastChanged(EBattleHUDDirtyFlags DirtyFlags = EBattleHUDDirtyFlags::All);
 	void BroadcastPreviewChanged();
 	bool CanAcceptSelectionInput() const;
 	bool IsLiveBindingCurrent() const;
@@ -214,4 +220,5 @@ private:
 	EBattleState DisplayedBattleState = static_cast<EBattleState>(0);
 	bool bDisplayedSnapshotCanEndTurn = false;
 	bool bPresentationDisplayOwned = false;
+	EBattleHUDDirtyFlags LastChangeFlags = EBattleHUDDirtyFlags::All;
 };
