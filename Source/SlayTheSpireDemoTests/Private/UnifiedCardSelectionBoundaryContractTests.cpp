@@ -77,8 +77,14 @@ bool FUnifiedPlayerSelectionRequiresInteractiveBoundaryTest::RunTest(const FStri
 		FSelectionInteractiveBoundaryAccess{});
 
 	TestTrue(TEXT("Boundary-contract Action enqueues"), Queue->AddToBack(Action));
-	AddExpectedError(TEXT("DeferredSelection Player mode requires a Resolver and interactive Presentation boundary."), EAutomationExpectedErrorFlags::Contains, 1);
-	AddExpectedError(TEXT("Resolution faulted."), EAutomationExpectedErrorFlags::Contains, 1);
+	AddExpectedError(
+		TEXT("Resolution fault requested: DeferredSelection Player mode requires a Resolver and interactive Presentation boundary."),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
+	AddExpectedError(
+		TEXT("Resolution faulted. Reason=DeferredSelection Player mode requires a Resolver and interactive Presentation boundary."),
+		EAutomationExpectedErrorFlags::Contains,
+		1);
 	TestTrue(TEXT("Boundary-contract queue starts"), Queue->StartProcessing());
 	TestTrue(TEXT("Non-empty Player selection without boundary faults"), Queue->IsResolutionFaulted());
 	TestFalse(TEXT("Missing boundary never creates pending Selection"), Resolver->HasPendingSelection());
