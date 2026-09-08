@@ -7,8 +7,34 @@ bool UBattleHUDViewModel::TryGetPendingCardSelectionReadView(
 	FPendingCardSelectionReadView& OutView
 ) const
 {
+	ABattleManager* Battle = BattleManager.Get();
+	if (!IsValid(Battle))
+	{
+		return false;
+	}
+
+	// Gameplay may already be waiting on an authoritative selection while the
+	// Native committed Presentation is still showing the effects that produced
+	// the candidate Hand. Do not expose that pending request to player input until
+	// the displayed frozen revision reaches the newest sealed boundary.
+	if (bPresentationDisplayOwned)
+	{
+		if (!Battle->IsPresentationAvailable())
+		{
+			return false;
+		}
+
+		FPresentationStateSnapshot LatestBaseline;
+		if (!Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+			|| LatestBaseline.BattleId != BattleId
+			|| LatestBaseline.StateRevision != StateRevision)
+		{
+			return false;
+		}
+	}
+
 	return BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
-		BattleManager.Get(),
+		Battle,
 		OutView
 	);
 }
