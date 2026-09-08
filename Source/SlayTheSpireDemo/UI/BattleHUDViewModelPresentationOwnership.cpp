@@ -41,9 +41,6 @@ void UBattleHUDViewModel::SetPresentationDisplayOwned(bool bOwned)
 int64 UBattleHUDViewModel::BeginCardPresentationSelectionLifecycle(
 	int64 SelectionBoundaryRevision)
 {
-	// Only one interactive Pending selection lifecycle may be open at a time.
-	// Confirm closes this gate immediately; older Confirmed/Transition owners may
-	// continue to exist independently under their own SelectionGeneration.
 	if (BattleId <= 0
 		|| SelectionBoundaryRevision <= 0
 		|| SelectionBoundaryRevision != StateRevision
@@ -231,9 +228,6 @@ bool UBattleHUDViewModel::ConfirmCardPresentationSelection(
 		ChangedRuntimeIds.Add(RuntimeId);
 	}
 
-	// Confirmation is the end of interactive mutation for this generation. The
-	// resulting Confirmed entries continue independently and are addressed by the
-	// immutable generation stored on each entry.
 	ActiveCardPresentationSelectionGeneration = 0;
 	ActiveCardPresentationSelectionBattleId = 0;
 	ActiveCardPresentationSelectionBoundaryRevision = 0;
@@ -287,7 +281,6 @@ bool UBattleHUDViewModel::ArmRecordedCardPresentationCompletion(
 		{
 			continue;
 		}
-
 		if (Entry.CompletionWatermark.IsResolved()
 			&& !IsSameRecordedWatermark(
 				Entry.CompletionWatermark,
@@ -350,10 +343,6 @@ bool UBattleHUDViewModel::ArmDirectCardPresentationCompletion(
 		{
 			continue;
 		}
-
-		// Direct completion is the authoritative state produced after Confirm.
-		// Equal-to-boundary would be immediately reachable and therefore cannot
-		// prove any post-confirm continuation completed.
 		if (PostConfirmStateRevision <= Entry.SelectionBoundaryRevision)
 		{
 			return false;
@@ -424,6 +413,18 @@ void UBattleHUDViewModel::ReconcileCardPresentationOwnership()
 TArray<int32> UBattleHUDViewModel::ReconcileCardPresentationOwnershipInternal()
 {
 	TArray<int32> EntriesToClear;
+
+	const bool bActivePendingLifecycleStale =
+		ActiveCardPresentationSelectionGeneration != 0
+		&& (ActiveCardPresentationSelectionBattleId != BattleId
+			|| ActiveCardPresentationSelectionBoundaryRevision != StateRevision);
+	if (bActivePendingLifecycleStale)
+	{
+		ActiveCardPresentationSelectionGeneration = 0;
+		ActiveCardPresentationSelectionBattleId = 0;
+		ActiveCardPresentationSelectionBoundaryRevision = 0;
+	}
+
 	if (CardPresentationOwnershipEntries.IsEmpty())
 	{
 		return EntriesToClear;
@@ -445,15 +446,14 @@ TArray<int32> UBattleHUDViewModel::ReconcileCardPresentationOwnershipInternal()
 		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
 		if (Entry.BattleId != BattleId
 			|| Entry.RuntimeId == INDEX_NONE
-			|| !DisplayedHandRuntimeIds.Contains(Entry.RuntimeId))
+			|| !DisplayedHandRuntimeIds.Contains(Entry.RuntimeId)
+			|| (Entry.Phase == ESelectionPresentationVisualPhase::Pending
+				&& Entry.SelectionBoundaryRevision != StateRevision))
 		{
 			EntriesToClear.Add(Pair.Key);
 			continue;
 		}
 
-		// Hand restoration is a degradation path only for a still-visible
-		// SelectionArea owner. An accepted Transition/ConsumedPendingReducer owner
-		// must be terminated by its explicit presentation/reducer recovery path.
 		if (Entry.Owner == ECardPresentationOwner::SelectionArea
 			&& Entry.Phase == ESelectionPresentationVisualPhase::Confirmed
 			&& Entry.CompletionWatermark.IsResolved()
