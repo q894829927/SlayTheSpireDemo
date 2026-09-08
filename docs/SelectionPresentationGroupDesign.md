@@ -5,8 +5,9 @@ Date: **2026-09-09**
 Status:
 
 ```text
-DRAFT / REVIEW-ADJUSTED / UPSTREAM CONTRACTS UPDATED /
-NO PRODUCTION GROUP CODE IMPLEMENTED / NOT VALIDATED / NOT SEALED
+DRAFT / REVIEW-ADJUSTED / SECOND-REVIEW BLOCKERS CLOSED IN DESIGN /
+UPSTREAM CONTRACTS UPDATED / NO PRODUCTION GROUP CODE IMPLEMENTED /
+NOT VALIDATED / NOT SEALED
 ```
 
 Scope: replace the current one-Record-at-a-time visual treatment of a confirmed multi-card Selection with an explicit Selection Presentation Group. A validated multi-member group may co-present its committed selected-card destination facts while Gameplay, event dispatch, `PresentationSequence`, and reducer chronology remain unchanged.
@@ -18,13 +19,23 @@ Authoritative related contracts:
 - `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
 - `Source/SlayTheSpireDemo/UI/AGENTS.md`
 
-This revision incorporates the architecture review that identified three blockers in the first draft:
+This revision incorporates both architecture reviews. The first review established:
 
-1. visually consumed future group members require suppression until their own reducer cursor is reached;
-2. non-contiguous group lookahead is an explicit visible-playback-order exception and must be authorized by upstream Presentation contracts;
-3. Group playback must inherit the exact-token/deferred-callback/cancellation hardening of `UBattleHUDWidgetBase` through one tracked playback-unit owner.
+1. visually consumed future members require suppression until their own reducer cursor;
+2. non-contiguous group lookahead is an explicit visible-order exception;
+3. Group playback inherits `UBattleHUDWidgetBase` exact-token/deferred-callback/cancellation hardening;
+4. GroupId allocation is writer-scoped;
+5. initial eligibility requires exactly one eligible member Record per selected runtime sequence;
+6. one-member selections remain SingleRecord Controller playback initially.
 
-Those upstream contracts have now been amended. This document still does **not** claim any production implementation or validation.
+The second review closes four further implementation blockers:
+
+1. suppressed historical Hand cards retain their exact formal Widget/slot and use `Hidden`, never omitted/`Collapsed` in the first implementation;
+2. group preflight rejects interleaving that directly touches a future group member even when chronological reducer dry-run succeeds;
+3. Group timeout has one dedicated active-envelope reconciliation path and never masquerades as normal group/leader completion;
+4. sequential degradation retains confirmed source handoff leases across Hand rebuilds until each exact SingleRecord transition actually accepts ownership.
+
+No production implementation or validation is claimed by this document.
 
 ---
 
@@ -46,22 +57,30 @@ Record A
 → ...
 ```
 
-For a confirmed multi-card Selection that exhausts `A, B, C`, this creates two problems:
+For a confirmed multi-card Selection that exhausts `A, B, C`, this creates two visible problems:
 
-1. total selected-card visual delay scales as approximately `N × animation duration`;
-2. after A reduces, `RefreshHand()` may rebuild B/C at normal Hand positions before their own records play, producing a flashback to the Hand row.
+1. total selected-card visual delay is approximately `N × animation duration`;
+2. after A reduces, `RefreshHand()` may rebuild B/C at normal Hand positions before their own Records play, causing later cards to flash back to the Hand row.
 
-A per-Record deferred/reposition patch can hide part of the second symptom but preserves the wrong playback unit and can stall later Presentation.
+A per-Record deferred/timing patch can hide one symptom but keeps the wrong playback unit, can stall later Presentation, and does not define robust fallback behavior.
 
-The intended visual cohort is the **Selection decision**, while authoritative mutation and reducer chronology remain per committed Record.
+The intended model is:
+
+```text
+Selection decision
+→ one visual cohort when safe
+
+committed Records
+→ still reduced individually in original order
+```
 
 ---
 
 ## 2. Non-negotiable invariants
 
-### 2.1 Gameplay and committed chronology are unchanged
+### 2.1 Gameplay chronology is unchanged
 
-This design MUST NOT change:
+The design MUST NOT change:
 
 ```text
 SelectionResult canonical order
@@ -72,131 +91,137 @@ SelectionResult canonical order
 → PresentationSequence assignment order
 ```
 
-Presentation never waits inside Gameplay and never changes Gameplay to make visuals simultaneous.
+Presentation never changes Gameplay to make visuals simultaneous.
 
-### 2.2 Reducer order is always `PresentationSequence` order
+### 2.2 Reducer chronology is always committed order
 
-Even when A/B/C are visually co-presented:
+Even when selected-card visuals are co-presented:
 
 ```text
 reduce A
-→ reduce chronological interleaved records
+→ reduce/play chronological interleaved Records
 → reduce B
 → ...
 → reduce C
 ```
 
-The Controller MUST NOT apply B/C early merely because their visuals have already completed.
+No future member is reduced early.
 
-### 2.3 Visible playback normally follows committed order, with one explicit exception
+### 2.3 Visible playback normally follows committed order
 
 Normal visible playback follows `PresentationSequence`.
 
-A complete, explicit, Controller-validated `PresentationGroup` may authorize co-presentation/lookahead of **its own frozen members only** from the already sealed Envelope.
+The only exception is an explicit, complete, Controller-validated Presentation Group. It may look ahead into the already sealed immutable Envelope and co-present **only its own members**.
 
-This is an intentional visible-order exception, now authorized by the upstream Presentation contracts. It is not reducer reordering.
+This exception MUST NOT:
 
-The exception MUST NOT:
-
+- reduce future members early;
 - consume or skip interleaved ungrouped Records;
-- reduce future group members early;
-- infer membership from CardId, Effect, destination, adjacency, click order or timing;
-- permit Widget code to scan future Envelope Records;
-- read future mutable Gameplay.
+- mark interleaved Records visually presented;
+- infer membership from CardId, Effect type, destination, adjacency, click order or timing;
+- allow Widget code to scan future Envelope Records;
+- read mutable future Gameplay.
 
-### 2.4 Grouping is explicit committed Presentation metadata
+### 2.4 Group metadata is explicit committed Presentation metadata
 
-A Record is a group member only if it carries an explicit group tag.
+A Record is grouped only when it carries a valid explicit `FPresentationGroupTag`.
 
-The Controller MUST NOT guess a group from consecutive `Hand→Exhaust` records or similar visual similarity.
+Controller does not infer groups from consecutive `Hand→Exhaust` or any similar pattern.
 
-### 2.5 Trigger reactions do not inherit Selection group context
+### 2.5 Trigger reactions do not inherit Selection grouping
 
-A selected-card Action may append its direct `CardZoneChanged` record and then dispatch an event such as `CardExhausted`. Trigger reactions may be inserted before the next selected-card continuation Action.
-
-The ordinary `FPresentationRecordWriter` is propagated into trigger reactions today and must remain only the Resolution-recording capability.
-
-Therefore:
+The ordinary `FPresentationRecordWriter` remains only the Resolution-recording capability.
 
 ```text
-writer inheritance           = yes
-Selection group inheritance  = no
+trigger Action inherits writer             = yes
+trigger Action inherits Selection group    = no
 ```
 
-Group correlation is Action-local Presentation metadata assigned only to the Selection's direct continuation batch.
+Selection group context is Action-local and assigned only to direct continuation Actions created from that resolved Selection.
 
-### 2.6 Visually consumed does not mean reducer-consumed
+### 2.6 Visually consumed is not reducer-consumed
 
-If B/C disappear during group playback before their chronological reducer records are reached, they remain **Presentation-suppressed** from formal Hand rendering.
+A future member may already be visually gone while still existing in the chronological `WorkingPresentationSnapshot`.
 
-Intermediate ViewModel snapshot applications or Hand rebuilds MUST NOT make them visible again.
+Such a member remains Presentation-suppressed until its own Record is reduced.
 
-Suppression is released only when the exact member is chronologically reduced, or when a global Presentation reconciliation path invalidates the group lifecycle.
+### 2.7 Formal Hand structure remains historical
 
-### 2.7 Base Widget remains the hardened Controller-facing boundary
+Suppression is visual only. It MUST NOT alter the frozen Hand child/index structure in the first implementation.
 
-Group playback MUST use `UBattleHUDWidgetBase` just like Record playback.
+### 2.8 Base Widget remains the hardened Controller-facing boundary
 
-Concrete Native/Blueprint HUD code MUST NOT bypass the base wrapper, maintain an independent group token owner, or notify the Controller directly.
+SingleRecord and SelectionGroup playback share one exact tracked playback-unit owner in `UBattleHUDWidgetBase`.
 
-Record and Group playback share one tracked playback-unit owner and the same exact-token, deferred-completion, cancellation, timeout, stale-callback and Widget-replacement semantics.
+Concrete HUD code cannot bypass that wrapper or notify Controller directly.
 
-### 2.8 No Effect/CardId visual branching
+### 2.9 Sequential degradation is a supported correctness path
 
-Warcry, Burning Pact and future cards do not own grouping or destination animation.
+A Group failure/rejection is not permission to return to the known broken “second card jumps back to normal Hand” path.
 
-Selection owns interaction/handoff. Controller owns group sequencing. Generic zone Presentation owns destination animation.
+Confirmed source continuity must survive fallback.
+
+### 2.10 No Effect/Card-specific presentation branching
+
+Warcry, Burning Pact and future cards do not own group sequencing or destination animation.
 
 ---
 
 ## 3. High-level model
 
 ```text
-Player confirms Selection
+Player explicitly confirms Selection
         ↓
-Gameplay validates SelectionResult
+Gameplay validates canonical SelectionResult
+        ↓
+Selection Presentation freezes source handoff leases
         ↓
 SelectionRequestAction builds direct continuation batch
         ↓
-writer-scoped allocation of one Presentation GroupId
+writer-scoped allocation of GroupId
         ↓
-create Action-local Selection group context
-        ↓
-stamp context onto direct continuation Actions only
+Action-local Selection group context assigned to direct batch only
         ↓
 Gameplay executes normally
         ↓
-direct selected-card CardZoneChanged Records may carry GroupTag
-trigger/reaction Records remain ungrouped
+direct eligible CardZoneChanged Records may carry GroupTag
+trigger/reaction Records stay ungrouped
         ↓
-sealed immutable Presentation Envelope
+sealed immutable Envelope
         ↓
-Controller reaches first eligible multi-member group Record
+Controller reaches first tagged member
         ↓
-Controller discovers + validates + preflights complete group
+validate membership + chronological reducer preflight
         ↓
-Base Widget accepts one Group playback unit
+validate future-member visual independence/interference
         ↓
-generic card-transition engine starts N children together
+if eligible multi-member group:
+    Base Widget transactionally prepares N children
+    → accepts exact Group playback unit
+    → establish formal-member suppression
+    → transfer source handoff ownership
+    → start N children together
+else:
+    preserve handoff leases
+    → sequential SingleRecord fallback
         ↓
-formal future-member visuals become suppressed
+Group visual success:
+    child transients end
+    VisuallyPresented marks retained
+    future-member suppression retained
+    reducer resumes chronologically
         ↓
-one group visual completion
-        ↓
-transient children are cleaned, suppression remains
-        ↓
-Controller resumes chronological reducer cursor
-        ↓
-release each member suppression only when that exact member is reduced
+exact member reduction:
+    apply Record
+    → release that member suppression
+    → publish snapshot
 ```
 
-A Selection Presentation Group is a **visual cohort**, not a Gameplay transaction.
+A Selection Presentation Group is a visual cohort, not a Gameplay transaction.
 
 ---
 
-## 4. Record metadata
-
-Add Presentation-only grouping metadata to `FPresentationRecord`.
+## 4. Presentation group metadata
 
 Conceptual types:
 
@@ -215,7 +240,9 @@ struct FPresentationGroupTag
 };
 ```
 
-Group identity is:
+`FPresentationRecord` gains one group tag.
+
+Group identity:
 
 ```text
 (BattleId, ResolutionId, Kind, GroupId)
@@ -225,23 +252,21 @@ Rules:
 
 ```text
 GroupId == 0
-↔ no group
+↔ ungrouped
 
 ExpectedMemberCount > 0
-for any non-zero SelectionDestination group tag
+for non-zero SelectionDestination metadata
 ```
 
-`ExpectedMemberCount` is repeated on each member so the sealed Envelope is self-validating.
-
-No separate member order is introduced. `PresentationSequence` remains canonical committed order.
+`PresentationSequence` remains canonical Record/member chronology. No independent member-order field is introduced.
 
 ### 4.1 Initial eligible member shape
 
-The first implementation is intentionally narrow:
+Initial grouped member:
 
 ```text
 Record.Type = CardZoneChanged
-Record.CardZoneChanged.FromZone = Hand
+FromZone = Hand
 Group.Kind = SelectionDestination
 ```
 
@@ -249,39 +274,37 @@ Initial destination support:
 
 - `ExhaustPile`;
 - `DrawPile`;
-- `DiscardPile` only if the generic Native destination path is ready when that stage is reached.
+- `DiscardPile` only when its generic Native Selection-origin transition is proven ready.
 
-Mixed destinations are architecturally legal once each child transition is supported; group membership does not imply equal destinations.
+Mixed destinations are architecturally valid once each child style is supported.
 
 ---
 
-## 5. GroupId allocation: writer-scoped only
+## 5. GroupId allocation is writer-scoped only
 
-`SelectionSource` is semantic metadata, not identity. Multiple selections may use the same source in one Resolution.
+`SelectionSource` is semantic metadata and is not unique identity.
 
-GroupId allocation MUST be exposed only through the frozen writer capability:
+Only the frozen writer capability exposes allocation:
 
 ```cpp
 bool FPresentationRecordWriter::TryAllocatePresentationGroupId(
     int64& OutGroupId) const;
 ```
 
-Conceptual implementation:
+Conceptual call:
 
 ```text
 Writer.TryAllocatePresentationGroupId
-→ weak Recorder
+→ Recorder weak pointer
 → Recorder.AllocatePresentationGroupId(
       WriterBattleId,
       WriterResolutionId,
       OutGroupId)
-→ Recorder validates IsWriterCurrentAndValid(...)
-→ allocate only from that active Resolution builder
+→ IsWriterCurrentAndValid(...)
+→ allocate from that exact active Resolution builder
 ```
 
-The Recorder MUST NOT expose a general caller-facing `AllocateGroupId()` that can allocate against whichever Resolution happens to be active.
-
-The counter belongs in the active Resolution builder:
+The counter belongs inside the active builder:
 
 ```cpp
 struct FActiveResolutionBuilder
@@ -294,27 +317,32 @@ struct FActiveResolutionBuilder
 Consequences:
 
 - GroupId has no Gameplay meaning;
-- IDs need only be unique inside `(BattleId, ResolutionId)`;
-- a stale writer cannot allocate from a newer active Resolution;
-- if Presentation recording is unavailable or the writer is stale, allocation fails and Gameplay continues normally without group metadata.
-
-The writer allocates identity only. It does **not** carry an active Selection group context that automatically propagates to trigger Actions.
+- uniqueness is required only inside `(BattleId, ResolutionId)`;
+- stale writers cannot allocate from a later Resolution;
+- no-history/Presentation-unavailable allocation failure does not affect Gameplay;
+- writer allocates identity but never implicitly carries active Selection membership into trigger Actions.
 
 ---
 
 ## 6. Selection correlation and direct Action context
 
-### 6.1 SelectionRequestAction remains object-type neutral
+### 6.1 Generic Selection boundary stays object-type neutral
 
 `USelectionRequestAction` MUST NOT cast selected objects to `UCardInstance`.
 
-After successful resolution, it maps `Result.SelectedObjects` back to the frozen `Request.Candidates` and obtains the selected canonical `RuntimeSequence` values.
+After resolution it maps `Result.SelectedObjects` back to the frozen `Request.Candidates` and obtains canonical `RuntimeSequence` values.
 
-For `UCurrentHandSelectionSource`, `RuntimeSequence == CardRuntimeId`. Other Selection domains may use another deterministic sequence without becoming card-specific.
+For `UCurrentHandSelectionSource`:
 
-### 6.2 Action-local group context
+```text
+RuntimeSequence == CardRuntimeId
+```
 
-If Presentation group allocation succeeds, create conceptual context:
+Other Selection domains may define other deterministic sequences.
+
+### 6.2 Action-local context
+
+Conceptually:
 
 ```cpp
 struct FSelectionPresentationGroupContext
@@ -326,279 +354,472 @@ struct FSelectionPresentationGroupContext
 };
 ```
 
-For the initial card Selection path:
+For initial card Selection:
 
 ```text
 ExpectedMemberCount = resolved SelectedObjects.Num()
 ```
 
-The exact same context is stamped onto the Selection's **direct continuation Actions only**.
+The same context is assigned only to direct continuation Actions.
 
-### 6.3 EventDispatcher does not copy group context
+### 6.3 Trigger propagation remains writer-only
 
-`UBattleAction` stores ordinary writer and optional Selection group context separately.
-
-Existing trigger propagation remains:
+`BattleEventDispatcher` does not copy Selection group context.
 
 ```text
-trigger Action gets PresentationRecordWriter
-trigger Action does NOT get SelectionPresentationGroupContext
+Selected Exhaust A
+→ A direct Hand→Exhaust Record may be Group G
+→ CardExhausted dispatch
+→ trigger Action gets Writer
+→ trigger Action does not get Group G
 ```
 
-This is mandatory even when a trigger is caused by a grouped selected-card Action.
+### 6.4 Concrete Action stamps only matching committed identity
 
-### 6.4 Concrete Action stamps only its matching direct committed fact
-
-A concrete card-zone Action may stamp its direct `CardZoneChanged` only if:
+A concrete card-zone Action may stamp a group tag only when:
 
 ```text
-Action carries valid SelectionDestination context
-AND
-CommitResult.CardRuntimeId ∈ SelectedRuntimeSequences
-AND
-Record shape is eligible for SelectionDestination grouping
+Action has valid SelectionDestination context
+AND CommitResult.CardRuntimeId is in SelectedRuntimeSequences
+AND direct Record shape is eligible
 ```
 
-An unrelated Record emitted by the same Action must remain ungrouped.
+Unrelated Records emitted from the same Action remain ungrouped.
 
 ### 6.5 Exact-one-eligible-record-per-selected-member invariant
 
-`ExpectedMemberCount = selected count` is valid only when each selected runtime sequence produces **exactly one** eligible direct committed group member.
-
-This is a group eligibility invariant, not a universal Selection guarantee.
+`ExpectedMemberCount = selected count` is valid only when each selected runtime sequence produces exactly one eligible direct group Record.
 
 Examples:
 
 ```text
 Selected A/B
-A produces one eligible grouped zone Record
-B produces zero
-→ actual members 1 != expected 2
-→ group disabled, sequential fallback
+A → one eligible Record
+B → zero
+→ incomplete group
+→ sequential degradation
 ```
 
 ```text
 Selected A
-A produces two matching eligible grouped Records
-→ duplicate RuntimeId / member-count mismatch
-→ group disabled, sequential fallback
+A → two matching eligible Records
+→ duplicate/multiple member shape
+→ sequential degradation
 ```
 
-The group feature therefore does not claim arbitrary continuation shapes. Unsupported shapes degrade Presentation only.
+This feature does not claim arbitrary continuation shapes.
 
 ---
 
-## 7. Complete-group discovery and validation
+## 7. Complete-group discovery and eligibility
 
-The Controller receives the entire sealed Envelope before playback and may inspect only that immutable data.
+Controller operates only on the sealed Envelope.
 
-When the reducer cursor reaches a tagged Record, discover all Records in the active Envelope with the same exact group identity.
+At the first tagged Record, discover all Records with the exact group identity.
 
-Co-presentation is eligible only when all conditions hold:
+Co-presentation eligibility requires:
 
 1. `ExpectedMemberCount > 1`;
-2. discovered member count equals `ExpectedMemberCount`;
-3. every member repeats identical `(Kind, GroupId, ExpectedMemberCount)`;
-4. every member is an initially supported `CardZoneChanged` from Hand;
-5. member `PresentationSequence` values are unique and strictly follow Envelope chronology;
-6. exact card RuntimeIds are valid and unique across members;
-7. each member represents exactly one selected runtime sequence;
+2. discovered member count equals expected count;
+3. every member repeats identical group identity and expected count;
+4. every member has an initially supported `CardZoneChanged`-from-Hand shape;
+5. member `PresentationSequence` values are unique and chronological;
+6. exact member RuntimeIds are valid and unique;
+7. every selected runtime sequence corresponds to exactly one eligible member;
 8. no terminal Record belongs to the group;
-9. each payload passes existing frozen-record validation;
-10. chronological dry-run reducer preflight through the last member succeeds, including interleaved ungrouped Records.
+9. all payloads pass existing frozen-record validity;
+10. chronological reducer dry-run through the final member succeeds including all interleaved Records;
+11. future-member interference preflight succeeds.
 
-If any condition fails:
+Any failure disables group playback for this group identity in the current Envelope:
 
 ```text
-mark group identity disabled for this Envelope
-→ do not establish suppression
-→ do not mark members VisuallyPresented
-→ use existing sequential SingleRecord playback
+no suppression established
+no VisuallyPresented mark
+no handoff consumed
+→ sequential SingleRecord path
 ```
 
-Malformed/incomplete grouping metadata by itself is Presentation degradation and does not request Gameplay `ResolutionFault`.
+Grouping degradation never requests Gameplay `ResolutionFault` by itself.
 
 ### 7.1 One-member metadata
 
-A resolved one-card Selection may still produce a valid group tag for correlation consistency.
-
-However:
+A one-card Selection may still carry group metadata, but:
 
 ```text
 ExpectedMemberCount <= 1
-→ Controller does NOT enter SelectionGroup playback
-→ normal SingleRecord path
+→ Controller does not enter SelectionGroup playback
+→ SingleRecord path
 ```
 
-The generic child transition engine is still shared, so single and multi-card visual style remains unified without expanding initial group-kernel risk.
+Single and group cases later share the same generic card-transition child engine.
 
 ---
 
-## 8. Non-contiguous group and visible-order semantics
+## 8. Non-contiguous groups and future-member interference
 
-Group members need not be contiguous because selected-card Actions may dispatch events that insert trigger reactions before the next selected-card Action.
+Group members may be non-contiguous because selected-card Actions can dispatch events that insert trigger reactions before the next selected-card Action.
 
-Example committed Envelope order:
-
-```text
-A Hand→Exhaust            [Group G]
-A-trigger Damage          [ungrouped]
-A-trigger StatusChanged   [ungrouped]
-B Hand→Exhaust            [Group G]
-B-trigger Draw            [ungrouped]
-C Hand→Exhaust            [Group G]
-```
-
-Changing authoritative Action/trigger order to make members contiguous is forbidden.
-
-### 8.1 Controlled lookahead
-
-When the Controller reaches A and validates complete Group G, it may offer frozen A/B/C together as one playback unit.
-
-Visible selected-card behavior:
+Example:
 
 ```text
-A/B/C destination animations start together
+A Hand→Exhaust [G]
+A-trigger Damage [ungrouped]
+A-trigger Status [ungrouped]
+B Hand→Exhaust [G]
+B-trigger Draw [ungrouped]
+C Hand→Exhaust [G]
 ```
 
-This intentionally makes B/C visible before some interleaved ungrouped Presentation that chronologically precedes their reducer records.
+Changing Gameplay/trigger order to make members contiguous is forbidden.
 
-This is the explicit PresentationGroup visible-order exception authorized by `Presentation/AGENTS.md` and `CardSelectionPresentationConstraints.md`.
+### 8.1 Controlled visual lookahead
 
-### 8.2 Interleaved Records remain chronological
-
-After the group visual completes:
+When Group G passes all preflight, Controller may offer frozen A/B/C together.
 
 ```text
-reduce A
-→ play/reduce A-trigger Damage
-→ play/reduce A-trigger StatusChanged
-→ reach B: B visual already presented, reduce B without replay
-→ play/reduce B-trigger Draw
-→ reach C: reduce C without replay
+A/B/C destination visuals start together
 ```
 
-No interleaved Record is marked visually presented merely because it lies inside the group member span.
+Interleaved records are still played/reduced later when the chronological cursor reaches them.
+
+### 8.2 Reducer dry-run alone is insufficient
+
+A valid state chronology does not prove that future-member early visual consumption is safe.
+
+Unsafe example:
+
+```text
+A Hand→Exhaust [G]
+B Hand→Discard [ungrouped]
+B Discard→Hand [ungrouped]
+B Hand→Exhaust [G]
+```
+
+The chronological state can be perfectly valid, yet pre-hiding B before its interleaved movements would create contradictory visible behavior.
+
+Therefore the entire group degrades to sequential playback.
+
+### 8.3 Initial interference predicate
+
+For each interleaved ungrouped Record between group leader and final member, determine the set of group RuntimeIds whose own member Record is still in the future at that chronological position.
+
+If an interleaved Record directly acts on one of those future RuntimeIds, co-presentation is rejected.
+
+At minimum initial exact-card interference includes:
+
+```text
+CardZoneChanged.Card.RuntimeId == future member
+→ interference
+
+CardPlayed.Card.RuntimeId == future member
+→ interference
+```
+
+Future exact-card record types that can move, replace, transform, or otherwise affect a card's visible identity must either implement the same `TouchesFutureGroupMember` classification or conservatively disable group lookahead until classified.
+
+Records that do not touch a future member identity do not disable grouping merely because they are interleaved:
+
+```text
+unrelated Damage
+unrelated StatusChanged
+EnergyChanged
+another card's CardZoneChanged
+```
+
+### 8.4 Preflight result
+
+Interference failure is Presentation degradation only:
+
+```text
+mark group disabled
+→ preserve all source handoff leases
+→ no suppression
+→ sequential fallback
+```
 
 ---
 
-## 9. Visually-consumed member suppression lifetime
+## 9. Four distinct visual lifetimes
 
-This is a required part of the group kernel, not a later visual polish patch.
+These concepts MUST NOT be conflated.
 
-### 9.1 Why suppression is required
+### 9.1 Formal Hand slot lifetime
 
-After A/B/C animate together, reducer chronology still has B/C in Hand until their own records are consumed.
+The formal Hand surface mirrors the chronological frozen Hand array.
 
-Without suppression:
+While a suppressed group member still exists in `WorkingPresentationSnapshot.HandCards`:
 
 ```text
-group animation finishes
-→ transient A/B/C removed
+one frozen Hand entry
+↔ one HB_Hand formal Widget at same index
+```
+
+The Widget remains in the layout:
+
+```text
+Visibility = Hidden
+Input = disabled
+```
+
+First implementation explicitly forbids:
+
+```text
+skip creating suppressed child
+remove child from HB_Hand
+Visibility = Collapsed
+```
+
+because existing historical Hand lookup contracts require child count/index to match the frozen Hand.
+
+If future architecture removes that index dependency, `Collapsed` may be reconsidered only with an explicit contract/test rewrite.
+
+### 9.2 Confirmed source handoff lease
+
+At explicit Confirm, Selection freezes per-runtime source information:
+
+```cpp
+struct FConfirmedCardVisualHandoff
+{
+    int32 RuntimeId = INDEX_NONE;
+    FVector2D ConfirmedAbsoluteCenter;
+    // optional frozen local transform/geometry data as needed
+};
+```
+
+Conceptually owned as:
+
+```text
+RuntimeId → outstanding handoff lease
+```
+
+The lease persists across Hand rebuilds until an actual destination transition accepts ownership.
+
+It is not group suppression.
+
+### 9.3 Group suppression lifetime
+
+Suppression exists only after an accepted multi-member Group playback unit transactionally owns continuity.
+
+Conceptual exact ownership should be richer than bare RuntimeId, for example:
+
+```cpp
+struct FPresentationSuppressionKey
+{
+    int64 BattleId;
+    int64 ResolutionId;
+    int64 GroupId;
+    int32 MemberRecordIndex;
+    int32 RuntimeId;
+};
+```
+
+Exact implementation shape may differ, but stale suppression cannot cross Battle/Resolution/Group boundaries.
+
+### 9.4 Playback-unit lifetime
+
+The active Controller/Widget visual owner is one exact unit:
+
+```text
+SingleRecord OR SelectionGroup
+```
+
+Playback-unit completion/timeout is separate from handoff and suppression lifetimes.
+
+---
+
+## 10. Suppression lifecycle
+
+### 10.1 Why suppression exists
+
+After A/B/C disappear together:
+
+```text
+group visual completes
 → reduce A
 → ApplyPresentationSnapshot
-→ historical Hand still contains B/C
-→ RefreshHand recreates B/C in Hand row
-→ visible flashback
+→ B/C still historically in Hand
 ```
 
-Therefore group completion must not release formal-visual ownership for future members.
+Without suppression B/C would be rebuilt visibly.
 
-### 9.2 Ownership split
+### 10.2 Responsibility split
 
-Recommended responsibility:
+Recommended ownership:
 
 ```text
 BattlePresentationController
-→ owns which exact group members are visually consumed but not reduced
+→ owns exact visually-consumed/not-yet-reduced members
 
 UBattleHUDViewModel
-→ stores transient Presentation suppression identities used during historical HUD refresh
+→ carries transient Presentation suppression identity through refreshes
 
 UBattleHUDWidget / RefreshHand
-→ obeys suppression and does not visibly create/show suppressed formal cards
+→ preserves every formal Hand slot and applies Hidden/disabled state
 ```
 
-Conceptual ViewModel state:
+Suppression is not stored in frozen `FPresentationStateSnapshot` and does not mutate Gameplay.
 
-```cpp
-TSet<int32> PresentationSuppressedHandRuntimeIds;
-```
+### 10.3 Transactional establishment
 
-Production implementation may use a richer battle/resolution/group/member identity structure, but RuntimeId lookup must remain exact and group ownership must prevent stale suppression from crossing Resolution/Battle boundaries.
+Before group acceptance, every child must prepare successfully.
 
-This set is transient Presentation state, not authoritative Gameplay and not part of frozen `FPresentationStateSnapshot` truth.
+No durable suppression and no handoff consumption occur during partial preparation.
 
-### 9.3 Establish suppression
-
-Suppression is established only after a complete group is accepted transactionally for visible playback.
-
-Before every child is successfully prepared, no formal member may be permanently hidden and no suppression may be committed.
-
-Once the group start is accepted:
+After all children are valid and Base Widget accepts the exact Group unit:
 
 ```text
-for each exact member RuntimeId
-→ establish suppression
-→ child transient owns visible transition
+establish suppression for every member
+→ transfer/consume every relevant handoff lease into durable group ownership
+→ start all children
 ```
 
-### 9.4 Group animation completion
+No partial group start is allowed.
 
-At shared animation completion:
+### 10.4 Group visual success
+
+At shared child completion:
 
 ```text
-clean transient child visuals
-mark exact member indices VisuallyPresented
-notify Controller once
+clean child transients
+→ mark exact member indices VisuallyPresented
+→ retain suppression for future members
+→ notify Controller once with exact Group token
 ```
 
-Do **not** clear suppression for members whose reducer cursor has not yet reached their record.
+Child lifetime ends here; future-member suppression does not.
 
-Thus:
+### 10.5 Exact member reduction
 
-```text
-child lifetime         ends at group visual completion
-suppression lifetime   ends at exact member reducer consumption
-```
-
-These are deliberately different lifetimes.
-
-### 9.5 Exact member reduction
-
-When the chronological cursor reaches an already-VisuallyPresented member:
+When chronological cursor later reaches a visually presented member:
 
 ```text
 ApplyRecordToWorkingSnapshot(member)
-→ release suppression for that exact member
-→ publish/apply resulting Presentation snapshot
+→ release exact member suppression
+→ publish/apply post-member snapshot
 → advance cursor
 ```
 
-Release must occur after the member mutation has been applied to the WorkingSnapshot and before/with publishing that post-member snapshot, so no frame can reconstruct the card as visible Hand content.
+Release occurs after mutation and before/with the post-member publish so no refresh can recreate that member visibly.
 
-Interleaved ungrouped Record snapshot refreshes do not release future-member suppression.
+Interleaved Records never release future-member suppression.
 
-### 9.6 Global cleanup
+### 10.6 Global suppression cleanup
 
-All active group suppression must be cleared during global reconciliation paths:
+Clear all applicable suppression on:
 
-- group rejected before ownership: nothing established;
-- Skip/collapse to final snapshot;
-- Presentation timeout catch-up path;
-- Widget loss/replacement;
+- exact member reduction for that member;
+- active-envelope timeout reconciliation;
+- Skip/global collapse;
+- Widget loss/replacement reconciliation;
 - Envelope completion/replacement;
-- battle replacement/reset;
+- battle reset/replacement;
 - PresentationUnavailable;
 - direct-baseline/no-history transition.
 
-Cleanup must not leave hidden cards after final-snapshot reconciliation.
+Group rejection/fallback before accepted ownership establishes no group suppression to clear.
 
 ---
 
-## 10. Controller playback unit
+## 11. Sequential fallback and handoff lease semantics
 
-Refactor Controller semantics from:
+Sequential fallback must be visually correct even though it is slower.
+
+### 11.1 Group validation/rejection cannot consume handoff
+
+These operations are read/prepare-only:
+
+```text
+group discovery
+membership validation
+reducer dry-run
+interference preflight
+child 1 prepare
+child 2 prepare
+...
+```
+
+If any step fails before accepted group ownership:
+
+```text
+rollback all prepared transient children
+restore formal visuals
+consume zero handoff leases
+establish zero group suppression
+→ sequential fallback
+```
+
+### 11.2 Formal rebuild with outstanding handoff
+
+If a sequential Record reduces A and rebuilds the historical Hand while B/C are still awaiting their own transitions:
+
+```text
+RefreshHand recreates formal slots in frozen order
+→ B/C formal Widgets remain present at exact indexes
+→ outstanding B/C handoff leases restore their confirmed Selection source transforms/positions
+→ B/C stay visible in the Selection-origin position rather than snapping to normal Hand layout
+```
+
+This is generic source-handoff restoration, not an Effect special case.
+
+### 11.3 Exact SingleRecord handoff consumption
+
+For B:
+
+```text
+lookup exact B handoff
+→ configure generic B destination child from confirmed source
+→ generic transition successfully accepts exact SingleRecord playback ownership
+→ consume only B handoff
+```
+
+If the SingleRecord transition itself declines/fails to start, B's handoff remains until normal fallback/reconciliation decides the visual lifecycle.
+
+### 11.4 Required fallback example
+
+```text
+Confirm A/B/C
+→ Group prepare child A succeeds
+→ Group prepare child B fails
+→ rollback A temporary preparation
+→ no handoff consumed
+→ no suppression
+
+A SingleRecord Exhaust begins from confirmed A position
+→ consume A handoff
+→ reduce A / RefreshHand
+→ B/C rebuild at retained confirmed positions
+
+B SingleRecord Exhaust begins from confirmed B position
+→ consume B handoff
+...
+```
+
+No card may flash back to the normal Hand row during this path.
+
+### 11.5 Relationship to rejected deferred patch
+
+Forbidden as the primary concurrency solution:
+
+```text
+serial playback + per-card timer/deferred retry to fake batch behavior
+```
+
+Required for degradation correctness:
+
+```text
+stable confirmed handoff lease
+→ generic handoff-aware Hand rebuild/source restoration
+→ exact SingleRecord transition consumes lease only on successful ownership
+```
+
+These are different mechanisms. The latter is part of the shared Selection source-handoff contract, not a workaround for parallel timing.
+
+---
+
+## 12. Controller playback unit
+
+Controller evolves from:
 
 ```text
 active playback = one Record
@@ -607,9 +828,7 @@ active playback = one Record
 to:
 
 ```text
-active playback unit =
-    SingleRecord
-    OR SelectionGroup
+active playback unit = SingleRecord OR SelectionGroup
 ```
 
 Conceptual state:
@@ -629,79 +848,146 @@ struct FActivePresentationGroup
 };
 ```
 
-`ActiveRecordIndex` remains the chronological reducer cursor at all times.
+`ActiveRecordIndex` remains chronological reducer cursor at all times.
 
-### 10.1 Group preflight
+### 12.1 Group preflight
 
-Before offering a group to the Widget:
+Before offer:
 
-1. clone `WorkingPresentationSnapshot`;
-2. dry-run reducer application from current cursor through the last discovered group member in exact Envelope order;
-3. include all interleaved ungrouped Records in the dry run;
-4. validate every group member against the correct historical state;
-5. publish none of the dry-run snapshots.
+1. discover exact member indices;
+2. validate member shape/count/identity;
+3. clone `WorkingPresentationSnapshot`;
+4. dry-run every Record from cursor through final member in exact chronology;
+5. include interleaved ungrouped Records;
+6. run future-member interference preflight;
+7. publish none of the dry-run state.
 
-This requires reducer logic that can apply a Record to an arbitrary snapshot copy rather than only mutating Controller member state.
+### 12.2 Group accepted
 
-### 10.2 Group accepted
-
-If the hardened Widget group wrapper returns true:
+If hardened Base Widget wrapper returns true:
 
 ```text
 active unit = SelectionGroup
 bWaitingForCompletion = true
 one exact group token
-one group timeout
+one timeout boundary
+no reducer cursor movement yet
 ```
 
-No reducer cursor advancement occurs at Begin.
+### 12.3 Normal group completion
 
-### 10.3 Group visual completion
-
-On exact group completion:
+On exact completion:
 
 ```text
-cancel exact timeout
-mark only group member indices VisuallyPresented
-retain suppression for not-yet-reduced members
-clear active group playback-unit ownership
-resume chronological reducer cursor at original first member
+cancel group timeout
+→ mark only exact member indices VisuallyPresented
+→ retain future-member suppression
+→ clear active Group playback owner
+→ resume reducer at original leader cursor
 ```
 
-### 10.4 Already-VisuallyPresented member
+### 12.4 Already-VisuallyPresented member
 
-When cursor reaches a member already co-presented:
+When cursor reaches a member:
 
 ```text
 skip visible Begin
 → apply Record chronologically
-→ release exact member suppression
-→ publish snapshot according to Controller batching rules
-→ advance cursor
+→ release exact suppression
+→ publish snapshot
+→ advance
 ```
 
-Consecutive already-presented members may be reduced synchronously and publish once at the end of that consecutive run, but an interleaved ungrouped Record breaks the run and receives normal visible playback.
+Consecutive already-presented members may be drained synchronously if no interleaved Record needs visible playback.
 
-### 10.5 Group disabled or Widget declines
-
-If validation fails or the Widget group wrapper returns false:
+### 12.5 Group disabled or Widget declines
 
 ```text
-mark exact group identity group-playback-disabled for this Envelope
-→ no suppression retained
-→ no VisuallyPresented members
-→ immediately execute existing SingleRecord path at current cursor
+mark exact identity group-disabled for active Envelope
+→ consume no handoff
+→ establish no suppression
+→ mark no VisuallyPresented
+→ sequential SingleRecord path
 ```
-
-Future tagged members from that disabled identity also remain ordinary sequential Records.
 
 ---
 
-## 11. Base Widget unified playback-unit hardening
+## 13. Group timeout has one dedicated failure path
 
-`PlayPresentationGroup()` must be a Controller-facing `UBattleHUDWidgetBase` wrapper symmetric with `PlayPresentationRecord()`.
+Current single-record timeout semantics cannot be copied blindly to Groups.
 
-Conceptual public wrappers:
+Normal group completion and timeout are different terminal states.
+
+### 13.1 Forbidden timeout behavior
+
+Do NOT:
+
+```text
+Group timeout
+→ CompleteActiveRecord()
+→ reduce only leader
+→ clear all group suppression
+→ continue normally
+```
+
+That would recreate future members and misrepresent the failed Group as successful playback.
+
+### 13.2 Required exact timeout sequence
+
+After verifying timeout token equals the exact active SelectionGroup unit:
+
+```text
+1. cancel timeout ownership
+2. cancel exact tracked Base-Widget Group unit
+3. concrete cancellation cleans every child transient
+4. do not mark any new member VisuallyPresented from the timed-out unit
+5. clear active Group playback ownership
+6. atomically clear envelope-owned group suppression + confirmed handoff/transient ownership
+7. reconcile current ActiveEnvelope directly to ActiveEnvelope.FinalSnapshot
+8. mark current envelope Presentation-complete
+9. preserve later PlaybackQueue entries
+10. start next queued Envelope normally, or refresh bindings if caught up
+```
+
+### 13.3 Dedicated reconciliation helper
+
+Implementation should use semantics equivalent to:
+
+```text
+ReconcileActiveEnvelopeAfterPlaybackUnitFailure()
+```
+
+It MUST NOT reuse a global `CollapseToEnvelope`/`ResetPlaybackState` path if that helper clears later queued Envelopes.
+
+The operation is scoped to the current active Envelope.
+
+### 13.4 Atomic HUD reconciliation
+
+Do not broadcast an intermediate UI state between:
+
+```text
+clear failed-group suppression/handoff
+and
+apply ActiveEnvelope.FinalSnapshot
+```
+
+if that intermediate refresh could reveal a historical selected card for one frame.
+
+ViewModel may require a batched/atomic transient-state + snapshot reconciliation API or equivalent notification suppression.
+
+### 13.5 Timeout remains Presentation-only
+
+Group timeout never requests Gameplay `ResolutionFault` by itself.
+
+Gameplay already committed independently.
+
+---
+
+## 14. Base Widget unified playback-unit hardening
+
+`PlayPresentationGroup()` is a Controller-facing `UBattleHUDWidgetBase` wrapper symmetric with `PlayPresentationRecord()`.
+
+Conceptual wrappers:
 
 ```cpp
 bool PlayPresentationRecord(
@@ -713,18 +999,11 @@ bool PlayPresentationGroup(
     const FPresentationPlaybackToken& Token);
 ```
 
-Both wrappers feed one internal tracked playback owner.
+### 14.1 One tracked owner
 
-### 11.1 One tracked owner
+Do not maintain independent tracked Record and Group tokens.
 
-Do not create:
-
-```text
-TrackedRecordPlayback
-TrackedGroupPlayback
-```
-
-Use conceptually:
+Conceptually:
 
 ```cpp
 struct FTrackedPresentationPlayback
@@ -734,63 +1013,55 @@ struct FTrackedPresentationPlayback
 };
 ```
 
-At most one Controller-owned visual playback unit is active in the Widget.
+### 14.2 Token identity
 
-### 11.2 Token identity
-
-Extend token identity conceptually with:
+Extend token conceptually:
 
 ```cpp
 EPresentationPlaybackUnitKind PlaybackUnitKind;
 int64 PresentationGroupId = 0;
 ```
 
-SingleRecord token:
+SingleRecord:
 
 ```text
-PlaybackUnitKind = SingleRecord
-PresentationGroupId = 0
+Kind = SingleRecord
+GroupId = 0
 PresentationSequence = record sequence
 ```
 
-Group token:
+SelectionGroup:
 
 ```text
-PlaybackUnitKind = SelectionGroup
-PresentationGroupId = group id
-PresentationSequence = first member sequence (leader/diagnostic identity)
+Kind = SelectionGroup
+GroupId = exact group id
+PresentationSequence = first member sequence
 ```
 
-Token equality includes unit kind and group id in addition to existing battle/resolution/sequence/generation identity.
+Token equality includes kind/group identity as well as battle/resolution/sequence/generation.
 
-### 11.3 Existing hardening is mandatory for groups
+### 14.3 Existing hardening applies unchanged
 
-Group wrapper must preserve the existing base semantics:
+Both units preserve:
 
-- track exact token before concrete playback entry;
-- return true only if concrete playback actually starts asynchronously;
-- completion forwards through the base deferred/CoreTicker path, preventing synchronous Controller re-entry;
-- stale/duplicate/old-battle/post-Skip callbacks are ignored;
-- Cancel targets only the exact currently tracked playback unit;
-- timeout uses the same unit token/generation;
-- Widget destruction/replacement cannot cancel or complete a newer owner;
+- track exact owner before concrete playback;
+- `true` only when async playback actually starts;
+- deferred completion forwarding to avoid Controller re-entry;
+- stale/duplicate/old-Battle/post-Skip callback rejection;
+- exact cancellation;
+- exact timeout token/generation;
+- replacement/destruction cannot cancel newer owner;
 - concrete HUD never calls Controller directly.
 
-### 11.4 Base fallback
-
-The base group implementation may return false.
-
-That means unsupported HUD surfaces safely trigger Controller sequential fallback without changing committed facts.
+Base group implementation may return false, causing safe sequential degradation.
 
 ---
 
-## 12. Generic parallel card-transition engine
+## 15. Generic card-transition child engine
 
-Current Native card presentation fields are single-instance (`ActiveNativeMovingCardWidget`, one historical card, one timer/elapsed state, one start/end pair). They cannot safely represent N concurrent cards.
+Current Native state is single-instance and cannot represent N parallel cards safely.
 
-Extract a generic per-child transition state.
-
-Conceptual child:
+Extract per-child state:
 
 ```cpp
 struct FNativeCardTransitionInstance
@@ -812,409 +1083,429 @@ struct FNativeCardTransitionInstance
 };
 ```
 
-One generic builder chooses visual style from committed source/destination facts plus optional Selection source handoff.
+One builder chooses style from committed zone facts plus optional confirmed source handoff.
 
-### 12.1 Hand→Exhaust
+### 15.1 Hand→Exhaust
 
 ```text
-source = confirmed Selection position when available
-end position = source
+source = confirmed Selection source when available
+end position = same source
 opacity → 0
 ```
 
-Grouped playback uses independently owned transient children while formal members are suppressed.
+Grouped case uses transient child visual while formal historical slot remains `Hidden` under suppression.
 
-This is the same generic Exhaust style, not a Burning Pact or multi-select animation.
+Same generic Exhaust style; no Burning Pact-specific animation.
 
-### 12.2 Hand→DrawPile
+### 15.2 Hand→DrawPile
 
 ```text
-source = confirmed Selection position
+source = confirmed Selection source
 end = DrawPile visual anchor
 visible movement toward DrawPile
 ```
 
-The existing Selection-subclass-only shared transfer timer/state should ultimately migrate into this generic engine.
+Selection-subclass-only transfer state should migrate into this engine.
 
-### 12.3 Hand→DiscardPile
+### 15.3 Hand→DiscardPile
 
-Use the generic discard destination transition when available, with the confirmed source handoff.
+Use generic discard destination behavior with confirmed source when supported.
 
-### 12.4 Single and group share one engine
+### 15.4 Single and Group share engine
 
 ```text
 SingleRecord CardZoneChanged
-→ generic engine with 1 child
+→ 1 child
 
 SelectionGroup
-→ generic engine with N children
+→ N children
 ```
 
-No duplicate Single vs Group destination-animation implementation is allowed.
+No duplicate destination implementation.
 
 ---
 
-## 13. Selection visual handoff
+## 16. Group transaction and Selection handoff transfer
 
-`UBattleHUDSelectionWidget` continues to own Selection interaction and confirmed exact RuntimeId source positions.
+Selection layer owns interaction and outstanding confirmed source leases; it does not own destination style.
 
-It provides conceptually:
+For proposed multi-member start:
 
-```text
-RuntimeId → confirmed absolute visual source position
-```
+1. every member must have a trustworthy source handoff when Selection-origin continuity requires one;
+2. prepare all generic transition children transactionally without consuming leases;
+3. if any child fails, destroy/rollback all prepared transients and restore formal visual state;
+4. return false to Controller;
+5. only after every child is prepared and hardened Group ownership is accepted establish suppression;
+6. only then transfer/consume all relevant leases into group child/suppression ownership;
+7. begin all children in the same Native tick.
 
-It does not choose the destination style.
-
-For a proposed multi-member group start:
-
-1. require exact handoff for every member that needs Selection-origin continuity;
-2. transactionally prepare every child transition;
-3. if any child cannot prepare, roll back all transient work and return false;
-4. only after all children are valid does the playback unit establish formal-member suppression and start all children;
-5. source handoff may be consumed by the transition engine once durable group suppression owns continuity.
-
-No partial group start is permitted.
-
-The played card visual itself remains separate from selected-card destination children. Warcry/Burning Pact cleanup continues through ordinary committed played-card destination facts.
+No partial Group visual ownership is permitted.
 
 ---
 
-## 14. Group child completion
+## 17. Group child completion
 
-For the initial implementation, children in one group use the existing uniform card transition duration.
+Initial children use the existing uniform card transition duration.
 
 ```text
-Begin group
-→ every child elapsed = 0 in same Native tick
-→ tick all children together
-→ after shared duration all children reach final visual state
-→ remove/clean child transients
+Begin accepted Group
+→ all elapsed = 0 same Native tick
+→ tick together
+→ one shared duration
+→ clean all child transients
 → keep future-member suppression
 → notify exact Group token once
 ```
 
-Total selected-card wait is approximately one transition duration rather than `N × duration`.
+Total selected-card visual wait is approximately one transition duration rather than `N × duration`.
 
-If future child durations differ, group visual completion is the maximum child duration, but this is not part of the first implementation.
+If future durations differ, group completes after the maximum child duration; not required initially.
 
 ---
 
-## 15. Warcry / one-member behavior
+## 18. Warcry one-member behavior
 
-Warcry selects one exact Hand card and commits `Hand→DrawPile`.
-
-Correlation metadata may still be stamped:
+Warcry may receive correlation metadata with:
 
 ```text
 ExpectedMemberCount = 1
 ```
 
-But the first implementation intentionally does **not** enter SelectionGroup Controller playback for this case:
+But first implementation remains:
 
 ```text
 Warcry Selection Confirm
-→ one tagged Hand→DrawPile Record
-→ Controller normal SingleRecord path
-→ generic transition engine creates 1 child
-→ selected card flies to DrawPile
+→ tagged Hand→DrawPile Record
+→ SingleRecord Controller path
+→ generic child engine with 1 child
+→ consume exact handoff only when transition begins
 → reducer continues
 → Warcry PlayArea→Exhaust remains ungrouped
 → existing generic played-card Exhaust cleanup
 ```
 
-This proves single/group reuse at the generic child engine without making Warcry a regression test for group lookahead/suppression/token semantics.
-
-No Warcry-specific animation is introduced.
+No Warcry-specific animation.
 
 ---
 
-## 16. Burning Pact / multi-exhaust behavior
+## 19. Multi-exhaust behavior
 
-For configured selection A/B/C:
+For A/B/C:
 
 ```text
 Confirm A/B/C
-→ one SelectionDestination correlation G
+→ three outstanding source handoff leases
+→ one SelectionDestination group correlation G
 ```
 
-Direct committed selected-card members conceptually:
-
-```text
-A Hand→Exhaust [G]
-B Hand→Exhaust [G]
-C Hand→Exhaust [G]
-```
-
-Trigger records may be interleaved in the final Envelope.
-
-At first validated group member:
+When G is complete, non-interfered and accepted:
 
 ```text
 A fade ┐
-B fade ├─ same Native tick, same generic Exhaust style
+B fade ├─ start together at confirmed Selection positions
 C fade ┘
 ```
 
-After one duration:
+At visual completion:
 
 ```text
-A/B/C transients gone
-B/C remain suppressed until their own reducer records
-→ chronological trigger/record playback continues
-→ no B/C flashback to Hand
+transients gone
+A/B/C marked visually presented
+future members retain Hidden formal slots under suppression
+→ chronological reducer/interleaved presentation continues
+```
+
+If G is incomplete/interfered/rejected/preparation-failed:
+
+```text
+all leases remain
+→ sequential A/B/C
+→ each formal rebuild restores remaining confirmed source positions
+→ each exact SingleRecord consumes only its own lease on successful Begin
 ```
 
 ---
 
-## 17. Failure and degradation
+## 20. Failure and degradation matrix
 
-The following are Presentation-only failure/degradation conditions and MUST NOT request Gameplay `ResolutionFault` by themselves:
+These are Presentation-only failures and do not fault Gameplay by themselves:
 
-- no writer / group ID allocation unavailable;
-- stale writer rejects allocation;
-- incomplete member count;
-- zero eligible member for a selected object;
-- duplicate/multiple matching eligible members for one selected object;
-- unsupported group destination;
-- reducer preflight failure attributable to grouping eligibility;
-- base Widget group rejection;
-- child transaction preparation failure;
-- group timeout;
+- group allocation unavailable/stale writer;
+- incomplete group;
+- 0/2 eligible Records for selected member;
+- unsupported destination;
+- chronological preflight failure for grouping eligibility;
+- future-member interference;
+- Base Widget group rejection;
+- child N preparation failure;
+- Group timeout;
 - Skip;
 - Widget replacement/loss;
-- PresentationUnavailable/no-history mode.
+- PresentationUnavailable/no-history.
 
-Fallback is either existing SingleRecord sequential presentation or current final-snapshot catch-up/collapse policy.
+Behavior:
 
-A malformed committed Record that violates pre-existing envelope/reducer validity may still use existing Presentation collapse behavior, but Presentation does not rewrite Gameplay.
+```text
+before accepted Group ownership
+→ sequential fallback with handoff leases retained
+
+after accepted Group ownership + normal completion
+→ VisuallyPresented + suppression lifecycle
+
+after accepted Group ownership + timeout/fatal playback-unit failure
+→ exact cancel + active-envelope final-snapshot reconciliation
+```
+
+A malformed committed Record that violates pre-existing envelope validity may still use existing Presentation collapse behavior, but Presentation never rewrites Gameplay.
 
 ---
 
-## 18. Explicitly rejected designs
+## 21. Explicitly rejected designs
 
-### 18.1 Per-card deferred Hand rebuild patch
+### 21.1 Remove or Collapse suppressed historical Hand child
 
-Do not restore:
+Not allowed in initial implementation.
 
-```text
-A plays
-→ rebuild Hand
-→ manually reposition/defer B
-→ B plays
-→ rebuild Hand
-→ manually reposition/defer C
-```
+### 21.2 Dry-run-only lookahead validation
 
-It keeps `N × duration` and couples Selection continuity to repeated formal Hand reconstruction.
+Reducer success without future-member interference analysis is insufficient.
 
-### 18.2 Clear suppression at group animation completion
+### 21.3 Treat Group timeout as ordinary completion
 
-Forbidden:
+No leader-only reduce after timed-out parallel playback.
 
-```text
-group visually completes
-→ clear all hidden/suppressed formal members
-→ reduce A
-```
+### 21.4 Consume handoff during partial Group preparation
 
-This recreates the original flashback through intermediate snapshots.
+No handoff is consumed until durable accepted ownership exists.
 
-### 18.3 Effect/Card special casing
+### 21.5 Broken sequential fallback
 
-No:
+Sequential fallback may be slower but must preserve confirmed source continuity.
 
-```cpp
-if (CardId == BurningPact)
-if (CardId == Warcry)
-if (SelectedCount > 1 && Effect == Exhaust)
-```
+### 21.6 Ad-hoc serial deferred timing as parallel solution
 
-### 18.4 Gameplay batching for visuals
+Do not simulate a group by waiting/repositioning one Record at a time.
 
-Do not replace per-card authoritative Actions/events with a bulk Gameplay mutation to force animation simultaneity.
+Generic handoff restoration for sequential degradation is allowed and required; timer/deferred retry as the concurrency architecture is not.
 
-### 18.5 Writer-carried implicit active group context
+### 21.7 Effect/Card special cases
 
-The writer may allocate GroupId, but it MUST NOT automatically stamp/carry current Selection group membership into all Actions that inherit the writer.
+No CardId/Effect branching for group or transition behavior.
 
-### 18.6 Widget-owned Envelope scanning
+### 21.8 Gameplay batching for visuals
 
-Widget code never discovers group membership by searching future Records.
+Do not replace per-card Gameplay Actions/events with bulk mutation for animation convenience.
 
-### 18.7 Independent group token owner in concrete HUD
+### 21.9 Writer-carried implicit active group
 
-Do not add separate tracked Record and Group ownership that can cross-cancel or cross-complete. Base Widget owns one playback unit.
+Writer allocates GroupId but does not automatically propagate membership.
 
-### 18.8 Force one-member cases through group kernel
+### 21.10 Widget-owned Envelope scanning
 
-Initial implementation does not require `ExpectedMemberCount == 1` to exercise Controller group logic. Reuse is proven at the generic child transition engine.
+Group discovery belongs to Controller.
+
+### 21.11 Independent concrete-HUD Group token owner
+
+Base Widget owns one Record-or-Group tracked unit.
+
+### 21.12 Force one-member case through Group kernel
+
+Not required initially.
 
 ---
 
-## 19. Proposed implementation order
+## 22. Proposed implementation order
 
-Upstream contract amendments are complete in documentation. Production implementation should proceed in small compile/testable stages.
+Production implementation should remain staged and compilable/testable.
 
-### Stage G1 — metadata and writer-scoped correlation only
+### G1 — metadata and writer-scoped correlation
 
-- add `EPresentationGroupKind` / `FPresentationGroupTag` to Presentation types;
-- add `FPresentationRecordWriter::TryAllocatePresentationGroupId`;
-- keep `NextPresentationGroupId` inside active Resolution builder;
-- validate writer BattleId/ResolutionId exactly before allocation;
-- add optional Action-local Selection group context;
-- `SelectionRequestAction` maps resolved objects to candidate runtime sequences without card cast;
-- stamp context on direct continuation Actions only;
-- concrete eligible card-zone Actions stamp only matching committed member Records;
+- add group types to Presentation records;
+- add writer-scoped GroupId allocation;
+- counter inside active Resolution builder;
+- stale writer rejection;
+- add optional Action-local Selection context;
+- generic mapping from resolved candidate objects to runtime sequences;
+- direct selected-card Actions stamp matching group metadata only;
 - trigger reactions remain ungrouped;
 - no visible behavior change.
 
-G1 must prove malformed 0/2-member-per-selected shapes do not become valid groups.
+G1 tests include 0/2 eligible-member degradation.
 
-### Stage G2 — Controller group discovery/preflight + suppression model
+### G2 — Controller discovery, chronological/interference preflight, suppression model
 
-- discover exact group identities in sealed Envelope;
-- require `ExpectedMemberCount > 1` for group playback;
-- complete-group validation;
-- arbitrary-snapshot chronological reducer preflight;
-- track exact member indices intended for co-presentation;
-- introduce transient Presentation suppression ownership and ViewModel/HUD formal-Hand filtering;
-- define exact member release/global cleanup;
-- group path may still be disabled/fallback until hardened Widget API exists.
+- exact group discovery/validation;
+- `ExpectedMemberCount > 1` requirement;
+- arbitrary-snapshot chronological dry-run;
+- `TouchesFutureGroupMember` interference predicate;
+- group-disabled state for ineligible identities;
+- transient suppression ownership model;
+- ViewModel suppression identity;
+- `RefreshHand` preserves one formal child per historical Hand entry;
+- suppressed child uses `Hidden` and disabled input;
+- exact release/global cleanup contracts.
 
-Suppression and Controller group kernel belong to the same stage; suppression is not deferred to UI polish.
+Group playback may remain disabled until G3/G4, but validation/suppression structures must compile and test independently.
 
-### Stage G3 — Base Widget unified playback-unit hardening
+### G3 — Base Widget playback unit + timeout reconciliation
 
-- extend token/unit identity for `SingleRecord` vs `SelectionGroup`;
-- add `UBattleHUDWidgetBase::PlayPresentationGroup` wrapper;
-- use one tracked playback-unit owner;
-- share deferred completion forwarding, cancel, timeout and stale-callback semantics;
-- Controller can safely offer validated groups; base default rejects/falls back sequentially.
+- extend token with unit kind/group id;
+- one tracked playback owner;
+- `PlayPresentationGroup` Base wrapper;
+- shared deferred completion/cancel/stale hardening;
+- Controller dedicated active-envelope playback-unit-failure reconciliation;
+- Group timeout exact cancel;
+- atomic transient cleanup + ActiveEnvelope FinalSnapshot application;
+- preserve later PlaybackQueue entries;
+- Base default group rejection remains sequential.
 
-### Stage G4 — generic N-child card-transition engine
+### G4 — generic N-child transition engine
 
-- extract single-card Native zone transition into per-child state;
-- route existing SingleRecord card-zone animations through one child;
-- migrate Selection-specific Hand→DrawPile state into generic engine;
-- support N simultaneous children for accepted groups;
-- destination behavior remains committed-zone-driven.
+- extract one-card zone transition into per-child state;
+- SingleRecord uses one child;
+- migrate Hand→DrawPile into generic engine;
+- N-child parallel playback support;
+- destination styles stay zone-driven.
 
-### Stage G5 — Selection integration / enable parallel playback
+### G5 — Selection handoff leases, fallback correctness, parallel enable
 
-- Selection HUD provides exact confirmed source positions only;
-- group transaction captures every child before Begin;
-- formal selected members become suppressed only on successful group acceptance;
-- multi-exhaust begins all child fades together;
-- grouped Hand→DrawPile works for future multi-card cases;
-- one-member Warcry stays SingleRecord but uses same generic child engine.
+- formal `RuntimeId → confirmed source handoff lease` lifecycle;
+- Hand rebuild restores outstanding lease transform without changing slot/index;
+- SingleRecord consumes lease only after exact transition Begin succeeds;
+- Group preparation is transactional and read-only with respect to lease ownership;
+- accepted Group transfers all leases after durable suppression established;
+- child N failure rolls back without consuming any lease;
+- enable multi-exhaust parallel playback.
 
-### Stage G6 — cleanup, docs and validation
+### G6 — cleanup/docs/validation
 
-- delete superseded Selection-specific transfer state after generic equivalence is proven;
-- update implementation/execution status documents;
-- run only changed-contract automated gates;
-- user runs focused manual PIE for concurrency/no-flash/Warcry visual sequence.
+- delete superseded Selection-specific transfer state only after generic equivalence;
+- update execution/status docs;
+- run focused automation;
+- user PIE validates concurrency/no-flicker/Warcry.
 
-Do not combine all stages into one large patch unless a compile boundary makes separation impossible.
+Do not combine stages into one large patch unless a real compile dependency requires it.
 
 ---
 
-## 20. Automated acceptance plan
+## 23. Automated acceptance plan
 
-### 20.1 G1 correlation/allocation
+### 23.1 G1 correlation/allocation
 
-- stale writer cannot allocate GroupId from a newer active Resolution;
-- two Selection decisions in one Resolution receive distinct group IDs;
-- group IDs may restart in another Resolution because identity includes ResolutionId;
-- resolved Selection canonical runtime sequences, not click order, define context membership;
-- all direct eligible selected-card records receive same group identity;
-- trigger-created Actions/Records remain ungrouped despite inheriting writer;
-- no-history/Presentation unavailable leaves Gameplay continuation unchanged;
-- selected count 2 but only 1 eligible direct member → grouping invalid/sequential;
-- selected count 1 but 2 matching eligible members → grouping invalid/sequential.
+- stale writer cannot allocate GroupId from a newer Resolution;
+- two Selections in one Resolution get distinct IDs;
+- IDs may restart in another Resolution because ResolutionId scopes identity;
+- canonical candidate sequence, not click order, defines membership;
+- direct eligible selected-card Records share group identity;
+- trigger Records remain ungrouped;
+- no-history leaves Gameplay unchanged;
+- selected count 2 / only 1 eligible member → group invalid;
+- selected count 1 / 2 matching members → group invalid.
 
-### 20.2 G2 Controller + suppression
+### 23.2 G2 discovery/interference/formal suppression structure
 
 - complete contiguous 3-member group validates;
-- complete non-contiguous group with interleaved records validates;
-- `ExpectedMemberCount <= 1` is not offered as group playback;
-- duplicate RuntimeId, member-count mismatch or unsupported shape disables group;
-- dry-run preflight includes interleaved Records chronologically;
-- group lookahead selects only exact tagged members;
-- interleaved records are never marked VisuallyPresented;
-- after group visual completion, future members remain suppressed through intermediate snapshot applications;
-- reducer consumes A/interleaved/B/interleaved/C in original order;
-- release B suppression only when B reducer record is applied;
-- Skip/collapse/battle reset clears all suppression.
+- non-contiguous unrelated interleaving validates;
+- chronological dry-run includes interleaved Records;
+- interleaved `CardZoneChanged` touching future member disables group;
+- interleaved `CardPlayed` touching future member disables group;
+- example future member leaves and returns Hand → dry-run valid but interference disables group;
+- unrelated Damage/Status/Energy does not disable group;
+- `ExpectedMemberCount <= 1` not offered as group playback;
+- suppressed still-historical member remains one formal child at exact index;
+- suppressed visibility is `Hidden`, never `Collapsed`;
+- suppressed member cannot submit input;
+- exact historical Hand child count remains equal to frozen Hand count;
+- suppression release occurs only on exact member reducer consumption/global reconciliation.
 
-### 20.3 G3 Base playback unit
+### 23.3 G3 playback-unit/timeout
 
 - Record and Group wrappers share one tracked owner;
-- group exact completion succeeds once;
-- stale/duplicate group callback is ignored;
-- stale Group callback cannot complete a newer SingleRecord token;
-- stale SingleRecord callback cannot complete a newer Group token;
-- synchronous concrete completion is deferred before Controller sequencing resumes;
-- exact Cancel stops only current unit;
-- Widget replacement cannot cancel newer ownership;
-- group base rejection leads to Controller sequential fallback.
+- exact Group completion succeeds once;
+- stale/duplicate Group callback ignored;
+- stale Group callback cannot complete newer SingleRecord;
+- stale Single callback cannot complete newer Group;
+- synchronous concrete completion is deferred;
+- exact cancel only targets current unit;
+- Widget replacement cannot affect newer owner;
+- Group Base rejection enters sequential path;
+- Group timeout never invokes leader-only normal completion;
+- Group timeout cancels every child;
+- Group timeout marks no new member VisuallyPresented;
+- timeout atomically clears group transient/suppression state and applies ActiveEnvelope.FinalSnapshot;
+- queued later Envelope remains queued and begins afterward;
+- no one-frame suppressed-card reappearance during timeout reconciliation.
 
-### 20.4 G4/G5 Native UI
+### 23.4 G4/G5 generic engine + handoff/fallback
 
-- N Exhaust children begin in same Native tick;
-- every member starts at exact confirmed RuntimeId source position;
-- all use generic Exhaust opacity style;
-- child completion cleans all group transients;
-- formal future members remain suppressed after child cleanup until reducer consumption;
-- no selected card flashes back to Hand during interleaved record playback;
-- N DrawPile children can move concurrently toward DrawPile anchor when such a selection exists;
-- SingleRecord Warcry Hand→DrawPile uses the same generic child builder with one child;
-- Warcry later PlayArea→Exhaust remains ungrouped and uses existing generic cleanup;
-- Skip leaves no group child or stale suppression.
+- N Exhaust children begin same Native tick;
+- exact confirmed RuntimeId positions are used;
+- all use generic Exhaust style;
+- future formal members remain `Hidden` after child cleanup until reducer consumption;
+- no flash to Hand through interleaved presentation;
+- SingleRecord Warcry uses same generic child builder;
+- Warcry cleanup remains ordinary PlayArea→Exhaust;
+- outstanding B/C handoff survives A reducer/HUD rebuild in sequential mode;
+- rebuilt B/C formal Widgets remain at confirmed Selection positions with preserved formal slots;
+- SingleRecord B consumes only B lease after successful Begin;
+- Group child 1 prepares, child 2 fails → all temporary children rollback;
+- same preparation failure consumes zero leases and establishes zero suppression;
+- fallback then presents A/B/C sequentially from exact confirmed positions;
+- if a SingleRecord transition fails to accept, its lease is not prematurely consumed;
+- Skip/reconciliation leaves no stale child, suppression or handoff.
 
 ---
 
-## 21. Manual PIE acceptance
+## 24. Manual PIE acceptance
 
-Manual PIE is required only after automated contracts pass because concurrency, flicker and spatial continuity are genuinely visual.
+Manual PIE is required after automated contracts pass.
 
-### 21.1 Multi-exhaust
-
-Use/configure an existing Player Selection that exhausts at least two Hand cards.
-
-Expected:
+### 24.1 Multi-exhaust parallel success
 
 ```text
 select A/B/(C)
 → explicit Confirm
-→ all selected cards begin disappearing together in Selection area
-→ no card flashes back to normal Hand position
-→ total selected-card visual wait ≈ one Exhaust duration
-→ interleaved trigger/other presentation still appears afterward in its chronological place
-→ input eventually restores
+→ all selected cards begin disappearing together at Selection positions
+→ formal Hand layout does not visibly pull any card back
+→ total selected-card wait ≈ one Exhaust duration
+→ interleaved unrelated trigger presentation continues chronologically afterward
+→ input restores
 ```
 
-### 21.2 Warcry regression
+### 24.2 Sequential degradation visual correctness
+
+Force/use a controlled test path where Group cannot be accepted but Selection handoff is valid.
 
 Expected:
+
+```text
+A disappears from confirmed Selection position
+→ B/C remain visually at confirmed Selection positions across Hand rebuild
+→ B disappears from confirmed Selection position
+→ C likewise
+→ no card snaps to normal Hand row
+```
+
+This path may take `N × duration`; correctness is required even when concurrency is unavailable.
+
+### 24.3 Warcry regression
 
 ```text
 Draw presentation
 → Selection
 → explicit Confirm
-→ selected card Hand→DrawPile generic movement
-→ Warcry reappears/continues in PlayArea
+→ selected card generic Hand→DrawPile movement
+→ Warcry visible/available in PlayArea
 → ordinary generic PlayArea→Exhaust cleanup
 ```
 
-Warcry should not require Group playback to pass this regression.
+Warcry does not require Group playback.
 
-No new Blueprint animation asset is expected by this design. If implementation discovers a genuinely required Designer-backed surface, it becomes a separate explicit `USER ACTION REQUIRED` step.
+No new Blueprint animation asset is expected. Any newly discovered Designer-backed requirement is a separate explicit user action.
 
 ---
 
-## 22. Initial implementation impact boundaries
+## 25. Initial implementation impact boundaries
 
 Expected source areas:
 
@@ -1223,15 +1514,15 @@ PresentationTypes / Recorder / Writer
 BattleAction optional Presentation correlation metadata
 SelectionRequestAction correlation creation
 eligible selected-card zone Actions stamping tags
-BattlePresentationController group discovery/preflight/suppression
-BattleHUDViewModel transient suppression state
+BattlePresentationController group discovery/preflight/interference/suppression/timeout reconcile
+BattleHUDViewModel transient suppression + handoff-aware transient presentation state as appropriate
 BattleHUDWidgetBase playback-unit wrapper
-BattleHUDWidget generic card-transition child engine
-BattleHUDSelectionWidget source handoff only
+BattleHUDWidget formal Hand Hidden-slot rendering + generic child engine
+BattleHUDSelectionWidget confirmed source handoff lease provider
 focused Automation tests
 ```
 
-Not authorized by this design:
+Not authorized:
 
 ```text
 Card/Effect-specific animation logic
@@ -1243,52 +1534,62 @@ Legacy HUD changes
 
 ---
 
-## 23. Design decision summary
-
-Chosen architecture:
-
-```text
-Selection decision
-→ writer-scoped explicit group correlation
-→ direct continuation Actions only
-→ committed exact member Records
-→ sealed Envelope
-→ Controller-owned validation + controlled group lookahead
-→ Base Widget one hardened playback-unit owner
-→ generic N-child zone transition
-→ visual group completion
-→ future members remain suppressed
-→ chronological reducer/interleaved playback continues
-→ exact suppression released per member reduction
-```
-
-The key responsibility split is:
+## 26. Responsibility summary
 
 ```text
 Gameplay
-    owns authoritative mutation/event order
+    authoritative mutation/event order
 
-Selection
-    owns player interaction and exact source visual handoff
+Selection interaction
+    confirm intent + exact selected RuntimeIds
+    confirmed source handoff leases
 
 Presentation Recorder/Record
-    owns explicit immutable group correlation
+    explicit immutable group correlation
 
 BattlePresentationController
-    owns group discovery, visible-order exception, reducer chronology,
-    VisuallyPresented member state and suppression lifetime
+    group discovery
+    chronological dry-run
+    future-member interference preflight
+    visible-order exception
+    reducer chronology
+    VisuallyPresented state
+    suppression ownership
+    active-envelope timeout/failure reconciliation
 
 BattleHUDViewModel
-    carries transient Presentation suppression through HUD refreshes
+    transient suppression/handoff-visible state across formal refresh as needed
 
 UBattleHUDWidgetBase
-    owns one hardened Record-or-Group playback-unit boundary
+    one hardened Record-or-Group playback-unit owner
 
-Generic Native card-zone engine
-    owns destination animation children
+UBattleHUDWidget
+    exact formal Hand slot preservation
+    Hidden suppression rendering
+    generic card-zone child engine
+
+UBattleHUDSelectionWidget
+    Selection UI + confirmed source handoff provider
+    no destination-specific animation ownership
 
 Effect/CardId
-    owns none of the above visual sequencing
+    no group/transition sequencing ownership
 ```
 
-This design is ready for implementation review at **Stage G1**, but no implementation Gate is considered passed until production code is changed and the corresponding Build/Automation/PIE evidence is actually produced.
+The four visual lifetimes are deliberately distinct:
+
+```text
+Formal Hand slot
+    lasts while chronological frozen Hand contains member
+
+Confirmed handoff lease
+    lasts from Confirm until actual transition accepts ownership
+
+Group suppression
+    lasts from accepted group ownership until exact reducer consumption/global reconcile
+
+Playback unit
+    lasts from Begin until normal exact completion or dedicated failure/timeout reconciliation
+```
+
+This design is now ready for implementation review at **Stage G1**. No Build, Automation, or PIE gate is passed by these documentation changes.
