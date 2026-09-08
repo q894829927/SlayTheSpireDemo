@@ -64,7 +64,7 @@ namespace CardExpansionWave1CC1InteractiveBoundaryTest
 		UCardData* CreateWarcryStyleCard()
 		{
 			UCardData* Card = NewObject<UCardData>(World);
-			Card->CardId = TEXT("C1InteractiveWarcry");
+			Card->CardId = FName(TEXT("C1InteractiveWarcry"));
 			Card->DisplayName = FText::FromString(TEXT("C1 Interactive Warcry"));
 			Card->BaseCost = 0;
 			Card->UpgradedCost = 0;
@@ -88,7 +88,10 @@ namespace CardExpansionWave1CC1InteractiveBoundaryTest
 		bool Start(UCardData* Definition)
 		{
 			if (!IsValid(Battle) || !IsValid(Definition)) return false;
-			Battle->DebugStartingDeck = { Definition, Definition, Definition };
+			Battle->DebugStartingDeck.Reset();
+			Battle->DebugStartingDeck.Add(Definition);
+			Battle->DebugStartingDeck.Add(Definition);
+			Battle->DebugStartingDeck.Add(Definition);
 			Battle->StartBattle();
 			Battle->FlushScheduledReadStateReadyForTesting();
 			Deliveries.Reset();
