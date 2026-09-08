@@ -9,7 +9,6 @@
 #include "Components/TextBlock.h"
 #include "Containers/Ticker.h"
 #include "Engine/World.h"
-#include "TimerManager.h"
 #include "UI/BattleHUDViewModel.h"
 
 namespace CardSelectionPresentationTest
@@ -142,6 +141,7 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 	const FPresentationCardSnapshot Snapshot = MakeSnapshot(710, TEXT("GenericSelectedCard"));
 	if (!TestTrue(TEXT("Formal Hand card is prepared"), Fixture.AddFormalCard(Snapshot))) return false;
 	UWidget* Historical = Fixture.Hand->GetChildAt(0);
+	const ESlateVisibility HistoricalVisibilityBefore = Historical->GetVisibility();
 	const FPresentationRecord Record = MakeHandToDrawRecord(Snapshot, 1, Fixture.ViewModel->DrawCount);
 	const FPresentationPlaybackToken Token = MakeToken(1, 1);
 
@@ -157,16 +157,21 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 	TestEqual(TEXT("Presentation animation does not mutate frozen DrawCount"), Fixture.ViewModel->DrawCount, 4);
 
 	Fixture.HUD->SkipPresentation();
-	TestEqual(TEXT("Cancel restores exact historical Hand card"), Historical->GetVisibility(), ESlateVisibility::Visible);
+	TestEqual(TEXT("Cancel restores exact historical Hand card visibility"), Historical->GetVisibility(), HistoricalVisibilityBefore);
 	TestEqual(TEXT("Cancel removes transient moving card"), Fixture.PlayArea->GetChildrenCount(), 0);
 
 	if (!TestTrue(TEXT("Formal Hand card can be prepared again"), Fixture.AddFormalCard(Snapshot))) return false;
 	Historical = Fixture.Hand->GetChildAt(0);
 	const FPresentationPlaybackToken FinishToken = MakeToken(1, 2);
+	const FPresentationPlaybackToken StaleFinishToken = MakeToken(1, 99);
 	TestTrue(TEXT("Second generic transfer starts"), Fixture.HUD->PlayPresentationRecord(Record, FinishToken));
-	Fixture.World->GetTimerManager().Tick(0.6f);
-	TestEqual(TEXT("Finish collapses exact historical Hand visual until reducer refresh"), Historical->GetVisibility(), ESlateVisibility::Collapsed);
-	TestEqual(TEXT("Finish removes transient moving card"), Fixture.PlayArea->GetChildrenCount(), 0);
+	Fixture.HUD->FinishSharedHandToDrawPilePresentationForTesting(StaleFinishToken);
+	TestEqual(TEXT("Stale Finish keeps historical Hand card hidden"), Historical->GetVisibility(), ESlateVisibility::Hidden);
+	TestEqual(TEXT("Stale Finish keeps transient moving card"), Fixture.PlayArea->GetChildrenCount(), 1);
+
+	Fixture.HUD->FinishSharedHandToDrawPilePresentationForTesting(FinishToken);
+	TestEqual(TEXT("Exact Finish collapses historical Hand visual until reducer refresh"), Historical->GetVisibility(), ESlateVisibility::Collapsed);
+	TestEqual(TEXT("Exact Finish removes transient moving card"), Fixture.PlayArea->GetChildrenCount(), 0);
 	TestEqual(TEXT("Finish still does not mutate frozen DrawCount directly"), Fixture.ViewModel->DrawCount, 4);
 	FTSTicker::GetCoreTicker().Tick(0.0f);
 	return true;
