@@ -52,6 +52,13 @@ public:
 	// Battle selection request facade using RuntimeId only; the ViewModel never
 	// stores authoritative candidate UObject pointers.
 	bool HasPendingCardSelection() const;
+
+	// Fail-closed authority probe only. Unlike HasPendingCardSelection/TryGet..., this
+	// intentionally does not require the displayed Presentation revision to have
+	// caught up. It must never be used to expose candidate identities or enable UI;
+	// it exists solely to prevent a real pending Gameplay selection from falling
+	// through into ordinary card-play input during the boundary catch-up window.
+	bool HasAuthoritativePendingCardSelection() const;
 	bool TryGetPendingCardSelectionReadView(FPendingCardSelectionReadView& OutView) const;
 	bool IsPendingCardSelectionCandidate(int32 RuntimeId) const;
 	bool SubmitPendingCardSelectionByRuntimeIds(const TArray<int32>& RuntimeIds);
