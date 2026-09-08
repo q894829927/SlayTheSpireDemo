@@ -24,6 +24,15 @@ void UBattleHUDSelectionWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	if (!EnsureSelectionAreaHost())
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[BattleHUD][G0-C] SelectionAreaHost could not be created for '%s'."),
+			*GetPathName());
+	}
+
 	if (IsValid(Btn_Confirm))
 	{
 		Btn_Confirm->OnClicked.RemoveDynamic(
@@ -68,6 +77,12 @@ void UBattleHUDSelectionWidget::NativeDestruct()
 	}
 
 	CancelSharedHandToDrawPilePresentation();
+	if (IsValid(SelectionAreaHost))
+	{
+		SelectionAreaHost->ClearChildren();
+		SelectionAreaHost->RemoveFromParent();
+		SelectionAreaHost = nullptr;
+	}
 	Super::NativeDestruct();
 }
 
@@ -86,6 +101,40 @@ bool UBattleHUDSelectionWidget::SelectCard(int32 RuntimeId, bool bAllowFastPrese
 	RefreshSharedSelectionPresentation();
 	UpdateSelectionCardPositions();
 	return bAccepted;
+}
+
+bool UBattleHUDSelectionWidget::EnsureSelectionAreaHost()
+{
+	if (IsValid(SelectionAreaHost))
+	{
+		return true;
+	}
+
+	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
+	if (!IsValid(Root) || !IsValid(WidgetTree))
+	{
+		return false;
+	}
+
+	SelectionAreaHost = WidgetTree->ConstructWidget<UOverlay>(
+		UOverlay::StaticClass(),
+		TEXT("SelectionAreaHost_Runtime"));
+	if (!IsValid(SelectionAreaHost))
+	{
+		return false;
+	}
+
+	UCanvasPanelSlot* HostSlot = Root->AddChildToCanvas(SelectionAreaHost);
+	if (!IsValid(HostSlot))
+	{
+		SelectionAreaHost = nullptr;
+		return false;
+	}
+
+	HostSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
+	HostSlot->SetOffsets(FMargin(0.0f));
+	SelectionAreaHost->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+	return true;
 }
 
 void UBattleHUDSelectionWidget::SetPlayedCardSelectionHidden(bool bHidden)
@@ -109,6 +158,8 @@ void UBattleHUDSelectionWidget::SetSelectionLayoutActive(bool bActive)
 		SelectionOriginalZOrders.Reset();
 		return;
 	}
+
+	EnsureSelectionAreaHost();
 	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
 	if (!Root || !SelectionOriginalZOrders.IsEmpty()) return;
 	if (!SelectionBackdrop)
@@ -121,11 +172,11 @@ void UBattleHUDSelectionWidget::SetSelectionLayoutActive(bool bActive)
 	}
 	int32 BackdropZ = 0;
 	for (UWidget* Child : Root->GetAllChildren())
-		if (Child != SelectionBackdrop)
+		if (Child != SelectionBackdrop && Child != SelectionAreaHost)
 			if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Child->Slot)) BackdropZ = FMath::Max(BackdropZ, CanvasSlot->GetZOrder());
 	CastChecked<UCanvasPanelSlot>(SelectionBackdrop->Slot)->SetZOrder(BackdropZ + 1);
 	SelectionBackdrop->SetVisibility(ESlateVisibility::HitTestInvisible);
-	const TArray<UWidget*> Foreground = { HB_Hand, Btn_Confirm, Btn_Cancel, Txt_Feedback };
+	const TArray<UWidget*> Foreground = { HB_Hand, SelectionAreaHost, Btn_Confirm, Btn_Cancel, Txt_Feedback };
 	for (UWidget* Surface : Foreground)
 	{
 		if (!Surface) continue;
@@ -173,153 +224,8 @@ void UBattleHUDSelectionWidget::UpdateSelectionCardPositions()
 
 void UBattleHUDSelectionWidget::NativeOnBattleHUDViewModelChanged()
 {
-	if (!IsValid(ViewModel))
-	{
-		RefreshHUDFromViewModel();
-		RefreshSharedSelectionPresentation();
-		return;
-	}
-
-	const EBattleHUDDirtyFlags DirtyFlags = ViewModel->GetLastChangeFlags();
-	if (DirtyFlags == EBattleHUDDirtyFlags::All)
-	{
-		RefreshHUDFromViewModel();
-	}
-	else
-	{
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Hand))
-		{
-			RefreshHand();
-		}
-		if (EnumHasAnyFlags(
-			DirtyFlags,
-			EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input))
-		{
-			RefreshCombatants();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Statuses))
-		{
-			RefreshStatusRows();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Energy))
-		{
-			RefreshEnergy();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PileCounts))
-		{
-			RefreshPileCounts();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Input))
-		{
-			RefreshInputState();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Feedback))
-		{
-			RefreshFeedback();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Intent))
-		{
-			RefreshEnemyIntent();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Terminal))
-		{
-			RefreshTerminalFromViewModel();
-		}
-		if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PresentationAvailability))
-		{
-			RefreshPresentationAvailabilityFromViewModel();
-		}
-	}
+	Super::NativeOnBattleHUDViewModelChanged();
 	RefreshSharedSelectionPresentation();
-}
-
-void UBattleHUDSelectionWidget::RefreshHand()
-{
-	if (!IsValid(ViewModel) || !IsValid(HB_Hand) || CardWidgetClass == nullptr)
-	{
-		return;
-	}
-
-	TSet<int32> DesiredRuntimeIds;
-	DesiredRuntimeIds.Reserve(ViewModel->HandCards.Num());
-	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
-	{
-		if (CardView.RuntimeId == INDEX_NONE || DesiredRuntimeIds.Contains(CardView.RuntimeId))
-		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("G0-B Hand reconcile rejected invalid/duplicate RuntimeId %d."),
-				CardView.RuntimeId);
-			Super::RefreshHand();
-			return;
-		}
-		DesiredRuntimeIds.Add(CardView.RuntimeId);
-	}
-
-	TMap<int32, UBattleCardWidget*> ExistingByRuntimeId;
-	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
-	{
-		UBattleCardWidget* Existing = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
-		if (!IsValid(Existing)
-			|| Existing->GetRuntimeId() == INDEX_NONE
-			|| ExistingByRuntimeId.Contains(Existing->GetRuntimeId()))
-		{
-			UE_LOG(LogTemp, Error, TEXT("G0-B Hand reconcile found malformed formal Hand children."));
-			Super::RefreshHand();
-			return;
-		}
-		ExistingByRuntimeId.Add(Existing->GetRuntimeId(), Existing);
-	}
-
-	TArray<UBattleCardWidget*> DesiredWidgets;
-	DesiredWidgets.Reserve(ViewModel->HandCards.Num());
-	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
-	{
-		UBattleCardWidget* CardWidget = nullptr;
-		if (UBattleCardWidget** Existing = ExistingByRuntimeId.Find(CardView.RuntimeId))
-		{
-			CardWidget = *Existing;
-		}
-		else
-		{
-			CardWidget = CreateWidget<UBattleCardWidget>(GetOwningPlayer(), CardWidgetClass);
-		}
-		if (!IsValid(CardWidget))
-		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("G0-B Hand reconcile could not create RuntimeId %d (%s)."),
-				CardView.RuntimeId,
-				*CardView.CardId.ToString());
-			Super::RefreshHand();
-			return;
-		}
-		DesiredWidgets.Add(CardWidget);
-	}
-
-	for (UWidget* Child : HB_Hand->GetAllChildren())
-	{
-		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child))
-		{
-			CardWidget->OnBattleCardRequested.RemoveDynamic(
-				this,
-				&UBattleHUDWidget::HandleCardRequested);
-		}
-	}
-	HB_Hand->ClearChildren();
-
-	for (int32 Index = 0; Index < ViewModel->HandCards.Num(); ++Index)
-	{
-		UBattleCardWidget* CardWidget = DesiredWidgets[Index];
-		const FBattleHUDCardView& CardView = ViewModel->HandCards[Index];
-		CardWidget->SetCardView(CardView);
-		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
-			this,
-			&UBattleHUDWidget::HandleCardRequested);
-		HB_Hand->AddChildToHorizontalBox(CardWidget);
-	}
 }
 
 bool UBattleHUDSelectionWidget::BeginPresentationRecordPlayback_Implementation(
@@ -363,8 +269,6 @@ void UBattleHUDSelectionWidget::CancelPresentationRecordPlayback_Implementation(
 {
 	if (bSharedTransferActive && Token == SharedTransferToken)
 	{
-		// Preserve Native skip cleanup of the retained played-card visual as well
-		// as this subclass's transfer. A catch-up must not leave a played card behind.
 		Super::CancelPresentationRecordPlayback_Implementation(Token);
 		CancelSharedHandToDrawPilePresentation();
 		return;
@@ -380,10 +284,6 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked()
 		return;
 	}
 
-	// Authoritative pending selection is a fail-closed input boundary. Candidate
-	// identities and confirmation remain gated by the displayed Presentation
-	// revision, but an unreadable pending request must never fall through to the
-	// ordinary card-play Confirm path.
 	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
 		if (ViewModel->HasPendingCardSelection())
@@ -425,10 +325,6 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareCancelClicked()
 		return;
 	}
 
-	// Same fail-closed rule as Confirm: while Gameplay owns a pending selection,
-	// Cancel may operate only through the readable selection request. It must not
-	// cancel a normal card-play selection merely because Presentation is one edge
-	// behind the authoritative request.
 	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
 		if (ViewModel->HasPendingCardSelection())
@@ -535,9 +431,6 @@ void UBattleHUDSelectionWidget::ResetSharedSelectionCardVisuals()
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
 		{
 			CardWidget->SetPendingSelectionPresentation(false, false, false);
-			// Keep confirmed cards where they are. The committed zone record owns
-			// the next visual: DrawPile creates a transfer copy from this position,
-			// while Exhaust fades this formal Hand widget in place.
 			if (!ConfirmedCardCenters.Contains(CardWidget->GetRuntimeId()))
 			{
 				CardWidget->SetRenderTranslation(FVector2D::ZeroVector);
