@@ -85,6 +85,16 @@ bool UBattleHUDWidget::SelectCard(
 		return bAccepted;
 	}
 
+	// Gameplay may already be authoritatively waiting for this card selection
+	// while the displayed Presentation revision is still catching up to the
+	// interactive boundary. In that window candidates are intentionally hidden,
+	// but ordinary card-play input must also be blocked. Never reinterpret a
+	// selection click as a new play command merely because the read view is gated.
+	if (ViewModel->HasAuthoritativePendingCardSelection())
+	{
+		return false;
+	}
+
 	if (!bAllowFastPresentationCatchUp)
 	{
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
@@ -152,11 +162,11 @@ void UBattleHUDWidget::RetryPendingFastCardSelection()
 		return;
 	}
 
-	if (ViewModel->HasPendingCardSelection())
+	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
 		// The click that fast-forwarded the preceding Presentation ends at the
-		// interaction-state transition. It must not be retried as the first click
-		// of the newly exposed player Selection.
+		// interaction-state transition. A real pending selection blocks ordinary
+		// play whether or not its displayed read view has caught up yet.
 		return;
 	}
 
