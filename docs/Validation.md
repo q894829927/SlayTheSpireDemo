@@ -38,9 +38,24 @@ without a Canvas WidgetTree root: dormant SelectionAreaHost could not be created
 Its Confirm routing assertions passed; this fixture does not establish production
 Host geometry/visual acceptance. G0's 8 tests now have passing evidence, including
 DrawAdoption; R8 sequential draw and the four Selection Presentation tests passed.
-`git diff --check` PASS. **MANUAL PIE — USER ACTION REQUIRED:** perform the focused
-L_BattleTest draw/play and Warcry candidate interaction described in the execution
-record. No new PIE/Blueprint visual/packaged acceptance claimed.
+`git diff --check` PASS.
+
+**MANUAL PIE GATE: PASS / USER CONFIRMED 2026-09-09.** The user completed the
+focused Native `/Game/SlayTheSpireDemo/Maps/L_BattleTest` draw/play and Warcry
+candidate interaction required by the G0 execution record and confirmed:
+
+```text
+[x] newly drawn card remains clickable after Draw Presentation completes
+[x] newly drawn affordable card can be played normally
+[x] no duplicate Hand card / duplicate formal slot observed
+[x] Warcry newly drawn card is available as a Selection candidate
+[x] select / deselect / reselect / explicit Confirm flow works normally
+[x] input is restored after the full Presentation / Selection flow completes
+```
+
+This closes the remaining G0 manual Gate. G0-A/B/C are **COMPLETE / VALIDATED /
+SEALED**. This acceptance does not claim later G1+ PresentationGroup behavior or
+production SelectionArea ownership migration.
 
 ## Selection Presentation production repair — 2026-09-08
 
