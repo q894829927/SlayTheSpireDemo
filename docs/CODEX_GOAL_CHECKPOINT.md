@@ -23,6 +23,14 @@ G8 — SEPARATE DEFERRED INITIATIVE / NOT IMPLEMENTED / NOT AUTHORIZED
 
 Do **not** resume from G1-G7. Do not automatically begin G8.
 
+Current-status amendment for older design/summary banners:
+
+```text
+docs/SelectionPresentationG7SealAmendment.md
+```
+
+That amendment supersedes only stale stage/status/resume wording such as `G6 NEXT ACTIVE`; it does not replace the durable architecture contracts in the original constraints/design/implementation documents.
+
 ## G6 final authority
 
 Dedicated record:
@@ -51,10 +59,11 @@ Final G6 evidence:
 
 ## G7 final authority
 
-Dedicated record:
+Execution/seal record and final validation record:
 
 ```text
 docs/SelectionPresentationG7Execution.md
+docs/SelectionPresentationG7Validation.md
 ```
 
 The G7 audit proved that the high-risk pre-G5 compatibility targets had already been removed from production Source during the coherent G4+G5 migration:
@@ -188,6 +197,7 @@ Selection Presentation:
 docs/CardSelectionPresentationConstraints.md
 docs/SelectionPresentationGroupDesign.md
 docs/SelectionPresentationGroupImplementationPlan.md
+docs/SelectionPresentationG7SealAmendment.md
 docs/SelectionPresentationG0Execution.md
 docs/SelectionPresentationG1Execution.md
 docs/SelectionPresentationG2Execution.md
@@ -196,6 +206,7 @@ docs/SelectionPresentationG4Execution.md
 docs/SelectionPresentationG5Execution.md
 docs/SelectionPresentationG6Execution.md
 docs/SelectionPresentationG7Execution.md
+docs/SelectionPresentationG7Validation.md
 docs/ValidationExecutionPolicy.md
 docs/Validation.md
 ```
@@ -217,6 +228,6 @@ docs/CardExpansionWave1CC1ConfigurableDrawPileTopAmendment.md
 
 When work resumes, first identify the newly authorized goal instead of continuing Selection Presentation automatically.
 
-For any Selection Presentation regression, read the G6/G7 execution records plus the durable constraints/design documents and preserve the sealed G0-G7 invariants. For new G8 work, require explicit authorization before implementation.
+For any Selection Presentation regression, read the G6/G7 execution records plus the durable constraints/design documents and the G7 seal amendment, and preserve the sealed G0-G7 invariants. For new G8 work, require explicit authorization before implementation.
 
 Historical execution/design files may contain stage labels that were correct when those documents were written. Current forward status is: **Selection Presentation G0-G7 sealed; G8 deferred.**
