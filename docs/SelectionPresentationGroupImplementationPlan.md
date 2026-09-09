@@ -5,12 +5,13 @@ Date: **2026-09-09**
 Status:
 
 ```text
-PLANNED / OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
-COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
-G8 EARLY-INPUT / PRESENTATION-PIPELINING PHASE PLANNED /
+OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
+COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT IMPLEMENTED /
 UI-FOUNDATION-FIRST / BEHAVIOR-SAFE STAGING /
-G0 A/B/C IMPLEMENTED / AUTOMATED GATES HAVE PASSING EVIDENCE /
-G0 MANUAL PIE PENDING / G1-G8 PLANNED / NOT SEALED
+G0-G5 COMPLETE / VALIDATED / SEALED /
+G6 N-CHILD GROUP PLAYBACK NEXT ACTIVE / NOT IMPLEMENTED /
+G7 CLEANUP AFTER G6 /
+G8 EARLY-INPUT / PRESENTATION-PIPELINING SEPARATE LATER INITIATIVE
 ```
 
 Related contracts:
@@ -23,32 +24,24 @@ Related contracts:
 
 ## Current code baseline and next delivery
 
-Code review base: `ce36e56bd540a3e6c9cf977aa353e71f2054b081` (2026-09-09).
-G0 implementation/evidence: `docs/SelectionPresentationG0Execution.md` and
-`docs/Validation.md`. These are execution/evidence records, not new global rules.
-The Group design's implementation-baseline table records the inspected code.
+Original design review base: `ce36e56bd540a3e6c9cf977aa353e71f2054b081` (2026-09-09). That baseline is historical. Current execution evidence is split across `docs/SelectionPresentationG0Execution.md` through `docs/SelectionPresentationG5Execution.md` and `docs/Validation.md`.
 
-Do not reimplement G0. Its dirty propagation, Battle-scoped Hand reuse and
-completed-draw adoption are active; ownership APIs and SelectionAreaHost are
-dormant. G0 Automation does not establish production Host layout, transactional
-multi-surface updates, Confirm outcome correlation or Controller completion wiring.
+G0-G3 are complete, validated and sealed. G4's isolated Hand-position compatibility path failed visual PIE and remains historical; the permitted coherent G4+G5 migration then activated persistent SelectionArea ownership, exact same-object SingleRecord consumption and transactional outcome/recovery handling. The combined G4+G5 production path passed automated gates and the user-confirmed Native `L_BattleTest` visual gate on 2026-09-09 with no flashback, duplicate, ghost, clipping or stuck input.
 
 Recommended delivery checkpoints, retaining G0-G8 numbering:
 
-| Checkpoint | Required result | Evidence before advancing |
+| Checkpoint | Current status | Required result / evidence |
 |---|---|---|
-| Current G0 closure | Newly drawn cards can be clicked/played and selected in Warcry | Existing automated evidence plus outstanding focused manual PIE; no blind rerun |
-| G1-G3 protocol foundation | Exact choice/outcome correlation, validated metadata, exact completion and scoped recovery; visible behavior stays serial | Focused correlation/Controller/token tests, Editor build |
-| G4-G5 sequential ownership | Generic existing destinations consume durable SelectionArea; rejected Confirm and no-record outcomes recover | Focused automation plus select/deselect/Confirm/Warcry/multi-select sequential PIE |
-| G6-G7 Group delivery | Transactional parallel children with correct sequential fallback; remove proven-obsolete compatibility paths | Group/order/failure tests plus parallel/no-flash PIE |
-| G8 separate initiative | Measurable input latency improvement using a narrow cosmetic allowlist | Dedicated lifetime/resource contract and overlap tests before activation |
+| G0 closure | COMPLETE / VALIDATED / SEALED | Incremental dirty propagation, RuntimeId Hand reuse, dormant ownership foundation, manual draw/selection PIE |
+| G1-G3 protocol foundation | COMPLETE / VALIDATED / SEALED | Exact choice/outcome correlation, metadata, exact completion, playback-unit hardening and scoped recovery |
+| G4-G5 sequential ownership | COMPLETE / VALIDATED / SEALED as coherent production delivery | Generic destinations consume durable SelectionArea; rejected Confirm/no-record paths recover; sequential PIE has no flashback/duplicate/ghost/clipping/stuck input |
+| G6 Group delivery | **NEXT ACTIVE** | Transactional N-child parallel children with correct sequential fallback, ConsumedPendingReducer lifecycle, focused Group/order/failure tests plus simultaneous/no-flash PIE |
+| G7 cleanup | AFTER G6 | Remove only proven-obsolete compatibility paths after G6 equivalence and recovery are demonstrated |
+| G8 separate initiative | DEFERRED | Measurable input latency improvement using a narrow cosmetic allowlist; dedicated lifetime/resource contract and overlap tests before activation |
 
-The next implementation slice is dormant G1 outcome correlation and metadata,
-using existing G0 automated evidence. Outstanding G0 PIE does not block that
-non-visual work, but must be resolved before dependent production activation.
-G4/G5 is the first visible correctness milestone; G6 is an
-optimization over it. G8 and optional Status reconciliation do not expand this
-critical path. This review edits documentation only and does not start these stages.
+Resume from **G6**, not G1/G2/G4/G5. The sealed sequential G5 path is the mandatory fallback and regression baseline. G6 adds concurrency only; it must not change Gameplay mutation order, trigger/event order or chronological reducer order. G8 and optional Status reconciliation do not expand the G6 critical path.
+
+The detailed G0-G5 sections below are retained as historical stage specifications and durable design rationale. Their future-tense wording describes what each stage was required to establish; current completion status is governed by the status block above and the dedicated execution records.
 
 ## 1. Objective
 
@@ -64,18 +57,7 @@ Hand
 
 is the stable visual-ownership lifecycle, and a validated explicit Selection Presentation Group can run N selected-card destination animations concurrently without changing Gameplay or reducer chronology.
 
-The initiative addresses the UI issues behind the multi-select flashback; G0 has
-already implemented the first two foundations below, while later items remain:
-
-- coarse whole-HUD refresh;
-- recreate-all Hand reconciliation;
-- visual identity coupled to array index;
-- Selection Widget owning destination animation;
-- globally single-instance card animation state;
-- implicit recovery scope;
-- historical state and transient interaction/ownership lifecycle coupled too tightly.
-
-A later G8 phase builds on that foundation to permit a new legal player request while older explicitly NonBlocking visual work is still running.
+G0-G5 have now established the identity, correlation, recovery, generic transition and production SelectionArea ownership prerequisites. The remaining primary objective is G6 parallel Group playback, followed by G7 cleanup. A later G8 phase builds on that foundation to permit a new legal player request while older explicitly NonBlocking visual work is still running.
 
 ## 2. Staging rule
 
@@ -1001,31 +983,32 @@ This plan does not authorize:
 
 ## 17. Start condition
 
-Resume from the implemented G0 baseline, not from G0-A again. Record the remaining
-G0 manual draw/play and Warcry candidate-interaction result before dependent
-production activation; the existing automated results remain valid unless affected.
+Current resume point is **G6**. Do not re-run or reimplement G0-G5 merely because this plan retains their historical stage specifications.
 
-G0's focused lifecycle evidence is the foundation for G1:
+Sticky current foundation:
 
 ```text
-completion watermark semantics
-ownership dirty/event semantics
-snapshot-copy separation
-stale lifecycle rejection
-zero-member/no-history reconciliation
+G0-G3 protocol / ownership / recovery foundation — SEALED
+G4 generic SingleRecord transition engine — accepted through coherent G4+G5 production path
+G5 persistent SelectionArea ownership + transactional Confirm/outcome recovery — SEALED
+G4+G5 Native sequential visual gate — PASS
 ```
 
-Those are infrastructure tests. Exact real-request correlation, production
-Controller completion/recovery, Confirm rejection and Host visual transactions
-remain G1/G3/G5 integration obligations; do not label them complete from G0 alone.
+G6 must build on that exact production path:
 
-Do not start visible Group playback first. The UI identity/reconciliation foundation must be stable before parallel playback is enabled.
+```text
+validated semantic Group discovery from G2
++ playback-unit/recovery protocol from G3
++ generic per-child transition engine from G4
++ exact persistent SelectionArea objects from G5
+→ transactional N-child same-tick playback
+→ ConsumedPendingReducer ownership for visually completed future members
+→ sequential G5 fallback on any unsafe/declined Group
+```
 
-G8 does not block G0-G7. It begins only after the G0-G7 production path has fresh build/Automation/PIE evidence and the generic multi-instance transition/ownership system is stable enough to support overlapping jobs.
+Do not start G7 broad cleanup before G6 equivalence/fallback is proven. Do not start G8 as part of G6; G8 changes visual-job lifetime and input readiness and requires its own acceptance contract.
 
-Use applicable evidence reuse rules rather than unconditional full reruns. Before
-G8 implementation, write a dedicated acceptance contract for the lifetime
-amendment in Group design section 30.5 and choose a measured latency scenario.
+Use applicable evidence reuse rules rather than unconditional full reruns. G6 requires fresh affected build/Automation evidence and manual simultaneous/no-flash PIE because it changes production visible concurrency.
 
 ## 18. G8 — Presentation Pipelining / Early Input
 
