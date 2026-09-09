@@ -5,7 +5,16 @@ Date: **2026-09-08**
 Status:
 
 ```text
-USER-AUTHORIZED AMENDMENT / IMPLEMENTATION ACTIVE / PRESENTATION CONTRACT UPDATED
+USER-AUTHORIZED AMENDMENT / IMPLEMENTED / MERGED TO main VIA PR #18
+PRESENTATION CONTRACT SUPERSEDED INTO SHARED G5 OWNERSHIP PATH
+FINAL STANDALONE C1 SEAL NOT RECORDED
+```
+
+Merge evidence:
+
+```text
+PR #18
+ffbc164905a875bea5c9ab3dfe0a07df5068b8cc
 ```
 
 This amendment supersedes the fixed-exact-one count statements and any earlier C1 Presentation statement that requires an in-place Hand→DrawPileTop fade in:
@@ -20,7 +29,7 @@ The shared player-selection Presentation contract is now defined by:
 docs/CardSelectionPresentationConstraints.md
 ```
 
-That document is authoritative for Selection UI confirmation, selected-card visual handoff, destination animation ownership, input-transition consumption, and reuse rules.
+That document is authoritative for Selection UI confirmation, selected-card visual handoff, destination animation ownership, input-transition consumption, and reuse rules. The G4+G5 production SelectionArea path was subsequently user-validated and sealed; this amendment therefore remains the C1 configuration/Gameplay contract while the shared G5/G6 documents own current visual-lifecycle status.
 
 The user explicitly requires the reusable Effect itself to support a Blueprint-authored number of selected Hand cards.
 
@@ -257,7 +266,7 @@ This amendment does not itself authorize automatic modification of user-owned pr
 
 ## Updated C1 acceptance points
 
-C1 Presentation work is not complete until focused tests and PIE verify:
+The durable C1 acceptance contract remains:
 
 - Draw is visibly presented before Selection becomes interactive;
 - newly drawn legal Hand cards are selectable;
@@ -271,5 +280,7 @@ C1 Presentation work is not complete until focused tests and PIE verify:
 - no dedicated Warcry Exhaust/fade animation is added;
 - normal later Effects / FinishCardPlay continue after the Selection continuation;
 - Gameplay remains authoritative under Presentation skip/degradation according to the shared constraints.
+
+Recorded repository evidence includes C1 implementation merged by PR #18, Development Editor build PASS and the focused `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` 7/7 Automation boundary review. The later G4+G5 user PIE acceptance also confirms the shared exact visible SelectionArea→DrawPile transition has no flashback/duplicate/ghost/clipping/stuck-input regression. These facts must not be conflated with a standalone final C1 seal: no dedicated final C1 user-seal record is currently present.
 
 No Build, Automation, or PIE gate may be marked PASS without actual execution evidence.
