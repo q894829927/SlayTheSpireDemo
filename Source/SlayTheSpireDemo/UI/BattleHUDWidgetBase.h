@@ -8,6 +8,28 @@
 class UBattleHUDViewModel;
 class UBattlePresentationController;
 
+struct SLAYTHESPIREDEMO_API FTrackedPresentationPlaybackUnit
+{
+	FPresentationPlaybackToken Token;
+	FPresentationGroupTag Group;
+	TArray<int32> RecordIndices;
+
+	bool IsValid() const
+	{
+		if (!Token.IsValid())
+		{
+			return false;
+		}
+		if (Token.UnitKind == EPresentationPlaybackUnitKind::SingleRecord)
+		{
+			return Token.GroupId == 0;
+		}
+		return Group.IsValid()
+			&& Token.GroupId == Group.GroupId
+			&& RecordIndices.Num() == Group.ExpectedMemberCount;
+	}
+};
+
 UCLASS(Abstract, Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDWidgetBase : public UUserWidget
 {
@@ -47,15 +69,35 @@ public:
 		const FStatusChangedPresentationPayload& StatusChanged
 	) const;
 
-	// Controller-facing wrapper. It tracks the exact Token before entering
-	// Blueprint so timeout/collapse/unavailable paths can cancel only the currently
-	// offered presentation visual. Returning false means immediate native fallback.
+	// Controller-facing SingleRecord wrapper. It tracks the exact Token before
+	// entering Blueprint so timeout/recovery/unavailable paths can cancel only the
+	// currently offered presentation visual. Returning false means immediate native fallback.
 	bool PlayPresentationRecord(
 		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token,
+		int32 RecordIndex = INDEX_NONE
+	);
+
+	// Dormant G3 hardening boundary for future G6 playback. Production Controller
+	// does not call this during G3. Group hooks remain C++-only so no Blueprint
+	// asset contract is introduced before Group-visible playback is authorized.
+	bool PlayPresentationGroup(
+		const TArray<FPresentationRecord>& Records,
+		const FPresentationGroupTag& Group,
+		const TArray<int32>& RecordIndices,
 		const FPresentationPlaybackToken& Token
 	);
 
-	// Blueprint override point used by the controller-facing wrapper above.
+	// Exact-token cancellation never clears a newer tracked Record/Group unit.
+	bool CancelTrackedPresentationPlayback(
+		const FPresentationPlaybackToken& ExpectedToken
+	);
+	bool HasTrackedPresentationPlayback() const { return bHasTrackedPresentationPlayback; }
+	FPresentationPlaybackToken GetTrackedPresentationToken() const { return TrackedPresentationPlaybackUnit.Token; }
+	EPresentationPlaybackUnitKind GetTrackedPresentationUnitKind() const { return TrackedPresentationPlaybackUnit.Token.UnitKind; }
+	TArray<int32> GetTrackedPresentationRecordIndices() const { return TrackedPresentationPlaybackUnit.RecordIndices; }
+
+	// Blueprint override point used by the controller-facing SingleRecord wrapper.
 	// Return true only when Blueprint actually started asynchronous playback and
 	// will later call NotifyPresentationFinished(Token). The native default returns
 	// false, providing the A2A missing-callback immediate fallback without asset edits.
@@ -69,6 +111,14 @@ public:
 		const FPresentationPlaybackToken& Token
 	);
 
+	// C++-only dormant Group override point. Returning false means zero Group
+	// visual ownership was accepted.
+	virtual bool BeginPresentationGroupPlayback(
+		const TArray<FPresentationRecord>& Records,
+		const FPresentationGroupTag& Group,
+		const FPresentationPlaybackToken& Token
+	);
+
 	// Presentation-only visual cancellation hook. Blueprint should stop only the
 	// visual/transient state belonging to this Token. It must NOT call
 	// NotifyPresentationFinished from this cancellation event. The base class
@@ -77,6 +127,12 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Battle Presentation", meta = (DisplayName = "Cancel Presentation Record Playback"))
 	void CancelPresentationRecordPlayback(const FPresentationPlaybackToken& Token);
 	virtual void CancelPresentationRecordPlayback_Implementation(
+		const FPresentationPlaybackToken& Token
+	);
+
+	// C++-only dormant Group cancellation counterpart.
+	virtual void CancelPresentationGroupPlayback(
+		const FPresentationGroupTag& Group,
 		const FPresentationPlaybackToken& Token
 	);
 
@@ -125,10 +181,13 @@ private:
 
 	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);
 	void CancelTrackedPresentationPlayback();
-	void ClearTrackedPresentationPlayback(const FPresentationPlaybackToken& Token);
+	bool ClearTrackedPresentationPlayback(const FPresentationPlaybackToken& Token);
+	void DispatchTrackedPresentationCancellation(
+		const FTrackedPresentationPlaybackUnit& Unit
+	);
 
 	bool bHasTrackedPresentationPlayback = false;
-	FPresentationPlaybackToken TrackedPresentationPlaybackToken;
+	FTrackedPresentationPlaybackUnit TrackedPresentationPlaybackUnit;
 	EBattleHUDDirtyFlags CurrentNativeViewModelDirtyFlags = EBattleHUDDirtyFlags::All;
 
 	// Prevents a normal completion/explicit Skip from being interpreted as a

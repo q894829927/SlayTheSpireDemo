@@ -321,6 +321,13 @@ struct SLAYTHESPIREDEMO_API FResolutionFaultPresentationPayload
 	FName LastActionName = NAME_None;
 };
 
+UENUM(BlueprintType)
+enum class EPresentationPlaybackUnitKind : uint8
+{
+	SingleRecord UMETA(DisplayName = "Single Record"),
+	Group UMETA(DisplayName = "Group")
+};
+
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationPlaybackToken
 {
@@ -338,12 +345,34 @@ struct SLAYTHESPIREDEMO_API FPresentationPlaybackToken
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation")
 	int64 LocalPlaybackGeneration = 0;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Playback Unit")
+	EPresentationPlaybackUnitKind UnitKind = EPresentationPlaybackUnitKind::SingleRecord;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Playback Unit")
+	int64 GroupId = 0;
+
+	bool IsValid() const
+	{
+		if (BattleId <= 0
+			|| ResolutionId <= 0
+			|| PresentationSequence <= 0
+			|| LocalPlaybackGeneration <= 0)
+		{
+			return false;
+		}
+		return UnitKind == EPresentationPlaybackUnitKind::SingleRecord
+			? GroupId == 0
+			: GroupId > 0;
+	}
+
 	bool operator==(const FPresentationPlaybackToken& Other) const
 	{
 		return BattleId == Other.BattleId
 			&& ResolutionId == Other.ResolutionId
 			&& PresentationSequence == Other.PresentationSequence
-			&& LocalPlaybackGeneration == Other.LocalPlaybackGeneration;
+			&& LocalPlaybackGeneration == Other.LocalPlaybackGeneration
+			&& UnitKind == Other.UnitKind
+			&& GroupId == Other.GroupId;
 	}
 
 	bool operator!=(const FPresentationPlaybackToken& Other) const

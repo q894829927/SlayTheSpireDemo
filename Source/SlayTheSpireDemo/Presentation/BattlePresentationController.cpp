@@ -403,6 +403,7 @@ bool UBattlePresentationController::Initialize(
 void UBattlePresentationController::Shutdown()
 {
 	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
 	if (ABattleManager* Battle = BattleManager.Get())
 	{
 		Battle->OnPresentationResolutionReady.RemoveAll(this);
@@ -436,6 +437,14 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 	}
 
 	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
+	UBattleHUDWidgetBase* PreviousWidget = Widget;
+	if (bHadInFlightPresentation
+		&& bWaitingForCompletion
+		&& IsValid(PreviousWidget))
+	{
+		PreviousWidget->CancelTrackedPresentationPlayback(ActivePlaybackToken);
+	}
+
 	Widget = InWidget;
 	if (bHadInFlightPresentation)
 	{
@@ -454,6 +463,13 @@ void UBattlePresentationController::NotifyPresentationFinished(const FPresentati
 	}
 
 	CancelActiveTimeout();
+	if (Token.UnitKind == EPresentationPlaybackUnitKind::Group)
+	{
+		// G3 does not enable production Group playback. A Group completion on the
+		// common surface must recover the whole ActiveEnvelope, never leader-only.
+		ReconcileActiveEnvelopeToFinalSnapshot();
+		return;
+	}
 	CompleteActiveRecord();
 }
 
@@ -472,6 +488,7 @@ void UBattlePresentationController::SkipPresentation()
 	}
 
 	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
 
 	const FPresentationResolutionEnvelope* Newest = nullptr;
@@ -487,6 +504,7 @@ void UBattlePresentationController::SkipPresentation()
 	if (Newest)
 	{
 		ApplyDisplayedSnapshot(Newest->FinalSnapshot, false);
+		MarkEntireBacklogCompletedExact(nullptr);
 		LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Newest->ResolutionId);
 	}
 
@@ -577,7 +595,7 @@ void UBattlePresentationController::HandlePresentationResolutionReady(const FPre
 	const int32 CurrentBacklogCount = PlaybackQueue.Num() + (bHasActiveEnvelope ? 1 : 0);
 	if (CurrentBacklogCount >= MaxPlaybackEnvelopes)
 	{
-		CollapseToEnvelope(Envelope);
+		CollapseEntireBacklogToEnvelope(Envelope);
 		return;
 	}
 
@@ -621,13 +639,13 @@ void UBattlePresentationController::StartNextEnvelope()
 	bHasActiveEnvelope = true;
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
+	ActivePlaybackToken = FPresentationPlaybackToken{};
 
 	if (!bHasDisplayedPresentationSnapshot
 		|| DisplayedPresentationSnapshot.BattleId != ActiveEnvelope.BattleId
 		|| !ValidateTerminalEnvelopeShape(ActiveEnvelope))
 	{
-		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-		CollapseToEnvelope(FallbackEnvelope);
+		ReconcileActiveEnvelopeToFinalSnapshot();
 		return;
 	}
 
@@ -657,8 +675,7 @@ void UBattlePresentationController::StartNextRecord()
 		|| Record.ResolutionId != ActiveEnvelope.ResolutionId
 		|| Record.PresentationSequence <= 0)
 	{
-		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-		CollapseToEnvelope(FallbackEnvelope);
+		ReconcileActiveEnvelopeToFinalSnapshot();
 		return;
 	}
 
@@ -683,16 +700,14 @@ void UBattlePresentationController::StartNextRecord()
 	{
 		if (!bHasWorkingPresentationSnapshot)
 		{
-			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-			CollapseToEnvelope(FallbackEnvelope);
+			ReconcileActiveEnvelopeToFinalSnapshot();
 			return;
 		}
 
 		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
 		if (!ApplyStatusChangedRecord(PreflightSnapshot, Record.StatusChanged))
 		{
-			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-			CollapseToEnvelope(FallbackEnvelope);
+			ReconcileActiveEnvelopeToFinalSnapshot();
 			return;
 		}
 	}
@@ -701,28 +716,32 @@ void UBattlePresentationController::StartNextRecord()
 		if (!bHasWorkingPresentationSnapshot
 			|| ActiveRecordIndex != ActiveEnvelope.Records.Num() - 1)
 		{
-			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-			CollapseToEnvelope(FallbackEnvelope);
+			ReconcileActiveEnvelopeToFinalSnapshot();
 			return;
 		}
 
 		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
 		if (!ApplyTerminalRecord(PreflightSnapshot, ActiveEnvelope.FinalSnapshot, Record))
 		{
-			const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-			CollapseToEnvelope(FallbackEnvelope);
+			ReconcileActiveEnvelopeToFinalSnapshot();
 			return;
 		}
 	}
 
+	// Every offered playback unit receives a fresh generation. This keeps Record
+	// and future Group callbacks disjoint even when they share leader sequence.
+	AdvancePlaybackGeneration();
+	ActivePlaybackToken = FPresentationPlaybackToken{};
 	ActivePlaybackToken.BattleId = Record.BattleId;
 	ActivePlaybackToken.ResolutionId = Record.ResolutionId;
 	ActivePlaybackToken.PresentationSequence = Record.PresentationSequence;
 	ActivePlaybackToken.LocalPlaybackGeneration = LocalPlaybackGeneration;
+	ActivePlaybackToken.UnitKind = EPresentationPlaybackUnitKind::SingleRecord;
+	ActivePlaybackToken.GroupId = 0;
 
 	bWaitingForCompletion = true;
 	const bool bBlueprintAcceptedPlayback = IsValid(Widget)
-		&& Widget->PlayPresentationRecord(Record, ActivePlaybackToken);
+		&& Widget->PlayPresentationRecord(Record, ActivePlaybackToken, ActiveRecordIndex);
 	if (!bBlueprintAcceptedPlayback)
 	{
 		bWaitingForCompletion = false;
@@ -747,8 +766,7 @@ void UBattlePresentationController::CompleteActiveRecord()
 	const FPresentationRecord& CompletedRecord = ActiveEnvelope.Records[ActiveRecordIndex];
 	if (!ApplyRecordToWorkingSnapshot(CompletedRecord))
 	{
-		const FPresentationResolutionEnvelope FallbackEnvelope = ActiveEnvelope;
-		CollapseToEnvelope(FallbackEnvelope);
+		ReconcileActiveEnvelopeToFinalSnapshot();
 		return;
 	}
 
@@ -789,6 +807,7 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 
 	const int64 CompletedResolutionId = ActiveEnvelope.ResolutionId;
 	ApplyDisplayedSnapshot(ActiveEnvelope.FinalSnapshot, false);
+	MarkPresentationResolutionCompletedExact(ActiveEnvelope);
 
 	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, CompletedResolutionId);
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
@@ -811,7 +830,59 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 	}
 }
 
-void UBattlePresentationController::CollapseToEnvelope(const FPresentationResolutionEnvelope& Envelope)
+void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
+{
+	CancelActiveTimeout();
+	if (!bHasActiveEnvelope)
+	{
+		return;
+	}
+
+	ABattleManager* Battle = BattleManager.Get();
+	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
+	{
+		EnterPresentationUnavailableFailSafe();
+		return;
+	}
+	if (IsValid(Battle) && !Battle->IsCommittedPresentationRecordingEnabledForBattle())
+	{
+		EnterDirectBaselineMode();
+		return;
+	}
+
+	const FPresentationResolutionEnvelope RecoveredEnvelope = ActiveEnvelope;
+	CancelActivePlaybackUnit();
+	AdvancePlaybackGeneration();
+
+	ApplyDisplayedSnapshot(RecoveredEnvelope.FinalSnapshot, false);
+	MarkPresentationResolutionCompletedExact(RecoveredEnvelope);
+	LastCompletedResolutionId = FMath::Max(
+		LastCompletedResolutionId,
+		RecoveredEnvelope.ResolutionId);
+
+	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
+	bHasActiveEnvelope = false;
+	bHasWorkingPresentationSnapshot = false;
+	bWaitingForCompletion = false;
+	ActiveRecordIndex = INDEX_NONE;
+	ActivePlaybackToken = FPresentationPlaybackToken{};
+
+	// Deliberately preserve PlaybackQueue. This is the G3 ActiveEnvelope scope.
+	if (PlaybackQueue.Num() > 0)
+	{
+		StartNextEnvelope();
+		return;
+	}
+	if (IsValid(ViewModel))
+	{
+		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+	}
+}
+
+void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
+	const FPresentationResolutionEnvelope& Envelope
+)
 {
 	ABattleManager* Battle = BattleManager.Get();
 	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
@@ -825,16 +896,33 @@ void UBattlePresentationController::CollapseToEnvelope(const FPresentationResolu
 		return;
 	}
 
-	const FPresentationStateSnapshot FinalSnapshot = Envelope.FinalSnapshot;
-	const int64 ResolutionId = Envelope.ResolutionId;
-	ResetPlaybackState(true);
-	ApplyDisplayedSnapshot(FinalSnapshot, true);
-	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, ResolutionId);
+	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
+	AdvancePlaybackGeneration();
+
+	ApplyDisplayedSnapshot(Envelope.FinalSnapshot, false);
+	MarkEntireBacklogCompletedExact(&Envelope);
+	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Envelope.ResolutionId);
+
+	PlaybackQueue.Reset();
+	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
+	bHasActiveEnvelope = false;
+	bHasWorkingPresentationSnapshot = false;
+	bWaitingForCompletion = false;
+	ActiveRecordIndex = INDEX_NONE;
+	ActivePlaybackToken = FPresentationPlaybackToken{};
+
+	if (IsValid(ViewModel))
+	{
+		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+	}
 }
 
 void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 {
 	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
 	if (bAdvanceGeneration)
 	{
 		AdvancePlaybackGeneration();
@@ -847,6 +935,51 @@ void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 	bWaitingForCompletion = false;
 	ActiveRecordIndex = INDEX_NONE;
 	ActivePlaybackToken = FPresentationPlaybackToken{};
+}
+
+void UBattlePresentationController::CancelActivePlaybackUnit()
+{
+	if (!bWaitingForCompletion)
+	{
+		return;
+	}
+	if (IsValid(Widget))
+	{
+		Widget->CancelTrackedPresentationPlayback(ActivePlaybackToken);
+	}
+	bWaitingForCompletion = false;
+}
+
+void UBattlePresentationController::MarkPresentationResolutionCompletedExact(
+	const FPresentationResolutionEnvelope& Envelope
+)
+{
+	if (IsValid(ViewModel)
+		&& Envelope.BattleId > 0
+		&& Envelope.ResolutionId > 0)
+	{
+		ViewModel->MarkPresentationResolutionCompleted(
+			Envelope.BattleId,
+			Envelope.ResolutionId);
+	}
+}
+
+void UBattlePresentationController::MarkEntireBacklogCompletedExact(
+	const FPresentationResolutionEnvelope* AdditionalEnvelope
+)
+{
+	if (bHasActiveEnvelope)
+	{
+		MarkPresentationResolutionCompletedExact(ActiveEnvelope);
+	}
+	for (const FPresentationResolutionEnvelope& Envelope : PlaybackQueue)
+	{
+		MarkPresentationResolutionCompletedExact(Envelope);
+	}
+	if (AdditionalEnvelope != nullptr)
+	{
+		MarkPresentationResolutionCompletedExact(*AdditionalEnvelope);
+	}
 }
 
 void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
@@ -877,9 +1010,12 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 void UBattlePresentationController::EnterDirectBaselineMode()
 {
 	ABattleManager* Battle = BattleManager.Get();
-	ResetPlaybackState(true);
+	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
+	AdvancePlaybackGeneration();
 	if (!IsValid(ViewModel))
 	{
+		ResetPlaybackState(false);
 		return;
 	}
 
@@ -891,8 +1027,12 @@ void UBattlePresentationController::EnterDirectBaselineMode()
 		const int64 BaselineResolutionWatermark = static_cast<int64>(Battle->GetLatestFrozenPresentationBaselineResolutionId());
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
-		ApplyDisplayedSnapshot(LatestBaseline, true);
+		ApplyDisplayedSnapshot(LatestBaseline, false);
+		MarkEntireBacklogCompletedExact(nullptr);
 	}
+
+	ResetPlaybackState(false);
+	ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 }
 
 bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record)
@@ -1117,7 +1257,15 @@ bool UBattlePresentationController::HandleActiveTimeout(float /*DeltaTime*/)
 		&& TimeoutToken.LocalPlaybackGeneration == LocalPlaybackGeneration
 		&& TimeoutToken.BattleId == CurrentBattleId)
 	{
-		CompleteActiveRecord();
+		CancelActivePlaybackUnit();
+		if (TimeoutToken.UnitKind == EPresentationPlaybackUnitKind::Group)
+		{
+			ReconcileActiveEnvelopeToFinalSnapshot();
+		}
+		else
+		{
+			CompleteActiveRecord();
+		}
 	}
 	return false;
 }
@@ -1155,6 +1303,11 @@ FPresentationPlaybackToken UBattlePresentationController::GetActivePlaybackToken
 	return ActivePlaybackToken;
 }
 
+EPresentationPlaybackUnitKind UBattlePresentationController::GetActivePlaybackUnitKindForTesting() const
+{
+	return ActivePlaybackToken.UnitKind;
+}
+
 int64 UBattlePresentationController::GetLastCompletedResolutionIdForTesting() const
 {
 	return LastCompletedResolutionId;
@@ -1163,6 +1316,76 @@ int64 UBattlePresentationController::GetLastCompletedResolutionIdForTesting() co
 void UBattlePresentationController::ExpireActivePlaybackForTesting()
 {
 	HandleActiveTimeout(0.0f);
+}
+
+void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshotForTesting()
+{
+	ReconcileActiveEnvelopeToFinalSnapshot();
+}
+
+bool UBattlePresentationController::RebindActivePlaybackAsGroupForTesting(
+	const FPresentationGroupTag& Group,
+	const TArray<int32>& RecordIndices
+)
+{
+	if (!bHasActiveEnvelope
+		|| !bWaitingForCompletion
+		|| !IsValid(Widget)
+		|| !Group.IsValid()
+		|| Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| Group.ExpectedMemberCount <= 1
+		|| RecordIndices.Num() != Group.ExpectedMemberCount)
+	{
+		return false;
+	}
+
+	TArray<FPresentationRecord> Records;
+	Records.Reserve(RecordIndices.Num());
+	int32 PreviousIndex = INDEX_NONE;
+	for (const int32 RecordIndex : RecordIndices)
+	{
+		if (!ActiveEnvelope.Records.IsValidIndex(RecordIndex)
+			|| (PreviousIndex != INDEX_NONE && RecordIndex <= PreviousIndex))
+		{
+			return false;
+		}
+		const FPresentationRecord& Record = ActiveEnvelope.Records[RecordIndex];
+		if (Record.Group.Kind != Group.Kind
+			|| Record.Group.GroupId != Group.GroupId
+			|| Record.Group.ExpectedMemberCount != Group.ExpectedMemberCount)
+		{
+			return false;
+		}
+		Records.Add(Record);
+		PreviousIndex = RecordIndex;
+	}
+
+	CancelActiveTimeout();
+	CancelActivePlaybackUnit();
+	AdvancePlaybackGeneration();
+
+	const FPresentationRecord& Leader = Records[0];
+	ActivePlaybackToken = FPresentationPlaybackToken{};
+	ActivePlaybackToken.BattleId = Leader.BattleId;
+	ActivePlaybackToken.ResolutionId = Leader.ResolutionId;
+	ActivePlaybackToken.PresentationSequence = Leader.PresentationSequence;
+	ActivePlaybackToken.LocalPlaybackGeneration = LocalPlaybackGeneration;
+	ActivePlaybackToken.UnitKind = EPresentationPlaybackUnitKind::Group;
+	ActivePlaybackToken.GroupId = Group.GroupId;
+	bWaitingForCompletion = true;
+
+	if (!Widget->PlayPresentationGroup(
+		Records,
+		Group,
+		RecordIndices,
+		ActivePlaybackToken))
+	{
+		bWaitingForCompletion = false;
+		ActivePlaybackToken = FPresentationPlaybackToken{};
+		return false;
+	}
+	ScheduleActiveTimeout();
+	return true;
 }
 
 bool UBattlePresentationController::TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const

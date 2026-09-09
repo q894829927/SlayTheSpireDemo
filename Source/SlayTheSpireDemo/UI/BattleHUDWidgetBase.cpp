@@ -97,6 +97,15 @@ namespace
 		}
 		return Result.IsEmpty() ? TEXT("<empty>") : Result;
 	}
+
+	bool AreGroupTagsEquivalent(
+		const FPresentationGroupTag& Left,
+		const FPresentationGroupTag& Right)
+	{
+		return Left.Kind == Right.Kind
+			&& Left.GroupId == Right.GroupId
+			&& Left.ExpectedMemberCount == Right.ExpectedMemberCount;
+	}
 }
 
 void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
@@ -150,7 +159,6 @@ bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 		return false;
 	}
 
-	// A3 pre-commit ownership ends before the authoritative request is entered.
 	ViewModel->ClearPreviewTarget();
 	return ViewModel->SelectTargetById(TargetId);
 }
@@ -177,39 +185,106 @@ FBattleHUDStatusView UBattleHUDWidgetBase::MakePresentationStatusView(
 ) const
 {
 	FBattleHUDStatusView View;
-
 	View.StatusId = StatusChanged.StatusId;
 	View.RuntimeSequence = StatusChanged.RuntimeSequence;
-
 	View.DisplayName = StatusChanged.DisplayName;
 	View.Description = StatusChanged.DescriptionAfter;
 	View.Amount = StatusChanged.AmountAfter;
-
 	View.bUseAtlasIcon = StatusChanged.bUseAtlasIcon;
 	View.UVOffset = StatusChanged.UVOffset;
 	View.UVScale = StatusChanged.UVScale;
 	View.TrimOffset = StatusChanged.TrimOffset;
 	View.TrimScale = StatusChanged.TrimScale;
-
 	return View;
 }
 
 bool UBattleHUDWidgetBase::PlayPresentationRecord(
 	const FPresentationRecord& Record,
-	const FPresentationPlaybackToken& Token
+	const FPresentationPlaybackToken& Token,
+	int32 RecordIndex
 )
 {
-	// Controller guarantees one active Record at a time. Cancel defensively if a
-	// replacement visual is offered anyway, then establish ownership before
-	// entering Blueprint so even a synchronous misuse is associated with Token.
+	if (!Token.IsValid()
+		|| Token.UnitKind != EPresentationPlaybackUnitKind::SingleRecord
+		|| Token.GroupId != 0
+		|| Record.BattleId != Token.BattleId
+		|| Record.ResolutionId != Token.ResolutionId
+		|| Record.PresentationSequence != Token.PresentationSequence)
+	{
+		return false;
+	}
+
 	CancelTrackedPresentationPlayback();
-	TrackedPresentationPlaybackToken = Token;
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	TrackedPresentationPlaybackUnit.Token = Token;
+	if (RecordIndex != INDEX_NONE)
+	{
+		TrackedPresentationPlaybackUnit.RecordIndices.Add(RecordIndex);
+	}
 	bHasTrackedPresentationPlayback = true;
 
 	const bool bAccepted = BeginPresentationRecordPlayback(Record, Token);
 	if (!bAccepted)
 	{
 		LogPresentationRecordRejection(Record, Token);
+		ClearTrackedPresentationPlayback(Token);
+	}
+	return bAccepted;
+}
+
+bool UBattleHUDWidgetBase::PlayPresentationGroup(
+	const TArray<FPresentationRecord>& Records,
+	const FPresentationGroupTag& Group,
+	const TArray<int32>& RecordIndices,
+	const FPresentationPlaybackToken& Token
+)
+{
+	if (!Group.IsValid()
+		|| Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| Group.ExpectedMemberCount <= 1
+		|| Records.Num() != Group.ExpectedMemberCount
+		|| RecordIndices.Num() != Group.ExpectedMemberCount
+		|| !Token.IsValid()
+		|| Token.UnitKind != EPresentationPlaybackUnitKind::Group
+		|| Token.GroupId != Group.GroupId)
+	{
+		return false;
+	}
+
+	int32 PreviousRecordIndex = INDEX_NONE;
+	int64 PreviousSequence = 0;
+	for (int32 Index = 0; Index < Records.Num(); ++Index)
+	{
+		const FPresentationRecord& Record = Records[Index];
+		const int32 RecordIndex = RecordIndices[Index];
+		if (RecordIndex < 0
+			|| (Index > 0 && RecordIndex <= PreviousRecordIndex)
+			|| Record.BattleId != Token.BattleId
+			|| Record.ResolutionId != Token.ResolutionId
+			|| Record.PresentationSequence <= 0
+			|| (PreviousSequence > 0 && Record.PresentationSequence <= PreviousSequence)
+			|| !AreGroupTagsEquivalent(Record.Group, Group))
+		{
+			return false;
+		}
+		PreviousRecordIndex = RecordIndex;
+		PreviousSequence = Record.PresentationSequence;
+	}
+	if (Records[0].PresentationSequence != Token.PresentationSequence)
+	{
+		return false;
+	}
+
+	CancelTrackedPresentationPlayback();
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	TrackedPresentationPlaybackUnit.Token = Token;
+	TrackedPresentationPlaybackUnit.Group = Group;
+	TrackedPresentationPlaybackUnit.RecordIndices = RecordIndices;
+	bHasTrackedPresentationPlayback = true;
+
+	const bool bAccepted = BeginPresentationGroupPlayback(Records, Group, Token);
+	if (!bAccepted)
+	{
 		ClearTrackedPresentationPlayback(Token);
 	}
 	return bAccepted;
@@ -223,7 +298,23 @@ bool UBattleHUDWidgetBase::BeginPresentationRecordPlayback_Implementation(
 	return false;
 }
 
+bool UBattleHUDWidgetBase::BeginPresentationGroupPlayback(
+	const TArray<FPresentationRecord>& /*Records*/,
+	const FPresentationGroupTag& /*Group*/,
+	const FPresentationPlaybackToken& /*Token*/
+)
+{
+	return false;
+}
+
 void UBattleHUDWidgetBase::CancelPresentationRecordPlayback_Implementation(
+	const FPresentationPlaybackToken& /*Token*/
+)
+{
+}
+
+void UBattleHUDWidgetBase::CancelPresentationGroupPlayback(
+	const FPresentationGroupTag& /*Group*/,
 	const FPresentationPlaybackToken& /*Token*/
 )
 {
@@ -365,10 +456,6 @@ void UBattleHUDWidgetBase::NotifyPresentationFinished(
 	const FPresentationPlaybackToken& Token
 )
 {
-	// Blueprint is required to complete asynchronously, but enforce that boundary
-	// here as well. A Blueprint that accidentally calls this from inside the
-	// playback event therefore cannot re-enter the Controller while it is still
-	// offering the current Record.
 	const TWeakObjectPtr<UBattleHUDWidgetBase> WeakThis(this);
 	FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateLambda(
@@ -389,25 +476,22 @@ void UBattleHUDWidgetBase::ForwardPresentationFinished(
 	const FPresentationPlaybackToken& Token
 )
 {
-	// A stale completion must never clear a newer visual token.
-	ClearTrackedPresentationPlayback(Token);
+	if (!ClearTrackedPresentationPlayback(Token))
+	{
+		return;
+	}
 
 	if (!IsValid(PresentationController))
 	{
 		return;
 	}
 
-	// Controller completion synchronously advances the historical ViewModel.
-	// That ViewModel change is the normal completion path, not a reason to ask
-	// Blueprint to cancel the visual that has just finished.
 	TGuardValue<bool> SuppressCancellation(bSuppressPresentationCancellation, true);
 	PresentationController->NotifyPresentationFinished(Token);
 }
 
 void UBattleHUDWidgetBase::SkipPresentation()
 {
-	// Stop presentation-only visuals before Controller collapses to the newest
-	// frozen FinalSnapshot. Stale callbacks remain harmless through token checks.
 	CancelTrackedPresentationPlayback();
 
 	if (IsValid(PresentationController))
@@ -419,16 +503,9 @@ void UBattleHUDWidgetBase::SkipPresentation()
 
 void UBattleHUDWidgetBase::NativeDestruct()
 {
-	// No Blueprint cancellation event is dispatched during destruction. The Widget
-	// is already leaving the tree, while Controller NotifyWidgetLost provides the
-	// authoritative playback catch-up/fail-safe behavior.
 	bHasTrackedPresentationPlayback = false;
-	TrackedPresentationPlaybackToken = FPresentationPlaybackToken{};
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
 
-	// Stop observing ViewModel changes before NotifyWidgetLost. That controller
-	// callback may synchronously SkipPresentation/collapse to a newer historical
-	// snapshot and publish a Native dirty event; a Widget already leaving the tree
-	// must not redraw Hand/Status/other UMG children during teardown catch-up.
 	if (IsValid(ViewModel))
 	{
 		ViewModel->OnNativeChanged.RemoveAll(this);
@@ -445,11 +522,6 @@ void UBattleHUDWidgetBase::NativeDestruct()
 
 void UBattleHUDWidgetBase::HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags)
 {
-	// During Controller-owned playback, the ViewModel advances only after a Record
-	// completes or after a fail-safe collapse/timeout/unavailable transition. If
-	// the change did not originate from normal completion or explicit Skip, a
-	// tracked Blueprint visual belongs to abandoned historical work and must stop
-	// before the HUD redraws the new frozen state.
 	if (!bSuppressPresentationCancellation)
 	{
 		CancelTrackedPresentationPlayback();
@@ -463,9 +535,24 @@ void UBattleHUDWidgetBase::HandleNativeViewModelChanged(EBattleHUDDirtyFlags Dir
 
 void UBattleHUDWidgetBase::NativeOnBattleHUDViewModelChanged()
 {
-	// Preserve the sealed Legacy Blueprint contract by default. Native concrete
-	// HUD classes may override this hook and intentionally omit Super to own refresh.
 	BP_OnViewModelChanged();
+}
+
+bool UBattleHUDWidgetBase::CancelTrackedPresentationPlayback(
+	const FPresentationPlaybackToken& ExpectedToken
+)
+{
+	if (!bHasTrackedPresentationPlayback
+		|| TrackedPresentationPlaybackUnit.Token != ExpectedToken)
+	{
+		return false;
+	}
+
+	const FTrackedPresentationPlaybackUnit CancelledUnit = TrackedPresentationPlaybackUnit;
+	bHasTrackedPresentationPlayback = false;
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	DispatchTrackedPresentationCancellation(CancelledUnit);
+	return true;
 }
 
 void UBattleHUDWidgetBase::CancelTrackedPresentationPlayback()
@@ -475,24 +562,35 @@ void UBattleHUDWidgetBase::CancelTrackedPresentationPlayback()
 		return;
 	}
 
-	const FPresentationPlaybackToken CancelledToken = TrackedPresentationPlaybackToken;
+	const FTrackedPresentationPlaybackUnit CancelledUnit = TrackedPresentationPlaybackUnit;
 	bHasTrackedPresentationPlayback = false;
-	TrackedPresentationPlaybackToken = FPresentationPlaybackToken{};
-
-	// Clear ownership before entering Blueprint. A miswired cancellation callback
-	// that later calls NotifyPresentationFinished therefore remains stale and cannot
-	// erase a newer visual token established by another Record.
-	CancelPresentationRecordPlayback(CancelledToken);
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	DispatchTrackedPresentationCancellation(CancelledUnit);
 }
 
-void UBattleHUDWidgetBase::ClearTrackedPresentationPlayback(
+bool UBattleHUDWidgetBase::ClearTrackedPresentationPlayback(
 	const FPresentationPlaybackToken& Token
 )
 {
-	if (bHasTrackedPresentationPlayback
-		&& TrackedPresentationPlaybackToken == Token)
+	if (!bHasTrackedPresentationPlayback
+		|| TrackedPresentationPlaybackUnit.Token != Token)
 	{
-		bHasTrackedPresentationPlayback = false;
-		TrackedPresentationPlaybackToken = FPresentationPlaybackToken{};
+		return false;
 	}
+
+	bHasTrackedPresentationPlayback = false;
+	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	return true;
+}
+
+void UBattleHUDWidgetBase::DispatchTrackedPresentationCancellation(
+	const FTrackedPresentationPlaybackUnit& Unit
+)
+{
+	if (Unit.Token.UnitKind == EPresentationPlaybackUnitKind::Group)
+	{
+		CancelPresentationGroupPlayback(Unit.Group, Unit.Token);
+		return;
+	}
+	CancelPresentationRecordPlayback(Unit.Token);
 }

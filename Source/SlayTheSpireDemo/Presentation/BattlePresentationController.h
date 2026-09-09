@@ -40,8 +40,14 @@ public:
 	int32 GetBacklogCountForTesting() const;
 	bool IsWaitingForCompletionForTesting() const;
 	FPresentationPlaybackToken GetActivePlaybackTokenForTesting() const;
+	EPresentationPlaybackUnitKind GetActivePlaybackUnitKindForTesting() const;
 	int64 GetLastCompletedResolutionIdForTesting() const;
 	void ExpireActivePlaybackForTesting();
+	void ReconcileActiveEnvelopeToFinalSnapshotForTesting();
+	bool RebindActivePlaybackAsGroupForTesting(
+		const FPresentationGroupTag& Group,
+		const TArray<int32>& RecordIndices
+	);
 	bool TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const;
 	bool ReduceEnvelopeForTesting(
 		const FPresentationStateSnapshot& Baseline,
@@ -66,8 +72,16 @@ private:
 	void StartNextRecord();
 	void CompleteActiveRecord();
 	void CompleteActiveEnvelope();
-	void CollapseToEnvelope(const FPresentationResolutionEnvelope& Envelope);
+
+	// G3 recovery scopes are behaviorally distinct. ActiveEnvelope recovery keeps
+	// later queued Envelopes; EntireBacklog collapse is used only for global catch-up.
+	void ReconcileActiveEnvelopeToFinalSnapshot();
+	void CollapseEntireBacklogToEnvelope(const FPresentationResolutionEnvelope& Envelope);
 	void ResetPlaybackState(bool bAdvanceGeneration);
+	void CancelActivePlaybackUnit();
+	void MarkPresentationResolutionCompletedExact(const FPresentationResolutionEnvelope& Envelope);
+	void MarkEntireBacklogCompletedExact(const FPresentationResolutionEnvelope* AdditionalEnvelope);
+
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
 	void CancelActiveTimeout();
