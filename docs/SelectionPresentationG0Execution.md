@@ -18,8 +18,9 @@ G0 is infrastructure only. Production Selection remains on the existing formal-H
 G0-A implementation: COMPLETE, automated gates PASS
 G0-B implementation: COMPLETE, draw-adoption repair / automated gates PASS
 G0-C dormant infrastructure: COMPLETE, automated gates PASS
-Manual draw/selection PIE: USER ACTION REQUIRED
-G1 production work: NOT STARTED / outside this review
+Manual draw/selection PIE: PASS / USER CONFIRMED 2026-09-09
+G0: COMPLETE / VALIDATED / SEALED
+G1 production work: NOT STARTED
 ```
 
 No `.uasset` or `.umap` change is part of G0.
@@ -218,7 +219,7 @@ Review and repair on 2026-09-09, base HEAD `2a4687705f9a7b3d1cc240dcd4e7d08a0701
 ```text
 Build:      PASS
 Automation: G0 gates PASS (initial 7/8; corrected assertion rerun 1/1)
-PIE/manual: NOT RUN
+PIE/manual: PASS / USER CONFIRMED 2026-09-09
 ```
 
 The review found a production G0-B regression: DrawToHand leaves its completed
@@ -237,10 +238,17 @@ Exact build commands, focused scopes, reports and the known fixture warning are
 recorded in `docs/Validation.md`, section "G0 A/B/C review and draw adoption".
 Passing gates were retained after the assertion-only correction.
 
-**MANUAL PIE — USER ACTION REQUIRED:** in
-`/Game/SlayTheSpireDemo/Maps/L_BattleTest`, draw during combat, wait for playback,
-then click and play a newly drawn affordable card (choose its legal target when
-needed). Also use Warcry and select/deselect a newly drawn candidate before
-Confirm. Expect responsive clicks, successful play/selection, no duplicate card
-and restored input after playback. Record user observations and any failing
-scenario/log. No PIE, Blueprint visual or packaged-game acceptance is claimed.
+## Manual PIE acceptance — 2026-09-09
+
+User completed the required Native `/Game/SlayTheSpireDemo/Maps/L_BattleTest` manual pass and confirmed all required observations:
+
+```text
+[x] newly drawn card remains clickable after Draw Presentation completes
+[x] newly drawn affordable card can be played normally
+[x] no duplicate Hand card / duplicate formal slot observed
+[x] Warcry newly drawn card is available as a Selection candidate
+[x] select / deselect / reselect / explicit Confirm flow works normally
+[x] input is restored after the full Presentation / Selection flow completes
+```
+
+This closes the remaining manual G0 Gate. G0-A/B/C are now complete, validated and sealed. No G1 behavior is implied by this acceptance; production SelectionArea ownership remains deferred to the later migration stages.
