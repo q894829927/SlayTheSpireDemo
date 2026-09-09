@@ -210,28 +210,35 @@ bool UBattleHUDViewModel::ConfirmCardPresentationSelection(
 		ConfirmedIds.Add(RuntimeId);
 	}
 
-	TArray<int32> ChangedRuntimeIds;
-	TArray<int32> PendingIdsToRestore;
+	// Confirm freezes the exact current SelectionArea set. Presentation ownership
+	// must never silently reinterpret an authoritative selection result by
+	// dropping an already-selected Pending member or accepting an extra one.
+	int32 LifecycleEntryCount = 0;
 	for (const TPair<int32, FCardPresentationOwnershipEntry>& Pair :
 		CardPresentationOwnershipEntries)
 	{
 		const FCardPresentationOwnershipEntry& Entry = Pair.Value;
-		if (Entry.BattleId == BattleId
-			&& Entry.SelectionGeneration == SelectionGeneration
-			&& Entry.SelectionBoundaryRevision == ActiveCardPresentationSelectionBoundaryRevision
-			&& Entry.Phase == ESelectionPresentationVisualPhase::Pending
-			&& Entry.Owner == ECardPresentationOwner::SelectionArea
-			&& !ConfirmedIds.Contains(Pair.Key))
+		if (Entry.BattleId != BattleId
+			|| Entry.SelectionGeneration != SelectionGeneration
+			|| Entry.SelectionBoundaryRevision != ActiveCardPresentationSelectionBoundaryRevision)
 		{
-			PendingIdsToRestore.Add(Pair.Key);
+			continue;
+		}
+
+		++LifecycleEntryCount;
+		if (Entry.Phase != ESelectionPresentationVisualPhase::Pending
+			|| Entry.Owner != ECardPresentationOwner::SelectionArea
+			|| !ConfirmedIds.Contains(Pair.Key))
+		{
+			return false;
 		}
 	}
-	for (const int32 RuntimeId : PendingIdsToRestore)
+	if (LifecycleEntryCount != ConfirmedIds.Num())
 	{
-		CardPresentationOwnershipEntries.Remove(RuntimeId);
-		ChangedRuntimeIds.Add(RuntimeId);
+		return false;
 	}
 
+	TArray<int32> ChangedRuntimeIds;
 	for (const int32 RuntimeId : RuntimeIds)
 	{
 		FCardPresentationOwnershipEntry& Entry =
