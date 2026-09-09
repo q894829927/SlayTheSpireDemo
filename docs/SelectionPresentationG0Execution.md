@@ -100,6 +100,8 @@ Interactive ownership generation is closed on Confirm or explicit lifecycle canc
 
 A RuntimeId must exist in the currently displayed Hand before it may enter Pending SelectionArea ownership.
 
+Confirm is fail-closed and freezes the exact current SelectionArea set. The supplied RuntimeId set must equal every Pending SelectionArea entry in that exact `(BattleId, SelectionGeneration, SelectionBoundaryRevision)` lifecycle. A subset, superset, duplicate, or malformed lifecycle shape is rejected without changing ownership or closing the generation.
+
 Only these forward ownership transfers are legal after Confirm:
 
 ```text
@@ -166,7 +168,8 @@ Self-review found and corrected these issues:
 8. completion watermark could be overwritten across modes/values; now immutable/idempotent;
 9. ownership transfer initially permitted insufficiently constrained transitions; now only the forward chain is legal;
 10. completion recovery initially covered only SelectionArea owner; now exact lifecycle completion can recover any Confirmed non-Hand owner still present in Hand;
-11. focused tests contained the old Transition-recovery expectation; updated to the fail-safe lifecycle contract.
+11. focused tests contained the old Transition-recovery expectation; updated to the fail-safe lifecycle contract;
+12. Confirm initially accepted a subset of already Pending SelectionArea owners and silently restored omitted members; Confirm now requires exact lifecycle-set equality and rejects mismatches transactionally.
 
 ## Focused Automation source added
 
@@ -178,6 +181,7 @@ SlayTheSpireDemo.SelectionPresentation.G0.OwnershipEventAndConfirm
 SlayTheSpireDemo.SelectionPresentation.G0.CompletionWatermark
 SlayTheSpireDemo.SelectionPresentation.G0.StaleAndTransition
 SlayTheSpireDemo.SelectionPresentation.G0.PendingLifecycleCancel
+SlayTheSpireDemo.SelectionPresentation.G0.ConfirmRequiresExactSet
 SlayTheSpireDemo.SelectionPresentation.G0.HandIdentity
 SlayTheSpireDemo.SelectionPresentation.G0.FormalSlotOwnership
 ```
@@ -190,6 +194,7 @@ Key assertions include:
 - explicit non-Hand ownership keeps the formal structural child Hidden rather than Collapsed and disables input;
 - ownership changes can update formal Hand without a new historical snapshot;
 - Pending cancel releases all Pending owners and the active generation gate;
+- Confirm rejects a partial RuntimeId set without mutating Pending owners or closing the generation, then accepts the exact retry;
 - stale generation/boundary mutation is rejected;
 - Direct and Recorded completion watermarks are exact and non-overwritable;
 - only forward ownership transitions are accepted;
