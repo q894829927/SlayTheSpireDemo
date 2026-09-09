@@ -180,6 +180,18 @@ timeout/cancellation rewrite:
 SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
 ```
 
+A dedicated focused runner is now available at:
+
+```text
+.github/workflows/ue-selection-g3-tests.yml
+```
+
+It is owner-only, `workflow_dispatch`-only, and restricted to `main`. One run performs
+one UE 5.8 Editor build, the seven `SlayTheSpireDemo.SelectionPresentation.G3` tests,
+and the exact `SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout` regression.
+The workflow existing in source is not validation evidence by itself; an actual
+successful run is still required.
+
 G0/G1/G2 passing evidence remains sticky unless the build/test failure implicates a
 sealed contract. G3 does not modify G2 semantic-preflight source or tests.
 
@@ -189,6 +201,9 @@ input behavior is enabled.
 
 ## Current checkpoint
 
-Source implementation is complete enough for build/test validation, but no Editor
-build or Automation run has been executed for this G3 head yet. Do not mark G3
-`COMPLETE / VALIDATED / SEALED` until the required evidence is supplied.
+Source implementation and the focused validation workflow are complete, but no Editor
+build or Automation run has been executed for this G3 head yet. The current GitHub
+connector can inspect and rerun existing workflow runs but cannot dispatch a new
+`workflow_dispatch` run, so execution of `.github/workflows/ue-selection-g3-tests.yml`
+is currently **USER ACTION REQUIRED**. Do not mark G3
+`COMPLETE / VALIDATED / SEALED` until the required successful run evidence is supplied.
