@@ -34,6 +34,9 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
+	virtual bool BeginPresentationRecordPlayback_Implementation(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& Token) override;
 	virtual void HandleCardPresentationOwnershipChanged(const TArray<int32>& RuntimeIds) override;
 	virtual UOverlay* GetCardTransitionSelectionAreaHost() const override { return SelectionAreaHost; }
 	virtual void OnNativeCardTransitionAccepted(int32 RuntimeId) override;
