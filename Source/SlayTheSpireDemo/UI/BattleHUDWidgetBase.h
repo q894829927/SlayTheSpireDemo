@@ -78,13 +78,27 @@ public:
 		int32 RecordIndex = INDEX_NONE
 	);
 
-	// Dormant G3 hardening boundary for future G6 playback. Production Controller
-	// does not call this during G3. Group hooks remain C++-only so no Blueprint
-	// asset contract is introduced before Group-visible playback is authorized.
 	bool PlayPresentationGroup(
 		const TArray<FPresentationRecord>& Records,
 		const FPresentationGroupTag& Group,
 		const TArray<int32>& RecordIndices,
+		const FPresentationPlaybackToken& Token
+	);
+
+	// G6 upgrades the already-tracked leader offer before its concrete SingleRecord
+	// Begin has started. If Group visual preflight declines, the exact original
+	// SingleRecord tracked owner is restored with no cancellation side effect.
+	bool TryReplaceTrackedPresentationRecordWithGroup(
+		const FPresentationPlaybackToken& ExpectedSingleRecordToken,
+		const TArray<FPresentationRecord>& Records,
+		const FPresentationGroupTag& Group,
+		const TArray<int32>& RecordIndices,
+		const FPresentationPlaybackToken& GroupToken
+	);
+
+	// G6 completion uses a distinct Controller path from the historical G3
+	// dormant Group callback, while retaining exact tracked-token deferral.
+	void NotifyPresentationGroupFinishedG6(
 		const FPresentationPlaybackToken& Token
 	);
 
@@ -111,8 +125,8 @@ public:
 		const FPresentationPlaybackToken& Token
 	);
 
-	// C++-only dormant Group override point. Returning false means zero Group
-	// visual ownership was accepted.
+	// C++-only Group override point. Returning false means zero Group visual
+	// ownership was accepted.
 	virtual bool BeginPresentationGroupPlayback(
 		const TArray<FPresentationRecord>& Records,
 		const FPresentationGroupTag& Group,
@@ -130,7 +144,6 @@ public:
 		const FPresentationPlaybackToken& Token
 	);
 
-	// C++-only dormant Group cancellation counterpart.
 	virtual void CancelPresentationGroupPlayback(
 		const FPresentationGroupTag& Group,
 		const FPresentationPlaybackToken& Token
