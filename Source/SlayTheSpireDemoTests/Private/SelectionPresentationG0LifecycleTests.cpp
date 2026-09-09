@@ -84,4 +84,56 @@ bool FSelectionPresentationG0PendingLifecycleCancelTest::RunTest(const FString& 
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSelectionPresentationG0ConfirmRequiresExactSetTest,
+	"SlayTheSpireDemo.SelectionPresentation.G0.ConfirmRequiresExactSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSelectionPresentationG0ConfirmRequiresExactSetTest::RunTest(const FString& Parameters)
+{
+	using namespace SelectionPresentationG0LifecycleTest;
+	(void)Parameters;
+
+	UBattleHUDViewModel* ViewModel = NewObject<UBattleHUDViewModel>();
+	if (!TestNotNull(TEXT("ViewModel should be created."), ViewModel)) return false;
+	ViewModel->ApplyPresentationSnapshot(MakeSnapshot(), true);
+
+	const int64 Generation = ViewModel->BeginCardPresentationSelectionLifecycle(15);
+	TestTrue(TEXT("Pending lifecycle begins."), Generation > 0);
+	TestTrue(TEXT("First Pending owner is established."),
+		ViewModel->SetPendingCardPresentationSelection(Generation, 71, true));
+	TestTrue(TEXT("Second Pending owner is established."),
+		ViewModel->SetPendingCardPresentationSelection(Generation, 72, true));
+
+	TestFalse(TEXT("Confirm cannot silently drop an already Pending selected member."),
+		ViewModel->ConfirmCardPresentationSelection(Generation, { 71 }));
+
+	FCardPresentationOwnershipEntry Entry71;
+	FCardPresentationOwnershipEntry Entry72;
+	TestTrue(TEXT("First owner remains after rejected subset Confirm."),
+		ViewModel->TryGetCardPresentationOwnershipEntry(71, Entry71));
+	TestTrue(TEXT("Second owner remains after rejected subset Confirm."),
+		ViewModel->TryGetCardPresentationOwnershipEntry(72, Entry72));
+	TestEqual(TEXT("First owner remains Pending."),
+		Entry71.Phase, ESelectionPresentationVisualPhase::Pending);
+	TestEqual(TEXT("Second owner remains Pending."),
+		Entry72.Phase, ESelectionPresentationVisualPhase::Pending);
+	TestEqual(TEXT("First owner remains SelectionArea."),
+		Entry71.Owner, ECardPresentationOwner::SelectionArea);
+	TestEqual(TEXT("Second owner remains SelectionArea."),
+		Entry72.Owner, ECardPresentationOwner::SelectionArea);
+
+	TestTrue(TEXT("Rejected Confirm leaves generation active for the exact retry."),
+		ViewModel->ConfirmCardPresentationSelection(Generation, { 71, 72 }));
+	TestTrue(TEXT("First owner becomes Confirmed on exact retry."),
+		ViewModel->TryGetCardPresentationOwnershipEntry(71, Entry71));
+	TestTrue(TEXT("Second owner becomes Confirmed on exact retry."),
+		ViewModel->TryGetCardPresentationOwnershipEntry(72, Entry72));
+	TestEqual(TEXT("First phase is Confirmed."),
+		Entry71.Phase, ESelectionPresentationVisualPhase::Confirmed);
+	TestEqual(TEXT("Second phase is Confirmed."),
+		Entry72.Phase, ESelectionPresentationVisualPhase::Confirmed);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
