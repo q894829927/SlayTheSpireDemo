@@ -2,24 +2,30 @@
 
 Last updated: **2026-09-09**
 
-## Current resumable task — G0 A/B/C review and draw adoption
+## Current resumable task — Selection Presentation G1
 
-HEAD verified: `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`. Uncommitted changes;
-pre-existing BattleHUDReconciledWidget delegate edit preserved. Reviewed G0 A/B/C
-and repaired completed draw visual adoption retaining HitTestInvisible. Added
-DrawAdoption regression and corrected FormalSlotOwnership's default visibility
-expectation. No assets/maps changed, no G1 work.
+G0-A/B/C implementation, automated gates and the required Native `L_BattleTest`
+manual PIE pass are complete. The user confirmed the final G0 observations on
+2026-09-09: newly drawn cards remain clickable/playable after Draw Presentation,
+no duplicate Hand card was observed, Warcry's newly drawn card is selectable,
+select/deselect/reselect/explicit Confirm works, and input is restored after the
+full flow. Durable evidence is recorded in
+`docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`.
 
-Validation: project generation and Editor build PASS; initial focused scope had
-12 successful tests (one fixture warning) and one incorrect test assertion.
-After test-only correction/rebuild the failed test passed 1/1. All G0 gates have
-passing evidence; exact scopes/logs are in `docs/Validation.md` under G0 review.
+G0 status:
 
-Next action: **USER ACTION REQUIRED** — Native `L_BattleTest` draw/play plus Warcry
-newly drawn candidate select/deselect/Confirm, per
-`docs/SelectionPresentationG0Execution.md`. Record observations before claiming
-visual acceptance. No additional automated rerun needed absent affected edits or
-a new failure.
+```text
+COMPLETE / VALIDATED / SEALED
+```
+
+No additional G0 automated rerun is required unless a later edit invalidates its
+passing evidence or a concrete regression directly implicates the sealed contract.
+
+Next active development slice: **G1 — PresentationGroup metadata + writer-scoped
+Selection outcome correlation**. G1 must establish exact Selection-boundary to
+accepted continuation outcome correlation independently of optional Group tags.
+Production SelectionArea ownership remains deferred until the later G4/G5 migration
+preconditions are satisfied.
 
 ## Earlier resumable task — Selection Presentation production repair
 
@@ -29,7 +35,7 @@ Completed: production Native HUD reparented/compiled/saved in UE; shared explici
 
 Validation performed: standard project generation and final Editor build PASS after the in-place Exhaust fix (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`). The final focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed 4/4, including the new `HandToExhaust.FadesInPlace` contract, with no warnings (`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`). Earlier explicit-Confirm evidence remains in `Saved/AutomationReports/SelectionBoundaryConfirm/index.json`.
 
-Next action / remaining blocker: **USER ACTION REQUIRED** — one manual Native `L_BattleTest` Warcry visual pass following section 16. Verify centered selection/deselect, confirmation, selected-card flight, played card reappearance/generic Exhaust, no flashback and restored input. No manual acceptance yet. Earlier entries below are historical navigation only.
+The later G0 draw/selection manual PIE pass was completed and user-confirmed on 2026-09-09. This historical repair entry is retained for navigation; current forward work is G1.
 
 ## Earlier resumable task — Unified Card Selection Refactor
 
@@ -39,7 +45,7 @@ Completed: shared Execute-time current-Hand CandidateSource, Player/Random defer
 
 Validation performed: project generation and Development Editor Build PASS after user closed Live Coding. Seven specified prefixes: 43 tests, 42 passed, one historical single-envelope assertion failed; unified selection 12/12 PASS. Updated only that old test's split-envelope expectation, rebuilt PASS, reran only MultiExhaustRecordOrder 1/1 PASS. Logs/reports: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`, `Saved/AutomationReports/UnifiedSelection/index.json`, `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. `git diff --check` PASS.
 
-Next action: USER ACTION REQUIRED — Native L_BattleTest focused manual PIE A–D as detailed in section 21 of the design document. Record user observations, then seal only if they pass. Do not rerun passing automated Gates unless an edit/failure invalidates them. Fast-forward click reuse remains deferred. No continuous-card-play implementation, PIE, packaged-game or visual acceptance has been claimed.
+The G0-focused manual draw/selection acceptance was completed on 2026-09-09. Broader historical A–D cases in the unified-selection design remain historical scope and do not block the sealed G0 contract unless explicitly reopened.
 
 ## Previous checkpoint context (historical; current task above takes precedence)
 
@@ -71,6 +77,12 @@ COMPLETE / VALIDATED / SEALED
 Card Face Visual Style (CFV):
 COMPLETE / USER-ACCEPTED / SEALED
 
+Selection Presentation G0:
+COMPLETE / VALIDATED / SEALED
+
+Selection Presentation G1:
+NEXT ACTIVE SLICE / NOT STARTED
+
 Production Card Expansion:
 ACTIVE
 
@@ -93,6 +105,8 @@ NEXT AFTER C0 SEAL / NOT STARTED
 Wave 1A validation completion was explicitly confirmed by the user on 2026-09-06. Wave 1B was subsequently validated and sealed. Wave 1C current-head revalidation was explicitly confirmed by the user on 2026-09-07 after the playable-selection, mandatory-cancel and committed-Presentation closure fixes.
 
 Wave 1C-C0 design was explicitly locked and implementation on `main` was authorized by the user on 2026-09-08. C0 generalizes the existing Select-Exhaust effect before True Grit is authored.
+
+Selection Presentation G0 manual acceptance was explicitly confirmed by the user on 2026-09-09. G0 is sealed; G1 is now the next active Selection Presentation slice.
 
 ---
 
@@ -476,6 +490,14 @@ They are now repository content on `main`. They were not modified by the C++ clo
 ## Stop point / next active slice
 
 ```text
+Selection Presentation G0
+→ COMPLETE / VALIDATED / SEALED
+
+Selection Presentation G1
+→ NEXT ACTIVE SLICE
+→ PresentationGroup metadata + writer-scoped outcome correlation
+→ NOT STARTED
+
 Wave 1A
 → COMPLETE / VALIDATED / SEALED
 
@@ -497,6 +519,8 @@ Wave 1C-C1 / True Grit
 → NOT STARTED
 ```
 
-The next implementation work is C0 only. Do not author production True Grit CardData until C0 passes its Build, focused Automation, existing Wave 1C 13/13 regression, Player multi-select PIE, Random multi-select PIE and Burning Pact regression PIE gates.
+For Selection Presentation, resume from G1. Do not activate production SelectionArea ownership before the generic SingleRecord transition path and exact completion/recovery prerequisites are in place.
 
-Wave 1D Reactive Exhaust Powers, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain separate future slices and are not implicitly authorized by the C0 design lock.
+For the older Card Expansion track, C0 remains the recorded next implementation slice in that historical initiative. Do not author production True Grit CardData until C0 passes its Build, focused Automation, existing Wave 1C 13/13 regression, Player multi-select PIE, Random multi-select PIE and Burning Pact regression PIE gates.
+
+Wave 1D Reactive Exhaust Powers, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain separate future slices and are not implicitly authorized by the Selection Presentation G0 seal.
