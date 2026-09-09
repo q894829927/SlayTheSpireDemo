@@ -6,7 +6,7 @@ Read `docs/Architecture.md` before cross-system architecture changes. Presentati
 
 ## Runtime Authority
 
-This module contains authoritative Gameplay and non-authoritative Presentation/UI runtime code. It must not depend on `SlayTheSpireDemoTests`.
+This module contains authoritative Gameplay and non-authoritative Presentation/UI runtime code.
 
 `ABattleManager` may temporarily own battle orchestration, battle-scoped allocators and PIE debug entry points. Do not split it for aesthetic reasons or keep adding permanent rule-test entry points when Automation can cover the invariant.
 
@@ -28,7 +28,7 @@ Resolution budget is checked before dequeuing the next action. A Queue resolutio
 
 ## Definitions and Runtime Instances
 
-`UCardData`, `UStatusData` and their instanced effect/modifier/trigger subobjects are immutable shared definitions. Runtime state belongs to `UCardInstance`, `UStatusInstance` and authoritative containers. The Relic definition/runtime ownership model is not locked until Phase 7 introduces a concrete requirement.
+`UCardData`, `UStatusData` and their instanced effect/modifier/trigger subobjects are immutable shared definitions. Runtime state belongs to `UCardInstance`, `UStatusInstance` and authoritative containers. `URelicData` is an immutable definition; `URelicInstance` owns mutable state in `URelicContainer` and shares the battle-wide RuntimeSequence domain with Status sources.
 
 Card effects capture base intent and build reusable actions; they do not control the queue or own unrelated battle rules. Card destination is resolved at cleanup Execute-time and delegated to `UDeckRuntime`.
 
@@ -46,7 +46,7 @@ Phase → Priority → RuntimeSequence → LocalModifierIndex
 
 Ratio modifiers use explicit non-negative numerators and positive denominators, safe integer intermediates and floor after each modifier.
 
-Do not introduce a universal modifier context, generic contributor framework or GameplayTag-based damage taxonomy without a concrete implemented need. While Status is the only real source, direct StatusContainer collection remains acceptable; extract the smallest multi-source boundary when Relics arrive.
+Do not introduce a universal modifier context, generic contributor framework or GameplayTag-based damage taxonomy without a concrete implemented need. Extend source collection only when a concrete modifier requires it; the existence of Relic triggers alone does not require a modifier-framework refactor.
 
 ## Events and Triggers
 

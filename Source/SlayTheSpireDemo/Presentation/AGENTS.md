@@ -2,11 +2,9 @@
 
 Applies to `Source/SlayTheSpireDemo/Presentation/**`.
 
-Read before changing Presentation code:
+For historical Record/Envelope changes, consult `docs/Phase6UIA2Implementation.md` and `docs/Phase6UIA2EImplementation.md`. For Selection/group playback, consult `docs/SelectionPresentationGroupDesign.md` and its implementation plan. Read the portions relevant to the changed contract; A2E is sealed history.
 
-- `docs/Phase6UIA2Implementation.md`
-- `docs/Phase6UIA2EImplementation.md`
-- `docs/UIA2ERemainingSteps.zh-CN.md` when implementing current A2E work
+Group rules below define the required design, not proof that Group playback is implemented or authorization to start its planned stages.
 
 ## Core Principle
 

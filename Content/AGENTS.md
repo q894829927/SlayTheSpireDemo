@@ -12,26 +12,13 @@ Do not claim a Blueprint, Widget, DataAsset, `.uasset` or `.umap` change was mad
 
 ## Manual Unreal Work
 
-When required UMG/Blueprint work cannot be performed automatically, label it `USER ACTION REQUIRED` and specify:
-
-- exact asset path and class;
-- graph/function;
-- nodes and pins;
-- property values;
-- compile/save order;
-- expected visible/runtime result;
-- PIE steps and evidence to return on failure.
+When required UE work cannot be performed with available tools, label it `USER ACTION REQUIRED` and provide the shortest executable instructions for the affected asset/map and expected result. Include graph nodes/pins, property values and compile/save order when that edit needs them; do not impose a full Blueprint checklist on every asset task.
 
 Do not substitute speculative C++ changes for required Blueprint work.
 
-## Current UI-A2E Work
+## Battle UI Content
 
-Current manual Blueprint/UMG work is concentrated under `Content/SlayTheSpireDemo/`.
-
-Follow:
-
-- `docs/UIA2ERemainingSteps.zh-CN.md`
-- `docs/Phase6UIA2EImplementation.md`
+Native is the active battle UI stack. Follow root Legacy protection rules and `docs/LegacyUIPreservationPolicy.md` when touching battle UI assets or dependencies. UI-A2E is sealed history; its old remaining-steps document is not a current work queue.
 
 Status update/removal playback must use exact historical identity: `TargetPresentationId + StatusId + RuntimeSequence`.
 

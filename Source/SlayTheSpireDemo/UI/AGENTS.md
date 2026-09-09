@@ -2,21 +2,13 @@
 
 Applies to `Source/SlayTheSpireDemo/UI/**`.
 
-Read `docs/Phase6UIA3Implementation.md`, `docs/Phase6UIA3CardFacePreviewAmendment.md`, `docs/Phase6UIA2EImplementation.md`, `docs/LegacyUIPreservationPolicy.md`, `docs/CardSelectionPresentationConstraints.md`, and `docs/SelectionPresentationGroupDesign.md` before active battle-UI work touching Selection or committed Presentation.
+Consult documents by changed contract: `docs/Phase6UIA3CardFacePreviewAmendment.md` for card-face Preview; `docs/Phase6UIA2EImplementation.md` for historical playback; `docs/CardSelectionPresentationConstraints.md` for Selection; `docs/SelectionPresentationGroupDesign.md` and its implementation plan for ownership/group redesign. These are targeted references, not an all-files reading prerequisite.
+
+Selection ownership/group rules below define the target design. Staged activation and acceptance remain governed by the implementation plan; they do not imply that all stages already exist or are authorized.
 
 ## Legacy UI Preservation
 
-The retained Legacy battle UI assets are deprecated reference/recovery artifacts only:
-
-```text
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleHUD
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleCard
-/Game/SlayTheSpireDemo/UI/Out/Legacy/WBP_BattleStatus
-```
-
-Normal forward development must use only the Native battle UI stack. Do not add new runtime references to Legacy assets, restore a Legacy Presenter/default, dual-write behavior into Legacy, use Legacy as a new test target, or copy new Native behavior back into Legacy for parity.
-
-Production runtime Legacy HUD/Card/Status dependency count must remain `0`. R14-B destructive removal remains unauthorized without a new explicit user decision.
+Use the Native battle UI only. Root `AGENTS.md` and `docs/LegacyUIPreservationPolicy.md` protect the retained Legacy assets: no new runtime/test use or parity dual-writing; production dependency count stays `0`; destructive removal and runtime recovery require separate explicit authorization.
 
 ## Authority Boundary
 
@@ -320,7 +312,7 @@ A single physical input event must not cross Presentation/Selection/Confirm stat
 
 ## Preview Phase Boundary
 
-UI-A2E is complete and sealed. Active A3 work is authorized under `docs/Phase6UIA3Implementation.md` plus `docs/Phase6UIA3CardFacePreviewAmendment.md`; the amendment controls visible A3-5 behavior where they differ.
+UI-A2E and UI-A3 are sealed. The Preview contracts below remain applicable; `docs/Phase6UIA3CardFacePreviewAmendment.md` controls visible A3-5 behavior where it differs from the original implementation document. Current task scope comes from the user request and applicable current design.
 
 Use the name **Target-Specific Current-State Preview**. Preview construction belongs to a Gameplay/read Query boundary. ViewModel/UMG own selection, preview-target nomination, hover/focus, clearing and display only; they must not iterate CardEffects or reimplement Damage/Block/Energy legality rules.
 
