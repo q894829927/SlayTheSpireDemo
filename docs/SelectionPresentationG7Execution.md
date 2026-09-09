@@ -5,10 +5,11 @@ Date: **2026-09-10**
 Status:
 
 ```text
-IN PROGRESS
-G6 PREDECESSOR COMPLETE / VALIDATED / SEALED
-COMPATIBILITY AUDIT COMPLETE
-RUNTIME-BEHAVIOR CHANGES NOT AUTHORIZED IN G7 CLEANUP
+CLEANUP IMPLEMENTED /
+COMPATIBILITY AUDIT COMPLETE /
+DEVELOPMENT EDITOR BUILD PENDING /
+FOCUSED REGRESSION AUTOMATION PENDING /
+NOT SEALED /
 G8 OUT OF SCOPE
 ```
 
@@ -60,42 +61,53 @@ The direct base Hand -> Discard/Exhaust handlers are likewise retained unless a 
 
 ### Proven dead/staging residue
 
-The initial audit found one source-level compatibility residue that is provably dead:
+The audit found one source-level compatibility residue that is provably dead:
 
 ```text
 UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentationForTesting
 ```
 
-It is an unused G5-era alias for the generic `FinishNativeCardTransitionForTesting` helper. No source/test caller references the alias. The inherited generic test helper remains available, so deleting the alias changes no runtime or test capability.
+It was an unused G5-era alias for the generic `FinishNativeCardTransitionForTesting` helper. No source/test caller referenced the alias. The inherited generic test helper remains available, so deleting the alias changes no runtime or test capability.
 
-Source comments that still describe the generic transition surface as a future/dormant G4 adapter may be normalized to the sealed G5/G6 model, but comments are not permission to alter behavior.
+Source comments that still described the generic transition surface as a future/dormant G4 adapter were also normalized to the sealed G5/G6 model.
 
-## Planned G7 code change
+## Implemented G7 cleanup
 
 ```text
-1. delete the unused Selection-specific test alias;
-2. normalize stale transition comments where touched;
-3. do not remove current recovery hooks, ownership state or generic transition code;
-4. do not perform optional Status reconciliation in this stage;
-5. do not enter G8.
+114f6e60a375d7c82548541f3088e66dad5d7296
+cleanup(g7): remove obsolete selection test alias
+
+4a3cff000b7e845aa4b5709222b9aebfebccbe86
+cleanup(g7): normalize sealed transition comments
 ```
+
+The final Source cleanup changes only:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDSelectionWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDCardTransitionWidget.h
+```
+
+No `.cpp` runtime control flow, animation parameter, ownership mutation, Controller sequencing, reducer behavior, Gameplay rule, asset or map was changed.
+
+Optional Status reconciliation is intentionally not included. G8 is intentionally not included.
 
 ## Validation boundary
 
-Because the intended runtime behavior is unchanged, G7 requires fresh affected compile/Automation evidence but does not invalidate the already accepted G6 visual contract unless a cleanup edit changes a real visible path.
+Because the final runtime behavior is unchanged, G7 requires fresh affected compile/Automation evidence but does not invalidate the already accepted G6 visual contract.
 
 Required after the source cleanup:
 
 ```text
 [ ] UE 5.8 Development Editor build PASS
 [ ] SlayTheSpireDemo.SelectionPresentation.G6 focused regression PASS
-[ ] affected CardSelection.Presentation G5/G4 regression PASS
-[ ] affected C0 multi-select regression PASS if shared Selection code changed materially
-[ ] affected C1 DrawPileTop regression PASS if transition behavior changed materially
+[ ] SlayTheSpireDemo.CardSelection.Presentation focused regression PASS
 ```
 
-If the final G7 diff remains declaration/comment/test-only with no runtime visual behavior change, the sealed G6 Native PIE evidence remains valid under `docs/ValidationExecutionPolicy.md`; no fabricated new PIE claim will be made.
+The C0/C1 implementation paths were not changed by the final G7 diff. Their earlier sealed/focused evidence remains valid unless the fresh shared Selection regression exposes a concrete failure implicating those contracts.
+
+If the build and focused regressions pass, no fresh PIE is required for this declaration/comment-only runtime-neutral cleanup under `docs/ValidationExecutionPolicy.md`; the sealed G6 Native PIE evidence remains valid.
 
 ## Seal rule
 
-G7 may be sealed only after the final diff is reviewed against this audit and the affected build/Automation gates pass. The seal must explicitly state that G8 early input / Presentation pipelining remains deferred and unimplemented.
+G7 may be sealed only after the build and focused regressions above pass. The seal must explicitly state that G8 early input / Presentation pipelining remains deferred and unimplemented.
