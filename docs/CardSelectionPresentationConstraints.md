@@ -8,14 +8,15 @@ Status:
 PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
 LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT DEFINED /
 G0 A/B/C COMPLETE / VALIDATED / SEALED /
-GROUP PRODUCTION CODE NOT IMPLEMENTED / G1+ NOT SEALED
+G1-G3 SEALED / G4+G5 IMPLEMENTED, VALIDATION IN PROGRESS /
+VISIBLE GROUP PLAYBACK (G6) NOT IMPLEMENTED
 ```
 
 Scope: define the shared Native HUD / Presentation contract for current and future player card-selection interactions.
 
 This document is authoritative for card-selection Presentation behavior. `docs/CardSelectionRefactorConstraints.md` remains authoritative for Gameplay candidate capture, pending requests, resolver/continuation behavior and interactive-boundary rules. `docs/SelectionPresentationGroupDesign.md` specifies the grouped multi-selection implementation in more detail.
 
-Current implementation and evidence are recorded in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`. G0 is complete, validated and sealed. It uses incremental Native dirty propagation and Battle-scoped Hand Widget reuse; its ownership APIs and empty SelectionAreaHost remain dormant for production Selection. Production Selection still uses formal-Hand transforms and `ConfirmedCardCenters`. Sections below describe the target unless explicitly identified as current; they do not authorize an early ownership switch.
+Current implementation and evidence are recorded in `docs/SelectionPresentationG5Execution.md` and `docs/Validation.md`. G0-G3 are sealed. The user authorized joint G4+G5 delivery after the G4 intermediate implementation failed visual acceptance. Production selected visuals now use the persistent SelectionArea and existing ownership APIs; formal-Hand transforms and `ConfirmedCardCenters` have been retired from this path. G4+G5 still needs visual acceptance. G6 simultaneous playback and later sections remain targets until explicitly activated by their execution scope.
 
 ## 1. Core principle
 

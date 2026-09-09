@@ -4,6 +4,7 @@
 #include "UObject/Object.h"
 #include "../Battle/BattleImmediatePreview.h"
 #include "BattleHUDTypes.h"
+#include "../Presentation/PresentationTypes.h"
 #include "BattleHUDViewModel.generated.h"
 
 class ABattleManager;
@@ -16,6 +17,7 @@ enum class EGameplayRequestFailureReason : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDViewModelChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBattleHUDPreviewChanged);
+DECLARE_DELEGATE_OneParam(FSynchronizeCardPresentationSurfaces, const TArray<int32>&);
 DECLARE_MULTICAST_DELEGATE_OneParam(
 	FBattleHUDViewModelNativeChanged,
 	EBattleHUDDirtyFlags
@@ -69,10 +71,15 @@ public:
 	bool HasAuthoritativePendingCardSelection() const;
 	bool TryGetPendingCardSelectionReadView(FPendingCardSelectionReadView& OutView) const;
 	bool IsPendingCardSelectionCandidate(int32 RuntimeId) const;
-	bool SubmitPendingCardSelectionByRuntimeIds(const TArray<int32>& RuntimeIds);
+	virtual bool SubmitPendingCardSelectionByRuntimeIds(const TArray<int32>& RuntimeIds);
 	bool SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId);
 	bool CanConfirmPendingCardSelection() const;
 	bool ConfirmPendingCardSelection();
+	bool ConfirmPendingCardSelectionWithPresentation(int64 SelectionGeneration);
+	bool IsSelectionPresentationSubmitInProgress() const { return bSelectionPresentationSubmitInProgress; }
+	void AcceptSelectionPresentationOutcomes(const FPresentationResolutionEnvelope& Envelope);
+	// One owning Native HUD commits its surfaces before public multicast observers.
+	FSynchronizeCardPresentationSurfaces SynchronizeCardPresentationSurfaces;
 	bool IsPendingCardSelectionRuntimeIdSelected(int32 RuntimeId) const;
 	int32 GetPendingCardSelectionSelectedCount() const;
 	void ClearPendingCardSelectionInputState();
@@ -108,10 +115,9 @@ public:
 	bool IsPresentationDisplayOwned() const;
 	void SetPresentationDisplayOwned(bool bOwned);
 
-	// G0-C dormant Presentation-ownership infrastructure. These APIs are native
-	// Presentation state only; Gameplay selection/card-zone truth remains owned
-	// by BattleManager and the selection facade. Production Selection does not
-	// switch to these owners until the later G5 migration.
+	// G0 ownership infrastructure, activated by the production G5 Selection HUD.
+	// Native Presentation state only; Gameplay selection/card-zone truth remains
+	// owned by BattleManager and the selection facade.
 	int64 BeginCardPresentationSelectionLifecycle(int64 SelectionBoundaryRevision);
 	bool CancelCardPresentationSelectionLifecycle(int64 SelectionGeneration);
 	bool SetPendingCardPresentationSelection(
@@ -260,6 +266,18 @@ private:
 	TArray<int32> ReconcileCardPresentationOwnershipInternal();
 	void PublishCardPresentationOwnershipChanged(const TArray<int32>& ChangedRuntimeIds);
 	void ResetCardPresentationOwnershipState(bool bNotify);
+	void ResolveSelectionPresentationReadEdge(uint64 InBattleId, uint64 InStateRevision);
+	void ApplySelectionOutcomeReceipt(const FSelectionPresentationOutcomeReceipt& Receipt);
+	bool bSelectionPresentationSubmitInProgress = false;
+	bool bSelectionCorrelationFailed = false;
+	int64 SubmittingSelectionBoundary = 0;
+	TArray<FSelectionPresentationOutcomeReceipt> DeferredSelectionReceipts;
+	UPROPERTY(Transient)
+	FPresentationStateSnapshot DeferredSelectionSnapshot;
+	bool bHasDeferredSelectionSnapshot = false;
+	bool bDeferredSelectionResetInteraction = false;
+	uint64 DeferredSelectionReadBattleId = 0;
+	uint64 DeferredSelectionReadRevision = 0;
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
 	TMap<int32, TWeakObjectPtr<UCardInstance>> LiveCardBindings;

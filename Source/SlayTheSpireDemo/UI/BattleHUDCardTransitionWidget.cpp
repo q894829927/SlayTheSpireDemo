@@ -2,6 +2,7 @@
 
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
+#include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/TextBlock.h"
@@ -33,6 +34,25 @@ void UBattleHUDCardTransitionWidget::NativeDestruct()
 	}
 	ResetNativeCardTransitionState();
 	Super::NativeDestruct();
+}
+
+void UBattleHUDCardTransitionWidget::ReleaseObsoleteSelectionTransitions()
+{
+	if (!IsValid(ViewModel)) return;
+	for (const FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
+	{
+		if (!Instance.bSelectionAreaVisualTransferred) continue;
+		FCardPresentationOwnershipEntry Entry;
+		if (!ViewModel->TryGetCardPresentationOwnershipEntry(Instance.RuntimeId, Entry)
+			|| Entry.BattleId != NativeCardTransitionToken.BattleId
+			|| Entry.SelectionGeneration != Instance.SelectionGeneration
+			|| Entry.Owner != ECardPresentationOwner::Transition)
+		{
+			const FPresentationPlaybackToken Token = NativeCardTransitionToken;
+			CancelTrackedPresentationPlayback(Token);
+			return;
+		}
+	}
 }
 
 void UBattleHUDCardTransitionWidget::NativeTick(
@@ -122,9 +142,8 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransition(
 		Instance.FallbackStartTranslation = NativeTransitionHandFallback;
 	}
 
-	// Capture the actual displayed source center before any hide/reparent. This
-	// preserves confirmed-position compatibility for every migrated Hand source,
-	// not only DrawPile, and avoids reconstructing visible continuity by CardId.
+	// Capture the displayed Hand source before hiding it. SelectionArea sources
+	// replace this with their persistent Host-space center below.
 	const FGeometry& HistoricalGeometry = HistoricalHandCard->GetCachedGeometry();
 	if (HistoricalGeometry.GetLocalSize().SizeSquared() > 0.0f)
 	{
@@ -151,15 +170,6 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransition(
 	{
 		// A committed child already owned by Transition/Consumed must not replay.
 		return false;
-	}
-
-	FVector2D CompatibilityCenter = FVector2D::ZeroVector;
-	if (TryGetCardTransitionCompatibilitySourceCenter(
-		Payload.Card.RuntimeId,
-		CompatibilityCenter))
-	{
-		Instance.AbsoluteSourceCenter = CompatibilityCenter;
-		Instance.bHasAbsoluteSourceCenter = true;
 	}
 
 	if (Instance.SourceOwner == ECardPresentationOwner::SelectionArea)
@@ -269,12 +279,16 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransition(
 
 	if (Active.SourceOwner == ECardPresentationOwner::SelectionArea)
 	{
+		// Ownership publication can synchronously trigger recovery. Mark the
+		// prepared child first so that recovery can cancel its exact visual/token.
+		Active.bSelectionAreaVisualTransferred = true;
 		if (!ViewModel->TryTransferCardPresentationOwnership(
 			Active.SelectionGeneration,
 			Active.RuntimeId,
 			ECardPresentationOwner::SelectionArea,
 			ECardPresentationOwner::Transition))
 		{
+			Active.bSelectionAreaVisualTransferred = false;
 			ClearNativeCardTransitionFinishTimer();
 			RollbackPreparedSelectionAreaTransition();
 			HistoricalHandCard->SetVisibility(Active.HistoricalHandVisibility);
@@ -282,10 +296,10 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransition(
 			AbortNativePresentationStart();
 			return false;
 		}
-		Active.bSelectionAreaVisualTransferred = true;
+		if (ActiveNativeCardTransitions.IsEmpty() || NativeCardTransitionToken != Token) return false;
 	}
 
-	OnNativeCardTransitionAccepted(Active.RuntimeId);
+	OnNativeCardTransitionAccepted(Payload.Card.RuntimeId);
 	return true;
 }
 
@@ -376,6 +390,17 @@ bool UBattleHUDCardTransitionWidget::ResolveSelectionAreaTransitionVisual(
 		return false;
 	}
 
+	// Host children are center-aligned with a center render pivot. Resolve from
+	// the stable Host and current transform, not last frame's child geometry
+	// (which may still describe its earlier Pending position).
+	const FGeometry& HostGeometry = Host->GetCachedGeometry();
+	if (HostGeometry.GetLocalSize().SizeSquared() > 0.0f)
+	{
+		OutAbsoluteCenter = HostGeometry.LocalToAbsolute(
+			FVector2D(HostGeometry.GetLocalSize()) * 0.5f + OutVisual->GetRenderTransform().Translation);
+		bOutHasAbsoluteCenter = true;
+		return true;
+	}
 	const FGeometry& Geometry = OutVisual->GetCachedGeometry();
 	if (Geometry.GetLocalSize().SizeSquared() > 0.0f)
 	{
@@ -395,13 +420,13 @@ bool UBattleHUDCardTransitionWidget::RestoreSelectionAreaTransitionVisual(
 		return false;
 	}
 	Visual->RemoveFromParent();
-	UOverlaySlot* Slot = Host->AddChildToOverlay(Visual);
-	if (!IsValid(Slot))
+	UOverlaySlot* OverlaySlot = Host->AddChildToOverlay(Visual);
+	if (!IsValid(OverlaySlot))
 	{
 		return false;
 	}
-	Slot->SetHorizontalAlignment(HAlign_Center);
-	Slot->SetVerticalAlignment(VAlign_Center);
+	OverlaySlot->SetHorizontalAlignment(HAlign_Center);
+	OverlaySlot->SetVerticalAlignment(VAlign_Center);
 	if (Instance.bSelectionAreaVisualStateCaptured)
 	{
 		Visual->SetRenderTransform(Instance.SourceRenderTransform);
@@ -424,13 +449,13 @@ bool UBattleHUDCardTransitionWidget::AttachTransitionVisualToPlayArea(
 		return false;
 	}
 	Visual->RemoveFromParent();
-	UOverlaySlot* Slot = OV_PlayArea->AddChildToOverlay(Visual);
-	if (!IsValid(Slot))
+	UOverlaySlot* OverlaySlot = OV_PlayArea->AddChildToOverlay(Visual);
+	if (!IsValid(OverlaySlot))
 	{
 		return false;
 	}
-	Slot->SetHorizontalAlignment(HAlign_Center);
-	Slot->SetVerticalAlignment(VAlign_Center);
+	OverlaySlot->SetHorizontalAlignment(HAlign_Center);
+	OverlaySlot->SetVerticalAlignment(VAlign_Center);
 	return true;
 }
 

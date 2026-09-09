@@ -64,7 +64,7 @@ struct FNativeCardTransitionInstance
  *
  * It owns Hand/SelectionArea -> committed DrawPile/Discard/Exhaust visuals and
  * leaves CardPlayed, DrawPile->Hand and PlayArea cleanup on the existing R8
- * adapters. Production SelectionArea ownership remains dormant until G5.
+ * adapters. G5 production SelectionArea transfers its exact visible object here.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDCardTransitionWidget : public UBattleHUDReconciledWidget
@@ -92,6 +92,7 @@ public:
 #endif
 
 protected:
+	void ReleaseObsoleteSelectionTransitions();
 	virtual void NativeDestruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
@@ -106,16 +107,6 @@ protected:
 	virtual UOverlay* GetCardTransitionSelectionAreaHost() const
 	{
 		return nullptr;
-	}
-
-	// Temporary G4 compatibility source-center handoff. G5 replaces the primary
-	// source with the durable SelectionArea visual; G7 deletes this compatibility
-	// hook together with ConfirmedCardCenters.
-	virtual bool TryGetCardTransitionCompatibilitySourceCenter(
-		int32 RuntimeId,
-		FVector2D& OutAbsoluteCenter) const
-	{
-		return false;
 	}
 
 	// Generic lifecycle hooks only. Derived Selection code may retire temporary

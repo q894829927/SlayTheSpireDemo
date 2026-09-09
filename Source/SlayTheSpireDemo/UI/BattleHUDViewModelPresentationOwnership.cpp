@@ -572,6 +572,8 @@ void UBattleHUDViewModel::PublishCardPresentationOwnershipChanged(
 	}
 	if (!UniqueRuntimeIds.IsEmpty())
 	{
+		UniqueRuntimeIds.Sort();
+		SynchronizeCardPresentationSurfaces.ExecuteIfBound(UniqueRuntimeIds);
 		OnCardPresentationOwnershipChanged.Broadcast(UniqueRuntimeIds);
 	}
 }

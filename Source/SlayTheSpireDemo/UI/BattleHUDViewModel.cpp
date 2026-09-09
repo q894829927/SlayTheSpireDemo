@@ -178,6 +178,7 @@ bool UBattleHUDViewModel::Initialize(
 	BattleManager = InBattleManager;
 	bPresentationDisplayOwned = bInPresentationDisplayOwned;
 	InBattleManager->OnReadStateReady.AddUObject(this, &UBattleHUDViewModel::HandleReadStateReady);
+	InBattleManager->OnPresentationResolutionReady.AddUObject(this, &UBattleHUDViewModel::AcceptSelectionPresentationOutcomes);
 
 	if (!InBattleManager->IsPresentationAvailable())
 	{
@@ -213,9 +214,14 @@ void UBattleHUDViewModel::Shutdown()
 	if (ABattleManager* Battle = BattleManager.Get())
 	{
 		Battle->OnReadStateReady.RemoveAll(this);
+		Battle->OnPresentationResolutionReady.RemoveAll(this);
 	}
 
 	ResetCardPresentationOwnershipState(true);
+	bSelectionCorrelationFailed = false;
+	bSelectionPresentationSubmitInProgress = false;
+	bHasDeferredSelectionSnapshot = false;
+	DeferredSelectionReceipts.Reset();
 	NextCardPresentationSelectionGeneration = 1;
 	BattleManager.Reset();
 	ClearLiveInputBindings();
@@ -432,6 +438,13 @@ bool UBattleHUDViewModel::TryGetLegalTargetByPresentationId(FName PresentationId
 
 void UBattleHUDViewModel::ApplyPresentationSnapshot(const FPresentationStateSnapshot& Snapshot, bool bResetInteraction)
 {
+	if (bSelectionPresentationSubmitInProgress)
+	{
+		DeferredSelectionSnapshot = Snapshot;
+		bHasDeferredSelectionSnapshot = true;
+		bDeferredSelectionResetInteraction |= bResetInteraction;
+		return;
+	}
 	const bool bBattleChanged = BattleId != Snapshot.BattleId;
 	const bool bRevisionChanged = bBattleChanged || StateRevision != Snapshot.StateRevision;
 	EBattleHUDDirtyFlags DirtyFlags = bBattleChanged ? EBattleHUDDirtyFlags::All : EBattleHUDDirtyFlags::None;
@@ -470,6 +483,7 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(const FPresentationStateSnap
 
 	if (bBattleChanged)
 	{
+		bSelectionCorrelationFailed = false;
 		CompletedPresentationResolutionBattleId = BattleId;
 		CompletedPresentationResolutionIds.Reset();
 	}
@@ -481,6 +495,12 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(const FPresentationStateSnap
 	if (Outcome != EBattleHUDOutcome::None)
 	{
 		InteractionState = EBattleHUDInteractionState::Terminal;
+		bInputLocked = true;
+		bCanEndTurn = false;
+	}
+	else if (bSelectionCorrelationFailed)
+	{
+		InteractionState = EBattleHUDInteractionState::PresentationUnavailable;
 		bInputLocked = true;
 		bCanEndTurn = false;
 	}
@@ -510,6 +530,11 @@ void UBattleHUDViewModel::ApplyPresentationSnapshot(const FPresentationStateSnap
 
 bool UBattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()
 {
+	if (bSelectionCorrelationFailed)
+	{
+		EnterPresentationUnavailable(NSLOCTEXT("BattleHUD", "SelectionOutcomeMissing", "Selection presentation outcome is unavailable."));
+		return false;
+	}
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle) || !Battle->IsPresentationAvailable())
 	{
@@ -602,6 +627,14 @@ void UBattleHUDViewModel::BeginDestroy()
 
 void UBattleHUDViewModel::HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision)
 {
+	if (bSelectionPresentationSubmitInProgress)
+	{
+		DeferredSelectionReadBattleId = InBattleId;
+		DeferredSelectionReadRevision = InStateRevision;
+		return;
+	}
+	ResolveSelectionPresentationReadEdge(InBattleId, InStateRevision);
+	if (bSelectionCorrelationFailed && BattleId == static_cast<int64>(InBattleId)) return;
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle)) return;
 	const bool bIncomingRevisionChanged = BattleId != static_cast<int64>(InBattleId) || StateRevision != static_cast<int64>(InStateRevision);
@@ -741,6 +774,8 @@ void UBattleHUDViewModel::ClearFeedback()
 
 void UBattleHUDViewModel::BroadcastChanged(EBattleHUDDirtyFlags DirtyFlags)
 {
+	if (bSelectionPresentationSubmitInProgress) return;
+	SynchronizeCardPresentationSurfaces.ExecuteIfBound({});
 	LastChangeFlags = DirtyFlags;
 	OnNativeChanged.Broadcast(DirtyFlags);
 	OnChanged.Broadcast();

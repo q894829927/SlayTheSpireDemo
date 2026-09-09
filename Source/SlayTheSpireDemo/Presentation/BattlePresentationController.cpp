@@ -541,6 +541,9 @@ void UBattlePresentationController::BeginDestroy()
 
 void UBattlePresentationController::HandlePresentationResolutionReady(const FPresentationResolutionEnvelope& Envelope)
 {
+	// Receipts precede playback even if the Controller's delegate was registered
+	// before the ViewModel's listener. Zero-record envelopes also carry outcomes.
+	if (IsValid(ViewModel)) ViewModel->AcceptSelectionPresentationOutcomes(Envelope);
 	if (Envelope.BattleId <= 0 || Envelope.ResolutionId <= 0)
 	{
 		return;
@@ -600,6 +603,18 @@ void UBattlePresentationController::HandlePresentationResolutionReady(const FPre
 	}
 
 	PlaybackQueue.Add(Envelope);
+	if (IsValid(ViewModel) && ViewModel->IsSelectionPresentationSubmitInProgress())
+	{
+		// Queue is UPROPERTY-owned; do not capture UObject-bearing envelopes in a
+		// non-GC-tracked timer while Confirm is still a fallible transaction.
+		const TWeakObjectPtr<UBattlePresentationController> WeakThis(this);
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis](float)
+		{
+			if (UBattlePresentationController* Controller = WeakThis.Get()) Controller->StartNextEnvelope();
+			return false;
+		}));
+		return;
+	}
 	StartNextEnvelope();
 }
 

@@ -23,10 +23,10 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
 	virtual void RefreshHand() override;
+	virtual void HandleCardPresentationOwnershipChanged(const TArray<int32>& RuntimeIds);
 
 private:
 	void EnsureOwnershipDelegateBinding();
-	void HandleCardPresentationOwnershipChanged(const TArray<int32>& RuntimeIds);
 	void ApplyExplicitCardPresentationOwnershipToFormalHand();
 	void UnbindReconciledHandDelegates();
 

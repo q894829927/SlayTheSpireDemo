@@ -10,7 +10,7 @@ void UBattleHUDReconciledWidget::NativeDestruct()
 {
 	if (UBattleHUDViewModel* BoundViewModel = OwnershipBoundViewModel.Get())
 	{
-		BoundViewModel->OnCardPresentationOwnershipChanged.RemoveAll(this);
+		if (BoundViewModel->SynchronizeCardPresentationSurfaces.IsBoundToObject(this)) BoundViewModel->SynchronizeCardPresentationSurfaces.Unbind();
 	}
 	OwnershipBoundViewModel.Reset();
 	UnbindReconciledHandDelegates();
@@ -158,12 +158,12 @@ void UBattleHUDReconciledWidget::EnsureOwnershipDelegateBinding()
 
 	if (UBattleHUDViewModel* PreviousViewModel = OwnershipBoundViewModel.Get())
 	{
-		PreviousViewModel->OnCardPresentationOwnershipChanged.RemoveAll(this);
+		if (PreviousViewModel->SynchronizeCardPresentationSurfaces.IsBoundToObject(this)) PreviousViewModel->SynchronizeCardPresentationSurfaces.Unbind();
 	}
 	OwnershipBoundViewModel = DesiredViewModel;
 	if (DesiredViewModel != nullptr)
 	{
-		DesiredViewModel->OnCardPresentationOwnershipChanged.AddUObject(this, &UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged);
+		DesiredViewModel->SynchronizeCardPresentationSurfaces.BindUObject(this, &UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged);
 	}
 }
 

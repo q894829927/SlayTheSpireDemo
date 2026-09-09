@@ -2,6 +2,103 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Selection Presentation G4+G5 migration — 2026-09-09
+
+Base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`; uncommitted implementation.
+User authorized G5 after the G4 visual failure below. Scope and manual checklist:
+`docs/SelectionPresentationG5Execution.md`. No assets or Gameplay rules changed.
+
+- Standard bundled UE 5.8 project generation + Development Editor build PASS
+  after user closed Editor. Final evidence: `Saved/Logs/G5RecoveryProjectFiles.log`
+  and `Saved/Logs/G5RecoveryBuild.log`, process exit 0.
+- Initial Automation **39/39 PASS** (33 clean, 6 existing fixture warnings), no
+  failures/notRun, process exit 0: `Saved/AutomationReports/G5Initial/index.json`.
+  Exact union: `SlayTheSpireDemo.CardSelection.Presentation`,
+  `SlayTheSpireDemo.SelectionPresentation.G0`, `.G1`, `.G3`,
+  `SlayTheSpireDemo.CardExpansion.Wave1CC0.Selection`, and
+  `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop`.
+- Expanded run `Saved/Logs/G5FinalAutomation.log` aborted on a missing pure-virtual
+  preview implementation in the new no-destination test Effect. No complete
+  report exists. Before abort, exact G4.SelectionAreaExactVisualTransfer,
+  G4.SelectionAreaPrepareRollback and G5.ConfirmRejectionAndDirectOutcome passed
+  under the CardSelection.Presentation prefix. The fixture interfaces were fixed.
+- Completion run **9 passed / 1 failed**, no warnings/notRun, process exit 0:
+  `Saved/AutomationReports/G5Completion/index.json`. The JSON failure, despite
+  successful process exit, exposed missing-correlation recovery being overwritten
+  by a later resolving-state notification; runtime now preserves unavailable
+  state through same-battle read/snapshot updates. Scope: four G5 tests other
+  than ConfirmRejectionAndDirectOutcome, CardSelection.Presentation.HandTo*,
+  CardSelection.Presentation.Input*, and SelectionPresentation.G0.FormalSlotOwnership.
+- Final affected rerun **6/6 PASS**, no warnings/failures/notRun, process exit 0:
+  `Saved/AutomationReports/G5Recovery/index.json`,
+  `Saved/Logs/G5RecoveryAutomation.log`. Exact union:
+  `SlayTheSpireDemo.CardSelection.Presentation.G5` (five tests) plus
+  `SlayTheSpireDemo.SelectionPresentation.G0.FormalSlotOwnership`.
+
+Coverage includes GC during ownership publication, selection/deselection,
+observer coherence, same-object retention and stable waiting transforms across
+three Draw/Exhaust children, decline/cancel, rejection/retry, battle/HUD replacement,
+synchronous snapshots/receipts during submit, terminal display replacement,
+recorded/direct zero-destination completion and missing-metadata UI-only recovery.
+Passing unaffected evidence is retained; overlapping run counts are not added.
+Headless synthetic geometry does not validate real Slate frames or Blueprint layout.
+**USER ACTION REQUIRED:** Native `L_BattleTest` manual checklist in G5 execution
+document. G4+G5 remains unsealed; G6 simultaneous playback is not implemented.
+
+## Sequential selection Exhaust drift repair — 2026-09-09
+
+Base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`, uncommitted repair on top
+of the compilation fix below. Scope/root cause and manual acceptance are in
+`docs/SelectionPresentationG4Execution.md`, sequential Exhaust follow-up.
+First attempt was blocked by Live Coding. After user closure, standard project
+generation and build PASS (target already up-to-date), logs
+`Saved/Logs/SelectionDriftProjectFiles.log`, `Saved/Logs/SelectionDriftBuild.log`.
+First routing-only repair: **8/8 PASS**, one existing fixture warning, exit 0;
+`Saved/AutomationReports/SelectionDrift/index.json`. User still reported drift;
+this run did not cover waiting-card layout compensation.
+
+After adding waiting Hand position compensation: standard UE 5.8 project
+generation and Development Editor Win64 build PASS (exit 0); logs
+`Saved/Logs/SelectionWaitingDriftProjectFiles.log` and
+`Saved/Logs/SelectionWaitingDriftBuild.log`.
+Unattended `-nullrhi` focused `SlayTheSpireDemo.CardSelection.Presentation`:
+**9/9 PASS** (8 clean, 1 with the existing ProductionConfirmRouting partial-fixture
+SelectionAreaHost warning), 0 failed, 0 notRun, process exit 0.
+Evidence: `Saved/AutomationReports/SelectionWaitingDrift/index.json` and
+`Saved/Logs/SelectionWaitingDriftAutomation.log`. `git diff --check` PASS.
+**MANUAL PIE — USER ACTION REQUIRED:** repeat the reported multi-card Exhaust
+selection in Native `L_BattleTest`; waiting cards and successive fades must stay
+at confirmed positions, without drift/jump, duplicates or stuck input. Automated
+coordinate assertions do not prove Slate paint timing. G4 remains unsealed;
+G5 remains unstarted pending G4 acceptance.
+
+Subsequent user PIE feedback: **visual gate FAIL**. The second selected card
+still briefly jumps to the first card's position before returning to its own.
+The nine automated passes remain coordinate/protocol evidence only; the waiting
+compensation has not established visual continuity. Do not report the drift fixed.
+Simultaneous safe-group fades belong to G6, after G5 production SelectionArea
+ownership; current G4 deliberately executes one child at a time.
+
+## Card transition compilation fix — 2026-09-09
+
+Base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`, uncommitted fix.
+Added the explicit HorizontalBox include to `BattleHUDCardTransitionWidget.cpp`
+and renamed two local Overlay slots to avoid hiding `UWidget::Slot`, resolving
+C2664 and C4458 without changing playback behavior.
+
+Standard bundled UE 5.8 project generation and Development Editor Win64 build
+PASS (exit 0). Evidence: `Saved/Logs/CardTransitionCompileFixProjectFiles.log`
+and `Saved/Logs/CardTransitionCompileFixBuild.log`.
+Unattended UnrealEditor-Cmd with `-nullrhi` ran the focused
+`SlayTheSpireDemo.CardSelection.Presentation` prefix: **7/7 PASS**, 0 failed,
+0 notRun, exit 0 (6 clean passes, 1 pass with warning). ProductionConfirmRouting
+reported the existing partial-fixture SelectionAreaHost creation warning;
+both G4 visual-transfer/prepare-rollback tests passed without warnings.
+Evidence: `Saved/AutomationReports/CardTransitionCompileFix/index.json` and
+`Saved/Logs/CardTransitionCompileFixAutomation.log`. `git diff --check` PASS.
+No Blueprint/assets or visual behavior changed; no manual PIE gate is required
+for this compilation-only fix, and no new visual acceptance is claimed.
+
 ## G0 A/B/C review and draw adoption — 2026-09-09
 
 Base HEAD `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`, uncommitted review changes.

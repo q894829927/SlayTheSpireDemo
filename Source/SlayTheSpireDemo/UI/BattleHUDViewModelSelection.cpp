@@ -7,6 +7,7 @@ bool UBattleHUDViewModel::TryGetPendingCardSelectionReadView(
 	FPendingCardSelectionReadView& OutView
 ) const
 {
+	if (bSelectionCorrelationFailed) return false;
 	ABattleManager* Battle = BattleManager.Get();
 	if (!IsValid(Battle) || !Battle->IsPresentationAvailable())
 	{
@@ -141,6 +142,8 @@ bool UBattleHUDViewModel::CanConfirmPendingCardSelection() const
 
 bool UBattleHUDViewModel::ConfirmPendingCardSelection()
 {
+	if (ActiveCardPresentationSelectionGeneration > 0)
+		return ConfirmPendingCardSelectionWithPresentation(ActiveCardPresentationSelectionGeneration);
 	if (!CanConfirmPendingCardSelection())
 	{
 		return false;

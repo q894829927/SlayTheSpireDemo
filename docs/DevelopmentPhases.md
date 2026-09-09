@@ -4,7 +4,9 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
-- **Selection Presentation G0 A/B/C — implemented / automated gates PASS / manual PIE pending (2026-09-09).** Reviewed incremental dirty propagation, RuntimeId Hand reuse and dormant ownership; repaired completed draw visuals retaining HitTestInvisible during formal adoption. Scope and remaining focused PIE: `docs/SelectionPresentationG0Execution.md`; evidence: `docs/Validation.md`. G1 remains outside this review.
+- **Selection Presentation G4+G5 — implemented / automated gates pass / visual acceptance pending (2026-09-09).** User authorized the coherent G4+G5 migration after G4 compatibility positioning failed PIE. Production selection now uses persistent SelectionArea ownership and exact outcome completion; G6 simultaneous playback is not enabled. Scope: `docs/SelectionPresentationG5Execution.md`; actual evidence: `docs/Validation.md`.
+
+- **Selection Presentation G0–G3 — COMPLETE / VALIDATED / SEALED.** Historical ownership, correlation and Controller foundations are recorded in their dedicated execution documents. The first joint G4/G5 visible correctness milestone remains unsealed.
 
 - **Selection Presentation production repair — implemented / automated gates PASS / manual PIE pending (2026-09-08).** Native HUD now uses the shared selection subclass; explicit confirmation, central selected-card display, draw-pile transfer and generic played-card Exhaust reuse follow `docs/CardSelectionPresentationConstraints.md` section 16.
 

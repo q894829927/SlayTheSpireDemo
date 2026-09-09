@@ -8,6 +8,23 @@ The unified selection contract is defined in `docs/CardSelectionRefactorConstrai
 
 Each real Player decision is a distinct `(BattleId, StateRevision)` display boundary, including consecutive identical choices. Recorded UI exposes candidates only at exact frozen catch-up; no-history mode publishes the matching frozen baseline without history. PresentationUnavailable retains the mandatory Gameplay choice while preserving the existing disabled-input/error surface. Invalid submissions keep a valid request pending; internal dependency, BeginSelection, Continuation or insertion failure follows the Gameplay framework fault policy. Actions insert dependent batches and Finish; neither candidates nor Continuations pump the queue.
 
+### Native selected-card visual ownership (G5)
+
+Production Selection uses a persistent Canvas-root SelectionArea Overlay. Each
+selected RuntimeId has one visible frozen-data counterpart there; its historical
+Hand widget remains an input-disabled Hidden structural slot. Confirm preserves
+the SelectionArea object and its position, then G4 SingleRecord reparents that
+same object to the transition surface. Hand reconciliation does not position or
+recreate confirmed visuals. Safe simultaneous playback remains G6 work.
+
+The ViewModel commits Confirm after accepted submission, holds re-entrant
+snapshots/outcomes during that transaction, and arms exact G1 recorded/direct
+receipts. One Native HUD synchronizes affected surfaces before public ownership
+or snapshot notifications; external multicast registration order is irrelevant.
+Missing correlation at a newer Ready edge is explicit UI-only unavailable
+recovery. It never manufactures a completion watermark or Gameplay fault.
+Scope and pending visual acceptance: `docs/SelectionPresentationG5Execution.md`.
+
 ## 1. Battle Execution
 
 ```text

@@ -2,7 +2,38 @@
 
 Last updated: **2026-09-09**
 
-## Current resumable task — Selection Presentation G2
+## Current resumable task — G4+G5 persistent selection ownership
+
+HEAD verified: `963adbd27cc161a09ea1ff68c7e479719b8331cb`.
+User explicitly authorized G5 after G4 visual acceptance failed; later confirmed
+Editor closed for compilation. Dedicated scope: `docs/SelectionPresentationG5Execution.md`.
+
+Completed, uncommitted: persistent GC-owned SelectionArea copies, hidden formal
+Hand slots, exact same-object G4 transfer, stable Confirmed layout, transactional
+Confirm, deferred synchronous snapshots/receipts, exact recorded/direct completion,
+missing-correlation UI-only recovery, atomic Native surface sync before external
+observers and removal of obsolete position-compensation compatibility code.
+New runtime file: `UI/BattleHUDViewModelSelectionPresentation.cpp`; five G5 tests
+in `CardSelectionInputRoutingTests.cpp`, supporting fixture classes updated.
+No Gameplay rules/assets/G6 implementation changed. Prior user work preserved.
+
+Validation: final standard project generation and Editor build PASS
+(`Saved/Logs/G5RecoveryProjectFiles.log`, `Saved/Logs/G5RecoveryBuild.log`).
+Initial foundation/selection run 39/39 PASS. Expanded validation first hit a test
+fixture pure-virtual omission, then caught one runtime recovery-state overwrite;
+both corrected. Final affected G5 + G0.FormalSlotOwnership run 6/6 PASS, no
+warnings/failures/notRun, process exit 0 (`Saved/AutomationReports/G5Recovery/index.json`).
+Other retained passing scope and intermediate failures: `docs/Validation.md`.
+Do not add overlapping counts. No manual visual PASS is claimed.
+
+Next action / USER ACTION REQUIRED: reopen Native `L_BattleTest`, select/deselect/
+reselect; Confirm multiple Exhaust candidates and verify second/third stay in place
+until their own animation, with no first-card flashback; Warcry selection transfers
+the exact visible card to DrawPile. Check no duplicate/ghost/clipping/stuck input.
+G4+G5 remains unsealed pending that evidence. Simultaneous disappearance belongs
+to G6, which is not implemented or started here. Changes are not committed.
+
+## Earlier resumable task — Selection Presentation G2
 
 Selection Presentation G0 and G1 are complete, validated and sealed. G0's Native
 `L_BattleTest` manual PIE acceptance was user-confirmed on 2026-09-09. G1 then

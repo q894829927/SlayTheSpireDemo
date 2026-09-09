@@ -2,6 +2,11 @@
 
 Date: **2026-09-09**
 
+Current delivery authority: `docs/SelectionPresentationG5Execution.md`. After
+the failed visual retest below, the user explicitly authorized G5 and coherent
+G4+G5 delivery. The historical G4-only gate does not prohibit that migration;
+it remains failed/unsealed rather than being retroactively declared passed.
+
 Status:
 
 ```text
@@ -131,9 +136,58 @@ field deletion.
 
 ## Focused Automation source
 
-The focused `SlayTheSpireDemo.CardSelection.Presentation` prefix now contains the
-existing two input-routing tests plus five presentation tests, for an expected
-current discovery count of **7**:
+### Follow-up: sequential selected Exhaust drift — 2026-09-09
+
+User reproduced drift when the second selected card begins Exhaust after Confirm.
+G4 moved Hand->Exhaust from the earlier in-place formal-widget fade to a moving
+copy on PlayArea. The Selection adapter still removed non-Draw confirmed centers
+before calling the new generic resolver. The resolver consequently fell back to
+the formal Hand geometry, which can change after the preceding card is consumed.
+The previous in-place fix therefore did not survive the new routing boundary.
+
+The repair routes all three migrated Hand destinations through the generic engine
+before compatibility cleanup; acceptance retires only the consumed RuntimeId's
+center. This preserves staged G4 behavior without activating G5 ownership.
+`G4.SequentialConfirmedSourceContinuity` adds three sequential children for each
+destination, distinct frozen centers, changed historical Hand positions and
+assertions that later centers survive earlier completion. The expected focused
+discovery count was eight after this first repair.
+
+The user reported continued drift. The resumed standard build was already
+up-to-date, so old binaries cannot be assumed to explain that report. The first
+repair passed eight tests but missed waiting visuals: `UpdateSelectionCardPositions`
+returned immediately after Confirm while later cards remained attached to Hand.
+Removing preceding entries changed their slot origins without changing their
+stored relative render translations. Preserving only the eventual transition
+source could therefore leave drift while waiting and a jump on acceptance.
+
+G4 now compensates waiting implicit/explicit Hand visuals against the existing
+confirmed absolute center on position updates. Explicit non-Hand owners are
+excluded. Accepted/retired centers stop participating. This is temporary staged
+compatibility, not G5 activation or a new ownership contract.
+`G4.ConfirmedWaitingPositionAcrossHandRelayout` checks absolute-center stability
+under successive slot-origin changes, DPI scale and repeated updates, plus release.
+It does not simulate Slate paint timing or claim visual acceptance.
+
+Standard project generation and Development Editor build PASS; focused suite
+**9/9 PASS** (one existing ProductionConfirmRouting fixture warning), exit 0.
+Exact evidence is recorded in `docs/Validation.md`.
+**MANUAL PIE — USER ACTION REQUIRED:** in Native
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest`, repeat the reported selection-Exhaust
+scenario with at least two selected cards; Confirm and observe each successive
+fade. Each must start at its confirmed displayed position, with no second-card
+drift/jump, duplicate or stuck input. Report the visual result after the new build.
+
+Latest user PIE result: **FAIL**. The second card briefly visits the first card's
+position before returning to its own. G4 is not visually validated. The precise
+one-frame cause is not yet proven by the coordinate-only tests. Same-tick group
+fading is a G6 feature, not current G4 behavior. The Group design explicitly allows
+a coherent G4+G5 migration if the intermediate production state is unsafe; that
+would require updating this G4-only execution scope before implementation rather
+than declaring this failed visual gate passed.
+
+The focused `SlayTheSpireDemo.CardSelection.Presentation` prefix now contains
+the following **9** tests:
 
 ```text
 SlayTheSpireDemo.CardSelection.Presentation.Input.PendingBoundaryBlocksOrdinaryCardPlay
@@ -143,6 +197,8 @@ SlayTheSpireDemo.CardSelection.Presentation.HandToExhaust.GenericFadeAtSource
 SlayTheSpireDemo.CardSelection.Presentation.HandToDiscard.GenericMovementAndDestinationValidation
 SlayTheSpireDemo.CardSelection.Presentation.G4.SelectionAreaExactVisualTransfer
 SlayTheSpireDemo.CardSelection.Presentation.G4.SelectionAreaPrepareRollback
+SlayTheSpireDemo.CardSelection.Presentation.G4.SequentialConfirmedSourceContinuity
+SlayTheSpireDemo.CardSelection.Presentation.G4.ConfirmedWaitingPositionAcrossHandRelayout
 ```
 
 The tests cover immutable identity, exact destination index, one-child ownership,
@@ -160,7 +216,7 @@ behavior and has a visual Gate.
 ```text
 1. SlayTheSpireDemoEditor Win64 Development build
 2. Automation RunTest SlayTheSpireDemo.CardSelection.Presentation
-   expected current discovery: 7
+   expected current discovery: 9
 ```
 
 No G0/G1/G2/G3 rerun is required absent a concrete implicated failure. The Wave1CC1
