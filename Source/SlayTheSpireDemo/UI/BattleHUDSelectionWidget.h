@@ -25,7 +25,6 @@ public:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FSelectionPresentationG5LifecycleTest;
 	friend class FSelectionPresentationG5ConfirmTest;
-	void FinishSharedHandToDrawPilePresentationForTesting(const FPresentationPlaybackToken& Token) { FinishNativeCardTransitionForTesting(Token); }
 	UOverlay* GetSelectionAreaHostForTesting() const { return SelectionAreaHost; }
 	void SetSelectionAreaHostForTesting(UOverlay* Host) { SelectionAreaHost = Host; }
 #endif
