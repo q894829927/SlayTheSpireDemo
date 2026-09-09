@@ -132,6 +132,13 @@ public:
 		int32 RuntimeId,
 		ECardPresentationOwner ExpectedOwner,
 		ECardPresentationOwner NewOwner);
+	// G6 all-or-nothing ownership transaction. Every member is validated before
+	// any mutation; all entries change together and publish one ownership event.
+	bool TryTransferCardPresentationOwnershipBatch(
+		int64 SelectionGeneration,
+		const TArray<int32>& RuntimeIds,
+		ECardPresentationOwner ExpectedOwner,
+		ECardPresentationOwner NewOwner);
 	bool ArmRecordedCardPresentationCompletion(
 		int64 SelectionGeneration,
 		int64 ResolutionId);
