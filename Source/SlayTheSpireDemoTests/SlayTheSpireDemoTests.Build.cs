@@ -6,7 +6,7 @@ public class SlayTheSpireDemoTests : ModuleRules
 	public SlayTheSpireDemoTests(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		bUseUnity = false;
+		bUseUnity = true;
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
