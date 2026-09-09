@@ -473,7 +473,11 @@ void UBattleHUDCardTransitionWidget::FinishNativeCardTransitionGroup(
 	}
 
 	OnNativeCardTransitionEnded(RepresentativeRuntimeId, false);
-	FinishNativePresentation(ExpectedToken);
+	// Visual work is complete and ownership is now reducer-pending. Clear only
+	// the local Native visual owner, then use the G6 exact tracked-group callback;
+	// the historical G3 Group callback intentionally remains a recovery path.
+	ResetNativePresentationOwnership();
+	NotifyPresentationGroupFinishedG6(ExpectedToken);
 }
 
 void UBattleHUDCardTransitionWidget::RestorePreparedGroupSelectionAreaVisuals()
