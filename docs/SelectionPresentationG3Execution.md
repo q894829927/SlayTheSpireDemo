@@ -6,7 +6,8 @@ Status:
 
 ```text
 IMPLEMENTED IN SOURCE /
-BUILD NOT RUN / AUTOMATION NOT RUN / NO PASS CLAIM
+BUILD FAILED ON FIRST ATTEMPT / BUILD FIX COMMITTED /
+RERUN REQUIRED / AUTOMATION NOT RUN / NO PASS CLAIM
 ```
 
 ## Scope
@@ -192,8 +193,34 @@ and the exact `SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout` regressio
 The workflow existing in source is not validation evidence by itself; an actual
 successful run is still required.
 
+### First build attempt and repair
+
+The first UE 5.8 Editor build attempt on the G3 validation path failed before linking
+the Runtime module because `DeckShuffledCountTrigger.cpp` called
+`IsValid(DeckShuffled->Deck)` while only the forward declaration of `UDeckRuntime` was
+visible through `BattleEvent.h`. The compiler therefore could not convert
+`UDeckRuntime*` to `const UObject*` for `IsValid`.
+
+This failure did not originate in the G3 playback-unit sources: the build log had
+already compiled both `SelectionPresentationG3TestTypes.cpp` and
+`SelectionPresentationG3Tests.cpp` without a G3 compile diagnostic. The build still
+failed overall, so the G3 build Gate remains failed until rerun.
+
+Repair committed on `main`:
+
+```text
+a5c7e67c22ccf13c25ec91546a6d3f15e5002297
+fix(build): include deck runtime in shuffled relic trigger
+```
+
+The repair is intentionally minimal: add `../Deck/DeckRuntime.h` to
+`DeckShuffledCountTrigger.cpp`, with no Gameplay/Relic behavior change. The Editor
+build must now be rerun from a head containing this commit; Automation remains
+unexecuted until a successful build is available.
+
 G0/G1/G2 passing evidence remains sticky unless the build/test failure implicates a
-sealed contract. G3 does not modify G2 semantic-preflight source or tests.
+sealed contract. This build failure does not implicate those sealed Selection
+Presentation contracts.
 
 No manual PIE Gate is required for G3 because production still plays SingleRecords
 serially and no new visible Group animation, geometry, SelectionArea ownership, or
@@ -201,9 +228,8 @@ input behavior is enabled.
 
 ## Current checkpoint
 
-Source implementation and the focused validation workflow are complete, but no Editor
-build or Automation run has been executed for this G3 head yet. The current GitHub
-connector can inspect and rerun existing workflow runs but cannot dispatch a new
-`workflow_dispatch` run, so execution of `.github/workflows/ue-selection-g3-tests.yml`
-is currently **USER ACTION REQUIRED**. Do not mark G3
-`COMPLETE / VALIDATED / SEALED` until the required successful run evidence is supplied.
+Source implementation, the focused validation workflow, and the first-build repair
+are complete. The Editor build Gate is currently **FAILED / RERUN REQUIRED** and the
+G3 Automation Gate has not run. Do not mark G3 `COMPLETE / VALIDATED / SEALED` until
+a successful post-fix build plus the focused G3 and TerminalTimeout Automation evidence
+is supplied.
