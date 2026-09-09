@@ -5,8 +5,7 @@ Date: **2026-09-09**
 Status:
 
 ```text
-IMPLEMENTED IN SOURCE /
-BUILD NOT RUN / AUTOMATION NOT RUN / NO PASS CLAIM
+COMPLETE / VALIDATED / SEALED
 ```
 
 ## Scope
@@ -89,17 +88,49 @@ B leaves Hand
 so reducer success alone is not treated as proof that early visible consumption is
 safe.
 
-## Validation state
+## Validation evidence — 2026-09-09
 
-No Build or Automation result is claimed yet. G2 has no visible production behavior
-change, so no new manual PIE gate is required for this stage unless validation finds
-a concrete visual regression that implicates the changed source.
-
-Before sealing G2, run:
+User-confirmed local validation on the G2 implementation head:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development Build
-SlayTheSpireDemo.SelectionPresentation.G2 focused Automation
+[x] SlayTheSpireDemoEditor Win64 Development Build PASS
+[x] SlayTheSpireDemo.SelectionPresentation.G2 focused Automation PASS (6/6)
+[x] Automation process exit code 0
 ```
 
-G1 passing evidence remains sticky unless a G2 edit directly invalidates it.
+The supplied Automation log reports exactly six tests discovered for the G2 prefix
+and records `Result={Success}` for all six:
+
+```text
+ContiguousGroup
+FutureMemberInterference
+ManifestAndIncomplete
+NonContiguousUnrelated
+SequenceAndUnknown
+SingletonAndShape
+```
+
+No manual PIE is required for G2 because this stage does not activate visible Group
+playback or change production Selection visual ownership.
+
+G1 passing evidence remains sticky; G2 did not invalidate the sealed G1 contract.
+
+## Seal
+
+G2 is **COMPLETE / VALIDATED / SEALED**. Do not rerun its passing gates unless a
+later edit invalidates this evidence or a concrete regression directly implicates
+the sealed G2 semantic-preflight contract.
+
+Next active slice:
+
+```text
+G3 — Base Widget Record-or-Group playback hardening
+     + unified playback-unit token ownership
+     + exact completion
+     + scoped recovery
+```
+
+G3 is the next architectural-risk boundary. It must preserve chronological reducer
+ownership and later queued Envelopes during active-envelope recovery. G3 still must
+not switch production SelectionArea ownership or enable G6 multi-member parallel
+playback.
