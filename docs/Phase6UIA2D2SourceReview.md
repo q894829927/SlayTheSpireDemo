@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **STATIC REVIEW COMPLETE / UE5.8 VALIDATION PENDING**.
+Status: **HISTORICAL STATIC REVIEW — UE5.8 VALIDATION PENDING AT RECORD TIME**.
+
+> This review predates the later A2D2 validation and the sealed A2D/A2E closure. Its pending execution status is retained as historical evidence, not as a current validation blocker.
 
 A2D-2 implements the locked `StatusChanged + frozen DescriptionBefore/After` committed-presentation slice. This document records source/static review only; it does not claim UnrealHeaderTool, MSVC, Unreal Editor, Automation, Blueprint or PIE execution.
 

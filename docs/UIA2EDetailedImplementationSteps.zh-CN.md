@@ -1,8 +1,10 @@
-# UI-A2E 详细实施步骤（逐节记录）
+# UI-A2E 详细实施步骤（历史施工记录）
 
 日期：**2026-08-30**
 
-用途：从当前 UI-A2E 进度开始，按实际 Blueprint 操作顺序逐节记录到 **UI-A2E COMPLETE / SEALED**。本文不是概要路线图，而是可直接照着 UE5.8 Blueprint 编辑器操作的详细施工手册。
+用途：保留 2026-08-30 从当时 UI-A2E 进度到 **UI-A2E COMPLETE / SEALED** 的实际 Blueprint 操作记录。本文已经完成历史记录作用，不再是当前待办或可直接照做的 UE5.8 Blueprint 施工手册。
+
+> 当前阶段状态以 `docs/DevelopmentPhases.md` 为准：UI-A2、UI-A3 已封存，当前 Presentation 后续工作进入 Selection G6。本文中的 `WBP_BattleHUD`、`WBP_BattleStatus` 等名称指当时的 Legacy Blueprint 路径；当前 Native WBP 结构以 `docs/WBPSavedBlueprintSnapshot.md` 为准。
 
 记录规则：
 
@@ -14,7 +16,7 @@
 → 直到 UI-A2E 全部实施、PIE 验收和文档收口完成
 ```
 
-当前正式验证基线：
+当时正式验证基线：
 
 ```text
 CardPlayed              VALIDATED
@@ -24,7 +26,7 @@ CardZoneChanged         VALIDATED（PlayArea -> Destination）
 StatusChanged creation  VALIDATED
 ```
 
-当前已经具备的 Status 前置结构：
+当时已经具备的 Status 前置结构：
 
 ```text
 WBP_BattleStatus
@@ -19228,7 +19230,7 @@ Shipping exclusion = PASS
 revalidated on final A2E HEAD
 ```
 
-如果没有重新跑，只能写：
+如果在当时没有重新跑，只能写：
 
 ```text
 previously validated; final-head revalidation pending
@@ -19244,7 +19246,7 @@ previously validated; final-head revalidation pending
 
 这个文件最初用于记录剩余工作。
 
-A2E 完成后不要删除历史内容，而是在顶部增加最终状态：
+A2E 完成后不要删除历史内容，而是在顶部增加最终状态（该步骤已完成）：
 
 ```text
 UI-A2E COMPLETE / VALIDATED / SEALED
@@ -19553,7 +19555,7 @@ AND required automation baseline validated or explicitly recorded pending
 
 至此，从当前 StatusChanged Update/Reduction 起，到最终 UI-A2E Seal 的详细步骤已经全部记录完毕。
 
-后续实际施工按本文第一节开始逐节执行；每完成一节都以真实 Blueprint、PIE 和仓库证据为准。
+本历史施工记录形成时，后续实际施工按本文第一节逐节执行；每完成一节都以真实 Blueprint、PIE 和仓库证据为准。当前不应根据本文重新开始施工。
 
 最终目标状态：
 

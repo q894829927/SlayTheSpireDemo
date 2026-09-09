@@ -2,7 +2,9 @@
 
 Date: **2026-08-21**
 
-Status: **C++ VALIDATED / VISUAL INTEGRATION PENDING**
+Status: **HISTORICAL SOURCE REVIEW — C++ VALIDATED / VISUAL INTEGRATION PENDING AT RECORD TIME**
+
+> The visual-integration pending state below predates the sealed A2E Blueprint/UMG and PIE closure. It is retained as review history, not as a current blocker. Current UI-A2 status is maintained in `docs/DevelopmentPhases.md`.
 
 ## Reviewed revision
 
@@ -100,8 +102,8 @@ The owner-reported successful rerun closes the C++/Automation validation boundar
 UE5.8 Editor build            PASSED
 Phase6UIA2C 8/8               PASSED
 77-test affected regression   PASSED 77/77
-Blueprint visual integration  PENDING
-PIE smoke                     PENDING
+Blueprint visual integration  PENDING AT RECORD TIME
+PIE smoke                     PENDING AT RECORD TIME
 ```
 
 UI-A2C C++ validation is complete. Visible Blueprint animation and PIE smoke remain deferred presentation-integration work and are not claimed complete here.

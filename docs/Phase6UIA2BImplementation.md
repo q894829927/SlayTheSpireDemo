@@ -1,6 +1,8 @@
 # Phase 6UI-A2B — Damage + Block Committed Presentation
 
-Status: **DESIGN LOCKED / IMPLEMENTATION NOT STARTED**.
+Status: **HISTORICAL DESIGN RECORD — IMPLEMENTED / VALIDATED AS PART OF SEALED UI-A2**.
+
+> This file records the A2B design lock before implementation. The former `IMPLEMENTATION NOT STARTED` wording is historical for the source revision of this document and is not the current project status. Current status is maintained in `docs/DevelopmentPhases.md`; the overall UI-A2 closure is recorded in `docs/Phase6UIA2Implementation.md` and `docs/Phase6UIA2EImplementation.md`.
 
 UI-A2B is the first real business-record slice built on the completed UI-A2A transport/lifecycle architecture. It must not redesign Resolution, Envelope, frozen snapshot, deferred delivery, Controller backlog, PlaybackToken, latest-only input binding, or PresentationUnavailable ownership.
 

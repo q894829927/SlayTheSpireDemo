@@ -27,6 +27,8 @@ Total                         61
 
 The gate fails on a discovered-count mismatch, any non-success test, any failed/not-run count, or a non-zero Unreal Editor exit code. Therefore the successful completion is recorded as the current UI-A2A validation evidence for this main revision.
 
+> Record boundary: “current” means the main revision named above. The A2B `NOT STARTED` row and the “next implementation slice” wording below describe the state at this 2026-08-21 checkpoint; A2B and the complete UI-A2 path were subsequently implemented and sealed.
+
 ## UI-A2A status
 
 ```text
@@ -36,10 +38,10 @@ Focused UI-A2A Automation                   PASSED 8/8
 Phase5-Phase6C regression in same gate      PASSED
 Configured aggregate gate                   PASSED 61/61
 UI-A2A hardening regressions                 PASSED
-UI-A2B Damage/Block                          NOT STARTED
+UI-A2B Damage/Block                          NOT STARTED AT RECORD TIME
 ```
 
-UI-A2A is now considered complete for the current source scope. The next implementation slice is UI-A2B, but its Damage/Block commit-result and record contracts should be design-locked before code changes begin.
+At the time of this record, UI-A2A was considered complete for that source scope and UI-A2B was the next implementation slice. The A2B Damage/Block commit-result and record contracts were later implemented and validated.
 
 ## Preserved boundaries
 

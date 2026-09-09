@@ -2,6 +2,8 @@
 
 Status: **COMPLETE / VALIDATED / SEALED — C++ + BLUEPRINT/UMG + PIE**.
 
+> Current-status boundary: this is the sealed UI-A2 closure record. Commit hashes and test totals below refer to the revisions named in this record, not necessarily the current repository HEAD. The A2E Blueprint/PIE evidence is the pre-Native Legacy route; current production uses the Native stack described by `Phase6UIA2NNativeHUDRefactor.md`, while current saved WBP structure is recorded in `WBPSavedBlueprintSnapshot.md`.
+
 UI-A2 replaces the UI-A0/UI-A1 immediate/no-op presentation catch-up boundary with deterministic playback of already-committed gameplay facts. It does not make `BattleActionQueue`, `BattleState` or authoritative gameplay wait for animation.
 
 UI-A2A establishes transport, resolution, freezing, failure and playback-safety infrastructure; A2B/A2C add committed Damage/Block and Card/Energy/Zone/Shuffle facts; A2D adds Status and formal terminal/fault committed presentation. The player-visible Blueprint/UMG closure is owned by `UI-A2E — Unified Blueprint Playback & PIE Acceptance`.
@@ -720,11 +722,13 @@ Current input identity
 = refreshed only after display catches up to newest matching BattleId/Revision
 ```
 
-Sealed stage and deferred follow-up:
+Sealed stage and deferred follow-up at the time of the A2 closure:
 
 ```text
 UI-A2E Unified Blueprint Playback COMPLETE / SEALED
 → UI-A2E PIE end-to-end acceptance COMPLETE
 → UI-A2 COMPLETE / SEALED
-→ UI-A3-2 only under a new explicit scope
+→ UI-A3-2 only under a new explicit scope at that time
 ```
+
+UI-A3 was subsequently completed and sealed. The current phase status is maintained in `docs/DevelopmentPhases.md`; the current active Presentation stage is Selection G6.

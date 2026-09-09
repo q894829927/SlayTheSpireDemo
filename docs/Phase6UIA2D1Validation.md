@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-2**.
+Status: **HISTORICAL VALIDATION RECORD — VALIDATED / READY FOR A2D-2 AT RECORD TIME**.
+
+> This document records the A2D-1 validation checkpoint before A2D-2. The “READY FOR A2D-2” wording is historical and is not a current pending boundary. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 Validated source base:
 
@@ -82,7 +84,7 @@ no ActionQueue->Outer->BattleManager dependency for turn-end status trigger
 
 A2D-1 is closed at the C++/Automation level.
 
-The next implementation slice is:
+At the time of this validation, the next implementation slice was:
 
 ```text
 A2D-2
@@ -93,4 +95,4 @@ StatusChanged Record
 + EffectiveDefinition-backed frozen display data
 ```
 
-Blueprint and PIE integration remain intentionally deferred until the full A2D C++ presentation slice is complete.
+Blueprint and PIE integration were intentionally deferred until the full A2D C++ presentation slice was complete; that later integration is now sealed.

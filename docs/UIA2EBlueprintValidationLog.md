@@ -6,7 +6,9 @@ This file records owner-confirmed Blueprint/PIE validation evidence for UI-A2E s
 
 `docs/WBPSavedBlueprintSnapshot.md` remains the source-readable snapshot of the currently saved WBP structure. This file records validation status and acceptance evidence.
 
-## Current validated playback slices
+> Evidence boundary: the Blueprint/PIE evidence in this log records the Legacy `WBP_BattleHUD` route and its historical saved hashes from the A2E seal. After A2N, Native HUD/Card/Status assets are the production stack; use `Phase6UIA2NNativeHUDRefactor.md`, `DevelopmentPhases.md` and `WBPSavedBlueprintSnapshot.md` for current Native status and structure. “Current” inside an individual validation scenario means current at that historical validation run.
+
+## Validated playback slices at A2E seal time
 
 ### CardPlayed
 
@@ -281,7 +283,7 @@ Rules to preserve:
 - Blueprint playback reads frozen Record data and must not query mutable historical Gameplay state.
 - ViewModel represents historical facts whose playback has already completed.
 
-## Current A2E state
+## A2E state recorded at seal time
 
 ```text
 CardPlayed              VALIDATED
@@ -306,9 +308,9 @@ Active Skip/Input Unlock VALIDATED
 UI-A2E is **COMPLETE / VALIDATED / SEALED** on implementation commit `81cbfb6`.
 UI-A2 is also **COMPLETE / VALIDATED / SEALED**.
 
-## Locked next step
+## Locked next step at seal time
 
-No remaining UI-A2E work. Do not enter A3 in this task.
+At seal time there was no remaining UI-A2E work, and that task was not to enter A3. UI-A3 was subsequently completed and sealed; this historical instruction is not a current task boundary.
 
 ## Batch 2 — Energy / CardZone / Shuffle acceptance (2026-08-31)
 

@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **REVIEW FINDINGS FIXED / UE5.8 REVALIDATED / READY FOR A2D-4**.
+Status: **HISTORICAL CODE REVIEW — REVIEW FINDINGS FIXED / UE5.8 REVALIDATED / READY FOR A2D-4 AT RECORD TIME**.
+
+> This document records the hardened A2D code-review checkpoint before A2D-4. The “READY FOR A2D-4” wording is historical; the A2D path is now sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 Reviewed hardened source head includes:
 
@@ -16,11 +18,11 @@ adc82508  stale identity validation before NoOp
 79dff285  A2D3 hardened playback/boundary coverage
 ```
 
-This review covers the implemented A2D-1 through A2D-3 status path. A2D-4 terminal payload/reducer work and A2D-5 combined acceptance remain separate pending scope.
+This review covers the implemented A2D-1 through A2D-3 status path. At the time of this review, A2D-4 terminal payload/reducer work and A2D-5 combined acceptance were separate pending scope; both were later completed and sealed.
 
 ## Overall result
 
-The previously reported seven hardening findings have been resolved in source and covered by Automation. The hardened current head has completed its UE5.8 affected regression rerun successfully.
+The previously reported seven hardening findings were resolved in source and covered by Automation. The hardened review head completed its UE5.8 affected regression rerun successfully.
 
 ```text
 UE5.8 Editor build                 PASS
@@ -115,4 +117,4 @@ still intentionally lacks authoritative Battle context. It remains a low-severit
 
 ## Review closure
 
-The seven requested findings are closed and the hardened A2D-1 through A2D-3 status path is now **VALIDATED / READY FOR A2D-4**.
+The seven requested findings were closed and the hardened A2D-1 through A2D-3 status path was **VALIDATED / READY FOR A2D-4** at that checkpoint.

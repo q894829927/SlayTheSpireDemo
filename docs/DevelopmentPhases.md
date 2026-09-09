@@ -160,7 +160,7 @@ Read:
 - `docs/Phase6UIA2DImplementation.md`
 - `docs/Phase6UIA2D5SourceReview.md`
 - `docs/Phase6UIA2EImplementation.md`
-- `docs/UIA2ERemainingSteps.zh-CN.md`
+- `docs/UIA2ERemainingSteps.zh-CN.md` — historical A2E execution record; not a current pending-work list
 - `docs/Phase6UIA2NNativeHUDRefactor.md`
 
 ### UI-A3 — Deterministic Immediate Preview

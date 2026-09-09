@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-5**.
+Status: **HISTORICAL VALIDATION RECORD — VALIDATED / READY FOR A2D-5 AT RECORD TIME**.
+
+> This document records the A2D-4 validation checkpoint before A2D-5. The “READY FOR A2D-5” wording is historical and is not a current pending boundary. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 ## Validated incoming baseline
 
@@ -118,10 +120,10 @@ Phase6R 94/94 PASS
 Shipping exclusion PASS
 ```
 
-A2D-4 is therefore sealed as:
+A2D-4 was sealed at that checkpoint as:
 
 ```text
-VALIDATED / READY FOR A2D-5
+VALIDATED / READY FOR A2D-5 AT RECORD TIME
 ```
 
 A2D-5 may treat A2D-1 through A2D-4 as the validated incoming Presentation baseline and should not reopen their contracts unless a new cross-slice defect proves a shared invariant is wrong.

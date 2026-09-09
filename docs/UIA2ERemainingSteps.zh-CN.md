@@ -1,14 +1,14 @@
-# UI-A2E 后续完整实施与验收步骤
+# UI-A2E 后续完整实施与验收步骤（历史执行记录）
 
 日期：**2026-08-31**
 
-用途：记录从当前进度到 **UI-A2E COMPLETE / SEALED** 的全部剩余步骤，后续实现严格按本文顺序推进，避免遗漏、跳步或提前进入 UI-A3。
+用途：保留 2026-08-31 从当时进度到 **UI-A2E COMPLETE / SEALED** 的剩余步骤和执行顺序。本文中的步骤已经完成，不再是当前待办或新的实施指令。
 
-> 当前仓库正式验证基线以 `docs/UIA2EBlueprintValidationLog.md` 为准；A2E 总体契约以 `docs/Phase6UIA2EImplementation.md` 为准。
+> 历史验证基线以 `docs/UIA2EBlueprintValidationLog.md` 为准，A2E 总体契约以 `docs/Phase6UIA2EImplementation.md` 为准。当前阶段状态以 `docs/DevelopmentPhases.md` 为准；UI-A2、UI-A3 已完成封存，当前 Presentation 后续阶段是 Selection G6。不要根据本文重新创建 A2E 待办。
 
 ---
 
-## 0. 当前基线
+## 0. 记录时的基线
 
 仓库已正式记录并完成 PIE 验收：
 
@@ -36,10 +36,10 @@ UI-A2E COMPLETE / VALIDATED / SEALED
 UI-A2 COMPLETE / VALIDATED / SEALED
 ```
 
-当前正在实现的子阶段：
+记录时正在实现的子阶段：
 
 ```text
-无。UI-A2E / UI-A2 已 SEALED；本任务禁止进入 A3。
+无。记录当时 UI-A2E / UI-A2 已 SEALED，A3 尚未开始；这不是当前阶段指令。A3 后续已经完成并封存。
 ```
 
 当前已经完成的前置结构：
@@ -65,9 +65,9 @@ WBP_BattleHUD
 
 ---
 
-# 1. 全程必须保持的 A2E 契约
+# 1. A2E 已封存契约（历史执行约束）
 
-后续所有步骤都必须满足以下规则。
+该历史执行期间的所有步骤都必须满足以下规则。
 
 ## 1.1 历史状态与活动 Record 的关系
 
@@ -1290,7 +1290,7 @@ UI-A2E Unified Blueprint Playback = COMPLETE / SEALED
 UI-A2 = COMPLETE / SEALED
 ```
 
-后续若用户另行明确授权，才允许继续：
+当时记录的后续路线（现已由 A3 实施与封存文档覆盖）：
 
 ```text
 A3-1 Dynamic Text SEALED
@@ -1348,4 +1348,4 @@ A3-5 Minimal UMG + A2/A3 Combined PIE
 ⑱ UI-A2 COMPLETE / SEALED
 ```
 
-原则：**前一切片没有完成 Compile + Save + 必要 PIE 验收，不进入下一切片。**
+历史执行原则：**前一切片没有完成 Compile + Save + 必要 PIE 验收，不进入下一切片。**

@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-4**.
+Status: **HISTORICAL VALIDATION RECORD — VALIDATED / READY FOR A2D-4 AT RECORD TIME**.
+
+> This document records the A2D-3 validation checkpoint before A2D-4. The “READY FOR A2D-4” wording is historical and is not a current pending boundary. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 ## Historical validated baseline
 
@@ -141,4 +143,4 @@ Failed                            0
 NotRun                            0
 ```
 
-The hardened A2D-1 through A2D-3 status path is therefore revalidated and may be treated as **VALIDATED / READY FOR A2D-4**.
+The hardened A2D-1 through A2D-3 status path was therefore revalidated and could be treated as **VALIDATED / READY FOR A2D-4** at that checkpoint.

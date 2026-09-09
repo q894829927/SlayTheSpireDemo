@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-5**.
+Status: **HISTORICAL SOURCE REVIEW — VALIDATED / READY FOR A2D-5 AT RECORD TIME**.
+
+> This document records the A2D-4 checkpoint before A2D-5. The “READY FOR A2D-5” wording is historical and is not a current pending boundary. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 ## Review scope
 
@@ -222,10 +224,10 @@ full Phase6R 94/94
 Shipping exclusion PASS
 ```
 
-A2D-4 is sealed as:
+A2D-4 was sealed at that checkpoint as:
 
 ```text
-VALIDATED / READY FOR A2D-5
+VALIDATED / READY FOR A2D-5 AT RECORD TIME
 ```
 
 A2D-5 should treat A2D-1 through A2D-4 as the validated incoming baseline and reopen them only for a demonstrated cross-slice invariant defect.

@@ -1,6 +1,6 @@
 # Architecture
 
-This document is the durable architectural overview. Directory-level `AGENTS.md` files define implementation rules; detailed current Presentation contracts remain in the Phase 6UI-A2 documents.
+This document is the durable architectural overview. The Chinese synchronized version is [`Architecture.zh-CN.md`](Architecture.zh-CN.md). Directory-level `AGENTS.md` files define implementation rules. The sealed UI-A2 contract is recorded in the Phase 6UI-A2 documents; current phase status is authoritative in `docs/DevelopmentPhases.md`, current Native UI details are in `docs/Phase6UIA2NNativeHUDRefactor.md` and `docs/WBPSavedBlueprintSnapshot.md`, and current selection-presentation details are in the `SelectionPresentationG*` and card-selection constraint documents. Older A2 implementation/validation files preserve phase evidence and must not be read as current pending work.
 
 ## Current-Hand Selection execution
 

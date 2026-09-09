@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **PLAN LOCKED / READY TO IMPLEMENT**.
+Status: **HISTORICAL ACCEPTANCE PLAN — IMPLEMENTED / VALIDATED / SEALED**.
+
+> This file records the A2D-5 plan before execution. `READY TO IMPLEMENT` is a historical checkpoint, not the current status. A2D-5 was later validated and sealed; current status is maintained in `docs/DevelopmentPhases.md` and `docs/Phase6UIA2D5SourceReview.md`.
 
 Validated incoming baseline:
 
@@ -828,13 +830,13 @@ updated full Phase6R aggregate passes
 Shipping exclusion passes
 ```
 
-After those gates pass, the C++ A2D phase may be marked:
+After those gates passed, the C++ A2D phase could be marked at that checkpoint:
 
 ```text
-A2D C++ VALIDATED / READY FOR UNIFIED BLUEPRINT + PIE INTEGRATION
+A2D C++ VALIDATED / READY FOR UNIFIED BLUEPRINT + PIE INTEGRATION AT RECORD TIME
 ```
 
-The next phase may then integrate the already-validated committed Presentation records across:
+The next phase then integrated the already-validated committed Presentation records across:
 
 ```text
 A2B Damage / Block

@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-4**.
+Status: **HISTORICAL MILESTONE RECORD — VALIDATED / READY FOR A2D-4 AT RECORD TIME**.
+
+> This document records the A2D-3 checkpoint before A2D-4. The “READY FOR A2D-4” wording is historical; the complete A2D path is now sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 A2D-3 implements the locked Status historical projection slice: `FBattleHUDStatusView.RuntimeSequence`, deterministic frozen Status ordering, `StatusChanged` WorkingPresentationSnapshot reduction, and mismatch collapse to the immutable `Envelope.FinalSnapshot`.
 
@@ -140,7 +142,7 @@ Phase6UIA2D3 Automation               PASS 4/4
 Phase6R aggregate                     PASS 88/88
 ```
 
-The requested seven findings are closed, no blocking defect remains in the reviewed A2D-1 through A2D-3 status path, and the hardened source is **VALIDATED / READY FOR A2D-4**.
+The requested seven findings were closed, no blocking defect remained in the reviewed A2D-1 through A2D-3 status path, and the hardened source was **VALIDATED / READY FOR A2D-4** at that checkpoint.
 
 ## Explicitly out of A2D-3
 

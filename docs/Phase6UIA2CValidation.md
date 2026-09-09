@@ -31,7 +31,9 @@ Total                           77
 
 The workflow gate rejects discovery-count mismatch, non-success tests, failed/not-run results, or non-zero Unreal Editor exit status. The successful rerun is therefore recorded as the current C++/Automation validation evidence for UI-A2C.
 
-## UI-A2C validation status
+> Record boundary: “current” in this file means the validated source revision named above. The Blueprint/PIE `PENDING` rows describe the state before the later A2E closure and are not current project blockers.
+
+## UI-A2C validation status at record time
 
 ```text
 Design contract                    LOCKED
@@ -42,9 +44,9 @@ Focused Phase6UIA2C Automation     PASSED 8/8
 Affected Phase5-Phase6UIA2C gate   PASSED 77/77
 WorkingSnapshot reducer regression PASSED
 A2A/A2B regression in same gate    PASSED
-Blueprint Damage/Block playback    PENDING
-Blueprint Card/Energy/Zone visual  PENDING
-PIE smoke                          PENDING
+Blueprint Damage/Block playback    PENDING AT RECORD TIME
+Blueprint Card/Energy/Zone visual  PENDING AT RECORD TIME
+PIE smoke                          PENDING AT RECORD TIME
 ```
 
 UI-A2C C++ validation is closed for this source revision. This does not claim visible Blueprint animation or PIE integration completion.
@@ -59,6 +61,6 @@ UI-A2C C++ validation is closed for this source revision. This does not claim vi
 - Invalid current-writer presentation history remains fail-soft and cannot roll back committed Gameplay.
 - The earlier A2B visual Blueprint/PIE work is still intentionally deferred and is not counted as complete by this validation record.
 
-## Next slice
+## Next slice at record time
 
 With A2C C++ validation closed, the next source slice should be design-locked before implementation. The existing UI-A2 contract leaves Status/Relic presentation and terminal/fault presentation polish outside A2C; those boundaries should be reviewed against current source before UI-A2D code begins.

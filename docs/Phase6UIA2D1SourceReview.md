@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-2**.
+Status: **HISTORICAL MILESTONE RECORD — VALIDATED / READY FOR A2D-2 AT RECORD TIME**.
+
+> This document records the A2D-1 checkpoint before A2D-2. The “READY FOR A2D-2” wording is historical; A2D and UI-A2 are now sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 Reviewed source base:
 
@@ -165,6 +167,6 @@ Phase6UIA2D1 focused Automation   3/3 PASS
 Phase6R affected regression       80/80 PASS
 ```
 
-A2D-1 is therefore closed at the C++/Automation level and is ready for A2D-2.
+A2D-1 was therefore closed at the C++/Automation level and was ready for A2D-2 at that checkpoint.
 
 See `docs/Phase6UIA2D1Validation.md` for the dedicated validation record.

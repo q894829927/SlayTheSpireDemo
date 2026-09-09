@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D-5**.
+Status: **HISTORICAL MILESTONE RECORD — VALIDATED / READY FOR A2D-5 AT RECORD TIME**.
+
+> This document records the A2D-4 checkpoint before A2D-5. The “READY FOR A2D-5” wording is historical; A2D-5 and UI-A2 are now sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 Baseline before A2D-4:
 
@@ -405,10 +407,10 @@ Shipping exclusion      PASS
 
 All locked implementation and validation gates are satisfied.
 
-A2D-4 is therefore sealed as:
+A2D-4 was sealed at that checkpoint as:
 
 ```text
-VALIDATED / READY FOR A2D-5
+VALIDATED / READY FOR A2D-5 AT RECORD TIME
 ```
 
 A2D-5 may use A2D-1 through A2D-4 as its validated incoming baseline.

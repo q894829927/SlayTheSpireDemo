@@ -2,7 +2,9 @@
 
 Date: **2026-08-22**
 
-Status: **VALIDATED / READY FOR A2D5-5 TERMINAL.VICTORY**.
+Status: **HISTORICAL MILESTONE RECORD — VALIDATED / READY FOR A2D5-5 TERMINAL.VICTORY AT RECORD TIME**.
+
+> This document records the A2D5-4 checkpoint before the Victory slice. The “READY FOR A2D5-5” wording is historical; A2D5 and UI-A2 are now sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 Validated baseline after A2D5-4:
 
@@ -122,5 +124,5 @@ A2D5-4 TURN CYCLE ORDERING VALIDATED
 A2D5 FOCUSED 3/3 PASS
 PHASE6R 97/97 PASS
 SHIPPING EXCLUSION PASS
-READY FOR A2D5-5 TERMINAL.VICTORY
+READY FOR A2D5-5 TERMINAL.VICTORY AT RECORD TIME
 ```

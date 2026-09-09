@@ -2,9 +2,11 @@
 
 Date: **2026-08-22**
 
-Status: **C++ HARDENING IMPLEMENTED / UE5.8 REVALIDATION PENDING / WBP WIRING NOT STARTED**.
+Status: **HISTORICAL READINESS REVIEW — C++ HARDENING IMPLEMENTED / WBP WIRING NOT STARTED AT RECORD TIME**.
 
-This review is based on the current committed C++ source and the saved-asset graph/layout snapshot in `docs/WBPSavedBlueprintSnapshot.md`. The snapshot remains the source-readable description of the real saved `.uasset` state; this document does not claim any Blueprint asset was modified.
+> This is the pre-A2E asset-readiness review. The former `WBP WIRING NOT STARTED` and `UE5.8 REVALIDATION PENDING` states were subsequently closed by `Phase6UIA2EImplementation.md` and `UIA2EBlueprintValidationLog.md`; they are not current blockers. Its `WBP_BattleHUD` references describe the pre-Native Legacy route. Current production Native WBP structure is recorded in `WBPSavedBlueprintSnapshot.md`.
+
+This review was based on the committed C++ source and the saved-asset graph/layout snapshot available at that time in `docs/WBPSavedBlueprintSnapshot.md`. The snapshot remains the source-readable description of the real saved `.uasset` state; this document does not claim any Blueprint asset was modified.
 
 ## 1. Readiness conclusion
 
@@ -16,8 +18,8 @@ Presenter -> Widget assembly              READY
 Existing WBP_BattleHUD display surface    READY to extend
 Blueprint async completion boundary       HARDENED in C++
 Fail-safe stale-visual cancellation        HARDENED in C++
-Concrete A2E WBP playback router           NOT WIRED YET
-PIE end-to-end acceptance                 NOT RUN YET
+Concrete A2E WBP playback router           NOT WIRED AT RECORD TIME
+PIE end-to-end acceptance                 NOT RUN AT RECORD TIME
 ```
 
 No Gameplay rule, Record taxonomy, Envelope contract, reducer behavior or test discovery count was added by this hardening.
@@ -56,7 +58,7 @@ return true
 = Blueprint must later call Notify Presentation Finished(Token)
 ```
 
-The current saved `WBP_BattleHUD` does not yet implement this event; adding it belongs to the next user-side A2E asset step.
+At the time of this review, the saved Legacy `WBP_BattleHUD` did not yet implement this event; adding it belonged to the next user-side A2E asset step. That step was later completed and sealed.
 
 ### 2.2 Exact stale-visual cancellation
 
@@ -168,7 +170,7 @@ The Phase6R workflow's expected aggregate remains `100`; this hardening adds ass
 
 ## 4. Saved WBP baseline used for A2E
 
-`docs/WBPSavedBlueprintSnapshot.md` records the current real saved `WBP_BattleHUD` structure, including:
+At the time of this review, `docs/WBPSavedBlueprintSnapshot.md` recorded the saved Legacy `WBP_BattleHUD` structure, including:
 
 ```text
 Combatant_PlayerPresentation
@@ -183,7 +185,7 @@ Txt_Feedback
 Overlay_Terminal
 ```
 
-The current saved `Battle HUD View Model Changed` graph already rebuilds Hand, pile counts, Energy, Player/Enemy HP/Block, Intent, feedback, controls, terminal state and combatant presentations.
+At the time of this review, the saved `Battle HUD View Model Changed` graph already rebuilt Hand, pile counts, Energy, Player/Enemy HP/Block, Intent, feedback, controls, terminal state and combatant presentations.
 
 A2E must extend this saved graph; it must not replace it with a second HUD state owner.
 
@@ -193,11 +195,11 @@ The current saved asset has no committed-record playback router yet. That distin
 CURRENT SAVED
 = existing ViewModel-driven HUD and A1 interaction wiring
 
-PLANNED / NOT WIRED
+PLANNED / NOT WIRED AT RECORD TIME
 = A2E Play Presentation Record / Cancel Presentation Record Playback router
 ```
 
-## 5. Next WBP implementation order after C++ revalidation
+## 5. Planned WBP implementation order at record time
 
 Do not wire all ten record types at once. Start with the smallest real committed-history vertical slice:
 
@@ -237,7 +239,7 @@ Victory / Defeat / ResolutionFault
 PresentationUnavailable separation
 ```
 
-## 6. Revalidation required before asset wiring is considered source-ready
+## 6. Revalidation required at record time
 
 Because runtime public UFUNCTION exposure and Widget completion timing changed, run UE5.8 validation before treating this hardening as sealed:
 
@@ -248,4 +250,4 @@ Phase6R aggregate expected 100/100
 Shipping exclusion expected PASS
 ```
 
-Until those runs are reported, this document remains **UE5.8 REVALIDATION PENDING**.
+At the time of this review, this document remained **UE5.8 REVALIDATION PENDING**; the later A2E validation record closed that pending state.

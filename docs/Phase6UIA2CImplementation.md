@@ -1,6 +1,8 @@
 # Phase 6UI-A2C — Card / Energy / Zone Committed Presentation
 
-Status: **SOURCE IMPLEMENTED / UE5.8 VALIDATION PENDING**.
+Status: **HISTORICAL IMPLEMENTATION RECORD — SOURCE IMPLEMENTED / UE5.8 VALIDATION PENDING AT RECORD TIME**.
+
+> This file captures the A2C implementation state before its later UE5.8 validation and A2E visual closure. The pending status below is historical; A2C C++/Automation was later validated and UI-A2 was sealed. Current status is maintained in `docs/DevelopmentPhases.md`.
 
 UI-A2C extends the established UI-A2A transport/lifecycle and UI-A2B committed-record model. It does not redesign Resolution, Envelope, RecordWriter, Controller backlog, PlaybackToken, PresentationUnavailable, latest-only input binding, or fail-soft no-partial-history behavior.
 
@@ -539,7 +541,7 @@ Total         77
 
 The gate still requires exact discovery counts, zero failed/not-run tests, and zero Editor exit code.
 
-This configuration is **validation pending** until it is run successfully on UE5.8.
+At the time of this record, this configuration was **validation pending** until it was run successfully on UE5.8; the later validation record closed that pending state.
 
 ## 18. Static source review result
 
@@ -547,7 +549,7 @@ Static review covered the new reflected types/includes, Deck/Energy CommitResult
 
 No remaining high-confidence C++/UHT compile blocker was identified by source inspection. Static review is not a substitute for UHT/MSVC/Unreal Automation execution.
 
-## 19. Validation status
+## 19. Validation status at record time
 
 ```text
 Design contract                   LOCKED
@@ -555,11 +557,11 @@ A2C C++ source                    IMPLEMENTED
 Static compile review             COMPLETE
 8 top-level Automation tests      AUTHORED
 CI aggregate gate                 CONFIGURED: 77
-UE5.8 Editor build                PENDING
-Phase6UIA2C Automation 8/8        PENDING
-Affected 77-test regression       PENDING
-Blueprint card/energy/zone visual PENDING
-PIE smoke                         PENDING
+UE5.8 Editor build                PENDING AT RECORD TIME
+Phase6UIA2C Automation 8/8        PENDING AT RECORD TIME
+Affected 77-test regression       PENDING AT RECORD TIME
+Blueprint card/energy/zone visual PENDING AT RECORD TIME
+PIE smoke                         PENDING AT RECORD TIME
 ```
 
 Do not mark UI-A2C fully COMPLETE until UE5.8 build + focused A2C 8/8 + affected regression pass on the same source revision.

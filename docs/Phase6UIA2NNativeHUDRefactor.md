@@ -2,7 +2,9 @@
 
 Date: **2026-08-31**
 
-Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained in `/Game/SlayTheSpireDemo/UI/Out/Legacy/`; R14-A COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED; UI-A3 NOT STARTED**
+Status: **R0-R13 COMPLETE / VALIDATED; Native HUD = production default; Legacy assets retained in `/Game/SlayTheSpireDemo/UI/Out/Legacy/`; R14-A COMPLETE / VALIDATED; R14-B NOT REQUIRED / NOT AUTHORIZED; UI-A3 COMPLETE / VALIDATED / SEALED**
+
+> Current-status boundary: the R0–R14 sections below are the Native migration execution record. Any planning language such as “not yet” is tied to the named migration step, not a current project blocker. UI-A3 is now complete; the next active presentation stage is Selection G6. Current phase status is maintained in `docs/DevelopmentPhases.md`, and current WBP asset structure is maintained in `docs/WBPSavedBlueprintSnapshot.md`.
 
 ## 1. Purpose
 
@@ -57,15 +59,16 @@ runtime reactivation, to `/Game/SlayTheSpireDemo/UI/Out/Legacy/`. Historical pat
 below continue to describe the repository state at the time of the corresponding
 validated phase. The relocation is not R14-B.
 
-UI-A3 remains outside this initiative. If A2N starts, do not add new HUD Preview
-behavior to both stacks in parallel; complete the agreed A2N boundary or explicitly
-pause it before resuming UI-A3 work.
+At the start of A2N, UI-A3 remained outside this initiative. The migration record
+therefore prohibited adding new HUD Preview behavior to both stacks in parallel;
+that was an execution-time boundary, not a current UI-A3 status. UI-A3 is now
+complete and sealed.
 
 ---
 
-## 2. Locked baseline
+## 2. Migration sealed baseline (historical evidence)
 
-The current sealed baseline is:
+The migration's sealed baseline at execution time was:
 
 ```text
 Behavior implementation commit:
@@ -481,7 +484,9 @@ Legacy WBP assets unchanged
 
 ## 8. R3-A — Static HUD and long-lived input bindings
 
-This phase does not yet migrate Hand/Card input or Presentation Records.
+At this migration step, Hand/Card input and Presentation Records had not yet been
+migrated; later R phases completed the agreed Native migration boundary. This is an
+execution-record checkpoint, not a current migration blocker.
 
 Implement small refresh functions rather than one monolithic method:
 

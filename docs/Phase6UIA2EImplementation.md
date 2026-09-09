@@ -4,9 +4,11 @@ Date: **2026-08-31**
 
 Status: **COMPLETE / VALIDATED / SEALED**.
 
+> Evidence boundary: this is the sealed A2E closure record for the Legacy Blueprint/UMG route before Native HUD ownership migration. The A2E contract and historical acceptance remain valid, but the old `WBP_BattleHUD`/`WBP_BattleCard`/`WBP_BattleStatus` assets are now retained under `UI/Out/Legacy`; current production Native assets and their saved structure are tracked by `Phase6UIA2NNativeHUDRefactor.md` and `WBPSavedBlueprintSnapshot.md`.
+
 UI-A2E closes the remaining player-visible gap in UI-A2. UI-A2A through UI-A2D establish the committed-presentation transport, reducers, status identity, terminal semantics and combined C++ acceptance. A2E is the unified Blueprint/UMG integration and PIE acceptance step that proves those committed historical facts are actually shown to the player in the intended order.
 
-The mainline must not jump directly from A2D5 C++ acceptance to unfinished UI-A3 Preview work. A2 historical playback is the post-commit surface; A3 Preview is the pre-commit surface. They are intentionally validated in that order so A3 PIE does not simultaneously debug A2 playback and Preview behavior.
+At the time of this closure, the mainline must not jump directly from A2D5 C++ acceptance to unfinished UI-A3 Preview work. A2 historical playback is the post-commit surface; A3 Preview is the pre-commit surface. They were intentionally validated in that order so A3 PIE did not simultaneously debug A2 playback and Preview behavior.
 
 ## 1. Locked development order
 
@@ -333,13 +335,16 @@ PresentationUnavailable remains distinct from ResolutionFault
 PIE ordinary card/status/turn-cycle/terminal scenarios pass
 ```
 
-All criteria above are satisfied. `UI-A2E` and `UI-A2` are
-**COMPLETE / VALIDATED / SEALED**. UI-A3 remains a separately authorized follow-up
-and was not entered by this closure.
+All criteria above were satisfied. `UI-A2E` and `UI-A2` are
+**COMPLETE / VALIDATED / SEALED**. At the time of this closure, UI-A3 was a
+separately authorized follow-up and had not yet been entered; UI-A3 was subsequently
+completed and sealed. Current phase status is maintained in `docs/DevelopmentPhases.md`.
 
 ---
 
-# UI-A3 follow-up roadmap
+# UI-A3 follow-up roadmap（historical；现已封存）
+
+This roadmap is retained as the A3 design boundary recorded after the A2 seal. It is not a current A3 implementation plan; final A3 status is maintained by `docs/Phase6UIA3Seal.md`.
 
 ## 10. Core A3 boundary
 
