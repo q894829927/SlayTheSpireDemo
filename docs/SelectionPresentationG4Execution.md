@@ -4,13 +4,16 @@ Date: **2026-09-09**
 
 Current delivery authority: `docs/SelectionPresentationG5Execution.md`. After
 the failed visual retest below, the user explicitly authorized G5 and coherent
-G4+G5 delivery. The historical G4-only gate does not prohibit that migration;
-it remains failed/unsealed rather than being retroactively declared passed.
+G4+G5 delivery. The historical G4-only gate did not prohibit that migration.
+The coherent G4+G5 production path was later user-validated and sealed under G5;
+the historical G4-only failed intermediate is not retroactively declared passed.
 
 Status:
 
 ```text
-IMPLEMENTED / VALIDATION PENDING
+SUPERSEDED BY G5
+HISTORICAL G4-ONLY PIE: FAIL
+COHERENT G4+G5 DELIVERY: COMPLETE / VALIDATED / SEALED
 ```
 
 Baseline:
@@ -178,13 +181,13 @@ scenario with at least two selected cards; Confirm and observe each successive
 fade. Each must start at its confirmed displayed position, with no second-card
 drift/jump, duplicate or stuck input. Report the visual result after the new build.
 
-Latest user PIE result: **FAIL**. The second card briefly visits the first card's
-position before returning to its own. G4 is not visually validated. The precise
-one-frame cause is not yet proven by the coordinate-only tests. Same-tick group
-fading is a G6 feature, not current G4 behavior. The Group design explicitly allows
-a coherent G4+G5 migration if the intermediate production state is unsafe; that
-would require updating this G4-only execution scope before implementation rather
-than declaring this failed visual gate passed.
+Latest G4-only user PIE result: **FAIL**. The second card briefly visits the first
+card's position before returning to its own. G4-only is not visually validated.
+The precise one-frame cause was not proven by the coordinate-only tests. Same-tick
+group fading is a G6 feature, not current G4 behavior. The Group design explicitly
+allows a coherent G4+G5 migration when the intermediate production state is unsafe.
+That coherent migration was subsequently implemented and accepted; see the final
+combined acceptance section below and `docs/SelectionPresentationG5Execution.md`.
 
 The focused `SlayTheSpireDemo.CardSelection.Presentation` prefix now contains
 the following **9** tests:
@@ -206,10 +209,10 @@ exact/stale token behavior, cancel/finish cleanup, exact SelectionArea object
 transfer, failed-prepare rollback and no replay from Transition/Consumed ownership.
 They do not claim visual movement/layout acceptance.
 
-## Validation required
+## Historical G4-only validation requirement
 
 Per `docs/ValidationExecutionPolicy.md`, G4 changes C++ production presentation
-behavior and has a visual Gate.
+behavior and had a visual Gate.
 
 ### AUTOMATED GATES
 
@@ -219,15 +222,14 @@ behavior and has a visual Gate.
    expected current discovery: 9
 ```
 
-No G0/G1/G2/G3 rerun is required absent a concrete implicated failure. The Wave1CC1
-Gameplay/reducer code and its proving tests are unchanged; the focused G4 suite
-constructs the same immutable Hand->DrawPile Record shape at the changed HUD
-boundary. Warcry itself is covered by the manual visual Gate below.
+No G0/G1/G2/G3 rerun was required absent a concrete implicated failure. The
+Wave1CC1 Gameplay/reducer code and its proving tests were unchanged; the focused
+G4 suite constructs the same immutable Hand->DrawPile Record shape at the changed
+HUD boundary. Warcry itself was covered by the manual visual Gate below.
 
-### MANUAL PIE GATE — USER ACTION REQUIRED
+### MANUAL PIE GATE — historical G4-only path
 
-Use the production Native HUD in `L_BattleTest` and exercise Warcry's current
-SingleRecord selection flow:
+The historical G4-only acceptance target was:
 
 ```text
 play Warcry
@@ -240,19 +242,36 @@ play Warcry
 -> the played Warcry card later follows the ordinary existing PlayArea cleanup path
 ```
 
-Also observe one available Hand->Exhaust or Hand->Discard committed transition if
-that scenario is already exposed by the current battle setup: movement/fade should
-start from the visible source without duplicate/flash. Do not add assets or debug
-Gameplay solely to manufacture this optional second observation.
+This isolated G4-only path failed and was superseded instead of being sealed on
+its own.
 
-G4 must not be marked COMPLETE / VALIDATED / SEALED until the build, focused
-Automation and required Warcry PIE visual evidence are actually reported.
+## Final coherent G4+G5 acceptance — PASS
 
-## Next stage after seal
+User-confirmed on **2026-09-09** after the production SelectionArea ownership
+switch landed in commit `c7f1a799708dbce12712f4c418b004ac627d9b03`.
+
+Observed production result:
 
 ```text
-G5 — production SelectionArea ownership
-     + Pending/Confirmed exact visible object in persistent Host
-     + transactional Confirm/outcome correlation
-     + generic SingleRecord SelectionArea -> Transition consumption
+[x] selected cards remain at their own displayed positions while waiting
+[x] sequential consumption uses the exact visible SelectionArea object
+[x] Warcry selected-card transfer behaves correctly
+[x] no flashback
+[x] no duplicate
+[x] no ghost
+[x] no clipping
+[x] no stuck input
+```
+
+Therefore the G4 generic SingleRecord engine is accepted as part of the coherent
+G4+G5 production architecture. The failed G4-only compatibility experiment remains
+historical evidence and must not be restored as the production path.
+
+## Current next stage
+
+```text
+G5 — COMPLETE / VALIDATED / SEALED
+G6 — NEXT ACTIVE STAGE
+     safe N-child simultaneous Group playback
+     + Transition -> ConsumedPendingReducer child lifecycle
 ```

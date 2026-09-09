@@ -2,14 +2,22 @@
 
 Date: **2026-09-09**
 
-Status: **IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE PENDING / UNSEALED**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 User authorized G5 after G4's sequential compatibility path failed visual
 acceptance. Base HEAD: `963adbd27cc161a09ea1ff68c7e479719b8331cb`, with the
 uncommitted compilation/position repairs recorded in `docs/Validation.md`.
 This is the coherent G4+G5 delivery allowed by Group design section 28; it
 supersedes the G4-only execution requirement to seal the failed intermediate
-visual implementation before G5. It does not claim that G4's visual gate passed.
+visual implementation before G5. It does not claim that G4's historical G4-only
+visual gate passed. The coherent G4+G5 production path is the accepted path.
+
+Final implementation commit before manual acceptance:
+
+```text
+c7f1a799708dbce12712f4c418b004ac627d9b03
+g4+g5完成
+```
 
 ## Scope and ordering
 
@@ -64,20 +72,46 @@ missing-correlation UI-state overwrite (9/10 passed). Both were corrected.
 Final affected rerun: G5 prefix plus G0.FormalSlotOwnership **6/6 PASS**, no
 warnings/failures/skips, process exit 0; `Saved/AutomationReports/G5Recovery/index.json`.
 Other passing scope remains recorded in `docs/Validation.md`; overlapping runs
-are not summed. No PIE or simultaneous animation acceptance is claimed.
+are not summed.
 
-**AUTOMATED GATES:** bundled UE 5.8 project generation + Development Editor build;
-focused CardSelection.Presentation and new G5 tests, plus directly affected G0
-ownership/G1 correlation coverage. Verify selection/deselection, coherent surface
-notifications, exact object retention, Confirm rejection/replacement, recorded
-and direct receipts, zero destinations, missing metadata recovery, transition
-decline/cancel and sequential consumption. Record actual scope/counts/results.
+**AUTOMATED GATES: PASS.** Bundled UE 5.8 project generation + Development Editor
+build and focused CardSelection.Presentation / G5 coverage passed. Covered
+selection/deselection, coherent surface notifications, exact object retention,
+Confirm rejection/replacement, recorded/direct receipts, zero destinations,
+missing metadata recovery, transition decline/cancel and sequential consumption.
 
-**MANUAL PIE — USER ACTION REQUIRED:** Native `L_BattleTest`, select/deselect/
-reselect; Confirm multiple Exhaust candidates and observe second/third cards
-remain in place while prior cards disappear (still sequential); Warcry select
-and Confirm transfers that exact visible card to DrawPile, with played-card
-cleanup afterward. No flashback, clipping, duplicate, ghost or stuck input.
-G4+G5 stays unsealed until these visual results are provided.
+### Manual PIE acceptance — PASS
 
-Next stage after acceptance: G6 safe N-child simultaneous playback.
+User-confirmed on **2026-09-09** using the production Native battle flow.
+The coherent G4+G5 path passed the required visual gate:
+
+```text
+[x] Selection / deselection / reselection behaves correctly
+[x] Multiple selected Exhaust candidates remain visually stable while waiting
+[x] Sequential consumption starts from each card's actual displayed position
+[x] Warcry selection transfers the exact visible selected card toward DrawPile
+[x] no flashback
+[x] no duplicate visual
+[x] no ghost visual
+[x] no clipping
+[x] no stuck input
+```
+
+This acceptance applies to the coherent G4+G5 production path. The earlier
+G4-only compatibility implementation remains a historical failed intermediate
+and is not retroactively declared visually accepted.
+
+## Seal
+
+```text
+G4+G5 coherent delivery: COMPLETE / VALIDATED / SEALED
+Production SelectionArea ownership: ACCEPTED
+Generic sequential SelectionArea -> Transition consumption: ACCEPTED
+G6 simultaneous Group playback: NOT IMPLEMENTED
+```
+
+No additional G4/G5 rerun is required unless a later edit invalidates this
+evidence or a concrete regression directly implicates the sealed contracts.
+
+Next active stage: **G6 — safe N-child simultaneous Group playback +
+ConsumedPendingReducer child lifecycle**.
