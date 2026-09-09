@@ -5,18 +5,18 @@ Date: **2026-09-09**
 Status:
 
 ```text
-PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
-LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT DEFINED /
-G0 A/B/C COMPLETE / VALIDATED / SEALED /
-G1-G3 SEALED / G4+G5 IMPLEMENTED, VALIDATION IN PROGRESS /
-VISIBLE GROUP PLAYBACK (G6) NOT IMPLEMENTED
+VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
+LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT IMPLEMENTED /
+G0-G5 COMPLETE / VALIDATED / SEALED /
+G6 N-CHILD VISIBLE GROUP PLAYBACK NEXT ACTIVE / NOT IMPLEMENTED /
+G7 CLEANUP AFTER G6 / G8 SEPARATE LATER INITIATIVE
 ```
 
 Scope: define the shared Native HUD / Presentation contract for current and future player card-selection interactions.
 
 This document is authoritative for card-selection Presentation behavior. `docs/CardSelectionRefactorConstraints.md` remains authoritative for Gameplay candidate capture, pending requests, resolver/continuation behavior and interactive-boundary rules. `docs/SelectionPresentationGroupDesign.md` specifies the grouped multi-selection implementation in more detail.
 
-Current implementation and evidence are recorded in `docs/SelectionPresentationG5Execution.md` and `docs/Validation.md`. G0-G3 are sealed. The user authorized joint G4+G5 delivery after the G4 intermediate implementation failed visual acceptance. Production selected visuals now use the persistent SelectionArea and existing ownership APIs; formal-Hand transforms and `ConfirmedCardCenters` have been retired from this path. G4+G5 still needs visual acceptance. G6 simultaneous playback and later sections remain targets until explicitly activated by their execution scope.
+Current implementation and evidence are recorded in `docs/SelectionPresentationG4Execution.md`, `docs/SelectionPresentationG5Execution.md` and `docs/Validation.md`. G0-G5 are sealed. The user authorized joint G4+G5 delivery after the isolated G4 compatibility implementation failed visual acceptance. Production selected visuals now use the persistent SelectionArea and existing ownership APIs; formal-Hand transforms and `ConfirmedCardCenters` have been retired from the production path. The coherent G4+G5 Native `L_BattleTest` PIE gate passed on 2026-09-09 with no flashback, duplicate, ghost, clipping or stuck input. G6 simultaneous playback and later sections remain targets until explicitly activated by their execution scope.
 
 ## 1. Core principle
 
@@ -203,7 +203,7 @@ SelectionArea(Pending)
 
 Confirm also arms/associates the exact lifecycle with a completion watermark as soon as the relevant recorded Resolution or direct post-confirm state edge is knowable. The lifecycle may temporarily be `Confirmed + completion watermark not yet resolved`, but that state MUST NOT be treated as completed.
 
-This is an acceptance transaction, not unconditional mutation before a fallible Request. Preserve the exact pending request/lifecycle and visuals during submit; commit Confirmed only for accepted submission, or use reversible preparation that cannot publish a false completion. Rejection with the same pending request restores Pending interaction; rejection due to a replaced/failed request reconciles against that new boundary. Detailed outcome correlation and re-entrancy requirements are in Group design sections 5.5 and 9.3 and gate G5.
+This is an acceptance transaction, not unconditional mutation before a fallible Request. Preserve the exact pending request/lifecycle and visuals during submit; commit Confirmed only for accepted submission, or use reversible preparation that cannot publish a false completion. Rejection with the same pending request restores Pending interaction; rejection due to a replaced/failed request reconciles against that new boundary. Detailed outcome correlation and re-entrancy requirements are in Group design sections 5.5 and 9.3 and were closed by G5.
 
 ### 4.4 Destination playback acceptance
 
@@ -427,7 +427,7 @@ The formal Hand rebuild/reconcile MUST NOT reconstruct SelectionArea continuity 
 
 Formal Widget reuse is Battle-scoped. Completed draw adoption must restore normal hit testing/request binding before applying explicit ownership suppression. A temporary draw visual may be appended during active playback; the exact child-count invariant applies at stable snapshot/preflight boundaries, not midway through that existing animation.
 
-Legacy `ConfirmedCardCenters`, position handoff data or equivalent may exist temporarily only as migration compatibility implementation detail. They are **not** a second authoritative ownership mechanism and MUST be removed after the production ownership migration is validated.
+`ConfirmedCardCenters`, position handoff data and equivalent compatibility state have been retired from the G5 production Selection path. Any residual compatibility-only declarations or tests that are proven obsolete are G7 cleanup targets; they are not a second authoritative ownership mechanism.
 
 ## 8. Historical index vs visual identity
 
@@ -514,7 +514,7 @@ Group lookahead MUST NOT:
 
 `ExpectedMemberCount <= 1` remains normal SingleRecord Controller playback initially.
 
-Expected count alone is not proof of selected membership. G1 must provide a sealed canonical selected-identity manifest (or equivalent writer-validated evidence), including zero-record outcomes; G2 compares exact membership and checks all interleaved records, including members of other groups. See Group design sections 12 and 17.
+Expected count alone is not proof of selected membership. G1 provides a sealed canonical selected-identity manifest (or equivalent writer-validated evidence), including zero-record outcomes; G2 compares exact membership and checks all interleaved records, including members of other groups. See Group design sections 12 and 17.
 
 ## 11. Controller semantic preflight vs Widget visual preflight
 
@@ -721,7 +721,7 @@ Warcry played
 → resolution completes
 ```
 
-Warcry remains a one-member SingleRecord Controller case while reusing the same generic transition child engine as grouped playback.
+Warcry remains a one-member SingleRecord Controller case while reusing the same generic transition child engine as grouped playback. The G4+G5 Native PIE acceptance on 2026-09-09 explicitly confirmed the exact visible selected-card transfer toward DrawPile and no flashback/duplicate/ghost/clipping/stuck-input regression. This is Selection Presentation evidence; it does not by itself create a standalone Wave 1C-C1 seal claim.
 
 ## 20. Implementation staging contract
 
@@ -749,13 +749,28 @@ G7   delete compatibility handoff/old Selection-specific transition code;
      focused validation and seal work
 ```
 
-G0-C/G5 separation is mandatory unless combined into one coherent behavior-safe migration. It is forbidden to hide the formal Hand source in production before the generic SingleRecord transition engine can consume a SelectionArea source.
+G0-C/G5 separation was mandatory unless combined into one coherent behavior-safe migration. The implementation ultimately used the permitted coherent G4+G5 migration after the G4-only compatibility state failed visual acceptance.
 
-G0 is complete, validated and sealed from the recorded automated evidence plus the user-confirmed manual Native `L_BattleTest` draw/selection pass on 2026-09-09. Resume from G1. G1 must establish exact Selection-to-continuation outcome correlation independently of optional Group tags; G3 wires exact completion and scoped recovery; both are prerequisites for G5. First close correct sequential SelectionArea playback, then enable Group concurrency. G8 remains deferred and requires the explicit lifetime amendment in Group design section 30.5.
+Current stage status:
+
+```text
+G0 — COMPLETE / VALIDATED / SEALED
+G1 — COMPLETE / VALIDATED / SEALED
+G2 — COMPLETE / VALIDATED / SEALED
+G3 — COMPLETE / VALIDATED / SEALED
+G4 — generic SingleRecord engine accepted as part of coherent G4+G5 delivery;
+     isolated G4-only compatibility PIE remains historical FAIL
+G5 — COMPLETE / VALIDATED / SEALED
+G6 — NEXT ACTIVE / NOT IMPLEMENTED
+G7 — AFTER G6
+G8 — separate deferred lifetime/input initiative
+```
+
+Resume from G6. First preserve the now-proven sequential SelectionArea path as fallback, then add Group concurrency without changing Gameplay/reducer chronology. G8 remains deferred and requires the explicit lifetime amendment in Group design section 30.5.
 
 ## 21. Acceptance gates
 
-Implementation is not complete until focused tests and PIE demonstrate at minimum:
+The cumulative G0-G7 initiative is not complete until focused tests and PIE demonstrate at minimum the following contracts. G0-G5 evidence is already recorded and sealed; entries below remain the durable regression/acceptance checklist, while G6/G7-specific items are still forward gates:
 
 - explicit Confirm semantics remain correct;
 - selecting/deselecting transfers exact RuntimeId visible ownership Hand↔SelectionArea without Gameplay mutation;
@@ -802,4 +817,4 @@ RefreshHand restore confirmed transform
 
 are legacy migration details only.
 
-Previously obtained build/Automation/PIE evidence applies only to the code state that produced it. It does not validate the SelectionArea ownership or parallel Group redesign.
+Previously obtained pre-redesign build/Automation/PIE evidence applies only to the code state that produced it. The later G5 execution record and user-confirmed G4+G5 PIE gate separately validate production SelectionArea ownership and correct sequential same-object transfer. No existing G0-G5 evidence validates G6 parallel Group playback; that remains the next active stage.
