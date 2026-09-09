@@ -241,6 +241,7 @@ bool FWave1CC0NativeHUDExactNClickTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("First candidate click is accepted locally"), HUD->SelectCard(FirstId));
 	TestEqual(TEXT("One RuntimeId is locally selected"), ViewModel->GetPendingCardSelectionSelectedCount(), 1);
 	TestTrue(TEXT("First RuntimeId is marked selected"), ViewModel->IsPendingCardSelectionRuntimeIdSelected(FirstId));
+	TestFalse(TEXT("One of two is not confirmable"), ViewModel->CanConfirmPendingCardSelection());
 	TestTrue(TEXT("Gameplay remains pending at 1/2"), Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
 	TestEqual(TEXT("Nothing exhausts before exact N"), Deck->GetExhaustCount(), 0);
 
@@ -250,12 +251,18 @@ bool FWave1CC0NativeHUDExactNClickTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("Second candidate can be selected first"), HUD->SelectCard(SecondId));
 	TestEqual(TEXT("One selected before final click"), ViewModel->GetPendingCardSelectionSelectedCount(), 1);
-	TestTrue(TEXT("Final distinct click reaches exact N and auto-submits"), HUD->SelectCard(FirstId));
+	TestTrue(TEXT("Final distinct click reaches exact N without submitting"), HUD->SelectCard(FirstId));
+	TestEqual(TEXT("Two RuntimeIds remain transiently selected"), ViewModel->GetPendingCardSelectionSelectedCount(), 2);
+	TestTrue(TEXT("Exact N enables explicit confirmation"), ViewModel->CanConfirmPendingCardSelection());
+	TestTrue(TEXT("Gameplay request remains pending until Confirm"), Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
+	TestEqual(TEXT("No cards exhaust before Confirm"), Deck->GetExhaustCount(), 0);
+
+	TestTrue(TEXT("Explicit Confirm submits the selected RuntimeIds"), ViewModel->ConfirmPendingCardSelection());
 	Fixture.Battle->FlushScheduledReadStateReadyForTesting();
 
-	TestEqual(TEXT("Local transient selection clears after submit"), ViewModel->GetPendingCardSelectionSelectedCount(), 0);
+	TestEqual(TEXT("Local transient selection clears after Confirm"), ViewModel->GetPendingCardSelectionSelectedCount(), 0);
 	TestFalse(TEXT("Gameplay request is no longer pending"), Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
-	TestEqual(TEXT("Exactly two cards exhaust after auto-submit"), Deck->GetExhaustCount(), 2);
+	TestEqual(TEXT("Exactly two cards exhaust after Confirm"), Deck->GetExhaustCount(), 2);
 	const TArray<TObjectPtr<UCardInstance>>& ExhaustCards = Deck->GetExhaustCards();
 	if (TestEqual(TEXT("Two exhausted cards recorded"), ExhaustCards.Num(), 2))
 	{

@@ -25,13 +25,24 @@ void USelectionRequestAction::Execute(UBattleActionQueue* Queue)
 	if (!IsValid(Queue) || !IsValid(Resolver.Get()) || !IsValid(Continuation.Get()))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction skipped: invalid Queue, Resolver or Continuation."));
+		if (IsValid(Queue))
+		{
+			Queue->RequestResolutionFault(TEXT("SelectionRequestAction could not begin: a required runtime dependency was invalid."));
+		}
 		Finish();
 		return;
 	}
 
 	if (!Resolver->BeginSelection(Request, Continuation.Get(), this))
 	{
-		// Malformed request or an already-pending selection: fail soft, no hold.
+		// A rejected BeginSelection is an internal authoring/queue invariant
+		// failure. Do not silently release the current Action and continue later
+		// authored Effects past a mandatory choice.
+		Queue->RequestResolutionFault(FString::Printf(
+			TEXT("SelectionRequestAction could not begin selection for %s."),
+			*Request.SelectionSource.ToString()
+		));
+		Resolver->ClearPendingSelectionForFault();
 		Finish();
 		return;
 	}
@@ -45,19 +56,28 @@ void USelectionRequestAction::Execute(UBattleActionQueue* Queue)
 
 void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Result)
 {
+	ResolvePendingSelectionWithDisposition(Result);
+}
+
+ESelectionResolveDisposition USelectionRequestAction::ResolvePendingSelectionWithDisposition(const FSelectionResult& Result)
+{
 	if (!bAwaitingSelection)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction resolve ignored: not awaiting selection."));
-		return;
+		return ESelectionResolveDisposition::NoPendingSelection;
 	}
 
 	UBattleActionQueue* Queue = GetOwningQueue();
 	if (!IsValid(Queue) || !IsValid(Resolver.Get()))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction resolve aborted: Queue or Resolver lost."));
+		UE_LOG(LogTemp, Error, TEXT("[Action] SelectionRequestAction resolve failed: Queue or Resolver lost."));
+		if (IsValid(Queue))
+		{
+			Queue->RequestResolutionFault(TEXT("SelectionRequestAction lost its Queue or Resolver while awaiting input."));
+		}
 		bAwaitingSelection = false;
 		Finish();
-		return;
+		return ESelectionResolveDisposition::InternalFailure;
 	}
 
 	// A mandatory request must remain the current Action when Presentation tries
@@ -67,18 +87,34 @@ void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Re
 		&& !Resolver->CanCancelPendingSelection())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction cancel ignored: active request is mandatory."));
-		return;
+		return ESelectionResolveDisposition::ForbiddenCancellation;
 	}
 
 	TArray<UBattleAction*> ContinuationBatch;
-	if (!Resolver->TryResolveSelection(Result, ContinuationBatch))
+	const ESelectionResolveDisposition Disposition = Resolver->ResolveSelection(Result, ContinuationBatch);
+	if (Disposition != ESelectionResolveDisposition::Resolved)
 	{
-		// Legal cancellation or invalid selection: no dependent work, no fault.
-		// Mandatory cancellation was handled above and therefore never reaches
-		// this finish path.
+		// Invalid submissions and forbidden cancellation are rejected while the
+		// resolver keeps the valid request and this Action pending. Legal
+		// cancellation clears the request and releases the Action. Internal
+		// failures have already requested a Queue fault and clean resolver state.
+		if (Disposition == ESelectionResolveDisposition::InvalidSubmission
+			|| Disposition == ESelectionResolveDisposition::ForbiddenCancellation)
+		{
+			return Disposition;
+		}
+		if (Disposition == ESelectionResolveDisposition::InternalFailure
+			|| Disposition == ESelectionResolveDisposition::NoPendingSelection)
+		{
+			Queue->RequestResolutionFault(FString::Printf(
+				TEXT("SelectionRequestAction could not resolve %s (disposition %d)."),
+				*Request.SelectionSource.ToString(),
+				static_cast<int32>(Disposition)
+			));
+		}
 		bAwaitingSelection = false;
 		Finish();
-		return;
+		return Disposition;
 	}
 
 	// Continuation Actions are created after the original PlayCardAction has
@@ -97,7 +133,7 @@ void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Re
 			));
 			bAwaitingSelection = false;
 			Finish();
-			return;
+			return ESelectionResolveDisposition::InternalFailure;
 		}
 		ContinuationAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
 	}
@@ -111,11 +147,12 @@ void USelectionRequestAction::ResolvePendingSelection(const FSelectionResult& Re
 		));
 		bAwaitingSelection = false;
 		Finish();
-		return;
+		return ESelectionResolveDisposition::InternalFailure;
 	}
 
 	bAwaitingSelection = false;
 	Finish();
+	return ESelectionResolveDisposition::Resolved;
 }
 
 void USelectionRequestAction::CancelPendingSelection()
@@ -127,12 +164,34 @@ void USelectionRequestAction::CancelPendingSelection()
 
 	if (!IsValid(Resolver.Get()) || !Resolver->CancelSelection())
 	{
+		if (!IsValid(Resolver.Get()))
+		{
+			if (UBattleActionQueue* Queue = GetOwningQueue())
+			{
+				Queue->RequestResolutionFault(TEXT("SelectionRequestAction lost its Resolver while cancelling."));
+			}
+			bAwaitingSelection = false;
+			Finish();
+			return;
+		}
 		UE_LOG(LogTemp, Warning, TEXT("[Action] SelectionRequestAction cancel ignored: cancellation is not permitted."));
 		return;
 	}
 
 	bAwaitingSelection = false;
 	Finish();
+}
+
+void USelectionRequestAction::AbandonPendingSelectionForFault()
+{
+	UBattleActionQueue* Queue = OwningQueue.Get();
+	bAwaitingSelection = false;
+	OwningQueue = nullptr;
+	if (IsValid(Queue) && Queue->IsCurrentAction(this))
+	{
+		Queue->RequestResolutionFault(TEXT("SelectionRequestAction abandoned an inconsistent pending request."));
+		Finish();
+	}
 }
 
 UBattleActionQueue* USelectionRequestAction::GetOwningQueue() const

@@ -94,6 +94,62 @@ bool UBattleActionQueue::StartProcessing()
 	return true;
 }
 
+bool UBattleActionQueue::RunReadSnapshotAtCurrentActionBoundary(
+	const UBattleAction* BoundaryAction,
+	TFunctionRef<bool()> ReadOperation
+)
+{
+	if (bResolutionFaulted
+		|| bResolutionFaultRequested
+		|| bInteractiveSnapshotReadScope
+		|| !IsCurrentAction(BoundaryAction))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] Interactive snapshot read rejected: boundary is not the healthy current Action."));
+		return false;
+	}
+
+	// Execute only the supplied synchronous read while normal command-busy
+	// reporting ignores the current boundary Action and its already-authored tail.
+	// No Queue mutation, pumping or delegate broadcast occurs in this scope.
+	bInteractiveSnapshotReadScope = true;
+	const bool bSucceeded = ReadOperation();
+	bInteractiveSnapshotReadScope = false;
+	return bSucceeded;
+}
+
+bool UBattleActionQueue::IsCurrentAction(const UBattleAction* Action) const
+{
+	return IsValid(Action) && CurrentAction.Get() == Action;
+}
+
+bool UBattleActionQueue::RebindPendingPresentationRecordWriter(
+	const UBattleAction* BoundaryAction,
+	const FPresentationRecordWriter& Writer
+)
+{
+	if (!IsCurrentAction(BoundaryAction) || bInteractiveSnapshotReadScope)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] Pending writer rebind rejected outside the current interactive boundary."));
+		return false;
+	}
+
+	for (const TObjectPtr<UBattleAction>& Pending : PendingActions)
+	{
+		UBattleAction* Action = Pending.Get();
+		if (!IsValid(Action) || Action->IsFinished() || Action->GetOuter() != this)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] Pending writer rebind rejected because the tail contains an invalid Action."));
+			return false;
+		}
+	}
+
+	for (const TObjectPtr<UBattleAction>& Pending : PendingActions)
+	{
+		Pending->SetPresentationRecordWriter(Writer);
+	}
+	return true;
+}
+
 bool UBattleActionQueue::DeferUntilAfterQueueEmptyBroadcast(TFunction<void()>&& Continuation)
 {
 	if (bResolutionFaulted || bResolutionFaultRequested)
@@ -152,6 +208,11 @@ bool UBattleActionQueue::IsResolutionFaulted() const
 
 bool UBattleActionQueue::IsBusy() const
 {
+	if (bInteractiveSnapshotReadScope)
+	{
+		return bResolutionFaulted || bResolutionFaultRequested;
+	}
+
 	return bResolutionFaulted
 		|| bResolutionFaultRequested
 		|| bIsPumping
@@ -202,8 +263,14 @@ bool UBattleActionQueue::ValidateBatchForInsertion(const TArray<UBattleAction*>&
 		return false;
 	}
 
+	if (bInteractiveSnapshotReadScope)
+	{
+		OutReason = TEXT("Queue mutation is forbidden during an interactive snapshot read scope.");
+		return false;
+	}
+
 	// Empty batches are always a legal no-op for a healthy Queue, including
-	// while QueueEmpty observers are being notified. They cannot mutate pending
+	// while QueueEmpty observer notification. They cannot mutate pending
 	// work, so the non-reentrant observer protection only applies to non-empty work.
 	if (Actions.Num() == 0)
 	{
@@ -459,6 +526,7 @@ void UBattleActionQueue::EnterResolutionFaultAtSafePoint()
 	bIsBroadcastingQueueEmpty = false;
 	bIsExecutingPostQueueEmptyContinuation = false;
 	bHasDeferredQueueEmptyContinuation = false;
+	bInteractiveSnapshotReadScope = false;
 	DeferredQueueEmptyContinuation = TFunction<void()>();
 	bIsPumping = false;
 

@@ -6,7 +6,7 @@ This is an Unreal Engine 5.8 C++ learning/demo project inspired by Slay the Spir
 
 Build a small, extensible and deterministic card-battle framework that supports reusable card effects/actions, deck zones, statuses, relic triggers, modifier pipelines and event-driven interactions without hard-coded combinations.
 
-The long-term flow is:
+The battle-resolution flow is:
 
 ```text
 CardData / CardInstance
@@ -40,7 +40,7 @@ When project documents disagree:
 4. This root `AGENTS.md`.
 5. Project-wide summary/history documents.
 
-When editing a subtree, also obey the nearest applicable directory-level `AGENTS.md`. More specific directory rules refine this root contract.
+Directory rules apply to their subtrees. Consult documents relevant to the changed contract; these links are navigation, not a mandatory reading list for every edit.
 
 Do not silently choose between contradictory project documents. If a conflict materially affects implementation, identify it before making dependent changes.
 
@@ -87,30 +87,9 @@ Do not introduce speculative frameworks, dependencies or future-phase mechanisms
 
 ## Gameplay and Presentation
 
-Gameplay and Presentation are separate timelines.
+Gameplay commits immutable Presentation Records and continues independently. Presentation may lock UI input for readability, but never blocks Gameplay or owns its state. Presentation failure, timeout, skip, missing callback or disablement must not request a Gameplay `ResolutionFault`.
 
-Forbidden:
-
-```text
-BattleAction
-→ wait for animation
-→ next BattleAction
-```
-
-Required:
-
-```text
-Gameplay commit
-→ immutable Presentation Record
-→ Gameplay continues independently
-```
-
-Presentation may lock UI input for readability, but never blocks Gameplay execution or becomes authoritative state. Presentation failure, timeout, skip, missing callback or disablement must not request a Gameplay `ResolutionFault`.
-
-Directory-specific Presentation and UI contracts live in:
-
-- `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
-- `Source/SlayTheSpireDemo/UI/AGENTS.md`
+Presentation and UI subtrees define their historical-state, playback and input contracts in their own `AGENTS.md` files.
 
 ## Retained Legacy Battle UI
 
@@ -132,14 +111,9 @@ R14-B destructive removal is not required under the current project decision and
 
 Respect explicit phase dependencies. Do not skip ahead unless the user explicitly requests it.
 
-Before changing files:
+Complete the requested implementation, relevant validation and documentation within the authorized scope. Routine local edits, builds and focused tests do not need repeated permission. Resolve routine implementation choices from context; raise material contract conflicts or missing authorization before dependent work.
 
-1. Inspect the relevant implementation and documentation.
-2. Make the smallest coherent change.
-3. Preserve unrelated user changes.
-4. Avoid unrelated refactors, public API/asset renames, plugin changes, engine-association changes and build-setting changes.
-5. Do not add third-party dependencies without approval.
-6. Preserve explainability for learning.
+Preserve unrelated user changes and keep changes coherent and explainable for learning. Avoid unrelated refactors, public API/asset renames, plugin changes, engine-association changes and build-setting changes. New third-party dependencies require approval.
 
 Do not intentionally commit generated or local files:
 
@@ -155,45 +129,9 @@ Saved/
 
 ## Validation
 
-Never claim:
+Follow `docs/ValidationExecutionPolicy.md` for change-proportional validation, reruns and manual PIE ownership. Documentation-only edits do not require UE builds or Automation. Passing evidence remains valid until affected changes, failures or an explicit rerun requirement invalidate it.
 
-- successful UE compilation without running the relevant build;
-- Automation safety without running the relevant suite;
-- Blueprint correctness from C++ Automation alone;
-- PIE or packaged-game validation without actually performing it.
-
-Validation must be proportional to the current changed contract and must follow `docs/ValidationExecutionPolicy.md`.
-
-The default validation budget for an ordinary phase is:
-
-```text
-Build once
--> smallest focused Automation suite once
--> one focused manual PIE pass only when the phase has a genuine visual/manual Gate
--> record evidence
--> STOP
-```
-
-Passing Gates are sticky. Do not rerun a Gate that already passed unless later edits invalidate it, the proving test/fixture changed, an explicit final-head requirement applies, or the user asks for a rerun.
-
-Do not perform validation-of-validation loops: no repeated screenshot inspection, repeated passing PIE, repeated log rereads, extra synthetic fixtures, unrelated historical suites, or architecture review merely to reconfirm a Gate that already passed.
-
-If a Gate fails, investigate and fix that Gate, rebuild when required by the changed code, and rerun only the Gate(s) invalidated by the fix. Do not restart the entire acceptance sequence by default.
-
-Deterministic state/contracts should be automated. Manual PIE is reserved for genuinely visual/player-facing behavior such as animation appearance, movement, layout, hover/mouse interaction, flicker/flashback, visible duplicate instances, or Legacy-vs-Native visual parity.
-
-Each phase acceptance should explicitly separate:
-
-```text
-AUTOMATED GATES
-MANUAL PIE GATES
-```
-
-Do not silently replace a manual Gate with repeated agent screenshots. When manual UE Editor work cannot be performed with available tools, label it `USER ACTION REQUIRED` and provide the exact minimal asset/map, actions, expected observations and evidence required.
-
-Completed phases are sealed execution history for normal forward work. Do not re-audit their detailed evidence unless a current failure directly implicates that contract.
-
-See `docs/ValidationExecutionPolicy.md`, `docs/Validation.md` and the directory-specific test rules in `Source/SlayTheSpireDemoTests/AGENTS.md`.
+Report only validation actually performed. C++ Automation alone does not prove Blueprint graphs, visual behavior, PIE or packaged-game acceptance. When required manual UE work cannot be performed, label it `USER ACTION REQUIRED` and give the minimal asset/map, actions, expected observations and evidence needed.
 
 ### UE 5.8 PowerShell Project and Build Commands
 
@@ -224,40 +162,6 @@ When a meaningful phase changes:
 - update durable invariants if architecture changed;
 - keep status consistent across the relevant documents;
 - do not add daily implementation trivia to this root file.
-
-## Multi-Agent Workflow
-
-The primary Sol agent remains the sole owner of:
-
-- architecture;
-- phase sequencing and predecessor gates;
-- edit boundaries;
-- cross-module decisions;
-- integration and conflict resolution;
-- acceptance claims and final sealing.
-
-Project-scoped custom agents are defined under `.codex/agents/`:
-
-- `implementation_worker`: primary bounded implementation worker for an already-approved scope. It may modify C++, Blueprint/UMG, tests or documentation only within the explicit edit boundary assigned by Sol;
-- `repo_explorer`: read-only investigator for a concrete codebase, asset, contract or regression-surface unknown;
-- `test_runner`: build, Automation, log and regression validation worker for an explicitly assigned validation scope;
-- `architecture_reviewer`: independent read-only reviewer of affected architectural invariants and regression risk.
-
-All project custom subagents use `gpt-5.6-luna`. Reasoning effort is role-specific: implementation/review use higher effort, exploration/testing use lower effort. The project agent concurrency limit is intentionally low to reduce duplicated context and quota consumption.
-
-### Agent invocation policy
-
-Use subagents only when the work has a concrete bounded scope. Do not automatically start every available role, and do not use an explorer to repeat repository facts already established by current documents or a trustworthy checkpoint.
-
-Sol must assign each implementation worker an explicit ownership boundary covering files, assets or behavior. Never allow two write-capable agents to modify overlapping files or the same behavioral ownership boundary concurrently. Read-only investigation and review may run in parallel only when they have distinct, useful questions.
-
-An implementation worker may continue across adjacent edits while the approved boundary and contracts remain unchanged. It must return architectural ambiguity, cross-module ownership changes or requests outside that boundary to Sol rather than expanding scope independently.
-
-Use `repo_explorer` only when a concrete unknown would materially affect implementation or review. Use `architecture_reviewer` after a meaningful coherent change set or when architectural risk warrants independent review. Use `test_runner` for a meaningful validation scope rather than repeatedly rerunning unchanged checks after every small edit.
-
-Subagent completion is not acceptance. Sol must inspect and integrate the result, resolve conflicts, and decide whether the required build, Automation, Blueprint compile/save, PIE, packaged-game or other acceptance evidence actually satisfies the applicable contract.
-
-A subagent does not own architecture. If its task requires changing authoritative state ownership, `BattleActionQueue` semantics, Modifier/Event/Trigger contracts, Gameplay/Presentation boundaries, Presentation Record/Envelope semantics or phase ordering, it must return the issue to Sol instead of redesigning independently.
 
 ### Goal checkpoint policy
 

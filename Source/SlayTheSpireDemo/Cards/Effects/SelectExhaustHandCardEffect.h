@@ -18,7 +18,8 @@ enum class ESelectExhaustSelectionMode : uint8
 //
 // C0 keeps the existing UCLASS identity for serialized Burning Pact
 // compatibility while generalizing its authored Base/Upgraded configuration.
-// Candidate discovery remains current Hand cards excluding Context.Card.
+// Candidates are captured from current Hand when the shared Action executes,
+// after preceding effects and the played card's move to PlayArea have committed.
 UCLASS(EditInlineNew, DefaultToInstanced)
 class SLAYTHESPIREDEMO_API USelectExhaustHandCardEffect : public UCardEffect
 {

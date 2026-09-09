@@ -12,10 +12,4 @@ Production code must never depend on the test module. Keep Automation-only refle
 
 Use normal Unreal prefixes. Prefer forward declarations and small public headers. UObject runtime ownership must be GC-safe through explicit Outer ownership and appropriate `UPROPERTY`/`TObjectPtr` references. Do not enable Tick by default.
 
-Keep includes and module dependencies explicit and minimal. Do not add plugins, third-party dependencies or change the engine association/build settings without user approval.
-
-## Change Discipline
-
-Inspect relevant files first, make the smallest coherent change and avoid unrelated refactors. Preserve public APIs unless a change is required by the requested contract.
-
-After C++ changes, verify includes/module dependencies and run the smallest relevant build/test set available. Report unavailable validation or failures accurately.
+Keep includes and module dependencies explicit and minimal. Plugin, engine-association and build-setting changes require user authorization. Root scope rules and `docs/ValidationExecutionPolicy.md` apply.

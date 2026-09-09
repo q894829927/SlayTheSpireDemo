@@ -3,6 +3,7 @@
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
 #include "../Battle/BattleSelectionRequest.h"
+#include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/TextBlock.h"
 #include "Containers/Ticker.h"
@@ -44,15 +45,37 @@ bool UBattleHUDWidget::SelectCard(
 			}
 		}
 
+		if (IsValid(Btn_Confirm))
+		{
+			Btn_Confirm->SetVisibility(
+				bStillPending ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+			Btn_Confirm->SetIsEnabled(
+				bStillPending && ViewModel->CanConfirmPendingCardSelection());
+		}
+		if (IsValid(Btn_Cancel))
+		{
+			const bool bCanCancelPending = bStillPending
+				&& ViewModel->CanCancelPendingCardSelection();
+			Btn_Cancel->SetVisibility(
+				bCanCancelPending ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
+			Btn_Cancel->SetIsEnabled(bCanCancelPending);
+		}
+
 		if (IsValid(Txt_Feedback))
 		{
-			if (bStillPending && UpdatedView.RequiredCount > 1)
+			if (bStillPending)
 			{
-				Txt_Feedback->SetText(FText::Format(
-					NSLOCTEXT("BattleHUDWidget", "PendingCardSelectionProgress", "选择卡牌 {0}/{1}"),
-					FText::AsNumber(ViewModel->GetPendingCardSelectionSelectedCount()),
-					FText::AsNumber(UpdatedView.RequiredCount)
-				));
+				const int32 SelectedCount = ViewModel->GetPendingCardSelectionSelectedCount();
+				const bool bReadyToConfirm = ViewModel->CanConfirmPendingCardSelection();
+				Txt_Feedback->SetText(bReadyToConfirm
+					? FText::Format(
+						NSLOCTEXT("BattleHUDWidget", "PendingCardSelectionReady", "已选择卡牌 {0}/{1}，请确认"),
+						FText::AsNumber(SelectedCount),
+						FText::AsNumber(UpdatedView.RequiredCount))
+					: FText::Format(
+						NSLOCTEXT("BattleHUDWidget", "PendingCardSelectionProgress", "选择卡牌 {0}/{1}"),
+						FText::AsNumber(SelectedCount),
+						FText::AsNumber(UpdatedView.RequiredCount)));
 			}
 			else
 			{
@@ -60,6 +83,16 @@ bool UBattleHUDWidget::SelectCard(
 			}
 		}
 		return bAccepted;
+	}
+
+	// Gameplay may already be authoritatively waiting for this card selection
+	// while the displayed Presentation revision is still catching up to the
+	// interactive boundary. In that window candidates are intentionally hidden,
+	// but ordinary card-play input must also be blocked. Never reinterpret a
+	// selection click as a new play command merely because the read view is gated.
+	if (ViewModel->HasAuthoritativePendingCardSelection())
+	{
+		return false;
 	}
 
 	if (!bAllowFastPresentationCatchUp)
@@ -129,9 +162,11 @@ void UBattleHUDWidget::RetryPendingFastCardSelection()
 		return;
 	}
 
-	if (ViewModel->HasPendingCardSelection())
+	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
-		SelectCard(RuntimeId, false);
+		// The click that fast-forwarded the preceding Presentation ends at the
+		// interaction-state transition. A real pending selection blocks ordinary
+		// play whether or not its displayed read view has caught up yet.
 		return;
 	}
 

@@ -4,6 +4,12 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
+- **Selection Presentation G0 A/B/C — implemented / automated gates PASS / manual PIE pending (2026-09-09).** Reviewed incremental dirty propagation, RuntimeId Hand reuse and dormant ownership; repaired completed draw visuals retaining HitTestInvisible during formal adoption. Scope and remaining focused PIE: `docs/SelectionPresentationG0Execution.md`; evidence: `docs/Validation.md`. G1 remains outside this review.
+
+- **Selection Presentation production repair — implemented / automated gates PASS / manual PIE pending (2026-09-08).** Native HUD now uses the shared selection subclass; explicit confirmation, central selected-card display, draw-pile transfer and generic played-card Exhaust reuse follow `docs/CardSelectionPresentationConstraints.md` section 16.
+
+- **Card Selection Refactor — implemented / automated gates PASS / manual PIE pending (2026-09-08).** Unified Execute-time current-Hand capture for Player/Random, shared interactive boundary and explicit failure disposition. Acceptance authority: `docs/CardSelectionRefactorConstraints.md`. Continuous-card-play work remains gated on this refactor's automated and manual acceptance.
+
 - **Automatic Card Descriptions — implemented / automated gates PASS / manual PIE pending (2026-09-08).** User-requested refactor; Effect-ordered localized Chinese descriptions are the default, with automatic Exhaust and per-effect preview arguments. Editor build and 18 focused tests passed; after Chinese status-name asset edits, the affected existing-assets test alone passed again. Scope and acceptance: `docs/AutomaticCardDescriptions.md`.
 
 - UE5.8 C++ project and runtime module exist.

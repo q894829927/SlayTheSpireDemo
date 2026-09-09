@@ -2,6 +2,12 @@
 
 This document is the durable architectural overview. Directory-level `AGENTS.md` files define implementation rules; detailed current Presentation contracts remain in the Phase 6UI-A2 documents.
 
+## Current-Hand Selection execution
+
+The unified selection contract is defined in `docs/CardSelectionRefactorConstraints.md`. Effects compose a runtime CandidateSource, count/mode/cancel intent and an authored Continuation. One shared deferred Action captures authoritative Hand order at Execute time. Player mode receives an explicitly injected interactive-boundary capability, advances a decision revision, seals the committed prefix and rebinds the remaining tail before entering pending Selection. Random mode uses the same capture but no pending request or interactive segment, preserving canonical result order and authoritative RNG consumption.
+
+Each real Player decision is a distinct `(BattleId, StateRevision)` display boundary, including consecutive identical choices. Recorded UI exposes candidates only at exact frozen catch-up; no-history mode publishes the matching frozen baseline without history. PresentationUnavailable retains the mandatory Gameplay choice while preserving the existing disabled-input/error surface. Invalid submissions keep a valid request pending; internal dependency, BeginSelection, Continuation or insertion failure follows the Gameplay framework fault policy. Actions insert dependent batches and Finish; neither candidates nor Continuations pump the queue.
+
 ## 1. Battle Execution
 
 ```text

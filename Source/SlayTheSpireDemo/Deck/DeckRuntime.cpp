@@ -201,6 +201,30 @@ FCardZoneMutationResult UDeckRuntime::TryExhaustHandCardCommit(UCardInstance* Ca
 	return Result;
 }
 
+FCardZoneMutationResult UDeckRuntime::TryMoveHandCardToDrawPileTopCommit(UCardInstance* Card)
+{
+	FCardZoneMutationResult Result;
+	if (!IsValid(Card))
+	{
+		return Result;
+	}
+
+	const int32 FromIndex = FindCardIndex(Hand, Card);
+	if (FromIndex == INDEX_NONE)
+	{
+		return Result;
+	}
+
+	const int32 ToIndex = DrawPile.Num();
+	Hand.RemoveAt(FromIndex);
+	DrawPile.Add(Card);
+	Result = MakeZoneResult(Card, ECardZone::Hand, ECardZone::DrawPile, FromIndex, ToIndex);
+
+	UE_LOG(LogTemp, Log, TEXT("[Deck] Moved exact target %s from Hand to DrawPile top."), *Card->GetDebugLabel());
+	LogState(TEXT("AfterHandToDrawPileTop"));
+	return Result;
+}
+
 FCardZoneMutationResult UDeckRuntime::TryMoveHandCardToPlayAreaCommit(UCardInstance* Card)
 {
 	FCardZoneMutationResult Result;

@@ -48,7 +48,7 @@ public:
 	// an actually active Native presentation catches up through formal Skip, then
 	// retries the latest card RuntimeId on the next CoreTicker turn. The inherited
 	// one-parameter Blueprint UFUNCTION remains unchanged.
-	bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true);
+	virtual bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true);
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -262,7 +262,7 @@ protected:
 	}
 
 	void RefreshHUDFromViewModel();
-	void RefreshHand();
+	virtual void RefreshHand();
 	void RefreshCombatants();
 	void RefreshStatusRows();
 	void RefreshEnergy();

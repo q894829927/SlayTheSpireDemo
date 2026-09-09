@@ -1088,19 +1088,22 @@ bool UBattleHUDWidget::BeginNativeHandToExhaustPresentation(
 	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
 	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
 
-	// Exhaust is presented on the formal historical Hand widget itself. Keeping
-	// both translations at zero preserves the Hand layout while opacity fades
-	// from fully visible to invisible; the Controller removes the exact card from
-	// the formal Hand only after this Record completes and is reduced.
+	// Exhaust is presented on the formal historical Hand widget itself. Preserve
+	// its current presentation transform so a card confirmed in the selection
+	// area fades out at that exact position; this reuses the generic Exhaust fade
+	// and does not introduce a second consume animation.
+	const FWidgetTransform ExistingTransform = HistoricalHandCard->GetRenderTransform();
+	const float ExistingScale = FMath::Max(ExistingTransform.Scale.X, KINDA_SMALL_NUMBER);
+	const float ExistingOpacity = HistoricalHandCard->GetRenderOpacity();
 	ConfigureNativeCardAnimation(
 		HistoricalHandCard,
 		nullptr,
 		nullptr,
-		FVector2D::ZeroVector,
-		FVector2D::ZeroVector,
-		1.0f,
-		1.0f,
-		1.0f,
+		ExistingTransform.Translation,
+		ExistingTransform.Translation,
+		ExistingScale,
+		ExistingScale,
+		ExistingOpacity,
 		0.0f);
 
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))

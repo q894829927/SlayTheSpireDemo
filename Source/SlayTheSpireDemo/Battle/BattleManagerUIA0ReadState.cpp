@@ -2,6 +2,7 @@
 
 #include "BattleReadSnapshot.h"
 #include "../Actions/BattleActionQueue.h"
+#include "../Selection/SelectionResolver.h"
 #include "../Combat/Combatant.h"
 #include "../Modifiers/Damage/DamageModifierPipeline.h"
 #include "../Modifiers/Damage/DamageSpec.h"
@@ -202,7 +203,19 @@ void ABattleManager::TryPublishReadStateReady()
 	FBattleReadSnapshot Snapshot;
 	if (!TryBuildPlayerFacingReadSnapshot(Snapshot))
 	{
-		return;
+		// A pending player decision is a coherent frozen public edge even though
+		// ordinary current-state Queries correctly remain busy. Publish identity
+		// only; consumers use the frozen baseline (or the unavailable surface).
+		if (!IsValid(SelectionResolver) || !SelectionResolver->HasPendingSelection()
+			|| (bPresentationAvailable && (!bHasLatestFrozenPresentationBaseline
+				|| LatestFrozenPresentationBaseline.BattleId != static_cast<int64>(BattleId)
+				|| LatestFrozenPresentationBaseline.StateRevision != static_cast<int64>(StateRevision))))
+		{
+			return;
+		}
+		Snapshot.BattleId = BattleId;
+		Snapshot.StateRevision = StateRevision;
+		Snapshot.BattleState = BattleState;
 	}
 
 	if (Snapshot.BattleId == LastPublishedBattleId &&

@@ -870,7 +870,7 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 			IsValid(Battle)
 				? Battle->GetPresentationUnavailableReason()
 				: FText::FromString(TEXT("Committed Presentation is unavailable for this battle."))
-		);
+			);
 	}
 }
 
@@ -993,6 +993,22 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 			}
 			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
 			++WorkingPresentationSnapshot.DiscardCount;
+			return true;
+		}
+
+		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
+			&& Record.CardZoneChanged.ToZone == ECardZone::DrawPile)
+		{
+			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
+			if (HandIndex == INDEX_NONE
+				|| HandIndex != Record.CardZoneChanged.FromIndex
+				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId
+				|| Record.CardZoneChanged.ToIndex != WorkingPresentationSnapshot.DrawCount)
+			{
+				return false;
+			}
+			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
+			++WorkingPresentationSnapshot.DrawCount;
 			return true;
 		}
 
@@ -1142,5 +1158,54 @@ FPresentationPlaybackToken UBattlePresentationController::GetActivePlaybackToken
 int64 UBattlePresentationController::GetLastCompletedResolutionIdForTesting() const
 {
 	return LastCompletedResolutionId;
+}
+
+void UBattlePresentationController::ExpireActivePlaybackForTesting()
+{
+	HandleActiveTimeout(0.0f);
+}
+
+bool UBattlePresentationController::TryGetWorkingSnapshotForTesting(FPresentationStateSnapshot& OutSnapshot) const
+{
+	if (!bHasWorkingPresentationSnapshot)
+	{
+		return false;
+	}
+	OutSnapshot = WorkingPresentationSnapshot;
+	return true;
+}
+
+bool UBattlePresentationController::ReduceEnvelopeForTesting(
+	const FPresentationStateSnapshot& Baseline,
+	const FPresentationResolutionEnvelope& Envelope,
+	FPresentationStateSnapshot& OutReducedSnapshot
+)
+{
+	const FPresentationStateSnapshot SavedWorking = WorkingPresentationSnapshot;
+	const FPresentationResolutionEnvelope SavedEnvelope = ActiveEnvelope;
+	const bool bSavedHasWorking = bHasWorkingPresentationSnapshot;
+
+	WorkingPresentationSnapshot = Baseline;
+	ActiveEnvelope = Envelope;
+	bHasWorkingPresentationSnapshot = true;
+
+	bool bSucceeded = true;
+	for (const FPresentationRecord& Record : Envelope.Records)
+	{
+		if (!ApplyRecordToWorkingSnapshot(Record))
+		{
+			bSucceeded = false;
+			break;
+		}
+	}
+	if (bSucceeded)
+	{
+		OutReducedSnapshot = WorkingPresentationSnapshot;
+	}
+
+	WorkingPresentationSnapshot = SavedWorking;
+	ActiveEnvelope = SavedEnvelope;
+	bHasWorkingPresentationSnapshot = bSavedHasWorking;
+	return bSucceeded;
 }
 #endif

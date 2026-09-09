@@ -20,6 +20,8 @@
 
 ## 作者操作
 
+Selection execution refactor: SelectExhaust (Player and Random) and SelectHandCardToDrawPileTop now interpret “手牌” at Action Execute time, after preceding Effects commit. Their existing Chinese wording, count/upgrade arguments and description ordering remain valid and unchanged; no serialized Effect properties or production assets are renamed. Scope: `docs/CardSelectionRefactorConstraints.md`.
+
 1. 打开卡牌 Data Asset，保持 `Auto Generate Description` 开启。
 2. 在 `Effects` 中添加、删除、拖动条目，并设置其基础/升级属性。
 3. 将 `Default Destination` 设为 `Exhaust` 可使本牌使用后消耗，同时自动显示对应关键字。
@@ -58,6 +60,7 @@
 | ApplyStatus，敌方目标 | `给予目标 {Value} 层{Status}。` | 有效 Amount、StatusDefinition.DisplayName |
 | SelectExhaust，随机 | `随机消耗 {Count} 张手牌。` | 有效 SelectionMode / SelectionCount |
 | SelectExhaust，玩家选择 | `选择 {Count} 张手牌消耗。` | 有效 SelectionMode / SelectionCount |
+| SelectHandCardToDrawPileTop | `将手牌中的 {Count} 张牌放到你的抽牌堆顶部。` | 有效 BaseSelectionCount / UpgradedSelectionCount |
 | 本牌消耗，由卡牌 resolver 追加 | `消耗。` | 卡牌 ResolveDestination 为 Exhaust |
 
 实现新效果时沿用上述中文术语、单位和句号风格；新的行为需要新的固定句式时扩充本表。模式、目标或升级会改变含义时，提供相应本地化句式，不能只换数字而保留错误措辞。状态等名称来自可本地化的定义文本，不能在 Effect 中按 ID 翻译名称。
@@ -71,6 +74,7 @@ Effect 只贡献自身语句；卡牌 resolver 按数组顺序组合并追加本
 1. 按项目标准先生成项目文件，再构建 Development Editor Win64。
 2. `SlayTheSpireDemo.Cards.AutomaticDescription`：顺序、重复效果、属性修改、基础/升级、多段伤害、模式变化、自身/敌人状态、空牌、自动消耗、目标数值隔离、富文本、自定义兼容；另加载八张既有生产卡牌验证基础/升级描述，不保存资产。
 3. `SlayTheSpireDemo.UIA3.RichCardTextBaseline`、`SlayTheSpireDemo.CardExpansion.Wave1CC0.Description`、`SlayTheSpireDemo.Phase6UIA3.DynamicText`、`SlayTheSpireDemo.UIA3.CardPlayedRichHandoff`：既有显式自定义描述、动态数值以及冻结播放交接兼容。该组直接覆盖本次改动的共享 resolver。
+4. Wave 1C-C1 新效果使用 `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` 聚焦前缀，验证 Base/Upgrade 数量及固定中文描述。
 
 ## MANUAL PIE GATES
 

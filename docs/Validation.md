@@ -2,6 +2,69 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## G0 A/B/C review and draw adoption — 2026-09-09
+
+Base HEAD `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`, uncommitted review changes.
+Scope and manual steps: `docs/SelectionPresentationG0Execution.md`. Fixed completed
+draw Widgets remaining HitTestInvisible after RuntimeId-keyed formal adoption.
+Preserved the pre-existing delegate-binding edit. No asset/map changes.
+
+**AUTOMATED GATES:** standard bundled UE 5.8 project generation PASS. First build
+attempt was blocked by active Live Coding; after the user closed the editor,
+Development Editor Win64 build PASS (`Saved/Logs/G0ReviewBuild.log`). After a
+test-assertion correction, project generation and build PASS again
+(`Saved/Logs/G0ReviewProjectFiles.log`, `Saved/Logs/G0ReviewFinalBuild.log`).
+
+UnrealEditor-Cmd ran unattended with `-nullrhi`,
+`-TestExit="Automation Test Queue Empty"` and the following RunTests scope:
+
+```text
+SlayTheSpireDemo.SelectionPresentation.G0
++SlayTheSpireDemo.Phase6UIA2N.R8.Zone.DrawToHandSequentialPresentation
++SlayTheSpireDemo.CardSelection.Presentation
+```
+
+Initial report: 13 tests, 11 clean PASS, 1 PASS with warning, 1 FAIL, exit 0
+(`Saved/AutomationReports/G0Review/index.json`, `Saved/Logs/G0ReviewAutomation.log`).
+The G0 FormalSlotOwnership failure was an incorrect test expectation: UE defaults
+UUserWidget to SelfHitTestInvisible, which permits child input. The corrected
+assertion accepts it or Visible. After the test-only rebuild, reran only
+`SlayTheSpireDemo.SelectionPresentation.G0.FormalSlotOwnership`: **1/1 PASS**, no
+warnings, exit 0 (`Saved/AutomationReports/G0ReviewFormalSlot/index.json`,
+`Saved/Logs/G0ReviewFormalSlot.log`). Other passing evidence remains valid.
+
+The initial warning was ProductionConfirmRouting's intentionally partial test HUD
+without a Canvas WidgetTree root: dormant SelectionAreaHost could not be created.
+Its Confirm routing assertions passed; this fixture does not establish production
+Host geometry/visual acceptance. G0's 8 tests now have passing evidence, including
+DrawAdoption; R8 sequential draw and the four Selection Presentation tests passed.
+`git diff --check` PASS. **MANUAL PIE — USER ACTION REQUIRED:** perform the focused
+L_BattleTest draw/play and Warcry candidate interaction described in the execution
+record. No new PIE/Blueprint visual/packaged acceptance claimed.
+
+## Selection Presentation production repair — 2026-09-08
+
+Base HEAD `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Production Native HUD reparented in UE to `BattleHUDSelectionWidget`, Blueprint compilation and targeted save succeeded. Existing card/map assets preserved. **AUTOMATED GATES:** bundled UE project generation and Editor builds PASS; final runtime build `Saved/Logs/SelectionPresentationFinalBuild.log`, subsequent test-only builds `SelectionPresentationTestBuild.log` and `SelectionBoundaryConfirmTestBuild.log`. Closed scope in `docs/CardSelectionPresentationConstraints.md` section 16 ran **12 tests: 11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). Production selection Confirm, transfer/skip cleanup, multi-select and generic Exhaust passed. The old Draw-before-selection test still assumed click-to-submit; updated to require a separate explicit Confirm, rebuilt only changed tests and reran that gate **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). Runtime unchanged after the first run; other passing gates not repeated. **MANUAL PIE — USER ACTION REQUIRED:** one Native `L_BattleTest` Warcry sequence per section 16, checking background/centered choice, explicit confirmation, flight and generic Exhaust appearance. No new PIE/packaged acceptance claimed.
+
+## Selection Presentation in-place Exhaust follow-up — 2026-09-09
+
+The confirmation handoff now preserves a selected formal Hand card's render
+translation and visibility. The existing generic Hand→Exhaust opacity fade uses
+that transform, so the card disappears at its confirmed selection position
+without a separate consume animation. Standard project generation and the final
+Development Editor build passed (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`).
+The focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed **4/4**,
+including `HandToExhaust.FadesInPlace`, with no warnings
+(`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`).
+**MANUAL PIE — USER ACTION REQUIRED:** verify this exact in-place disappearance
+once in Native `L_BattleTest`; no manual visual acceptance is claimed.
+
+## Interactive Draw / Selection Boundary Review — 2026-09-08
+
+Subsequent unified-selection refactor (HEAD `6fce24e`, uncommitted runtime changes): standard project generation and Development Editor build PASS after user saved/closed Live Coding. New `SlayTheSpireDemo.CardSelection.Unified` tests: **12/12 PASS**. Full closed scope listed in `docs/CardSelectionRefactorConstraints.md` section 19: **43 tests, 42 passed (9 with expected rejection/degradation warnings), 1 failed**; evidence `Saved/AutomationReports/UnifiedSelection/index.json`. The one failure was C0 `MultiExhaustRecordOrder`'s historical single-envelope expectation. Updated that test to verify the intentional prefix/continuation split while retaining canonical exhaust/cleanup assertions, rebuilt successfully, and reran only that test: **1/1 PASS, 0 warnings**, exit code 0; evidence `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. Runtime code was unchanged after the first run; passing Gates were not repeated. Build logs: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`. **MANUAL PIE — USER ACTION REQUIRED:** the four focused ordering cases in section 21 of the design document. Not sealed; fast-forward click consumption remains deferred.
+
+Base HEAD `d9d12ec`. Fixed missing `Actions/BattleActionQueue.h` in the new interactive boundary test; C2027 and cascading C2661 resolved. **AUTOMATED GATES:** standard bundled UE 5.8 project generation and Development Editor Win64 build PASS; `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` **7/7 PASS**, process/test exit code 0. Evidence: `Saved/Logs/SelectionBoundaryReview.log`. **MANUAL PIE GATES — USER ACTION REQUIRED:** Native `L_BattleTest`, play Warcry, observe draw completion before selection, select the newly drawn card, verify top-of-draw-pile placement and Warcry cleanup. No visual acceptance or C1 seal claimed. Runtime review findings are recorded in `docs/CardExpansionWave1CC1InteractiveSelectionBoundaryFix.md`.
+
 ## Automatic Card Descriptions — 2026-09-08
 
 Follow-up Exhaust color change: card-final Exhaust RichDescription now uses the `Exhaust` style in `DT_BattleCardTextStyles`, sRGB `#EFC851` / RGB(239, 200, 81). UE tool save and readback confirmed linear RGBA approximately (0.863157, 0.577580, 0.082283, 1), with Default font/size preserved. Standard project generation and Development Editor build PASS; affected `SlayTheSpireDemo.Cards.AutomaticDescription.CompositionAndPreview` PASS (1 passed, 0 failed, 0 warnings). Report: `Saved/AutomationReports/ExhaustKeywordColor/index.json`. Plain descriptions remain markup-free. Visual PIE not performed; minimal user check is SeeingRed's final “消耗。” in Native `L_BattleTest`, expected gold with unchanged size.

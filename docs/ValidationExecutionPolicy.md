@@ -1,300 +1,41 @@
 # Validation Execution Policy
 
-Date: **2026-08-31**
-
-This document defines how validation work is executed in this repository. It is a durable execution policy, not a phase-status document and not a replacement for `docs/Validation.md`, which records trusted evidence that was actually run.
-
-The goal is to make validation proportional to the changed contract, prefer deterministic Automation over repeated visual inspection, keep manual PIE focused on genuinely visual behavior, and prevent validation work from expanding after the required Gate has already been proven.
-
-## 1. Core rule
-
-Validation exists to reach the acceptance Gate required by the current phase.
-
-It does not exist to repeatedly increase confidence after that Gate is already satisfied.
-
-```text
-required Gate
--> sufficient evidence
--> record result
--> STOP
-```
-
-Do not turn validation into:
-
-```text
-PASS
--> inspect PASS again
--> take another screenshot
--> inspect screenshot
--> rerun PIE
--> reread logs
--> create another fixture
--> rerun historical suites
-```
-
-One sufficient evidence item per Gate is enough unless the applicable design/acceptance document explicitly requires more.
-
-## 2. Validation ownership
-
-### 2.1 Automated Gate
-
-Automated validation is the default for deterministic program state and contracts. The agent/Codex should execute these itself when the environment supports them.
-
-Prefer Automation or direct deterministic assertions for:
-
-```text
-C++ compilation
-UHT/reflection contract
-Blueprint automated compile when available
-RuntimeId / CardId equality
-Hand Widget count
-Delegate callback count
-exact request payload
-Presentation Token ownership
-stale-token rejection
-Finish / Cancel callback count
-Timer cleared / active
-transient reference null/non-null
-InteractionState
-Outcome
-bInputLocked
-bCanEndTurn
-HP / Block / Energy values
-Draw / Discard / Exhaust counts
-Status RuntimeSequence / identity
-Widget create/update/remove state
-Visibility enum
-RenderOpacity numeric state
-frozen DTO consumption
-invalid payload false fallback
-historical restore after Cancel
-destruction cleanup
-```
-
-Do not use screenshots to prove a deterministic state that can be asserted directly.
-
-### 2.2 Manual PIE Gate
-
-Manual PIE is reserved for behavior whose acceptance depends on what a player actually sees or feels and cannot be fully established from deterministic state alone.
-
-Typical manual checks are:
-
-```text
-animation appears once
-animation timing feels coherent
-visual movement path
-layout / overlap / clipping
-hover presentation
-mouse interaction
-highlight placement
-card hide / restore appearance
-transient card movement
-visible flicker / A->B->A flashback
-duplicate visual instances
-text placement and readability
-Legacy vs Native visual parity
-final production-map smoke after cutover
-```
-
-When manual UE work is required, the agent must stop attempting to replace it with repeated screenshots and instead provide the user with the exact minimal actions and expected observations.
-
-Manual evidence is not required for deterministic contracts already closed by Automation unless the current phase explicitly requires a visual parity Gate.
-
-## 3. Default validation budget
+Updated: **2026-09-09**
 
-For an ordinary implementation phase, the default budget is:
+This is the repository's durable execution policy. Dedicated design/acceptance documents define required Gates; `docs/Validation.md` records evidence actually obtained. Historical phase instructions do not create new work outside the current authorized task.
 
-```text
-1. Build once.
-2. Run the smallest focused Automation suite once.
-3. Run one focused manual PIE pass only when the phase has a genuine visual/manual Gate.
-4. Record the result.
-5. Stop.
-```
+## Scope and completion
 
-Do not automatically add:
+Validate the changed contract with sufficient evidence, record the result, then continue remaining authorized work. Do not expand validation merely to reconfirm a PASS. Complete the requested scope; do not automatically begin an unrequested phase. An explicit review or manual acceptance dependency still gates dependent work.
 
-```text
-full regression
-Phase6R
-A2D5
-Shipping
-all-Blueprint recompilation
-Scenario A-E replay
-architecture reviewer
-extra screenshots
-additional synthetic fixtures
-```
+Choose validation by impact:
 
-Those are run only when the applicable phase/acceptance document explicitly requires them or a concrete failure makes them necessary.
+- Documentation-only edits: review the diff, references and consistency. No UE build, Automation or PIE unless the edit changes an executable artifact or the user explicitly requests them.
+- C++ changes: use the root UE 5.8 project-generation/build workflow, then the smallest focused Automation suite covering the affected contract. Add/update tests when existing coverage does not prove the changed behavior; avoid tests that only mirror implementation.
+- Asset/Blueprint changes: use verified UE-supported editing and the relevant compile/load checks. C++ Automation alone does not establish Blueprint or visual correctness.
+- Shared infrastructure changes: include directly affected regression coverage. Broad historical suites, Shipping, all-Blueprint recompilation and parity/seal checks require a concrete affected contract or an explicit acceptance requirement.
 
-## 4. Passing Gates are sticky
+The ordinary implementation budget remains one build, one focused Automation run and one focused manual PIE pass only if there is a visual Gate. This is an initial scope, not a cap that excuses failures or missing required evidence.
 
-A Gate that already passed must not be rerun unless one of these is true:
+## Evidence reuse and failures
 
-```text
-code affecting that Gate changed after the PASS;
-the test/fixture proving that Gate changed;
-a new failure directly invalidates that evidence;
-the applicable acceptance document requires a final-head rerun;
-the user explicitly requests a rerun.
-```
+A passing Gate remains valid unless affected code or its proving test/fixture changes, a new failure invalidates it, an applicable final-head requirement applies, or the user requests a rerun. Completed phases are sealed history; reopen their evidence only when a current failure implicates their contract.
 
-Do not rerun a completed phase merely because a later phase is being implemented.
+On failure, investigate and fix the affected contract, rebuild if required, and rerun only invalidated Gates. Resume at the next unfinished Gate instead of restarting the whole acceptance sequence. If evidence is ambiguous, resolve the specific ambiguity with targeted evidence.
 
-Completed phases are sealed execution history for normal forward work. Do not re-audit their detailed evidence unless a current failure directly implicates that contract.
+Do not repeat passing PIE, screenshots, log reads, synthetic fixtures, historical-suite runs or independent reviews solely for more confidence. A reviewer or subagent report is not a substitute for actual required evidence. Validation does not require fixed agent roles or duplicate independent proof; delegation follows the session's authorization and is useful only for a distinct bounded task.
 
-## 5. Failure policy
+## Automated and manual ownership
 
-If a Gate fails:
+Automate deterministic state and protocols: identities, ordering, counts, request payloads, tokens/callbacks, lifecycle cleanup, frozen DTOs, numeric values and fallback state. Use manual PIE for player-visible behavior such as animation, layout, clipping, hover/mouse interaction and flicker. Screenshots supplement a visual Gate when they resolve it; they do not replace state assertions or prove transient animation by themselves.
 
-```text
-identify the failed Gate
--> investigate only that failure
--> make the smallest relevant fix
--> rebuild if the changed code requires it
--> rerun only the Gate(s) invalidated by that fix
--> continue from the next unfinished Gate
-```
+Each phase acceptance separates **AUTOMATED GATES** and **MANUAL PIE GATES**, naming the focused checks and stating when no manual Gate is required. Preserve explicit visual Gates. When manual UE work cannot be performed with available tools, mark it `USER ACTION REQUIRED` and provide the minimal asset/map, actions, expected observations and evidence needed. Await that evidence for dependent acceptance while continuing independent authorized work.
 
-Do not restart the complete acceptance sequence after every small fix.
+Record exact build/test scope, result and evidence paths once in the applicable validation document. Do not infer Blueprint, PIE, packaged-game or Shipping success from a different check. Do not combine totals from overlapping or differently configured suite prefixes. A checkpoint stores resumable execution state, not new validation policy or authority to commit.
 
-Example:
+## Historical A2N validation split
 
-```text
-Build PASS
-Automation PASS
-Manual PIE Damage visual FAIL
-
-fix Damage visual code
--> Build (because C++ changed)
--> rerun only the Damage-focused automated/manual evidence invalidated by the fix
-```
-
-Do not automatically rerun unrelated R3/R4 Gates.
-
-## 6. No validation-of-validation loops
-
-After the required result is established, do not:
-
-- inspect the same screenshot multiple times;
-- take multiple screenshots of the same visual state without a concrete ambiguity;
-- repeatedly reopen PIE for the same passing scenario;
-- reread logs after the required success result is already known;
-- create a second synthetic fixture to prove a contract already covered by the focused test;
-- run an independent reviewer only to reconfirm a passing test;
-- re-read broad historical documents to decide whether an already documented predecessor phase really passed;
-- run unrelated regression suites “for confidence”.
-
-If evidence is ambiguous, identify the exact ambiguity and collect one targeted additional evidence item. Do not expand the whole test surface.
-
-## 7. Screenshot policy
-
-Screenshots are supplemental manual evidence, not the default validation mechanism.
-
-Use a screenshot only when:
-
-```text
-the acceptance criterion is genuinely visual;
-a deterministic assertion cannot prove it;
-and the image materially resolves the Gate.
-```
-
-When screenshots are required:
-
-```text
-one screenshot per distinct visual state is normally sufficient;
-do not repeatedly inspect the same screenshot;
-do not generate more after the Gate is clearly confirmed.
-```
-
-For transient animation where a still image cannot prove the behavior, prefer one short manual PIE observation over a screenshot loop.
-
-## 8. Validation levels
-
-### Level 1 — ordinary phase Gate
-
-Use for narrow implementation phases:
-
-```text
-Editor Build
-focused Automation
-minimal manual PIE if genuinely visual
-```
-
-### Level 2 — shared infrastructure regression
-
-Use only when shared contracts such as these are changed:
-
-```text
-BattleHUDWidgetBase
-BattlePresentationController
-shared ViewModel protocol/semantics
-Presentation Record/Envelope protocol
-other documented cross-phase ownership boundaries
-```
-
-Run only the directly affected historical regression suites required by that shared contract.
-
-### Level 3 — parity, cutover and seal
-
-Reserve broad/expensive validation for explicit parity/cutover/seal phases, for example:
-
-```text
-Dual-stack parity
-Scenario A-E
-aggregate Phase6R
-A2D5 final-head gate
-Shipping exclusion
-production cutover PIE
-final seal review
-```
-
-Do not pay Level-3 validation cost during every Level-1 migration step.
-
-## 9. Agent and subagent policy during validation
-
-The main agent owns the validation plan and acceptance claim.
-
-Unless explicitly required:
-
-```text
-do not spawn a test_runner for a trivial focused suite;
-do not spawn an architecture_reviewer after every phase;
-do not spawn repo_explorer to rediscover already documented contracts;
-do not use multiple agents to independently prove the same Gate.
-```
-
-A dedicated `test_runner` or reviewer is appropriate only for a meaningful bounded validation scope or concrete high-risk issue.
-
-Subagent completion is not an acceptance claim; actual required evidence must still be recorded once.
-
-## 10. Required phase output format
-
-Every implementation phase should separate its acceptance into two sections.
-
-```text
-AUTOMATED GATES
-- exact tests/builds the agent must execute
-
-MANUAL PIE GATES
-- only the visual/player-facing checks the user must execute
-```
-
-If there is no meaningful manual Gate, write:
-
-```text
-MANUAL PIE GATES
-- none required for this phase
-```
-
-Do not silently convert a manual Gate into repeated agent screenshot inspection.
-
-After Automated Gates pass, the agent should provide the shortest executable manual checklist and wait for the user rather than continuing to search for more evidence.
-
-## 11. Phase 6UI-A2N validation split
-
-The dedicated A2N migration plan still defines the exact behavior and acceptance requirements. This section defines the default ownership of those checks so implementation prompts do not repeatedly reinvent the validation strategy.
+The following table is retained as migration reference, not a current task list or authorization to rerun sealed phases. `docs/Phase6UIA2NNativeHUDRefactor.md` holds the original phase Gates. For forward work, Native-only and retained-Legacy restrictions in `docs/LegacyUIPreservationPolicy.md` take precedence over historical parity/recovery procedures; R14-B remains separately unauthorized.
 
 | Phase | Automated Gates — agent/Codex | Manual PIE Gates — user |
 |---|---|---|
@@ -308,60 +49,3 @@ The dedicated A2N migration plan still defines the exact behavior and acceptance
 | R12 Cutover | Production WidgetClass/config; build; required focused/aggregate automation; no unintended Legacy runtime path | Production `L_BattleTest` PIE smoke proving the real configuration uses Native and remains playable. |
 | R13 Stabilization | Objective regression/fuzz/boundary tests required by the stabilization plan | Manual PIE only for concrete issues found by automated stabilization; no broad exploratory replay by default. |
 | R14 Cleanup | Build; reference scan; compile; required Legacy-reference absence checks | Minimal open/run smoke after destructive cleanup when authorized. R14-B Legacy removal remains separately authorized. |
-
-This table does not authorize starting a future phase and does not weaken any explicit Gate in `docs/Phase6UIA2NNativeHUDRefactor.md`. If that plan requires a specific additional Gate, run it once and classify it as automated or manual using the rules above.
-
-## 12. A2N prompt contract
-
-For R5 and later, implementation prompts should use a closed validation scope similar to:
-
-```text
-Validation is CLOSED-SCOPE.
-
-AUTOMATED GATES
-1. Editor Build once.
-2. Run the named phase-focused Automation prefix once.
-3. Run only other deterministic Gate(s) explicitly required by this phase.
-
-MANUAL PIE GATES
-1. Provide the user only the minimal genuinely visual scenario(s).
-2. Do not attempt to replace these with repeated screenshots.
-
-A passing Gate must not be repeated unless later edits invalidate it.
-If one Gate fails, fix and rerun only the invalidated Gate(s).
-
-Do not run Phase6R, A2D5, Shipping, broad Scenario A-E, architecture review,
-or unrelated historical regression unless this phase explicitly requires it.
-
-When all required Gates pass:
-update evidence/checkpoint
-commit
-STOP
-
-Do not automatically begin the next phase.
-```
-
-## 13. Relationship to evidence documents
-
-`docs/ValidationExecutionPolicy.md` answers:
-
-```text
-How should validation be executed?
-Who runs which Gate?
-When should validation stop?
-```
-
-`docs/Validation.md` answers:
-
-```text
-What validation was actually run and trusted?
-```
-
-`docs/CODEX_GOAL_CHECKPOINT.md` answers:
-
-```text
-What has the current Goal already completed?
-What is the next exact action?
-```
-
-Do not copy large historical evidence blocks into this policy document. Do not put transient current-phase status into root `AGENTS.md`.

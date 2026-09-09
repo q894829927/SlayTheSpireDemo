@@ -176,6 +176,14 @@ public:
 	bool IsCommittedPresentationRecordingEnabledForBattle() const;
 	uint64 GetLatestFrozenPresentationBaselineResolutionId() const;
 
+	// C1 interactive boundary: seal already-committed history before a Gameplay
+	// selection becomes player-visible, immediately open the continuation segment,
+	// and return its writer. Gameplay never waits for playback; Presentation
+	// failure degrades to no-history mode and does not fault Gameplay.
+	FPresentationRecordWriter AdvancePresentationAtInteractiveSelectionBoundary(
+		const UBattleAction* BoundaryAction
+	);
+
 	FOnPresentationResolutionReady OnPresentationResolutionReady;
 	FOnBattleReadStateReady OnReadStateReady;
 

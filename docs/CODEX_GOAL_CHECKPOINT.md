@@ -1,6 +1,47 @@
 # Codex Goal Checkpoint — Production Card Expansion
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-09**
+
+## Current resumable task — G0 A/B/C review and draw adoption
+
+HEAD verified: `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`. Uncommitted changes;
+pre-existing BattleHUDReconciledWidget delegate edit preserved. Reviewed G0 A/B/C
+and repaired completed draw visual adoption retaining HitTestInvisible. Added
+DrawAdoption regression and corrected FormalSlotOwnership's default visibility
+expectation. No assets/maps changed, no G1 work.
+
+Validation: project generation and Editor build PASS; initial focused scope had
+12 successful tests (one fixture warning) and one incorrect test assertion.
+After test-only correction/rebuild the failed test passed 1/1. All G0 gates have
+passing evidence; exact scopes/logs are in `docs/Validation.md` under G0 review.
+
+Next action: **USER ACTION REQUIRED** — Native `L_BattleTest` draw/play plus Warcry
+newly drawn candidate select/deselect/Confirm, per
+`docs/SelectionPresentationG0Execution.md`. Record observations before claiming
+visual acceptance. No additional automated rerun needed absent affected edits or
+a new failure.
+
+## Earlier resumable task — Selection Presentation production repair
+
+HEAD verified: `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Changes are uncommitted. Contract and evidence: `docs/CardSelectionPresentationConstraints.md` section 16 and `docs/Validation.md`.
+
+Completed: production Native HUD reparented/compiled/saved in UE; shared explicit Confirm routing now active; dimmed selection backdrop, centered formal selected cards, RuntimeId visual handoff to DrawPile, retained played-card hide/restore, and inherited generic Exhaust cleanup. Confirmed Hand cards now retain their selection-area render position through the handoff, so the existing generic Hand→Exhaust fade consumes the formal widget in place. Skip cleans both the moving and retained played-card visuals. No card/map/Legacy edits.
+
+Validation performed: standard project generation and final Editor build PASS after the in-place Exhaust fix (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`). The final focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed 4/4, including the new `HandToExhaust.FadesInPlace` contract, with no warnings (`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`). Earlier explicit-Confirm evidence remains in `Saved/AutomationReports/SelectionBoundaryConfirm/index.json`.
+
+Next action / remaining blocker: **USER ACTION REQUIRED** — one manual Native `L_BattleTest` Warcry visual pass following section 16. Verify centered selection/deselect, confirmation, selected-card flight, played card reappearance/generic Exhaust, no flashback and restored input. No manual acceptance yet. Earlier entries below are historical navigation only.
+
+## Earlier resumable task — Unified Card Selection Refactor
+
+HEAD verified: `6fce24e39c53178b59561be31932659a0a542087`. Dedicated contract/status: `docs/CardSelectionRefactorConstraints.md`. Runtime and focused tests are implemented in the working tree; no commit created by the agent.
+
+Completed: shared Execute-time current-Hand CandidateSource, Player/Random deferred pipeline, explicit boundary injection, compatibility-only old Hand Action, typed resolver failure dispositions, decision revision/direct-mode frozen publication and UI partial-selection clearing. New tests include multi-boundary cleanup, identical choices, source/continuation/insertion failures, no-history and PresentationUnavailable separation. Existing asset/map user edits remain untouched.
+
+Validation performed: project generation and Development Editor Build PASS after user closed Live Coding. Seven specified prefixes: 43 tests, 42 passed, one historical single-envelope assertion failed; unified selection 12/12 PASS. Updated only that old test's split-envelope expectation, rebuilt PASS, reran only MultiExhaustRecordOrder 1/1 PASS. Logs/reports: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`, `Saved/AutomationReports/UnifiedSelection/index.json`, `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. `git diff --check` PASS.
+
+Next action: USER ACTION REQUIRED — Native L_BattleTest focused manual PIE A–D as detailed in section 21 of the design document. Record user observations, then seal only if they pass. Do not rerun passing automated Gates unless an edit/failure invalidates them. Fast-forward click reuse remains deferred. No continuous-card-play implementation, PIE, packaged-game or visual acceptance has been claimed.
+
+## Previous checkpoint context (historical; current task above takes precedence)
 
 ## Latest user-requested side refactor — Automatic Card Descriptions
 
