@@ -5,9 +5,7 @@ Date: **2026-09-09**
 Status:
 
 ```text
-IMPLEMENTED IN SOURCE /
-BUILD FAILED ON FIRST ATTEMPT / BUILD FIX COMMITTED /
-RERUN REQUIRED / AUTOMATION NOT RUN / NO PASS CLAIM
+COMPLETE / VALIDATED / SEALED
 ```
 
 ## Scope
@@ -163,48 +161,68 @@ ActiveEnvelope recovery completes only its exact recorded ownership watermark
 EntireBacklog Skip intentionally completes every discarded exact Resolution
 ```
 
-## Required validation
+## Validation evidence
 
 Per `docs/ValidationExecutionPolicy.md`, G3 changes shared C++ playback infrastructure.
-Required evidence before any PASS/seal claim:
-
-```text
-[ ] UE 5.8 SlayTheSpireDemoEditor Win64 Development build
-[ ] SlayTheSpireDemo.SelectionPresentation.G3 focused Automation
-[ ] directly affected existing timeout/exact-token playback regression coverage
-```
-
-At minimum the existing terminal timeout path is directly affected by the common
-timeout/cancellation rewrite:
-
-```text
-SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
-```
-
-A dedicated focused runner is now available at:
+The required G3 gates were executed by the dedicated owner-only self-hosted workflow:
 
 ```text
 .github/workflows/ue-selection-g3-tests.yml
+Workflow run id: 34331464388
+Validated commit: 07e1bf16ac315597fa53a4098a50969f5c19b83b
+Runner: UE58-WIN
 ```
 
-It is owner-only, `workflow_dispatch`-only, and restricted to `main`. One run performs
-one UE 5.8 Editor build, the seven `SlayTheSpireDemo.SelectionPresentation.G3` tests,
-and the exact `SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout` regression.
-The workflow existing in source is not validation evidence by itself; an actual
-successful run is still required.
+The validated commit contains the G3 implementation and the build repair
+`a5c7e67c22ccf13c25ec91546a6d3f15e5002297`.
 
-### First build attempt and repair
+### Editor build
 
-The first UE 5.8 Editor build attempt on the G3 validation path failed before linking
-the Runtime module because `DeckShuffledCountTrigger.cpp` called
-`IsValid(DeckShuffled->Deck)` while only the forward declaration of `UDeckRuntime` was
-visible through `BattleEvent.h`. The compiler therefore could not convert
-`UDeckRuntime*` to `const UObject*` for `IsValid`.
+```text
+PASS
+SlayTheSpireDemoEditor Win64 Development
+Result: Succeeded
+Editor exit code: 0
+```
 
-This failure did not originate in the G3 playback-unit sources: the build log had
-already compiled both `SelectionPresentationG3TestTypes.cpp` and
-`SelectionPresentationG3Tests.cpp` without a G3 compile diagnostic. The build still
-failed overall, so the G3 build Gate remains failed until rerun.
+The workflow performed a clean checkout/build and completed all 118 build actions,
+including `SelectionPresentationG3TestTypes.cpp` and `SelectionPresentationG3Tests.cpp`,
+then linked both Runtime and Tests Editor DLLs successfully.
+
+### G3 focused Automation
+
+```text
+PASS
+Prefix: SlayTheSpireDemo.SelectionPresentation.G3
+Expected/discovered: 7 / 7
+Failed: 0
+Not run: 0
+Editor exit code: 0
+```
+
+The workflow rejects any focused test whose individual state is not `Success`, so the
+successful job conclusion plus exact 7-test discovery is the G3 focused evidence.
+
+### Directly affected timeout regression
+
+```text
+PASS
+SlayTheSpireDemo.Phase6UIA2D4.Playback.TerminalTimeout
+Expected/discovered: 1 / 1
+Failed: 0
+Not run: 0
+Editor exit code: 0
+```
+
+This covers the existing timeout/cancellation path directly affected by the common
+playback-unit hardening.
+
+### First build failure and repair history
+
+The first UE 5.8 Editor build attempt failed before linking the Runtime module because
+`DeckShuffledCountTrigger.cpp` called `IsValid(DeckShuffled->Deck)` while only the
+forward declaration of `UDeckRuntime` was visible through `BattleEvent.h`. The compiler
+could not convert `UDeckRuntime*` to `const UObject*` for `IsValid`.
 
 Repair committed on `main`:
 
@@ -213,23 +231,49 @@ a5c7e67c22ccf13c25ec91546a6d3f15e5002297
 fix(build): include deck runtime in shuffled relic trigger
 ```
 
-The repair is intentionally minimal: add `../Deck/DeckRuntime.h` to
-`DeckShuffledCountTrigger.cpp`, with no Gameplay/Relic behavior change. The Editor
-build must now be rerun from a head containing this commit; Automation remains
-unexecuted until a successful build is available.
+The successful workflow run above validates the post-repair build and supersedes the
+first failed attempt.
 
-G0/G1/G2 passing evidence remains sticky unless the build/test failure implicates a
-sealed contract. This build failure does not implicate those sealed Selection
-Presentation contracts.
+### Test Unity-build experiment
+
+After the successful G3 run, `SlayTheSpireDemoTests` was briefly switched to Unity
+compilation to investigate build speed. Existing test translation units contain
+namespace/helper-name collisions when amalgamated, so that experiment was reverted.
+The current test module is restored to:
+
+```text
+bUseUnity = false;
+```
+
+This matches the compilation mode used by the successful G3 validation run and does
+not change the G3 production implementation or its validated behavior.
+
+G0/G1/G2 passing evidence remains sticky. No G3 failure implicated those sealed
+Selection Presentation contracts.
 
 No manual PIE Gate is required for G3 because production still plays SingleRecords
 serially and no new visible Group animation, geometry, SelectionArea ownership, or
 input behavior is enabled.
 
-## Current checkpoint
+## Seal
 
-Source implementation, the focused validation workflow, and the first-build repair
-are complete. The Editor build Gate is currently **FAILED / RERUN REQUIRED** and the
-G3 Automation Gate has not run. Do not mark G3 `COMPLETE / VALIDATED / SEALED` until
-a successful post-fix build plus the focused G3 and TerminalTimeout Automation evidence
-is supplied.
+G3 is now:
+
+```text
+COMPLETE / VALIDATED / SEALED
+```
+
+Do not rerun G3 gates unless later edits invalidate this playback-unit / exact
+completion / scoped recovery contract or a concrete regression implicates it.
+
+Next active slice:
+
+```text
+G4 — generic SingleRecord card transition engine
+     + source resolver Hand | SelectionArea
+     + migrate SingleRecord production transitions first
+```
+
+G4 must not switch production Selection ownership to durable SelectionArea (G5),
+must not enable N-child parallel Group playback (G6), and must not introduce G8
+cross-Resolution early input.
