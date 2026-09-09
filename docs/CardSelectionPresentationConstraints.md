@@ -7,15 +7,15 @@ Status:
 ```text
 PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
 LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT DEFINED /
-G0 A/B/C IMPLEMENTED / AUTOMATED EVIDENCE RECORDED / MANUAL PIE PENDING /
-GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
+G0 A/B/C COMPLETE / VALIDATED / SEALED /
+GROUP PRODUCTION CODE NOT IMPLEMENTED / G1+ NOT SEALED
 ```
 
 Scope: define the shared Native HUD / Presentation contract for current and future player card-selection interactions.
 
 This document is authoritative for card-selection Presentation behavior. `docs/CardSelectionRefactorConstraints.md` remains authoritative for Gameplay candidate capture, pending requests, resolver/continuation behavior and interactive-boundary rules. `docs/SelectionPresentationGroupDesign.md` specifies the grouped multi-selection implementation in more detail.
 
-Current implementation and evidence are recorded in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`. G0 uses incremental Native dirty propagation and Battle-scoped Hand Widget reuse; its ownership APIs and empty SelectionAreaHost are dormant. Production Selection still uses formal-Hand transforms and `ConfirmedCardCenters`. Sections below describe the target unless explicitly identified as current; they do not authorize an early ownership switch.
+Current implementation and evidence are recorded in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`. G0 is complete, validated and sealed. It uses incremental Native dirty propagation and Battle-scoped Hand Widget reuse; its ownership APIs and empty SelectionAreaHost remain dormant for production Selection. Production Selection still uses formal-Hand transforms and `ConfirmedCardCenters`. Sections below describe the target unless explicitly identified as current; they do not authorize an early ownership switch.
 
 ## 1. Core principle
 
@@ -162,7 +162,7 @@ Direct/no-history mode
 
 Recorded mode is reached only when the owning/continuation Resolution has been Presentation-completed, collapsed/reconciled to its FinalSnapshot, or otherwise formally completed by Controller policy.
 
-Direct/no-history mode is reached only when the authoritative post-confirm baseline/revision is the displayed state.
+Direct/no-history mode is reached only when the authoritative post-confirm baseline/revision watermark is the displayed state.
 
 A selected RuntimeId may still terminate earlier if displayed Hand state already proves it was consumed. The completion watermark is required specifically to decide the fallback case where the card remains in displayed Hand and Presentation must know that no later destination outcome can still arrive.
 
@@ -750,7 +750,7 @@ G7   delete compatibility handoff/old Selection-specific transition code;
 
 G0-C/G5 separation is mandatory unless combined into one coherent behavior-safe migration. It is forbidden to hide the formal Hand source in production before the generic SingleRecord transition engine can consume a SelectionArea source.
 
-G0 is already implemented; resume from its recorded evidence and remaining manual draw/selection check. G1 must establish exact Selection-to-continuation outcome correlation independently of optional Group tags; G3 wires exact completion and scoped recovery; both are prerequisites for G5. First close correct sequential SelectionArea playback, then enable Group concurrency. G8 remains deferred and requires the explicit lifetime amendment in Group design section 30.5.
+G0 is complete, validated and sealed from the recorded automated evidence plus the user-confirmed manual Native `L_BattleTest` draw/selection pass on 2026-09-09. Resume from G1. G1 must establish exact Selection-to-continuation outcome correlation independently of optional Group tags; G3 wires exact completion and scoped recovery; both are prerequisites for G5. First close correct sequential SelectionArea playback, then enable Group concurrency. G8 remains deferred and requires the explicit lifetime amendment in Group design section 30.5.
 
 ## 21. Acceptance gates
 
