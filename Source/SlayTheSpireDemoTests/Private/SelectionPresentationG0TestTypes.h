@@ -5,7 +5,9 @@
 #include "UI/BattleHUDReconciledWidget.h"
 #include "SelectionPresentationG0TestTypes.generated.h"
 
+class UBattleHUDViewModel;
 class UHorizontalBox;
+class UWorld;
 
 UCLASS(Transient)
 class SLAYTHESPIREDEMOTESTS_API USelectionPresentationG0CardProbe : public UBattleCardWidget
@@ -13,8 +15,8 @@ class SLAYTHESPIREDEMOTESTS_API USelectionPresentationG0CardProbe : public UBatt
 	GENERATED_BODY()
 
 protected:
-	// The identity test does not render a card face. Skip the production Designer
-	// binding contract so no fake Text/Image/Button hierarchy is needed.
+	// Identity/ownership tests do not render the card face. Skip the production
+	// Designer binding contract so no fake Text/Image/Button hierarchy is needed.
 	virtual void NativeOnInitialized() override {}
 };
 
@@ -24,13 +26,21 @@ class SLAYTHESPIREDEMOTESTS_API USelectionPresentationG0HUDProbe : public UBattl
 	GENERATED_BODY()
 
 public:
-	void ConfigureFormalHandForTesting();
+	void SetTestWorld(UWorld* InWorld);
+	void ConfigureFormalHandForTesting(
+		UBattleHUDViewModel* InViewModel,
+		UHorizontalBox* InHand);
 	void RefreshFormalHandForTesting() { RefreshHand(); }
 	int32 GetFormalHandChildCountForTesting() const;
 	UBattleCardWidget* FindFormalHandCardForTesting(int32 RuntimeId) const;
+	virtual UWorld* GetWorld() const override;
 
 protected:
-	// The test exercises only G0 Hand reconciliation/ownership and deliberately
-	// avoids the full production Designer binding contract.
+	// Tests exercise G0 Hand reconciliation/ownership only and deliberately avoid
+	// the full production Designer binding contract.
 	virtual void NativeOnInitialized() override {}
+
+private:
+	UPROPERTY(Transient)
+	TObjectPtr<UWorld> TestWorld = nullptr;
 };
