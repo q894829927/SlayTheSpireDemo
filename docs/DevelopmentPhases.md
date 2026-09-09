@@ -4,13 +4,13 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
-- **Selection Presentation G4+G5 — implemented / automated gates pass / visual acceptance pending (2026-09-09).** User authorized the coherent G4+G5 migration after G4 compatibility positioning failed PIE. Production selection now uses persistent SelectionArea ownership and exact outcome completion; G6 simultaneous playback is not enabled. Scope: `docs/SelectionPresentationG5Execution.md`; actual evidence: `docs/Validation.md`.
+- **Selection Presentation G0–G5 — COMPLETE / VALIDATED / SEALED (2026-09-09).** G0–G3 established the ownership/correlation/Controller protocol foundation. G4 introduced the generic SingleRecord transition engine; its isolated compatibility path failed visual PIE and remains historical. The coherent G4+G5 production migration activated persistent SelectionArea ownership and exact same-object transition consumption, passed automated gates, and passed the user-confirmed Native `L_BattleTest` PIE gate with no flashback, duplicate, ghost, clipping or stuck input. Authorities: `docs/SelectionPresentationG4Execution.md`, `docs/SelectionPresentationG5Execution.md`, `docs/Validation.md`.
 
-- **Selection Presentation G0–G3 — COMPLETE / VALIDATED / SEALED.** Historical ownership, correlation and Controller foundations are recorded in their dedicated execution documents. The first joint G4/G5 visible correctness milestone remains unsealed.
+- **Selection Presentation G6 — NEXT ACTIVE STAGE.** Implement safe N-child simultaneous Group playback while preserving authoritative Gameplay order and chronological reducer order. G7 cleanup follows proven G6 equivalence; G8 early-input/pipelining remains a separate later initiative.
 
-- **Selection Presentation production repair — implemented / automated gates PASS / manual PIE pending (2026-09-08).** Native HUD now uses the shared selection subclass; explicit confirmation, central selected-card display, draw-pile transfer and generic played-card Exhaust reuse follow `docs/CardSelectionPresentationConstraints.md` section 16.
+- **Selection Presentation production repair — historical / superseded by sealed G0–G5 architecture.** The earlier shared-selection subclass, explicit confirmation and compatibility visual handoff work remains useful implementation history, but its standalone manual gate is no longer the current forward authority. Current production behavior is governed by the sealed Selection Presentation lifecycle and `docs/CardSelectionPresentationConstraints.md`.
 
-- **Card Selection Refactor — implemented / automated gates PASS / manual PIE pending (2026-09-08).** Unified Execute-time current-Hand capture for Player/Random, shared interactive boundary and explicit failure disposition. Acceptance authority: `docs/CardSelectionRefactorConstraints.md`. Continuous-card-play work remains gated on this refactor's automated and manual acceptance.
+- **Card Selection Refactor — implemented foundation retained.** Execute-time current-Hand capture, shared interactive boundary and explicit failure disposition remain the Gameplay-side selection authority. Forward Presentation work proceeds through G6; do not reopen the refactor solely because older checkpoint text described standalone manual acceptance as pending.
 
 - **Automatic Card Descriptions — implemented / automated gates PASS / manual PIE pending (2026-09-08).** User-requested refactor; Effect-ordered localized Chinese descriptions are the default, with automatic Exhaust and per-effect preview arguments. Editor build and 18 focused tests passed; after Chinese status-name asset edits, the affected existing-assets test alone passed again. Scope and acceptance: `docs/AutomaticCardDescriptions.md`.
 
@@ -26,7 +26,7 @@ This document records project progress, implementation history and durable phase
 - **Phase 8 Combo Architecture Validation is design-refined and DEFERRED. It is not a blocker for Card Expansion.** Authority: `docs/Phase8ComboArchitectureDesign.md`.
 - **Card Upgrade STS-Style Refactor is COMPLETE / VALIDATED / SEALED.** Authority: `docs/CardUpgradeSTSStyleRefactor.md`. The former `FCardUpgradeConfig` foundation is historical and superseded.
 - **Card Face Visual Style (CFV) is COMPLETE / USER-ACCEPTED / SEALED.** Authority: `docs/CardFaceVisualStyleImplementation.md`. The sealed model uses orthogonal CardType / CardRarity / CardColor / Upgrade State metadata, a narrow `UCardFaceStyleSet` Presentation configuration asset, Red-only production authoring for this slice, and incremental future color authoring for confirmed multi-class expansion.
-- **Production Card Expansion is ACTIVE.** Wave 1A — Exhaust Fact Surface is COMPLETE / VALIDATED / SEALED. Wave 1B — Targeted Exhaust Primitive is COMPLETE / VALIDATED / SEALED. Wave 1C-A — Selection Primitive and Wave 1C-B — Select-Exhaust/Burning Pact consumer closure are COMPLETE / VALIDATED / SEALED and merged to `main` by PR #16 (`a9f26ee4bcc8f12a03ba10d5121eb0ff6ef8d523`). Wave 1C-C — Second Consumer Expansion is NEXT ACTIVE / NOT STARTED. Phase 8 remains deferred and is not a prerequisite.
+- **Production Card Expansion is ACTIVE.** Wave 1A, Wave 1B, Wave 1C-A and Wave 1C-B are COMPLETE / VALIDATED / SEALED. Wave 1C-C0 — Select-Exhaust Generalization is COMPLETE / VALIDATED / SEALED (`docs/CardExpansionWave1CC0Execution.md`). Wave 1C-C1 Hand→DrawPileTop / Warcry capability work was implemented and merged to `main` by PR #18 (`ffbc164905a875bea5c9ab3dfe0a07df5068b8cc`); existing records do not establish a final standalone C1 seal, so do not label C1 SEALED without explicit final acceptance evidence. The former True Grit C1 plan is superseded and inactive.
 
 ## Phase 1 — Minimal Combat Loop
 
@@ -277,7 +277,7 @@ Phase 8 may be resumed later as an integration gate after card architecture has 
 
 ## Card Expansion / Upgrade Foundation
 
-Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A SEALED, WAVE 1B SEALED, WAVE 1C-A SEALED, WAVE 1C-B SEALED / MERGED TO MAIN; WAVE 1C-C NEXT ACTIVE / NOT STARTED**
+Status: **UPGRADE REFACTOR COMPLETE / VALIDATED / SEALED; PRODUCTION CARD EXPANSION ACTIVE — WAVE 1A/1B/1C-A/1C-B/C0 SEALED; C1 IMPLEMENTED + MERGED TO MAIN / FINAL STANDALONE SEAL NOT RECORDED**
 
 Upgrade authority: `docs/CardUpgradeSTSStyleRefactor.md`. `docs/CardUpgradeFoundationDesign.md` and the former `FCardUpgradeConfig` implementation are historical context, not current implementation instructions.
 
@@ -288,10 +288,12 @@ Card-expansion authority chain:
 - `docs/CardExpansionWave1AExhaustFactSurface.md` — Wave 1A (sealed)
 - `docs/CardExpansionWave1BTargetedExhaustPrimitive.md` — Wave 1B (sealed)
 - `docs/CardExpansionWave1CSelectionPrimitive.md` — Wave 1C-A / 1C-B (complete / validated / sealed; merged to `main` by PR #16)
+- `docs/CardExpansionWave1CC0Execution.md` — Wave 1C-C0 final seal record
+- `docs/CardExpansionWave1CC1WarcryHandToDrawPileTopPlan.md` + amendments — historical C1 design authority; implementation merged by PR #18
 
 The sealed ordinary-card model is one immutable `UCardData`, one `Effects[]` composition, typed Base/Upgraded values and the sole runtime `bUpgraded` bit. Upgrade names/colors remain presentation formatting of frozen state. Do not reopen this model for Card Expansion or restore the former upgrade configuration fields. Repeatable upgrade remains outside this sealed ordinary-card scope.
 
-Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A (Exhaust Fact Surface), Wave 1B (Targeted Exhaust Primitive), Wave 1C-A (Selection Primitive) and Wave 1C-B (Select-Exhaust consumer / Burning Pact closure). PR #16 merged Wave 1C to `main`, including the repository-local Burning Pact asset and `L_BattleTest` content present on that branch. Wave 1C-C is the next active slice but implementation has not started; its dedicated authority should be authored first. Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
+Phase 8 is not a prerequisite for Card Expansion. Production Card Expansion has sealed Wave 1A, Wave 1B, Wave 1C-A, Wave 1C-B and Wave 1C-C0. C1 moved the exact Hand→DrawPileTop / post-Draw current-Hand selection capability forward and was merged to `main` by PR #18 (`ffbc164905a875bea5c9ab3dfe0a07df5068b8cc`). The original True Grit C1 plan is superseded; True Grit remains a thin future content consumer of already-generalized primitives. Because the repository does not contain a final standalone C1 user seal record, merge status must not be converted into a fabricated `COMPLETE / VALIDATED / SEALED` claim. Wave 1D, Card Trigger Source Expansion, multi-enemy work and Phase 8 remain outside the current slice unless separately authorized.
 
 ## Card Face Visual Style
 
