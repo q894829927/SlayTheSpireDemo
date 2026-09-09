@@ -9,9 +9,9 @@ class UBattleCardWidget;
 class UOverlay;
 
 /**
- * One generic per-card transition child. G4 production uses exactly one child
- * for SingleRecord playback; G6 prepares N children from the same engine.
- * Gameplay zones remain immutable committed facts carried by the Record.
+ * One generic per-card transition child. SingleRecord playback owns one child;
+ * validated SelectionDestination Group playback owns N children from the same
+ * engine. Gameplay zones remain immutable committed facts carried by Records.
  */
 USTRUCT()
 struct FNativeCardTransitionInstance
@@ -62,9 +62,8 @@ struct FNativeCardTransitionInstance
 /**
  * Generic card-transition presentation layer.
  *
- * G4/G5 use one child for SingleRecord playback. G6 uses the same child engine
- * for an explicitly validated SelectionDestination Group and never changes
- * Gameplay/reducer chronology.
+ * SingleRecord and validated SelectionDestination Group playback share the same
+ * child engine. Group co-presentation never changes Gameplay/reducer chronology.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDCardTransitionWidget : public UBattleHUDReconciledWidget
@@ -113,16 +112,16 @@ protected:
 		const FPresentationGroupTag& Group,
 		const FPresentationPlaybackToken& Token) override;
 
-	// G4 source adapter. Base/reconciled HUDs have no SelectionArea surface;
-	// UBattleHUDSelectionWidget supplies its persistent Host without adding any
-	// destination-specific animation branch.
+	// SelectionArea source adapter. Reconciled/base HUDs have no SelectionArea;
+	// UBattleHUDSelectionWidget supplies its persistent Host without owning any
+	// destination-specific animation behavior.
 	virtual UOverlay* GetCardTransitionSelectionAreaHost() const
 	{
 		return nullptr;
 	}
 
-	// Generic lifecycle hooks only. Derived Selection code may retire temporary
-	// continuity bookkeeping here, but must not branch on destination/CardId.
+	// Generic lifecycle hooks only. Derived Selection code may synchronize
+	// adjacent UI surfaces here, but must not branch on destination or CardId.
 	virtual void OnNativeCardTransitionAccepted(int32 RuntimeId) {}
 	virtual void OnNativeCardTransitionEnded(int32 RuntimeId, bool bCancelled) {}
 
