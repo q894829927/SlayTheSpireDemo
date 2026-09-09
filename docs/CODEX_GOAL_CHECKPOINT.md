@@ -4,149 +4,71 @@ Last updated: **2026-09-10**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable task — Selection Presentation G7 validation
+## Current resumable state — Selection Presentation G0-G7 sealed
 
-**Current active stage:**
-
-```text
-G7 — compatibility/dead-path cleanup
-     audit COMPLETE
-     cleanup IMPLEMENTED
-     Development Editor build PENDING
-     focused regression Automation PENDING
-     NOT SEALED
-     G8 remains out of scope
-```
-
-Do **not** resume from G1–G6. Those stages are complete and sealed as described below.
-
-### Current Selection Presentation status
+Selection Presentation has no active implementation stage after G7.
 
 ```text
 G0 — COMPLETE / VALIDATED / SEALED
-     incremental ViewModel/HUD dirty propagation
-     RuntimeId-keyed formal Hand reconcile
-     dormant ownership lifecycle foundation
-
 G1 — COMPLETE / VALIDATED / SEALED
-     exact Selection outcome correlation
-     writer-scoped optional Group metadata
-     canonical selected-identity manifest
-
 G2 — COMPLETE / VALIDATED / SEALED
-     Controller semantic Group discovery
-     reducer dry-run / interference validation
-
 G3 — COMPLETE / VALIDATED / SEALED
-     Record-or-Group playback-unit hardening
-     exact completion and scoped recovery
-
-G4 — generic SingleRecord card-transition engine implemented
-     isolated G4-only compatibility-position PIE = HISTORICAL FAIL
-     do not restore that compatibility path as production authority
-
+G4 — generic SingleRecord transition engine retained as foundation;
+     isolated pre-G5 compatibility-position PIE remains HISTORICAL FAIL
 G5 — COMPLETE / VALIDATED / SEALED
-     persistent production SelectionArea ownership
-     exact same-object SingleRecord consumption
-     transactional Confirm / outcome handling
-     recorded/direct completion + recovery
-
-G4+G5 coherent production delivery
-   — COMPLETE / VALIDATED / SEALED
-
 G6 — COMPLETE / VALIDATED / SEALED
-     transactional N-child Group visual preflight
-     atomic SelectionArea → Transition cohort transfer
-     Transition → ConsumedPendingReducer lifecycle
-     visual co-presentation with serial authoritative reducer chronology
-     exact G5 sequential fallback retained
-     Development Editor build PASS
-     focused G6 Automation 4/4 PASS
-     Native L_BattleTest simultaneous visual PIE PASS / user confirmed 2026-09-10
-
-G7 — CLEANUP IMPLEMENTED / VALIDATION PENDING / NOT SEALED
-     compatibility audit complete
-     no runtime behavior branch changed
-     unused Selection-specific test alias removed
-     stale transition staging comments normalized
-
-G8 — SEPARATE DEFERRED INITIATIVE / early input + Presentation pipelining
+G7 — COMPLETE / VALIDATED / SEALED
+G8 — SEPARATE DEFERRED INITIATIVE / NOT IMPLEMENTED / NOT AUTHORIZED
 ```
+
+Do **not** resume from G1-G7. Do not automatically begin G8.
 
 ## G6 final authority
 
-Dedicated execution/seal record:
+Dedicated record:
 
 ```text
 docs/SelectionPresentationG6Execution.md
 ```
 
-Production implementation landed through the focused G6 commit chain. Key runtime commits include:
-
-```text
-cedd3581779f154f3fc228290e9f3c45a7452250  feat(g6): add atomic card ownership transfer surface
-55ba87200a2c03c5bf98b55df4143391c1d77e6e  feat(g6): implement atomic ownership batch transfer
-76b07d6b0d6cf859a63ee363385da6b78f5ca7c4  feat(g6): implement transactional native group transitions
-cd13db609546bf4061c8ab197cd9df78190cdf75   feat(g6): add production group activation state
-5c2920700046d2b19eaee7dbc612c02908017773   feat(g6): activate semantic groups without reducer reordering
-85f62cb1e0580f0b04a145a0997c1d92275b15ec   feat(g6): activate groups at selection playback boundary
-f5f1a3c863a3f6054d7680cf58209b9e93092c11   fix(g6): complete groups through chronological reducer path
-e9b566a7ca0db80e11e0cba70542af25480ba416   fix(g6): match offered records by immutable identity
-```
-
-Focused tests landed through:
-
-```text
-c12455742ba5d41eda0a2bca09d7f045265ea0ab
-test(g6): cover parallel playback contracts
-```
-
 Final G6 evidence:
 
 ```text
-[x] UE 5.8 SlayTheSpireDemoEditor Win64 Development build PASS
+[x] UE 5.8 Development Editor build PASS
 [x] SlayTheSpireDemo.SelectionPresentation.G6 focused Automation 4/4 PASS
-[x] batch ownership all-or-nothing coverage
-[x] tracked Group-upgrade rollback coverage
-[x] ConsumedPendingReducer lifecycle coverage
-[x] parallel visual / serial reducer chronology coverage
-[x] Group decline → G5 sequential fallback coverage
+[x] transactional N-child visual preflight
+[x] atomic SelectionArea -> Transition cohort ownership
+[x] Transition -> ConsumedPendingReducer lifecycle
+[x] visual co-presentation with chronological reducer order preserved
+[x] exact G5 sequential fallback
 [x] Native L_BattleTest Player multi-select N>1 PIE PASS
-[x] selected destination animations visibly begin together
-[x] exact SelectionArea starting positions preserved
-[x] no Hand flashback
-[x] no duplicate
-[x] no ghost
-[x] no clipping
-[x] correct destination/pile result
-[x] input restores normally and later selection works
+[x] simultaneous start from exact SelectionArea positions
+[x] no flashback / duplicate / ghost / clipping
+[x] correct final destination state
+[x] input and later selection remain usable
 [x] ordinary single-selection / Warcry path remains correct
 ```
 
-This evidence seals G6. Headless Automation established protocol/control-flow behavior; the user-confirmed production Native PIE gate established the real simultaneous visual behavior.
+## G7 final authority
 
-## G7 audit and implementation authority
-
-Dedicated execution record:
+Dedicated record:
 
 ```text
 docs/SelectionPresentationG7Execution.md
 ```
 
-The G7 audit established that the high-risk compatibility targets named by the original plan had already been removed during the coherent G4+G5 migration:
+The G7 audit proved that the high-risk pre-G5 compatibility targets had already been removed from production Source during the coherent G4+G5 migration:
 
 ```text
 ConfirmedCardCenters / confirmed-center runtime map
-confirmed-position restoration as Selection continuity
+confirmed-position restoration as Selection continuity truth
 Selection-subclass destination-specific animation ownership
-old Selection-specific Hand -> DrawPile shell
+old Selection-specific Hand -> DrawPile presentation shell
 ```
 
-Current Source search contains no runtime `ConfirmedCardCenters` declaration/caller. The current per-child transition engine, SelectionArea source resolver, ownership lifecycle and exact recovery paths are production mechanisms and were explicitly retained.
+The current per-child transition engine, SelectionArea exact-object source resolver, ownership lifecycle and recovery paths are sealed production mechanisms and were retained.
 
-The older `UBattleHUDWidget` one-local-card infrastructure was also retained because it still owns required `CardPlayed`, Draw and PlayArea cleanup behavior. G7 does not expand into a migration of those unrelated active Record paths.
-
-The only source-level dead compatibility surface proven by the audit was an unused Selection-specific test alias for the already-generic transition test helper. Cleanup landed in:
+G7 cleanup changed only:
 
 ```text
 114f6e60a375d7c82548541f3088e66dad5d7296
@@ -156,7 +78,7 @@ cleanup(g7): remove obsolete selection test alias
 cleanup(g7): normalize sealed transition comments
 ```
 
-Final G7 Source diff is limited to:
+Final G7 Source diff:
 
 ```text
 Source/SlayTheSpireDemo/UI/BattleHUDSelectionWidget.h
@@ -165,23 +87,63 @@ Source/SlayTheSpireDemo/UI/BattleHUDCardTransitionWidget.h
 
 No `.cpp` runtime branch, animation parameter, ownership mutation, Controller/reducer behavior, Gameplay rule, asset or map changed.
 
-### Remaining G7 validation
-
-Run fresh affected evidence:
+Final user-confirmed G7 validation on 2026-09-10:
 
 ```text
-[ ] UE 5.8 SlayTheSpireDemoEditor Win64 Development build
-[ ] SlayTheSpireDemo.SelectionPresentation.G6
-[ ] SlayTheSpireDemo.CardSelection.Presentation
+[x] UE 5.8 Development Editor build PASS as part of the prescribed local validation cycle
+[x] SlayTheSpireDemo.SelectionPresentation.G6 focused regression PASS
+[x] SlayTheSpireDemo.CardSelection.Presentation focused regression PASS
+[x] Native L_BattleTest PIE validation completed
 ```
 
-If these pass, G7 can be sealed without a new PIE run because the final cleanup is declaration/comment-only and does not invalidate the sealed G6 visual behavior. If a failure reveals an actual affected C0/C1 contract, expand validation only to that implicated scope under `docs/ValidationExecutionPolicy.md`.
+Therefore:
 
-G7 must not enable new overlapping input, cross-resolution pipelining or cosmetic NonBlocking semantics. Those belong only to G8.
+```text
+G7 — COMPLETE / VALIDATED / SEALED
+G8 — remains DEFERRED / NOT IMPLEMENTED
+```
+
+## Durable Selection Presentation invariants after G7
+
+Preserve all of the following unless a separately authorized design explicitly changes them:
+
+```text
+Gameplay owns authoritative card zones and battle mutation
+PresentationSequence/reducer chronology remains serial and authoritative
+SelectionArea is Presentation ownership, not a Gameplay zone
+one visible Presentation owner per RuntimeId
+Hand -> SelectionArea -> Transition -> ConsumedPendingReducer -> Done
+exact BattleId / SelectionGeneration / boundary scoping
+exact completion watermark recovery
+G5 SingleRecord fallback remains first-class correctness behavior
+G6 Group preflight is transactional and all-or-nothing
+future co-presented members do not reduce early
+interleaved unrelated records retain chronological playback/reduction
+Group timeout/cancel/replacement recovery remains exact-token scoped
+no Effect/CardId-specific Selection destination animation branches
+```
+
+Do not restore `ConfirmedCardCenters` or confirmed-position reconstruction as a second continuity contract.
+
+## G8 boundary
+
+G8 early input / Presentation pipelining remains a **separate deferred initiative**. It is not the automatic continuation of G7.
+
+Do not implement or silently enable:
+
+```text
+cross-Resolution early input
+new overlapping interactive requests while older visual jobs are active
+detached visual-job lifetime
+cosmetic NonBlocking semantics
+current formal HUD mutation by an older visual job
+```
+
+Starting G8 requires explicit authorization and a dedicated design/acceptance scope.
 
 ## Current Card Expansion status
 
-Card Expansion remains a separate initiative from Selection Presentation G7.
+Card Expansion remains separate from the completed Selection Presentation G0-G7 program.
 
 ```text
 Wave 1A — Exhaust Fact Surface
@@ -201,21 +163,20 @@ Wave 1C-C0 — Select-Exhaust Generalization
 → COMPLETE / VALIDATED / SEALED
 → final authority: docs/CardExpansionWave1CC0Execution.md
 
-Wave 1C-C1 — Hand → DrawPileTop / Warcry capability
+Wave 1C-C1 — Hand -> DrawPileTop / Warcry capability
 → IMPLEMENTED
 → MERGED TO main by PR #18
 → merge commit ffbc164905a875bea5c9ab3dfe0a07df5068b8cc
 → Development Editor build PASS recorded
 → Wave1CC1.DrawPileTop focused Automation 7/7 PASS recorded
-→ shared Selection Presentation visual path user-accepted
+→ shared later Selection Presentation visual path user-accepted
 → FINAL STANDALONE C1 USER SEAL RECORD NOT PRESENT
 
 Former C1 True Grit plan
 → SUPERSEDED / NOT ACTIVE
-→ True Grit remains a future thin content consumer of existing generalized primitives
 ```
 
-Do not infer a standalone C1 `COMPLETE / VALIDATED / SEALED` state from PR #18 or shared Presentation evidence.
+Do not infer a standalone C1 `COMPLETE / VALIDATED / SEALED` state from PR #18 or shared Selection Presentation evidence.
 
 This checkpoint does **not** authorize a new Card Expansion slice. Wave 1D Reactive Exhaust Powers, production True Grit content, Card Trigger Source Expansion, multi-enemy work, Exhume and other capability waves require their own explicit scope/authority.
 
@@ -235,6 +196,7 @@ docs/SelectionPresentationG4Execution.md
 docs/SelectionPresentationG5Execution.md
 docs/SelectionPresentationG6Execution.md
 docs/SelectionPresentationG7Execution.md
+docs/ValidationExecutionPolicy.md
 docs/Validation.md
 ```
 
@@ -251,16 +213,10 @@ docs/CardExpansionWave1CC1WarcryHandToDrawPileTopPlan.md
 docs/CardExpansionWave1CC1ConfigurableDrawPileTopAmendment.md
 ```
 
-Validation policy:
-
-```text
-docs/ValidationExecutionPolicy.md
-```
-
 ## Resume instruction
 
-When work resumes, read this checkpoint, `docs/SelectionPresentationG7Execution.md`, `docs/SelectionPresentationG6Execution.md`, `docs/SelectionPresentationGroupImplementationPlan.md`, `docs/CardSelectionPresentationConstraints.md`, and the directory-level `AGENTS.md` files for any source area to be changed.
+When work resumes, first identify the newly authorized goal instead of continuing Selection Presentation automatically.
 
-The immediate next action is the **G7 build + focused regression validation gate**. Do not begin additional cleanup deletion unless a new concrete dead path is independently proven. Do not begin G8.
+For any Selection Presentation regression, read the G6/G7 execution records plus the durable constraints/design documents and preserve the sealed G0-G7 invariants. For new G8 work, require explicit authorization before implementation.
 
-Historical execution files may contain phrases such as “next active slice” that were correct when those stages were sealed. Treat those as historical sequencing, not current project status. Current forward status is this checkpoint.
+Historical execution/design files may contain stage labels that were correct when those documents were written. Current forward status is: **Selection Presentation G0-G7 sealed; G8 deferred.**
