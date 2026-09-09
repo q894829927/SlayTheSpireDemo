@@ -4,16 +4,18 @@ Last updated: **2026-09-10**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable task — Selection Presentation G7 cleanup
+## Current resumable task — Selection Presentation G7 validation
 
-**Next active stage:**
+**Current active stage:**
 
 ```text
-G7 — cleanup only after proven G6 equivalence
-     remove only compatibility/dead paths whose behavior is now covered by sealed G5/G6 architecture
-     preserve G5 sequential fallback
-     preserve exact Group recovery and chronological reducer order
-     DO NOT include G8 early input / Presentation pipelining
+G7 — compatibility/dead-path cleanup
+     audit COMPLETE
+     cleanup IMPLEMENTED
+     Development Editor build PENDING
+     focused regression Automation PENDING
+     NOT SEALED
+     G8 remains out of scope
 ```
 
 Do **not** resume from G1–G6. Those stages are complete and sealed as described below.
@@ -62,7 +64,12 @@ G6 — COMPLETE / VALIDATED / SEALED
      focused G6 Automation 4/4 PASS
      Native L_BattleTest simultaneous visual PIE PASS / user confirmed 2026-09-10
 
-G7 — NEXT ACTIVE / cleanup only after G6 seal
+G7 — CLEANUP IMPLEMENTED / VALIDATION PENDING / NOT SEALED
+     compatibility audit complete
+     no runtime behavior branch changed
+     unused Selection-specific test alias removed
+     stale transition staging comments normalized
+
 G8 — SEPARATE DEFERRED INITIATIVE / early input + Presentation pipelining
 ```
 
@@ -118,39 +125,57 @@ Final G6 evidence:
 
 This evidence seals G6. Headless Automation established protocol/control-flow behavior; the user-confirmed production Native PIE gate established the real simultaneous visual behavior.
 
-## G7 execution boundary
+## G7 audit and implementation authority
 
-G7 is **cleanup, not a redesign**. Before deleting anything, prove that each target is obsolete under the sealed G5/G6 production path.
-
-Allowed G7 work is limited to items such as:
+Dedicated execution record:
 
 ```text
-- residual compatibility helpers left from pre-G5 / dormant Group staging
-- dead adapters or state used only by superseded compatibility paths
-- comments/tests whose only purpose was the now-retired intermediate implementation
-- duplicate code made unnecessary by the final Record-or-Group ownership model
+docs/SelectionPresentationG7Execution.md
 ```
 
-G7 must preserve:
+The G7 audit established that the high-risk compatibility targets named by the original plan had already been removed during the coherent G4+G5 migration:
 
 ```text
-Gameplay mutation order
-BattleEvent / trigger order
-PresentationSequence order
-chronological reducer order
-G5 SingleRecord fallback
-G6 Group transactional preflight
-SelectionArea exact-object ownership continuity
-ConsumedPendingReducer semantics
-exact timeout / cancellation / widget-replacement recovery
-no Effect/CardId-specific Presentation branches
+ConfirmedCardCenters / confirmed-center runtime map
+confirmed-position restoration as Selection continuity
+Selection-subclass destination-specific animation ownership
+old Selection-specific Hand -> DrawPile shell
 ```
 
-Do not delete a compatibility path merely because its name looks old. Confirm it has no current production caller or required recovery role first.
+Current Source search contains no runtime `ConfirmedCardCenters` declaration/caller. The current per-child transition engine, SelectionArea source resolver, ownership lifecycle and exact recovery paths are production mechanisms and were explicitly retained.
 
-### G7 validation rule
+The older `UBattleHUDWidget` one-local-card infrastructure was also retained because it still owns required `CardPlayed`, Draw and PlayArea cleanup behavior. G7 does not expand into a migration of those unrelated active Record paths.
 
-Use `docs/ValidationExecutionPolicy.md`. Cleanup requires fresh affected build/Automation evidence. Reuse sealed G6 PIE evidence unless the cleanup touches visual behavior that invalidates it; if visual behavior changes or a risky surface is removed, run a focused Native `L_BattleTest` regression before sealing G7.
+The only source-level dead compatibility surface proven by the audit was an unused Selection-specific test alias for the already-generic transition test helper. Cleanup landed in:
+
+```text
+114f6e60a375d7c82548541f3088e66dad5d7296
+cleanup(g7): remove obsolete selection test alias
+
+4a3cff000b7e845aa4b5709222b9aebfebccbe86
+cleanup(g7): normalize sealed transition comments
+```
+
+Final G7 Source diff is limited to:
+
+```text
+Source/SlayTheSpireDemo/UI/BattleHUDSelectionWidget.h
+Source/SlayTheSpireDemo/UI/BattleHUDCardTransitionWidget.h
+```
+
+No `.cpp` runtime branch, animation parameter, ownership mutation, Controller/reducer behavior, Gameplay rule, asset or map changed.
+
+### Remaining G7 validation
+
+Run fresh affected evidence:
+
+```text
+[ ] UE 5.8 SlayTheSpireDemoEditor Win64 Development build
+[ ] SlayTheSpireDemo.SelectionPresentation.G6
+[ ] SlayTheSpireDemo.CardSelection.Presentation
+```
+
+If these pass, G7 can be sealed without a new PIE run because the final cleanup is declaration/comment-only and does not invalidate the sealed G6 visual behavior. If a failure reveals an actual affected C0/C1 contract, expand validation only to that implicated scope under `docs/ValidationExecutionPolicy.md`.
 
 G7 must not enable new overlapping input, cross-resolution pipelining or cosmetic NonBlocking semantics. Those belong only to G8.
 
@@ -209,6 +234,7 @@ docs/SelectionPresentationG3Execution.md
 docs/SelectionPresentationG4Execution.md
 docs/SelectionPresentationG5Execution.md
 docs/SelectionPresentationG6Execution.md
+docs/SelectionPresentationG7Execution.md
 docs/Validation.md
 ```
 
@@ -233,8 +259,8 @@ docs/ValidationExecutionPolicy.md
 
 ## Resume instruction
 
-When work resumes, read this checkpoint, `docs/SelectionPresentationG6Execution.md`, `docs/SelectionPresentationGroupImplementationPlan.md`, `docs/CardSelectionPresentationConstraints.md`, and the directory-level `AGENTS.md` files for any source area to be changed.
+When work resumes, read this checkpoint, `docs/SelectionPresentationG7Execution.md`, `docs/SelectionPresentationG6Execution.md`, `docs/SelectionPresentationGroupImplementationPlan.md`, `docs/CardSelectionPresentationConstraints.md`, and the directory-level `AGENTS.md` files for any source area to be changed.
 
-Resume from **G7 cleanup**. First inventory residual compatibility/staging code and prove which paths are obsolete. Do not start deletion before that audit. Do not begin G8.
+The immediate next action is the **G7 build + focused regression validation gate**. Do not begin additional cleanup deletion unless a new concrete dead path is independently proven. Do not begin G8.
 
 Historical execution files may contain phrases such as “next active slice” that were correct when those stages were sealed. Treat those as historical sequencing, not current project status. Current forward status is this checkpoint.
