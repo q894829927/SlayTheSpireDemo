@@ -31,6 +31,28 @@ public:
 	void NotifyPresentationFinished(const FPresentationPlaybackToken& Token);
 	void SkipPresentation();
 
+	// G6 production activation is entered only while the leader SingleRecord is
+	// already being offered. The Controller reuses the sealed G2 semantic
+	// candidate and asks the Base Widget for an all-or-nothing tracked-unit
+	// replacement. False preserves the ordinary G5 SingleRecord path.
+	bool TryActivatePresentationGroupG6(
+		const FPresentationRecord& LeaderRecord,
+		const FPresentationPlaybackToken& OfferedSingleRecordToken);
+
+	// Future members that were already co-presented by an accepted Group still
+	// arrive at their normal chronological reducer cursor. Returning true consumes
+	// only the visual marker; the caller declines visible Begin so the existing
+	// Controller immediate fallback reduces the exact record in order.
+	bool ConsumeVisuallyPresentedGroupRecordG6(
+		const FPresentationRecord& Record,
+		const FPresentationPlaybackToken& OfferedSingleRecordToken);
+
+	// Exact Group completion from the Base Widget. This is intentionally distinct
+	// from the historical G3 dormant Group callback in NotifyPresentationFinished.
+	void NotifyPresentationGroupFinishedG6(
+		const FPresentationPlaybackToken& Token,
+		const TArray<int32>& RecordIndices);
+
 	void NotifyWidgetLost(UBattleHUDWidgetBase* LostWidget);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle Presentation", meta = (ClampMin = "0.05"))
@@ -60,6 +82,7 @@ public:
 		int32 LeaderRecordIndex,
 		FPresentationGroupSemanticCandidate& OutCandidate
 	);
+	int32 GetG6VisuallyPresentedRecordCountForTesting() const;
 #endif
 
 protected:
@@ -91,6 +114,7 @@ private:
 	bool IsEnvelopeForCurrentBattle(const FPresentationResolutionEnvelope& Envelope) const;
 	bool ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record);
 	void ApplyDisplayedSnapshot(const FPresentationStateSnapshot& Snapshot, bool bRefreshBindings);
+	void ResetG6ActiveGroupState();
 
 	// G2 semantic-only preflight. It may inspect only the supplied frozen
 	// baseline + sealed Envelope. It deliberately has no Widget/ownership input
@@ -134,6 +158,14 @@ private:
 	FPresentationPlaybackToken ActivePlaybackToken;
 	FPresentationPlaybackToken ScheduledTimeoutToken;
 	FTSTicker::FDelegateHandle PlaybackTimeoutTickerHandle;
+
+	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
+	// record order; future member indices are merely remembered as already shown
+	// so their later chronological cursor can reduce without replaying visuals.
+	FPresentationGroupTag ActiveG6Group;
+	TArray<int32> ActiveG6GroupRecordIndices;
+	int64 G6VisuallyPresentedResolutionId = 0;
+	TSet<int32> G6VisuallyPresentedRecordIndices;
 
 	static constexpr int32 MaxPlaybackEnvelopes = 8;
 };
