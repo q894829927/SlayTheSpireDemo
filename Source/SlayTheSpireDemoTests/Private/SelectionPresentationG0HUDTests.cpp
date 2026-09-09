@@ -149,7 +149,11 @@ bool FSelectionPresentationG0FormalSlotOwnershipTest::RunTest(const FString& Par
 
 	UBattleCardWidget* Card61 = Fixture.HUD->FindFormalHandCardForTesting(61);
 	if (!TestNotNull(TEXT("Formal card 61 exists."), Card61)) return false;
-	TestEqual(TEXT("Formal slot starts visible."), Card61->GetVisibility(), ESlateVisibility::Visible);
+	// UUserWidget defaults to SelfHitTestInvisible: the card's button children
+	// remain hit-testable. Both normal formal states satisfy this contract.
+	TestTrue(TEXT("Formal slot starts visible with hit-testable children."),
+		Card61->GetVisibility() == ESlateVisibility::Visible
+		|| Card61->GetVisibility() == ESlateVisibility::SelfHitTestInvisible);
 	TestTrue(TEXT("Formal slot starts enabled."), Card61->GetIsEnabled());
 
 	const int64 Generation = Fixture.ViewModel->BeginCardPresentationSelectionLifecycle(10);
@@ -179,6 +183,50 @@ bool FSelectionPresentationG0FormalSlotOwnershipTest::RunTest(const FString& Par
 	TestEqual(TEXT("Completion fail-safe restores formal visibility without recreating Widget."), Card61->GetVisibility(), ESlateVisibility::Visible);
 	TestTrue(TEXT("Completion fail-safe restores formal input."), Card61->GetIsEnabled());
 	TestTrue(TEXT("Completion recovery preserves exact formal Widget."), Fixture.HUD->FindFormalHandCardForTesting(61) == Card61);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSelectionPresentationG0DrawAdoptionTest,
+	"SlayTheSpireDemo.SelectionPresentation.G0.DrawAdoption",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSelectionPresentationG0DrawAdoptionTest::RunTest(const FString& Parameters)
+{
+	using namespace SelectionPresentationG0HUDTest;
+	(void)Parameters;
+	FProbeFixture Fixture;
+	if (!TestTrue(TEXT("G0 HUD fixture is valid."), Fixture.IsValidFixture())) return false;
+	Fixture.Initialize(MakeSnapshot(701, 1, { 71 }));
+	UBattleCardWidget* Survivor = Fixture.HUD->FindFormalHandCardForTesting(71);
+
+	// Use the production presentation-card factory and the same Hand attachment
+	// as DrawToHand. Completion leaves this visual for the reducer to adopt.
+	FPresentationCardSnapshot Draw;
+	Draw.RuntimeId = 72;
+	Draw.CardId = TEXT("HUD_72");
+	UBattleCardWidget* Drawn = Fixture.HUD->CreateDrawVisualForTesting(Draw);
+	if (!TestNotNull(TEXT("Draw visual is created."), Drawn)) return false;
+	Fixture.Hand->AddChildToHorizontalBox(Drawn);
+	TestEqual(TEXT("In-flight draw is not hit-testable."), Drawn->GetVisibility(), ESlateVisibility::HitTestInvisible);
+	TestFalse(TEXT("In-flight draw has no Gameplay request binding."), Drawn->OnBattleCardRequested.IsBound());
+
+	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(701, 2, { 71, 72 }), true);
+	TestTrue(TEXT("Reducer adopts the exact draw visual."), Fixture.HUD->FindFormalHandCardForTesting(72) == Drawn);
+	TestTrue(TEXT("Existing formal card identity survives draw."), Fixture.HUD->FindFormalHandCardForTesting(71) == Survivor);
+	TestEqual(TEXT("Adopted draw receives mouse hit tests."), Drawn->GetVisibility(), ESlateVisibility::Visible);
+	TestTrue(TEXT("Adopted draw is enabled."), Drawn->GetIsEnabled());
+	TestTrue(TEXT("Adopted draw has a formal request binding."), Drawn->OnBattleCardRequested.IsBound());
+	TestEqual(TEXT("Adoption leaves no duplicate slot."), Fixture.Hand->GetChildrenCount(), 2);
+
+	const int64 Generation = Fixture.ViewModel->BeginCardPresentationSelectionLifecycle(2);
+	TestTrue(TEXT("Adopted card can enter Selection ownership."), Fixture.ViewModel->SetPendingCardPresentationSelection(Generation, 72, true));
+	Fixture.HUD->RefreshFormalHandForTesting();
+	TestEqual(TEXT("Reconcile preserves explicitly owned Hidden slot."), Drawn->GetVisibility(), ESlateVisibility::Hidden);
+	TestFalse(TEXT("Explicitly owned adopted card stays input-disabled."), Drawn->GetIsEnabled());
+	Fixture.ViewModel->CancelCardPresentationSelectionLifecycle(Generation);
+	TestEqual(TEXT("Ownership release restores adopted card hit testing."), Drawn->GetVisibility(), ESlateVisibility::Visible);
+	TestTrue(TEXT("Ownership release restores adopted card input."), Drawn->GetIsEnabled());
 	return true;
 }
 

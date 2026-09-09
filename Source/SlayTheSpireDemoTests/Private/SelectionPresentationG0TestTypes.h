@@ -31,6 +31,10 @@ public:
 		UBattleHUDViewModel* InViewModel,
 		UHorizontalBox* InHand);
 	void RefreshFormalHandForTesting() { RefreshHand(); }
+	UBattleCardWidget* CreateDrawVisualForTesting(const FPresentationCardSnapshot& Snapshot)
+	{
+		return CreateNativePresentationCard(Snapshot);
+	}
 	int32 GetFormalHandChildCountForTesting() const;
 	UBattleCardWidget* FindFormalHandCardForTesting(int32 RuntimeId) const;
 	virtual UWorld* GetWorld() const override;

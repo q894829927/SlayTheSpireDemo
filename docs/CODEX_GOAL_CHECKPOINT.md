@@ -2,7 +2,26 @@
 
 Last updated: **2026-09-09**
 
-## Current resumable task — Selection Presentation production repair
+## Current resumable task — G0 A/B/C review and draw adoption
+
+HEAD verified: `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`. Uncommitted changes;
+pre-existing BattleHUDReconciledWidget delegate edit preserved. Reviewed G0 A/B/C
+and repaired completed draw visual adoption retaining HitTestInvisible. Added
+DrawAdoption regression and corrected FormalSlotOwnership's default visibility
+expectation. No assets/maps changed, no G1 work.
+
+Validation: project generation and Editor build PASS; initial focused scope had
+12 successful tests (one fixture warning) and one incorrect test assertion.
+After test-only correction/rebuild the failed test passed 1/1. All G0 gates have
+passing evidence; exact scopes/logs are in `docs/Validation.md` under G0 review.
+
+Next action: **USER ACTION REQUIRED** — Native `L_BattleTest` draw/play plus Warcry
+newly drawn candidate select/deselect/Confirm, per
+`docs/SelectionPresentationG0Execution.md`. Record observations before claiming
+visual acceptance. No additional automated rerun needed absent affected edits or
+a new failure.
+
+## Earlier resumable task — Selection Presentation production repair
 
 HEAD verified: `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Changes are uncommitted. Contract and evidence: `docs/CardSelectionPresentationConstraints.md` section 16 and `docs/Validation.md`.
 

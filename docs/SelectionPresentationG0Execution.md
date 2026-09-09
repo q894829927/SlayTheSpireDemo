@@ -15,10 +15,11 @@ G0 is infrastructure only. Production Selection remains on the existing formal-H
 ## Current status
 
 ```text
-G0-A implementation: COMPLETE, validation pending
-G0-B implementation: COMPLETE, validation pending
-G0-C dormant infrastructure: COMPLETE, validation pending
-G1 production work: BLOCKED until fresh G0 Build + focused Automation evidence
+G0-A implementation: COMPLETE, automated gates PASS
+G0-B implementation: COMPLETE, draw-adoption repair / automated gates PASS
+G0-C dormant infrastructure: COMPLETE, automated gates PASS
+Manual draw/selection PIE: USER ACTION REQUIRED
+G1 production work: NOT STARTED / outside this review
 ```
 
 No `.uasset` or `.umap` change is part of G0.
@@ -180,6 +181,7 @@ SlayTheSpireDemo.SelectionPresentation.G0.StaleAndTransition
 SlayTheSpireDemo.SelectionPresentation.G0.PendingLifecycleCancel
 SlayTheSpireDemo.SelectionPresentation.G0.HandIdentity
 SlayTheSpireDemo.SelectionPresentation.G0.FormalSlotOwnership
+SlayTheSpireDemo.SelectionPresentation.G0.DrawAdoption
 ```
 
 Key assertions include:
@@ -206,12 +208,34 @@ These are staged dependencies, not G0 validation claims.
 
 ## Validation state
 
-At the time of this record:
+Review and repair on 2026-09-09, base HEAD `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`:
 
 ```text
-Build:      NOT RUN
-Automation: NOT RUN
+Build:      PASS
+Automation: G0 gates PASS (initial 7/8; corrected assertion rerun 1/1)
 PIE/manual: NOT RUN
 ```
 
-Do not enter G1 production implementation until a fresh UE build and the focused `SlayTheSpireDemo.SelectionPresentation.G0` Automation filter pass after the final G0 code changes.
+The review found a production G0-B regression: DrawToHand leaves its completed
+presentation card in HB_Hand with HitTestInvisible visibility. RuntimeId reconcile
+reused that Widget and bound requests but retained mouse suppression. Formal
+adoption now restores Visible for that state; Hidden playback/ownership slots are
+preserved, and explicit ownership is applied after reconciliation.
+
+The new DrawAdoption test uses the production presentation-card factory and proves
+exact visual reuse, restored hit testing/request binding, no duplicate slot, and
+subsequent Selection ownership hide/release. The existing FormalSlotOwnership test
+incorrectly required Visible as the initial state; it now also accepts UE's default
+SelfHitTestInvisible, which permits child button hit testing.
+
+Exact build commands, focused scopes, reports and the known fixture warning are
+recorded in `docs/Validation.md`, section "G0 A/B/C review and draw adoption".
+Passing gates were retained after the assertion-only correction.
+
+**MANUAL PIE — USER ACTION REQUIRED:** in
+`/Game/SlayTheSpireDemo/Maps/L_BattleTest`, draw during combat, wait for playback,
+then click and play a newly drawn affordable card (choose its legal target when
+needed). Also use Warcry and select/deselect a newly drawn candidate before
+Confirm. Expect responsive clicks, successful play/selection, no duplicate card
+and restored input after playback. Record user observations and any failing
+scenario/log. No PIE, Blueprint visual or packaged-game acceptance is claimed.

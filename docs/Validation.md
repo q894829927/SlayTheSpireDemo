@@ -2,6 +2,46 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## G0 A/B/C review and draw adoption — 2026-09-09
+
+Base HEAD `2a4687705f9a7b3d1cc240dcd4e7d08a0701abcb`, uncommitted review changes.
+Scope and manual steps: `docs/SelectionPresentationG0Execution.md`. Fixed completed
+draw Widgets remaining HitTestInvisible after RuntimeId-keyed formal adoption.
+Preserved the pre-existing delegate-binding edit. No asset/map changes.
+
+**AUTOMATED GATES:** standard bundled UE 5.8 project generation PASS. First build
+attempt was blocked by active Live Coding; after the user closed the editor,
+Development Editor Win64 build PASS (`Saved/Logs/G0ReviewBuild.log`). After a
+test-assertion correction, project generation and build PASS again
+(`Saved/Logs/G0ReviewProjectFiles.log`, `Saved/Logs/G0ReviewFinalBuild.log`).
+
+UnrealEditor-Cmd ran unattended with `-nullrhi`,
+`-TestExit="Automation Test Queue Empty"` and the following RunTests scope:
+
+```text
+SlayTheSpireDemo.SelectionPresentation.G0
++SlayTheSpireDemo.Phase6UIA2N.R8.Zone.DrawToHandSequentialPresentation
++SlayTheSpireDemo.CardSelection.Presentation
+```
+
+Initial report: 13 tests, 11 clean PASS, 1 PASS with warning, 1 FAIL, exit 0
+(`Saved/AutomationReports/G0Review/index.json`, `Saved/Logs/G0ReviewAutomation.log`).
+The G0 FormalSlotOwnership failure was an incorrect test expectation: UE defaults
+UUserWidget to SelfHitTestInvisible, which permits child input. The corrected
+assertion accepts it or Visible. After the test-only rebuild, reran only
+`SlayTheSpireDemo.SelectionPresentation.G0.FormalSlotOwnership`: **1/1 PASS**, no
+warnings, exit 0 (`Saved/AutomationReports/G0ReviewFormalSlot/index.json`,
+`Saved/Logs/G0ReviewFormalSlot.log`). Other passing evidence remains valid.
+
+The initial warning was ProductionConfirmRouting's intentionally partial test HUD
+without a Canvas WidgetTree root: dormant SelectionAreaHost could not be created.
+Its Confirm routing assertions passed; this fixture does not establish production
+Host geometry/visual acceptance. G0's 8 tests now have passing evidence, including
+DrawAdoption; R8 sequential draw and the four Selection Presentation tests passed.
+`git diff --check` PASS. **MANUAL PIE — USER ACTION REQUIRED:** perform the focused
+L_BattleTest draw/play and Warcry candidate interaction described in the execution
+record. No new PIE/Blueprint visual/packaged acceptance claimed.
+
 ## Selection Presentation production repair — 2026-09-08
 
 Base HEAD `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Production Native HUD reparented in UE to `BattleHUDSelectionWidget`, Blueprint compilation and targeted save succeeded. Existing card/map assets preserved. **AUTOMATED GATES:** bundled UE project generation and Editor builds PASS; final runtime build `Saved/Logs/SelectionPresentationFinalBuild.log`, subsequent test-only builds `SelectionPresentationTestBuild.log` and `SelectionBoundaryConfirmTestBuild.log`. Closed scope in `docs/CardSelectionPresentationConstraints.md` section 16 ran **12 tests: 11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). Production selection Confirm, transfer/skip cleanup, multi-select and generic Exhaust passed. The old Draw-before-selection test still assumed click-to-submit; updated to require a separate explicit Confirm, rebuilt only changed tests and reran that gate **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). Runtime unchanged after the first run; other passing gates not repeated. **MANUAL PIE — USER ACTION REQUIRED:** one Native `L_BattleTest` Warcry sequence per section 16, checking background/centered choice, explicit confirmation, flight and generic Exhaust appearance. No new PIE/packaged acceptance claimed.

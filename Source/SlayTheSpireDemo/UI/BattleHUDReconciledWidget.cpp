@@ -126,13 +126,22 @@ void UBattleHUDReconciledWidget::RefreshHand()
 	UnbindReconciledHandDelegates();
 	HB_Hand->ClearChildren();
 
-	UBattleHUDWidget* BaseHUD = static_cast<UBattleHUDWidget*>(this);
 	for (int32 Index = 0; Index < ViewModel->HandCards.Num(); ++Index)
 	{
 		UBattleCardWidget* CardWidget = DesiredWidgets[Index];
 		const FBattleHUDCardView& CardView = ViewModel->HandCards[Index];
 		CardWidget->SetCardView(CardView);
-		CardWidget->OnBattleCardRequested.AddUniqueDynamic(BaseHUD, &UBattleHUDWidget::HandleCardRequested);
+		// Completed draws leave their presentation-only Widget in HB_Hand.
+		// The reducer now authorizes this RuntimeId as a formal card, so adoption
+		// must retire its hit-test suppression as well as bind its request delegate.
+		// Preserve Hidden slots used by active playback/explicit ownership.
+		if (CardWidget->GetVisibility() == ESlateVisibility::HitTestInvisible)
+		{
+			CardWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
+			this,
+			&UBattleHUDReconciledWidget::HandleCardRequested);
 		HB_Hand->AddChildToHorizontalBox(CardWidget);
 	}
 
@@ -215,12 +224,13 @@ void UBattleHUDReconciledWidget::UnbindReconciledHandDelegates()
 		return;
 	}
 
-	UBattleHUDWidget* BaseHUD = static_cast<UBattleHUDWidget*>(this);
 	for (UWidget* Child : HB_Hand->GetAllChildren())
 	{
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child))
 		{
-			CardWidget->OnBattleCardRequested.RemoveDynamic(BaseHUD, &UBattleHUDWidget::HandleCardRequested);
+			CardWidget->OnBattleCardRequested.RemoveDynamic(
+				this,
+				&UBattleHUDReconciledWidget::HandleCardRequested);
 		}
 	}
 }
