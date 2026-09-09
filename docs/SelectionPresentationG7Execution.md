@@ -5,15 +5,15 @@ Date: **2026-09-10**
 Status:
 
 ```text
-CLEANUP IMPLEMENTED /
-COMPATIBILITY AUDIT COMPLETE /
-DEVELOPMENT EDITOR BUILD PENDING /
-FOCUSED REGRESSION AUTOMATION PENDING /
-NOT SEALED /
-G8 OUT OF SCOPE
+COMPLETE / VALIDATED / SEALED
+COMPATIBILITY AUDIT COMPLETE
+DEVELOPMENT EDITOR BUILD PASS
+FOCUSED REGRESSION AUTOMATION PASS
+NATIVE L_BATTLETEST PIE PASS / USER CONFIRMED 2026-09-10
+G8 OUT OF SCOPE / DEFERRED
 ```
 
-G7 is a cleanup stage only. It must preserve the sealed G5/G6 production behavior, including exact SelectionArea ownership, G5 SingleRecord fallback, G6 transactional Group playback, `ConsumedPendingReducer`, exact cancellation/recovery and chronological reducer order.
+G7 is a cleanup stage only. It preserves the sealed G5/G6 production behavior, including exact SelectionArea ownership, G5 SingleRecord fallback, G6 transactional Group playback, `ConsumedPendingReducer`, exact cancellation/recovery and chronological reducer order.
 
 ## Audit result
 
@@ -37,7 +37,7 @@ The current Selection subclass owns only interaction/SelectionArea concerns and 
 
 ### Current transition engine is not a cleanup target
 
-The following are current required production mechanisms and must remain:
+The following are current required production mechanisms and remain intact:
 
 ```text
 FNativeCardTransitionInstance
@@ -57,11 +57,11 @@ These implement sealed G5/G6 behavior rather than compatibility behavior.
 
 G7 does **not** delete the shared old card machinery wholesale because it still owns required non-Selection Record behavior and recovery. Deleting it would be a migration/redesign rather than cleanup.
 
-The direct base Hand -> Discard/Exhaust handlers are likewise retained unless a separate migration proves every direct `UBattleHUDWidget` caller/test no longer depends on that base behavior. G7 must not manufacture equivalence evidence by simply removing historical regression coverage.
+The direct base Hand -> Discard/Exhaust handlers are likewise retained unless a separate migration proves every direct `UBattleHUDWidget` caller/test no longer depends on that base behavior. G7 does not manufacture equivalence evidence by removing historical regression coverage.
 
 ### Proven dead/staging residue
 
-The audit found one source-level compatibility residue that is provably dead:
+The audit found one source-level compatibility residue that was provably dead:
 
 ```text
 UBattleHUDSelectionWidget::FinishSharedHandToDrawPilePresentationForTesting
@@ -92,22 +92,43 @@ No `.cpp` runtime control flow, animation parameter, ownership mutation, Control
 
 Optional Status reconciliation is intentionally not included. G8 is intentionally not included.
 
-## Validation boundary
+## Final validation
 
-Because the final runtime behavior is unchanged, G7 requires fresh affected compile/Automation evidence but does not invalidate the already accepted G6 visual contract.
+The user completed the prescribed local post-cleanup validation cycle on 2026-09-10.
 
-Required after the source cleanup:
+### Automated gates
 
 ```text
-[ ] UE 5.8 Development Editor build PASS
-[ ] SlayTheSpireDemo.SelectionPresentation.G6 focused regression PASS
-[ ] SlayTheSpireDemo.CardSelection.Presentation focused regression PASS
+[x] UE 5.8 Development Editor build PASS
+[x] SlayTheSpireDemo.SelectionPresentation.G6 focused regression PASS
+[x] SlayTheSpireDemo.CardSelection.Presentation focused regression PASS
 ```
 
-The C0/C1 implementation paths were not changed by the final G7 diff. Their earlier sealed/focused evidence remains valid unless the fresh shared Selection regression exposes a concrete failure implicating those contracts.
+The focused runs preserve the G6 Group contracts and the shared Selection Presentation SingleRecord/fallback contracts after removal of the dead alias and stale staging comments.
 
-If the build and focused regressions pass, no fresh PIE is required for this declaration/comment-only runtime-neutral cleanup under `docs/ValidationExecutionPolicy.md`; the sealed G6 Native PIE evidence remains valid.
+The C0/C1 implementation paths were not changed by the final G7 diff. Their earlier sealed/focused evidence therefore remains valid under `docs/ValidationExecutionPolicy.md`.
 
-## Seal rule
+### Manual Native PIE gate
 
-G7 may be sealed only after the build and focused regressions above pass. The seal must explicitly state that G8 early input / Presentation pipelining remains deferred and unimplemented.
+Although the final G7 Source diff is runtime-neutral and did not require a new visual gate, the user also completed Native PIE validation and reported it complete on 2026-09-10.
+
+This supplies an additional production smoke/regression observation after the cleanup. No G7 runtime visual behavior was intentionally changed; the sealed G6 simultaneous/no-flash contract remains the visual authority.
+
+## Seal
+
+```text
+G7 compatibility/dead-path cleanup: COMPLETE / VALIDATED / SEALED
+pre-G5 confirmed-position runtime compatibility: absent from production Source
+unused Selection-specific transition test alias: removed
+sealed G5 SingleRecord fallback: preserved
+sealed G6 Group playback: preserved
+ConsumedPendingReducer lifecycle: preserved
+exact cancellation/recovery: preserved
+chronological reducer order: preserved
+Gameplay behavior: unchanged
+G8 early input / Presentation pipelining: DEFERRED / NOT IMPLEMENTED
+```
+
+G7 is closed for normal forward development. Do not reopen sealed G0-G7 Selection Presentation architecture for speculative cleanup.
+
+There is **no automatically active Selection Presentation implementation stage after G7**. G8 is a separately deferred initiative and requires explicit authorization before design activation or implementation.
