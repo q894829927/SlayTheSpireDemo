@@ -22,10 +22,15 @@ public:
 		UBattleHUDViewModel* InViewModel,
 		UHorizontalBox* InHand,
 		UOverlay* InPlayArea,
-		UTextBlock* InDrawCount);
+		UTextBlock* InDrawCount,
+		UTextBlock* InDiscardCount,
+		UTextBlock* InExhaustCount);
 	void InvokeNativeTickForTesting(float DeltaSeconds);
 	void BindConfirmButtonForTesting(class UButton* Button);
-	void FinishNativeForTesting(const FPresentationPlaybackToken& Token) { FinishNativePresentation(Token); }
+	void FinishNativeForTesting(const FPresentationPlaybackToken& Token)
+	{
+		FinishNativePresentation(Token);
+	}
 
 	virtual UWorld* GetWorld() const override;
 

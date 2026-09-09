@@ -17,12 +17,16 @@ void UCardSelectionPresentationHUDProbe::ConfigureSelectionSurfaces(
 	UBattleHUDViewModel* InViewModel,
 	UHorizontalBox* InHand,
 	UOverlay* InPlayArea,
-	UTextBlock* InDrawCount)
+	UTextBlock* InDrawCount,
+	UTextBlock* InDiscardCount,
+	UTextBlock* InExhaustCount)
 {
 	ViewModel = InViewModel;
 	HB_Hand = InHand;
 	OV_PlayArea = InPlayArea;
 	Txt_DrawCount = InDrawCount;
+	Txt_DiscardCount = InDiscardCount;
+	Txt_ExhaustCount = InExhaustCount;
 	CardWidgetClass = UPhase6UIA2NR8CardProbe::StaticClass();
 }
 

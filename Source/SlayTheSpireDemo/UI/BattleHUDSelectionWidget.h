@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "BattleHUDReconciledWidget.h"
+#include "BattleHUDCardTransitionWidget.h"
 #include "Components/CanvasPanelSlot.h"
 #include "BattleHUDSelectionWidget.generated.h"
 
@@ -13,28 +13,33 @@ class UOverlay;
  *
  * This class owns only reusable Selection UI/presentation behavior:
  * explicit Confirm/Cancel routing, persistent SelectionArea hosting, and the
- * staged legacy selected-card transfer compatibility path. It contains no
- * CardId/Effect-specific branches.
+ * staged legacy selected-card position compatibility path. Destination card
+ * movement is owned by the generic G4 CardTransition layer below this class.
  */
 UCLASS(Blueprintable)
-class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDReconciledWidget
+class SLAYTHESPIREDEMO_API UBattleHUDSelectionWidget : public UBattleHUDCardTransitionWidget
 {
 	GENERATED_BODY()
 
 public:
 	virtual bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true) override;
 #if WITH_DEV_AUTOMATION_TESTS
-	// Exact-token presentation lifecycle probe, matching the existing Native HUD
-	// test pattern. Production playback still completes through the timer path.
+	// Kept as a compatibility test entry point while G4 migrates the old
+	// Selection-subclass Hand->Draw path. It now drives the generic transition.
 	void FinishSharedHandToDrawPilePresentationForTesting(
 		const FPresentationPlaybackToken& ExpectedToken)
 	{
-		FinishSharedHandToDrawPilePresentation(ExpectedToken);
+		FinishNativeCardTransitionForTesting(ExpectedToken);
 	}
 
 	UOverlay* GetSelectionAreaHostForTesting() const
 	{
 		return SelectionAreaHost;
+	}
+
+	void SetSelectionAreaHostForTesting(UOverlay* InHost)
+	{
+		SelectionAreaHost = InHost;
 	}
 #endif
 
@@ -48,6 +53,34 @@ protected:
 		const FPresentationPlaybackToken& Token) override;
 	virtual void CancelPresentationRecordPlayback_Implementation(
 		const FPresentationPlaybackToken& Token) override;
+
+	virtual UOverlay* GetCardTransitionSelectionAreaHost() const override
+	{
+		return SelectionAreaHost;
+	}
+
+	virtual bool TryGetCardTransitionCompatibilitySourceCenter(
+		int32 RuntimeId,
+		FVector2D& OutAbsoluteCenter) const override
+	{
+		if (const FVector2D* Center = ConfirmedCardCenters.Find(RuntimeId))
+		{
+			OutAbsoluteCenter = *Center;
+			return true;
+		}
+		return false;
+	}
+
+	virtual void OnNativeCardTransitionAccepted(int32 RuntimeId) override
+	{
+		ConfirmedCardCenters.Remove(RuntimeId);
+		SetPlayedCardSelectionHidden(true);
+	}
+
+	virtual void OnNativeCardTransitionEnded(int32 RuntimeId, bool bCancelled) override
+	{
+		SetPlayedCardSelectionHidden(!ConfirmedCardCenters.IsEmpty());
+	}
 
 private:
 	UFUNCTION()
@@ -64,8 +97,9 @@ private:
 	void SetPlayedCardSelectionHidden(bool bHidden);
 	void SetSelectionLayoutActive(bool bActive);
 
-	// G0-C persistent visual host. It is intentionally empty/dormant until G4/G5
-	// switches selected-card production ownership away from formal Hand widgets.
+	// G0-C persistent visual host. It remains dormant for production Selection in
+	// G4, but the generic source resolver can consume an exact test/ future G5
+	// SelectionArea-owned visual without adding destination logic here.
 	UPROPERTY(Transient)
 	TObjectPtr<UOverlay> SelectionAreaHost = nullptr;
 
@@ -76,6 +110,9 @@ private:
 	TMap<int32, FVector2D> ConfirmedCardCenters;
 	bool bSelectionVisualMode = false;
 
+	// G4 compatibility shell. Begin delegates to the generic transition layer;
+	// the remaining old fields/helpers are dormant and have an explicit G7
+	// deletion target once G5 production ownership is proven.
 	bool BeginSharedHandToDrawPilePresentation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);

@@ -471,90 +471,10 @@ bool UBattleHUDSelectionWidget::BeginSharedHandToDrawPilePresentation(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token)
 {
-	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
-	UBattleCardWidget* HistoricalHandCard = nullptr;
-	if (!IsNativeRecordTokenConsistent(Record, Token)
-		|| bSharedTransferActive
-		|| HasActiveNativePresentation()
-		|| !IsValid(ViewModel)
-		|| !IsValid(HB_Hand)
-		|| !IsValid(OV_PlayArea)
-		|| !IsValid(Txt_DrawCount)
-		|| CardWidgetClass == nullptr
-		|| !IsNativeCardSnapshotValid(Payload.Card)
-		|| Payload.ToIndex != ViewModel->DrawCount
-		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
-	{
-		return false;
-	}
-
-	UBattleCardWidget* MovingCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(MovingCard)
-		|| !CommitNativePresentationOwnership(Record.Type, Token))
-	{
-		return false;
-	}
-
-	UOverlaySlot* MotionSlot = OV_PlayArea->AddChildToOverlay(MovingCard);
-	if (!IsValid(MotionSlot))
-	{
-		MovingCard->RemoveFromParent();
-		AbortNativePresentationStart();
-		return false;
-	}
-	MotionSlot->SetHorizontalAlignment(HAlign_Center);
-	MotionSlot->SetVerticalAlignment(VAlign_Center);
-
-	SharedTransferHistoricalCard = HistoricalHandCard;
-	SharedTransferHistoricalVisibility = HistoricalHandCard->GetVisibility();
-	if (ConfirmedCardCenters.Contains(Payload.Card.RuntimeId)) SharedTransferHistoricalVisibility = ESlateVisibility::Visible;
-	SharedTransferMovingCard = MovingCard;
-	SharedTransferToken = Token;
-	SharedTransferElapsedSeconds = 0.0f;
-	SharedTransferStartTranslation = SharedSelectionHandFallbackTranslation;
-	SharedTransferEndTranslation = SharedSelectionDrawPileFallbackTranslation;
-	bSharedTransferGeometryInitialized = false;
-	bSharedTransferActive = true;
-
-	if (const FVector2D* Center = ConfirmedCardCenters.Find(Payload.Card.RuntimeId))
-	{
-		const FGeometry& AreaGeometry = OV_PlayArea->GetCachedGeometry();
-		if (AreaGeometry.GetLocalSize().SizeSquared() > 0.0f)
-			SharedTransferStartTranslation = FVector2D(AreaGeometry.AbsoluteToLocal(*Center)) - FVector2D(AreaGeometry.GetLocalSize() * 0.5f);
-	}
-	MovingCard->SetRenderTranslation(SharedTransferStartTranslation);
-	MovingCard->SetRenderScale(FVector2D(1.0f, 1.0f));
-	MovingCard->SetRenderOpacity(1.0f);
-	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
-
-	UWorld* World = GetWorld();
-	if (!IsValid(World))
-	{
-		CancelSharedHandToDrawPilePresentation();
-		return false;
-	}
-
-	const FPresentationPlaybackToken ExpectedToken = SharedTransferToken;
-	const TWeakObjectPtr<UBattleHUDSelectionWidget> WeakThis(this);
-	FTimerDelegate FinishDelegate = FTimerDelegate::CreateLambda(
-		[WeakThis, ExpectedToken]()
-		{
-			if (UBattleHUDSelectionWidget* Widget = WeakThis.Get())
-			{
-				Widget->FinishSharedHandToDrawPilePresentation(ExpectedToken);
-			}
-		});
-	World->GetTimerManager().SetTimer(
-		SharedTransferFinishTimer,
-		FinishDelegate,
-		SharedSelectionTransferDurationSeconds,
-		false);
-	if (!SharedTransferFinishTimer.IsValid())
-	{
-		CancelSharedHandToDrawPilePresentation();
-		return false;
-	}
-	return true;
+	// G4 migration adapter only. The destination/source/animation implementation
+	// now lives in UBattleHUDCardTransitionWidget. This shell remains until G7 so
+	// the staged change does not mix generic-engine activation with legacy cleanup.
+	return Super::BeginPresentationRecordPlayback_Implementation(Record, Token);
 }
 
 void UBattleHUDSelectionWidget::UpdateSharedHandToDrawPileAnimation(float DeltaSeconds)
