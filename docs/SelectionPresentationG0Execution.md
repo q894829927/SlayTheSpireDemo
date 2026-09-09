@@ -20,7 +20,7 @@ G0-B implementation: COMPLETE, draw-adoption repair / automated gates PASS
 G0-C dormant infrastructure: COMPLETE, automated gates PASS
 Manual draw/selection PIE: PASS / USER CONFIRMED 2026-09-09
 G0: COMPLETE / VALIDATED / SEALED
-G1 production work: NOT STARTED
+G1: COMPLETE / VALIDATED / SEALED — see SelectionPresentationG1Execution.md
 ```
 
 No `.uasset` or `.umap` change is part of G0.
@@ -251,4 +251,4 @@ User completed the required Native `/Game/SlayTheSpireDemo/Maps/L_BattleTest` ma
 [x] input is restored after the full Presentation / Selection flow completes
 ```
 
-This closes the remaining manual G0 Gate. G0-A/B/C are now complete, validated and sealed. No G1 behavior is implied by this acceptance; production SelectionArea ownership remains deferred to the later migration stages.
+This closes the remaining manual G0 Gate. G0-A/B/C are now complete, validated and sealed. Later G1 outcome-correlation/metadata work was subsequently completed, validated and sealed on 2026-09-09; see `docs/SelectionPresentationG1Execution.md`. Production SelectionArea ownership remains deferred to the later migration stages.
