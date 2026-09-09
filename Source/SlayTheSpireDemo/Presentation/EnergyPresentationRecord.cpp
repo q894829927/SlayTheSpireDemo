@@ -1,5 +1,6 @@
 #include "EnergyPresentationRecord.h"
 
+#include "BattlePresentationRecorder.h"
 #include "PresentationTypes.h"
 #include "../Battle/EnergyMutation.h"
 
