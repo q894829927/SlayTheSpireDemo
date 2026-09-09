@@ -7,12 +7,15 @@ Status:
 ```text
 PARTIALLY IMPLEMENTED / VISUAL-OWNERSHIP REDESIGN AUTHORITATIVE /
 LIFECYCLE WATERMARK + OWNERSHIP DIRTY CONTRACT DEFINED /
+G0 A/B/C IMPLEMENTED / AUTOMATED EVIDENCE RECORDED / MANUAL PIE PENDING /
 GROUP PRODUCTION CODE NOT IMPLEMENTED / NOT SEALED
 ```
 
 Scope: define the shared Native HUD / Presentation contract for current and future player card-selection interactions.
 
 This document is authoritative for card-selection Presentation behavior. `docs/CardSelectionRefactorConstraints.md` remains authoritative for Gameplay candidate capture, pending requests, resolver/continuation behavior and interactive-boundary rules. `docs/SelectionPresentationGroupDesign.md` specifies the grouped multi-selection implementation in more detail.
+
+Current implementation and evidence are recorded in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`. G0 uses incremental Native dirty propagation and Battle-scoped Hand Widget reuse; its ownership APIs and empty SelectionAreaHost are dormant. Production Selection still uses formal-Hand transforms and `ConfirmedCardCenters`. Sections below describe the target unless explicitly identified as current; they do not authorize an early ownership switch.
 
 ## 1. Core principle
 
@@ -199,6 +202,8 @@ SelectionArea(Pending)
 
 Confirm also arms/associates the exact lifecycle with a completion watermark as soon as the relevant recorded Resolution or direct post-confirm state edge is knowable. The lifecycle may temporarily be `Confirmed + completion watermark not yet resolved`, but that state MUST NOT be treated as completed.
 
+This is an acceptance transaction, not unconditional mutation before a fallible Request. Preserve the exact pending request/lifecycle and visuals during submit; commit Confirmed only for accepted submission, or use reversible preparation that cannot publish a false completion. Rejection with the same pending request restores Pending interaction; rejection due to a replaced/failed request reconciles against that new boundary. Detailed outcome correlation and re-entrancy requirements are in Group design sections 5.5 and 9.3 and gate G5.
+
 ### 4.4 Destination playback acceptance
 
 Only an actually accepted visible transition transfers ownership:
@@ -262,7 +267,7 @@ Recovery to Hand is legal only when all are true:
 RuntimeId still exists in displayed Hand
 AND ownership entry matches current BattleId + SelectionGeneration + boundary
 AND Confirmed lifecycle completion watermark is resolved and reached
-AND no destination Transition / pending visual ownership remains
+AND exact visual work is finished/cancelled at the completion boundary
 ```
 
 Then:
@@ -275,6 +280,8 @@ degradation recovery
 ```
 
 This prevents ghost SelectionArea cards for malformed/unsupported cases such as a selected object producing zero eligible destination records.
+
+For G0-G7, a stale Transition/ConsumedPendingReducer entry must not veto this fail-safe: the reached exact watermark recovers all Confirmed non-Hand owners still in Hand. Cancel/release visual work before publishing completion, then reconcile ownership coherently. Recorded completion is exact Resolution membership, not `LatestCompletedResolutionId >= owningId`. Pending stale-boundary cleanup is separate from Confirmed completion.
 
 The following MUST NOT count as lifecycle completion by themselves:
 
@@ -292,7 +299,7 @@ Confirm
 → owner remains SelectionArea(Confirmed)
 → owning Resolution eventually reaches FinalSnapshot/completion watermark
 → RuntimeId still in Hand
-→ no destination pending
+→ exact visual work finished/cancelled at completion
 → owner returns to Hand
 ```
 
@@ -321,7 +328,7 @@ Direct-mode lifecycle completion is reached only when the authoritative post-con
 ```text
 post-confirm direct baseline displayed
 → if RuntimeId absent from Hand: clear owner
-→ if RuntimeId still in Hand and no destination pending: owner = Hand
+→ if RuntimeId still in Hand after exact visual cleanup: owner = Hand
 ```
 
 ### 5.5 Ownership mutation has an independent dirty/event channel
@@ -417,6 +424,8 @@ SelectionArea visual
 
 The formal Hand rebuild/reconcile MUST NOT reconstruct SelectionArea continuity by restoring confirmed transforms or positions.
 
+Formal Widget reuse is Battle-scoped. Completed draw adoption must restore normal hit testing/request binding before applying explicit ownership suppression. A temporary draw visual may be appended during active playback; the exact child-count invariant applies at stable snapshot/preflight boundaries, not midway through that existing animation.
+
 Legacy `ConfirmedCardCenters`, position handoff data or equivalent may exist temporarily only as migration compatibility implementation detail. They are **not** a second authoritative ownership mechanism and MUST be removed after the production ownership migration is validated.
 
 ## 8. Historical index vs visual identity
@@ -504,6 +513,8 @@ Group lookahead MUST NOT:
 
 `ExpectedMemberCount <= 1` remains normal SingleRecord Controller playback initially.
 
+Expected count alone is not proof of selected membership. G1 must provide a sealed canonical selected-identity manifest (or equivalent writer-validated evidence), including zero-record outcomes; G2 compares exact membership and checks all interleaved records, including members of other groups. See Group design sections 12 and 17.
+
 ## 11. Controller semantic preflight vs Widget visual preflight
 
 The Controller deals only with immutable committed semantics. It MUST NOT query or mutate concrete HUD ownership state.
@@ -552,7 +563,7 @@ Controller records only which record indices were visually presented. It does no
 
 Chronological reducer dry-run is necessary but insufficient.
 
-For each interleaved ungrouped Record before a future member's own reducer position, a direct exact-card operation on that future RuntimeId disables group co-presentation.
+For each interleaved Record outside the candidate group before a future member's own reducer position, a direct exact-card operation on that future RuntimeId disables group co-presentation. A Record tagged for another group is not exempt.
 
 At minimum:
 
@@ -738,6 +749,8 @@ G7   delete compatibility handoff/old Selection-specific transition code;
 ```
 
 G0-C/G5 separation is mandatory unless combined into one coherent behavior-safe migration. It is forbidden to hide the formal Hand source in production before the generic SingleRecord transition engine can consume a SelectionArea source.
+
+G0 is already implemented; resume from its recorded evidence and remaining manual draw/selection check. G1 must establish exact Selection-to-continuation outcome correlation independently of optional Group tags; G3 wires exact completion and scoped recovery; both are prerequisites for G5. First close correct sequential SelectionArea playback, then enable Group concurrency. G8 remains deferred and requires the explicit lifetime amendment in Group design section 30.5.
 
 ## 21. Acceptance gates
 

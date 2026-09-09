@@ -30,7 +30,7 @@ When Presentation is enabled, `OnReadStateReady` must not bypass Presenter/Contr
 
 ### Incremental HUD reconciliation
 
-The existing generic `OnChanged → RefreshHUDFromViewModel()` full-refresh behavior is legacy architecture to be replaced during the Selection Presentation redesign. New work MUST NOT depend on "every historical change rebuilds every HUD surface" as a correctness mechanism.
+Native incremental consumers use dirty descriptors; payload-free `OnChanged` remains a compatibility notification. New work MUST NOT depend on "every historical change rebuilds every HUD surface" as a correctness mechanism. Full refresh is appropriate for initialization/replacement or explicit recovery, not every publication.
 
 Target behavior:
 
@@ -50,7 +50,9 @@ Historical snapshots remain complete; incremental UI reconciliation does not mak
 
 Formal Hand presentation preserves frozen Hand ordering and historical slot/index semantics while existing index-based contracts remain.
 
-Hand Widget identity should be RuntimeId-keyed and surviving cards should be reconciled/reused rather than destroyed through unconditional `HB_Hand->ClearChildren()` + recreate-all behavior.
+Hand Widget identity is keyed by `(BattleId, RuntimeId)`; surviving cards within that Battle should be reconciled/reused rather than destroyed through unconditional `HB_Hand->ClearChildren()` + recreate-all behavior. Reattaching a Widget does not imply recreating it, but geometry and slot state must be revalidated after attachment.
+
+When a completed draw visual is adopted as a formal Hand card, retire its presentation-only hit-test suppression and bind normal requests. A visible card must permit child button hit testing (`Visible` or `SelfHitTestInvisible`); `HitTestInvisible` suppresses children too. Apply explicit non-Hand ownership afterward, preserving Hidden/input-disabled structural slots. Do not globally reset playback visibility on every dirty event.
 
 Required distinction:
 
@@ -211,7 +213,7 @@ For a RuntimeId that still exists in Hand, recovery to `Hand` is permitted only 
 
 ```text
 confirmed lifecycle completion watermark is reached
-AND no destination ownership/transition remains pending
+AND exact visual work is finished/cancelled before completion publication
 AND entry still belongs to the exact BattleId + SelectionGeneration + boundary
 ```
 
@@ -223,6 +225,10 @@ degradation recovery
 ```
 
 Request/resolver disappearance alone MUST NOT satisfy the watermark.
+
+Visual cleanup is an obligation at the completion boundary, not a veto by a stale `Owner == Transition` enum. For G0-G7, a reached exact watermark recovers every remaining Confirmed non-Hand entry, including failed Transition/ConsumedPendingReducer entries. Recorded completion requires proof for the exact ResolutionId, not comparison with a larger observed ID. Pending entries instead cancel when their selection boundary becomes stale.
+
+Before production ownership activation, implement the Confirm acceptance/rejection and outcome-correlation protocol in `docs/SelectionPresentationGroupDesign.md` sections 5.5 and 9.3. A rejected submission must not leave a closed generation or a permanently Confirmed visual.
 
 This reconciliation is required for Widget decline, unsupported destination, malformed/zero-member continuation, no-history/direct-baseline mode, timeout, skip/collapse, Widget replacement and battle replacement.
 
@@ -283,6 +289,8 @@ On visual rejection, return false and let Controller degrade without partially t
 
 On group visual completion, Presentation/UI may move exact future members to `ConsumedPendingReducer` before forwarding Base Widget completion. Controller tracks visually-presented Record indices but does not directly mutate card Presentation ownership.
 
+Coherent ownership data alone does not guarantee coherent Widgets: visual transfer/release must be transactional and GC-safe, and may not rely on multicast listener registration order. The G0 ownership channel does not by itself prove multi-surface visual atomicity.
+
 ## Committed Presentation
 
 The committed-history flow remains:
@@ -309,6 +317,8 @@ Phase 6UI-A uses explicit card selection followed by legal-target selection. Ene
 Presentation may lock the View while Gameplay is request-eligible. Unlock only after Controller catches up to the newest matching revision and authoritative Gameplay remains request-eligible.
 
 A single physical input event must not cross Presentation/Selection/Confirm state boundaries.
+
+G8 overlap is a deferred design extension, not an exception currently enabled here. Before activating it, define how detached visual-job lifetime differs from G0-G7 Hand-absence cleanup and Resolution completion; see the Group design section 30.5. Do not let an old job write current formal HUD values or reclaim a newly drawn instance of the same RuntimeId.
 
 ## Preview Phase Boundary
 

@@ -5,11 +5,11 @@ Date: **2026-09-09**
 Status:
 
 ```text
-DRAFT / OWNERSHIP-LIFECYCLE REVIEW CLOSED IN DESIGN /
+DRAFT / CODE-ALIGNED REVIEW INCORPORATED /
 COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
 G8 EARLY-INPUT / PRESENTATION-PIPELINING TARGET DEFINED /
-AUTHORITATIVE CONTRACTS ALIGNED / NO PRODUCTION GROUP CODE IMPLEMENTED /
-NOT VALIDATED / NOT SEALED
+G0 IMPLEMENTED WITH AUTOMATED EVIDENCE / G0 MANUAL PIE PENDING /
+NO PRODUCTION GROUP CODE IMPLEMENTED / G1-G8 NOT VALIDATED / NOT SEALED
 ```
 
 Related contracts:
@@ -19,6 +19,25 @@ Related contracts:
 - `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
 - `Source/SlayTheSpireDemo/UI/AGENTS.md`
 - `docs/SelectionPresentationGroupImplementationPlan.md`
+
+## Implementation baseline and review findings — 2026-09-09
+
+Reviewed against HEAD `ce36e56bd540a3e6c9cf977aa353e71f2054b081`.
+
+| Area | Code evidence | Consequence for the plan |
+|---|---|---|
+| G0 A/B | `BattleHUDReconciledWidget`, `BattleHUDViewModel::ApplyPresentationSnapshot` | Incremental dirty and Battle-scoped reuse already exist; preserve completed-draw hit-test adoption. |
+| G0 C | `BattleHUDViewModelPresentationOwnership.cpp` | Exact completion set and standalone lifecycle APIs exist; production Selection and Controller do not yet wire them. |
+| Current Selection | `BattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked` | Uses fallible bool submission and compatibility centers; rejected Confirm must remain interactive after migration. |
+| Interactive boundary | `AdvancePresentationAtInteractiveSelectionBoundary`, `DeferredSelectionAction`, queue writer rebinding | Pre-choice Envelope seals before the continuation writer opens; never infer the outcome from the displayed pre-choice Resolution. |
+| Controller recovery | `CompleteActiveEnvelope`, `CollapseToEnvelope`, `ClearPlaybackState` | Completion is not wired to ownership; current collapse clears playback backlog, so it cannot serve the proposed active-envelope recovery unchanged. |
+| Group/transition | Record types have no Group protocol; Native card playback has one active instance | G1-G6 are planned work, not functionality established by G0 tests. |
+
+Priority findings corrected below: contradictory completion predicates, missing
+Confirm rejection/outcome correlation, insufficient group membership proof,
+missing visual transaction details, and G8 lifetime conflict. Existing evidence
+is in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`; this
+documentation review does not claim additional runtime validation.
 
 ## 1. Goal
 
@@ -297,6 +316,38 @@ lifecycle definitely NOT complete
 
 It must later be armed with the exact recorded/direct watermark through the formal Presentation/read boundary. It MUST NOT cause fallback restoration.
 
+### 5.5 Outcome correlation is required independently of Group membership
+
+Before G5 activation, provide an immutable outcome correlation across the formal
+Selection/read/Presentation boundary. It must associate the exact submitted
+request boundary with its accepted continuation ResolutionId, or its strictly
+newer direct baseline revision. UI maps that identity to its local
+SelectionGeneration; Gameplay does not depend on Widget ownership or generation.
+Exact API/DTO layout is an implementation choice in G1, not an existing API.
+
+The correlation must remain available after resolver clearing and for zero
+eligible records, one-member SingleRecord, recording disabled, and declined Group
+playback. GroupId alone and searching for the first destination Record are
+insufficient. Do not guess `ResolutionId + 1`, take the newest Resolution, or use
+SelectionSource/CardId/candidate-array equality as a request identity.
+
+The current interactive boundary seals the pre-choice Envelope and rebinds queued
+Actions to a continuation writer. Use that verified continuation scope. A later
+selection boundary may seal another segment: prove that the correlated segment
+contains all direct destination work for this choice before using its completion
+as final. If a future continuation spans segments, define an explicit terminal
+outcome edge; neither the first segment nor another choice's completion is proof.
+Keep correlation local to the bounded selection/continuation lifecycle; no global
+registry or Gameplay dependency on Presentation availability is needed.
+
+Recorded completion uses the exact `(BattleId, ResolutionId)` completion set, as
+G0 currently does. A numerically greater completed ID is not evidence for an
+unobserved ID. Direct completion requires `target revision > boundary revision`
+and displayed same-Battle revision at least that target. Armed identity is
+immutable except for idempotent re-arming. Global collapse explicitly accounts
+for the discarded scopes it terminates; it does not fabricate completion for
+every smaller numeric ID.
+
 ## 6. SelectionArea Host
 
 SelectionArea must be a persistent production surface, not a render translation inside `HB_Hand`.
@@ -359,6 +410,11 @@ old RuntimeIds vs new RuntimeIds
 ```
 
 This preserves stable Widget identity, geometry and local state for surviving cards.
+Widget identity does not guarantee unchanged cached geometry after slot
+reattachment. Revalidate geometry when preparing a transition. Current DrawToHand
+temporarily appends one presentation-only child; the exact historical count/index
+contract applies at stable reconciled/preflight boundaries. Its formal adoption
+must restore child hit testing and request binding, then apply explicit ownership.
 
 Historical indexes remain valid for record/snapshot validation but are not the primary live visual lookup.
 
@@ -398,6 +454,21 @@ SelectionArea(Pending)
 Closing the interactive overlay MUST NOT destroy confirmed selected visuals.
 
 Confirm emits ownership dirty for the phase change. It associates the exact lifecycle with a completion watermark once the recorded/direct outcome identity becomes knowable. Until then the watermark remains Unresolved and the lifecycle is not complete.
+
+The diagram is the successful path. Actual submission is fallible and may run
+continuation work synchronously. Prepare the exact lifecycle without destroying
+Pending visuals; submit through the formal Request boundary, then commit
+Confirmed only on acceptance. Any provisional phase/input change must be
+reversible and notifications buffered so re-entrant state/outcome callbacks
+cannot observe half a transaction. Do not invoke G0's irreversible Confirm API
+before a request whose rejection has no rollback path.
+
+On rejection with the same exact pending request, preserve choices and restore
+Pending input. On request replacement or internal failure, reconcile the exact
+old lifecycle against the new authoritative boundary; do not restore stale
+choices into the new request. Accepted submission followed by missing outcome
+metadata must have an explicit unavailable/recovery path, never an indefinitely
+Unresolved ghost. G5 tests must cover all these dispositions.
 
 ### 9.4 Single/Group transition accepted
 
@@ -441,6 +512,13 @@ copy/accept historical displayed state
 
 No intermediate publish may expose both the formal Hand card and SelectionArea card as visible, or neither when recovery should restore Hand.
 
+This is a final observable/rendered-state guarantee, not proof supplied by two
+multicast events. G0 reconciles data before publishing historical then ownership
+dirty; separate future surface listeners could still observe partially updated
+Widgets. G5/G6 must stage all affected visual changes under one transaction,
+release the old visible owner before revealing its replacement, and defer
+external callbacks until commit. Never depend on listener registration order.
+
 ### 10.1 Consumed in displayed state
 
 ```text
@@ -464,8 +542,7 @@ CanRestoreConfirmedOwnerToHand(entry, displayedState) =
     AND entry.CompletionWatermark is resolved
     AND entry.CompletionWatermark is reached
     AND RuntimeId still exists in displayed Hand
-    AND no accepted Transition owns RuntimeId
-    AND no pending destination ownership for this lifecycle remains
+    AND exact visual work has been finished/cancelled before completion publication
 ```
 
 Only then:
@@ -480,11 +557,19 @@ degradation recovery
 Recorded mode `watermark reached` means:
 
 ```text
-Controller/Presentation completion watermark >= exact owning ResolutionId
+CompletedResolutionIds.Contains(exact owning ResolutionId)
 for the same BattleId
 ```
 
 where completion includes normal completion or formal FinalSnapshot/collapse recovery.
+
+For G0-G7, completion is a terminal visual boundary. A leftover Transition or
+ConsumedPendingReducer enum is stale bookkeeping, not grounds to withhold
+recovery forever. Match current G0 behavior: recover any Confirmed non-Hand owner
+still in Hand once its exact watermark is reached. Production completion wiring
+must cancel/release exact visual work first, then reconcile data and surfaces
+coherently. Pending entries instead expire on their stale selection boundary;
+they do not wait for a Confirmed watermark.
 
 Direct mode `watermark reached` means:
 
@@ -513,7 +598,7 @@ Confirm B
 → owning recorded Resolution still runs/completes
 → FinalSnapshot/completion watermark reached
 → B still exists in displayed Hand
-→ no destination pending
+→ exact visual work finished/cancelled at completion
 → B owner = Hand
 ```
 
@@ -603,6 +688,14 @@ FromZone = Hand
 Kind = SelectionDestination
 ```
 
+The tag above is only a record reference, not the full validity proof. The sealed
+Envelope must also carry a group declaration with the canonical selected
+identities (or equivalent recorder-validated evidence), not merely their count.
+G2 compares the member identity set with that declaration and rejects omissions,
+substitutions and duplicates. A declaration can have zero emitted members so
+missing outcomes are diagnosable; lifecycle completion still uses section 5.5,
+not discovery of a tagged leader. Do not copy UObject pointers into this metadata.
+
 ## 13. Writer-scoped GroupId allocation
 
 Only the frozen writer capability may allocate:
@@ -626,6 +719,13 @@ After resolution, canonical selected candidate RuntimeSequences are mapped. For 
 Direct continuation Actions receive optional Action-local group context.
 
 Trigger reactions inherit the ordinary Presentation writer but MUST NOT inherit Selection group context.
+
+Allocate correlation using the post-boundary writer. Context propagation to
+direct children is explicit; writer propagation/rebinding alone must not spread
+group context to reactions, retries or a later independent Selection. A missing
+writer or optional group allocation/validation failure disables grouping while
+preserving all ordinary records and Gameplay behavior; it cannot fault Gameplay
+or discard valid serial history.
 
 A concrete card-zone Action stamps a group only when its committed exact RuntimeId matches the direct selected set.
 
@@ -667,7 +767,7 @@ Semantic failure marks the group sequentially disabled without Gameplay fault.
 
 Reducer validity alone cannot authorize early visible consumption.
 
-For every future group member, inspect interleaved ungrouped exact-card records before that member's reducer position.
+For every future group member, inspect every interleaved record outside this group before that member's reducer position, including records tagged for another group. Foreign tags do not exempt an exact-card conflict. Unknown/new record shapes conservatively reject lookahead until classified.
 
 At minimum:
 
@@ -775,6 +875,22 @@ owner == ConsumedPendingReducer
 
 Destination style is committed-zone-driven only.
 
+The initial G4 migration includes existing Hand→DrawPile/Discard/Exhaust paths;
+Discard is already production behavior and cannot be silently deferred. Preserve
+CardPlayed, DrawPile→Hand and PlayArea cleanup through explicit adapters until
+their replacement has equivalent coverage; remove only state actually replaced.
+
+Formal structural Widgets remain in Hand while their historical entry exists.
+Use a frozen-data SelectionArea visual alongside the Hidden formal slot; do not
+reparent the sole formal child and thereby break count/index or G0 identity.
+Hand sources may likewise use an in-place or separate moving visual. Once a
+SelectionArea visual exists, its transfer to Transition preserves that exact
+visible object. This permits a Hidden structural Widget plus one visible owner,
+not two visible cards. All prepared/moving visuals need GC-tracked references
+through commit, rollback and callback completion. Reparented geometry must be
+converted in the common HUD coordinate space and Host availability/layer order
+validated before production activation.
+
 SingleRecord uses one instance. Group uses N instances.
 
 ## 21. Sequential fallback
@@ -877,7 +993,7 @@ post-confirm direct watermark not yet displayed
 
 post-confirm direct watermark displayed
 → card absent from Hand: clear owner
-→ card remains in Hand and no destination pending: owner back to Hand
+→ card remains in Hand after exact visual cleanup: owner back to Hand
 ```
 
 No ghost SelectionArea visual may wait for a nonexistent record.
@@ -1052,7 +1168,8 @@ Focused coverage must include:
 - no CardId/Effect-specific branches;
 - Gameplay/reducer chronology remains authored.
 
-No Build, Automation or PIE result is claimed by this design document.
+G0 evidence is linked in the implementation baseline above. No G1-G8 Build,
+Automation or PIE result is claimed by this design document.
 
 ## 30. G8 target architecture — Presentation Pipelining / Early Input
 
@@ -1189,6 +1306,21 @@ B/C/D owner = Hand          // current interactive Hand
 Hand reconciliation MUST NOT reclaim A merely because a newer Hand snapshot is displayed. Conversely, A's old visual job MUST NOT block B/C/D input unless it owns a declared InteractionBarrier for the current revision.
 
 A stale older job cannot mutate ownership belonging to a newer BattleId/generation/revision.
+
+**Design amendment required before G8 activation:** this example is incompatible
+with G0-G7's immediate Hand-absence cleanup and Resolution-completion recovery.
+Do not simply reuse those selection entries to keep detached tails alive. Define
+a distinct exact visual-job lifetime, with frozen display data and a token that
+cannot target the current formal Widget. Releasing a selection entry on reducer
+consumption must not destroy an intentionally retained cosmetic job; conversely,
+an old job must never reclaim a RuntimeId redrawn into Hand at a newer revision.
+
+Selection completion, reducer completion and visual-job completion need separate
+proofs. Old jobs may update only their private cosmetic surfaces, not current
+HP/Energy/pile/status/Hand widgets. First permit isolated damage-number/hit-flash
+tails; keep card transfers Blocking until same-RuntimeId return, visual ownership,
+cleanup and resource limits have a dedicated tested contract. This is a deferred
+extension, not permission to weaken the G0-G7 recovery rule now.
 
 ### 30.6 Controller/scheduler boundary
 

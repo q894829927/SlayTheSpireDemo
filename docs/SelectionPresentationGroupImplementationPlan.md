@@ -9,7 +9,8 @@ PLANNED / OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
 COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
 G8 EARLY-INPUT / PRESENTATION-PIPELINING PHASE PLANNED /
 UI-FOUNDATION-FIRST / BEHAVIOR-SAFE STAGING /
-NO PRODUCTION IMPLEMENTATION YET / NOT VALIDATED / NOT SEALED
+G0 A/B/C IMPLEMENTED / AUTOMATED GATES HAVE PASSING EVIDENCE /
+G0 MANUAL PIE PENDING / G1-G8 PLANNED / NOT SEALED
 ```
 
 Related contracts:
@@ -19,6 +20,35 @@ Related contracts:
 - `docs/CardSelectionRefactorConstraints.md`
 - `Source/SlayTheSpireDemo/Presentation/AGENTS.md`
 - `Source/SlayTheSpireDemo/UI/AGENTS.md`
+
+## Current code baseline and next delivery
+
+Code review base: `ce36e56bd540a3e6c9cf977aa353e71f2054b081` (2026-09-09).
+G0 implementation/evidence: `docs/SelectionPresentationG0Execution.md` and
+`docs/Validation.md`. These are execution/evidence records, not new global rules.
+The Group design's implementation-baseline table records the inspected code.
+
+Do not reimplement G0. Its dirty propagation, Battle-scoped Hand reuse and
+completed-draw adoption are active; ownership APIs and SelectionAreaHost are
+dormant. G0 Automation does not establish production Host layout, transactional
+multi-surface updates, Confirm outcome correlation or Controller completion wiring.
+
+Recommended delivery checkpoints, retaining G0-G8 numbering:
+
+| Checkpoint | Required result | Evidence before advancing |
+|---|---|---|
+| Current G0 closure | Newly drawn cards can be clicked/played and selected in Warcry | Existing automated evidence plus outstanding focused manual PIE; no blind rerun |
+| G1-G3 protocol foundation | Exact choice/outcome correlation, validated metadata, exact completion and scoped recovery; visible behavior stays serial | Focused correlation/Controller/token tests, Editor build |
+| G4-G5 sequential ownership | Generic existing destinations consume durable SelectionArea; rejected Confirm and no-record outcomes recover | Focused automation plus select/deselect/Confirm/Warcry/multi-select sequential PIE |
+| G6-G7 Group delivery | Transactional parallel children with correct sequential fallback; remove proven-obsolete compatibility paths | Group/order/failure tests plus parallel/no-flash PIE |
+| G8 separate initiative | Measurable input latency improvement using a narrow cosmetic allowlist | Dedicated lifetime/resource contract and overlap tests before activation |
+
+The next implementation slice is dormant G1 outcome correlation and metadata,
+using existing G0 automated evidence. Outstanding G0 PIE does not block that
+non-visual work, but must be resolved before dependent production activation.
+G4/G5 is the first visible correctness milestone; G6 is an
+optimization over it. G8 and optional Status reconciliation do not expand this
+critical path. This review edits documentation only and does not start these stages.
 
 ## 1. Objective
 
@@ -34,7 +64,8 @@ Hand
 
 is the stable visual-ownership lifecycle, and a validated explicit Selection Presentation Group can run N selected-card destination animations concurrently without changing Gameplay or reducer chronology.
 
-The implementation must also correct the UI architecture issues that caused the current multi-select flashback:
+The initiative addresses the UI issues behind the multi-select flashback; G0 has
+already implemented the first two foundations below, while later items remain:
 
 - coarse whole-HUD refresh;
 - recreate-all Hand reconciliation;
@@ -186,6 +217,12 @@ RuntimeId = current visual identity
 - child count remains equal to historical Hand count;
 - Hidden structural slot remains layout-present when explicitly requested by ownership infrastructure tests.
 
+- completed draw visual adoption restores hit testing and request binding;
+- identity is `(BattleId, RuntimeId)`, and `SelfHitTestInvisible` is a valid
+  child-interactive formal state;
+- active DrawToHand may temporarily append a transient child; exact historical
+  count/index is checked after reconciliation and before accepting the next record.
+
 ## 6. G0-C — Dormant Presentation ownership infrastructure
 
 ### Goal
@@ -287,7 +324,7 @@ else if entry is Confirmed
      AND exact BattleId + SelectionGeneration + boundary still match
      AND CompletionWatermark is resolved
      AND CompletionWatermark is reached
-     AND no accepted Transition/pending destination ownership remains:
+     AND exact visual work is finished/cancelled at the completion boundary:
     owner = Hand
 ```
 
@@ -298,6 +335,13 @@ request cleared → owner = Hand
 resolver idle → owner = Hand
 overlay closed → owner = Hand
 ```
+
+Match current G0 fail-safe semantics: a stale Transition/ConsumedPendingReducer
+entry cannot prevent recovery after exact completion. G3 must clean exact visual
+work before publishing completion. Recorded proof is exact set membership, not
+`LastCompletedResolutionId >= target`. Direct target is strictly newer than the
+selection boundary; arming is immutable/idempotent. Pending entries instead expire
+on boundary replacement. Group design sections 5.5 and 10.2 define this protocol.
 
 ### 6.5 Ownership dirty/event channel
 
@@ -335,6 +379,10 @@ copy historical displayed state
 ```
 
 No intermediate notification may expose a duplicate visible RuntimeId or a ghost/no-owner frame.
+
+G0 tests prove coherent ownership data, not future multi-surface Widget atomicity.
+G5/G6 must commit all visual changes before external callbacks/render observation;
+multicast listener order is not a synchronization mechanism.
 
 ### 6.7 Persistent SelectionAreaHost
 
@@ -383,11 +431,28 @@ These tests are required before starting G1 production changes:
 - `ApplyPresentationSnapshot()` preserves ownership storage before reconciliation;
 - historical dirty and ownership dirty can be published coherently with no duplicate-visible transient state.
 
-## 7. G1 — PresentationGroup metadata + writer-scoped correlation
+## 7. G1 — Selection outcome correlation + PresentationGroup metadata
 
 ### Goal
 
 Add explicit committed correlation with no visible behavior change.
+
+### Required outcome protocol before optional grouping
+
+Implement Group design section 5.5: expose immutable exact request-boundary to
+accepted continuation Resolution/direct baseline correlation through the formal
+read/Presentation boundary. Preserve it after resolver clearing, including zero
+destination records and SingleRecord/no-history paths. Do not use GroupId as the
+only receipt, guess the next ResolutionId, or infer request identity from source
+name/candidate arrays. `AdvancePresentationAtInteractiveSelectionBoundary` and
+`DeferredSelectionAction` already establish/rebind the post-choice writer; build
+on this boundary rather than allocating from the displayed pre-choice Envelope.
+
+Document whether all direct destination work fits that segment. A later selection
+boundary must not prematurely complete earlier deferred work; unsupported
+cross-segment grouping degrades to serial, while lifecycle outcome correlation
+still needs an exact terminal edge. This is a G1/G3 test obligation, not proof
+provided by the existing G0 unit-level watermark tests.
 
 ### Work
 
@@ -399,6 +464,14 @@ Add explicit committed correlation with no visible behavior change.
 - current-Hand selected RuntimeSequences map to exact card RuntimeIds;
 - eligible direct continuation Actions stamp matching group metadata;
 - trigger reactions inherit writer only, never group context.
+
+- freeze a canonical selected-identity group declaration or equivalent validated
+  membership evidence at seal, including zero emitted members; count alone cannot
+  prove the exact selected set;
+- absent writer/group allocation failure disables optional grouping, without
+  losing ordinary records or changing Gameplay success/fault behavior;
+- explicitly delimit context propagation to direct eligible actions; do not let
+  queue writer rebinding/reactions/retries inherit it implicitly.
 
 ### Eligibility invariant
 
@@ -418,6 +491,12 @@ one selected RuntimeSequence
 - trigger records ungrouped;
 - canonical selection order, not click order, defines selected identities;
 - no-history Gameplay unchanged.
+
+- exact outcome correlation survives resolver clearing for zero/one/N records;
+- pre-choice completion cannot release post-choice ownership;
+- repeated choices and another interactive boundary cannot alias outcome identity;
+- canonical manifest detects a missing member even without a tagged leader;
+- missing optional group metadata preserves valid serial history.
 
 ## 8. G2 — Controller semantic Group discovery, dry-run and interference
 
@@ -451,11 +530,15 @@ Only sealed Envelope facts:
 At minimum:
 
 ```text
-interleaved CardZoneChanged touching future member → reject group
-interleaved CardPlayed touching future member      → reject group
+interleaved CardZoneChanged outside this group touching future member → reject
+interleaved CardPlayed outside this group touching future member      → reject
 ```
 
 Unrelated Damage/Status/Energy/other-card records do not reject merely by interleaving.
+
+Inspect records tagged for other groups too. Unknown record shapes reject lookahead
+until classified. Compare discovered RuntimeIds to the sealed canonical manifest,
+not just ExpectedMemberCount, and validate each member at its own dry-run cursor.
 
 ### Tests
 
@@ -464,6 +547,9 @@ Unrelated Damage/Status/Energy/other-card records do not reject merely by interl
 - future member leave/return Hand causes semantic visual rejection even if reducer dry-run succeeds;
 - malformed/incomplete groups sequentially disabled;
 - `ExpectedMemberCount <= 1` not offered as Group playback.
+
+- same count but wrong member identity rejects; foreign-group exact-card conflict
+  rejects; unknown interference shape rejects conservatively.
 
 ## 9. G3 — Base Widget playback-unit hardening + recovery scopes
 
@@ -519,6 +605,14 @@ active-envelope timeout/failure FinalSnapshot reconciliation
 ```
 
 Global/battle replacement paths terminate ownership by their explicit reconciliation semantics; they must not leave a stale recorded watermark half-owned by a newer battle.
+
+Current `CollapseToEnvelope()` calls `ClearPlaybackState()` and drops backlog;
+split the active-envelope path before using it for Group recovery. Completion
+publication must carry exact identity and occur after visual cancellation and
+the applicable final snapshot, with coherent ownership reconciliation. Wire
+zero-record normal completion, direct-mode transitions and unavailable/replacement
+paths too. Controller supplies completion facts; it does not inspect Widgets or
+directly edit owner entries. Test later queued envelopes explicitly.
 
 ### Timeout path
 
@@ -585,7 +679,7 @@ Driven only by committed facts:
 
 - Exhaust;
 - DrawPile;
-- Discard when current generic support is ready;
+- Discard (already supported in current production and required for parity);
 - existing played-card destination behavior as appropriate.
 
 ### Migration order
@@ -593,6 +687,14 @@ Driven only by committed facts:
 Before production SelectionArea switch, migrate existing SingleRecord paths to the generic engine and prove behavior parity.
 
 Warcry remains SingleRecord and is a key migration target once SelectionArea source support exists.
+
+Use the structural/visible distinction in Group design section 20: retain the
+formal Hand Widget and create a frozen-data visible SelectionArea counterpart;
+transfer that exact visible counterpart to Transition. Do not reparent the only
+formal child. Prepared/live visuals require GC-tracked ownership, rollback and
+correct coordinate conversion. Preserve existing CardPlayed/DrawToHand/PlayArea
+paths through adapters until individually migrated; G7 deletes only superseded
+state, not every single-instance field regardless of usage.
 
 ### Tests
 
@@ -602,6 +704,10 @@ Warcry remains SingleRecord and is a key migration target once SelectionArea sou
 - source resolver can consume a test SelectionArea visual;
 - SingleRecord still uses one child;
 - no CardId/Effect branch.
+
+Automated gates cover identity, counts, destination state, exact tokens,
+cancellation and GC-safe lifetime. Manual PIE covers movement/fade/layout parity;
+an Automation state check must not be described as visible movement acceptance.
 
 ## 11. G5 — Production SelectionArea ownership switch
 
@@ -633,6 +739,19 @@ SelectionArea(Pending)
 - completion watermark stays Unresolved until exact recorded/direct outcome identity is known;
 - request clearing does not restore Hand;
 - do not reduce ownership to coordinates.
+
+Implement the fallible transaction in Group design section 9.3. G0
+`ConfirmCardPresentationSelection` closes its generation and has no rejected-submit
+rollback: calling it before the current bool-returning Gameplay submit would
+strand a rejected choice. Stage or commit after acceptance with deferred coherent
+notifications; capture exact outcome events even if continuation executes during
+submit. Same-request rejection restores Pending; replacement/fault reconciles
+the old scope without modifying the new request. Missing correlation must have a
+tested fail-safe and cannot leave Unresolved ownership indefinitely.
+
+Before any Hand hide, preflight Host construction, coordinate space and layer
+order against the production Canvas root. An empty test Host or warning from a
+partial fixture is not evidence that selected visuals remain visible after Confirm.
 
 ### SingleRecord consumption
 
@@ -673,6 +792,12 @@ Temporary compatibility data may remain only if another not-yet-migrated SingleR
 - no-history/direct baseline leaves no ghost card;
 - selected member with zero eligible destination restores/clears only at correct watermark;
 - Warcry SingleRecord SelectionArea→DrawPile works before Group parallel is enabled.
+
+- rejected Confirm preserves Pending choices and input; replacement/fault during
+  submit cannot restore old choices into a new lifecycle;
+- zero-record and synchronous outcome delivery cannot leave an Unresolved ghost;
+- multi-surface notifications/GC during preparation cannot duplicate or lose the
+  visible owner, regardless of delegate registration order.
 
 ## 12. G6 — N-child Group playback + ConsumedPendingReducer
 
@@ -779,7 +904,10 @@ Fresh evidence is required after production code changes:
 - existing generic zone/played-card cleanup regressions;
 - manual PIE for true parallel timing/no-flash and Warcry sequence.
 
-No prior validation may be reused after relevant shared UI/Presentation code changes.
+Follow `docs/ValidationExecutionPolicy.md`: rerun the gates whose proving contract
+is affected by code/test changes or a new failure; retain unaffected passing
+evidence. Do not treat G7 as a requirement to repeat every earlier suite. Separate
+AUTOMATED GATES from MANUAL PIE GATES and record actual scopes/results once.
 
 ## 14. Acceptance matrix
 
@@ -873,9 +1001,11 @@ This plan does not authorize:
 
 ## 17. Start condition
 
-Implementation should begin at **G0-A**, then **G0-B**, then **G0-C**.
+Resume from the implemented G0 baseline, not from G0-A again. Record the remaining
+G0 manual draw/play and Warcry candidate-interaction result before dependent
+production activation; the existing automated results remain valid unless affected.
 
-G1 must not begin until G0-C has passing focused tests for:
+G0's focused lifecycle evidence is the foundation for G1:
 
 ```text
 completion watermark semantics
@@ -885,9 +1015,17 @@ stale lifecycle rejection
 zero-member/no-history reconciliation
 ```
 
+Those are infrastructure tests. Exact real-request correlation, production
+Controller completion/recovery, Confirm rejection and Host visual transactions
+remain G1/G3/G5 integration obligations; do not label them complete from G0 alone.
+
 Do not start visible Group playback first. The UI identity/reconciliation foundation must be stable before parallel playback is enabled.
 
 G8 does not block G0-G7. It begins only after the G0-G7 production path has fresh build/Automation/PIE evidence and the generic multi-instance transition/ownership system is stable enough to support overlapping jobs.
+
+Use applicable evidence reuse rules rather than unconditional full reruns. Before
+G8 implementation, write a dedicated acceptance contract for the lifetime
+amendment in Group design section 30.5 and choose a measured latency scenario.
 
 ## 18. G8 — Presentation Pipelining / Early Input
 
@@ -915,6 +1053,13 @@ A Gameplay commit / triggers / resolution complete
 G8 changes Presentation scheduling and interaction readiness only.
 
 ### 18.1 G8-A — Persistent PresentationPlaybackJob scheduler
+
+First resolve the design mismatch: G0-G7 clears selection ownership when a card
+leaves displayed Hand or its Resolution completes, whereas G8 wants a detached
+visual to survive both edges. Define exact private job lifetime, same-RuntimeId
+return behavior and terminal cleanup before enabling overlap. The existing
+Selection completion API cannot double as job completion. This is new work, not
+an already-proven consequence of G4/G6 supporting N children.
 
 Replace the assumption that all visual lifetime is owned by one blocking active playback slot.
 
@@ -980,6 +1125,11 @@ pure cosmetic status VFX that does not define the next decision surface
 
 Classification must default conservatively. Unknown/new Presentation types remain Blocking until explicitly proven safe.
 
+The first allowlist should contain only isolated cosmetic tails such as damage
+numbers/hit flashes. Keep card transfers Blocking until the detached-card lifetime
+and same-RuntimeId return contract passes. A NonBlocking job may not write current
+formal numeric/Hand surfaces after a newer snapshot is displayed.
+
 ### 18.3 G8-C — InteractionReadyWatermark
 
 Introduce a runtime-comparable input-readiness watermark separate from Selection ownership completion watermark.
@@ -1028,6 +1178,10 @@ B/C/D owner = Hand      // current interactive Hand
 Older visual jobs must not steal current Hand Widget identity or block unrelated current Hand cards.
 
 Enable categories incrementally. Do not convert every animation to NonBlocking in one patch.
+
+Bound active job count/lifetime and define cosmetic eviction/collapse on overload.
+The scheduler must not accumulate unlimited jobs under rapid legal input. Eviction
+cannot change Gameplay/reducer order or relock an already-ready revision.
 
 ### 18.5 G8-E — Recovery, skip and replacement hardening
 
