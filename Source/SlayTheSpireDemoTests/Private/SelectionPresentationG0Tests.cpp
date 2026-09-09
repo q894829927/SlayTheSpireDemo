@@ -277,20 +277,44 @@ bool FSelectionPresentationG0StaleAndTransitionTest::RunTest(const FString& Para
 			42,
 			ECardPresentationOwner::SelectionArea,
 			ECardPresentationOwner::Transition));
-	TestFalse(TEXT("Ownership API cannot bypass completion by transferring back to Hand."),
+	TestFalse(TEXT("Transition cannot regress directly back to SelectionArea."),
 		ViewModel->TryTransferCardPresentationOwnership(
 			FreshGeneration,
 			42,
 			ECardPresentationOwner::Transition,
-			ECardPresentationOwner::Hand));
-	TestTrue(TEXT("Transition owner can still arm Direct completion."),
+			ECardPresentationOwner::SelectionArea));
+	TestTrue(TEXT("Transition advances only to ConsumedPendingReducer."),
+		ViewModel->TryTransferCardPresentationOwnership(
+			FreshGeneration,
+			42,
+			ECardPresentationOwner::Transition,
+			ECardPresentationOwner::ConsumedPendingReducer));
+	TestFalse(TEXT("ConsumedPendingReducer cannot regress into Transition."),
+		ViewModel->TryTransferCardPresentationOwnership(
+			FreshGeneration,
+			42,
+			ECardPresentationOwner::ConsumedPendingReducer,
+			ECardPresentationOwner::Transition));
+	TestTrue(TEXT("Consumed owner can still arm Direct completion."),
 		ViewModel->ArmDirectCardPresentationCompletion(FreshGeneration, 32));
 	ViewModel->ApplyPresentationSnapshot(MakeSnapshot(404, 32, { 41, 42 }), true);
-	TestEqual(TEXT("Reached watermark does not implicitly recover an accepted Transition owner."),
-		ViewModel->GetCardPresentationOwner(42), ECardPresentationOwner::Transition);
+	TestEqual(TEXT("Formal lifecycle completion fail-safe restores even Consumed owner."),
+		ViewModel->GetCardPresentationOwner(42), ECardPresentationOwner::Hand);
 
+	const int64 AbsenceGeneration = ViewModel->BeginCardPresentationSelectionLifecycle(32);
+	TestTrue(TEXT("Absence lifecycle begins."), AbsenceGeneration > 0);
+	TestTrue(TEXT("Card enters SelectionArea before authoritative absence."),
+		ViewModel->SetPendingCardPresentationSelection(AbsenceGeneration, 42, true));
+	TestTrue(TEXT("Card confirms before authoritative absence."),
+		ViewModel->ConfirmCardPresentationSelection(AbsenceGeneration, { 42 }));
+	TestTrue(TEXT("Card transfers to Transition before authoritative absence."),
+		ViewModel->TryTransferCardPresentationOwnership(
+			AbsenceGeneration,
+			42,
+			ECardPresentationOwner::SelectionArea,
+			ECardPresentationOwner::Transition));
 	ViewModel->ApplyPresentationSnapshot(MakeSnapshot(404, 33, { 41 }), true);
-	TestEqual(TEXT("Authoritative absence clears even an unresolved/transition owner."),
+	TestEqual(TEXT("Authoritative absence clears even unresolved Transition owner."),
 		ViewModel->GetCardPresentationOwner(42), ECardPresentationOwner::Hand);
 	return true;
 }
