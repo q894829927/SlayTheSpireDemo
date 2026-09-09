@@ -31,6 +31,23 @@ namespace
 			&& Watermark.ResolutionId == 0
 			&& Watermark.StateRevision == StateRevision;
 	}
+
+	bool IsValidForwardOwnershipTransfer(
+		ECardPresentationOwner ExpectedOwner,
+		ECardPresentationOwner NewOwner)
+	{
+		switch (ExpectedOwner)
+		{
+		case ECardPresentationOwner::SelectionArea:
+			return NewOwner == ECardPresentationOwner::Transition;
+		case ECardPresentationOwner::Transition:
+			return NewOwner == ECardPresentationOwner::ConsumedPendingReducer;
+		case ECardPresentationOwner::Hand:
+		case ECardPresentationOwner::ConsumedPendingReducer:
+		default:
+			return false;
+		}
+	}
 }
 
 void UBattleHUDViewModel::SetPresentationDisplayOwned(bool bOwned)
@@ -249,9 +266,7 @@ bool UBattleHUDViewModel::TryTransferCardPresentationOwnership(
 		|| Entry->SelectionGeneration != SelectionGeneration
 		|| Entry->Owner != ExpectedOwner
 		|| Entry->Phase != ESelectionPresentationVisualPhase::Confirmed
-		|| ExpectedOwner == ECardPresentationOwner::Hand
-		|| NewOwner == ECardPresentationOwner::Hand
-		|| NewOwner == ExpectedOwner)
+		|| !IsValidForwardOwnershipTransfer(ExpectedOwner, NewOwner))
 	{
 		return false;
 	}
@@ -454,7 +469,12 @@ TArray<int32> UBattleHUDViewModel::ReconcileCardPresentationOwnershipInternal()
 			continue;
 		}
 
-		if (Entry.Owner == ECardPresentationOwner::SelectionArea
+		// Formal lifecycle completion is the final fail-safe. Once the exact
+		// recorded/direct watermark is reached, no destination outcome from this
+		// lifecycle may still arrive. Any still-present Hand card therefore returns
+		// to Hand ownership even if a failed timeout/collapse left the transient
+		// owner at Transition or ConsumedPendingReducer.
+		if (Entry.Owner != ECardPresentationOwner::Hand
 			&& Entry.Phase == ESelectionPresentationVisualPhase::Confirmed
 			&& Entry.CompletionWatermark.IsResolved()
 			&& IsCardPresentationCompletionWatermarkReached(Entry))
