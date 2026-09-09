@@ -8,7 +8,7 @@ Status:
 DRAFT / CODE-ALIGNED REVIEW INCORPORATED /
 COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
 G8 EARLY-INPUT / PRESENTATION-PIPELINING TARGET DEFINED /
-G0 IMPLEMENTED WITH AUTOMATED EVIDENCE / G0 MANUAL PIE PENDING /
+G0 COMPLETE / VALIDATED / SEALED /
 NO PRODUCTION GROUP CODE IMPLEMENTED / G1-G8 NOT VALIDATED / NOT SEALED
 ```
 
@@ -38,6 +38,10 @@ Confirm rejection/outcome correlation, insufficient group membership proof,
 missing visual transaction details, and G8 lifetime conflict. Existing evidence
 is in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`; this
 documentation review does not claim additional runtime validation.
+
+The required G0 Native `L_BattleTest` manual draw/selection pass was subsequently
+completed and user-confirmed on 2026-09-09. G0 is therefore complete, validated and
+sealed; the next implementation stage in this design is G1.
 
 ## 1. Goal
 
@@ -1103,7 +1107,7 @@ G8   Presentation pipelining / early input
 
 G0-C must not turn on production SelectionArea ownership before G4 can consume SelectionArea sources. If necessary, G4+G5 may land as one coherent behavior-safe migration rather than exposing a broken intermediate production state.
 
-G8 is explicitly downstream of the G0-G7 ownership/transition foundation. It MUST NOT be used to justify weakening current interactive Presentation boundaries before the earlier stages are validated.
+G0 is complete, validated and sealed. Resume from G1. G8 is explicitly downstream of the G0-G7 ownership/transition foundation. It MUST NOT be used to justify weakening current interactive Presentation boundaries before the earlier stages are validated.
 
 ## 29. Acceptance plan
 
@@ -1168,7 +1172,7 @@ Focused coverage must include:
 - no CardId/Effect-specific branches;
 - Gameplay/reducer chronology remains authored.
 
-G0 evidence is linked in the implementation baseline above. No G1-G8 Build,
+G0 evidence is linked in the implementation baseline above and is sealed. No G1-G8 Build,
 Automation or PIE result is claimed by this design document.
 
 ## 30. G8 target architecture — Presentation Pipelining / Early Input
