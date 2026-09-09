@@ -194,6 +194,10 @@ void ABattleManager::FlushScheduledReadStateReadyForTesting()
 
 void ABattleManager::TryPublishReadStateReady()
 {
+	// Direct/no-history Selection receipts are finalized only on this deferred
+	// read edge, never re-entrantly inside the accepted Gameplay submission.
+	ResolvePendingDirectSelectionOutcomesForReadEdge();
+
 	// Sealed immutable Envelopes are delivered first and in ResolutionId order.
 	// The current-state public edge is keyed by Gameplay revision plus the sticky
 	// Presentation-availability state so an availability transition cannot be

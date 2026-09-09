@@ -5,7 +5,7 @@ Date: **2026-09-09**
 Status:
 
 ```text
-IMPLEMENTATION COMMIT PREPARED /
+IMPLEMENTED IN SOURCE /
 BUILD NOT RUN / AUTOMATION NOT RUN / NO PASS CLAIM
 ```
 
@@ -27,11 +27,17 @@ Recorded mode stores an immutable receipt in the continuation Resolution:
 -> exact continuation ResolutionId
 ```
 
-Direct/no-history mode registers the accepted boundary and finalizes its receipt
-only when the ActionQueue returns to stable idle after continuation Gameplay. The
-resulting StateRevision is strictly newer than the Selection boundary. No code
-guesses `ResolutionId + 1`, the newest Resolution or `BoundaryRevision + 1` before
-that exact outcome exists.
+The existing `FPresentationRecordWriter` now carries the exact interactive
+Selection boundary. On accepted Confirm, `USelectionRequestAction` records the
+receipt through that still-current writer before continuation Actions are queued.
+No code guesses `ResolutionId + 1` or searches for a destination Record.
+
+Direct/no-history mode uses the same writer-shaped boundary capability with no
+active recorder. Accepted Confirm registers the exact boundary in `ABattleManager`.
+The deferred `ReadStateReady` edge resolves it only to a strictly newer
+`StateRevision`; if Gameplay did not otherwise advance the revision, G1 creates a
+single read/presentation revision and refreshes the frozen baseline before
+publication. The resulting receipt remains queryable after resolver clearing.
 
 Group metadata is optional and cannot affect Gameplay success. The active Resolution
 builder owns GroupId allocation. A sealed declaration contains both expected count
@@ -39,13 +45,16 @@ and the canonical selected RuntimeIds. Direct continuation Actions receive group
 context explicitly; writer inheritance alone never propagates it to trigger/reaction
 Actions.
 
-Current direct Hand destination Actions can stamp the exact matching group tag for:
+Current direct Hand destination Actions stamp the exact matching group tag for:
 
 ```text
 Hand -> ExhaustPile
 Hand -> DrawPile
 Hand -> DiscardPile
 ```
+
+Malformed/undeclared optional record tags degrade to ordinary serial history rather
+than invalidating an otherwise trustworthy Presentation record.
 
 ## Added focused source tests
 

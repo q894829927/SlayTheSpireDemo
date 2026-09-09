@@ -24,10 +24,17 @@ FPresentationRecordWriter ABattleManager::AdvancePresentationAtInteractiveSelect
 	// the frozen pre-selection snapshot its own monotonic revision so the UI can
 	// distinguish "before Draw playback" from "Draw visible, choice eligible".
 	AdvanceStateRevision();
+	ContinuationWriter.BattleId = BattleId;
+	ContinuationWriter.SelectionBoundaryRevision = static_cast<int64>(StateRevision);
+	ContinuationWriter.DirectOutcomeAcceptance.BindUObject(
+		this,
+		&ABattleManager::RegisterDirectSelectionOutcomeBoundary
+	);
 	ScheduleReadStateReadyPublish();
 
 	// Presentation is optional. Gameplay selection continues even when committed
-	// history is disabled or already unavailable.
+	// history is disabled or already unavailable. The writer still carries the
+	// exact boundary and direct-outcome capability for no-history correlation.
 	if (!bPresentationAvailable)
 	{
 		return ContinuationWriter;
@@ -66,7 +73,10 @@ FPresentationRecordWriter ABattleManager::AdvancePresentationAtInteractiveSelect
 	bHasLatestFrozenPresentationBaseline = true;
 
 	// No-history mode still needs the exact new Hand baseline for selection UI.
-	if (!bCommittedPresentationRecordingEnabledForBattle) return ContinuationWriter;
+	if (!bCommittedPresentationRecordingEnabledForBattle)
+	{
+		return ContinuationWriter;
+	}
 
 	UBattlePresentationRecorder* Recorder = PresentationRecorder.Get();
 	if (!IsValid(Recorder) || !Recorder->HasActiveResolution())
@@ -120,5 +130,13 @@ FPresentationRecordWriter ABattleManager::AdvancePresentationAtInteractiveSelect
 		return ContinuationWriter;
 	}
 
-	return GetActivePresentationRecordWriter();
+	FPresentationRecordWriter RecordedContinuationWriter = GetActivePresentationRecordWriter();
+	if (!RecordedContinuationWriter.IsAvailable())
+	{
+		return ContinuationWriter;
+	}
+
+	RecordedContinuationWriter.SelectionBoundaryRevision = ContinuationWriter.SelectionBoundaryRevision;
+	RecordedContinuationWriter.DirectOutcomeAcceptance = ContinuationWriter.DirectOutcomeAcceptance;
+	return RecordedContinuationWriter;
 }

@@ -4,6 +4,54 @@
 #include "../Selection/AuthoredContinuation.h"
 #include "../Selection/SelectionResolver.h"
 
+namespace
+{
+	bool TryBuildCanonicalSelectedRuntimeIds(
+		const FSelectionRequest& Request,
+		const FSelectionResult& Result,
+		TArray<int32>& OutRuntimeIds
+	)
+	{
+		OutRuntimeIds.Reset();
+		if (Result.Status != ESelectionStatus::Resolved || Result.SelectedObjects.IsEmpty())
+		{
+			return false;
+		}
+
+		TSet<const UObject*> SelectedObjects;
+		for (const TObjectPtr<UObject>& Selected : Result.SelectedObjects)
+		{
+			const UObject* SelectedObject = Selected.Get();
+			if (!IsValid(SelectedObject) || SelectedObjects.Contains(SelectedObject))
+			{
+				OutRuntimeIds.Reset();
+				return false;
+			}
+			SelectedObjects.Add(SelectedObject);
+		}
+
+		TSet<int32> SeenRuntimeIds;
+		for (const FSelectionCandidate& Candidate : Request.Candidates)
+		{
+			const UObject* CandidateObject = Candidate.RuntimeObject.Get();
+			if (!SelectedObjects.Contains(CandidateObject))
+			{
+				continue;
+			}
+			if (Candidate.RuntimeSequence == INDEX_NONE
+				|| SeenRuntimeIds.Contains(Candidate.RuntimeSequence))
+			{
+				OutRuntimeIds.Reset();
+				return false;
+			}
+			SeenRuntimeIds.Add(Candidate.RuntimeSequence);
+			OutRuntimeIds.Add(Candidate.RuntimeSequence);
+		}
+
+		return OutRuntimeIds.Num() == Result.SelectedObjects.Num();
+	}
+}
+
 void USelectionRequestAction::Initialize(
 	USelectionResolver* InResolver,
 	const FSelectionRequest& InRequest,
@@ -117,10 +165,49 @@ ESelectionResolveDisposition USelectionRequestAction::ResolvePendingSelectionWit
 		return Disposition;
 	}
 
+	const FPresentationRecordWriter Writer = GetPresentationRecordWriter();
+	if (Writer.GetSelectionBoundaryRevision() > 0 && !Writer.TryAcceptSelectionOutcome())
+	{
+		// Outcome correlation is Presentation/read metadata only. Failure must not
+		// turn an accepted Gameplay choice into a ResolutionFault.
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("[Presentation] Selection outcome correlation unavailable for %s at boundary %lld."),
+			*Request.SelectionSource.ToString(),
+			Writer.GetSelectionBoundaryRevision()
+		);
+	}
+
+	FSelectionPresentationActionContext GroupContext;
+	bool bHasGroupContext = false;
+	TArray<int32> CanonicalSelectedRuntimeIds;
+	if (Writer.IsAvailable()
+		&& TryBuildCanonicalSelectedRuntimeIds(Request, Result, CanonicalSelectedRuntimeIds))
+	{
+		int64 GroupId = 0;
+		if (Writer.TryAllocatePresentationGroupId(GroupId))
+		{
+			FPresentationGroupDeclaration Declaration;
+			Declaration.Group.Kind = EPresentationGroupKind::SelectionDestination;
+			Declaration.Group.GroupId = GroupId;
+			Declaration.Group.ExpectedMemberCount = CanonicalSelectedRuntimeIds.Num();
+			Declaration.CanonicalSelectedRuntimeIds = CanonicalSelectedRuntimeIds;
+			if (Writer.TryDeclarePresentationGroup(Declaration))
+			{
+				GroupContext.Group = Declaration.Group;
+				GroupContext.CanonicalSelectedRuntimeIds = MoveTemp(CanonicalSelectedRuntimeIds);
+				bHasGroupContext = GroupContext.IsValid();
+			}
+		}
+	}
+
 	// Continuation Actions are created after the original PlayCardAction has
 	// already built and stamped its follow-up batch. They therefore must inherit
 	// the still-active resolution writer here, at the generic selection boundary,
-	// or their committed Presentation facts would be silently lost.
+	// or their committed Presentation facts would be silently lost. G1 group
+	// context is intentionally assigned only to these direct continuation Actions;
+	// reaction Actions inherit writer only and remain ungrouped.
 	for (UBattleAction* ContinuationAction : ContinuationBatch)
 	{
 		if (!IsValid(ContinuationAction)
@@ -135,7 +222,11 @@ ESelectionResolveDisposition USelectionRequestAction::ResolvePendingSelectionWit
 			Finish();
 			return ESelectionResolveDisposition::InternalFailure;
 		}
-		ContinuationAction->SetPresentationRecordWriter(GetPresentationRecordWriter());
+		ContinuationAction->SetPresentationRecordWriter(Writer);
+		if (bHasGroupContext)
+		{
+			ContinuationAction->SetSelectionPresentationActionContext(GroupContext);
+		}
 	}
 
 	if (ContinuationBatch.Num() > 0 && !Queue->AddBatchToFrontPreserveOrder(ContinuationBatch))

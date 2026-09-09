@@ -5,13 +5,28 @@
 #include "PresentationTypes.h"
 #include "BattlePresentationRecorder.generated.h"
 
+class ABattleManager;
 class UBattlePresentationRecorder;
+
+DECLARE_DELEGATE_RetVal_TwoParams(
+	bool,
+	FSelectionDirectOutcomeAcceptanceAccess,
+	uint64, // BattleId
+	int64   // SelectionBoundaryRevision
+);
 
 struct SLAYTHESPIREDEMO_API FPresentationRecordWriter
 {
 	bool IsAvailable() const;
 	bool Append(FPresentationRecord Record) const;
 	bool InvalidateCurrentResolution() const;
+
+	// G1 metadata is writer-scoped so stale capabilities cannot attach an older
+	// Selection to a newer Resolution.
+	bool TryAcceptSelectionOutcome() const;
+	bool TryRecordSelectionOutcome(int64 SelectionBoundaryRevision) const;
+	bool TryAllocatePresentationGroupId(int64& OutGroupId) const;
+	bool TryDeclarePresentationGroup(const FPresentationGroupDeclaration& Declaration) const;
 
 	uint64 GetBattleId() const
 	{
@@ -23,12 +38,20 @@ struct SLAYTHESPIREDEMO_API FPresentationRecordWriter
 		return ResolutionId;
 	}
 
+	int64 GetSelectionBoundaryRevision() const
+	{
+		return SelectionBoundaryRevision;
+	}
+
 private:
+	friend class ABattleManager;
 	friend class UBattlePresentationRecorder;
 
 	TWeakObjectPtr<UBattlePresentationRecorder> Recorder;
 	uint64 BattleId = 0;
 	uint64 ResolutionId = 0;
+	int64 SelectionBoundaryRevision = 0;
+	FSelectionDirectOutcomeAcceptanceAccess DirectOutcomeAcceptance;
 };
 
 UCLASS(Transient)
@@ -81,12 +104,18 @@ private:
 		uint64 BattleId = 0;
 		uint64 ResolutionId = 0;
 		EPresentationResolutionOrigin Origin = EPresentationResolutionOrigin::System;
+		int64 NextPresentationGroupId = 1;
 		TArray<FPresentationRecord> Records;
+		TArray<FPresentationGroupDeclaration> PresentationGroups;
+		TArray<FSelectionPresentationOutcomeReceipt> SelectionOutcomes;
 	};
 
 	static bool IsTerminalRecordType(EBattlePresentationRecordType Type);
 	bool IsWriterCurrentAndValid(uint64 WriterBattleId, uint64 WriterResolutionId) const;
 	bool InvalidateWriterResolution(uint64 WriterBattleId, uint64 WriterResolutionId);
+	bool RecordSelectionOutcome(uint64 WriterBattleId, uint64 WriterResolutionId, int64 SelectionBoundaryRevision);
+	bool AllocatePresentationGroupId(uint64 WriterBattleId, uint64 WriterResolutionId, int64& OutGroupId);
+	bool DeclarePresentationGroup(uint64 WriterBattleId, uint64 WriterResolutionId, const FPresentationGroupDeclaration& Declaration);
 	void ClearActiveBuilder();
 	void InvalidateActiveBuilder();
 

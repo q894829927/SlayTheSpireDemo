@@ -175,6 +175,10 @@ public:
 	FText GetPresentationUnavailableReason() const;
 	bool IsCommittedPresentationRecordingEnabledForBattle() const;
 	uint64 GetLatestFrozenPresentationBaselineResolutionId() const;
+	bool TryGetDirectSelectionPresentationOutcome(
+		int64 SelectionBoundaryRevision,
+		FSelectionPresentationOutcomeReceipt& OutReceipt
+	) const;
 
 	// C1 interactive boundary: seal already-committed history before a Gameplay
 	// selection becomes player-visible, immediately open the continuation segment,
@@ -261,6 +265,8 @@ private:
 	void ScheduleReadStateReadyPublish();
 	bool HandleScheduledReadStateReady(float DeltaTime);
 	void TryPublishReadStateReady();
+	bool RegisterDirectSelectionOutcomeBoundary(uint64 InBattleId, int64 SelectionBoundaryRevision);
+	void ResolvePendingDirectSelectionOutcomesForReadEdge();
 
 	FGameplayValidationResult ValidatePlayerCommandBase() const;
 	FGameplayValidationResult ValidateCardPlayBase(const UCardInstance* Card) const;
@@ -342,6 +348,9 @@ private:
 	uint64 LastSealedPresentationResolutionId = 0;
 	uint64 LastDeliveredPresentationResolutionId = 0;
 	uint64 LatestFrozenPresentationBaselineResolutionId = 0;
+	uint64 DirectSelectionOutcomeBattleId = 0;
+	TArray<int64> PendingDirectSelectionOutcomeBoundaryRevisions;
+	TArray<FSelectionPresentationOutcomeReceipt> DirectSelectionOutcomeReceipts;
 	bool bHasLatestFrozenPresentationBaseline = false;
 	bool bPresentationAvailable = true;
 	bool bLastPublishedPresentationAvailable = true;

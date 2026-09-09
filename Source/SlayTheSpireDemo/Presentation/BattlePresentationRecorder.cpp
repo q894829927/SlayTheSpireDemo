@@ -23,6 +23,44 @@ bool FPresentationRecordWriter::InvalidateCurrentResolution() const
 		&& ResolvedRecorder->InvalidateWriterResolution(BattleId, ResolutionId);
 }
 
+bool FPresentationRecordWriter::TryAcceptSelectionOutcome() const
+{
+	if (BattleId == 0 || SelectionBoundaryRevision <= 0)
+	{
+		return false;
+	}
+
+	if (IsAvailable())
+	{
+		return TryRecordSelectionOutcome(SelectionBoundaryRevision);
+	}
+
+	return DirectOutcomeAcceptance.IsBound()
+		&& DirectOutcomeAcceptance.Execute(BattleId, SelectionBoundaryRevision);
+}
+
+bool FPresentationRecordWriter::TryRecordSelectionOutcome(int64 InSelectionBoundaryRevision) const
+{
+	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
+	return IsAvailable()
+		&& ResolvedRecorder->RecordSelectionOutcome(BattleId, ResolutionId, InSelectionBoundaryRevision);
+}
+
+bool FPresentationRecordWriter::TryAllocatePresentationGroupId(int64& OutGroupId) const
+{
+	OutGroupId = 0;
+	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
+	return IsAvailable()
+		&& ResolvedRecorder->AllocatePresentationGroupId(BattleId, ResolutionId, OutGroupId);
+}
+
+bool FPresentationRecordWriter::TryDeclarePresentationGroup(const FPresentationGroupDeclaration& Declaration) const
+{
+	UBattlePresentationRecorder* ResolvedRecorder = Recorder.Get();
+	return IsAvailable()
+		&& ResolvedRecorder->DeclarePresentationGroup(BattleId, ResolutionId, Declaration);
+}
+
 void UBattlePresentationRecorder::ResetForBattle(uint64 InBattleId)
 {
 	BattleId = InBattleId;
@@ -107,6 +145,8 @@ bool UBattlePresentationRecorder::SealResolution(
 	OutEnvelope.Origin = ActiveBuilder.Origin;
 	OutEnvelope.FinalStateRevision = FinalSnapshot.StateRevision;
 	OutEnvelope.Records = MoveTemp(ActiveBuilder.Records);
+	OutEnvelope.PresentationGroups = MoveTemp(ActiveBuilder.PresentationGroups);
+	OutEnvelope.SelectionOutcomes = MoveTemp(ActiveBuilder.SelectionOutcomes);
 	OutEnvelope.FinalSnapshot = FinalSnapshot;
 
 	ClearActiveBuilder();
@@ -137,6 +177,24 @@ bool UBattlePresentationRecorder::AppendRecord(
 	{
 		InvalidateActiveBuilder();
 		return false;
+	}
+
+	// Group metadata is optional. A stale/malformed tag degrades to ordinary
+	// serial history instead of invalidating an otherwise trustworthy Record.
+	if (Record.Group.Kind != EPresentationGroupKind::None)
+	{
+		const FPresentationGroupDeclaration* Declaration = ActiveBuilder.PresentationGroups.FindByPredicate(
+			[&Record](const FPresentationGroupDeclaration& Candidate)
+			{
+				return Candidate.Group.GroupId == Record.Group.GroupId;
+			}
+		);
+		if (Declaration == nullptr
+			|| Declaration->Group.Kind != Record.Group.Kind
+			|| Declaration->Group.ExpectedMemberCount != Record.Group.ExpectedMemberCount)
+		{
+			Record.Group = FPresentationGroupTag{};
+		}
 	}
 
 	// ResolutionFault, Victory and Defeat are all terminal presentation facts.
@@ -247,6 +305,109 @@ bool UBattlePresentationRecorder::InvalidateWriterResolution(
 	return true;
 }
 
+bool UBattlePresentationRecorder::RecordSelectionOutcome(
+	uint64 WriterBattleId,
+	uint64 WriterResolutionId,
+	int64 SelectionBoundaryRevision
+)
+{
+	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId)
+		|| SelectionBoundaryRevision <= 0)
+	{
+		return false;
+	}
+
+	const FSelectionPresentationOutcomeReceipt* Existing = ActiveBuilder.SelectionOutcomes.FindByPredicate(
+		[SelectionBoundaryRevision](const FSelectionPresentationOutcomeReceipt& Receipt)
+		{
+			return Receipt.SelectionBoundaryRevision == SelectionBoundaryRevision;
+		}
+	);
+	if (Existing != nullptr)
+	{
+		return Existing->BattleId == static_cast<int64>(WriterBattleId)
+			&& Existing->Mode == ESelectionPresentationOutcomeMode::RecordedResolution
+			&& Existing->ResolutionId == static_cast<int64>(WriterResolutionId);
+	}
+
+	FSelectionPresentationOutcomeReceipt Receipt;
+	Receipt.BattleId = static_cast<int64>(WriterBattleId);
+	Receipt.SelectionBoundaryRevision = SelectionBoundaryRevision;
+	Receipt.Mode = ESelectionPresentationOutcomeMode::RecordedResolution;
+	Receipt.ResolutionId = static_cast<int64>(WriterResolutionId);
+	if (!Receipt.IsValid())
+	{
+		return false;
+	}
+
+	ActiveBuilder.SelectionOutcomes.Add(MoveTemp(Receipt));
+	return true;
+}
+
+bool UBattlePresentationRecorder::AllocatePresentationGroupId(
+	uint64 WriterBattleId,
+	uint64 WriterResolutionId,
+	int64& OutGroupId
+)
+{
+	OutGroupId = 0;
+	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId)
+		|| ActiveBuilder.NextPresentationGroupId <= 0)
+	{
+		return false;
+	}
+
+	OutGroupId = ActiveBuilder.NextPresentationGroupId;
+	if (ActiveBuilder.NextPresentationGroupId == MAX_int64)
+	{
+		ActiveBuilder.NextPresentationGroupId = 0;
+	}
+	else
+	{
+		++ActiveBuilder.NextPresentationGroupId;
+	}
+	return true;
+}
+
+bool UBattlePresentationRecorder::DeclarePresentationGroup(
+	uint64 WriterBattleId,
+	uint64 WriterResolutionId,
+	const FPresentationGroupDeclaration& Declaration
+)
+{
+	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId)
+		|| !Declaration.Group.IsValid()
+		|| Declaration.Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| Declaration.Group.ExpectedMemberCount <= 0
+		|| Declaration.Group.ExpectedMemberCount != Declaration.CanonicalSelectedRuntimeIds.Num()
+		|| Declaration.Group.GroupId >= ActiveBuilder.NextPresentationGroupId)
+	{
+		return false;
+	}
+
+	TSet<int32> SeenRuntimeIds;
+	for (const int32 RuntimeId : Declaration.CanonicalSelectedRuntimeIds)
+	{
+		if (RuntimeId == INDEX_NONE || SeenRuntimeIds.Contains(RuntimeId))
+		{
+			return false;
+		}
+		SeenRuntimeIds.Add(RuntimeId);
+	}
+
+	if (ActiveBuilder.PresentationGroups.ContainsByPredicate(
+		[&Declaration](const FPresentationGroupDeclaration& Existing)
+		{
+			return Existing.Group.GroupId == Declaration.Group.GroupId;
+		}))
+	{
+		return false;
+	}
+
+	ActiveBuilder.PresentationGroups.Add(Declaration);
+	return true;
+}
+
 void UBattlePresentationRecorder::ClearActiveBuilder()
 {
 	ActiveBuilder = FActiveResolutionBuilder{};
@@ -261,4 +422,6 @@ void UBattlePresentationRecorder::InvalidateActiveBuilder()
 
 	ActiveBuilder.bValid = false;
 	ActiveBuilder.Records.Reset();
+	ActiveBuilder.PresentationGroups.Reset();
+	ActiveBuilder.SelectionOutcomes.Reset();
 }

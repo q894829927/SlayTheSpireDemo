@@ -58,6 +58,7 @@ void UDiscardCardAction::Execute(UBattleActionQueue* /*Queue*/)
 		{
 			FPresentationRecord Record;
 			Record.Type = EBattlePresentationRecordType::CardZoneChanged;
+			TryGetSelectionPresentationGroupForRuntimeId(CommitResult.CardRuntimeId, Record.Group);
 			Record.CardZoneChanged.Card = MoveTemp(CardSnapshot);
 			Record.CardZoneChanged.FromZone = CommitResult.FromZone;
 			Record.CardZoneChanged.ToZone = CommitResult.ToZone;

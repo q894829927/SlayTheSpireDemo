@@ -7,6 +7,7 @@
 #include "../Modifiers/ModifierTypes.h"
 #include "../Status/StatusMutationTypes.h"
 #include "../UI/BattleHUDTypes.h"
+#include "SelectionPresentationMetadata.h"
 #include "PresentationTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -368,6 +369,9 @@ struct SLAYTHESPIREDEMO_API FPresentationRecord
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation")
 	EBattlePresentationRecordType Type = EBattlePresentationRecordType::None;
 
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Group")
+	FPresentationGroupTag Group;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Damage")
 	FDamagePresentationPayload Damage;
 
@@ -463,6 +467,12 @@ struct SLAYTHESPIREDEMO_API FPresentationResolutionEnvelope
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation")
 	TArray<FPresentationRecord> Records;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Group")
+	TArray<FPresentationGroupDeclaration> PresentationGroups;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Selection")
+	TArray<FSelectionPresentationOutcomeReceipt> SelectionOutcomes;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation")
 	FPresentationStateSnapshot FinalSnapshot;
