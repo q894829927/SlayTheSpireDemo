@@ -5,25 +5,33 @@ Date: **2026-09-08**
 Status:
 
 ```text
-DESIGN PROPOSED / BRANCH ACTIVE
-NO PRODUCTION IMPLEMENTATION YET
-C0 VALIDATION DEFERRED BY USER
-FINAL MERGE / SEAL BLOCKED UNTIL C0 SEAL
+HISTORICAL DESIGN / IMPLEMENTED AND MERGED TO main VIA PR #18
+C0 PREDECESSOR COMPLETE / VALIDATED / SEALED
+PARTIALLY SUPERSEDED BY CONFIGURABLE-DRAW-PILE-TOP AMENDMENT
+FINAL STANDALONE C1 SEAL NOT RECORDED
 ```
 
-Branch:
+Historical development branch:
 
 ```text
 Wave-1C-C1
 ```
 
-Branch base:
+Historical branch base:
 
 ```text
 main @ c700db13a50d4c3c6302e836424de3e4693fafa4
 ```
 
-This plan supersedes the abandoned True Grit consumer plan on this branch. True Grit remains implementable from existing C0 capabilities and is no longer the active C1 development target.
+Merge to `main`:
+
+```text
+PR #18
+ffbc164905a875bea5c9ab3dfe0a07df5068b8cc
+Merge pull request #18 from q894829927/Wave-1C-C1
+```
+
+This plan superseded the abandoned True Grit consumer plan on the C1 branch. True Grit remains implementable from existing generalized capabilities and is no longer the active C1 development target. The fixed-exact-one and original in-place-fade statements below are historical where superseded by `docs/CardExpansionWave1CC1ConfigurableDrawPileTopAmendment.md` and the shared `docs/CardSelectionPresentationConstraints.md`.
 
 ---
 
@@ -350,6 +358,8 @@ Required:
 
 Presentation style is intentionally narrow; no general zone-animation framework is authorized.
 
+> Historical note: this visual subsection was later superseded. The current authoritative Hand/SelectionArea→DrawPile contract is visible movement to the DrawPile anchor through the shared generic transition path; see `docs/CardExpansionWave1CC1ConfigurableDrawPileTopAmendment.md` and `docs/CardSelectionPresentationConstraints.md`.
+
 ---
 
 ## 10. Warcry transient consumer proof
@@ -560,22 +570,26 @@ Do not implement C1-9 as part of the Effect slice by default.
 
 ## 15. Validation / seal gates
 
-C1 capability implementation is not sealed until:
+Historical C1 seal requirements remain:
 
 ```text
-[ ] SlayTheSpireDemoEditor Win64 Development Build PASS
-[ ] Wave1CC1.DrawPileTop focused Automation PASS
-[ ] exact next-draw identity regression PASS
-[ ] deferred post-Draw candidate regression PASS
-[ ] Native HUD Hand->DrawPileTop playback PIE PASS
-[ ] transient Warcry Base PIE PASS
-[ ] transient Warcry Upgraded PIE PASS
-[ ] existing C0 / Wave1C regressions remain green after deferred C0 validation is completed
-[ ] user validation / seal confirmation
+[recorded PASS] SlayTheSpireDemoEditor Win64 Development Build
+[recorded PASS] Wave1CC1.DrawPileTop focused Automation (7/7 in boundary review)
+[covered by focused suite] exact next-draw identity regression
+[covered by focused suite] deferred post-Draw candidate regression
+[Selection Presentation evidence exists] Native HUD exact visible Hand/SelectionArea→DrawPile transfer
+[not recorded here as standalone C1 seal] transient/production Warcry Base PIE
+[not recorded here as standalone C1 seal] transient/production Warcry Upgraded PIE
+[C0 separately sealed] existing C0 / Wave1C predecessor gate
+[not recorded] final standalone C1 user seal confirmation
 ```
 
-Until then:
+Current interpretation:
 
 ```text
-DESIGN PROPOSED / IMPLEMENTATION NOT STARTED / NOT SEALED
+IMPLEMENTED / MERGED TO main VIA PR #18
+NOT AN ACTIVE DEVELOPMENT BRANCH
+FINAL STANDALONE C1 SEAL NOT ESTABLISHED BY EXISTING DOCUMENTATION
 ```
+
+Do not downgrade the merged implementation to “not started”, and do not upgrade merge status into a fabricated `COMPLETE / VALIDATED / SEALED` claim.
