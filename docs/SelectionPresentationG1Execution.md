@@ -5,8 +5,7 @@ Date: **2026-09-09**
 Status:
 
 ```text
-IMPLEMENTED IN SOURCE /
-BUILD NOT RUN / AUTOMATION NOT RUN / NO PASS CLAIM
+COMPLETE / VALIDATED / SEALED
 ```
 
 ## Scope
@@ -56,12 +55,41 @@ Hand -> DiscardPile
 Malformed/undeclared optional record tags degrade to ordinary serial history rather
 than invalidating an otherwise trustworthy Presentation record.
 
-## Added focused source tests
+## Focused Automation
+
+Distinct G1 tests:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G1.RecorderMetadata
 SlayTheSpireDemo.SelectionPresentation.G1.ManifestValidation
 ```
 
-These tests have not yet been executed. Do not mark G1 validated until an actual
-Editor build and focused Automation run are recorded.
+User-confirmed local validation on **2026-09-09**:
+
+```text
+[x] SlayTheSpireDemoEditor Win64 Development Build PASS
+[x] SlayTheSpireDemo.SelectionPresentation.G1 prefix run PASS
+[x] RecorderMetadata individual run PASS
+[x] ManifestValidation individual run PASS
+```
+
+The prefix run plus the two individual runs are three Automation invocations over
+two distinct G1 test cases. This evidence validates the G1 source contract above;
+it does not validate G2+ Controller Group semantics, visible Group playback,
+SelectionArea production ownership or G8 early input.
+
+## Seal
+
+G1 is **COMPLETE / VALIDATED / SEALED**. Do not rerun its passing gates unless a
+later edit invalidates this evidence or a concrete regression directly implicates
+the sealed G1 contract.
+
+Next active slice:
+
+```text
+G2 — Controller semantic Group discovery / reducer dry-run / interference
+```
+
+G2 must remain semantic-only: visible Group playback stays disabled, Controller
+must use sealed immutable facts only, and production SelectionArea ownership
+remains deferred.
