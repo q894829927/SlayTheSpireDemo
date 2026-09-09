@@ -10,7 +10,7 @@ class UOverlay;
 
 /**
  * One generic per-card transition child. G4 production uses exactly one child
- * for SingleRecord playback; G6 may prepare N children from the same engine.
+ * for SingleRecord playback; G6 prepares N children from the same engine.
  * Gameplay zones remain immutable committed facts carried by the Record.
  */
 USTRUCT()
@@ -60,11 +60,11 @@ struct FNativeCardTransitionInstance
 };
 
 /**
- * G4 generic SingleRecord card-transition presentation layer.
+ * Generic card-transition presentation layer.
  *
- * It owns Hand/SelectionArea -> committed DrawPile/Discard/Exhaust visuals and
- * leaves CardPlayed, DrawPile->Hand and PlayArea cleanup on the existing R8
- * adapters. G5 production SelectionArea transfers its exact visible object here.
+ * G4/G5 use one child for SingleRecord playback. G6 uses the same child engine
+ * for an explicitly validated SelectionDestination Group and never changes
+ * Gameplay/reducer chronology.
  */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API UBattleHUDCardTransitionWidget : public UBattleHUDReconciledWidget
@@ -76,6 +76,11 @@ public:
 	void FinishNativeCardTransitionForTesting(const FPresentationPlaybackToken& Token)
 	{
 		FinishNativeCardTransition(Token);
+	}
+
+	void FinishNativeCardTransitionGroupForTesting(const FPresentationPlaybackToken& Token)
+	{
+		FinishNativeCardTransitionGroup(Token);
 	}
 
 	int32 GetActiveNativeCardTransitionCountForTesting() const
@@ -100,6 +105,13 @@ protected:
 		const FPresentationPlaybackToken& Token) override;
 	virtual void CancelPresentationRecordPlayback_Implementation(
 		const FPresentationPlaybackToken& Token) override;
+	virtual bool BeginPresentationGroupPlayback(
+		const TArray<FPresentationRecord>& Records,
+		const FPresentationGroupTag& Group,
+		const FPresentationPlaybackToken& Token) override;
+	virtual void CancelPresentationGroupPlayback(
+		const FPresentationGroupTag& Group,
+		const FPresentationPlaybackToken& Token) override;
 
 	// G4 source adapter. Base/reconciled HUDs have no SelectionArea surface;
 	// UBattleHUDSelectionWidget supplies its persistent Host without adding any
@@ -118,7 +130,18 @@ private:
 	bool BeginNativeOutgoingCardTransition(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
+	bool BeginNativeOutgoingCardTransitionGroup(
+		const TArray<FPresentationRecord>& Records,
+		const FPresentationGroupTag& Group,
+		const FPresentationPlaybackToken& Token);
+	bool PrepareNativeOutgoingCardTransitionGroupMember(
+		const FPresentationRecord& Record,
+		int64& InOutSelectionGeneration,
+		FNativeCardTransitionInstance& OutInstance) const;
 	bool ValidateNativeCardTransitionDestination(
+		const FCardZoneChangedPresentationPayload& Payload,
+		FNativeCardTransitionInstance& OutInstance) const;
+	bool ValidateNativeCardTransitionGroupDestination(
 		const FCardZoneChangedPresentationPayload& Payload,
 		FNativeCardTransitionInstance& OutInstance) const;
 	bool ResolveSelectionAreaTransitionVisual(
@@ -134,10 +157,13 @@ private:
 		const FVector2D& Fallback) const;
 	void UpdateNativeCardTransitions(float DeltaSeconds);
 	bool StartNativeCardTransitionFinishTimer(float DurationSeconds);
+	bool StartNativeCardTransitionGroupFinishTimer(float DurationSeconds);
 	void FinishNativeCardTransition(const FPresentationPlaybackToken& ExpectedToken);
+	void FinishNativeCardTransitionGroup(const FPresentationPlaybackToken& ExpectedToken);
 	void FinishNativeCardTransitionVisuals();
 	void CancelNativeCardTransitionVisuals();
 	void RollbackPreparedSelectionAreaTransition();
+	void RestorePreparedGroupSelectionAreaVisuals();
 	void CleanupNativeCardTransitionsOnDestruct();
 	void ClearNativeCardTransitionFinishTimer();
 	void ResetNativeCardTransitionState();
