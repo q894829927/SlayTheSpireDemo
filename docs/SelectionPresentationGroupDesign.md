@@ -5,11 +5,12 @@ Date: **2026-09-09**
 Status:
 
 ```text
-DRAFT / CODE-ALIGNED REVIEW INCORPORATED /
-COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT DEFINED /
-G8 EARLY-INPUT / PRESENTATION-PIPELINING TARGET DEFINED /
-G0 COMPLETE / VALIDATED / SEALED /
-NO PRODUCTION GROUP CODE IMPLEMENTED / G1-G8 NOT VALIDATED / NOT SEALED
+CODE-ALIGNED DESIGN / OWNERSHIP-LIFECYCLE REVIEW INCORPORATED /
+COMPLETION-WATERMARK + OWNERSHIP-DIRTY CONTRACT IMPLEMENTED /
+G0-G5 COMPLETE / VALIDATED / SEALED /
+G6 PARALLEL N-CHILD GROUP PLAYBACK NEXT ACTIVE / NOT IMPLEMENTED /
+G7 CLEANUP AFTER G6 /
+G8 EARLY-INPUT / PRESENTATION-PIPELINING TARGET DEFINED / DEFERRED
 ```
 
 Related contracts:
@@ -22,26 +23,20 @@ Related contracts:
 
 ## Implementation baseline and review findings — 2026-09-09
 
-Reviewed against HEAD `ce36e56bd540a3e6c9cf977aa353e71f2054b081`.
+The original architecture review was performed against HEAD `ce36e56bd540a3e6c9cf977aa353e71f2054b081`. The table below is retained as historical design input, not current implementation status.
 
-| Area | Code evidence | Consequence for the plan |
+| Area | Code evidence at review baseline | Consequence for the plan |
 |---|---|---|
 | G0 A/B | `BattleHUDReconciledWidget`, `BattleHUDViewModel::ApplyPresentationSnapshot` | Incremental dirty and Battle-scoped reuse already exist; preserve completed-draw hit-test adoption. |
-| G0 C | `BattleHUDViewModelPresentationOwnership.cpp` | Exact completion set and standalone lifecycle APIs exist; production Selection and Controller do not yet wire them. |
-| Current Selection | `BattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked` | Uses fallible bool submission and compatibility centers; rejected Confirm must remain interactive after migration. |
+| G0 C | `BattleHUDViewModelPresentationOwnership.cpp` | Exact completion set and standalone lifecycle APIs exist; production Selection and Controller did not yet wire them at the review baseline. |
+| Current Selection at review | `BattleHUDSelectionWidget::HandleSelectionAwareConfirmClicked` | Used fallible bool submission and compatibility centers; rejected Confirm had to remain interactive after migration. |
 | Interactive boundary | `AdvancePresentationAtInteractiveSelectionBoundary`, `DeferredSelectionAction`, queue writer rebinding | Pre-choice Envelope seals before the continuation writer opens; never infer the outcome from the displayed pre-choice Resolution. |
-| Controller recovery | `CompleteActiveEnvelope`, `CollapseToEnvelope`, `ClearPlaybackState` | Completion is not wired to ownership; current collapse clears playback backlog, so it cannot serve the proposed active-envelope recovery unchanged. |
-| Group/transition | Record types have no Group protocol; Native card playback has one active instance | G1-G6 are planned work, not functionality established by G0 tests. |
+| Controller recovery at review | `CompleteActiveEnvelope`, `CollapseToEnvelope`, `ClearPlaybackState` | Completion was not wired to ownership; active-envelope recovery needed to preserve backlog. |
+| Group/transition at review | Record types had no Group protocol; Native card playback had one active instance | G1-G6 were planned work at the review baseline. |
 
-Priority findings corrected below: contradictory completion predicates, missing
-Confirm rejection/outcome correlation, insufficient group membership proof,
-missing visual transaction details, and G8 lifetime conflict. Existing evidence
-is in `docs/SelectionPresentationG0Execution.md` and `docs/Validation.md`; this
-documentation review does not claim additional runtime validation.
+Subsequent implementation closed the staged prerequisites through G5. G0-G3 are complete, validated and sealed. G4's isolated compatibility-position path failed visual acceptance; the explicitly permitted coherent G4+G5 migration then landed the generic SingleRecord engine plus production SelectionArea ownership. The combined production path passed automated gates and the user-confirmed Native `L_BattleTest` PIE gate on 2026-09-09 with no flashback, duplicate, ghost, clipping or stuck input.
 
-The required G0 Native `L_BattleTest` manual draw/selection pass was subsequently
-completed and user-confirmed on 2026-09-09. G0 is therefore complete, validated and
-sealed; the next implementation stage in this design is G1.
+**Current implementation stage: resume from G6.** The detailed G0-G5 sections below remain the durable design rationale and historical stage requirements. G6 must add N-child co-presentation while retaining the sealed G5 sequential path as fallback. G7 cleanup follows proven G6 equivalence. G8 remains a separate later lifetime/input-readiness initiative.
 
 ## 1. Goal
 
@@ -472,7 +467,7 @@ Pending input. On request replacement or internal failure, reconcile the exact
 old lifecycle against the new authoritative boundary; do not restore stale
 choices into the new request. Accepted submission followed by missing outcome
 metadata must have an explicit unavailable/recovery path, never an indefinitely
-Unresolved ghost. G5 tests must cover all these dispositions.
+Unresolved ghost. G5 tests cover these dispositions; the dedicated G5 execution record is the current evidence authority.
 
 ### 9.4 Single/Group transition accepted
 
@@ -651,9 +646,7 @@ RefreshHand restores confirmed transform
 
 is superseded as an architectural contract.
 
-It may remain temporarily only while old production SingleRecord animation paths still require it during staged migration.
-
-It is not a second ownership truth and must be deleted after the SelectionArea source migration is validated.
+The G5 production migration has retired this model as the primary Selection continuity path. Any residual compatibility-only declarations/tests that are proven to have no remaining production caller are G7 cleanup targets. They are not a second ownership truth and must not be reactivated.
 
 ## 12. Group metadata
 
@@ -1105,9 +1098,18 @@ G8   Presentation pipelining / early input
      preserve strict Gameplay and reducer chronology
 ```
 
-G0-C must not turn on production SelectionArea ownership before G4 can consume SelectionArea sources. If necessary, G4+G5 may land as one coherent behavior-safe migration rather than exposing a broken intermediate production state.
+The behavior-safe ordering remains authoritative. Actual stage status is now:
 
-G0 is complete, validated and sealed. Resume from G1. G8 is explicitly downstream of the G0-G7 ownership/transition foundation. It MUST NOT be used to justify weakening current interactive Presentation boundaries before the earlier stages are validated.
+```text
+G0-G3 — COMPLETE / VALIDATED / SEALED
+G4 — isolated compatibility intermediate PIE FAIL; generic engine retained
+G4+G5 coherent production delivery — COMPLETE / VALIDATED / SEALED
+G6 — NEXT ACTIVE
+G7 — AFTER G6
+G8 — DEFERRED SEPARATE INITIATIVE
+```
+
+The design explicitly allowed G4+G5 to land as one coherent migration rather than expose a broken intermediate production state; that is the path that was implemented and accepted. Resume from G6. G8 is downstream and MUST NOT be used to weaken the current interactive Presentation boundaries.
 
 ## 29. Acceptance plan
 
@@ -1172,8 +1174,7 @@ Focused coverage must include:
 - no CardId/Effect-specific branches;
 - Gameplay/reducer chronology remains authored.
 
-G0 evidence is linked in the implementation baseline above and is sealed. No G1-G8 Build,
-Automation or PIE result is claimed by this design document.
+G0-G5 implementation/validation evidence is recorded in the dedicated execution documents and `docs/Validation.md`; the G4+G5 manual sequential visual gate is user-confirmed PASS. This design document does **not** claim G6, G7 or G8 Build/Automation/PIE completion. G6 must supply fresh parallel/group evidence.
 
 ## 30. G8 target architecture — Presentation Pipelining / Early Input
 
