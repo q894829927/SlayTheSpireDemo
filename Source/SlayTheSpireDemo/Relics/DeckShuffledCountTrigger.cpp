@@ -4,6 +4,7 @@
 #include "../Actions/BattleActionQueue.h"
 #include "../Battle/BattleManager.h"
 #include "../Combat/Combatant.h"
+#include "../Deck/DeckRuntime.h"
 #include "../Events/BattleEvent.h"
 #include "Effects/RelicEffect.h"
 #include "RelicInstance.h"
