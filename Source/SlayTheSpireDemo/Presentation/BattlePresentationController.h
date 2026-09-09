@@ -48,6 +48,12 @@ public:
 		const FPresentationResolutionEnvelope& Envelope,
 		FPresentationStateSnapshot& OutReducedSnapshot
 	);
+	bool TryBuildSemanticPresentationGroupCandidateForTesting(
+		const FPresentationStateSnapshot& Baseline,
+		const FPresentationResolutionEnvelope& Envelope,
+		int32 LeaderRecordIndex,
+		FPresentationGroupSemanticCandidate& OutCandidate
+	);
 #endif
 
 protected:
@@ -71,6 +77,16 @@ private:
 	bool IsEnvelopeForCurrentBattle(const FPresentationResolutionEnvelope& Envelope) const;
 	bool ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record);
 	void ApplyDisplayedSnapshot(const FPresentationStateSnapshot& Snapshot, bool bRefreshBindings);
+
+	// G2 semantic-only preflight. It may inspect only the supplied frozen
+	// baseline + sealed Envelope. It deliberately has no Widget/ownership input
+	// and does not start playback or mark any Record visually presented.
+	bool TryBuildSemanticPresentationGroupCandidate(
+		const FPresentationStateSnapshot& Baseline,
+		const FPresentationResolutionEnvelope& Envelope,
+		int32 LeaderRecordIndex,
+		FPresentationGroupSemanticCandidate& OutCandidate
+	);
 
 	TWeakObjectPtr<ABattleManager> BattleManager;
 

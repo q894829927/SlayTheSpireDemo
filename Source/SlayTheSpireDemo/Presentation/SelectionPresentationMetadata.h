@@ -35,7 +35,7 @@ struct SLAYTHESPIREDEMO_API FPresentationGroupTag
 };
 
 // Envelope-level declaration. Expected count alone is deliberately insufficient:
-// the canonical selected identities are frozen so G2 can later reject omissions,
+// the canonical selected identities are frozen so G2 can reject omissions,
 // substitutions and duplicates without consulting mutable Gameplay/UI state.
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationGroupDeclaration
@@ -47,6 +47,28 @@ struct SLAYTHESPIREDEMO_API FPresentationGroupDeclaration
 
 	UPROPERTY(BlueprintReadOnly, Category = "Battle Presentation|Group")
 	TArray<int32> CanonicalSelectedRuntimeIds;
+};
+
+// Controller-owned G2 semantic result. This is deliberately not reflected and
+// contains only immutable Envelope semantics. It is not a playback request and
+// carries no Widget, geometry or transient ownership state.
+struct SLAYTHESPIREDEMO_API FPresentationGroupSemanticCandidate
+{
+	FPresentationGroupTag Group;
+	TArray<int32> CanonicalSelectedRuntimeIds;
+	TArray<int32> MemberRecordIndices;
+	TArray<int32> MemberRuntimeIds;
+
+	bool IsValid() const
+	{
+		return Group.IsValid()
+			&& Group.Kind == EPresentationGroupKind::SelectionDestination
+			&& Group.ExpectedMemberCount > 1
+			&& CanonicalSelectedRuntimeIds.Num() == Group.ExpectedMemberCount
+			&& MemberRecordIndices.Num() == Group.ExpectedMemberCount
+			&& MemberRuntimeIds.Num() == Group.ExpectedMemberCount
+			&& MemberRecordIndices.Num() > 0;
+	}
 };
 
 UENUM(BlueprintType)
