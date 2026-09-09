@@ -12,6 +12,7 @@ void UBattleHUDReconciledWidget::NativeDestruct()
 	}
 	OwnershipBoundViewModel.Reset();
 	UnbindReconciledHandDelegates();
+	ReconciledHandBattleId = 0;
 	Super::NativeDestruct();
 }
 
@@ -81,6 +82,13 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		return;
 	}
 
+	if (ReconciledHandBattleId != 0 && ReconciledHandBattleId != ViewModel->BattleId)
+	{
+		UnbindReconciledHandDelegates();
+		HB_Hand->ClearChildren();
+	}
+	ReconciledHandBattleId = ViewModel->BattleId;
+
 	TSet<int32> DesiredRuntimeIds;
 	DesiredRuntimeIds.Reserve(ViewModel->HandCards.Num());
 	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
@@ -93,6 +101,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 				TEXT("[BattleHUD][G0-B] Hand reconcile rejected invalid/duplicate RuntimeId %d."),
 				CardView.RuntimeId);
 			Super::RefreshHand();
+			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
 		}
 		DesiredRuntimeIds.Add(CardView.RuntimeId);
@@ -111,6 +120,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 				Error,
 				TEXT("[BattleHUD][G0-B] Hand reconcile found malformed formal Hand children."));
 			Super::RefreshHand();
+			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
 		}
 		ExistingByRuntimeId.Add(Existing->GetRuntimeId(), Existing);
@@ -138,6 +148,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 				CardView.RuntimeId,
 				*CardView.CardId.ToString());
 			Super::RefreshHand();
+			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
 		}
 		DesiredWidgets.Add(CardWidget);
@@ -146,23 +157,19 @@ void UBattleHUDReconciledWidget::RefreshHand()
 	UnbindReconciledHandDelegates();
 	HB_Hand->ClearChildren();
 
+	UBattleHUDWidget* BaseHUD = static_cast<UBattleHUDWidget*>(this);
 	for (int32 Index = 0; Index < ViewModel->HandCards.Num(); ++Index)
 	{
 		UBattleCardWidget* CardWidget = DesiredWidgets[Index];
 		const FBattleHUDCardView& CardView = ViewModel->HandCards[Index];
 		CardWidget->SetCardView(CardView);
 		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
-			this,
-			&UBattleHUDReconciledWidget::HandleReconciledCardRequested);
+			BaseHUD,
+			&UBattleHUDWidget::HandleCardRequested);
 		HB_Hand->AddChildToHorizontalBox(CardWidget);
 	}
 
 	ApplyExplicitCardPresentationOwnershipToFormalHand();
-}
-
-void UBattleHUDReconciledWidget::HandleReconciledCardRequested(int32 RuntimeId)
-{
-	SelectCard(RuntimeId, true);
 }
 
 void UBattleHUDReconciledWidget::EnsureOwnershipDelegateBinding()
@@ -250,13 +257,14 @@ void UBattleHUDReconciledWidget::UnbindReconciledHandDelegates()
 		return;
 	}
 
+	UBattleHUDWidget* BaseHUD = static_cast<UBattleHUDWidget*>(this);
 	for (UWidget* Child : HB_Hand->GetAllChildren())
 	{
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child))
 		{
 			CardWidget->OnBattleCardRequested.RemoveDynamic(
-				this,
-				&UBattleHUDReconciledWidget::HandleReconciledCardRequested);
+				BaseHUD,
+				&UBattleHUDWidget::HandleCardRequested);
 		}
 	}
 }
