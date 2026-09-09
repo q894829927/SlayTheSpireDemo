@@ -4,9 +4,15 @@ This document records trusted historical validation evidence and the rules for m
 
 ## Selection Presentation G4+G5 migration — 2026-09-09
 
-Base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`; uncommitted implementation.
-User authorized G5 after the G4 visual failure below. Scope and manual checklist:
+Historical implementation base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`.
+User authorized G5 after the isolated G4 visual failure below. Scope and manual checklist:
 `docs/SelectionPresentationG5Execution.md`. No assets or Gameplay rules changed.
+The coherent G4+G5 implementation subsequently landed in:
+
+```text
+c7f1a799708dbce12712f4c418b004ac627d9b03
+g4+g5完成
+```
 
 - Standard bundled UE 5.8 project generation + Development Editor build PASS
   after user closed Editor. Final evidence: `Saved/Logs/G5RecoveryProjectFiles.log`
@@ -42,8 +48,26 @@ synchronous snapshots/receipts during submit, terminal display replacement,
 recorded/direct zero-destination completion and missing-metadata UI-only recovery.
 Passing unaffected evidence is retained; overlapping run counts are not added.
 Headless synthetic geometry does not validate real Slate frames or Blueprint layout.
-**USER ACTION REQUIRED:** Native `L_BattleTest` manual checklist in G5 execution
-document. G4+G5 remains unsealed; G6 simultaneous playback is not implemented.
+
+**MANUAL PIE GATE: PASS / USER CONFIRMED 2026-09-09.** The user exercised the
+production Native `L_BattleTest` G4+G5 path and confirmed:
+
+```text
+[x] select / deselect / reselect behaves correctly
+[x] multiple selected Exhaust candidates remain at their own displayed positions while waiting
+[x] sequential consumption starts from each exact visible SelectionArea card
+[x] Warcry transfers the exact visible selected card toward DrawPile
+[x] no flashback
+[x] no duplicate
+[x] no ghost
+[x] no clipping
+[x] no stuck input
+```
+
+This closes the coherent G4+G5 production gate. G4+G5 are **COMPLETE / VALIDATED /
+SEALED**. The earlier isolated G4 compatibility failure remains historical evidence
+and is not retroactively declared passed. **G6 simultaneous N-child Group playback
+is not implemented and is the next active Selection Presentation stage.**
 
 ## Sequential selection Exhaust drift repair — 2026-09-09
 
@@ -66,18 +90,17 @@ Unattended `-nullrhi` focused `SlayTheSpireDemo.CardSelection.Presentation`:
 SelectionAreaHost warning), 0 failed, 0 notRun, process exit 0.
 Evidence: `Saved/AutomationReports/SelectionWaitingDrift/index.json` and
 `Saved/Logs/SelectionWaitingDriftAutomation.log`. `git diff --check` PASS.
-**MANUAL PIE — USER ACTION REQUIRED:** repeat the reported multi-card Exhaust
-selection in Native `L_BattleTest`; waiting cards and successive fades must stay
-at confirmed positions, without drift/jump, duplicates or stuck input. Automated
-coordinate assertions do not prove Slate paint timing. G4 remains unsealed;
-G5 remains unstarted pending G4 acceptance.
 
-Subsequent user PIE feedback: **visual gate FAIL**. The second selected card
-still briefly jumps to the first card's position before returning to its own.
-The nine automated passes remain coordinate/protocol evidence only; the waiting
-compensation has not established visual continuity. Do not report the drift fixed.
-Simultaneous safe-group fades belong to G6, after G5 production SelectionArea
-ownership; current G4 deliberately executes one child at a time.
+**HISTORICAL G4-ONLY MANUAL PIE GATE: FAIL.** The second selected card still
+briefly jumped to the first card's position before returning to its own. The nine
+automated passes remain coordinate/protocol evidence only; the waiting-position
+compatibility experiment did not establish visual continuity. This failure is
+preserved because it explains why the coherent G4+G5 migration was authorized.
+
+The later G5 production SelectionArea ownership path superseded this failed
+compatibility route and passed its combined manual gate above. Therefore older
+phrasing such as “G5 unstarted pending G4 acceptance” is historical only and MUST
+NOT be interpreted as current project status. Same-tick safe-group fades remain G6.
 
 ## Card transition compilation fix — 2026-09-09
 
@@ -156,26 +179,32 @@ production SelectionArea ownership migration.
 
 ## Selection Presentation production repair — 2026-09-08
 
-Base HEAD `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Production Native HUD reparented in UE to `BattleHUDSelectionWidget`, Blueprint compilation and targeted save succeeded. Existing card/map assets preserved. **AUTOMATED GATES:** bundled UE project generation and Editor builds PASS; final runtime build `Saved/Logs/SelectionPresentationFinalBuild.log`, subsequent test-only builds `SelectionPresentationTestBuild.log` and `SelectionBoundaryConfirmTestBuild.log`. Closed scope in `docs/CardSelectionPresentationConstraints.md` section 16 ran **12 tests: 11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). Production selection Confirm, transfer/skip cleanup, multi-select and generic Exhaust passed. The old Draw-before-selection test still assumed click-to-submit; updated to require a separate explicit Confirm, rebuilt only changed tests and reran that gate **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). Runtime unchanged after the first run; other passing gates not repeated. **MANUAL PIE — USER ACTION REQUIRED:** one Native `L_BattleTest` Warcry sequence per section 16, checking background/centered choice, explicit confirmation, flight and generic Exhaust appearance. No new PIE/packaged acceptance claimed.
+Base HEAD `3abf80f0e2070ac798c164e8ab23522d4cad7dd9`. Production Native HUD reparented in UE to `BattleHUDSelectionWidget`, Blueprint compilation and targeted save succeeded. Existing card/map assets preserved. **AUTOMATED GATES:** bundled UE project generation and Editor builds PASS; final runtime build `Saved/Logs/SelectionPresentationFinalBuild.log`, subsequent test-only builds `SelectionPresentationTestBuild.log` and `SelectionBoundaryConfirmTestBuild.log`. Closed scope in `docs/CardSelectionPresentationConstraints.md` section 16 ran **12 tests: 11 PASS / 1 FAIL**, no warnings (`Saved/AutomationReports/SelectionPresentationRepair/index.json`). Production selection Confirm, transfer/skip cleanup, multi-select and generic Exhaust passed. The old Draw-before-selection test still assumed click-to-submit; updated to require a separate explicit Confirm, rebuilt only changed tests and reran that gate **1/1 PASS**, exit 0 (`Saved/AutomationReports/SelectionBoundaryConfirm/index.json`). Runtime unchanged after the first run; other passing gates not repeated.
+
+**HISTORICAL MANUAL GATE NOTE:** this pre-redesign repair originally required one Native `L_BattleTest` Warcry sequence. It is no longer an active blocker: the later G0 and coherent G4+G5 production paths received explicit user PIE acceptance. Preserve this entry as historical evidence only; current Selection Presentation authority is the sealed G0-G5 execution chain.
 
 ## Selection Presentation in-place Exhaust follow-up — 2026-09-09
 
-The confirmation handoff now preserves a selected formal Hand card's render
-translation and visibility. The existing generic Hand→Exhaust opacity fade uses
-that transform, so the card disappears at its confirmed selection position
+The confirmation handoff preserved a selected formal Hand card's render
+translation and visibility. The existing generic Hand→Exhaust opacity fade used
+that transform, so the card disappeared at its confirmed selection position
 without a separate consume animation. Standard project generation and the final
 Development Editor build passed (`Saved/Logs/InPlaceExhaustFadeFinalBuild.log`).
 The focused `SlayTheSpireDemo.CardSelection.Presentation` prefix passed **4/4**,
 including `HandToExhaust.FadesInPlace`, with no warnings
 (`Saved/AutomationReports/CardSelectionPresentationInPlaceFinal/index.json`).
-**MANUAL PIE — USER ACTION REQUIRED:** verify this exact in-place disappearance
-once in Native `L_BattleTest`; no manual visual acceptance is claimed.
+
+**HISTORICAL / SUPERSEDED VISUAL PATH:** this in-place formal-Hand compatibility
+approach was later superseded by persistent SelectionArea ownership. The isolated
+G4 compatibility path ultimately failed its multi-card visual gate; the coherent
+G4+G5 replacement passed the final user PIE gate above. Do not use this entry as
+current production ownership guidance.
 
 ## Interactive Draw / Selection Boundary Review — 2026-09-08
 
-Subsequent unified-selection refactor (HEAD `6fce24e`, uncommitted runtime changes): standard project generation and Development Editor build PASS after user saved/closed Live Coding. New `SlayTheSpireDemo.CardSelection.Unified` tests: **12/12 PASS**. Full closed scope listed in `docs/CardSelectionRefactorConstraints.md` section 19: **43 tests, 42 passed (9 with expected rejection/degradation warnings), 1 failed**; evidence `Saved/AutomationReports/UnifiedSelection/index.json`. The one failure was C0 `MultiExhaustRecordOrder`'s historical single-envelope expectation. Updated that test to verify the intentional prefix/continuation split while retaining canonical exhaust/cleanup assertions, rebuilt successfully, and reran only that test: **1/1 PASS, 0 warnings**, exit code 0; evidence `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. Runtime code was unchanged after the first run; passing Gates were not repeated. Build logs: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`. **MANUAL PIE — USER ACTION REQUIRED:** the four focused ordering cases in section 21 of the design document. Not sealed; fast-forward click consumption remains deferred.
+Subsequent unified-selection refactor (HEAD `6fce24e`, uncommitted runtime changes): standard project generation and Development Editor build PASS after user saved/closed Live Coding. New `SlayTheSpireDemo.CardSelection.Unified` tests: **12/12 PASS**. Full closed scope listed in `docs/CardSelectionRefactorConstraints.md` section 19: **43 tests, 42 passed (9 with expected rejection/degradation warnings), 1 failed**; evidence `Saved/AutomationReports/UnifiedSelection/index.json`. The one failure was C0 `MultiExhaustRecordOrder`'s historical single-envelope expectation. Updated that test to verify the intentional prefix/continuation split while retaining canonical exhaust/cleanup assertions, rebuilt successfully, and reran only that test: **1/1 PASS, 0 warnings**, exit code 0; evidence `Saved/AutomationReports/UnifiedSelectionRecordOrder/index.json`. Runtime code was unchanged after the first run; passing Gates were not repeated. Build logs: `Saved/Logs/UnifiedSelectionBuild.log`, `Saved/Logs/UnifiedSelectionFinalBuild.log`. The four focused ordering cases were originally a standalone manual gate for this refactor; later Selection Presentation execution supplied newer production visual evidence. This historical entry does not override the current G0-G5 seal.
 
-Base HEAD `d9d12ec`. Fixed missing `Actions/BattleActionQueue.h` in the new interactive boundary test; C2027 and cascading C2661 resolved. **AUTOMATED GATES:** standard bundled UE 5.8 project generation and Development Editor Win64 build PASS; `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` **7/7 PASS**, process/test exit code 0. Evidence: `Saved/Logs/SelectionBoundaryReview.log`. **MANUAL PIE GATES — USER ACTION REQUIRED:** Native `L_BattleTest`, play Warcry, observe draw completion before selection, select the newly drawn card, verify top-of-draw-pile placement and Warcry cleanup. No visual acceptance or C1 seal claimed. Runtime review findings are recorded in `docs/CardExpansionWave1CC1InteractiveSelectionBoundaryFix.md`.
+Base HEAD `d9d12ec`. Fixed missing `Actions/BattleActionQueue.h` in the new interactive boundary test; C2027 and cascading C2661 resolved. **AUTOMATED GATES:** standard bundled UE 5.8 project generation and Development Editor Win64 build PASS; `SlayTheSpireDemo.CardExpansion.Wave1CC1.DrawPileTop` **7/7 PASS**, process/test exit code 0. Evidence: `Saved/Logs/SelectionBoundaryReview.log`. The original C1 review still required dedicated Warcry PIE before a standalone C1 seal. Later G4+G5 user PIE acceptance confirms the shared exact visible SelectionArea→DrawPile transfer and normal continued input, but no dedicated final C1 user-seal record exists. Therefore C1 is correctly described as **IMPLEMENTED / MERGED TO main VIA PR #18 / FINAL STANDALONE SEAL NOT RECORDED**, not “not started” and not fabricated as sealed. Runtime review findings are recorded in `docs/CardExpansionWave1CC1InteractiveSelectionBoundaryFix.md`.
 
 ## Automatic Card Descriptions — 2026-09-08
 
