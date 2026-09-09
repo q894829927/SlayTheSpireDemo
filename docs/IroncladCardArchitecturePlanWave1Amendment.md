@@ -6,7 +6,9 @@
 
 ```text
 CURRENT ORDERING AMENDMENT
-WAVE 1C-C0 DESIGN LOCKED / ACTIVE ON main
+WAVE 1C-C0 COMPLETE / VALIDATED / SEALED
+WAVE 1C-C1 HAND→DRAWPILETOP CAPABILITY IMPLEMENTED / MERGED TO main VIA PR #18
+FORMER TRUE GRIT C1 PLAN SUPERSEDED / NOT ACTIVE
 SUPERSEDES STALE FOUNDATION-0 / WAVE-1 SCHEDULING ONLY
 ```
 
@@ -20,7 +22,7 @@ SUPERSEDES STALE FOUNDATION-0 / WAVE-1 SCHEDULING ONLY
 IroncladCardArchitecturePlan.md
 → Foundation 0 当前状态
 → Wave 1 推荐实施顺序
-→ Card Expansion 当前 next-active ordering
+→ Card Expansion 当前 ordering
 
 CardTriggerSourceExpansionDesign.md
 → “Phase 8 必须先完成”这一旧 ordering gate
@@ -101,11 +103,20 @@ Wave 1A
 
 Wave 1C merge / PR #16 repository content
 - Burning Pact asset
+
+Wave 1C-C0
+- generalized Player/Random exact-N Select-Exhaust capability
+- final seal authority: docs/CardExpansionWave1CC0Execution.md
+
+Wave 1C-C1 / PR #18
+- exact Hand → DrawPileTop capability
+- Execute-time current-Hand selection / continuation support
+- shared Presentation integration used by the Warcry-style flow
 ```
 
-Wave 1C 的通用行为 seal 仍以 C++ / Automation / PIE 合同为 authority；二进制 CardData 资产本身不取代 generic architecture authority。
+Wave 1C / C0 的通用行为 seal 仍以 C++ / Automation / PIE 合同为 authority；二进制 CardData 资产本身不取代 generic architecture authority。C1 已合入 `main`，但现有仓库文档没有独立的最终 C1 user-seal 记录，因此不能仅凭 merge 把 C1 标成 `COMPLETE / VALIDATED / SEALED`。
 
-Production Card Expansion 从当前 `main` 继续，不重做这些已存在内容。
+Production Card Expansion 从当前 `main` 继续，不重做这些已存在能力。
 
 ---
 
@@ -230,15 +241,21 @@ CardPlayed
 → PlayArea → destination
 ```
 
-### Wave 1C-C0 — Select-Exhaust Generalization — DESIGN LOCKED / IMPLEMENTATION AUTHORIZED / ACTIVE ON main
+### Wave 1C-C0 — Select-Exhaust Generalization — COMPLETE / VALIDATED / SEALED
 
-Dedicated authority：
+Final execution/seal authority：
+
+```text
+docs/CardExpansionWave1CC0Execution.md
+```
+
+Design authority retained for architecture detail：
 
 ```text
 docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
 ```
 
-C0 在正式 True Grit consumer 之前，先把当前 `USelectExhaustHandCardEffect` 从 Burning Pact 的窄形状：
+C0 把 `USelectExhaustHandCardEffect` 从 Burning Pact 的窄形状：
 
 ```text
 Player / exactly 1
@@ -258,12 +275,13 @@ Count = exactly N
 
 升级继续使用 sealed ordinary-card 显式 Base/Upgraded 值规则，不使用 sentinel/fallback。
 
-C0 locked behavior：
+C0 sealed behavior：
 
 ```text
 Player
 → Native HUD exact-N unique RuntimeId selection
-→ reaching N auto-submits
+→ reaching N makes the exact selection Confirm-eligible
+→ explicit Confirm submits the selected RuntimeIds
 
 Random
 → no pending player UI
@@ -296,24 +314,69 @@ multi-exhaust
 → no BulkExhaustAction
 
 Presentation
-→ preserve sealed in-place Hand→Exhaust fade per card
+→ shared Selection Presentation owns visible continuity
+→ committed Hand→Exhaust facts drive generic transition/fade behavior
 ```
 
 Existing `USelectExhaustHandCardEffect` UCLASS identity is retained for serialized Burning Pact compatibility. Default Base/Upgraded values remain `Player / 1`, preserving current Burning Pact behavior without a card-specific branch.
 
-C0 is being implemented directly on `main` by explicit user authorization. It is not sealed until its dedicated Build / Automation / PIE gates pass.
+C0 final acceptance recorded on 2026-09-08 includes Editor Build, focused C0 Automation 20/20, Wave 1C regression 13/13, Player multi-select PIE, Random multi-select PIE, Burning Pact regression PIE and user seal confirmation.
 
-### Wave 1C-C1 — True Grit Consumer — WAITING FOR C0 SEAL / NOT STARTED
+### Wave 1C-C1 — Hand→DrawPileTop / Warcry capability — IMPLEMENTED / MERGED TO MAIN
 
-True Grit remains the preferred first real consumer after C0:
+The former C1 True Grit plan is explicitly superseded and inactive:
 
 ```text
-True Grit
-Base     → Block + Random / 1 Hand Exhaust
-Upgraded → Block + Player / 1 Hand Exhaust
+docs/CardExpansionWave1CC1TrueGritPlan.md
+→ SUPERSEDED / NOT ACTIVE
 ```
 
-Expected composition after C0 seal：
+The actual C1 development target became the reusable exact current-Hand → DrawPileTop capability required by a Warcry-style consumer:
+
+```text
+docs/CardExpansionWave1CC1WarcryHandToDrawPileTopPlan.md
+docs/CardExpansionWave1CC1ConfigurableDrawPileTopAmendment.md
+docs/CardExpansionWave1CC1InteractiveSelectionBoundaryFix.md
+```
+
+Merge：
+
+```text
+PR #18
+ffbc164905a875bea5c9ab3dfe0a07df5068b8cc
+```
+
+Core C1 direction now present on `main`：
+
+```text
+prior Draw / Shuffle completes
+→ Execute-time CURRENT Hand candidate capture
+→ explicit Player Selection boundary
+→ explicit Confirm
+→ authored continuation
+→ exact UMoveHandCardToDrawPileTopAction × N
+→ committed Hand → DrawPile facts
+→ generic shared Selection Presentation transition
+→ normal played-card cleanup continues
+```
+
+The fixed-exact-one and in-place-fade statements in the original plan were superseded by the configurable amendment and shared Selection Presentation constraints.
+
+Current evidence boundary：
+
+```text
+implementation merged to main
+Development Editor build PASS recorded
+Wave1CC1.DrawPileTop focused Automation 7/7 PASS recorded
+shared G4+G5 SelectionArea→DrawPile visual path later user-accepted
+final standalone C1 user seal record: NOT PRESENT
+```
+
+Therefore C1 must not be described as “not started”, but merge status must also not be upgraded into an unsupported standalone `COMPLETE / VALIDATED / SEALED` claim.
+
+### True Grit — future thin content consumer, not the active C1 architecture slice
+
+True Grit Gameplay remains expressible from existing generalized capabilities：
 
 ```text
 GainBlockCardEffect
@@ -323,9 +386,9 @@ USelectExhaustHandCardEffect
   Upgraded = Player / 1
 ```
 
-C1 should primarily be content composition. If core True Grit behavior still requires a card-specific Gameplay Action after C0, C0 must be reviewed for an incomplete generic contract unless a concrete card rule justifies the exception.
+No True-Grit-specific Gameplay primitive is required. Production True Grit content remains a future explicit content-authoring slice unless separately authorized.
 
-Exhume remains deferred because it additionally requires ExhaustPile selection + non-Hand zone movement (CAP-05), which would broaden the slice.
+Exhume remains deferred because it additionally requires ExhaustPile selection + non-Hand zone movement (CAP-05), which broadens the slice.
 
 ### Wave 1D — Reactive Exhaust Powers — FUTURE
 
@@ -388,7 +451,7 @@ a card mechanic selects/specifies another exact CardInstance
 → explicit Exhaust mutation/action
 ```
 
-当前 generic Hand targeted-exhaust capability 已由 Wave 1B 实现并 seal，Wave 1C 已证明它可以通过 generic Selection composition 被玩家选择驱动。
+当前 generic Hand targeted-exhaust capability 已由 Wave 1B 实现并 seal，Wave 1C / C0 已证明它可以通过 generic Selection composition 被玩家选择或 deterministic Random selection 驱动。
 
 不要再用“Exhaust 已实现”笼统描述 self-exhaust 与 targeted exhaust 两条不同路径。
 
@@ -472,7 +535,7 @@ Wave 1A seal 后，其余只依赖已 sealed primitive 的 self-exhaust cards �
 
 ## 9. Current implementation ordering
 
-当前推荐顺序：
+当前已落地顺序：
 
 ```text
 Card Upgrade STS-Style Refactor
@@ -495,18 +558,20 @@ Wave 1C-B — Burning Pact First Consumer Closure
 → MERGED TO MAIN (PR #16)
 
 Wave 1C-C0 — Select-Exhaust Generalization
-→ DESIGN LOCKED
-→ IMPLEMENTATION AUTHORIZED
-→ ACTIVE DIRECTLY ON main
-→ NOT SEALED
-→ authority: docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
+→ COMPLETE / VALIDATED / SEALED
+→ authority: docs/CardExpansionWave1CC0Execution.md
 
-Wave 1C-C1 — True Grit
-→ NEXT AFTER C0 SEAL
-→ NOT STARTED
+Wave 1C-C1 — Hand→DrawPileTop / Warcry capability
+→ IMPLEMENTED
+→ MERGED TO MAIN (PR #18 / ffbc164905a875bea5c9ab3dfe0a07df5068b8cc)
+→ FINAL STANDALONE C1 SEAL NOT RECORDED
+
+Former Wave 1C-C1 — True Grit plan
+→ SUPERSEDED / NOT ACTIVE
+→ future thin content consumer only
 
 Wave 1D — Reactive Exhaust Powers
-→ FUTURE / NOT AUTHORIZED BY C0
+→ FUTURE / NOT AUTHORIZED BY C0/C1 STATUS
 
 Card Trigger Source Expansion
 → FUTURE INDEPENDENT FOUNDATION
@@ -548,6 +613,7 @@ candidate order decides stable multi-exhaust execution order
 UI stores RuntimeIds only
 Selection resolver rejects duplicate selected objects
 multiple selected cards remain multiple exact Exhaust commits
+Player exact-N still requires explicit Confirm at the shared Selection UI boundary
 ```
 
 不得为了 Card Expansion：
@@ -555,48 +621,39 @@ multiple selected cards remain multiple exact Exhaust commits
 ```text
 重开 sealed CFV
 重开 ordinary Upgrade architecture
-重开 Wave 1A / 1B / 1C-A / 1C-B sealed contracts without a concrete regression
+重开 Wave 1A / 1B / 1C-A / 1C-B / C0 sealed contracts without a concrete regression
 把 Widget 变成 Gameplay authority
 把 FCardPlayContext / FTriggerContext 扩成 service locator
 建立 UniversalResultBus / mutable property bag
 建立 TrueGrit-specific selection/exhaust Action
+把 C1 merge 误写成未经记录的 standalone seal
 ```
 
 ---
 
 ## 11. Stop / next authority
 
-当前状态：
+当前 Card Expansion 状态：
 
 ```text
 main
-→ contains Wave 1A / 1B / 1C sealed implementation
-→ Wave 1C-C0 direct development authorized
+→ contains Wave 1A / 1B / 1C-A / 1C-B sealed implementation
+→ contains sealed Wave 1C-C0 generalized Select-Exhaust capability
+→ contains Wave 1C-C1 Hand→DrawPileTop implementation merged by PR #18
 
 Wave 1C-C0
-→ DESIGN LOCKED
-→ IMPLEMENTATION ACTIVE
-→ NOT SEALED
+→ COMPLETE / VALIDATED / SEALED
+
+Wave 1C-C1
+→ IMPLEMENTED / MERGED
+→ FINAL STANDALONE USER SEAL NOT RECORDED
+
+True Grit C1 plan
+→ SUPERSEDED / NOT ACTIVE
 ```
 
-当前唯一 next-active dedicated authority：
+本状态同步 **不自动授权新的 Card Expansion slice**。进入 Wave 1D、True Grit production content、Card Trigger Source Expansion、multi-enemy、Exhume 等工作前，应由对应 dedicated authority / user authorization 明确打开范围。
 
-```text
-docs/CardExpansionWave1CC0SelectExhaustGeneralization.md
-```
+当前另一个独立进行中的 Selection Presentation initiative 已完成 G0-G5，并以 **G6 parallel N-child Group playback** 为 next active stage；它的 authority 是 `docs/SelectionPresentationGroupImplementationPlan.md`，不应与本 Wave 1 Card Expansion ordering amendment 混为一个授权边界。
 
-C0 必须先完成并通过其 authority 中定义的：
-
-```text
-Editor Development Build
-C0 focused Automation
-existing Wave 1C 13/13 regression
-Native HUD Player multi-select PIE
-Native HUD Random multi-select PIE
-Burning Pact regression PIE
-user seal confirmation
-```
-
-之后才进入 Wave 1C-C1 / True Grit。
-
-Wave 1D、Card Trigger Source Expansion、multi-enemy、Exhume zone-move surface 与 Phase 8 均不因 C0 授权而自动展开。
+Wave 1D、Card Trigger Source Expansion、multi-enemy、Exhume zone-move surface 与 Phase 8 均不因 C0/C1 已落地而自动展开。
