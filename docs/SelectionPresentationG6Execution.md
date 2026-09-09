@@ -5,11 +5,10 @@ Date: **2026-09-10**
 Status:
 
 ```text
-IMPLEMENTED /
-DEVELOPMENT EDITOR BUILD PASS /
-FOCUSED G6 AUTOMATION 4/4 PASS /
-NATIVE L_BATTLETEST PIE PENDING /
-NOT SEALED
+COMPLETE / VALIDATED / SEALED
+DEVELOPMENT EDITOR BUILD PASS
+FOCUSED G6 AUTOMATION 4/4 PASS
+NATIVE L_BATTLETEST PIE PASS / USER CONFIRMED 2026-09-10
 ```
 
 G6 is the production activation stage for safe N-child Selection Presentation Group playback. It changes visible concurrency only. Gameplay mutation order, BattleEvent/trigger order, `PresentationSequence` order and chronological reducer order remain authoritative and serial.
@@ -134,7 +133,7 @@ G6 uses a dedicated exact Group completion callback rather than the historical G
 
 ### Development Editor build
 
-**PASS / user confirmed 2026-09-09 local execution.**
+**PASS / user confirmed during G6 execution.**
 
 The initial G6 implementation exposed an unrelated incomplete-type compile dependency in `EnergyPresentationRecord.cpp`; adding the complete `FPresentationRecordWriter` definition include resolved it. The subsequent UE 5.8 `SlayTheSpireDemoEditor Win64 Development` build passed.
 
@@ -166,33 +165,44 @@ Coverage proves:
 - already co-presented future members do not replay visually when their reducer cursor arrives;
 - Group decline retains the sealed G5 sequential fallback.
 
-This is protocol/control-flow evidence. Headless Automation does not prove real Slate-frame simultaneity, production geometry, absence of clipping or human-visible flashback.
+This is protocol/control-flow evidence. The production PIE gate below supplies the real Slate-frame visual acceptance.
 
-## Remaining manual Native PIE gate
+## Manual Native PIE acceptance — PASS
 
-G6 is **not sealed** until production Native `L_BattleTest` confirms the actual visual cohort.
+**PASS / user confirmed 2026-09-10** on the production Native `L_BattleTest` flow.
 
-Required acceptance:
+The requested G6 visual gate was exercised after the build and focused Automation had already passed. Acceptance establishes the following production behavior:
 
 ```text
-[ ] use a Player multi-select flow with N > 1 selected cards
-[ ] after Confirm, all selected destination animations visibly begin together
-[ ] no selected card briefly returns to the formal Hand row
-[ ] each animation starts from that exact selected card's displayed SelectionArea position
-[ ] no duplicate visible card
-[ ] no ghost/stale selected card after completion
-[ ] no clipping introduced by the simultaneous cohort
-[ ] destination/pile result is correct after the animations finish
-[ ] input returns normally; no stuck input
-[ ] repeat/select again successfully after the first Group completes
+[x] Player multi-select flow with N > 1 works
+[x] after Confirm, all selected destination animations visibly begin together
+[x] no selected card briefly returns to the formal Hand row
+[x] each animation starts from that exact selected card's displayed SelectionArea position
+[x] no duplicate visible card
+[x] no ghost/stale selected card after completion
+[x] no clipping introduced by the simultaneous cohort
+[x] destination/pile result is correct after the animations finish
+[x] input returns normally; no stuck input
+[x] a later selection can be performed successfully after the first Group completes
+[x] ordinary single-selection / Warcry SingleRecord behavior remains correct
 ```
 
-Also run one ordinary single-selection path (Warcry is suitable) to confirm the G5/G4 SingleRecord behavior remains intact and did not accidentally require a multi-member Group.
+This closes the visual evidence gap that headless Automation could not establish. The simultaneous Group path is now accepted in the production Native HUD, while the G5 sequential path remains the correctness fallback for declined/unsafe groups.
 
-## Seal rule
+## Seal
 
-Do not mark G6 `COMPLETE / VALIDATED / SEALED` from build + Automation alone.
+```text
+G6 N-child Selection Presentation Group playback: COMPLETE / VALIDATED / SEALED
+Transactional Group preflight: ACCEPTED
+Atomic SelectionArea → Transition ownership transfer: ACCEPTED
+Transition → ConsumedPendingReducer lifecycle: ACCEPTED
+Chronological reducer preservation: ACCEPTED
+Exact G5 sequential fallback: ACCEPTED
+Native simultaneous/no-flash visual gate: ACCEPTED
+```
 
-If the Native PIE gate passes, update the current status authorities and `docs/Validation.md`, then make G7 cleanup the next active Selection Presentation stage. If PIE fails, preserve the failure as evidence and repair G6 without weakening the G5 sequential fallback.
+G6 is closed for normal forward development. Do not reopen or redesign it unless a concrete regression directly implicates this sealed contract.
 
-G8 early input / Presentation pipelining remains out of scope regardless of G6 PIE outcome.
+Next active Selection Presentation stage: **G7 — cleanup only of compatibility paths proven obsolete by G6 equivalence and acceptance**.
+
+G7 must not weaken the G5 sequential fallback, exact ownership lifecycle, Group recovery, reducer chronology or production behavior. **G8 early input / Presentation pipelining remains a separate deferred initiative and is not part of G7.**
