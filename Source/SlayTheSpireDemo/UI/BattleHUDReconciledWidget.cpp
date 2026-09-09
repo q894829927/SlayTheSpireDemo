@@ -3,6 +3,8 @@
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
 #include "Components/HorizontalBox.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 
 void UBattleHUDReconciledWidget::NativeDestruct()
 {
@@ -31,48 +33,16 @@ void UBattleHUDReconciledWidget::NativeOnBattleHUDViewModelChanged()
 		return;
 	}
 
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Hand))
-	{
-		RefreshHand();
-	}
-	if (EnumHasAnyFlags(
-		DirtyFlags,
-		EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input))
-	{
-		RefreshCombatants();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Statuses))
-	{
-		RefreshStatusRows();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Energy))
-	{
-		RefreshEnergy();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PileCounts))
-	{
-		RefreshPileCounts();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Input))
-	{
-		RefreshInputState();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Feedback))
-	{
-		RefreshFeedback();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Intent))
-	{
-		RefreshEnemyIntent();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Terminal))
-	{
-		RefreshTerminalFromViewModel();
-	}
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PresentationAvailability))
-	{
-		RefreshPresentationAvailabilityFromViewModel();
-	}
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Hand)) RefreshHand();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input)) RefreshCombatants();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Statuses)) RefreshStatusRows();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Energy)) RefreshEnergy();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PileCounts)) RefreshPileCounts();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Input)) RefreshInputState();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Feedback)) RefreshFeedback();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Intent)) RefreshEnemyIntent();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PresentationAvailability)) RefreshPresentationAvailabilityFromViewModel();
 }
 
 void UBattleHUDReconciledWidget::RefreshHand()
@@ -95,11 +65,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 	{
 		if (CardView.RuntimeId == INDEX_NONE || DesiredRuntimeIds.Contains(CardView.RuntimeId))
 		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("[BattleHUD][G0-B] Hand reconcile rejected invalid/duplicate RuntimeId %d."),
-				CardView.RuntimeId);
+			UE_LOG(LogTemp, Error, TEXT("[BattleHUD][G0-B] Hand reconcile rejected invalid/duplicate RuntimeId %d."), CardView.RuntimeId);
 			Super::RefreshHand();
 			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
@@ -111,20 +77,28 @@ void UBattleHUDReconciledWidget::RefreshHand()
 	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
 	{
 		UBattleCardWidget* Existing = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
-		if (!IsValid(Existing)
-			|| Existing->GetRuntimeId() == INDEX_NONE
-			|| ExistingByRuntimeId.Contains(Existing->GetRuntimeId()))
+		if (!IsValid(Existing) || Existing->GetRuntimeId() == INDEX_NONE || ExistingByRuntimeId.Contains(Existing->GetRuntimeId()))
 		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("[BattleHUD][G0-B] Hand reconcile found malformed formal Hand children."));
+			UE_LOG(LogTemp, Error, TEXT("[BattleHUD][G0-B] Hand reconcile found malformed formal Hand children."));
 			Super::RefreshHand();
 			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
 		}
 		ExistingByRuntimeId.Add(Existing->GetRuntimeId(), Existing);
 	}
+
+	auto CreateFormalCard = [this]() -> UBattleCardWidget*
+	{
+		if (APlayerController* OwningPlayer = GetOwningPlayer())
+		{
+			return CreateWidget<UBattleCardWidget>(OwningPlayer, CardWidgetClass);
+		}
+		if (UWorld* World = GetWorld(); IsValid(World))
+		{
+			return CreateWidget<UBattleCardWidget>(World, CardWidgetClass);
+		}
+		return nullptr;
+	};
 
 	TArray<UBattleCardWidget*> DesiredWidgets;
 	DesiredWidgets.Reserve(ViewModel->HandCards.Num());
@@ -137,16 +111,11 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		}
 		else
 		{
-			CardWidget = CreateWidget<UBattleCardWidget>(GetOwningPlayer(), CardWidgetClass);
+			CardWidget = CreateFormalCard();
 		}
 		if (!IsValid(CardWidget))
 		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("[BattleHUD][G0-B] Hand reconcile could not create RuntimeId %d (%s)."),
-				CardView.RuntimeId,
-				*CardView.CardId.ToString());
+			UE_LOG(LogTemp, Error, TEXT("[BattleHUD][G0-B] Hand reconcile could not create RuntimeId %d (%s)."), CardView.RuntimeId, *CardView.CardId.ToString());
 			Super::RefreshHand();
 			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
@@ -163,9 +132,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		UBattleCardWidget* CardWidget = DesiredWidgets[Index];
 		const FBattleHUDCardView& CardView = ViewModel->HandCards[Index];
 		CardWidget->SetCardView(CardView);
-		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
-			BaseHUD,
-			&UBattleHUDWidget::HandleCardRequested);
+		CardWidget->OnBattleCardRequested.AddUniqueDynamic(BaseHUD, &UBattleHUDWidget::HandleCardRequested);
 		HB_Hand->AddChildToHorizontalBox(CardWidget);
 	}
 
@@ -187,14 +154,11 @@ void UBattleHUDReconciledWidget::EnsureOwnershipDelegateBinding()
 	OwnershipBoundViewModel = DesiredViewModel;
 	if (DesiredViewModel != nullptr)
 	{
-		DesiredViewModel->OnCardPresentationOwnershipChanged.AddUObject(
-			this,
-			&UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged);
+		DesiredViewModel->OnCardPresentationOwnershipChanged.AddUObject(this, &UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged);
 	}
 }
 
-void UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged(
-	const TArray<int32>& RuntimeIds)
+void UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged(const TArray<int32>& RuntimeIds)
 {
 	if (!IsValid(ViewModel) || !IsValid(HB_Hand))
 	{
@@ -212,13 +176,8 @@ void UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged(
 			}
 
 			FCardPresentationOwnershipEntry Entry;
-			const bool bExplicitNonHandOwner =
-				ViewModel->TryGetCardPresentationOwnershipEntry(RuntimeId, Entry)
-				&& Entry.Owner != ECardPresentationOwner::Hand;
-			CardWidget->SetVisibility(
-				bExplicitNonHandOwner
-					? ESlateVisibility::Hidden
-					: ESlateVisibility::Visible);
+			const bool bExplicitNonHandOwner = ViewModel->TryGetCardPresentationOwnershipEntry(RuntimeId, Entry) && Entry.Owner != ECardPresentationOwner::Hand;
+			CardWidget->SetVisibility(bExplicitNonHandOwner ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
 			CardWidget->SetIsEnabled(!bExplicitNonHandOwner);
 			break;
 		}
@@ -241,8 +200,7 @@ void UBattleHUDReconciledWidget::ApplyExplicitCardPresentationOwnershipToFormalH
 		}
 
 		FCardPresentationOwnershipEntry Entry;
-		if (ViewModel->TryGetCardPresentationOwnershipEntry(CardWidget->GetRuntimeId(), Entry)
-			&& Entry.Owner != ECardPresentationOwner::Hand)
+		if (ViewModel->TryGetCardPresentationOwnershipEntry(CardWidget->GetRuntimeId(), Entry) && Entry.Owner != ECardPresentationOwner::Hand)
 		{
 			CardWidget->SetVisibility(ESlateVisibility::Hidden);
 			CardWidget->SetIsEnabled(false);
@@ -262,9 +220,7 @@ void UBattleHUDReconciledWidget::UnbindReconciledHandDelegates()
 	{
 		if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child))
 		{
-			CardWidget->OnBattleCardRequested.RemoveDynamic(
-				BaseHUD,
-				&UBattleHUDWidget::HandleCardRequested);
+			CardWidget->OnBattleCardRequested.RemoveDynamic(BaseHUD, &UBattleHUDWidget::HandleCardRequested);
 		}
 	}
 }
