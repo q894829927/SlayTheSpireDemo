@@ -2,6 +2,22 @@
 
 #include "../UI/BattleHUDWidgetBase.h"
 
+namespace
+{
+	bool IsSameOfferedRecordIdentity(
+		const FPresentationRecord& Left,
+		const FPresentationRecord& Right)
+	{
+		return Left.BattleId == Right.BattleId
+			&& Left.ResolutionId == Right.ResolutionId
+			&& Left.PresentationSequence == Right.PresentationSequence
+			&& Left.Type == Right.Type
+			&& Left.Group.Kind == Right.Group.Kind
+			&& Left.Group.GroupId == Right.Group.GroupId
+			&& Left.Group.ExpectedMemberCount == Right.Group.ExpectedMemberCount;
+	}
+}
+
 bool UBattlePresentationController::TryActivatePresentationGroupG6(
 	const FPresentationRecord& LeaderRecord,
 	const FPresentationPlaybackToken& OfferedSingleRecordToken)
@@ -10,7 +26,9 @@ bool UBattlePresentationController::TryActivatePresentationGroupG6(
 		|| !bHasWorkingPresentationSnapshot
 		|| !bWaitingForCompletion
 		|| !ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex)
-		|| &LeaderRecord != &ActiveEnvelope.Records[ActiveRecordIndex]
+		|| !IsSameOfferedRecordIdentity(
+			LeaderRecord,
+			ActiveEnvelope.Records[ActiveRecordIndex])
 		|| !IsValid(Widget)
 		|| OfferedSingleRecordToken != ActivePlaybackToken
 		|| OfferedSingleRecordToken.UnitKind != EPresentationPlaybackUnitKind::SingleRecord
@@ -86,7 +104,9 @@ bool UBattlePresentationController::ConsumeVisuallyPresentedGroupRecordG6(
 	if (!bHasActiveEnvelope
 		|| !bWaitingForCompletion
 		|| !ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex)
-		|| &Record != &ActiveEnvelope.Records[ActiveRecordIndex]
+		|| !IsSameOfferedRecordIdentity(
+			Record,
+			ActiveEnvelope.Records[ActiveRecordIndex])
 		|| OfferedSingleRecordToken != ActivePlaybackToken
 		|| OfferedSingleRecordToken.UnitKind != EPresentationPlaybackUnitKind::SingleRecord
 		|| Record.ResolutionId != ActiveEnvelope.ResolutionId)
