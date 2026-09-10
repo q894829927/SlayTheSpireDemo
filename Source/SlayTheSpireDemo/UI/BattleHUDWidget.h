@@ -46,6 +46,23 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
 	TSubclassOf<UBattleStatusWidget> StatusWidgetClass;
 
+	// Runtime FanHand is created from Native code, so these values are the
+	// Blueprint-facing layout contract for the generated Hand surface.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "400.0"))
+	float HandMoveUpPixels = 0.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "1.0"))
+	FVector2D HandCardSize = FVector2D(150.0f, 210.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "300.0"))
+	float HandFanMaxHorizontalStep = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "-300.0", UIMin = "-100.0", UIMax = "300.0"))
+	float HandFanBaseVerticalOffset = 24.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "300.0"))
+	float HandFanEdgeVerticalDrop = 36.0f;
+
 	// Native card-request call sites intentionally resolve to this C++ overload.
 	// Slow input preserves the inherited request path. A click that lands during
 	// an actually active Native presentation catches up through formal Skip, then

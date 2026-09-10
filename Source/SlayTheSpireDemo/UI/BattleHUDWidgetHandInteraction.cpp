@@ -23,8 +23,14 @@ void UBattleHUDWidget::EnsureHandInteractionSurfaces()
 	FanHand = WidgetTree->ConstructWidget<UBattleHandFanPanel>(UBattleHandFanPanel::StaticClass(), TEXT("FanHand"));
 	UCanvasPanelSlot* HandSlot = Root->AddChildToCanvas(FanHand);
 	HandSlot->SetAnchors(FAnchors(0.12f, 1.0f, 0.88f, 1.0f));
-	HandSlot->SetOffsets(FMargin(0.0f, -280.0f, 0.0f, 280.0f));
+	const float HandMoveUp = FMath::Max(HandMoveUpPixels, 0.0f);
+	HandSlot->SetOffsets(FMargin(0.0f, -280.0f - HandMoveUp, 0.0f, 280.0f - HandMoveUp));
 	HandSlot->SetZOrder(HandZ);
+	FanHand->SetLayoutParameters(
+		HandCardSize,
+		HandFanMaxHorizontalStep,
+		HandFanBaseVerticalOffset,
+		HandFanEdgeVerticalDrop);
 	FanHand->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	HB_Hand->RemoveFromParent();
 	HB_Hand = FanHand;

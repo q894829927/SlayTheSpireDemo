@@ -30,6 +30,15 @@ still belongs to the Native `L_BattleTest` PIE gate above.
 The affected `CardSelection.Presentation.G5` + `.Input` regression union also passed
 **8/8**, with 0 warnings/failures/notRun (`Saved/AutomationReports/RightClickCancelSelectionRegression/index.json`).
 
+The incoming-card fan-layout follow-up also passed the standard project-file generation
+and Development Editor build (`Saved/Logs/HandFanPredictionProjectFiles.log`,
+`Saved/Logs/HandFanPredictionBuild.log`). The focused Native hand, asset/arrow policy and
+`DrawToHandSequentialPresentation` regression set passed **4/4** with no warnings,
+failures or notRun (`Saved/AutomationReports/HandFanPrediction/index.json`). The new
+layout parameters are exposed on `WBP_BattleHUD_Native` under `Battle HUD|Hand Layout`;
+actual Blueprint defaults and the no-vertical-frame draw motion still require the Native
+`L_BattleTest` PIE check above.
+
 ## Selection Presentation G4+G5 migration — 2026-09-09
 
 Historical implementation base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`.

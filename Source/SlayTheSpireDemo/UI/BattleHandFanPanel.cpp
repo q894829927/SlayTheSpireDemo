@@ -3,18 +3,37 @@
 #include "BattleCardWidget.h"
 #include "Components/CanvasPanelSlot.h"
 
-namespace
+void UBattleHandFanPanel::SetLayoutParameters(
+	const FVector2D& InCardSize,
+	float InMaxHorizontalStep,
+	float InBaseVerticalOffset,
+	float InEdgeVerticalDrop)
 {
-	const FVector2D CardSize(150.0f, 210.0f);
+	CardSize = FVector2D(
+		FMath::Max(InCardSize.X, 1.0f),
+		FMath::Max(InCardSize.Y, 1.0f));
+	MaxHorizontalStep = FMath::Max(InMaxHorizontalStep, 0.0f);
+	BaseVerticalOffset = InBaseVerticalOffset;
+	EdgeVerticalDrop = FMath::Max(InEdgeVerticalDrop, 0.0f);
+	LayoutCards();
 }
 
-FVector2D UBattleHandFanPanel::GetFanOffset(int32 Index, int32 Count, float Width)
+FVector2D UBattleHandFanPanel::GetFanOffset(
+	int32 Index,
+	int32 Count,
+	float Width,
+	float MaxHorizontalStep,
+	float BaseVerticalOffset,
+	float EdgeVerticalDrop,
+	float CardWidth)
 {
 	if (Count <= 0) return FVector2D::ZeroVector;
 	const float Centered = Index - (Count - 1) * 0.5f;
-	const float Step = Count > 1 ? FMath::Min(100.0f, FMath::Max(Width - 210.0f, 0.0f) / (Count - 1)) : 0.0f;
+	const float Step = Count > 1
+		? FMath::Min(MaxHorizontalStep, FMath::Max(Width - (CardWidth + 60.0f), 0.0f) / (Count - 1))
+		: 0.0f;
 	const float Normalized = Count > 1 ? Centered / ((Count - 1) * 0.5f) : 0.0f;
-	return FVector2D(Centered * Step, 24.0f + 36.0f * Normalized * Normalized);
+	return FVector2D(Centered * Step, BaseVerticalOffset + EdgeVerticalDrop * Normalized * Normalized);
 }
 
 float UBattleHandFanPanel::GetFanAngle(int32 Index, int32 Count)
@@ -36,8 +55,30 @@ void UBattleHandFanPanel::LayoutCards()
 			CanvasSlot->SetAlignment(FVector2D(0.5f, 1.0f));
 			CanvasSlot->SetAutoSize(false);
 			CanvasSlot->SetSize(CardSize);
-			CanvasSlot->SetPosition(GetFanOffset(Index, GetChildrenCount(), Width));
+			CanvasSlot->SetPosition(GetFanOffset(
+				Index,
+				GetChildrenCount(),
+				Width,
+				MaxHorizontalStep,
+				BaseVerticalOffset,
+				EdgeVerticalDrop,
+				CardSize.X));
 			Card->SetRenderTransformPivot(FVector2D(0.5f, 1.0f));
+		}
+	}
+}
+
+void UBattleHandFanPanel::PrepareIncomingCardLayout()
+{
+	LayoutCards();
+	const int32 FinalCount = GetChildrenCount();
+	for (int32 Index = 0; Index < FinalCount; ++Index)
+	{
+		if (UWidget* Card = GetChildAt(Index))
+		{
+			FWidgetTransform Transform = Card->GetRenderTransform();
+			Transform.Angle = GetFanAngle(Index, FinalCount);
+			Card->SetRenderTransform(Transform);
 		}
 	}
 }
@@ -72,7 +113,14 @@ void UBattleHandFanPanel::UpdateInteraction(const FVector2D& AbsolutePointer, in
 		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
 		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled()) continue;
 		const FVector2D Bottom = FVector2D(Geometry.GetLocalSize().X * 0.5f, Geometry.GetLocalSize().Y)
-			+ GetFanOffset(Index, GetChildrenCount(), Geometry.GetLocalSize().X);
+			+ GetFanOffset(
+				Index,
+				GetChildrenCount(),
+				Geometry.GetLocalSize().X,
+				MaxHorizontalStep,
+				BaseVerticalOffset,
+				EdgeVerticalDrop,
+				CardSize.X);
 		const float Distance = FMath::Abs(Pointer.X - Bottom.X);
 		if (Distance <= CardSize.X * 0.5f && Pointer.Y >= Bottom.Y - CardSize.Y - 15.0f
 			&& Pointer.Y <= Bottom.Y + 15.0f && Distance < Closest)

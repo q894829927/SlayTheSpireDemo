@@ -7,11 +7,13 @@ Use `main` as the working branch unless a later explicit branch decision superse
 ## Current resumable task — Fan Hand / Attack Targeting
 
 HEAD `268e3006b8f04e924af6d09a020c45460b35c103`; local uncommitted changes.
-Scope: user-requested fan Hand, enlarged hover cards and gray/red single-enemy
-Attack arrow and viewport-wide mouse-right cancellation for ordinary selection; [execution/evidence](HandFanTargetingInteraction.md). G8 stays deferred.
+Scope: user-requested fan Hand, enlarged hover cards, gray/red single-enemy Attack
+arrow, viewport-wide mouse-right cancellation for ordinary selection, Blueprint-tunable
+Hand layout and predicted Draw→Hand fan targets; [execution/evidence](HandFanTargetingInteraction.md).
+G8 stays deferred.
 
-Completed: UBattleHandFanPanel with ordered Canvas slots, stable hover regions and
-raised-card painting; UBattleTargetingArrowWidget with private imported textures,
+Completed: UBattleHandFanPanel with ordered Canvas slots, stable hover regions,
+raised-card painting and precomputed incoming-card fan targets; UBattleTargetingArrowWidget with private imported textures,
 frozen-view type gate and legal-enemy tint; Native HUD initialization/tick/input
 integration, including Presenter-level viewport-wide right-click cancellation.
 Formal Hand remains the sole current Hand visual, preserving G5/G6
@@ -31,6 +33,10 @@ installation passed in `Saved/AutomationReports/RightClickGlobal/index.json`. Fi
 `Saved/AutomationReports/HandInteractionVerified/index.json`. Additional retained
 evidence and intermediate failures are in the dedicated document; do not sum
 overlapping counts. `git diff --check` PASS. No manual visual PASS.
+
+The incoming-card prediction and Blueprint layout follow-up also passed standard
+generation/build (`HandFanPredictionProjectFiles.log`, `HandFanPredictionBuild.log`) and
+focused Automation **4/4** in `Saved/AutomationReports/HandFanPrediction/index.json`.
 
 Next / USER ACTION REQUIRED: reopen Native L_BattleTest; inspect fan/hover at both
 ends and overlaps, attack arrow gray over empty space/red over legal enemy, no

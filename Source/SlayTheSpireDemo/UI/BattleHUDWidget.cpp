@@ -1169,6 +1169,12 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	if (FanHand)
+	{
+		// The final hand count is known now. Resolve every card's destination
+		// slot and resting fan angle before the draw animation gets its first tick.
+		FanHand->PrepareIncomingCardLayout();
+	}
 	ConfigureNativeCardAnimation(
 		PresentationCard,
 		Txt_DrawCount,

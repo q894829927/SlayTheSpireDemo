@@ -4,7 +4,7 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
-- **Fan Hand / Attack Targeting — implemented, automated gates PASS, Native PIE pending (2026-09-10).** User-requested fan layout, raised/enlarged hover cards, gray/red single-enemy Attack arrow and mouse-right cancellation for ordinary selection. Imported the two requested local targeting textures. Scope, exact validation evidence and visual checklist: [Hand interaction](HandFanTargetingInteraction.md). Gameplay and G8 scheduling are unchanged.
+- **Fan Hand / Attack Targeting — implemented, automated gates PASS, Native PIE pending (2026-09-10).** User-requested fan layout, raised/enlarged hover cards, gray/red single-enemy Attack arrow, mouse-right cancellation for ordinary selection and predicted Draw→Hand fan targets. Hand layout tuning is exposed to the Native HUD Blueprint. Imported the two requested local targeting textures. Scope, exact validation evidence and visual checklist: [Hand interaction](HandFanTargetingInteraction.md). Gameplay and G8 scheduling are unchanged.
 
 - **G8 — detailed design proposal recorded (2026-09-10); NOT IMPLEMENTED.** The user authorized design review and documentation only. [G8 detailed proposal](SelectionPresentationG8Design.md) defines DamageNumber-only detached jobs, exact input-mode readiness, transactional fallback, staged activation and acceptance. G0–G7 current status supersedes the historical bullets below per [G7 status amendment](SelectionPresentationG7SealAmendment.md); no implementation stage is automatically active.
 

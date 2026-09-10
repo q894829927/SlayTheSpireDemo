@@ -33,6 +33,17 @@ transform。消耗选择的 dim opacity 保持由现有选择逻辑负责，避�
 重叠牌的 hover 使用稳定的原位置横向区域，并让点击与该候选一致；不以放大后覆盖
 邻牌的范围作为唯一 hover 来源。
 
+抽牌到 Hand 时，新增卡加入后立即按最终 Hand 数量计算全部 slot 和 resting angle，
+再启动从 DrawPile 到该 slot 的视觉移动。这样抽牌卡不会先以 0° 竖直姿态显示，
+也不会等播放完成后才第一次套用扇形；目标位置仍由正式 Hand 顺序和运行时布局参数
+共同决定。
+
+运行时 `FanHand` 仍由 Native HUD 创建，但布局已通过 `Battle HUD|Hand Layout` 暴露给
+派生 HUD 蓝图：`HandMoveUpPixels` 整体上移手牌，`HandCardSize` 调整卡牌尺寸，
+`HandFanMaxHorizontalStep` 控制水平展开，`HandFanBaseVerticalOffset` 和
+`HandFanEdgeVerticalDrop` 控制扇形的垂直基准与两侧下沉。参数会同时驱动 Canvas
+位置和 hover 命中区域；修改蓝图默认值后重新运行 PIE 即可生效。
+
 箭头是独立 Native `UBattleTargetingArrowWidget`，由 Canvas + 私有 Images 组成，
 整层 HitTestInvisible，不抢敌人和按钮的点击。以选中卡牌的实际 geometry 为起点，
 指针为终点，沿三次曲线按弧长采样分段。颜色只使用当前已公开合法目标映射，不遍历
@@ -95,6 +106,12 @@ Steam 文件。导入记录：`Saved/Logs/HandFanImport.log`。Python 插件仅�
 - Presenter 全局输入组件安装回归与右键专项合计 **2 项成功**；该 Presenter 夹具保留
   两条既有 headless warning（空测试牌组、无游戏视口），没有失败或错误，
   `Saved/AutomationReports/RightClickGlobal/index.json`。
+- 抽牌预测布局追加验证：工程生成和 Development Editor Win64 build PASS，exit 0，
+  `Saved/Logs/HandFanPredictionProjectFiles.log`、`Saved/Logs/HandFanPredictionBuild.log`；
+  `SlayTheSpireDemo.HandInteraction`、Native 资产/箭头策略和
+  `SlayTheSpireDemo.Phase6UIA2N.R8.Zone.DrawToHandSequentialPresentation` 合计
+  **4/4 PASS**，0 warnings/failed/notRun，process exit 0，
+  `Saved/AutomationReports/HandFanPrediction/index.json`。
 - `git diff --check` PASS。重叠范围不累计；headless 结果不证明实际悬停画面或 PIE 验收。
 
 **USER ACTION REQUIRED（PIE）**：Native `L_BattleTest`。
@@ -103,7 +120,8 @@ Steam 文件。导入记录：`Saved/Logs/HandFanImport.log`。Python 插件仅�
    文字可读；移动至邻牌不持续抖动，点击与高亮牌相同。
 2. 选单体攻击，指向空白为灰箭头，指向合法敌人为红箭头；点击敌人正常结算。
    右键取消后箭头消失；再次进入选敌时左键敌人正常结算；自身/无目标/非攻击牌不出现攻击箭头。
-3. 选多张牌消耗、Warcry 放回牌堆、连续抽牌，验证没有跳回第一张、重复、隐藏槽位
-   闪现或残留箭头；允许取消的选择可右键撤销，强制选择右键不应结束请求；G6 同时消耗保持正常。
+3. 连续抽牌时确认新牌从牌堆直接移动到预测好的扇形目标位，不先竖直显示再转角度；
+   选多张牌消耗、Warcry 放回牌堆，验证没有跳回第一张、重复、隐藏槽位闪现或残留箭头；
+   允许取消的选择可右键撤销，强制选择右键不应结束请求；G6 同时消耗保持正常。
 
 本变更不包含拖拽出牌重写、敌人场景布局迁移或整套战斗界面重制。
