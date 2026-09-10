@@ -1,5 +1,11 @@
 # Selection Presentation Group + Parallel Animation Design
 
+G8 design refinement (2026-09-10): [G8 detailed proposal](SelectionPresentationG8Design.md)
+refines section 30's candidate token, DamageNumber-only scope, input-mode readiness,
+transaction and recovery contracts. Design/documentation only; G8 implementation
+has not been authorized or started. Current G0–G7 status is governed by
+[G7 status amendment](SelectionPresentationG7SealAmendment.md).
+
 Date: **2026-09-09**
 
 Status:

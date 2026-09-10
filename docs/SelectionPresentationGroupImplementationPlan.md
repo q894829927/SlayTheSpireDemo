@@ -1,5 +1,11 @@
 # Selection Presentation Group Implementation Plan
 
+G8 planning refinement (2026-09-10): [G8 detailed proposal](SelectionPresentationG8Design.md)
+section 10 replaces section 18's proposed G8-A–F work breakdown for future planning.
+It moves basic recovery/resource gates before production activation and narrows
+NonBlocking to DamageNumber. This is not implementation authorization. Current
+G0–G7 status: [G7 status amendment](SelectionPresentationG7SealAmendment.md).
+
 Date: **2026-09-09**
 
 Status:
