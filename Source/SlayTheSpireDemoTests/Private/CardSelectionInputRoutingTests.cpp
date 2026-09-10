@@ -206,6 +206,77 @@ bool FSelectionPendingBoundaryBlocksOrdinaryCardPlayTest::RunTest(const FString&
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSelectionRightMouseButtonCancelTest,
+	"SlayTheSpireDemo.CardSelection.Presentation.Input.RightMouseButtonCancel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FSelectionRightMouseButtonCancelTest::RunTest(const FString& Parameters)
+{
+	// Ordinary card/target selection is presentation input and must be cancelled
+	// through the same ViewModel path as the visible Cancel button.
+	{
+		FFixture Fixture;
+		UCardData* Attack = Fixture.CreateCard(TEXT("RightClickAttack"), ECardTargetType::Enemy);
+		if (!TestTrue(TEXT("Ordinary-selection fixture starts"), Fixture.Start({ Attack }))) return false;
+
+		UCardInstance* AttackInstance = Fixture.FindHandCard(TEXT("RightClickAttack"));
+		UBattleHUDViewModel* VM = NewObject<UBattleHUDViewModel>(Fixture.World);
+		UCardSelectionPresentationHUDProbe* HUD = NewObject<UCardSelectionPresentationHUDProbe>(Fixture.World);
+		if (!TestNotNull(TEXT("Ordinary-selection card exists"), AttackInstance)
+			|| !TestTrue(TEXT("Ordinary-selection ViewModel initializes"), VM->Initialize(Fixture.Battle, false))
+			|| !TestNotNull(TEXT("Ordinary-selection HUD exists"), HUD))
+		{
+			return false;
+		}
+		HUD->SetTestWorld(Fixture.World);
+		HUD->ConfigureSelectionCanvasForTesting(VM);
+
+		TestTrue(TEXT("Attack enters target selection"), HUD->SelectCard(AttackInstance->GetRuntimeId()));
+		TestEqual(TEXT("Attack waits for a target"), VM->InteractionState, EBattleHUDInteractionState::ChoosingTarget);
+		TestTrue(TEXT("Right click is consumed by the HUD"), HUD->InvokeRightMouseButtonCancelForTesting());
+		TestEqual(TEXT("Right click clears the selected card"), VM->SelectedCardRuntimeId, INDEX_NONE);
+		TestEqual(TEXT("Right click returns to idle"), VM->InteractionState, EBattleHUDInteractionState::Idle);
+		TestFalse(TEXT("Right click leaves input locked"), VM->bInputLocked);
+	}
+
+	// A Gameplay-owned mandatory selection has its own cancel policy. Right click
+	// must not bypass that policy or call ordinary card-play cancellation.
+	{
+		FFixture Fixture;
+		if (!TestTrue(TEXT("Mandatory-selection fixture starts"), Fixture.Start({
+			Fixture.CreateSelectionCard(TEXT("RightClickMandatory")),
+			Fixture.CreateCard(TEXT("RightClickCandidate"))
+		})))
+		{
+			return false;
+		}
+		UCardInstance* Choice = Fixture.FindHandCard(TEXT("RightClickMandatory"));
+		TestTrue(TEXT("Mandatory choice play is accepted"),
+			Fixture.Battle->RequestPlayCard(Choice, nullptr).IsAcceptedForResolution());
+		Fixture.Battle->FlushScheduledReadStateReadyForTesting();
+
+		UBattleHUDViewModel* VM = NewObject<UBattleHUDViewModel>(Fixture.World);
+		UCardSelectionPresentationHUDProbe* HUD = NewObject<UCardSelectionPresentationHUDProbe>(Fixture.World);
+		if (!TestTrue(TEXT("Mandatory-selection ViewModel initializes"), VM->Initialize(Fixture.Battle, false))
+			|| !TestNotNull(TEXT("Mandatory-selection HUD exists"), HUD))
+		{
+			return false;
+		}
+		HUD->SetTestWorld(Fixture.World);
+		HUD->ConfigureSelectionCanvasForTesting(VM);
+
+		TestTrue(TEXT("Mandatory selection is authoritative and pending"), VM->HasAuthoritativePendingCardSelection());
+		TestFalse(TEXT("Forbidden mandatory selection does not consume right click"), HUD->InvokeRightMouseButtonCancelForTesting());
+		TestTrue(TEXT("Forbidden mandatory selection remains pending"), Fixture.Battle->GetSelectionResolver()->HasPendingSelection());
+		TestEqual(TEXT("Forbidden mandatory selection does not enter ordinary card state"),
+			VM->SelectedCardRuntimeId,
+			INDEX_NONE);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSelectionProductionConfirmRoutingTest,
 	"SlayTheSpireDemo.CardSelection.Presentation.Input.ProductionConfirmRouting",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

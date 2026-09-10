@@ -9,6 +9,7 @@ class APlayerController;
 class UBattleHUDViewModel;
 class UBattleHUDWidgetBase;
 class UBattlePresentationController;
+class UInputComponent;
 
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API ABattleHUDPresenter : public AActor
@@ -55,4 +56,15 @@ protected:
 	// Idempotent HUD teardown shared by EndPlay and Editor-only fixture cleanup.
 	// It intentionally does not dispatch Actor lifecycle methods itself.
 	void ShutdownHUD();
+
+	// PreviewMouseButtonDown covers the HUD hit-test path. This Presenter-owned
+	// input component covers the rest of the local viewport, including empty game
+	// background, and forwards to the same virtual Widget cancel boundary.
+	void BindGlobalRightMouseCancel(APlayerController* PlayerController);
+	void UnbindGlobalRightMouseCancel();
+	void HandleGlobalRightMouseButtonPressed();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputComponent> GlobalRightMouseInputComponent = nullptr;
+	TWeakObjectPtr<APlayerController> GlobalRightMousePlayerController;
 };

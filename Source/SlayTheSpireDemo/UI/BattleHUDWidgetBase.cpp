@@ -9,6 +9,7 @@
 #include "Components/Overlay.h"
 #include "Components/PanelWidget.h"
 #include "Containers/Ticker.h"
+#include "InputCoreTypes.h"
 
 namespace
 {
@@ -331,11 +332,12 @@ void UBattleHUDWidgetBase::LogPresentationRecordRejection(
 
 	const FCardPlayedPresentationPayload& Payload = Record.CardPlayed;
 	const UBattleHUDViewModel* VM = ViewModel;
-	UHorizontalBox* Hand = nullptr;
+	UPanelWidget* Hand = nullptr;
 	UOverlay* PlayArea = nullptr;
 	if (IsValid(WidgetTree))
 	{
-		Hand = Cast<UHorizontalBox>(WidgetTree->FindWidget(TEXT("HB_Hand")));
+		Hand = Cast<UPanelWidget>(WidgetTree->FindWidget(TEXT("FanHand")));
+		if (!Hand) Hand = Cast<UPanelWidget>(WidgetTree->FindWidget(TEXT("HB_Hand")));
 		PlayArea = Cast<UOverlay>(WidgetTree->FindWidget(TEXT("OV_PlayArea")));
 	}
 
@@ -593,4 +595,43 @@ void UBattleHUDWidgetBase::DispatchTrackedPresentationCancellation(
 		return;
 	}
 	CancelPresentationRecordPlayback(Unit.Token);
+}
+
+FReply UBattleHUDWidgetBase::NativeOnPreviewMouseButtonDown(
+	const FGeometry& InGeometry,
+	const FPointerEvent& InMouseEvent
+)
+{
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton
+		&& HandleRightMouseButtonCancelInput())
+	{
+		return FReply::Handled();
+	}
+
+	return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
+}
+
+bool UBattleHUDWidgetBase::HandleRightMouseButtonCancelInput()
+{
+	return HandleRightMouseButtonCancel();
+}
+
+bool UBattleHUDWidgetBase::HandleRightMouseButtonCancel()
+{
+	if (!IsValid(ViewModel))
+	{
+		return false;
+	}
+
+	const bool bHasOrdinarySelection =
+		ViewModel->SelectedCardRuntimeId != INDEX_NONE
+		|| ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget
+		|| ViewModel->InteractionState == EBattleHUDInteractionState::ReadyToConfirm;
+	if (!bHasOrdinarySelection)
+	{
+		return false;
+	}
+
+	CancelSelection();
+	return true;
 }

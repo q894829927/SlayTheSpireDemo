@@ -1,6 +1,7 @@
 #include "BattleHUDWidget.h"
 
 #include "BattleCardWidget.h"
+#include "BattleHandFanPanel.h"
 #include "BattleStatusWidget.h"
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 #include "BattleHUDViewModel.h"
@@ -117,6 +118,7 @@ namespace
 void UBattleHUDWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
+	EnsureHandInteractionSurfaces();
 
 	bNativeBindingsValid =
 		CardWidgetClass != nullptr
@@ -261,6 +263,7 @@ void UBattleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	UpdateNativeCardAnimation(InDeltaTime);
+	UpdateHandInteraction(InDeltaTime);
 }
 
 void UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()
@@ -325,7 +328,7 @@ void UBattleHUDWidget::RefreshHand()
 		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
 			this,
 			&UBattleHUDWidget::HandleCardRequested);
-		HB_Hand->AddChildToHorizontalBox(CardWidget);
+		HB_Hand->AddChild(CardWidget);
 	}
 }
 
@@ -723,6 +726,16 @@ void UBattleHUDWidget::HandleCardRequested(int32 RuntimeId)
 {
 	if (bNativeBindingsValid && RuntimeId != INDEX_NONE)
 	{
+		// Overlapping raised cards must submit the same card that the stable
+		// resting-strip hover resolver presents under this pointer.
+		UBattleCardWidget* ClickSource = nullptr;
+		if (FanHand)
+			for (UWidget* Child : FanHand->GetAllChildren())
+				if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child); Card && Card->GetRuntimeId() == RuntimeId) ClickSource = Card;
+		if (ClickSource && ClickSource->IsHovered() && FanHand->GetHoveredRuntimeId() != INDEX_NONE)
+		{
+			RuntimeId = FanHand->GetHoveredRuntimeId();
+		}
 		SelectCard(RuntimeId);
 	}
 }
@@ -949,15 +962,16 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	}
 	PlayAreaSlot->SetHorizontalAlignment(HAlign_Center);
 	PlayAreaSlot->SetVerticalAlignment(VAlign_Center);
+	const bool bFanSource = Cast<UBattleHandFanPanel>(HistoricalHandCard->GetParent()) != nullptr;
 	ConfigureNativeCardAnimation(
 		PresentationCard,
 		HistoricalHandCard,
 		nullptr,
 		NativeHandCardFallbackTranslation,
 		FVector2D::ZeroVector,
-		0.88f,
+		bFanSource ? HistoricalHandCard->GetRenderTransform().Scale.X : 0.88f,
 		1.0f,
-		0.0f,
+		bFanSource ? 1.0f : 0.0f,
 		1.0f);
 	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
 

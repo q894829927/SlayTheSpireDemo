@@ -210,6 +210,24 @@ void UBattleHUDSelectionWidget::HandleSelectionAwareCancelClicked()
 	RefreshSharedSelectionPresentation();
 }
 
+bool UBattleHUDSelectionWidget::HandleRightMouseButtonCancel()
+{
+	if (IsValid(ViewModel) && ViewModel->HasAuthoritativePendingCardSelection())
+	{
+		// A pending Gameplay selection has its own cancel policy. Right-click must
+		// use the same transactional path as the visible Cancel button and must not
+		// fall through into ordinary card-play cancellation.
+		if (!ViewModel->CanCancelPendingCardSelection())
+		{
+			return false;
+		}
+		HandleSelectionAwareCancelClicked();
+		return true;
+	}
+
+	return Super::HandleRightMouseButtonCancel();
+}
+
 void UBattleHUDSelectionWidget::NativeOnBattleHUDViewModelChanged()
 {
 	if (SelectionBoundViewModel.Get() != ViewModel.Get())

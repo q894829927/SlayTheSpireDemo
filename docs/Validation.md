@@ -2,6 +2,34 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Fan Hand / Attack Targeting — 2026-09-10
+
+Implementation and complete evidence: [Hand interaction](HandFanTargetingInteraction.md).
+Final standard UE 5.8 project generation/build PASS; final affected Automation
+union **11/11 PASS**, no warnings/failures/notRun, process exit 0, report
+`Saved/AutomationReports/HandInteractionVerified/index.json`. That document records
+the exact scopes, retained G0/G6/R8/Preview evidence, intermediate aborted runs and
+the stale R8 negative-case correction without adding overlapping totals.
+Production Native asset installation, private arrow tint/input suppression and
+Selection continuity using the fan host are covered. **USER ACTION REQUIRED:**
+Native `L_BattleTest` visual/hover/targeting checklist. No PIE PASS is claimed.
+
+The Native HUD preview boundary and the Presenter-level PlayerController input
+component now support mouse-right cancellation across the local game viewport.
+Standard project-file generation and the Development Editor Win64 build passed
+after this follow-up (`Saved/Logs/RightClickGlobalFinalProjectFiles.log`,
+`Saved/Logs/RightClickGlobalFinalBuild.log`). The focused regression
+`SlayTheSpireDemo.CardSelection.Presentation.Input.RightMouseButtonCancel` passed
+**1/1**, with 0 warnings, failures or notRun, process exit 0
+(`Saved/AutomationReports/RightMouseButtonCancel/index.json`). It covers ordinary
+Attack target selection and confirms that a mandatory Gameplay selection remains
+pending when its cancel policy is `Forbidden`. The headless test calls the shared
+cancel route directly, while the Presenter infrastructure regression confirms that
+the global component is pushed onto the local PlayerController. A real mouse click
+still belongs to the Native `L_BattleTest` PIE gate above.
+The affected `CardSelection.Presentation.G5` + `.Input` regression union also passed
+**8/8**, with 0 warnings/failures/notRun (`Saved/AutomationReports/RightClickCancelSelectionRegression/index.json`).
+
 ## Selection Presentation G4+G5 migration — 2026-09-09
 
 Historical implementation base HEAD `963adbd27cc161a09ea1ff68c7e479719b8331cb`.

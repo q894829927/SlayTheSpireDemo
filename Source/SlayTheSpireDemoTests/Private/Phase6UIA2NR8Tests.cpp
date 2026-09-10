@@ -437,7 +437,8 @@ bool FNativeR8HandDiscardTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Invalid Hand index has zero visibility side effects"),
 		InvalidFormal->GetVisibility() == ESlateVisibility::Visible);
 	const FPresentationRecord Unsupported = MakeZoneRecord(
-		3, Snapshot, ECardZone::Hand, ECardZone::ExhaustPile, 0, 0);
+		// Hand->Exhaust is supported since the selection presentation migration.
+		3, Snapshot, ECardZone::ExhaustPile, ECardZone::Hand, 0, 0);
 	TestFalse(TEXT("Unsupported zone pair returns false"),
 		InvalidFixture.Probe->PlayPresentationRecord(Unsupported, MakeToken(3)));
 	TestTrue(TEXT("Unsupported pair has zero local side effects"),

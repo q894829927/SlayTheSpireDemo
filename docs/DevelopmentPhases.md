@@ -4,6 +4,8 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
+- **Fan Hand / Attack Targeting — implemented, automated gates PASS, Native PIE pending (2026-09-10).** User-requested fan layout, raised/enlarged hover cards, gray/red single-enemy Attack arrow and mouse-right cancellation for ordinary selection. Imported the two requested local targeting textures. Scope, exact validation evidence and visual checklist: [Hand interaction](HandFanTargetingInteraction.md). Gameplay and G8 scheduling are unchanged.
+
 - **G8 — detailed design proposal recorded (2026-09-10); NOT IMPLEMENTED.** The user authorized design review and documentation only. [G8 detailed proposal](SelectionPresentationG8Design.md) defines DamageNumber-only detached jobs, exact input-mode readiness, transactional fallback, staged activation and acceptance. G0–G7 current status supersedes the historical bullets below per [G7 status amendment](SelectionPresentationG7SealAmendment.md); no implementation stage is automatically active.
 
 - **Selection Presentation G0–G5 — COMPLETE / VALIDATED / SEALED (2026-09-09).** G0–G3 established the ownership/correlation/Controller protocol foundation. G4 introduced the generic SingleRecord transition engine; its isolated compatibility path failed visual PIE and remains historical. The coherent G4+G5 production migration activated persistent SelectionArea ownership and exact same-object transition consumption, passed automated gates, and passed the user-confirmed Native `L_BattleTest` PIE gate with no flashback, duplicate, ghost, clipping or stuck input. Authorities: `docs/SelectionPresentationG4Execution.md`, `docs/SelectionPresentationG5Execution.md`, `docs/Validation.md`.

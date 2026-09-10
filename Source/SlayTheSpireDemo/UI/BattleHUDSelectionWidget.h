@@ -31,6 +31,7 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual bool HandleRightMouseButtonCancel() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(

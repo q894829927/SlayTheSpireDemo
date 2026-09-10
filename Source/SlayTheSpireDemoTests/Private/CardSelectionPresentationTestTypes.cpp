@@ -81,5 +81,7 @@ void UCardSelectionPresentationHUDProbe::ConfigureSelectionCanvasForTesting(UBat
 	Root->AddChild(OV_PlayArea);
 	CardWidgetClass = UPhase6UIA2NR8CardProbe::StaticClass();
 	bSyntheticSelectionGeometry = true;
+	// Use the production fan host while preserving headless geometry injection.
+	EnsureHandInteractionSurfaces();
 	SetViewModel(InViewModel);
 }

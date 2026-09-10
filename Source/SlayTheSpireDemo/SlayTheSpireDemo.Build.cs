@@ -10,10 +10,12 @@ public class SlayTheSpireDemo : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "UMG" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		// Native HUD preview mouse routing returns Slate FReply. Keep this engine
+		// dependency private; no Slate types cross the Gameplay/public boundary.
+		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore" });
 		
-		// Slate/SlateCore are intentionally not direct gameplay dependencies here.
-		// Phase 6UI-A1 uses UMG public types; concrete visual layout remains in Widget Blueprints.
+		// Gameplay still exposes no Slate types; this private SlateCore dependency is
+		// limited to the Native HUD's FReply input boundary.
 		
 		// Uncomment if you are using online features
 		// PrivateDependencyModuleNames.Add("OnlineSubsystem");

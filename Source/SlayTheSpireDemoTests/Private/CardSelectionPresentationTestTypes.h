@@ -62,9 +62,10 @@ public:
 	void InvokeNativeTickForTesting(float DeltaSeconds);
 	void BindConfirmButtonForTesting(class UButton* Button);
 	void ConfigureSelectionCanvasForTesting(UBattleHUDViewModel* InViewModel);
+	bool InvokeRightMouseButtonCancelForTesting() { return HandleRightMouseButtonCancelInput(); }
 	void DisableSyntheticSelectionGeometryForTesting() { bSyntheticSelectionGeometry = false; }
 	void DestructSelectionForTesting() { NativeDestruct(); }
-	UHorizontalBox* GetHandForTesting() const { return HB_Hand; }
+	UPanelWidget* GetHandForTesting() const { return HB_Hand; }
 	UOverlay* GetPlayAreaForTesting() const { return OV_PlayArea; }
 	void FinishNativeForTesting(const FPresentationPlaybackToken& Token)
 	{

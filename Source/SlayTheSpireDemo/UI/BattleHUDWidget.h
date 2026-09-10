@@ -12,6 +12,9 @@ class UBattleHUDCombatantPresentationWidgetBase;
 class UBattleImmediatePreviewTextBlock;
 class UButton;
 class UHorizontalBox;
+class UPanelWidget;
+class UBattleHandFanPanel;
+class UBattleTargetingArrowWidget;
 class UOverlay;
 class UProgressBar;
 class UTextBlock;
@@ -58,6 +61,8 @@ protected:
 	virtual void OnWidgetRebuilt() override;
 	virtual void BeginDestroy() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
+	void EnsureHandInteractionSurfaces();
+	void UpdateHandInteraction(float DeltaTime);
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token
@@ -313,7 +318,13 @@ protected:
 	TObjectPtr<UBattleHUDCombatantPresentationWidgetBase> Combatant_EnemyPresentation;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UHorizontalBox> HB_Hand;
+	TObjectPtr<UPanelWidget> HB_Hand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleHandFanPanel> FanHand;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UBattleTargetingArrowWidget> TargetingArrow;
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> Btn_EndTurn;

@@ -5,7 +5,9 @@
 #include "../Battle/BattleManager.h"
 #include "../Presentation/BattlePresentationController.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Components/InputComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "InputCoreTypes.h"
 
 ABattleHUDPresenter::ABattleHUDPresenter()
 {
@@ -93,6 +95,7 @@ bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
 	// then apply the newest frozen baseline without any PresentationController.
 
 	WidgetInstance->AddToViewport(ZOrder);
+	BindGlobalRightMouseCancel(PlayerController);
 
 	if (bConfigureGameAndUIInput)
 	{
@@ -113,6 +116,8 @@ void ABattleHUDPresenter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ABattleHUDPresenter::ShutdownHUD()
 {
+	UnbindGlobalRightMouseCancel();
+
 	if (IsValid(WidgetInstance))
 	{
 		WidgetInstance->SetPresentationController(nullptr);
@@ -134,5 +139,68 @@ void ABattleHUDPresenter::ShutdownHUD()
 	{
 		ViewModel->Shutdown();
 		ViewModel = nullptr;
+	}
+}
+
+void ABattleHUDPresenter::BindGlobalRightMouseCancel(APlayerController* PlayerController)
+{
+	if (!IsValid(PlayerController) || !IsValid(WidgetInstance))
+	{
+		return;
+	}
+
+	if (GlobalRightMousePlayerController.Get() == PlayerController
+		&& IsValid(GlobalRightMouseInputComponent))
+	{
+		return;
+	}
+
+	UnbindGlobalRightMouseCancel();
+
+	GlobalRightMouseInputComponent = NewObject<UInputComponent>(
+		this,
+		TEXT("BattleHUDGlobalRightMouseInput"),
+		RF_Transient);
+	if (!IsValid(GlobalRightMouseInputComponent))
+	{
+		UE_LOG(LogTemp, Error, TEXT("[BattleHUD] Failed to create the global right-click input component."));
+		return;
+	}
+
+	GlobalRightMouseInputComponent->Priority = 1000;
+	GlobalRightMouseInputComponent->bBlockInput = false;
+	FInputKeyBinding& Binding = GlobalRightMouseInputComponent->BindKey(
+		EKeys::RightMouseButton,
+		IE_Pressed,
+		this,
+		&ABattleHUDPresenter::HandleGlobalRightMouseButtonPressed);
+	// The binding must coexist with world/UI input when no selection is active.
+	// The handler itself only mutates the HUD when the shared cancel boundary
+	// reports an active cancellable selection.
+	Binding.bConsumeInput = false;
+
+	GlobalRightMousePlayerController = PlayerController;
+	PlayerController->PushInputComponent(GlobalRightMouseInputComponent.Get());
+}
+
+void ABattleHUDPresenter::UnbindGlobalRightMouseCancel()
+{
+	if (APlayerController* PlayerController = GlobalRightMousePlayerController.Get())
+	{
+		if (IsValid(GlobalRightMouseInputComponent))
+		{
+			PlayerController->PopInputComponent(GlobalRightMouseInputComponent.Get());
+		}
+	}
+
+	GlobalRightMousePlayerController.Reset();
+	GlobalRightMouseInputComponent = nullptr;
+}
+
+void ABattleHUDPresenter::HandleGlobalRightMouseButtonPressed()
+{
+	if (IsValid(WidgetInstance))
+	{
+		WidgetInstance->HandleRightMouseButtonCancelInput();
 	}
 }

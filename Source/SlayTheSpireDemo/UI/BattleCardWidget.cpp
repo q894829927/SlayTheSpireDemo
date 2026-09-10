@@ -1,6 +1,7 @@
 #include "BattleCardWidget.h"
 
 #include "CardFaceStyleSet.h"
+#include "BattleHandFanPanel.h"
 #include "Components/Button.h"
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
@@ -227,12 +228,12 @@ void UBattleCardWidget::SetPendingSelectionPresentation(
 	if (!bSelectionActive)
 	{
 		SetRenderOpacity(1.0f);
-		SetRenderScale(FVector2D(1.0f, 1.0f));
+		if (!Cast<UBattleHandFanPanel>(GetParent())) SetRenderScale(FVector2D(1.0f, 1.0f));
 		return;
 	}
 
 	SetRenderOpacity(bCandidate ? 1.0f : 0.45f);
-	SetRenderScale(bSelected ? FVector2D(1.06f, 1.06f) : FVector2D(1.0f, 1.0f));
+	if (!Cast<UBattleHandFanPanel>(GetParent())) SetRenderScale(bSelected ? FVector2D(1.06f, 1.06f) : FVector2D(1.0f, 1.0f));
 }
 
 void UBattleCardWidget::RefreshFromCardView()

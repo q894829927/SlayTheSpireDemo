@@ -4,7 +4,41 @@ Last updated: **2026-09-10**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable state — Selection Presentation G0-G7 sealed
+## Current resumable task — Fan Hand / Attack Targeting
+
+HEAD `268e3006b8f04e924af6d09a020c45460b35c103`; local uncommitted changes.
+Scope: user-requested fan Hand, enlarged hover cards and gray/red single-enemy
+Attack arrow and viewport-wide mouse-right cancellation for ordinary selection; [execution/evidence](HandFanTargetingInteraction.md). G8 stays deferred.
+
+Completed: UBattleHandFanPanel with ordered Canvas slots, stable hover regions and
+raised-card painting; UBattleTargetingArrowWidget with private imported textures,
+frozen-view type gate and legal-enemy tint; Native HUD initialization/tick/input
+integration, including Presenter-level viewport-wide right-click cancellation.
+Formal Hand remains the sole current Hand visual, preserving G5/G6
+Hidden slots. CardPlayed uses fan source scale for its visual start. New assets:
+UI/Textures/Targeting/T_reticleArrow and T_reticleBlock. No Gameplay/plugin/Legacy
+change; the Native module privately links SlateCore only for the FReply input boundary.
+New tests cover Native asset installation and policy;
+G5/Input fixtures use the actual fan host; stale R8 unsupported-pair test corrected.
+
+Final generation/build PASS (`HandInteractionVerifiedProjectFiles.log`,
+`HandInteractionVerifiedBuild.log` under Saved/Logs). The viewport-wide right-click
+follow-up generation/build also passed (`RightClickGlobalFinalProjectFiles.log`,
+`RightClickGlobalFinalBuild.log`), and its focused Automation passed 1/1:
+`Saved/AutomationReports/RightMouseButtonCancel/index.json`; Presenter input-stack
+installation passed in `Saved/AutomationReports/RightClickGlobal/index.json`. Final affected Automation
+11/11 PASS, no warnings/failures/notRun, exit 0:
+`Saved/AutomationReports/HandInteractionVerified/index.json`. Additional retained
+evidence and intermediate failures are in the dedicated document; do not sum
+overlapping counts. `git diff --check` PASS. No manual visual PASS.
+
+Next / USER ACTION REQUIRED: reopen Native L_BattleTest; inspect fan/hover at both
+ends and overlaps, attack arrow gray over empty space/red over legal enemy, no
+arrow for self/untargeted/non-Attack cards, left/right-click cancel/submit cleanup, multi-Exhaust and
+Warcry continuity. Mark visual acceptance only on actual user evidence. Changes
+are not committed; no further phase is automatically authorized.
+
+## Earlier resumable state — Selection Presentation G0-G7 sealed
 
 Selection Presentation has no active implementation stage after G7.
 

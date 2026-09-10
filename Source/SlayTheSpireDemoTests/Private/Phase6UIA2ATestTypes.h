@@ -116,4 +116,12 @@ class SLAYTHESPIREDEMOTESTS_API APhase6UIA2ATestPresenter : public ABattleHUDPre
 public:
 	bool InvokeInitializeHUDForTesting(APlayerController* PlayerController);
 	void InvokeShutdownHUDForTesting();
+	bool HasGlobalRightMouseCancelInputForTesting() const
+	{
+		return IsValid(GlobalRightMouseInputComponent);
+	}
+	UInputComponent* GetGlobalRightMouseCancelInputForTesting() const
+	{
+		return GlobalRightMouseInputComponent.Get();
+	}
 };

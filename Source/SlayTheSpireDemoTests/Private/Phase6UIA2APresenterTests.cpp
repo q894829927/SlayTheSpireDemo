@@ -85,6 +85,10 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 
 	TestTrue(TEXT("Presenter still creates the normal HUD Widget"), IsValid(Presenter->WidgetInstance));
 	TestTrue(TEXT("Presenter still creates a ViewModel"), IsValid(Presenter->ViewModel));
+	TestTrue(TEXT("Presenter installs the global right-click cancel input"), Presenter->HasGlobalRightMouseCancelInputForTesting());
+	TestTrue(TEXT("Global right-click input is pushed to the local PlayerController"),
+		Presenter->HasGlobalRightMouseCancelInputForTesting()
+		&& PlayerController->IsInputComponentInStack(Presenter->GetGlobalRightMouseCancelInputForTesting()));
 	if (IsValid(Presenter->ViewModel))
 	{
 		TestEqual(

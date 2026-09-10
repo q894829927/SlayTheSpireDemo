@@ -142,7 +142,7 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
 			this,
 			&UBattleHUDReconciledWidget::HandleCardRequested);
-		HB_Hand->AddChildToHorizontalBox(CardWidget);
+		HB_Hand->AddChild(CardWidget);
 	}
 
 	ApplyExplicitCardPresentationOwnershipToFormalHand();

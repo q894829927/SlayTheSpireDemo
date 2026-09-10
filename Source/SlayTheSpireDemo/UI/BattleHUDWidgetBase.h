@@ -56,6 +56,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool EndTurn();
 
+	// Shared by the Slate preview route and the Presenter-level viewport input
+	// route. The virtual implementation keeps pending Gameplay selections on
+	// their transactional cancel path.
+	bool HandleRightMouseButtonCancelInput();
+
 	// Converts an immutable committed-presentation card snapshot into the existing
 	// HUD card DTO used by WBP_BattleCard. The transient presentation copy is never
 	// gameplay-playable and carries no live legality state.
@@ -166,6 +171,14 @@ public:
 
 protected:
 	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewMouseButtonDown(
+		const FGeometry& InGeometry,
+		const FPointerEvent& InMouseEvent
+	) override;
+
+	// A right click is a presentation/input request only. Derived selection HUDs
+	// may route it through their transactional pending-selection cancel path.
+	virtual bool HandleRightMouseButtonCancel();
 
 	// Native extension point for concrete HUD implementations. The base default
 	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
