@@ -1,5 +1,324 @@
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 
+#include "Components/Image.h"
+#include "Engine/Texture2D.h"
+
+namespace
+{
+	// The authored Idle lasts 6.6666 seconds. Sampling 120 frames gives an
+	// 18fps texture sequence instead of the visibly stepped 24-frame bake.
+	constexpr int32 IroncladIdleFrameCount = 120;
+	constexpr int32 IroncladHitFrameCount = 8;
+
+	TSoftObjectPtr<UTexture2D> MakeIroncladFramePath(const TCHAR* Folder, const TCHAR* Prefix, int32 Index)
+	{
+		const FString ObjectPath = FString::Printf(
+			TEXT("/Game/SlayTheSpireDemo/UI/Textures/Ironclad/%s/%s_%02d.%s_%02d"),
+			Folder,
+			Prefix,
+			Index,
+			Prefix,
+			Index);
+		return TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ObjectPath));
+	}
+
+	TSoftObjectPtr<UTexture2D> MakeIroncladCorpsePath()
+	{
+		return TSoftObjectPtr<UTexture2D>(FSoftObjectPath(
+			TEXT("/Game/SlayTheSpireDemo/UI/Textures/Ironclad/corpse.corpse")));
+	}
+}
+
+int32 UBattleHUDCombatantPresentationWidgetBase::GetAnimationFrameIndex(
+	float ElapsedSeconds,
+	float DurationSeconds,
+	int32 FrameCount,
+	bool bLoop)
+{
+	if (FrameCount <= 0)
+	{
+		return INDEX_NONE;
+	}
+
+	if (DurationSeconds <= KINDA_SMALL_NUMBER)
+	{
+		return 0;
+	}
+
+	const float SafeElapsed = FMath::Max(0.0f, ElapsedSeconds);
+	const float NormalizedTime = bLoop
+		? FMath::Fmod(SafeElapsed, DurationSeconds) / DurationSeconds
+		: FMath::Clamp(SafeElapsed / DurationSeconds, 0.0f, 0.999999f);
+	return FMath::Clamp(
+		FMath::FloorToInt(NormalizedTime * static_cast<float>(FrameCount)),
+		0,
+		FrameCount - 1);
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	if (!IsValid(Img_Character))
+	{
+		Img_Character = Cast<UImage>(GetWidgetFromName(TEXT("Img_Character")));
+	}
+
+	bAnimationWidgetReady = IsValid(Img_Character);
+	if (bAnimationWidgetReady)
+	{
+		if (UTexture2D* Texture = Cast<UTexture2D>(Img_Character->GetBrush().GetResourceObject()))
+		{
+			FallbackCharacterTexture = Texture;
+		}
+		BaseCharacterTransform = Img_Character->GetRenderTransform();
+		BaseCharacterOpacity = Img_Character->GetRenderOpacity();
+	}
+
+	EnsureAnimationAssetsLoaded();
+	CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+	AnimationElapsedSeconds = 0.0f;
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::NativeTick(
+	const FGeometry& MyGeometry,
+	float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	if (!bAnimationWidgetReady
+		|| !bEnableNativeCharacterAnimation
+		|| !ShouldUseNativeAnimationProfile())
+	{
+		return;
+	}
+
+	if (!bAnimationAssetsLoaded)
+	{
+		EnsureAnimationAssetsLoaded();
+	}
+
+	AnimationElapsedSeconds += FMath::Max(0.0f, InDeltaTime);
+
+	switch (CurrentAnimation)
+	{
+	case EBattleHUDCombatantAnimation::Hit:
+		if (AnimationElapsedSeconds >= FMath::Max(HitAnimationDuration, KINDA_SMALL_NUMBER))
+		{
+			CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+			AnimationElapsedSeconds = 0.0f;
+		}
+		break;
+	case EBattleHUDCombatantAnimation::Attack:
+		if (AnimationElapsedSeconds >= FMath::Max(AttackAnimationDuration, KINDA_SMALL_NUMBER))
+		{
+			CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+			AnimationElapsedSeconds = 0.0f;
+		}
+		break;
+	default:
+		break;
+	}
+
+	ApplyAnimationFrame();
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::PlayCombatantAnimation(
+	EBattleHUDCombatantAnimation Animation)
+{
+	CurrentAnimation = Animation;
+	AnimationElapsedSeconds = 0.0f;
+
+	if (!bEnableNativeCharacterAnimation || !ShouldUseNativeAnimationProfile())
+	{
+		return;
+	}
+
+	if (!bAnimationAssetsLoaded)
+	{
+		EnsureAnimationAssetsLoaded();
+	}
+	ApplyAnimationFrame();
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::StopCombatantAnimation()
+{
+	CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+	AnimationElapsedSeconds = 0.0f;
+
+	if (!bAnimationWidgetReady)
+	{
+		return;
+	}
+
+	ApplyCharacterTexture(FallbackCharacterTexture);
+	Img_Character->SetRenderTransform(BaseCharacterTransform);
+	Img_Character->SetRenderOpacity(BaseCharacterOpacity);
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
+{
+	if (bAnimationAssetsLoaded)
+	{
+		return;
+	}
+
+	if (IdleAnimationFrames.IsEmpty())
+	{
+		IdleAnimationFrames.Reserve(IroncladIdleFrameCount);
+		for (int32 Index = 0; Index < IroncladIdleFrameCount; ++Index)
+		{
+			IdleAnimationFrames.Add(MakeIroncladFramePath(TEXT("Idle"), TEXT("idle"), Index));
+		}
+	}
+	if (HitAnimationFrames.IsEmpty())
+	{
+		HitAnimationFrames.Reserve(IroncladHitFrameCount);
+		for (int32 Index = 0; Index < IroncladHitFrameCount; ++Index)
+		{
+			HitAnimationFrames.Add(MakeIroncladFramePath(TEXT("Hit"), TEXT("hit"), Index));
+		}
+	}
+	if (CorpseTexture.IsNull())
+	{
+		CorpseTexture = MakeIroncladCorpsePath();
+	}
+	if (!IsValid(FallbackCharacterTexture))
+	{
+		FallbackCharacterTexture = Cast<UTexture2D>(StaticLoadObject(
+			UTexture2D::StaticClass(),
+			nullptr,
+			TEXT("/Game/SlayTheSpireDemo/UI/Textures/T_Ironclad_Static.T_Ironclad_Static")));
+	}
+
+	for (TSoftObjectPtr<UTexture2D>& Frame : IdleAnimationFrames)
+	{
+		if (!Frame.IsValid())
+		{
+			Frame.LoadSynchronous();
+		}
+	}
+	for (TSoftObjectPtr<UTexture2D>& Frame : HitAnimationFrames)
+	{
+		if (!Frame.IsValid())
+		{
+			Frame.LoadSynchronous();
+		}
+	}
+	if (!CorpseTexture.IsValid())
+	{
+		CorpseTexture.LoadSynchronous();
+	}
+
+	bAnimationAssetsLoaded = true;
+}
+
+bool UBattleHUDCombatantPresentationWidgetBase::ShouldUseNativeAnimationProfile() const
+{
+	return CombatantView.bPlayer || bAnimateEnemyCharacter;
+}
+
+TArray<TSoftObjectPtr<UTexture2D>>&
+UBattleHUDCombatantPresentationWidgetBase::GetFramesForAnimation(
+	EBattleHUDCombatantAnimation Animation)
+{
+	return Animation == EBattleHUDCombatantAnimation::Hit
+		? HitAnimationFrames
+		: IdleAnimationFrames;
+}
+
+const TArray<TSoftObjectPtr<UTexture2D>>&
+UBattleHUDCombatantPresentationWidgetBase::GetFramesForAnimation(
+	EBattleHUDCombatantAnimation Animation) const
+{
+	return Animation == EBattleHUDCombatantAnimation::Hit
+		? HitAnimationFrames
+		: IdleAnimationFrames;
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
+{
+	if (!bAnimationWidgetReady)
+	{
+		return;
+	}
+
+	if (CurrentAnimation == EBattleHUDCombatantAnimation::Defeat
+		|| CurrentAnimation == EBattleHUDCombatantAnimation::Death)
+	{
+		ApplyCharacterTexture(CorpseTexture.Get());
+		ApplyCharacterTransform(0.0f, 0.98f, -8.0f);
+		Img_Character->SetRenderOpacity(FMath::Clamp(DefeatOpacity, 0.0f, 1.0f));
+		return;
+	}
+
+	const TArray<TSoftObjectPtr<UTexture2D>>& Frames = GetFramesForAnimation(CurrentAnimation);
+	const bool bLoop = CurrentAnimation == EBattleHUDCombatantAnimation::Idle
+		|| CurrentAnimation == EBattleHUDCombatantAnimation::Victory;
+	const float Duration = CurrentAnimation == EBattleHUDCombatantAnimation::Hit
+		? HitAnimationDuration
+		: (CurrentAnimation == EBattleHUDCombatantAnimation::Attack
+			? AttackAnimationDuration
+			: IdleAnimationDuration);
+	const int32 FrameIndex = GetAnimationFrameIndex(
+		AnimationElapsedSeconds,
+		Duration,
+		Frames.Num(),
+		bLoop);
+	if (FrameIndex != INDEX_NONE && Frames.IsValidIndex(FrameIndex))
+	{
+		ApplyCharacterTexture(Frames[FrameIndex].Get());
+	}
+	else
+	{
+		ApplyCharacterTexture(FallbackCharacterTexture);
+	}
+
+	float TranslationAlpha = 0.0f;
+	float ScaleMultiplier = 1.0f;
+	if (CurrentAnimation == EBattleHUDCombatantAnimation::Attack)
+	{
+		const float Progress = FMath::Clamp(
+			AnimationElapsedSeconds / FMath::Max(AttackAnimationDuration, KINDA_SMALL_NUMBER),
+			0.0f,
+			1.0f);
+		TranslationAlpha = Progress < 0.5f ? Progress * 2.0f : (1.0f - Progress) * 2.0f;
+	}
+	else if (CurrentAnimation == EBattleHUDCombatantAnimation::Victory)
+	{
+		const float Pulse = 0.5f + 0.5f * FMath::Sin(AnimationElapsedSeconds * 5.0f);
+		ScaleMultiplier = FMath::Lerp(1.0f, FMath::Max(1.0f, VictoryPulseScale), Pulse);
+	}
+
+	ApplyCharacterTransform(TranslationAlpha, ScaleMultiplier, 0.0f);
+	Img_Character->SetRenderOpacity(BaseCharacterOpacity);
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::ApplyCharacterTexture(UTexture2D* Texture)
+{
+	if (IsValid(Img_Character) && IsValid(Texture))
+	{
+		Img_Character->SetBrushFromTexture(Texture, false);
+	}
+}
+
+void UBattleHUDCombatantPresentationWidgetBase::ApplyCharacterTransform(
+	float TranslationAlpha,
+	float ScaleMultiplier,
+	float Angle)
+{
+	if (!IsValid(Img_Character))
+	{
+		return;
+	}
+
+	FWidgetTransform Transform = BaseCharacterTransform;
+	Transform.Translation += AttackTranslation * TranslationAlpha;
+	Transform.Scale *= ScaleMultiplier;
+	Transform.Angle += Angle;
+	Img_Character->SetRenderTransform(Transform);
+}
+
 void UBattleHUDCombatantPresentationWidgetBase::SetPresentationData(
 	const FBattleHUDCombatantView& InCombatantView,
 	bool bInTargetSelectionActive,
@@ -68,6 +387,7 @@ void UBattleHUDCombatantPresentationWidgetBase::NativeOnRemovedFromFocusPath(con
 
 void UBattleHUDCombatantPresentationWidgetBase::NativeDestruct()
 {
+	StopCombatantAnimation();
 	const bool bWasActive = IsTransientInspectionActive();
 	bPointerInspectionActive = false;
 	bFocusInspectionActive = false;

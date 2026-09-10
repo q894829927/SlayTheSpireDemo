@@ -984,6 +984,14 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	// Only an authored Attack card produces the physical lunge. Skills, Powers,
+	// Statuses and Curses still use their normal committed card presentation.
+	if (Payload.Card.CardType == ECardType::Attack)
+	{
+		PlayNativeCombatantAnimation(
+			Payload.SourcePresentationId,
+			EBattleHUDCombatantAnimation::Attack);
+	}
 	return true;
 }
 
@@ -1738,6 +1746,9 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	PlayNativeCombatantAnimation(
+		Payload.TargetPresentationId,
+		EBattleHUDCombatantAnimation::Hit);
 	return true;
 }
 
@@ -1933,6 +1944,16 @@ bool UBattleHUDWidget::BeginNativeTerminalPresentation(
 		AbortNativePresentationStart();
 		return false;
 	}
+	if (TerminalOutcome == EBattleHUDOutcome::Victory
+		|| TerminalOutcome == EBattleHUDOutcome::Defeat)
+	{
+		PlayNativeCombatantAnimation(
+			Record.Terminal.WinnerPresentationId,
+			EBattleHUDCombatantAnimation::Victory);
+		PlayNativeCombatantAnimation(
+			Record.Terminal.DefeatedPresentationId,
+			EBattleHUDCombatantAnimation::Defeat);
+	}
 	return true;
 }
 
@@ -1958,6 +1979,31 @@ bool UBattleHUDWidget::IsKnownCombatantPresentationId(FName PresentationId) cons
 	const bool bMatchesPlayer = ViewModel->Player.PresentationId == PresentationId;
 	const bool bMatchesEnemy = ViewModel->Enemy.PresentationId == PresentationId;
 	return bMatchesPlayer != bMatchesEnemy;
+}
+
+void UBattleHUDWidget::PlayNativeCombatantAnimation(
+	FName PresentationId,
+	EBattleHUDCombatantAnimation Animation)
+{
+	if (!IsValid(ViewModel) || PresentationId.IsNone())
+	{
+		return;
+	}
+
+	if (ViewModel->Player.PresentationId == PresentationId)
+	{
+		if (IsValid(Combatant_PlayerPresentation))
+		{
+			Combatant_PlayerPresentation->PlayCombatantAnimation(Animation);
+		}
+		return;
+	}
+
+	if (ViewModel->Enemy.PresentationId == PresentationId
+		&& IsValid(Combatant_EnemyPresentation))
+	{
+		Combatant_EnemyPresentation->PlayCombatantAnimation(Animation);
+	}
 }
 
 UTextBlock* UBattleHUDWidget::ResolveBlockTextForPresentationId(

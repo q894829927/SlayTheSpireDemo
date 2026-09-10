@@ -2,6 +2,25 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Ironclad Character Animation — 2026-09-10
+
+The Native combatant Presentation widget now plays the imported Ironclad profile from
+`UI/images/characters/ironclad`: 120-frame looping Idle, 8-frame one-shot Hit, a reversible
+Attack-card-only lunge, Victory pulse and corpse-based Defeat. Record mapping, source limitations,
+Blueprint tuning parameters and the manual acceptance checklist are documented in
+[Ironclad character animation](IroncladCharacterAnimation.md).
+
+- Bundled UE 5.8 project-file generation: **PASS** (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`).
+- Development Editor Win64 build: **PASS** (`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+- `CompileAllBlueprints`: **0 errors**, `WBP_CombatantPresentation` successful; the commandlet
+  reported only the project's existing unrelated warnings (`Saved/Logs/IroncladCharacterAnimationBlueprints.log`).
+- Imported runtime assets: **120 Idle + 8 Hit + 1 corpse** textures under
+  `Content/SlayTheSpireDemo/UI/Textures/Ironclad`.
+
+**USER ACTION REQUIRED:** run the Native `L_BattleTest_Native` PIE visual checklist in the
+dedicated document. Headless build/import evidence does not prove Slate frame timing, the
+Blueprint image binding or final visual alignment.
+
 ## Fan Hand / Attack Targeting — 2026-09-10
 
 Implementation and complete evidence: [Hand interaction](HandFanTargetingInteraction.md).

@@ -1,10 +1,32 @@
-# Codex Goal Checkpoint — Selection Presentation / Card Expansion
+# Codex Goal Checkpoint — Ironclad Character Animation
 
 Last updated: **2026-09-10**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable task — Fan Hand / Attack Targeting
+## Current resumable task — Ironclad Character Animation
+
+The Ironclad character profile is implemented in the Native combatant Presentation widget.
+The imported source is baked into 120 Idle frames, 8 Hit frames and one corpse texture under
+`Content/SlayTheSpireDemo/UI/Textures/Ironclad`. `CardPlayed`, `Damage`, `Victory` and `Defeat`
+records now request Attack, Hit, Victory and Defeat visuals after their validated playback start.
+Attack is an Idle-frame lunge because the supplied Spine data has no authored attack animation;
+Defeat uses the supplied corpse image. The frame durations, lunge, pulse, opacity, optional frame
+arrays and enemy opt-in are Blueprint-editable on `WBP_CombatantPresentation`'s native parent.
+
+Completed: native frame playback and deterministic elapsed-time selection; fallback restoration
+to the authored `Img_Character` brush/transform; no Spine runtime dependency; docs in
+[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation
+and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`,
+`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+`CompileAllBlueprints` completed with 0 errors and `WBP_CombatantPresentation` successful
+(`Saved/Logs/IroncladCharacterAnimationBlueprints.log`; only existing unrelated warnings remain).
+
+Next / USER ACTION REQUIRED: reopen Native `L_BattleTest_Native`, verify Idle loop, card-play lunge,
+damage Hit, terminal Victory/Defeat, image alignment and the Blueprint disable fallback. No
+manual PIE visual pass is claimed yet.
+
+## Previous resumable task — Fan Hand / Attack Targeting
 
 HEAD `268e3006b8f04e924af6d09a020c45460b35c103`; local uncommitted changes.
 Scope: user-requested fan Hand, enlarged hover cards, gray/red single-enemy Attack

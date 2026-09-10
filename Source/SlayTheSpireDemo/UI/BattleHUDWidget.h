@@ -21,6 +21,7 @@ class UTextBlock;
 class UVerticalBox;
 class UWrapBox;
 class UWidget;
+enum class EBattleHUDCombatantAnimation : uint8;
 
 /**
  * Native HUD ownership boundary for the A2N migration.
@@ -171,6 +172,9 @@ protected:
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) const;
 	bool IsKnownCombatantPresentationId(FName PresentationId) const;
+	void PlayNativeCombatantAnimation(
+		FName PresentationId,
+		EBattleHUDCombatantAnimation Animation);
 	UTextBlock* ResolveBlockTextForPresentationId(
 		FName PresentationId,
 		int32& OutHistoricalBlock) const;
