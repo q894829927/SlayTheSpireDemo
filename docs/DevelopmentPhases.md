@@ -4,6 +4,13 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
+- **Ruined Citadel battle level — implemented, focused MCP PIE PASS (2026-09-10).**
+  The user-supplied image is the battle backdrop in the new `L_Battle_RuinedCitadel`,
+  now selected for both editor startup and game default. Native battle assembly is
+  retained; template-only lights, fog, floor, PlayerStart and unused scene helpers
+  were removed, with the required Native HUD input path preserved. See [level
+  configuration and evidence](RuinedCitadelBattleLevel.md).
+
 - **Ironclad character animation — implemented, build PASS, Native PIE pending (2026-09-10).**
   The Native combatant Presentation widget now plays baked Idle/Hit frames from
   `UI/images/characters/ironclad`, plus Presentation-only attack lunge, Victory pulse and

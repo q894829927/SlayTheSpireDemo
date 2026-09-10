@@ -59,9 +59,12 @@ its payload and token validation and its finish timer has started:
 `Attack` uses the authored Idle frames plus a reversible Blueprint-tunable lunge, and is requested
 only for committed cards whose type is `Attack`. Skill, Power, Status and Curse cards do not move
 the character. This makes the missing attack source explicit and gives attack card play a readable
-cue without pretending that the `Hit` reaction is an attack. `Victory` loops Idle with a small pulse. `Defeat` switches to the
-corpse texture, applies a small tilt and lowers opacity. `Death` is a Blueprint-callable alias of
-the same corpse presentation.
+cue without pretending that the `Hit` reaction is an attack. During the lunge, the Idle frame
+timeline keeps its authored `6.6666` second cadence; `AttackAnimationDuration` controls only the
+reversible translation. When the lunge ends, the source timeline is carried into Idle instead of
+restarting at frame 0, preventing a pose snap. `Victory` loops Idle with a small pulse. `Defeat`
+switches to the corpse texture, applies a small tilt and lowers opacity. `Death` is a
+Blueprint-callable alias of the same corpse presentation.
 
 The Ironclad profile is enabled for the player combatant by default. Enemy use is opt-in through
 `bAnimateEnemyCharacter`, so an enemy using a different source image is not accidentally replaced
@@ -87,11 +90,12 @@ arrays can replace them for a different skin/profile without changing the record
 
 ## Deterministic playback rules
 
-Frame selection is a pure elapsed-time calculation. Idle and Victory wrap with modulo; Hit and
-Attack clamp to the final phase and return to Idle when their configured duration ends. The helper
+Frame selection is a pure elapsed-time calculation. Idle and Victory wrap with modulo; Hit clamps
+to its one-shot duration; Attack uses the Idle source cadence while its transform follows the
+short lunge duration, then resumes Idle at the carried source time. The helper
 `GetAnimationFrameIndex` is exposed to Blueprint and does not depend on frame rate, UObject
-addresses, or Gameplay state. Every action starts at elapsed time zero, and `StopCombatantAnimation`
-restores the authored Blueprint brush, transform and opacity.
+addresses, or Gameplay state. Every requested animation starts at elapsed time zero, and
+`StopCombatantAnimation` restores the authored Blueprint brush, transform and opacity.
 
 ## Validation and acceptance
 

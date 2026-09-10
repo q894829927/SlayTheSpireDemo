@@ -39,7 +39,7 @@ void AInteriorDayNightController::CaptureDay()
 	{
 		DaySunIntensity = Sun->GetLightComponent()->Intensity;
 		DaySunColor = Sun->GetLightComponent()->GetLightColor();
-		DaySunDiskColor = Sun->GetComponent()->AtmosphereSunDiskColorScale;
+		DaySunDiskColor = Sun->GetLightComponent()->GetAtmosphereSunDiskColorScale();
 		DaySunRotation = Sun->GetActorRotation();
 		bDayUseTemperature = Sun->GetLightComponent()->bUseTemperature;
 	}
@@ -67,7 +67,10 @@ void AInteriorDayNightController::SetNight(const bool bEnabled)
 		Sun->GetLightComponent()->SetUseTemperature(bNight ? false : bDayUseTemperature);
 		Sun->SetActorRotation(bNight ? MoonRotation : DaySunRotation);
 		// The authored lunar mesh supplies the disk; avoid a second atmosphere disk behind it.
-		Sun->GetComponent()->SetAtmosphereSunDiskColorScale(bNight && IsValid(MoonVisual) ? FLinearColor::Black : DaySunDiskColor);
+		if (UDirectionalLightComponent* SunComponent = Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
+		{
+			SunComponent->SetAtmosphereSunDiskColorScale(bNight && IsValid(MoonVisual) ? FLinearColor::Black : DaySunDiskColor);
+		}
 	}
 	if (IsValid(Sky))
 	{

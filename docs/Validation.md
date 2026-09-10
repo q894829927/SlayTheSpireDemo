@@ -2,16 +2,57 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Shipping packaging fix and Native HUD alignment — 2026-09-10
+
+`InteriorDayNightController.cpp` now uses the runtime-safe directional light component
+API instead of the editor-only `ADirectionalLight::GetComponent()` accessor. Through
+Unreal MCP, the Native `WBP_BattleHUD_Native` layout was also corrected so the enemy
+presentation and character image share the player's vertical baseline; moving
+`EnemyPanel` with them keeps the enemy HP and status containers parallel to the player.
+The existing left/right placement and enemy presentation sizes were preserved.
+
+- Bundled UE 5.8 project-file generation: **PASS**.
+- Win64 Shipping target build: **PASS**; `SlayTheSpireDemo-Win64-Shipping.exe` linked.
+- Focused `SlayTheSpireDemo.Interior.DayNight` Automation: **1/1 PASS**, 0 warnings,
+  failures or notRun (`Saved/AutomationReports/InteriorDayNightPackagingFix/index.json`).
+- MCP UMG compile/save: **PASS**; `WBP_BattleHUD_Native` compiled and saved.
+- MCP PIE visual check: **PASS**; player and enemy HP bars were visibly on the same
+  horizontal line after the layout change.
+- Full Win64 Shipping `BuildCookRun` with Cook/Stage/Pak/Archive: **PASS**, exit 0;
+  archived at `Saved/Packaged/InteriorDayNightFix_WithHUDAlignment`.
+- The earlier standalone Development Editor build attempt was blocked before compile
+  by active Live Coding; the subsequent UAT combined Editor/Shipping build completed
+  successfully. No manual packaged-game acceptance gate is claimed.
+
+## Ruined Citadel Battle Background — 2026-09-10
+
+New `L_Battle_RuinedCitadel`, imported image, presentation-only background actor/widget
+and both default map settings were created/configured through Unreal MCP.
+Widget/actor compilation, save/load, Native Presenter references, settings readback
+and focused floating PIE background/End Turn checks: **PASS**. The next turn displayed
+74/80 HP and 5/5 energy. Runtime/cleanup log queries found no Blueprint runtime error,
+Accessed None or ResolutionFault. Scope and evidence paths are recorded in
+[Ruined Citadel battle level](RuinedCitadelBattleLevel.md). No C++ build, Automation
+or packaged-game claim; unrelated pending visual gates remain unchanged. A follow-up
+MCP cleanup removed template lights/fog/floor/PlayerStart and disabled map AI and
+precomputed lighting; the post-cleanup PIE log reached battle-ready state, while the
+MCP transport disconnected before a second screenshot.
+
 ## Ironclad Character Animation — 2026-09-10
 
 The Native combatant Presentation widget now plays the imported Ironclad profile from
 `UI/images/characters/ironclad`: 120-frame looping Idle, 8-frame one-shot Hit, a reversible
-Attack-card-only lunge, Victory pulse and corpse-based Defeat. Record mapping, source limitations,
-Blueprint tuning parameters and the manual acceptance checklist are documented in
+Attack-card-only lunge, Victory pulse and corpse-based Defeat. The lunge keeps the authored Idle
+frame cadence and resumes that source timeline when it ends, avoiding the previous attack pose
+skip/reset. Record mapping, source limitations, Blueprint tuning parameters and the manual
+acceptance checklist are documented in
 [Ironclad character animation](IroncladCharacterAnimation.md).
 
 - Bundled UE 5.8 project-file generation: **PASS** (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`).
 - Development Editor Win64 build: **PASS** (`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+- Attack cadence correction project generation/build: **PASS** (`Saved/Logs/IroncladAttackCadenceFixProjectFiles.log`,
+  `Saved/Logs/IroncladAttackCadenceFixBuild.log`). The build compiled
+  `BattleHUDCombatantPresentationWidgetBase.cpp` successfully after the frame-timing fix.
 - `CompileAllBlueprints`: **0 errors**, `WBP_CombatantPresentation` successful; the commandlet
   reported only the project's existing unrelated warnings (`Saved/Logs/IroncladCharacterAnimationBlueprints.log`).
 - Imported runtime assets: **120 Idle + 8 Hit + 1 corpse** textures under

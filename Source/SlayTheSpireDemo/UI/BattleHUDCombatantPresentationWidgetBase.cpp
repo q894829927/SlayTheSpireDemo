@@ -112,8 +112,12 @@ void UBattleHUDCombatantPresentationWidgetBase::NativeTick(
 	case EBattleHUDCombatantAnimation::Attack:
 		if (AnimationElapsedSeconds >= FMath::Max(AttackAnimationDuration, KINDA_SMALL_NUMBER))
 		{
+			// Attack reuses the authored Idle frames. Carry the source timeline
+			// into Idle so returning from the lunge does not snap back to frame 0.
+			AnimationElapsedSeconds = FMath::Fmod(
+				AnimationElapsedSeconds,
+				FMath::Max(IdleAnimationDuration, KINDA_SMALL_NUMBER));
 			CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
-			AnimationElapsedSeconds = 0.0f;
 		}
 		break;
 	default:
@@ -255,14 +259,16 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 	const TArray<TSoftObjectPtr<UTexture2D>>& Frames = GetFramesForAnimation(CurrentAnimation);
 	const bool bLoop = CurrentAnimation == EBattleHUDCombatantAnimation::Idle
 		|| CurrentAnimation == EBattleHUDCombatantAnimation::Victory;
-	const float Duration = CurrentAnimation == EBattleHUDCombatantAnimation::Hit
+	// Attack has no authored frame set, so it uses Idle frames while the
+	// separate AttackAnimationDuration controls only the lunge transform.
+	// Keeping the Idle source cadence prevents the attack from skipping most
+	// of the 120-frame sequence in a 0.30 second window.
+	const float FrameDuration = CurrentAnimation == EBattleHUDCombatantAnimation::Hit
 		? HitAnimationDuration
-		: (CurrentAnimation == EBattleHUDCombatantAnimation::Attack
-			? AttackAnimationDuration
-			: IdleAnimationDuration);
+		: IdleAnimationDuration;
 	const int32 FrameIndex = GetAnimationFrameIndex(
 		AnimationElapsedSeconds,
-		Duration,
+		FrameDuration,
 		Frames.Num(),
 		bLoop);
 	if (FrameIndex != INDEX_NONE && Frames.IsValidIndex(FrameIndex))
