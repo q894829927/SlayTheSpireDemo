@@ -2,288 +2,668 @@
 
 日期：2026-09-10。状态：**DESIGN PROPOSAL / NOT IMPLEMENTED / NOT SEALED**。
 
-本次用户授权审查所贴方案并记录详细设计，仅涉及文档；不代表授权实现 G8。
-审查代码基线：`2e67ce7596d4d5856367ac63d39710516f798dee`。
-G0–G7 当前阶段状态以 [G7 状态修订](SelectionPresentationG7SealAmendment.md) 为准。
-原方案附件开头的“只讨论、不改文档”属于被审查文本；本次明确写文档的请求优先。
+本次仅调整 G8 设计文档，不代表授权实现 G8。G0–G7 当前阶段状态仍以
+[SelectionPresentationG7SealAmendment.md](SelectionPresentationG7SealAmendment.md)
+和对应 execution/validation 记录为准。
 
-本文细化并修订 GroupDesign 第 30 节和 GroupImplementationPlan 第 18 节的
-未来 G8 候选方案。涉及独立 token、首版 allowlist、输入模式与实施顺序时，以本文
-为后续实现提案依据；不改变现行 G0–G7 运行合同，也不授予卡牌尾动画 detach 权限。
+本文细化并修订 GroupDesign 第 30 节和 GroupImplementationPlan 第 18 节的未来
+G8 候选方案。首版目标保持收窄：**只把独立 DamageNumber 变成跨 Resolution
+可存活的 cosmetic tail；所有卡牌移动、Selection Group、Draw、正式状态更新和终局
+仍走现有 Blocking Presentation。**
 
-## 1. 审查结论与修改意见
+本轮设计额外参考了公开可检索的 Slay the Spire 1 双轨思路：需要控制因果/节奏的视觉
+留在主 Action 链，纯 cosmetic effect 使用独立生命周期。这里只吸收架构启发，不把公开
+反编译/模组代码视为本项目的权威实现规范。
 
-赞同原方案的核心分离：Gameplay、Record reducer、visual job、interaction readiness
-有各自的生命周期。保留现有 Blocking Record/Group 路径、先尝试可回退的 detached
-路径，以及首版只放开独立 DamageNumber，都适合当前代码。
+## 1. 核心模型：两条运行轨 + 四种生命周期
 
-需要补齐以下合同，否则架构图正确也可能在运行时产生死锁或旧回调覆盖新状态。
+G8 不建立第二套 Gameplay scheduler、第二套 reducer，也不建立“所有 Presentation
+都能动态 Blocking/NonBlocking”的万能 job 框架。
 
-| 原建议 | 本设计调整及原因 |
-|---|---|
-| Pending Selection、Target choice 都 Blocking | 对普通出牌/EndTurn 阻塞，但准备好的选择/目标操作必须可用；不能把等待玩家选择本身设为全局输入屏障。 |
-| readiness 只有 BattleId + Revision | 对外事实仍用这两个值；授权凭据还必须限定 HUD/Controller 会话与决策面 generation，同 revision 重建不能复用旧 readiness。 |
-| detached completion 绝不回 Controller | 不得调用 Record completion；但 detached **Blocking** job 释放屏障后，需要请求一次延迟 readiness 重评，否则输入可能永不恢复。 |
-| Detached + Blocking 保持原体验 | 只保证输入仍等待；reducer 和后续动画已可提前推进，因此 HP 更新时间、动画重叠与节奏仍会改变，需独立验证。 |
-| TryStart 成功即 CompleteActiveRecord | 增加无副作用 prepare、隐藏注册、精确提交与重入校验；不能先显示数字再发现 reducer 无效。 |
-| G8-E 才做 recovery/overload | 基础 cleanup、超时、会话隔离和资源上限在第一项生产 job 激活前就必须通过；后期只做综合验证。 |
-| 只拆 DamageNumber 即显著提速 | 后续 PlayArea→pile 仍 Blocking，收益受其时长影响。验收必须记录真实重叠，不能承诺每张牌都明显提速。 |
-
-不引入通用 barrier registry、第二套 reducer、Gameplay scheduler 或任意 Record
-插件化 job 框架。先实现两个明确用途：私有 DamageNumber 生命周期，以及现有输入
-入口的统一 readiness 检查。
-
-## 2. 当前实现证据与迁移点
-
-以下是本次本地源码审查结果，不是 G8 已实现的证明：
-
-- `Source/SlayTheSpireDemo/Presentation/BattlePresentationController.cpp`：
-  `StartNextRecord` 设置单一 active token 并等待 Widget；`CompleteActiveRecord`
-  才应用 reducer、发布工作快照并前进。`CompleteActiveEnvelope` 应用自身 FinalSnapshot，
-  队列空后刷新 live bindings。还有 Skip、reconcile、direct 等刷新入口，不能只改正常结束处。
-- `Source/SlayTheSpireDemo/UI/BattleHUDWidgetBase.h`：Record/Group 共用一份
-  `FTrackedPresentationPlaybackUnit`。应保留这条经过加固的 Blocking 协议。
-- `Source/SlayTheSpireDemo/UI/BattleHUDWidget.cpp`：Damage 使用共享
-  `Txt_DamagePresentation` 并把正式目标 opacity 设为 0.45；卡牌还有单一
-  `NativePlayedCardWidget`。这些对象不能被旧 detached job 持有并回写。
-- `Source/SlayTheSpireDemo/UI/BattleHUDViewModel.cpp`：
-  `RefreshLiveInputBindingsIfCaughtUp` 已检查最新 frozen baseline、read snapshot 与 VM
-  的精确 BattleId/revision。沿用此核验，不能用 job 数量替代它。
-- `BattleHUDSelectionWidget.cpp` 中 `HasActiveNativePresentation` 还影响手牌刷新和
-  已打出牌隐藏。新增 cosmetic job 不得改变这个旧方法的语义，否则会重新影响 G5/G6。
-
-G6 已有安全并行 Group；它与跨 Resolution 的 cosmetic job 是不同生命周期。
-首版不把文本动画硬塞进 G4/G6 卡牌 transition engine。该引擎保持服务卡牌；未来
-卡牌扩展才按需要复用。此项明确收窄旧 G8-A 的“必须复用卡牌引擎”措辞。
-
-## 3. 首版范围与体验边界
-
-**NonBlocking allowlist：只有独立 DamageNumber。**
-
-CardPlayed、所有卡牌区域迁移、G6 Selection Group、Draw→Hand、Shuffle、正式
-Status/HP/Block/Energy 更新、Terminal 均不因 G8 自动成为 NonBlocking。
-受击闪烁本版不迁移：detached 成功路径只显示独立数字；旧 Blocking fallback 保留
-原有闪烁。这个视觉差异须纳入 PIE，不能称为完全视觉等价。
-
-数字使用 frozen `IncomingDamage`，保持当前展示含义；不暗中改成 HP 损失。
-完全被 Block 吸收和零伤害沿用现有有效 payload 语义，并单独测试。
-
-正常普通出牌链仍是 A Gameplay 完成后才接受 B。交互选择可能发生在 Gameplay
-暂停的合法 selection boundary；此时只允许该边界的 continuation request，不要求
-整个原始卡牌逻辑先完成，也不允许另开普通出牌 Resolution。这是必须保留的例外。
-
-伤害数字剩余寿命如果短于后续 Blocking 卡牌收尾，玩家可能看不到跨牌重叠。
-不延迟 reducer、不拖长 Blocking 动画来制造演示。记录从 Gameplay 完成到输入
-就绪的时间，以及就绪时数字是否仍活着；只能就实际支持的路径报告收益。
-
-## 4. 所有者与身份
-
-| 层 | 唯一责任 | 禁止事项 |
-|---|---|---|
-| Gameplay | 权威提交、请求复核、合法选择边界 | 等待 cosmetic job |
-| Controller | Envelope/Sequence 顺序、唯一 reducer、FinalSnapshot、readiness 协调 | 让 job callback 完成 Record |
-| HUD 私有 job owner | 强引用 transient widget、tick、精确清理、资源计数 | 改正式 HUD/VM、调用 Gameplay |
-| ViewModel | frozen display、latest-only bindings、按请求模式核验输入 | 以历史 job 数据还原当前 Gameplay |
-
-建议由当前 Native HUD 持有一个小型 job owner，不创建世界级单例。数据至少包含：
+长期生产模型只有两条视觉运行轨：
 
 ```text
-VisualJobToken =
-  PresentationSessionGeneration
-  + BattleId + SourceResolutionId + PresentationSequence
-  + LocalVisualGeneration
+A. Blocking Presentation lane
+   Controller → Record/Group playback → exact completion → reducer
 
-Job = Token + SourceFinalStateRevision（诊断来源，不是输入授权）
-      + InteractionPolicy + FrozenDamageVisualSpec
-      + GC-tracked transient Widget + elapsed/duration + lifecycle state
+B. Detached cosmetic lane
+   committed Damage fact → private DamageNumber instance → tick/fade → self cleanup
 ```
 
-generation 由所属会话单调分配，不来自时间、指针或容器顺序；HUD/Controller 替换
-必须换会话。同 Record 重新尝试分配新 generation。token 与 `FPresentationPlaybackToken`
-类型分离，编译接口也不接受混用。若 future Record 有多个视觉子项，再增加显式 ordinal；
-本版不预建多特效框架。
-
-`UPROPERTY` 可达 owner/container 持有 UObject；不得只用原生数组或异步 lambda
-捕获充当 GC 所有权。延迟回调仅持 weak owner + exact token，销毁后无操作。
-
-## 5. Detached 启动事务与 reducer 顺序
-
-保留旧 `PlayPresentationRecord` bool 合同；新增独立 prepare/commit 封装，具体命名
-实现时决定。Controller 不直接绕过 WidgetBase 加固边界进入任意 Blueprint callback。
+但概念上必须继续区分四种生命周期：
 
 ```text
-当前 Record identity / payload / reducer preflight
-  → candidate allowlist + 当前 Host/session/geometry 验证
-  → prepare 隐藏私有数字、预留槽位、注册 exact job（外部不可见）
-  → 复核 active cursor/session 未被同步通知替换
-  → Controller 按现有 reducer 路径恰好提交一次
-  → 在同次受控提交中发布正式快照和激活数字
-  → Controller 前进；job 独立存活
+Gameplay lifetime
+!=
+chronological Record/reducer lifetime
+!=
+detached cosmetic lifetime
+!=
+interaction readiness lifetime
 ```
 
-preflight 复用同一 reducer 规则在快照副本验证，不写第二份 Damage 修改逻辑。
-prepare 不移除正式 UI、不释放现有 job、不发送完成通知、不推进队列。
-所有对外 publication 前完成内部一致状态，不能依赖 multicast 订阅顺序。
-正常激活要位于“当前 reducer 提交之后、下一 Record dispatch 之前”的明确切点；
-不要直接从原 `CompleteActiveRecord` 返回后激活，因为该函数会继续推进后续 Record。
+权威顺序永远保持：
+
+```text
+A Gameplay / events / triggers / Resolution complete
+→ B request may become legal
+→ B Gameplay
+```
+
+Detached cosmetic 可以跨已完成 Resolution 存活，但不能导致 Gameplay 并发、reducer
+乱序、trigger 重排或 speculative future state。
+
+## 2. 当前实现约束与迁移边界
+
+以下是设计依据，不是 G8 已实现的证据：
+
+- `BattlePresentationController.cpp` 当前只有一个 active playback；`CompleteActiveRecord`
+  才应用 reducer、发布工作快照并推进下一 Record。
+- `BattleHUDWidgetBase.h` 的 Record/Group 共用一份 exact tracked playback owner；这条
+  G0–G7 Blocking 协议继续保留。
+- `BattleHUDWidget.cpp` 的 Damage 当前复用 `Txt_DamagePresentation`，并会修改正式目标
+  opacity/HP/Block 展示；detached 路径不能继续持有这些正式 surface。
+- CardPlayed 仍依赖单一 `NativePlayedCardWidget` 和 PlayArea 生命周期，因此首版禁止
+  card tail detach。
+- `BattleHUDViewModel::RefreshLiveInputBindingsIfCaughtUp()` 已对 latest frozen baseline、
+  player-facing read 和 VM BattleId/StateRevision 做 exact guard；G8 必须复用这些权威
+  核验，而不是用 cosmetic job 数量替代。
+- Selection/target 是决策模式，不是“全局 input off”。准备好的 Selection/Target surface
+  必须允许该模式自己的合法操作，同时继续禁止普通出牌/EndTurn 等旁路请求。
+
+G6 的 N-child parallel Group 是**同一 committed group 内的并行视觉**；G8 detached
+DamageNumber 是**跨已完成 Resolution 的 cosmetic lifetime**。二者不合并。
+
+## 3. 首版范围
+
+### 3.1 唯一 detached / NonBlocking 候选
+
+```text
+DamageNumber only
+```
+
+DamageNumber 使用 committed/frozen Damage payload 的 `IncomingDamage` 作为展示值，保持
+当前语义，不暗中改成实际 HP loss。
+
+有效的“完全被 Block 吸收”仍可显示 DamageNumber：
+
+```text
+IncomingDamage > 0
+HPDamage == 0
+BlockedDamage > 0
+```
+
+真正 `IncomingDamage == 0` 的 no-op 不作为首版 DamageNumber 新语义；沿用当前 Damage
+payload validation，不为了 G8 扩展历史事实模型。
+
+### 3.2 明确保持 Blocking
+
+首版以下全部保持 G0–G7 行为：
+
+```text
+CardPlayed
+PlayArea → destination
+Hand / SelectionArea → Draw/Discard/Exhaust/Removed
+G6 Selection Group
+Draw → Hand
+Deck shuffle
+Selection presentation
+Target-choice presentation
+formal HP / Block / Energy / Status updates
+Terminal / unavailable / recovery
+```
+
+受击闪烁首版也不 detach。Detached Damage 成功路径只显示独立数字；旧 Blocking fallback
+仍保留现有正式受击视觉。因此 PIE 必须记录这个视觉差异，不能宣称完全视觉等价。
+
+### 3.3 体验预期
+
+首版不人为拖长 DamageNumber，也不缩短/跳过仍 Blocking 的 card tail 来制造演示。
+如果后续 Blocking 卡牌动画比 DamageNumber 更长，某些牌实际看不到跨牌数字重叠是合法
+结果。验收要记录真实 input-ready 时间点和数字是否仍存活，只报告实际收益。
+
+## 4. 所有权与身份
+
+### 4.1 Presentation session authority
+
+`PresentationSessionGeneration` 必须只有一个 mint authority。
+
+建议由 `UBattleHUDPresenter` 在建立一组新的：
+
+```text
+BattleManager + ViewModel + PresentationController + HUD Widget
+```
+
+绑定会话时单调分配 `PresentationSessionGeneration`，形成不可变：
+
+```text
+PresentationSessionToken = BattleId + PresentationSessionGeneration
+```
+
+Controller、HUD 和 detached Damage owner 只消费该 token，不各自推导另一套“当前 session”。
+HUD/Controller replacement、battle replacement、direct/unavailable 重新建链时，旧 session
+先失效，再清理旧 cosmetic。
+
+### 4.2 DamageNumber identity
+
+首版不定义通用 `FPresentationVisualJob`。使用用途明确的小型 identity：
+
+```text
+DetachedDamageToken =
+  PresentationSessionToken
+  + SourceResolutionId
+  + PresentationSequence
+  + LocalDamageVisualGeneration
+```
+
+以及：
+
+```text
+DetachedDamageInstance =
+  Token
+  + SourceFinalStateRevision      // diagnostic provenance only
+  + FrozenDamageVisualSpec
+  + GC-tracked transient Widget
+  + frozen start position
+  + elapsed / duration / hard timeout
+  + lifecycle state
+```
+
+`LocalDamageVisualGeneration` 由当前 HUD/session owner 单调分配，不来自时间、指针、TMap
+顺序或 Widget 地址。同一 Record 如果在提交前重新尝试 detached prepare，也必须分配新的
+visual generation。
+
+该 token 与 `FPresentationPlaybackToken` 类型分离；接口不得互相接受，避免 cosmetic
+callback 被误送到 Controller Record completion。
+
+### 4.3 GC 和异步回调
+
+Detached owner 必须通过 `UPROPERTY` 可达容器强持有 transient Widget。Ticker/timer/lambda
+只允许捕获 weak owner + exact `DetachedDamageToken`，不能承担 UObject 生命周期。
+
+## 5. Detached Damage 启动事务
+
+保留现有 `PlayPresentationRecord(...)` bool Blocking 合同。G8 只在 Damage Record 上增加一个
+**提交前可完全回退**的 detached prepare 路径。
+
+目标切点：
+
+```text
+validate current Record identity / payload
+→ reducer preflight on snapshot copy
+→ detached eligibility + Host/session/geometry validation
+→ prepare hidden DamageNumber instance（外部不可见）
+→ pre-commit exact cursor/session recheck
+→ reducer exactly once
+→ publish formal working snapshot
+→ post-publication exact session/job recheck
+→ activate prepared DamageNumber if still valid
+→ dispatch next Record
+```
+
+重要合同：
+
+- reducer preflight 复用现有 reducer 规则，不复制第二份 Damage 历史修改逻辑；
+- prepare 不修改正式 HP/Block/opacity，不发送 completion，不推进 Controller；
+- prepare 不清理任何已存在的合法 cosmetic；
+- 正式 snapshot publication 可能同步触发 Skip/replacement/unavailable/reconcile，因此
+  **publication 后必须再次核验 exact session + exact prepared token**；
+- publication 后如果 prepared job 已被同步取消，只丢弃该数字；Record 已 reduced，绝不
+  fallback 重播或再次 reducer；
+- activation 必须发生在 reducer publication 之后、下一 Record dispatch 之前的明确切点。
 
 失败分界：
 
-- **提交前 decline**：完整 rollback，不留 widget/timer/barrier，然后走旧 Blocking 路径。
-- **历史 payload/reducer 不合法**：沿现有 active-envelope reconcile；不是动画 fallback。
-- **提交后 job 失败**：只丢弃私有数字；绝不重播 Record 或再次应用 reducer。
-- **同步 Skip/replacement/reconcile**：精确 session/cursor 失效就终止原启动流程；
-  不在恢复完成的新状态上继续执行旧 fallback。
+```text
+提交前 detached decline
+→ 完整 rollback hidden instance
+→ 走原 Blocking Damage playback
 
-Normal finish 不调用 `NotifyPresentationFinished`，不伪造成功 token。
-job timeout/cancel 幂等删除自己的 timer/widget/entry。若其持有 Blocking 屏障，删除后
-发送带 session 的 readiness-dirty 通知，并在延迟安全点重评；该通知不推进 Record。
+历史 payload / reducer invalid
+→ 现有 active-envelope recovery
+→ 不是动画 fallback
 
-## 6. 输入就绪：事实、凭据与操作模式
+提交后 cosmetic activation/finalization failure
+→ 只清理 exact private DamageNumber
+→ 不重播 Record
+→ 不修改 Gameplay / VM / ownership
 
-`InteractionReady(BattleId, Revision)` 表示精确当前决策面已追上权威公开状态。
-它不是永远为真的历史最大值，也不是 Selection completion watermark。
+同步 Skip/replacement/reconcile
+→ old session/token invalid
+→ 原启动流程停止
+→ 不在恢复后的新状态执行旧 fallback
+```
 
-内部建议凭据：`BattleId + Revision + PresentationSessionGeneration + SurfaceGeneration
-+ InteractionMode`。SurfaceGeneration 只用于实际决策面失效/替换，不因每帧数字 tick
-或普通 hover 递增。新请求接受、revision/battle 变化、HUD 替换、恢复启动均使旧凭据失效。
-请求被拒且同一边界保持有效时，重新评估并恢复该边界输入。
+## 6. Detached cosmetic 的长期完成语义
 
-首版仅在 chronological Controller 已追到最新合法边界、无待处理 Envelope 时授予
-普通出牌 readiness；只有 detached jobs 可以留下。队列空本身不是充分条件：公开
-Envelope 尚未投递时，必须由现有 baseline/read exact guards 拒绝旧 revision。
+G8-D 正式 NonBlocking 后，DamageNumber 是真正 fire-and-forget cosmetic：
 
-判定需要同时满足：
+```text
+DamageNumber finish / timeout / cancel
+→ remove own Widget
+→ remove own instance
+→ END
+```
 
-1. 当前模式被 Gameplay 正式 Query/Request 合同允许；不读取 mutable 对象重建历史。
-2. VM 显示、latest frozen baseline、player-facing read 精确匹配。
-3. 所有该模式必需的正式 Hand/target/selection surface 已完成同步且可交互。
-4. 无 blocking playback、recovery 或未解除的 detached Blocking job 屏障。
-5. 不在 Terminal / PresentationUnavailable；当前 session/surface 未被替换。
+最终生产路径中禁止：
 
-只有通过这些检查才调用既有 live binding refresh；refresh 仍保留内部 exact guard。
-所有正常结束、ReadStateReady、Skip、reconcile、direct mode、初始化/替换的输入恢复
-入口都必须走统一 policy，避免旁路。直接模式没有 job 也需要表面和请求模式核验。
-不要每次 job tick 调用 refresh；它会清理瞬态选择状态。
+```text
+DamageNumber finish → NotifyPresentationFinished
+DamageNumber finish → Controller CompleteActiveRecord
+DamageNumber finish → ViewModel mutation
+DamageNumber finish → InteractionReady mutation
+DamageNumber finish → card ownership mutation
+```
 
-| 交互模式 | 可以开放 | 必须禁止 |
+即 cosmetic lane 对 authoritative lane **只有单向输入，没有反向 completion 边**。
+
+G8-C 的“detached 但仍保持旧输入等待”只是一项迁移验证阶段，不形成永久
+`InteractionPolicy::Blocking` job 类型。具体做法见第 10 节 staging：通过阶段级兼容 gate
+临时保持旧输入节奏，验证 reducer/job 解耦；进入 G8-D 后移除该兼容依赖。
+
+## 7. Interaction readiness：以交互模式为核心
+
+### 7.1 Readiness 不是 cosmetic job 状态
+
+最终 G8-D 后：
+
+```text
+DetachedDamageInstances.Num() > 0
+```
+
+本身既不能锁 input，也不能解锁 input。
+
+Input readiness 只取决于：
+
+```text
+当前 authoritative Gameplay request mode
++ exact displayed/read-facing revision or selection boundary
++ exact current decision surface identity
++ required Blocking Presentation/recovery 是否完成
++ terminal/unavailable 状态
+```
+
+不建立通用 barrier registry。首版把“barrier”视为 mode-specific readiness policy 的内部
+实现细节。
+
+### 7.2 Session 与决策面 identity
+
+Readiness credential 必须包含 exact `PresentationSessionToken`，但不要再造一个和现有
+SelectionGeneration 竞争的万能 `SurfaceGeneration`。
+
+建议按 mode 使用已有/最小身份：
+
+```text
+NormalPlayerTurn:
+  SessionToken + BattleId + StateRevision
+
+PendingSelection:
+  SessionToken + BattleId
+  + SelectionBoundaryRevision + existing SelectionGeneration
+
+TargetChoice:
+  SessionToken + BattleId + StateRevision
+  + exact selected-card RuntimeId
+  + TargetChoiceGeneration（仅在当前代码缺少可复用 exact target lifecycle identity 时新增）
+```
+
+TargetChoiceGeneration 若需要新增，由 ViewModel 在 target surface 建立/替换时单调 mint；
+hover、普通 tick、DamageNumber 更新不得改变它。
+
+新 Battle、session replacement、revision replacement、SelectionGeneration replacement、
+TargetChoice replacement、recovery 启动都会使旧 credential 失效。请求被拒但 exact 决策面
+仍有效时，只重新评估当前 mode，不制造新权威状态。
+
+### 7.3 Mode-specific grant：不能共用一个 finalizer
+
+`RefreshLiveInputBindingsIfCaughtUp()` 当前最终会进入普通 PlayerTurn Idle，并清理 transient
+selection state，因此不能作为所有模式共同的最后一步。
+
+统一的是**readiness policy**，不是“grant 动作”。
+
+```text
+EvaluateInteractionReadiness(CurrentMode)
+  |
+  +-- NormalPlayerTurn
+  |     → exact baseline/read/VM guard
+  |     → existing RefreshLiveInputBindingsIfCaughtUp()
+  |
+  +-- PendingSelection
+  |     → exact SelectionGeneration/boundary/read surface guard
+  |     → preserve pending-selection state
+  |     → enable only Select/Deselect/Confirm/Cancel contract
+  |
+  +-- TargetChoice
+        → exact target lifecycle/card/read surface guard
+        → preserve SelectedCardRuntimeId + LegalTargets
+        → enable only target selection/cancel contract
+```
+
+不能通过 Pending Selection 的 readiness 顺便开放普通 card-play，也不能调用普通 PlayerTurn
+finalizer 把 selection/target transient state 清掉。
+
+### 7.4 Mode matrix
+
+| 当前交互面 | 可开放 | 必须禁止 |
 |---|---|---|
-| PlayerTurn 普通决策面 ready | 合法选牌、出牌、EndTurn | Query 不允许的请求 |
-| Pending Selection 表面尚未追上 | 无选择提交 | 普通出牌、选择确认、EndTurn |
-| Pending Selection 精确表面 ready | 选/取消选、合法 Confirm/Cancel | 普通出牌、EndTurn |
-| Target choice 精确表面 ready | 合法目标选择及取消 | 绕过目标流程的新普通请求 |
-| Terminal / unavailable / recovery | 既有明确允许的恢复控件 | 战斗请求 |
+| PlayerTurn normal surface ready | 合法选牌/出牌、EndTurn | Query 拒绝的请求 |
+| Pending Selection surface 未 ready | 无选择提交 | 普通出牌、Confirm、EndTurn |
+| Pending Selection exact surface ready | 选/取消选、合法 Confirm/Cancel | 普通出牌、EndTurn |
+| Target choice exact surface ready | 合法目标选择/取消 | 绕过目标流程的普通请求 |
+| Terminal / unavailable / recovery | 既有明确恢复控件 | 战斗请求 |
 
-因此不能用“所有 Pending Selection 存在时 readiness=false”实现；它会让等待玩家的
-屏障永远无法解除。也不能要求“有一张可打出的牌”才授予普通决策面 readiness：
-无可打牌时仍可能允许 EndTurn。
+无可打牌时仍可能允许 EndTurn，所以 NormalPlayerTurn readiness 不能以“存在可打牌”为条件。
 
-旧 NonBlocking job 完成不更改 readiness；新请求造成的正常锁定不是旧 job relock。
-同 revision 替换/故障可以使当前凭据失效，故不能宣称 readiness 全局单调。
+### 7.5 Shadow readiness gate
 
-## 7. TransientVFXHost 与视觉隔离
+G8-B 不提前解锁。它先计算新 policy 的 shadow result，并与当前实际 input-enabled/mode
+结果逐边界比较：
 
-运行时在实际 Native Canvas 下创建独立 Host，不复用 Hand、PlayArea 或 SelectionArea。
-Host 和所有子数字均不参与 hit testing、focus、拖放或选择按钮事件；层级需验证不会
-遮挡确认/目标控件的可读性。数字使用独立 TextBlock 或专用轻量 Widget。
+```text
+任何未解释 divergence
+→ G8-B FAIL
+→ 不进入 G8-C
+```
 
-创建时从 frozen TargetPresentationId 匹配当前历史目标表面，验证 Battle/session 和
-非零 geometry，以 AbsoluteToLocal 转到 Host 坐标，冻结起点。后续只按时间更新自己的
-translation/opacity；不追踪当前目标指针，不恢复目标 opacity，不写正式 HP/Block。
-目标缺失或 geometry 未 ready 时 decline 到 Blocking；不以世界 Actor 位置猜历史位置。
+只有明确记录为现有 bug 且单独授权修复的差异，才允许不一致。
 
-Viewport/DPI/Host geometry 改变时首版取消当前 cosmetic jobs，避免冻结局部坐标漂移。
-正式 HUD dirty reconcile 和正常 FinalSnapshot publication 不清空 Host；否则跨 Resolution
-的尾动画无法存活。只有明确 recovery 边界才全清理。
+## 8. TransientVFXHost 与正式 HUD 隔离
 
-## 8. 资源限制与恢复
+运行时在 Native HUD 根 Canvas 下创建独立 `TransientVFXHost`，不复用 Hand、PlayArea、
+SelectionArea，也不要求修改 production `.uasset`。
 
-首版建议总上限 8，作为 Presentation 配置常量而非 Gameplay 规则；实际值可根据 PIE
-可读性调整。每项 duration 有有限正值及硬 timeout，坏配置拒绝。先不做 pooling。
+Host 和所有 DamageNumber child：
 
-满载时 prepare 先验证新 job；新 **NonBlocking** job 成功提交时才淘汰最旧
-NonBlocking job，顺序使用本地 creation generation。不得按 TMap 遍历或墙钟选最旧。
-若没有可淘汰对象或当前阶段仅 Blocking，则 decline 到旧 Blocking 路径。
-Blocking job 不被容量策略强行驱逐，避免把资源压力隐式变成提前解锁。
+```text
+不参与 hit test
+不获得 focus
+不参与 drag/drop
+不处理 Selection/Target 输入
+不成为 formal Hand/Combatant surface
+```
 
-| 事件 | job 处理 | Controller/输入处理 |
+创建时从 frozen `TargetPresentationId` 匹配**当前历史目标 surface**，在 prepare 阶段验证：
+
+```text
+Battle/session exact
+Target surface exists
+geometry finite/non-zero
+Host geometry valid
+AbsoluteToLocal conversion valid
+```
+
+然后冻结起点。激活后只更新自己的 translation/opacity；绝不继续追踪 target Widget，也不：
+
+```text
+restore target opacity
+write formal HP / Block
+write ViewModel
+change Hand/Card ownership
+```
+
+Viewport/DPI/Host geometry 发生无法安全重映射的改变时，首版直接取消当前 session 的
+cosmetic instances。正常 historical dirty publication、FinalSnapshot、普通 Hand reconcile
+不得清空 Host，否则跨 Resolution tail 无法存在。
+
+## 9. 资源合同与恢复
+
+### 9.1 有限生命周期是硬合同
+
+每个 DamageNumber 必须有：
+
+```text
+finite positive visual duration
+finite hard timeout > visual duration
+idempotent exact cleanup
+session-wide cleanup
+```
+
+坏配置在 prepare 阶段 decline 到旧 Blocking 路径。
+
+### 9.2 数量上限降级为防御性 sanity ceiling
+
+首版**不把 8 个实例作为正常行为上限，也不做正常 eviction 策略**。
+
+正常资源有界性主要依赖有限 duration + hard timeout + recovery cleanup。
+
+可以保留一个明显高于正常视觉密度的 defensive ceiling，例如：
+
+```text
+MaxDetachedDamageNumberInstances = 32   // exact value implementation/PIE 决定
+```
+
+它只用于 bug containment，不是 Gameplay/Pacing 规则。
+
+如果 prepare 时已经达到 sanity ceiling：
+
+```text
+不删除旧合法 cosmetic
+不随机/按 TMap 淘汰
+不先 reducer 再发现没容量
+→ detached prepare decline
+→ 完整回旧 Blocking Damage path
+```
+
+因此首版没有 eviction ordering、victim reservation 或容量导致的提交后竞态。
+
+### 9.3 Recovery policy
+
+| 事件 | Detached Damage | authoritative/input lane |
 |---|---|---|
-| 正常 FinalSnapshot / Envelope 完成 | 保留合法私有 job | 正常顺序完成与 readiness 核验 |
-| 单项 finish/timeout | 只清理 exact job | NonBlocking 无输入副作用；Blocking 仅通知重评 |
-| active-envelope 失败 reconcile | 首版取消当前会话全部 cosmetic jobs | 仍保留合法后续 Envelope，应用该 Envelope 自身 FinalSnapshot |
-| Global Skip / backlog collapse | 全部取消 | 保留现有明确 catch-up 合同，不制造 job success |
-| HUD/Controller 替换或销毁 | 旧会话先失效再全部取消 | 新表面 readiness 重建；旧回调无效 |
-| battle 替换 / direct-mode 切换 / unavailable | 全部取消旧会话 job | 走对应现有恢复/输入模式 |
-| terminal | 清理尾动画 | 正式终局显示优先，不让旧数字覆盖结束画面 |
+| 正常 Record/Envelope/FinalSnapshot 完成 | 合法 instance 继续 | 正常 chronological/readiness |
+| 单项 finish/timeout | 只清 exact instance | G8-D 后无输入副作用 |
+| active-envelope failure reconcile | 取消当前 session 全部 cosmetic | 保留后续 backlog，走现有 envelope recovery |
+| Global Skip / backlog collapse | 全部取消 | 保留现有 catch-up，不伪造 job success |
+| HUD/Controller replacement | 先失效 session，再全清 | 新 session 重建 readiness |
+| battle replacement/direct/unavailable | 全清旧 session | 走现有模式切换/恢复 |
+| terminal | 全清 | 正式终局优先 |
 
-所有取消路径不触发 Gameplay ResolutionFault。NonBlocking job 错误只记有界诊断，
-不将整个 Presentation 标记 unavailable。损坏历史 Envelope 仍按既有失败合同处理。
+Cosmetic timeout/cancel 不触发 Gameplay ResolutionFault，也不把整个 Presentation 标记
+unavailable。损坏 committed Envelope 仍按现有 historical failure contract 处理。
 
-## 9. FastInput 兼容
+## 10. FastInput 与分阶段实施
 
-保留 `HasActiveNativePresentation` 当前 blocking/card 语义，新增独立 job 查询。
-只有 NonBlocking job 存在时，正常输入不能触发 Skip，不能清空尾动画。
-仍有 Blocking presentation 时，既有 fast catch-up 可继续工作，但延迟点击重试要核验
-原 Battle/session 与 RuntimeId、最新 Query、当前 selection/target mode；过期点击不得
-在新战斗或新选择边界被重放。必要时丢弃重试，不能伪造请求有效性。
+### 10.1 FastInput 兼容
 
-## 10. 实施阶段与回退
+保留 `HasActiveNativePresentation()` 当前 Blocking/card 语义，不把 detached DamageNumber
+混入该查询。
 
-以下是建议执行切片，不表示本次开始实施。采用本文编号，替代原第 18 节 G8-A–F
-的工作划分，保留原文作为历史候选。
+只有 cosmetic tail 存在时：
 
-1. **G8-A：私有 job 基础。** 独立 token、GC、Host、事务 decline、精确 cleanup、
-   bounded capacity/timeout 全部先测试。生产仍走旧路径，无 early input。
-2. **G8-B：统一 readiness。** 覆盖所有 refresh 入口和模式/session 失效；用影子判定
-   对照旧行为，不提前解锁。Selection/target 正常可操作为硬门槛。
-3. **G8-C：Damage 拆分，detached Blocking。** 正式数值 reducer-owned，数字只写自己。
-   验证前后快照与 job 的提交边界、blocking job 结束后的 readiness 重评。
-   明确允许视觉节奏改变，不宣称与 G7 完全等价。
-4. **G8-D：仅 DamageNumber NonBlocking。** 前述失败路径全部通过后启用；验证真正
-   A/B 请求顺序和视觉重叠，修正 FastInput 分类。
-5. **G8-E：集成验证。** 多命中、零/吸收伤害、draw→selection、目标取消、EndTurn、
-   skip/替换/终局/过载组合。不是到此才补基础安全性。
-6. **G8-F：证据与封存。** 相关 Automation + Native PIE，通过才更新 implemented/sealed。
+```text
+正常输入不能触发 SkipPresentation
+不能因为点击而清空 DamageNumber
+```
 
-功能关闭时，新 Record 走原 Blocking 路径；若已在运行中，先取消私有 jobs、废弃旧
-readiness 凭据并重评当前状态，不重放已 reduced 的 Record。无资产或 Gameplay 迁移，
-回退不要求恢复 Legacy。
+仍存在真正 Blocking Presentation 时，既有 fast catch-up 可保留。但 deferred click identity
+必须至少冻结并复核：
+
+```text
+BattleId
+PresentationSessionToken
+source revision / exact interaction surface identity
+InteractionMode
+RuntimeId
+```
+
+过期点击不得在新 battle、新 SelectionGeneration 或新 target surface 被重放。
+
+### 10.2 G8-A — Detached Damage 基础（生产不启用）
+
+实现/验证：
+
+```text
+PresentationSessionToken authority
+DetachedDamageToken
+GC-safe owner/container
+TransientVFXHost
+hidden prepare + exact rollback
+finite duration + hard timeout
+sanity ceiling pre-commit decline
+session-wide cleanup
+post-publication stale rejection test harness
+```
+
+Production Record 仍全部走旧 Blocking path，无 early input。
+
+### 10.3 G8-B — Mode-specific shadow readiness
+
+实现统一 readiness evaluator 和 mode-specific grant contract，但只 shadow 对照旧行为：
+
+```text
+NormalPlayerTurn
+PendingSelection
+TargetChoice
+Terminal/Unavailable/Recovery
+```
+
+所有现有 refresh/recovery 入口必须接受统一 policy 审计；任何未解释 divergence 阻止下一阶段。
+
+### 10.4 G8-C — Damage 拆分，detached staging
+
+首次让真实 Damage Record 使用 detached prepare/commit 路径：
+
+```text
+formal HP/Block = reducer-owned
+DamageNumber = private detached visual only
+```
+
+但此阶段**不把 `InteractionPolicy::Blocking` 写进 job 类型**。为了单独验证 reducer/job
+解耦，可以用阶段级 `bG8AllowEarlyInteraction=false` 兼容 gate 临时保持旧输入等待；
+该 gate 只存在于 staging，不成为最终架构语义。
+
+若兼容 gate 需要在最后一个 DamageNumber 清理后重新评估输入，该通知只用于 staging
+readiness reevaluation，永远不能推进 Record/reducer。进入 G8-D 后删除这条依赖。
+
+G8-C 明确允许 HP/Block publication 时机和视觉重叠节奏相对旧 Damage playback 改变，
+因此必须单独 Automation/PIE；不能用“输入仍锁着”宣称完全等价。
+
+### 10.5 G8-D — DamageNumber 真正 NonBlocking
+
+删除 G8-C 的 early-interaction compatibility gate。
+
+此后 DamageNumber completion 对 Controller/ViewModel/readiness 完全无反向影响。
+当 exact CurrentMode surface ready 时，即使旧 DamageNumber 仍 alive，也允许对应合法输入。
+
+必须证明：
+
+```text
+A Gameplay/Resolution 已完成
+A DamageNumber 仍 alive
+→ B Request 可以被真正接受
+→ B Gameplay 只在 A 完成后开始
+→ A cosmetic 后续 finish 不影响 B
+```
+
+### 10.6 G8-E — 集成验证
+
+覆盖：
+
+```text
+连续/多段 Damage
+fully-blocked Damage
+rapid legal card input
+Draw → Selection
+Target choose/cancel
+EndTurn
+Skip
+active-envelope recovery
+HUD replacement
+battle replacement
+unavailable/direct
+terminal
+viewport/DPI change
+sanity ceiling
+GC
+```
+
+不是到 G8-E 才补基础 cleanup；基础 cleanup 必须在首次 production detached activation 前已经通过。
+
+### 10.7 G8-F — 证据与封存
+
+Build + affected focused Automation + Native `L_BattleTest` PIE 全部通过后才能标记 implemented/
+validated/sealed。
+
+G8 feature 关闭时，新 Record 必须完整退回 G0–G7 Blocking path。若运行中关闭，先失效
+当前 detached session、清 private cosmetic，再按当前 exact authoritative surface 重评输入；
+已 reduced Record 不重放。
 
 ## 11. 验收标准
 
-### AUTOMATED GATES（待实现后执行）
+### 11.1 AUTOMATED GATES
 
 | 测试主题 | 必须证明的外部合同 |
 |---|---|
-| A→B 完整时序 | A Gameplay 已完成，A FinalSnapshot/reducer 正确；A job 仍活着时 B 真正被 Request 接受；无并发 Gameplay；不能只断言 input=false/true |
-| 历史一致性 | 开关 G8、不同 tick 步长、延迟/重复 job callback 下，同初态/seed/输入序列得到相同权威结果及 Record 顺序 |
-| exact callback | A 完成/超时不能修改 B 的 token、HP/Block、Hand owner、输入状态；同 Battle 同 revision 换 HUD 也拒绝旧回调 |
-| 启动失败 | prepare 每个失败点无副作用 fallback；同步 Skip/replacement 不重复 reducer；提交后失败不重播 |
-| readiness 旁路 | 最新 read 提前于 Envelope 投递时不解锁；所有 refresh 入口遵守模式；同 revision surface replacement 失效 |
-| Selection/target | Draw 表面未追上不能选择；追上后 Confirm 可用且普通出牌仍拒绝；目标选择/取消不会被 job finish 清掉 |
-| Blocking job | reducer 可前进但输入等待；finish/timeout 能精确释放屏障，旧 generation 不能释放新屏障 |
-| 资源/GC | job 存活时 GC 不丢 widget；重复清理无害；上限、有限时长、确定淘汰顺序成立；满载 Blocking decline |
-| recovery | active-envelope reconcile 保留后续 backlog；Skip、direct、unavailable、terminal、replacement 无残留 job/barrier |
-| G0–G7 回归 | 只重跑直接受影响的 Controller/VM/input/正式 surface 合同；卡牌组顺序及 ownership 不被 cosmetic 查询影响 |
+| A→B authoritative 时序 | A Gameplay/Resolution 完成后 B 才 accepted；A DamageNumber 可仍 alive；无并发 Gameplay |
+| Reducer determinism | G8 on/off、不同 cosmetic tick/finish 时机不改变 committed Record/trigger/reducer/FinalSnapshot 顺序 |
+| One-way cosmetic lane | G8-D 后 Damage finish/timeout 不调用 Controller/VM/readiness/ownership mutation |
+| Exact session/token | 旧 HUD/session callback 不能删除新 session instance，也不能影响新 input surface |
+| Prepare transaction | 每个 pre-commit failure 无外部副作用并回 Blocking；post-publication stale 只丢 visual，不重播 reducer |
+| Mode-specific readiness | Normal/Selection/Target grant 不串模式；Selection/Target transient state 不被 normal finalizer 清掉 |
+| Shadow parity | G8-B shadow 与旧实际 input/mode 结果无未解释 divergence |
+| Read-before-envelope | latest read 提前、Envelope 尚未 chronological catch-up 时不能开放普通输入 |
+| Selection/target | surface 未 ready 禁止提交；ready 后只开放对应 continuation，不开放普通请求 |
+| Damage isolation | old cosmetic 不恢复 opacity、不回写 HP/Block、不改 current Hand/target state |
+| Lifetime/GC | finite duration/hard timeout、GC-safe owner、重复 cleanup 幂等、session-wide cleanup 正确 |
+| Sanity ceiling | ceiling 在 pre-commit 阶段导致 detached decline；不 eviction、不重复 reducer |
+| Recovery | reconcile/Skip/direct/unavailable/terminal/replacement 后无 ghost cosmetic、无永久锁 |
+| G0–G7 regression | Selection ownership、G6 Group、SingleRecord fallback、exact cancellation/recovery 不受 cosmetic lane 影响 |
 
-测试用真实 Gameplay Request 和 committed Envelope 证明主链；注入时钟/回调只用于
-可控边界。协议测试可保留长寿命 job，不能以此冒充默认时长的真实 PIE 收益。
+主时序测试使用真实 Gameplay Request + committed Envelope。测试 clock/timer injection 只用于
+可控边界，不以模拟 job 存活冒充真实 PIE 体验。
 
-### MANUAL PIE GATES（实施后 USER ACTION REQUIRED）
+### 11.2 MANUAL PIE GATES
 
-Native `L_BattleTest`：攻击 A 的数字尚存时正常打 B，A 数字继续、B 正常执行；HP/Block
-不回跳、Hand 不闪、点击不触发多余 Skip。记录默认数字时长、后续卡牌 Blocking 时长
-和实际输入恢复点。若默认流程无重叠，应如实记录并调整设计评估，不能假称完成体验目标。
+Native `L_BattleTest` 至少验证：
 
-再检查：连续多命中数字可读；Draw→Selection 先等 Hand 就位，再能选择并确认；G6
-同时消耗无回退；目标取消正常；快速点击/Skip、终局和窗口缩放无数字残留、无永久锁。
+```text
+打出攻击牌 A
+→ DamageNumber 出现
+→ 在 A 数字仍可见时，exact normal surface ready
+→ 立即合法打出 B
+→ A 数字继续自己的生命周期
+→ B 正常 CardPlayed / Gameplay
+```
 
-## 12. 本次交付与未决事项
+同时观察：
 
-本次仅源码/文档审查并写入提案，未修改代码、未运行 UE build/Automation/PIE，也没有
-新的运行验收证据。文档检查按 ValidationExecutionPolicy 的 documentation-only 规则。
+```text
+HP/Block 不回跳
+formal target opacity 不被旧数字恢复/覆盖
+Hand 不闪回/重复
+点击不会因为只有 cosmetic tail 而触发 Skip
+无 ghost DamageNumber
+无 stuck input
+```
 
-首版已明确收窄到 DamageNumber，不把卡牌尾动画、hit flash 或 status VFX 留作隐含任务。
-后续实现前需据实际交互面选择 readiness 凭据的最小字段和具体 API；不得删减本文的
-模式区分、同 revision 替换失效、事务 fallback 和单次 reducer 合同。数字时长及上限 8
-属于待 PIE 评估的视觉参数，不是确定性 Gameplay 参数。
+另验证：Draw→Selection 必须先等正确 Hand/Selection surface 后才能选择/确认；Target
+choose/cancel 模式不被 old cosmetic finish 清理；G6 multi-select 仍保持同时播放；Skip、
+终局、窗口/DPI 变化后无残留。
+
+记录默认 DamageNumber duration、实际 input-ready 时间、后续 Blocking card-tail duration。
+若默认时序没有实际跨牌视觉重叠，应如实记录，不通过人为延迟 cosmetic 或缩短 Blocking
+路径伪造体验收益。
+
+## 12. 本次设计冻结点与未授权范围
+
+本次修改仅调整设计，未修改 C++、未运行 UE Build/Automation/PIE，也没有新增运行验收证据。
+
+当前首版冻结候选：
+
+```text
+Blocking Presentation lane 保持 G0–G7
+Detached cosmetic lane 首版只有 DamageNumber
+最终 DamageNumber completion 对 authoritative/input lane 无反向边
+InteractionMode 是 readiness 核心；不建通用 barrier registry
+readiness grant 必须 mode-specific
+Presentation session 有单一 mint authority
+prepare/reducer/publication/activation 有两次 exact recheck
+有限 lifetime + hard timeout 是资源硬合同
+数量 ceiling 只是高位 bug-containment，不是正常 pacing 上限
+首版无 eviction
+card tail / hit flash / status VFX 不在首版范围
+```
+
+CardPlayed、PlayArea card tail、Selection transitions、Draw→Hand、G6 Group 等未来是否变成
+cosmetic/overlapped path，需要新的独立设计与 acceptance，不因 G8 DamageNumber seal 自动获得
+授权。
