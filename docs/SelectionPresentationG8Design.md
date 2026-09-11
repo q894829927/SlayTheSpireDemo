@@ -36,8 +36,10 @@ G8 的首版目标保持收窄：**只把独立 DamageNumber 变成跨 Resolutio
 17. G8-C debt 在 formal commit 后、ViewModel publication 前登记，确保同步 Skip 能看到并清理该 debt
 18. ordinary Skip 按旧 Skip 语义清除 staging compatibility debt，但保持 SessionToken
 19. replacement 新 Session 在新 binding 建立后、catch-up 前 mint，避免 sessionless-ready 窗口
-20. G8 runtime disable 只关闭 detached feature，不在 authority 未变化时更换 PresentationSessionToken
-21. 首版 DamageNumber 由 NativeTick + finite VisualDuration 结束，不额外保留不可达 HardTimeout
+20. Widget replacement 必须先 retire old playback owner，旧 playback token 不得发送给 new Widget
+21. G8-C compatibility wait 与 legacy Blocking Damage timer 使用同一时间域 / pause / time-dilation semantics
+22. G8 runtime disable 只关闭 detached feature，不在 authority 未变化时更换 PresentationSessionToken
+23. 首版 DamageNumber 由 NativeTick + finite VisualDuration 结束，不额外保留不可达 HardTimeout
 ```
 
 ## 1. 核心模型：两条运行轨 + 四种生命周期
@@ -109,6 +111,8 @@ Detached cosmetic 可以跨已完成 Resolution 存活，但不能导致 Gamepla
 - 当前 FastInput 还只用 `HasActiveNativePresentation()` 判断是否可 fast catch-up；G8-C 可能出现“真实 Widget playback 已结束，但只剩 CompatibilityDebtSeconds”的等待，因此首版必须把“有 Native playback”和“存在可 Skip 的 authoritative presentation delay”分开。
 - 当前 `ReconcileActiveEnvelopeToFinalSnapshot()` 可以恢复当前 Envelope 后保留 backlog，并同步进入下一 Envelope；因此普通 reconcile 不能制造 session 空窗或在 `StartNextEnvelope()` 之后才补 mint replacement session。
 - 当前 `SkipPresentation()` catch-up 末端可同步触发 `RefreshLiveInputBindingsIfCaughtUp()`；因此 HUD replacement 的新 Session 不能等 catch-up 结束后才建立，否则会出现短暂的 sessionless-ready 窗口。
+- 当前 `SetWidget()` 在旧 Widget 上 cancel tracked playback 后会切换 `Widget` 再调用 `SkipPresentation()`；如果 Controller 的 `bWaitingForCompletion / ActivePlaybackToken` 尚未 retire，`CancelActivePlaybackUnit()` 可能再次把**旧 playback token**发送给已经安装的新 Widget。G8 replacement contract 必须消除这个跨-owner call，而不能只依赖 token mismatch 让它碰巧 no-op。
+- 当前 Blocking Damage completion 使用 `UWorld::GetTimerManager().SetTimer(...)` 和 `NativePresentationDurationSeconds`；因此 G8-C 若宣称与旧 Blocking pacing 严格等价，compatibility wait 不能自行改用 platform/real-time wall clock。
 - G6 的 N-child parallel Group 是**同一 committed group 内的并行视觉**；G8 detached DamageNumber 是**跨已完成 Resolution 的 cosmetic lifetime**。二者不合并。
 
 <!-- REVIEW FIX 2026-09-12:
@@ -286,17 +290,38 @@ invalidate old session
 目标顺序必须等价于：
 
 ```text
-capture old Widget + old SessionToken
+capture old Widget + old SessionToken + old ActivePlaybackToken
 → invalidate old SessionToken
 → exact cleanup old Widget 上属于 old session 的 detached cosmetics
-→ cancel old tracked Blocking playback（若有）
+→ cancel exact old Widget tracked Blocking playback（若有）
+→ retire Controller old playback ownership：
+   - cancel old active timeout
+   - bWaitingForCompletion = false
+   - ActivePlaybackToken = invalid/default
+   - old LocalPlaybackGeneration / equivalent playback guard 继续保证 stale callback 被拒绝
 → detach old Widget
 → install new Widget
 → mint/establish NEW SessionToken for the new PresentationOwned binding
-→ 若存在 in-flight/backlog，保留现有 SkipPresentation/catch-up 语义
+→ 若存在 in-flight/backlog，保留现有 SkipPresentation/catch-up 语义，但 catch-up 不得再把 old playback token 发送给 new Widget
 → reach exact authoritative displayed surface
 → 按 authoritative current surface 重建 readiness
 ```
+
+硬合同：
+
+```text
+旧 Widget 所有的 FPresentationPlaybackToken
+不得在 Widget replacement 后传递给 new Widget 的 CancelTrackedPresentationPlayback / finish/cancel surface。
+```
+
+允许实现一个用途明确的 Controller helper，例如：
+
+```cpp
+void RetireActivePlaybackForWidgetReplacement(
+    UBattleHUDWidgetBase* ExpectedOldWidget);
+```
+
+或等价内部流程。关键不是 helper 名称，而是**先取消 old owner，再退休 Controller 的 old playback ownership，最后才切到 new owner**。
 
 新 Session 的建立点固定在：
 
@@ -313,9 +338,10 @@ new Widget binding 已安装
 旧 Widget 的 cleanup 失败只能造成 cosmetic 丢弃/诊断，不得让旧 callback 获得新 session authority。
 
 <!-- REVIEW FIX 2026-09-12:
-把 new Session 的 mint 从“catch-up 之后”前移到“new binding 建立后、catch-up 之前”。
-原因是当前 SkipPresentation() 可能同步走到 RefreshLiveInputBindingsIfCaughtUp()；如果此时还没有新 Session，
-就会出现 ViewModel 已经 ready、但 readiness credential 没有合法 Presentation authority identity 的窗口。
+replacement 不只要处理 SessionToken，还必须处理旧 FPresentationPlaybackToken 的 owner lifetime。
+当前 SetWidget() 先在 PreviousWidget cancel，随后切换 Widget 再 Skip；若 Controller 仍处于 waiting 状态，
+CancelActivePlaybackUnit() 可能把 old token 再发给 new Widget。首版明确先 retire old playback ownership，
+禁止依赖 new Widget 的 token mismatch 来吸收错误跨-owner call。
 -->
 
 ### 4.2 Controller 独占 Record cursor / reducer commit
@@ -780,6 +806,23 @@ PendingSelectionRequestIdentity =
   + SelectionBoundaryRevision
 ```
 
+建议使用明确的小型 value type，避免写路径只携带 revision：
+
+```cpp
+struct FPendingSelectionRequestIdentity
+{
+    int64 BattleId = 0;
+    int64 SelectionBoundaryRevision = 0;
+
+    bool IsValid() const
+    {
+        return BattleId > 0 && SelectionBoundaryRevision > 0;
+    }
+};
+```
+
+具体类型名可以调整，但所有 read/transient/submit/cancel surface 必须传递或等价校验**完整二元 identity**，不得把 `SelectionBoundaryRevision` 单独当成全局唯一值。
+
 原因是当前 player selection 创建顺序已经保证：
 
 ```text
@@ -805,12 +848,12 @@ DeferredSelectionAction
 
 ```text
 USelectionRequestAction / USelectionResolver
-- 当前 active player-facing pending request 必须保存 exact SelectionBoundaryRevision
-- BeginSelection 成功时冻结该 boundary
+- 当前 active player-facing pending request 必须保存 exact PendingSelectionRequestIdentity
+- BeginSelection 成功时冻结该 identity
 - resolve / legal cancel / fault cleanup 后清除
 
 FPendingCardSelectionReadView
-- 暴露 exact BattleId / SelectionBoundaryRevision（或一个等价结构体 identity）
+- 暴露 exact PendingSelectionRequestIdentity（或明确的 BattleId + SelectionBoundaryRevision 字段）
 
 ViewModel transient selected-card set
 - 必须记录自己属于哪个 exact PendingSelectionRequestIdentity
@@ -818,9 +861,9 @@ ViewModel transient selected-card set
 - 不再只用 SelectionSource + RequiredCount + CandidateRuntimeIds 判断“是不是同一个请求”
 
 SubmitPendingCardSelection / SubmitPendingSelectionCancel
-- 必须携带 Expected PendingSelectionRequestIdentity
-- Gameplay submit boundary 先 exact-match 当前 resolver request identity，再解析 RuntimeIds / cancel policy
-- stale boundary 的 submit/cancel 必须拒绝且不得作用于下一请求
+- 必须携带 ExpectedPendingSelectionRequestIdentity
+- Gameplay submit boundary 先 exact-match BattleId + SelectionBoundaryRevision，再解析 RuntimeIds / cancel policy
+- stale BattleId 或 stale boundary 的 submit/cancel 都必须拒绝且不得作用于下一请求
 ```
 
 现有 Presentation `SelectionGeneration` 与该 identity 职责不同：
@@ -845,13 +888,14 @@ RequiredCount 相同
 CandidateRuntimeIds 完全相同
 ```
 
-只要 `SelectionBoundaryRevision` 不同，就必须视为两个不同请求；旧 transient selection、旧 callback、旧 submit 都不得跨 boundary 复用。
+只要 `PendingSelectionRequestIdentity` 不同，就必须视为两个不同请求；旧 transient selection、旧 callback、旧 submit 都不得跨 identity 复用。
 
 <!-- REVIEW FIX 2026-09-12:
 上一版为 PendingSelection 新增了独立 RequestGeneration。这里改为直接复用 BattleId + SelectionBoundaryRevision。
 理由有两点：第一，interactive boundary 本来就在 BeginSelection 之前创建，因此没有“第一次点击时 identity 尚不存在”的问题；
 第二，额外 generation 会重复表达同一个 Gameplay/read 边界，并引入额外 counter、Resolver replacement ABA 与同步成本。
-同时把 identity 推到 submit/cancel 和 transient UI set，而不是只停留在 readiness 判断里，避免“读是 exact 的、写仍然可能打到下一请求”。
+本次进一步把 BattleId + SelectionBoundaryRevision 固定成一个完整 value identity；read、transient UI set、submit/cancel
+必须使用同一二元 identity，避免实现阶段只传 revision 而在 battle replacement 后弱化 stale-write 防护。
 -->
 
 ### 8.5 Readiness credential
@@ -877,7 +921,7 @@ CardTargetChoice:
 
 PendingCardSelection:
   SessionToken
-  + BattleId + exact SelectionBoundaryRevision
+  + exact PendingSelectionRequestIdentity
   + exact pending read surface
   + optional existing SelectionGeneration when presentation selection lifecycle has already begun
 ```
@@ -891,7 +935,7 @@ NormalPlayerTurn / CardReadyToConfirm / CardTargetChoice:
   + bPresentationDisplayOwned == false
 
 PendingCardSelection:
-  BattleId + exact SelectionBoundaryRevision
+  exact PendingSelectionRequestIdentity
   + exact direct read surface
   + optional existing SelectionGeneration when presentation selection lifecycle has already begun
 ```
@@ -924,9 +968,9 @@ EvaluateInteractionReadiness(CurrentMode, AuthoritySource)
   |     → EndTurn explicitly forbidden after prerequisite bugfix
   |
   +-- PendingCardSelection
-        → exact BattleId + SelectionBoundaryRevision / read guard
+        → exact PendingSelectionRequestIdentity / read guard
         → if SelectionGeneration exists, also validate exact presentation ownership generation
-        → preserve pending-selection transient set only for the same exact boundary
+        → preserve pending-selection transient set only for the same exact identity
         → only Select/Deselect/Confirm/Cancel for that request
 ```
 
@@ -942,7 +986,7 @@ EvaluateInteractionReadiness(CurrentMode, AuthoritySource)
 | Card ReadyToConfirm | 当前牌 Confirm/Cancel；切换另一张合法 Hand card；EndTurn 依既有行为 | target bypass、旧 selected-card continuation |
 | Card TargetChoice | 合法目标选择/取消；切换另一张合法 Hand card | EndTurn、target bypass、旧 selected-card continuation |
 | Pending Selection surface 未 ready | 无选择提交 | 普通出牌、Confirm、EndTurn |
-| Pending Selection exact surface ready | 选/取消选、合法 Confirm/Cancel | 普通出牌、EndTurn、旧 boundary submit/cancel |
+| Pending Selection exact surface ready | 选/取消选、合法 Confirm/Cancel | 普通出牌、EndTurn、旧 identity submit/cancel |
 | Resolving | 无普通 battle request | 普通出牌、EndTurn、旧 surface continuation |
 | Terminal / unavailable | 既有恢复/终局控件 | battle request |
 
@@ -1113,7 +1157,7 @@ SessionToken changes or disappears
 → no replay
 ```
 
-旧点击不得被带入更新的 Gameplay state，也不得在新 ControllerEpoch、新 PendingSelection boundary 或新 target surface 重放。
+旧点击不得被带入更新的 Gameplay state，也不得在新 ControllerEpoch、新 PendingSelection identity 或新 target surface 重放。
 
 ## 10. TransientVFXHost 与正式 HUD 隔离
 
@@ -1216,7 +1260,7 @@ MaxDetachedDamageNumberInstances = 32   // exact value implementation/PIE 决定
 | G8-C debt-only fast Skip | 按 Skip policy 清当前 session cosmetic；debt 清零 | **保持同一 SessionToken**；即使无 ActiveNativePresentation 也可通过 skippable-delay gate catch up |
 | ordinary active-envelope historical/reducer reconcile | exact cleanup recovery 需要取消的 cosmetic | **保持同一 SessionToken**；保留后续 backlog；可同步进入下一 Envelope |
 | recovery 升级为 HUD/Controller/battle replacement | old-session cosmetic 全清 | 由 replacement contract invalidate old session 并建立新 authority |
-| HUD replacement | 先失效 old session，再由 old Widget exact cleanup；安装新 Widget；**catch-up 前建立新 SessionToken** | 新 binding/session 下完成必要 catch-up，再重建 readiness |
+| HUD replacement | 先失效 old session；old Widget exact cleanup/cancel；**retire old playback owner/token**；安装 new Widget；catch-up 前建立 new SessionToken | new Widget 永不接收 old playback token；新 binding/session 下完成必要 catch-up，再重建 readiness |
 | Controller replacement | old ControllerEpoch 永久失效；旧 cosmetic 全清 | 新 ControllerEpoch/session 重建 readiness |
 | battle replacement | 全清旧 session | 新 battle 建立新 authority/readiness |
 | intentional DirectBaseline mode transition | invalidate old Presentation session + 全清 detached cosmetic | 切换为 DirectBaseline authority；不建立伪 SessionToken |
@@ -1275,10 +1319,11 @@ A8. TransientVFXHost
 A9. hidden prepare + exact rollback
 A10. NativeTick + finite VisualDuration + exact cleanup
 A11. HUD deactivation/destruction / session / replacement cleanup
-A12. replacement new binding 建立后先 mint new Session，再执行可能同步 refresh 的 catch-up
-A13. sanity ceiling pre-commit decline
-A14. PlayCommittedDamageCombatantCues API boundary
-A15. post-publication stale rejection harness
+A12. Widget replacement：cancel old owner 后 retire old playback ownership/token，再安装 new Widget
+A13. replacement new binding 建立后先 mint new Session，再执行可能同步 refresh 的 catch-up
+A14. sanity ceiling pre-commit decline
+A15. PlayCommittedDamageCombatantCues API boundary
+A16. post-publication stale rejection harness
 ```
 
 Production Damage 仍全部走旧 Blocking path。无 early input，无 detached production activation。
@@ -1289,7 +1334,7 @@ Production Damage 仍全部走旧 Blocking path。无 early input，无 detached
 
 ```text
 - 8.8 的 TargetChoice/EndTurn bugfix 已独立完成并成为 baseline
-- player-facing PendingSelection 已端到端使用 BattleId + SelectionBoundaryRevision exact identity
+- player-facing PendingSelection 已端到端使用 exact PendingSelectionRequestIdentity
 - Controller initialization failure 已不再 masquerade 为 DirectBaseline
 ```
 
@@ -1312,9 +1357,9 @@ Modes:
 同时实现/验证：
 
 ```text
-PendingSelection BattleId + SelectionBoundaryRevision exact identity
-Pending transient selected set 按 exact boundary 隔离
-Pending submit/cancel 带 ExpectedSelectionBoundaryRevision
+PendingSelectionRequestIdentity = BattleId + SelectionBoundaryRevision
+Pending transient selected set 按 exact identity 隔离
+Pending submit/cancel 带 ExpectedPendingSelectionRequestIdentity
 ExpectedCatchUpRevision deferred fast-card request
 ordinary FastInput Skip preserves exact SessionToken
 HasSkippablePresentationDelay 与 HasActiveNativePresentation 语义分离
@@ -1398,10 +1443,29 @@ exact authority/read surface 本来已 ready
 CompatibilityDebtSeconds > 0
 → Controller-owned compatibility wait
 → HasSkippablePresentationDelay() == true
-→ debt 按 wall-clock 递减到 0
+→ debt 在 legacy Blocking Damage timer 的同一时间域内递减到 0
 → 再重做 exact readiness recheck
 → 合法才 grant
 ```
+
+“同一时间域”是硬合同：
+
+```text
+G8-C compatibility wait
+必须与 legacy Blocking Damage 的 UWorld/TimerManager timer 具有等价：
+- game-time progression
+- pause semantics
+- time-dilation semantics
+- world lifetime / teardown semantics
+```
+
+首版不得用独立的：
+
+```text
+FPlatformTime / real-time wall clock / process uptime
+```
+
+来服务 debt，除非 legacy Blocking Damage timer 也迁移到同一个新时间域并通过等价回归。文档中的 `CompatibilityDebtSeconds` 表示 duration debt，不授权实现使用真实世界 wall-clock。
 
 如果 compatibility wait 期间又出现新的 authoritative chronology/recovery：
 
@@ -1410,6 +1474,8 @@ pause/freeze remaining debt
 → 先处理新的 chronological/recovery work
 → 再次到达 otherwise-ready boundary 后继续服务剩余 debt
 ```
+
+这里的“pause/freeze”同样必须尊重上述 legacy timer 时间域；不得在 Controller 暂停 debt service 时偷偷按 real-time 扣减。
 
 这样 debt 只代表“旧 Damage Blocking 本来占用、但 detached 后被拿掉的串行 Presentation 时间”，不会被其它 Blocking job 重复消费。
 
@@ -1462,6 +1528,17 @@ GetLegacyDamageBlockingDuration()
 old Blocking Damage timer
 G8-C 每次 CompatibilityDebtSeconds increment
 → 读取同一 timing authority
+```
+
+Timing parity 包含两层，缺一不可：
+
+```text
+Duration source parity:
+old Blocking Damage duration == debt increment D
+
+Clock-domain parity:
+old Blocking Damage finish timer 与 compatibility wait
+使用等价的 game-time / pause / time-dilation / world teardown 语义
 ```
 
 Compatibility debt 必须在以下边界清理：
@@ -1531,8 +1608,8 @@ Target choose/cancel + switch selected Hand card
 TargetChoice EndTurn rejection
 Draw → Pending Selection
 Pending Selection first click before SelectionGeneration exists
-back-to-back PendingSelection with same source/candidates but different SelectionBoundaryRevision
-stale PendingSelection submit/cancel against newer boundary rejection
+back-to-back PendingSelection with same source/candidates but different PendingSelectionRequestIdentity
+stale PendingSelection submit/cancel against newer identity rejection
 Pending Selection surface catch-up
 EndTurn
 FastInput exact ExpectedCatchUpRevision
@@ -1540,7 +1617,7 @@ ordinary FastInput Skip keeps same SessionToken and clears G8-C debt
 G8-C debt-only wait is still fast-skippable without pretending a Native Widget playback exists
 Skip with real replacement makes deferred click stale
 active-envelope reconcile keeps same SessionToken and backlog continuity
-HUD replacement: new Session exists before catch-up; catch-up ordering exact
+HUD replacement: old playback owner/token retired before new Widget；new Session exists before catch-up；catch-up ordering exact
 Controller replacement / ControllerEpoch ABA
 battle replacement
 DirectBaseline sessionless readiness
@@ -1553,6 +1630,7 @@ HUD deactivation/destruction cleanup
 sanity ceiling
 GC
 G8-C multi-hit / mixed-blocking compatibility debt
+G8-C pause/time-dilation clock-domain parity with legacy Blocking Damage timer
 ```
 
 基础 cleanup 必须在首次 production detached activation 前已经通过，不等到 G8-E 才补。
@@ -1607,16 +1685,17 @@ Session 是 Presentation authority identity，不是 detached feature identity�
 | Ordinary reconcile session continuity | active-envelope historical/reducer recovery 保持 SessionToken；后续 backlog 可直接继续，不出现 session 空窗 |
 | Replacement staleness | HUD/Controller/battle/authority replacement 后旧 SessionToken 与 deferred click 必须 stale |
 | Controller replacement ABA | replacement Controller 的 ControllerEpoch/token 不可能与旧 Controller token 相等；旧 callback 全部 stale |
-| Widget replacement ordering | old session 先失效并在 old Widget cleanup；new binding 后、catch-up 前已有 new Session；catch-up 前不得 grant readiness |
+| Widget replacement playback ownership | old Widget cancel 后 Controller retire old waiting/token/timeout；new Widget 永不收到 old FPresentationPlaybackToken |
+| Widget replacement ordering | old session 先失效并在 old Widget cleanup；old playback owner retire；new binding 后、catch-up 前已有 new Session；catch-up 前不得 grant readiness |
 | DirectBaseline readiness | intentional DirectBaseline 无 Controller/SessionToken 时仍可按 exact frozen baseline/read edge 正常获得合法 readiness；不伪造 session |
 | Controller-init failure fail-safe | 本应启用 Presentation 但 Controller 初始化失败时不得恢复普通 DirectBaseline input；必须 unavailable/input locked |
 | Prepare transaction | pre-commit failure 无外部副作用并回 Blocking；post-publication stale 只丢 visual，不重播 reducer |
 | G8-C debt commit ordering | detached Damage formal commit 后、ViewModel publication 前登记 debt；同步 Skip/replacement 能看到并正确清理该 debt |
 | Damage combatant cues | detached 成功仍保持正确 target Hit / enemy source Attack；cue 不影响 formal state |
 | Mode-specific readiness | Normal/ReadyToConfirm/Target/PendingSelection grant 不串模式 |
-| Pending request exact identity | player-facing pending request 使用 BattleId + SelectionBoundaryRevision；back-to-back 同内容 request 仍是不同 boundary |
-| Pending submit/cancel exactness | stale SelectionBoundaryRevision 的 submit/cancel 不能作用到当前较新的 pending request |
-| Pending transient-set isolation | SelectionBoundaryRevision 改变时旧 PendingCardSelectionRuntimeIds 必须清空，即使 source/count/candidates 完全相同 |
+| Pending request exact identity | player-facing pending request 使用完整 BattleId + SelectionBoundaryRevision；back-to-back 同内容 request 仍是不同 identity |
+| Pending submit/cancel exactness | stale BattleId 或 stale SelectionBoundaryRevision 的 submit/cancel 都不能作用到当前较新的 pending request |
+| Pending transient-set isolation | PendingSelectionRequestIdentity 改变时旧 PendingCardSelectionRuntimeIds 必须清空，即使 source/count/candidates 完全相同 |
 | Pending request vs Presentation generation | 第一次 pending click 不依赖尚不存在的 SelectionGeneration；visual lifecycle 建立后再附加校验 SelectionGeneration |
 | Card surface switch parity | ReadyToConfirm/ChoosingTarget 下可切换另一张合法 Hand card；旧 selected-card credential 立即 stale |
 | TargetChoice input contract | ChoosingTarget 允许 target choose/cancel/合法换卡；EndTurn 在 request boundary 与 HUD 均禁止 |
@@ -1628,6 +1707,7 @@ Session 是 Presentation authority identity，不是 detached feature identity�
 | Read-before-envelope | latest read 提前、Envelope 尚未 chronological catch-up 时不能开放普通输入 |
 | Damage isolation | old cosmetic 不恢复 opacity、不回写 HP/Block、不改 Hand/target state |
 | G8-C timing authority | Blocking Damage 与 compatibility debt increment 使用同一 legacy duration source；无复制 magic literal |
+| G8-C clock-domain parity | compatibility wait 与 legacy Blocking Damage finish timer 使用等价 game-time / pause / time-dilation / teardown 语义；不得独立 real-time 计时 |
 | G8-C multi-hit debt | N 个 detached Damage 产生 N×legacy duration debt |
 | G8-C mixed chronology debt | Damage→Blocking→Damage 的其它 Blocking 时间不得抵消 Damage debt；最终 input-ready 总 wait 与旧串行 path 等价 |
 | G8-C Skip debt | ordinary Skip/debt-only fast Skip 清除被 collapse chronology 的 compatibility debt，但保持 SessionToken |
@@ -1641,7 +1721,7 @@ Session 是 Presentation authority identity，不是 detached feature identity�
 | G0–G7 regression | **除 12.0 明确列出的 prerequisite fixes 外**，Selection ownership、G6 Group、SingleRecord fallback、exact cancellation/recovery 等 sealed contract 不受影响 |
 
 主时序测试使用真实 Gameplay Request + committed Envelope。可注入 clock 只用于确定性边界，
-不得以模拟 job 存活冒充真实 PIE 体验。
+不得以模拟 job 存活冒充真实 PIE 体验。若注入 clock 覆盖 G8-C compatibility wait，必须模拟 legacy timer 的同一时间域语义，而不是引入测试专用 real-time 行为。
 
 ### 13.2 MANUAL PIE GATES
 
@@ -1687,7 +1767,8 @@ Target choose/cancel 与切换另一张合法 Hand card
 TargetChoice 时 EndTurn 明确不可用
 Draw → PendingSelection 未 ready 与 ready 两个边界
 第一次 pending-selection click 在 SelectionGeneration 尚未创建时仍可合法建立 presentation lifecycle
-连续两个内容相同的 pending request 具有不同 SelectionBoundaryRevision，旧 transient set/callback/submit 不可重放
+连续两个内容相同的 pending request 具有不同 PendingSelectionRequestIdentity，旧 transient set/callback/submit 不可重放
+跨 Battle 的相同 SelectionBoundaryRevision 不得让旧 pending submit/cancel 命中新 Battle request
 G6 multi-select 同时播放
 FastInput ordinary Skip 后保持同 SessionToken，并只在 exact target revision 重放
 G8-C 只剩 compatibility debt、没有 ActiveNativePresentation 时仍可由 fast click 按旧语义 Skip
@@ -1698,14 +1779,16 @@ ordinary active-envelope reconcile 后 SessionToken 不变，后续 backlog 继�
 intentional DirectBaseline 无 SessionToken 时正常选牌/Target/ReadyToConfirm/EndTurn
 模拟 Controller initialization failure 时进入 unavailable，不恢复普通 input
 HUD replacement / Controller replacement 后旧 cosmetic 与旧 deferred click 均失效
+HUD replacement 时 old playback token 不会被发送给 new Widget
 HUD replacement 需要 catch-up 时，新 Session 在 catch-up 前已经存在，但 exact surface ready 前仍不开放 input
 G8-C 连续多段 Damage 的 compatibility debt 与旧串行 Damage 等价
 G8-C Damage → OtherBlocking → Damage 的最终 input-ready 时间与旧串行 path 等价
+G8-C 在 pause / time-dilation 场景下与 legacy Blocking Damage timer 的等待语义一致
 G8 runtime disable（无 authority replacement）后 SessionToken 不变、cosmetic/debt 清理、Damage 回 Blocking
 HUD deactivation/destruction / Skip / terminal / viewport-DPI 变化后无残留
 ```
 
-记录默认 DamageNumber `VisualDuration`、实际 input-ready 时间、legacy Blocking Damage duration 来源、G8-C accumulated debt 和后续 Blocking card-tail duration。
+记录默认 DamageNumber `VisualDuration`、实际 input-ready 时间、legacy Blocking Damage duration 来源、legacy timer 时间域、G8-C accumulated debt 和后续 Blocking card-tail duration。
 
 若默认时序没有实际跨牌视觉重叠，应如实记录，不通过人为延迟 cosmetic 或缩短 Blocking 路径伪造收益。
 
@@ -1726,7 +1809,8 @@ G8 runtime enable/disable 本身不改变 Presentation authority；binding 未�
 HUD/Controller/battle/authority replacement 才使旧 session/deferred request stale
 DirectBaseline 只表示 intentional sessionless direct authority；不得伪造 SessionToken
 Controller initialization failure 不得 silent fallback 到 DirectBaseline，必须 fail-safe/unavailable
-HUD replacement 必须先 invalidate old session、cleanup old owner、安装 new binding、mint new Session，再执行可能同步 refresh 的 catch-up
+HUD replacement 必须先 invalidate old session、cleanup/cancel old owner、retire old playback token/timeout/waiting state、安装 new binding、mint new Session，再执行可能同步 refresh 的 catch-up
+old FPresentationPlaybackToken 不得跨 Widget replacement 发送给 new Widget
 需要 catch-up 的 replacement 在 exact authoritative surface 到达前不得 grant readiness
 Damage historical validation 提取为单一、完整 reducer/validator
 historical validity 与 visual eligibility 严格分离
@@ -1736,14 +1820,15 @@ HUD detached owner 永不推进 Record/reducer/readiness
 G8-C 每个 detached Damage 在 formal commit 后、publication 前增加 CompatibilityDebtSeconds
 G8-C 每个 detached Damage 只增加 compatibility debt，不使用会被其它 Blocking 时间抵消的 last-deadline 算法
 G8-C debt 只在 chronological/recovery 已 otherwise-ready 后服务；其它 Blocking Presentation 不抵消 debt
+G8-C compatibility wait 与 legacy Blocking Damage timer 使用同一时间域 / pause / time-dilation / world lifetime semantics
 FastInput 使用 HasSkippablePresentationDelay 概念；debt-only wait 可 Skip，pure cosmetic tail 不可 Skip
 ordinary Skip 清除被 collapse chronology 的 G8-C debt，但保持 SessionToken
 G8-C legacy duration 只有一个 timing authority，不复制 0.5f magic literal
 G8-D readiness 与 legacy debt / cosmetic duration 完全解耦
 Interaction readiness 覆盖 Normal / ReadyToConfirm / Target / PendingSelection
 PendingSelection 保持独立 authoritative lifecycle，不硬塞入 InteractionState enum
-PendingSelection exact identity 直接使用 BattleId + SelectionBoundaryRevision，不新增第二套 request generation
-Pending transient set 与 submit/cancel 都必须校验 exact SelectionBoundaryRevision，不能只在 read/readiness 层 exact
+PendingSelection exact identity 使用完整 BattleId + SelectionBoundaryRevision，不新增第二套 request generation
+read / transient set / submit / cancel 都必须校验同一完整 PendingSelectionRequestIdentity，不允许只传 revision
 SelectionBoundaryRevision 与 Presentation SelectionGeneration 类型/职责分离，第一次 click 不形成循环依赖
 首版不新增 TargetChoiceGeneration
 ReadyToConfirm / TargetChoice 保留切换另一张合法 Hand card 的现有行为
