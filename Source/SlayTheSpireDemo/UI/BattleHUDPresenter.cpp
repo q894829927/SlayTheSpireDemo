@@ -80,11 +80,15 @@ bool ABattleHUDPresenter::InitializeHUD(APlayerController* PlayerController)
 			UE_LOG(
 				LogTemp,
 				Error,
-				TEXT("[BattleHUD] PresentationController initialization failed. Falling back to frozen latest-state HUD delivery.")
+				TEXT("[BattleHUD] PresentationController initialization failed. Entering PresentationUnavailable fail-safe instead of DirectBaseline fallback.")
 			);
+			if (IsValid(PresentationController))
+			{
+				PresentationController->Shutdown();
+			}
 			PresentationController = nullptr;
-			ViewModel->SetPresentationDisplayOwned(false);
-			ViewModel->RefreshLiveInputBindingsIfCaughtUp();
+			ViewModel->EnterPresentationUnavailable(
+				FText::FromString(TEXT("Committed Presentation controller initialization failed.")));
 		}
 	}
 	else if (bEnableCommittedPresentation && !BattleManager->IsPresentationAvailable())
