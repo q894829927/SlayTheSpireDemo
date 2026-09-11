@@ -64,8 +64,9 @@ bool UBattleHUDWidget::EnsureTransientVFXHost()
 		}
 	}
 	HostSlot->SetZOrder(TopZ + 1);
+	// HitTestInvisible is sufficient to keep this visual-only while preserving
+	// normal Slate enabled-state rendering for the damage text children.
 	TransientVFXHost->SetVisibility(ESlateVisibility::HitTestInvisible);
-	TransientVFXHost->SetIsEnabled(false);
 	return true;
 }
 
@@ -192,7 +193,6 @@ bool UBattleHUDWidget::PrepareDetachedDamageVisual(
 	}
 	DamageText->SetText(FText::AsNumber(Record.Damage.IncomingDamage));
 	DamageText->SetVisibility(ESlateVisibility::Hidden);
-	DamageText->SetIsEnabled(false);
 	DamageText->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 
 	UCanvasPanelSlot* DamageSlot = TransientVFXHost->AddChildToCanvas(DamageText);
