@@ -4,6 +4,7 @@
 #include "Blueprint/UserWidget.h"
 #include "../Presentation/PresentationTypes.h"
 #include "../Presentation/PresentationG8Types.h"
+#include "../Presentation/PresentationDamageTiming.h"
 #include "BattleHUDWidgetBase.generated.h"
 
 class UBattleHUDViewModel;
@@ -191,6 +192,13 @@ public:
 	TObjectPtr<UBattlePresentationController> PresentationController = nullptr;
 
 protected:
+	// Class-scope name lookup intentionally shadows the old translation-unit-local
+	// 0.5s constant used by Native playback member functions. Both legacy Blocking
+	// Damage and G8-C debt now resolve through the same Presentation timing value
+	// without changing any other Native presentation duration.
+	static constexpr float NativePresentationDurationSeconds =
+		PresentationDamageTiming::LegacyDamageBlockingDurationSeconds;
+
 	virtual void NativeDestruct() override;
 	virtual FReply NativeOnPreviewMouseButtonDown(
 		const FGeometry& InGeometry,
