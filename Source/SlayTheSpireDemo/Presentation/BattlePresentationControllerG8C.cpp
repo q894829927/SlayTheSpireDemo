@@ -3,6 +3,7 @@
 #include "PresentationDamageReducer.h"
 #include "PresentationDamageTiming.h"
 #include "../Battle/BattleManager.h"
+#include "../Battle/BattleReadSnapshot.h"
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
 #include "Engine/World.h"
@@ -22,14 +23,7 @@ void UBattlePresentationController::SetDetachedDamageG8CEnabled(bool bEnabled)
 		// current SessionToken, but synchronously retire staging-only state.
 		ClearCompatibilityDebt();
 		CancelCurrentSessionDetachedDamageVisuals();
-
-		if (!bHasActiveEnvelope
-			&& PlaybackQueue.Num() == 0
-			&& !bWaitingForCompletion
-			&& IsValid(ViewModel))
-		{
-			ViewModel->RefreshLiveInputBindingsIfCaughtUp();
-		}
+		TryServiceCompatibilityDebtOrRefreshInput();
 	}
 }
 
@@ -224,6 +218,28 @@ void UBattlePresentationController::PauseCompatibilityDebtService()
 	CompatibilityDebtTimerHandle.Invalidate();
 }
 
+bool UBattlePresentationController::IsExactReadSurfaceCaughtUpForDebtService() const
+{
+	ABattleManager* Battle = BattleManager.Get();
+	if (!IsValid(Battle)
+		|| !IsValid(ViewModel)
+		|| !IsPresentationOwnedMode()
+		|| !ActivePresentationSessionToken.IsValid())
+	{
+		return false;
+	}
+
+	FPresentationStateSnapshot LatestBaseline;
+	FBattleReadSnapshot CurrentRead;
+	return Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+		&& LatestBaseline.BattleId == CurrentBattleId
+		&& LatestBaseline.BattleId == ViewModel->BattleId
+		&& LatestBaseline.StateRevision == ViewModel->StateRevision
+		&& Battle->TryBuildPlayerFacingReadSnapshot(CurrentRead)
+		&& static_cast<int64>(CurrentRead.BattleId) == ViewModel->BattleId
+		&& static_cast<int64>(CurrentRead.StateRevision) == ViewModel->StateRevision;
+}
+
 void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 {
 	if (!IsValid(ViewModel))
@@ -241,19 +257,27 @@ void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 		return;
 	}
 
-	if (!bDetachedDamageG8CEnabled
-		|| !IsPresentationOwnedMode()
+	if (!IsPresentationOwnedMode()
 		|| !ActivePresentationSessionToken.IsValid())
 	{
 		ClearCompatibilityDebt();
-		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 		return;
 	}
 
-	// Debt is serviced only at an otherwise-ready chronological boundary. Other
-	// Blocking playback time never consumes detached Damage debt.
-	if (bHasActiveEnvelope || PlaybackQueue.Num() > 0 || bWaitingForCompletion)
+	// Debt is serviced only at an otherwise-ready chronological/read boundary.
+	// Other Blocking playback and undelivered newer read edges cannot consume it.
+	if (bHasActiveEnvelope
+		|| PlaybackQueue.Num() > 0
+		|| bWaitingForCompletion
+		|| !IsExactReadSurfaceCaughtUpForDebtService())
 	{
+		return;
+	}
+
+	if (!bDetachedDamageG8CEnabled)
+	{
+		ClearCompatibilityDebt();
+		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 		return;
 	}
 
@@ -270,8 +294,7 @@ void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 		return;
 	}
 
-	ABattleManager* Battle = BattleManager.Get();
-	UWorld* World = IsValid(Battle) ? Battle->GetWorld() : nullptr;
+	UWorld* World = BattleManager.IsValid() ? BattleManager->GetWorld() : nullptr;
 	if (!IsValid(World))
 	{
 		UE_LOG(
@@ -302,7 +325,8 @@ void UBattlePresentationController::HandleCompatibilityDebtElapsed()
 		|| !ActivePresentationSessionToken.IsValid()
 		|| bHasActiveEnvelope
 		|| PlaybackQueue.Num() > 0
-		|| bWaitingForCompletion)
+		|| bWaitingForCompletion
+		|| !IsExactReadSurfaceCaughtUpForDebtService())
 	{
 		return;
 	}
@@ -347,8 +371,8 @@ bool UBattlePresentationController::IsCompatibilityDebtServiceActiveForTesting()
 	{
 		return false;
 	}
-	const ABattleManager* Battle = BattleManager.Get();
-	const UWorld* World = IsValid(Battle) ? Battle->GetWorld() : nullptr;
+	ABattleManager* Battle = BattleManager.Get();
+	UWorld* World = IsValid(Battle) ? Battle->GetWorld() : nullptr;
 	return IsValid(World)
 		&& World->GetTimerManager().IsTimerActive(CompatibilityDebtTimerHandle);
 }
