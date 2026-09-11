@@ -92,11 +92,14 @@ bool FNativeFastCardPresentationCatchUpTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	if (!TestTrue(TEXT("Presentation-owned ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true)))
+	{
+		return false;
+	}
 	Probe->SetTestWorld(Fixture.World);
 	Probe->SetViewModel(ViewModel);
 	Probe->SetAcceptSyntheticPlayback(true);
-	if (!TestTrue(TEXT("Presentation-owned ViewModel initializes"), ViewModel->Initialize(Fixture.Battle, true))
-		|| !TestTrue(TEXT("Presentation Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Probe)))
+	if (!TestTrue(TEXT("Presentation Controller initializes"), Controller->Initialize(Fixture.Battle, ViewModel, Probe)))
 	{
 		return false;
 	}
@@ -115,7 +118,13 @@ bool FNativeFastCardPresentationCatchUpTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Controller reports an authoritative skippable delay"), Controller->HasSkippablePresentationDelay());
 
-	const int32 RuntimeId = Fixture.FirstRuntimeId();
+	const int32 RuntimeId = ViewModel->HandCards.Num() > 0
+		? ViewModel->HandCards[0].RuntimeId
+		: INDEX_NONE;
+	if (!TestTrue(TEXT("Presentation-owned Hand exposes a RuntimeId"), RuntimeId != INDEX_NONE))
+	{
+		return false;
+	}
 	TestTrue(TEXT("Rapid card click is accepted as deferred UI intent"), Probe->SelectCard(RuntimeId));
 	TestFalse(TEXT("Rapid click uses formal Skip to clear active visual"), Probe->IsLocalPresentationActive());
 	TestEqual(TEXT("Rapid click dispatches exactly one visual Cancel"), Probe->CancelDispatchCount, 1);
