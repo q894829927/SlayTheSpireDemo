@@ -13,7 +13,14 @@
 void UBattleHUDWidget::EnsureHandInteractionSurfaces()
 {
 	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
-	if (!Root || !HB_Hand || FanHand) return;
+	if (!Root) return;
+
+	// G8-A host creation is infrastructure-only. No production Damage path uses
+	// it yet, but creating it alongside the other runtime Canvas surfaces makes
+	// geometry ownership deterministic before a later detached prepare.
+	EnsureTransientVFXHost();
+
+	if (!HB_Hand || FanHand) return;
 	// The production asset keeps its BindWidget name. Replace only its empty
 	// layout host at initialization, before any formal/runtime card is attached.
 	if (HB_Hand->GetChildrenCount() != 0 || HB_Hand->GetParent() != Root) return;
@@ -47,6 +54,11 @@ void UBattleHUDWidget::EnsureHandInteractionSurfaces()
 
 void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 {
+	// Detached cosmetics share the existing NativeTick owner but are completely
+	// independent from Hand/input readiness. Run them even when ViewModel input is
+	// unavailable so finite lifetime cleanup cannot be skipped by early returns.
+	UpdateDetachedDamageNumbers(DeltaTime);
+
 	if (!IsValid(ViewModel))
 	{
 		if (TargetingArrow) TargetingArrow->SetVisibility(ESlateVisibility::Hidden);
