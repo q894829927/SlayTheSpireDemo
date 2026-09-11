@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "../Battle/BattleImmediatePreview.h"
+#include "../Selection/SelectionTypes.h"
 #include "BattleHUDTypes.h"
 #include "../Presentation/PresentationTypes.h"
 #include "BattleHUDViewModel.generated.h"
@@ -291,6 +292,7 @@ private:
 	TMap<FName, TWeakObjectPtr<ACombatant>> LiveCombatantBindings;
 	TArray<TWeakObjectPtr<ACombatant>> LegalTargetObjects;
 	TArray<int32> PendingCardSelectionRuntimeIds;
+	FPendingSelectionRequestIdentity PendingCardSelectionRequestIdentity;
 	FName PendingCardSelectionSource = NAME_None;
 	int32 PendingCardSelectionRequiredCount = 0;
 	TArray<int32> PendingCardSelectionCandidateRuntimeIds;
