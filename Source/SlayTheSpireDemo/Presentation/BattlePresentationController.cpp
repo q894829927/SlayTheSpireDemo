@@ -1,12 +1,26 @@
 #include "BattlePresentationController.h"
 
 #include "PresentationCardView.h"
+#include "PresentationDamageReducer.h"
 #include "../Battle/BattleManager.h"
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
 
 namespace
 {
+	// Process-lifetime mint authority. Controller replacement must never be able
+	// to reproduce an old PresentationSessionToken numerically.
+	int64 GNextPresentationControllerEpoch = 1;
+
+	int64 AllocatePresentationControllerEpoch()
+	{
+		checkf(
+			GNextPresentationControllerEpoch > 0
+				&& GNextPresentationControllerEpoch < MAX_int64,
+			TEXT("Presentation Controller epoch authority exhausted."));
+		return GNextPresentationControllerEpoch++;
+	}
+
 	FBattleHUDCombatantView* FindCombatantView(
 		FPresentationStateSnapshot& Snapshot,
 		FName PresentationId
@@ -360,6 +374,7 @@ bool UBattlePresentationController::Initialize(
 )
 {
 	Shutdown();
+	EnsureControllerEpoch();
 	if (!IsValid(InBattleManager) || !IsValid(InViewModel))
 	{
 		return false;
@@ -386,6 +401,7 @@ bool UBattlePresentationController::Initialize(
 		const int64 BaselineResolutionWatermark = static_cast<int64>(InBattleManager->GetLatestFrozenPresentationBaselineResolutionId());
 		LastQueuedResolutionId = BaselineResolutionWatermark;
 		LastCompletedResolutionId = BaselineResolutionWatermark;
+		EstablishPresentationSessionForCurrentBinding();
 		ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 	}
 
@@ -402,6 +418,11 @@ bool UBattlePresentationController::Initialize(
 
 void UBattlePresentationController::Shutdown()
 {
+	InvalidatePresentationSession(Widget);
+	if (IsValid(Widget))
+	{
+		Widget->CancelAllDetachedDamageVisuals();
+	}
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	if (ABattleManager* Battle = BattleManager.Get())
@@ -438,18 +459,39 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 
 	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
 	UBattleHUDWidgetBase* PreviousWidget = Widget;
-	if (bHadInFlightPresentation
-		&& bWaitingForCompletion
-		&& IsValid(PreviousWidget))
-	{
-		PreviousWidget->CancelTrackedPresentationPlayback(ActivePlaybackToken);
-	}
 
+	// Binding replacement is an authority replacement. Retire both the G8
+	// session and the old G0-G7 playback owner before installing the new Widget;
+	// old playback tokens must never be delivered to the new owner during catch-up.
+	InvalidatePresentationSession(PreviousWidget);
+	RetireActivePlaybackForWidgetReplacement(PreviousWidget);
 	Widget = InWidget;
+	EstablishPresentationSessionForCurrentBinding();
+
 	if (bHadInFlightPresentation)
 	{
 		SkipPresentation();
 	}
+}
+
+bool UBattlePresentationController::TryGetPresentationSessionToken(
+	FPresentationSessionToken& OutToken) const
+{
+	OutToken = FPresentationSessionToken{};
+	if (!ActivePresentationSessionToken.IsValid())
+	{
+		return false;
+	}
+	OutToken = ActivePresentationSessionToken;
+	return true;
+}
+
+bool UBattlePresentationController::IsCurrentPresentationSession(
+	const FPresentationSessionToken& Token) const
+{
+	return Token.IsValid()
+		&& ActivePresentationSessionToken.IsValid()
+		&& Token == ActivePresentationSessionToken;
 }
 
 void UBattlePresentationController::NotifyPresentationFinished(const FPresentationPlaybackToken& Token)
@@ -487,6 +529,8 @@ void UBattlePresentationController::SkipPresentation()
 		return;
 	}
 
+	// Ordinary catch-up changes chronology, not Presentation authority. G8 session
+	// identity intentionally remains unchanged here.
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -529,6 +573,9 @@ void UBattlePresentationController::NotifyWidgetLost(UBattleHUDWidgetBase* LostW
 	{
 		return;
 	}
+
+	InvalidatePresentationSession(LostWidget);
+	RetireActivePlaybackForWidgetReplacement(LostWidget);
 	Widget = nullptr;
 	SkipPresentation();
 }
@@ -575,6 +622,7 @@ void UBattlePresentationController::HandlePresentationResolutionReady(const FPre
 
 	if (CurrentBattleId != LatestBaseline.BattleId)
 	{
+		InvalidatePresentationSession(Widget);
 		ResetPlaybackState(true);
 		LastQueuedResolutionId = 0;
 		LastCompletedResolutionId = 0;
@@ -585,6 +633,10 @@ void UBattlePresentationController::HandlePresentationResolutionReady(const FPre
 	if (IsValid(ViewModel) && !ViewModel->IsPresentationDisplayOwned())
 	{
 		ViewModel->SetPresentationDisplayOwned(true);
+	}
+	if (!ActivePresentationSessionToken.IsValid())
+	{
+		EstablishPresentationSessionForCurrentBinding();
 	}
 
 	if (!IsEnvelopeForCurrentBattle(Envelope)
@@ -711,7 +763,23 @@ void UBattlePresentationController::StartNextRecord()
 		return;
 	}
 
-	if (Record.Type == EBattlePresentationRecordType::StatusChanged)
+	if (Record.Type == EBattlePresentationRecordType::Damage)
+	{
+		if (!bHasWorkingPresentationSnapshot)
+		{
+			ReconcileActiveEnvelopeToFinalSnapshot();
+			return;
+		}
+		FPresentationStateSnapshot PreflightSnapshot = WorkingPresentationSnapshot;
+		if (!PresentationDamageReducer::TryApplyDamageRecord(
+			PreflightSnapshot,
+			Record.Damage))
+		{
+			ReconcileActiveEnvelopeToFinalSnapshot();
+			return;
+		}
+	}
+	else if (Record.Type == EBattlePresentationRecordType::StatusChanged)
 	{
 		if (!bHasWorkingPresentationSnapshot)
 		{
@@ -884,6 +952,7 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 	ActivePlaybackToken = FPresentationPlaybackToken{};
 
 	// Deliberately preserve PlaybackQueue. This is the G3 ActiveEnvelope scope.
+	// G8 ordinary reconcile also deliberately preserves PresentationSessionToken.
 	if (PlaybackQueue.Num() > 0)
 	{
 		StartNextEnvelope();
@@ -965,6 +1034,77 @@ void UBattlePresentationController::CancelActivePlaybackUnit()
 	bWaitingForCompletion = false;
 }
 
+void UBattlePresentationController::RetireActivePlaybackForWidgetReplacement(
+	UBattleHUDWidgetBase* ExpectedOldWidget)
+{
+	CancelActiveTimeout();
+	if (bWaitingForCompletion
+		&& Widget == ExpectedOldWidget
+		&& IsValid(ExpectedOldWidget))
+	{
+		ExpectedOldWidget->CancelTrackedPresentationPlayback(ActivePlaybackToken);
+	}
+	bWaitingForCompletion = false;
+	ActivePlaybackToken = FPresentationPlaybackToken{};
+	AdvancePlaybackGeneration();
+}
+
+void UBattlePresentationController::EnsureControllerEpoch()
+{
+	if (ControllerEpoch <= 0)
+	{
+		ControllerEpoch = AllocatePresentationControllerEpoch();
+	}
+}
+
+bool UBattlePresentationController::IsPresentationOwnedMode() const
+{
+	const ABattleManager* Battle = BattleManager.Get();
+	return IsValid(Battle)
+		&& IsValid(ViewModel)
+		&& ViewModel->IsPresentationDisplayOwned()
+		&& Battle->IsPresentationAvailable()
+		&& Battle->IsCommittedPresentationRecordingEnabledForBattle()
+		&& CurrentBattleId > 0;
+}
+
+void UBattlePresentationController::InvalidatePresentationSession(
+	UBattleHUDWidgetBase* CleanupWidget)
+{
+	const FPresentationSessionToken OldToken = ActivePresentationSessionToken;
+	// Invalidate first so any synchronous cleanup callback already observes stale.
+	ActivePresentationSessionToken = FPresentationSessionToken{};
+	if (OldToken.IsValid())
+	{
+		UBattleHUDWidgetBase* Owner = IsValid(CleanupWidget) ? CleanupWidget : Widget.Get();
+		if (IsValid(Owner))
+		{
+			Owner->CancelDetachedDamageVisualsForSession(OldToken);
+		}
+	}
+}
+
+void UBattlePresentationController::EstablishPresentationSessionForCurrentBinding()
+{
+	if (!IsPresentationOwnedMode() || !IsValid(Widget))
+	{
+		ActivePresentationSessionToken = FPresentationSessionToken{};
+		return;
+	}
+
+	EnsureControllerEpoch();
+	checkf(
+		NextPresentationSessionGeneration > 0
+			&& NextPresentationSessionGeneration < MAX_int64,
+		TEXT("Presentation session generation exhausted."));
+
+	FPresentationSessionToken NewToken;
+	NewToken.BattleId = CurrentBattleId;
+	NewToken.ControllerEpoch = ControllerEpoch;
+	NewToken.PresentationSessionGeneration = NextPresentationSessionGeneration++;
+	ActivePresentationSessionToken = NewToken;
+}
+
 void UBattlePresentationController::MarkPresentationResolutionCompletedExact(
 	const FPresentationResolutionEnvelope& Envelope
 )
@@ -1000,6 +1140,7 @@ void UBattlePresentationController::MarkEntireBacklogCompletedExact(
 void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 {
 	ABattleManager* Battle = BattleManager.Get();
+	InvalidatePresentationSession(Widget);
 	ResetPlaybackState(true);
 
 	FPresentationStateSnapshot LatestBaseline;
@@ -1025,6 +1166,7 @@ void UBattlePresentationController::EnterPresentationUnavailableFailSafe()
 void UBattlePresentationController::EnterDirectBaselineMode()
 {
 	ABattleManager* Battle = BattleManager.Get();
+	InvalidatePresentationSession(Widget);
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -1060,17 +1202,9 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 	switch (Record.Type)
 	{
 	case EBattlePresentationRecordType::Damage:
-	{
-		FBattleHUDCombatantView* Target = FindCombatantView(WorkingPresentationSnapshot, Record.Damage.TargetPresentationId);
-		if (Target == nullptr)
-		{
-			return false;
-		}
-		Target->HP = Record.Damage.HPAfter;
-		Target->Block = Record.Damage.BlockAfter;
-		Target->bDead = Target->HP <= 0;
-		return true;
-	}
+		return PresentationDamageReducer::TryApplyDamageRecord(
+			WorkingPresentationSnapshot,
+			Record.Damage);
 
 	case EBattlePresentationRecordType::BlockChanged:
 	{
