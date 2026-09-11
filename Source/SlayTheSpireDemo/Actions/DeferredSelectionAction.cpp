@@ -82,13 +82,22 @@ void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 		Writer = BoundaryAccess.Execute(this);
 		if (Writer.GetBattleId() == 0 || Writer.GetSelectionBoundaryRevision() <= 0)
 		{
-			Queue->RequestResolutionFault(TEXT("DeferredSelection interactive boundary did not provide an exact pending-selection identity."));
+			// A boundary callback may itself have detected/faulted the framework.
+			// Do not request a second fault merely because that failed boundary
+			// intentionally returned an empty writer.
+			if (!Queue->IsResolutionFaulted())
+			{
+				Queue->RequestResolutionFault(TEXT("DeferredSelection interactive boundary did not provide an exact pending-selection identity."));
+			}
 			Finish();
 			return;
 		}
 		if (!Queue->RebindPendingPresentationRecordWriter(this, Writer))
 		{
-			Queue->RequestResolutionFault(TEXT("DeferredSelection could not rebind the continuation tail."));
+			if (!Queue->IsResolutionFaulted())
+			{
+				Queue->RequestResolutionFault(TEXT("DeferredSelection could not rebind the continuation tail."));
+			}
 			Finish();
 			return;
 		}
@@ -109,7 +118,7 @@ void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 	}
 
 	Next->SetPresentationRecordWriter(Writer);
-	if (!Queue->AddToFront(Next))
+	if (!Queue->AddToFront(Next) && !Queue->IsResolutionFaulted())
 	{
 		Queue->RequestResolutionFault(TEXT("DeferredSelection could not enqueue required selection."));
 	}
