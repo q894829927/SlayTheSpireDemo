@@ -42,6 +42,37 @@ enum class ESelectionCancelPolicy : uint8
 	Forbidden
 };
 
+// G8-B exact identity for one authoritative player-facing pending Selection.
+// SelectionBoundaryRevision is advanced before the pending request is exposed,
+// so back-to-back requests with identical source/count/candidates still differ.
+USTRUCT(BlueprintType)
+struct SLAYTHESPIREDEMO_API FPendingSelectionRequestIdentity
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Selection")
+	int64 BattleId = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Selection")
+	int64 SelectionBoundaryRevision = 0;
+
+	bool IsValid() const
+	{
+		return BattleId > 0 && SelectionBoundaryRevision > 0;
+	}
+
+	bool operator==(const FPendingSelectionRequestIdentity& Other) const
+	{
+		return BattleId == Other.BattleId
+			&& SelectionBoundaryRevision == Other.SelectionBoundaryRevision;
+	}
+
+	bool operator!=(const FPendingSelectionRequestIdentity& Other) const
+	{
+		return !(*this == Other);
+	}
+};
+
 // Immutable-by-contract player-choice result. SelectedObjects are the exact
 // runtime objects the player chose; they are validated against the pending
 // request before any continuation is built. A Cancelled or Invalid result must
