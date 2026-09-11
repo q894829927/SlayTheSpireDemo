@@ -218,6 +218,7 @@ void UBattleHUDViewModel::Shutdown()
 	}
 
 	ResetCardPresentationOwnershipState(true);
+	ClearPendingCardSelectionInputState();
 	bSelectionCorrelationFailed = false;
 	bSelectionPresentationSubmitInProgress = false;
 	bHasDeferredSelectionSnapshot = false;
@@ -311,7 +312,9 @@ bool UBattleHUDViewModel::SelectCardByRuntimeId(int32 RuntimeId)
 	}
 
 	bInputLocked = false;
-	bCanEndTurn = bDisplayedSnapshotCanEndTurn && Battle->QueryEndPlayerTurn().bAllowed;
+	bCanEndTurn = InteractionState != EBattleHUDInteractionState::ChoosingTarget
+		&& bDisplayedSnapshotCanEndTurn
+		&& Battle->QueryEndPlayerTurn().bAllowed;
 	BroadcastChanged(EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Feedback);
 	return true;
 }
@@ -385,6 +388,12 @@ bool UBattleHUDViewModel::ConfirmSelectedCard()
 
 bool UBattleHUDViewModel::RequestEndTurn()
 {
+	if (InteractionState == EBattleHUDInteractionState::ChoosingTarget)
+	{
+		SetFeedback(EGameplayRequestFailureReason::InvalidTarget);
+		BroadcastChanged(EBattleHUDDirtyFlags::Feedback);
+		return false;
+	}
 	if (!CanAcceptSelectionInput() || !IsLiveBindingCurrent())
 	{
 		SetFeedback(EGameplayRequestFailureReason::ResolutionBusy);
