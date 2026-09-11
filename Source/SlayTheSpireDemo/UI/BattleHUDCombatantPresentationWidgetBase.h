@@ -210,6 +210,8 @@ private:
 	void ClearTransientInspection();
 	bool RequestLegalTarget();
 	void EnsureAnimationAssetsLoaded();
+	UTexture2D* ResolveAnimationTexture(TSoftObjectPtr<UTexture2D>& Texture);
+	UTexture2D* ResolveAnimatedFallbackTexture();
 	void ApplyAnimationFrame();
 	void ApplyCharacterTexture(UTexture2D* Texture);
 	void ApplyCharacterTransform(float TranslationAlpha, float ScaleMultiplier, float Angle);
@@ -225,11 +227,24 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2D> FallbackCharacterTexture;
 
+	// The Awakened One currently has no authored corpse texture. Keep the last
+	// valid animation frame so terminal presentation does not reveal the
+	// Blueprint's original static brush when the enemy dies.
+	UPROPERTY(Transient)
+	TObjectPtr<UTexture2D> LastAppliedAnimationFrame;
+
+	// Soft paths describe the authored profile, but do not keep loaded textures
+	// alive. Retain the loaded frames while this presentation widget exists so
+	// a later Hit/Attack request cannot intermittently fall back to the static brush.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UTexture2D>> LoadedAnimationTextures;
+
 	FWidgetTransform BaseCharacterTransform;
 	float BaseCharacterOpacity = 1.0f;
 	EBattleHUDCombatantAnimation CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
 	float AnimationElapsedSeconds = 0.0f;
 	bool bAnimationAssetsLoaded = false;
+	bool bAnimationAssetsLoadAttempted = false;
 	bool bAnimationWidgetReady = false;
 
 	bool bPointerInspectionActive = false;

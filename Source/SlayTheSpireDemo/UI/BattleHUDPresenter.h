@@ -63,6 +63,8 @@ protected:
 	void BindGlobalRightMouseCancel(APlayerController* PlayerController);
 	void UnbindGlobalRightMouseCancel();
 	void HandleGlobalRightMouseButtonPressed();
+	void HandleMapTogglePressed();
+	void HandleMapToggleReleased();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInputComponent> GlobalRightMouseInputComponent = nullptr;

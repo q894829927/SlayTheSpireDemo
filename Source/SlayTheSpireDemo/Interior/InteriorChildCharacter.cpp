@@ -13,6 +13,7 @@
 #include "InputCoreTypes.h"
 #include "InteriorLightSwitch.h"
 #include "InteriorDayNightController.h"
+#include "../MapToggle/MapToggle.h"
 #include "EngineUtils.h"
 #include "UObject/ConstructorHelpers.h"
 
@@ -183,6 +184,8 @@ void AInteriorChildCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AInteriorChildCharacter::InputInteract);
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, this, &AInteriorChildCharacter::ToggleDayNight);
 	PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &AInteriorChildCharacter::InputFlashlight);
+	PlayerInputComponent->BindKey(EKeys::M, IE_Pressed, this, &AInteriorChildCharacter::InputMapToggle);
+	PlayerInputComponent->BindKey(EKeys::M, IE_Released, this, &AInteriorChildCharacter::InputMapToggleReleased);
 }
 
 void AInteriorChildCharacter::BeginPlay()
@@ -352,4 +355,14 @@ void AInteriorChildCharacter::InputInteract()
 void AInteriorChildCharacter::InputFlashlight()
 {
 	ToggleFlashlight();
+}
+
+void AInteriorChildCharacter::InputMapToggle()
+{
+	MapToggle::Toggle(GetWorld());
+}
+
+void AInteriorChildCharacter::InputMapToggleReleased()
+{
+	MapToggle::HandleReleased(GetWorld());
 }

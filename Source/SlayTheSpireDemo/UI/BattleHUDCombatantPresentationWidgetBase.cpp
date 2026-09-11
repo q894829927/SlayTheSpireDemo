@@ -114,7 +114,7 @@ void UBattleHUDCombatantPresentationWidgetBase::NativeTick(
 		return;
 	}
 
-	if (!bAnimationAssetsLoaded)
+	if (!bAnimationAssetsLoaded && !bAnimationAssetsLoadAttempted)
 	{
 		EnsureAnimationAssetsLoaded();
 	}
@@ -166,7 +166,7 @@ void UBattleHUDCombatantPresentationWidgetBase::PlayCombatantAnimation(
 		return;
 	}
 
-	if (!bAnimationAssetsLoaded)
+	if (!bAnimationAssetsLoaded && !bAnimationAssetsLoadAttempted)
 	{
 		EnsureAnimationAssetsLoaded();
 	}
@@ -188,12 +188,68 @@ void UBattleHUDCombatantPresentationWidgetBase::StopCombatantAnimation()
 	Img_Character->SetRenderOpacity(BaseCharacterOpacity);
 }
 
+UTexture2D* UBattleHUDCombatantPresentationWidgetBase::ResolveAnimationTexture(
+	TSoftObjectPtr<UTexture2D>& Texture)
+{
+	if (!Texture.IsValid())
+	{
+		Texture.LoadSynchronous();
+	}
+	return Texture.Get();
+}
+
+UTexture2D* UBattleHUDCombatantPresentationWidgetBase::ResolveAnimatedFallbackTexture()
+{
+	if (IsValid(LastAppliedAnimationFrame))
+	{
+		return LastAppliedAnimationFrame.Get();
+	}
+
+	TArray<TSoftObjectPtr<UTexture2D>>& IdleFrames =
+		GetFramesForAnimation(EBattleHUDCombatantAnimation::Idle);
+	for (int32 Index = IdleFrames.Num() - 1; Index >= 0; --Index)
+	{
+		if (UTexture2D* Texture = ResolveAnimationTexture(IdleFrames[Index]))
+		{
+			LastAppliedAnimationFrame = Texture;
+			return Texture;
+		}
+	}
+
+	return nullptr;
+}
+
 void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
 {
-	if (bAnimationAssetsLoaded)
+	if (bAnimationAssetsLoaded || bAnimationAssetsLoadAttempted)
 	{
 		return;
 	}
+	bAnimationAssetsLoadAttempted = true;
+
+	int32 FailedAssetCount = 0;
+	FString FirstFailedAssetPath;
+	auto LoadAsset = [this, &FailedAssetCount, &FirstFailedAssetPath](TSoftObjectPtr<UTexture2D>& Asset)
+	{
+		if (IsValid(ResolveAnimationTexture(Asset)))
+		{
+			LoadedAnimationTextures.AddUnique(Asset.Get());
+			return;
+		}
+
+		++FailedAssetCount;
+		if (FirstFailedAssetPath.IsEmpty())
+		{
+			FirstFailedAssetPath = Asset.ToSoftObjectPath().ToString();
+		}
+	};
+	auto LoadAssets = [&LoadAsset](TArray<TSoftObjectPtr<UTexture2D>>& Assets)
+	{
+		for (TSoftObjectPtr<UTexture2D>& Asset : Assets)
+		{
+			LoadAsset(Asset);
+		}
+	};
 
 	if (IsUsingEnemyAnimationProfile())
 	{
@@ -223,10 +279,6 @@ void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
 				EnemyAttackAnimationFrames.Add(MakeAwakenedOneFramePath(TEXT("Attack"), TEXT("attack_1"), Index));
 			}
 		}
-		if (EnemyCorpseTexture.IsNull())
-		{
-			EnemyCorpseTexture = MakeAwakenedOneStaticPath();
-		}
 		if (!IsValid(FallbackCharacterTexture))
 		{
 			FallbackCharacterTexture = Cast<UTexture2D>(StaticLoadObject(
@@ -235,33 +287,26 @@ void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
 				TEXT("/Game/SlayTheSpireDemo/UI/Textures/T_AwakenedOne_Static.T_AwakenedOne_Static")));
 		}
 
-		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyIdleAnimationFrames)
+		LoadAssets(EnemyIdleAnimationFrames);
+		LoadAssets(EnemyHitAnimationFrames);
+		LoadAssets(EnemyAttackAnimationFrames);
+		// EnemyCorpseTexture is an optional override. An unset override is
+		// intentional because the terminal state can keep the last animation frame.
+		if (!EnemyCorpseTexture.IsNull())
 		{
-			if (!Frame.IsValid())
-			{
-				Frame.LoadSynchronous();
-			}
-		}
-		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyHitAnimationFrames)
-		{
-			if (!Frame.IsValid())
-			{
-				Frame.LoadSynchronous();
-			}
-		}
-		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyAttackAnimationFrames)
-		{
-			if (!Frame.IsValid())
-			{
-				Frame.LoadSynchronous();
-			}
-		}
-		if (!EnemyCorpseTexture.IsValid())
-		{
-			EnemyCorpseTexture.LoadSynchronous();
+			LoadAsset(EnemyCorpseTexture);
 		}
 
-		bAnimationAssetsLoaded = true;
+		bAnimationAssetsLoaded = FailedAssetCount == 0;
+		if (!bAnimationAssetsLoaded)
+		{
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("[BattleHUD] Failed to load %d Awakened One animation assets; first missing asset: %s. Check MapsToCook/DirectoriesToAlwaysCook."),
+				FailedAssetCount,
+				*FirstFailedAssetPath);
+		}
 		return;
 	}
 
@@ -293,26 +338,20 @@ void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
 			TEXT("/Game/SlayTheSpireDemo/UI/Textures/T_Ironclad_Static.T_Ironclad_Static")));
 	}
 
-	for (TSoftObjectPtr<UTexture2D>& Frame : IdleAnimationFrames)
-	{
-		if (!Frame.IsValid())
-		{
-			Frame.LoadSynchronous();
-		}
-	}
-	for (TSoftObjectPtr<UTexture2D>& Frame : HitAnimationFrames)
-	{
-		if (!Frame.IsValid())
-		{
-			Frame.LoadSynchronous();
-		}
-	}
-	if (!CorpseTexture.IsValid())
-	{
-		CorpseTexture.LoadSynchronous();
-	}
+	LoadAssets(IdleAnimationFrames);
+	LoadAssets(HitAnimationFrames);
+	LoadAsset(CorpseTexture);
 
-	bAnimationAssetsLoaded = true;
+	bAnimationAssetsLoaded = FailedAssetCount == 0;
+	if (!bAnimationAssetsLoaded)
+	{
+		UE_LOG(
+			LogTemp,
+			Error,
+			TEXT("[BattleHUD] Failed to load %d Ironclad animation assets; first missing asset: %s. Check MapsToCook/DirectoriesToAlwaysCook."),
+			FailedAssetCount,
+			*FirstFailedAssetPath);
+	}
 }
 
 bool UBattleHUDCombatantPresentationWidgetBase::ShouldUseNativeAnimationProfile() const
@@ -400,13 +439,26 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 	if (CurrentAnimation == EBattleHUDCombatantAnimation::Defeat
 		|| CurrentAnimation == EBattleHUDCombatantAnimation::Death)
 	{
-		ApplyCharacterTexture(IsUsingEnemyAnimationProfile() ? EnemyCorpseTexture.Get() : CorpseTexture.Get());
+		UTexture2D* DeathTexture = IsUsingEnemyAnimationProfile()
+			? (EnemyCorpseTexture.IsNull() ? nullptr : ResolveAnimationTexture(EnemyCorpseTexture))
+			: ResolveAnimationTexture(CorpseTexture);
+
+		if (IsUsingEnemyAnimationProfile() && !IsValid(DeathTexture))
+		{
+			DeathTexture = ResolveAnimatedFallbackTexture();
+		}
+
+		if (!IsValid(DeathTexture))
+		{
+			DeathTexture = FallbackCharacterTexture.Get();
+		}
+		ApplyCharacterTexture(DeathTexture);
 		ApplyCharacterTransform(0.0f, 0.98f, -8.0f);
 		Img_Character->SetRenderOpacity(FMath::Clamp(DefeatOpacity, 0.0f, 1.0f));
 		return;
 	}
 
-	const TArray<TSoftObjectPtr<UTexture2D>>& Frames = GetFramesForAnimation(CurrentAnimation);
+	TArray<TSoftObjectPtr<UTexture2D>>& Frames = GetFramesForAnimation(CurrentAnimation);
 	const bool bLoop = CurrentAnimation == EBattleHUDCombatantAnimation::Idle
 		|| CurrentAnimation == EBattleHUDCombatantAnimation::Victory;
 	// Player Attack keeps the existing lunge over the authored Idle cadence.
@@ -425,13 +477,22 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 		FrameDuration,
 		Frames.Num(),
 		bLoop);
+	UTexture2D* FrameTexture = nullptr;
 	if (FrameIndex != INDEX_NONE && Frames.IsValidIndex(FrameIndex))
 	{
-		ApplyCharacterTexture(Frames[FrameIndex].Get());
+		FrameTexture = ResolveAnimationTexture(Frames[FrameIndex]);
+	}
+	if (IsValid(FrameTexture))
+	{
+		LastAppliedAnimationFrame = FrameTexture;
+		ApplyCharacterTexture(LastAppliedAnimationFrame.Get());
 	}
 	else
 	{
-		ApplyCharacterTexture(FallbackCharacterTexture);
+		UTexture2D* AnimatedFallback = IsUsingEnemyAnimationProfile()
+			? ResolveAnimatedFallbackTexture()
+			: nullptr;
+		ApplyCharacterTexture(IsValid(AnimatedFallback) ? AnimatedFallback : FallbackCharacterTexture.Get());
 	}
 
 	float TranslationAlpha = 0.0f;
@@ -488,6 +549,9 @@ void UBattleHUDCombatantPresentationWidgetBase::SetPresentationData(
 )
 {
 	const bool bProfileChanged = CombatantView.bPlayer != InCombatantView.bPlayer;
+	const bool bCombatantChanged =
+		CombatantView.PresentationId != InCombatantView.PresentationId
+		|| CombatantView.bDead != InCombatantView.bDead;
 	const bool bNeedEnemyProfileLoad =
 		!InCombatantView.bPlayer
 		&& bAnimateEnemyCharacter
@@ -498,10 +562,13 @@ void UBattleHUDCombatantPresentationWidgetBase::SetPresentationData(
 	TargetId = bLegalTarget ? InTargetId : INDEX_NONE;
 	bTargetHighlighted = bLegalTarget || bInTargetHighlighted;
 
-	if (bProfileChanged || bNeedEnemyProfileLoad)
+	if (bProfileChanged || bCombatantChanged || bNeedEnemyProfileLoad)
 	{
 		FallbackCharacterTexture = nullptr;
+		LastAppliedAnimationFrame = nullptr;
+		LoadedAnimationTextures.Reset();
 		bAnimationAssetsLoaded = false;
+		bAnimationAssetsLoadAttempted = false;
 		EnsureAnimationAssetsLoaded();
 		CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
 		AnimationElapsedSeconds = 0.0f;

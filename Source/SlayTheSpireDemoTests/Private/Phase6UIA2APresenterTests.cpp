@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "Components/InputComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/BattleHUDViewModel.h"
 
@@ -89,6 +90,24 @@ bool FPhase6UIA2APresentationUnavailableHUDTest::RunTest(const FString& Paramete
 	TestTrue(TEXT("Global right-click input is pushed to the local PlayerController"),
 		Presenter->HasGlobalRightMouseCancelInputForTesting()
 		&& PlayerController->IsInputComponentInStack(Presenter->GetGlobalRightMouseCancelInputForTesting()));
+	int32 MapToggleBindings = 0;
+	int32 MapToggleReleaseBindings = 0;
+	if (UInputComponent* GlobalInput = Presenter->GetGlobalRightMouseCancelInputForTesting())
+	{
+		for (const FInputKeyBinding& Binding : GlobalInput->KeyBindings)
+		{
+			if (Binding.Chord.Key.GetFName() == FName(TEXT("M")) && Binding.KeyEvent == IE_Pressed)
+			{
+				++MapToggleBindings;
+			}
+			if (Binding.Chord.Key.GetFName() == FName(TEXT("M")) && Binding.KeyEvent == IE_Released)
+			{
+				++MapToggleReleaseBindings;
+			}
+		}
+	}
+	TestEqual(TEXT("Presenter installs exactly one M map-toggle binding"), MapToggleBindings, 1);
+	TestEqual(TEXT("Presenter installs exactly one M map-toggle release binding"), MapToggleReleaseBindings, 1);
 	if (IsValid(Presenter->ViewModel))
 	{
 		TestEqual(

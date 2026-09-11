@@ -8,6 +8,7 @@
 #include "Components/InputComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
+#include "../MapToggle/MapToggle.h"
 
 ABattleHUDPresenter::ABattleHUDPresenter()
 {
@@ -144,7 +145,7 @@ void ABattleHUDPresenter::ShutdownHUD()
 
 void ABattleHUDPresenter::BindGlobalRightMouseCancel(APlayerController* PlayerController)
 {
-	if (!IsValid(PlayerController) || !IsValid(WidgetInstance))
+	if (!IsValid(PlayerController))
 	{
 		return;
 	}
@@ -179,6 +180,19 @@ void ABattleHUDPresenter::BindGlobalRightMouseCancel(APlayerController* PlayerCo
 	// reports an active cancellable selection.
 	Binding.bConsumeInput = false;
 
+	FInputKeyBinding& MapToggleBinding = GlobalRightMouseInputComponent->BindKey(
+		EKeys::M,
+		IE_Pressed,
+		this,
+		&ABattleHUDPresenter::HandleMapTogglePressed);
+	MapToggleBinding.bConsumeInput = true;
+
+	GlobalRightMouseInputComponent->BindKey(
+		EKeys::M,
+		IE_Released,
+		this,
+		&ABattleHUDPresenter::HandleMapToggleReleased);
+
 	GlobalRightMousePlayerController = PlayerController;
 	PlayerController->PushInputComponent(GlobalRightMouseInputComponent.Get());
 }
@@ -203,4 +217,14 @@ void ABattleHUDPresenter::HandleGlobalRightMouseButtonPressed()
 	{
 		WidgetInstance->HandleRightMouseButtonCancelInput();
 	}
+}
+
+void ABattleHUDPresenter::HandleMapTogglePressed()
+{
+	MapToggle::Toggle(GetWorld());
+}
+
+void ABattleHUDPresenter::HandleMapToggleReleased()
+{
+	MapToggle::HandleReleased(GetWorld());
 }

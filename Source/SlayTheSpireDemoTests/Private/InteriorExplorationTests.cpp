@@ -48,8 +48,18 @@ bool FInteriorFlashlightTest::RunTest(const FString& Parameters)
 	UInputComponent* Input = NewObject<UInputComponent>(Child);
 	Child->SetupPlayerInputComponent(Input);
 	int32 Bindings = 0;
+	int32 MapToggleBindings = 0;
+	int32 MapToggleReleaseBindings = 0;
 	for (const FInputKeyBinding& Binding : Input->KeyBindings)
 	{
+		if (Binding.Chord.Key.GetFName() == FName(TEXT("M")) && Binding.KeyEvent == IE_Pressed)
+		{
+			++MapToggleBindings;
+		}
+		if (Binding.Chord.Key.GetFName() == FName(TEXT("M")) && Binding.KeyEvent == IE_Released)
+		{
+			++MapToggleReleaseBindings;
+		}
 		if (Binding.Chord.Key.GetFName() != FName(TEXT("F")) || Binding.KeyEvent != IE_Pressed) { continue; }
 		++Bindings;
 		Binding.KeyDelegate.Execute(Binding.Chord.Key);
@@ -62,6 +72,8 @@ bool FInteriorFlashlightTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("Second F hides light"), Light->IsVisible());
 	}
 	TestEqual(TEXT("Exactly one F press binding"), Bindings, 1);
+	TestEqual(TEXT("Exactly one M map-toggle binding"), MapToggleBindings, 1);
+	TestEqual(TEXT("Exactly one M map-toggle release binding"), MapToggleReleaseBindings, 1);
 	TestNotNull(TEXT("Optical cookie assigned"), Light->LightFunctionMaterial.Get());
 	return true;
 }

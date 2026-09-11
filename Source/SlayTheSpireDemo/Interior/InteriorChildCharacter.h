@@ -105,6 +105,8 @@ private:
 	void InputJumpReleased();
 	void InputInteract();
 	void InputFlashlight();
+	void InputMapToggle();
+	void InputMapToggleReleased();
 	bool bFlashlightEnabled = false;
 	void UpdateFlashlightPose(float DeltaSeconds);
 	FQuat SmoothedFlashlightView = FQuat::Identity;
