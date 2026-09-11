@@ -34,6 +34,19 @@ namespace
 		return true;
 	}
 
+	bool IsExpectedIdentityForCurrentBattle(
+		const ABattleManager* Battle,
+		const FPendingSelectionRequestIdentity& ExpectedIdentity)
+	{
+		if (!IsValid(Battle) || !ExpectedIdentity.IsValid())
+		{
+			return false;
+		}
+		FPresentationStateSnapshot LatestBaseline;
+		return Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
+			&& LatestBaseline.BattleId == ExpectedIdentity.BattleId;
+	}
+
 	bool SubmitCurrentPendingCardSelection(
 		USelectionResolver* Resolver,
 		const TArray<int32>& CardRuntimeIds
@@ -140,7 +153,7 @@ bool BattleSelectionRequest::SubmitPendingCardSelection(
 	const TArray<int32>& CardRuntimeIds
 )
 {
-	if (!IsValid(Battle) || !ExpectedIdentity.IsValid())
+	if (!IsExpectedIdentityForCurrentBattle(Battle, ExpectedIdentity))
 	{
 		return false;
 	}
@@ -158,7 +171,7 @@ bool BattleSelectionRequest::SubmitPendingSelectionCancel(
 	const FPendingSelectionRequestIdentity& ExpectedIdentity
 )
 {
-	if (!IsValid(Battle) || !ExpectedIdentity.IsValid())
+	if (!IsExpectedIdentityForCurrentBattle(Battle, ExpectedIdentity))
 	{
 		return false;
 	}
