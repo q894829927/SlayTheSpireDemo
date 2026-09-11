@@ -30,10 +30,15 @@ bool UBattleHUDViewModel::TryGetPendingCardSelectionReadView(
 		}
 	}
 
-	return BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
-		Battle,
-		OutView
-	);
+	if (!BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Battle, OutView)
+		|| !OutView.RequestIdentity.IsValid()
+		|| OutView.RequestIdentity.BattleId != BattleId
+		|| OutView.RequestIdentity.SelectionBoundaryRevision != StateRevision)
+	{
+		OutView = FPendingCardSelectionReadView{};
+		return false;
+	}
+	return true;
 }
 
 bool UBattleHUDViewModel::HasPendingCardSelection() const
@@ -45,9 +50,10 @@ bool UBattleHUDViewModel::HasPendingCardSelection() const
 bool UBattleHUDViewModel::HasAuthoritativePendingCardSelection() const
 {
 	ABattleManager* Battle = BattleManager.Get();
-	FPendingCardSelectionReadView IgnoredView;
+	FPendingCardSelectionReadView View;
 	return IsValid(Battle)
-		&& BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Battle, IgnoredView);
+		&& BattleSelectionRequest::TryBuildPendingCardSelectionReadView(Battle, View)
+		&& View.RequestIdentity.IsValid();
 }
 
 bool UBattleHUDViewModel::IsPendingCardSelectionCandidate(int32 RuntimeId) const
@@ -70,7 +76,10 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeIds(
 		return false;
 	}
 
-	const bool bSubmitted = BattleSelectionRequest::SubmitPendingCardSelection(Battle, RuntimeIds);
+	const bool bSubmitted = BattleSelectionRequest::SubmitPendingCardSelection(
+		Battle,
+		View.RequestIdentity,
+		RuntimeIds);
 	if (bSubmitted)
 	{
 		ClearPendingCardSelectionInputState();
@@ -90,12 +99,14 @@ bool UBattleHUDViewModel::SubmitPendingCardSelectionByRuntimeId(int32 RuntimeId)
 	}
 
 	const bool bRequestChanged =
-		PendingCardSelectionSource != View.SelectionSource
+		PendingCardSelectionRequestIdentity != View.RequestIdentity
+		|| PendingCardSelectionSource != View.SelectionSource
 		|| PendingCardSelectionRequiredCount != View.RequiredCount
 		|| PendingCardSelectionCandidateRuntimeIds != View.CandidateRuntimeIds;
 	if (bRequestChanged)
 	{
 		PendingCardSelectionRuntimeIds.Reset();
+		PendingCardSelectionRequestIdentity = View.RequestIdentity;
 		PendingCardSelectionSource = View.SelectionSource;
 		PendingCardSelectionRequiredCount = View.RequiredCount;
 		PendingCardSelectionCandidateRuntimeIds = View.CandidateRuntimeIds;
@@ -125,6 +136,7 @@ bool UBattleHUDViewModel::CanConfirmPendingCardSelection() const
 	FPendingCardSelectionReadView View;
 	if (!TryGetPendingCardSelectionReadView(View)
 		|| View.RequiredCount <= 0
+		|| PendingCardSelectionRequestIdentity != View.RequestIdentity
 		|| PendingCardSelectionRuntimeIds.Num() != View.RequiredCount)
 	{
 		return false;
@@ -157,18 +169,26 @@ bool UBattleHUDViewModel::ConfirmPendingCardSelection()
 
 bool UBattleHUDViewModel::IsPendingCardSelectionRuntimeIdSelected(int32 RuntimeId) const
 {
+	FPendingCardSelectionReadView View;
 	return RuntimeId != INDEX_NONE
+		&& TryGetPendingCardSelectionReadView(View)
+		&& PendingCardSelectionRequestIdentity == View.RequestIdentity
 		&& PendingCardSelectionRuntimeIds.Contains(RuntimeId);
 }
 
 int32 UBattleHUDViewModel::GetPendingCardSelectionSelectedCount() const
 {
-	return PendingCardSelectionRuntimeIds.Num();
+	FPendingCardSelectionReadView View;
+	return TryGetPendingCardSelectionReadView(View)
+		&& PendingCardSelectionRequestIdentity == View.RequestIdentity
+		? PendingCardSelectionRuntimeIds.Num()
+		: 0;
 }
 
 void UBattleHUDViewModel::ClearPendingCardSelectionInputState()
 {
 	PendingCardSelectionRuntimeIds.Reset();
+	PendingCardSelectionRequestIdentity = FPendingSelectionRequestIdentity{};
 	PendingCardSelectionSource = NAME_None;
 	PendingCardSelectionRequiredCount = 0;
 	PendingCardSelectionCandidateRuntimeIds.Reset();
@@ -182,9 +202,11 @@ bool UBattleHUDViewModel::CanCancelPendingCardSelection() const
 
 bool UBattleHUDViewModel::SubmitPendingCardSelectionCancel()
 {
+	FPendingCardSelectionReadView View;
 	ABattleManager* Battle = BattleManager.Get();
-	const bool bCancelled = CanCancelPendingCardSelection()
-		&& BattleSelectionRequest::SubmitPendingSelectionCancel(Battle);
+	const bool bCancelled = TryGetPendingCardSelectionReadView(View)
+		&& View.bCanCancel
+		&& BattleSelectionRequest::SubmitPendingSelectionCancel(Battle, View.RequestIdentity);
 	if (bCancelled)
 	{
 		ClearPendingCardSelectionInputState();
