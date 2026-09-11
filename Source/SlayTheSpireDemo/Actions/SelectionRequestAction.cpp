@@ -55,12 +55,14 @@ namespace
 void USelectionRequestAction::Initialize(
 	USelectionResolver* InResolver,
 	const FSelectionRequest& InRequest,
-	UAuthoredContinuation* InContinuation
+	UAuthoredContinuation* InContinuation,
+	FPendingSelectionRequestIdentity InRequestIdentity
 )
 {
 	Resolver = InResolver;
 	Request = InRequest;
 	Continuation = InContinuation;
+	RequestIdentity = InRequestIdentity;
 	OwningQueue = nullptr;
 	bAwaitingSelection = false;
 }
@@ -81,7 +83,18 @@ void USelectionRequestAction::Execute(UBattleActionQueue* Queue)
 		return;
 	}
 
-	if (!Resolver->BeginSelection(Request, Continuation.Get(), this))
+	FPendingSelectionRequestIdentity EffectiveIdentity = RequestIdentity;
+	if (!EffectiveIdentity.IsValid())
+	{
+		const FPresentationRecordWriter Writer = GetPresentationRecordWriter();
+		if (Writer.GetBattleId() > 0 && Writer.GetSelectionBoundaryRevision() > 0)
+		{
+			EffectiveIdentity.BattleId = static_cast<int64>(Writer.GetBattleId());
+			EffectiveIdentity.SelectionBoundaryRevision = Writer.GetSelectionBoundaryRevision();
+		}
+	}
+
+	if (!Resolver->BeginSelection(Request, Continuation.Get(), this, EffectiveIdentity))
 	{
 		// A rejected BeginSelection is an internal authoring/queue invariant
 		// failure. Do not silently release the current Action and continue later
