@@ -5,11 +5,13 @@
 #include "../Battle/BattleImmediatePreview.h"
 #include "../Selection/SelectionTypes.h"
 #include "BattleHUDTypes.h"
+#include "BattleHUDInteractionReadiness.h"
 #include "../Presentation/PresentationTypes.h"
 #include "BattleHUDViewModel.generated.h"
 
 class ABattleManager;
 class ACombatant;
+class UBattlePresentationController;
 class UCardInstance;
 struct FPendingCardSelectionReadView;
 struct FPresentationStateSnapshot;
@@ -115,6 +117,12 @@ public:
 	void EnterPresentationUnavailable(const FText& Reason);
 	bool IsPresentationDisplayOwned() const;
 	void SetPresentationDisplayOwned(bool bOwned);
+
+	// G8-B shadow-only evaluator. It performs exact authority/read checks but
+	// never grants/unlocks input; Automation compares this result with the sealed
+	// baseline behavior before G8-C is allowed to consume it.
+	FBattleHUDInteractionReadinessShadow EvaluateInteractionReadinessShadow(
+		const UBattlePresentationController* Controller) const;
 
 	// G0 ownership infrastructure, activated by the production G5 Selection HUD.
 	// Native Presentation state only; Gameplay selection/card-zone truth remains
