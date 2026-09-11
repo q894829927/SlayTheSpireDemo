@@ -20,6 +20,20 @@ const FSelectionRequest* USelectionResolver::GetPendingRequest() const
 	return bHasPendingSelection ? &PendingRequest : nullptr;
 }
 
+FPendingSelectionRequestIdentity USelectionResolver::GetPendingRequestIdentity() const
+{
+	return bHasPendingSelection ? PendingRequestIdentity : FPendingSelectionRequestIdentity{};
+}
+
+bool USelectionResolver::IsPendingRequestIdentity(
+	const FPendingSelectionRequestIdentity& ExpectedIdentity) const
+{
+	return bHasPendingSelection
+		&& ExpectedIdentity.IsValid()
+		&& PendingRequestIdentity.IsValid()
+		&& PendingRequestIdentity == ExpectedIdentity;
+}
+
 bool USelectionResolver::CanCancelPendingSelection() const
 {
 	return bHasPendingSelection
@@ -29,7 +43,8 @@ bool USelectionResolver::CanCancelPendingSelection() const
 bool USelectionResolver::BeginSelection(
 	const FSelectionRequest& Request,
 	const UAuthoredContinuation* Continuation,
-	USelectionRequestAction* InPendingAction
+	USelectionRequestAction* InPendingAction,
+	FPendingSelectionRequestIdentity InRequestIdentity
 )
 {
 	if (bHasPendingSelection)
@@ -58,6 +73,7 @@ bool USelectionResolver::BeginSelection(
 	}
 
 	PendingRequest = Request;
+	PendingRequestIdentity = InRequestIdentity;
 	PendingContinuation = Continuation;
 	PendingAction = InPendingAction;
 	bHasPendingSelection = true;
@@ -218,6 +234,7 @@ void USelectionResolver::ClearPendingSelectionInternal()
 {
 	bHasPendingSelection = false;
 	PendingRequest = FSelectionRequest{};
+	PendingRequestIdentity = FPendingSelectionRequestIdentity{};
 	PendingContinuation = nullptr;
 	PendingAction = nullptr;
 }
