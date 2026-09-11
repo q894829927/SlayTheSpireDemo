@@ -11,6 +11,7 @@ class UBattleStatusWidget;
 class UBattleHUDCombatantPresentationWidgetBase;
 class UBattleImmediatePreviewTextBlock;
 class UButton;
+class UCanvasPanel;
 class UHorizontalBox;
 class UPanelWidget;
 class UBattleHandFanPanel;
@@ -22,6 +23,43 @@ class UVerticalBox;
 class UWrapBox;
 class UWidget;
 enum class EBattleHUDCombatantAnimation : uint8;
+
+UENUM()
+enum class EDetachedDamageVisualLifecycleState : uint8
+{
+	Prepared,
+	Active
+};
+
+// HUD-private ownership for one G8 DamageNumber. The Controller never mutates
+// this array directly; it can only address an instance through its exact token.
+USTRUCT()
+struct FDetachedDamageWidgetInstance
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	FDetachedDamageToken Token;
+
+	UPROPERTY(Transient)
+	int64 SourceFinalStateRevision = 0;
+
+	UPROPERTY(Transient)
+	FDetachedDamageVisualSpec Spec;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTextBlock> Widget = nullptr;
+
+	UPROPERTY(Transient)
+	float ElapsedSeconds = 0.0f;
+
+	UPROPERTY(Transient)
+	FVector2D FrozenHostLocalSize = FVector2D::ZeroVector;
+
+	UPROPERTY(Transient)
+	EDetachedDamageVisualLifecycleState LifecycleState =
+		EDetachedDamageVisualLifecycleState::Prepared;
+};
 
 /**
  * Native HUD ownership boundary for the A2N migration.
@@ -88,6 +126,33 @@ protected:
 	virtual void CancelPresentationRecordPlayback_Implementation(
 		const FPresentationPlaybackToken& Token
 	) override;
+
+	// G8-A infrastructure is intentionally production-disabled. These exact-token
+	// operations are ready for the later Controller transaction without changing
+	// current Blocking Damage dispatch.
+	virtual bool PrepareDetachedDamageVisual(
+		const FPresentationSessionToken& SessionToken,
+		const FPresentationRecord& Record,
+		int64 SourceFinalStateRevision,
+		float VisualDuration,
+		FDetachedDamageToken& OutToken) override;
+	virtual bool ActivatePreparedDetachedDamageVisual(
+		const FDetachedDamageToken& Token) override;
+	virtual bool CancelDetachedDamageVisual(
+		const FDetachedDamageToken& Token) override;
+	virtual int32 CancelDetachedDamageVisualsForSession(
+		const FPresentationSessionToken& SessionToken) override;
+	virtual void CancelAllDetachedDamageVisuals() override;
+	virtual void PlayCommittedDamageCombatantCues(
+		const FPresentationRecord& Record,
+		const FPresentationSessionToken& SessionToken) override;
+
+	bool EnsureTransientVFXHost();
+	void ReleaseTransientVFXHost();
+	void UpdateDetachedDamageNumbers(float DeltaSeconds);
+	int32 FindDetachedDamageInstanceIndex(const FDetachedDamageToken& Token) const;
+	void RemoveDetachedDamageInstanceAt(int32 Index);
+	void PlayDamageCombatantCuesFromCommittedRecord(const FPresentationRecord& Record);
 
 	// R5 playback-kernel primitives. Later per-Record handlers validate and
 	// prepare their own resources, then use these helpers to establish exact local
@@ -433,6 +498,17 @@ private:
 	bool bNativeDelegatesBound = false;
 	int32 PendingFastCardRuntimeId = INDEX_NONE;
 	bool bFastCardSelectionRetryScheduled = false;
+
+	// G8-A private cosmetic owner. These instances never carry reducer/readiness
+	// authority and are not used by production Damage dispatch until G8-C.
+	UPROPERTY(Transient)
+	TObjectPtr<UCanvasPanel> TransientVFXHost = nullptr;
+
+	UPROPERTY(Transient)
+	TArray<FDetachedDamageWidgetInstance> DetachedDamageInstances;
+
+	int64 NextDetachedDamageVisualGeneration = 1;
+	static constexpr int32 MaxDetachedDamageNumberInstances = 32;
 
 	// A3 transient preview surface. It is dynamically parented only while a valid
 	// pre-commit Preview exists, so A2 OV_PlayArea ownership remains exclusive.
