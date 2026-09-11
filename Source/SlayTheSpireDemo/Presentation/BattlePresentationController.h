@@ -159,6 +159,7 @@ private:
 	void ClearCompatibilityDebt();
 	void CancelCurrentSessionDetachedDamageVisuals();
 	bool HasCompatibilityDebt() const;
+	bool IsExactReadSurfaceCaughtUpForDebtService() const;
 
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
