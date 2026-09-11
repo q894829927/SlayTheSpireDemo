@@ -31,6 +31,16 @@ public:
 	bool TryGetPresentationSessionToken(FPresentationSessionToken& OutToken) const;
 	bool IsCurrentPresentationSession(const FPresentationSessionToken& Token) const;
 
+	// G8-B keeps HasActiveNativePresentation scoped to concrete Widget playback.
+	// Fast input instead asks the Controller whether authoritative chronology can
+	// currently be collapsed by Skip. G8-C may later extend this query with its
+	// compatibility-debt wait without changing Widget playback semantics.
+	bool HasSkippablePresentationDelay() const;
+	bool TryCaptureFastInputCatchUpTarget(
+		FPresentationSessionToken& OutSessionToken,
+		int64& OutBattleId,
+		int64& OutExpectedCatchUpRevision) const;
+
 	// Intentionally C++-only. Blueprint completion/skip must pass through
 	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
 	// hardening cannot be bypassed by a concrete WBP.
