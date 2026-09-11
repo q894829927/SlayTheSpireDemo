@@ -7,5 +7,7 @@
 // but G8-C must keep both paths duration-compatible.
 namespace PresentationDamageTiming
 {
+	inline constexpr float LegacyDamageBlockingDurationSeconds = 0.5f;
+
 	SLAYTHESPIREDEMO_API float GetLegacyDamageBlockingDuration();
 }
