@@ -45,16 +45,20 @@ public:
 
 	bool HasPendingSelection() const;
 	const FSelectionRequest* GetPendingRequest() const;
+	FPendingSelectionRequestIdentity GetPendingRequestIdentity() const;
+	bool IsPendingRequestIdentity(const FPendingSelectionRequestIdentity& ExpectedIdentity) const;
 	bool CanCancelPendingSelection() const;
 
 	// Begins a selection. Fails if a selection is already pending or the request
 	// is malformed (empty candidate set, inverted min/max bounds). When it
 	// succeeds the resolver retains a weak handle to the awaiting Action so it can
-	// resume it from a later SubmitResult / SubmitCancel.
+	// resume it from a later SubmitResult / SubmitCancel. Player-facing production
+	// requests pass the exact BattleId + SelectionBoundaryRevision identity.
 	bool BeginSelection(
 		const FSelectionRequest& Request,
 		const UAuthoredContinuation* Continuation,
-		USelectionRequestAction* InPendingAction
+		USelectionRequestAction* InPendingAction,
+		FPendingSelectionRequestIdentity InRequestIdentity = FPendingSelectionRequestIdentity{}
 	);
 
 	// Validates a submitted result against the pending request. On success the
@@ -100,6 +104,9 @@ private:
 
 	UPROPERTY(Transient)
 	FSelectionRequest PendingRequest;
+
+	UPROPERTY(Transient)
+	FPendingSelectionRequestIdentity PendingRequestIdentity;
 
 	UPROPERTY(Transient)
 	TObjectPtr<const UAuthoredContinuation> PendingContinuation = nullptr;
