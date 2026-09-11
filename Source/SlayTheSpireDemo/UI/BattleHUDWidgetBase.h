@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "../Presentation/PresentationTypes.h"
+#include "../Presentation/PresentationG8Types.h"
 #include "BattleHUDWidgetBase.generated.h"
 
 class UBattleHUDViewModel;
@@ -115,6 +116,26 @@ public:
 	FPresentationPlaybackToken GetTrackedPresentationToken() const { return TrackedPresentationPlaybackUnit.Token; }
 	EPresentationPlaybackUnitKind GetTrackedPresentationUnitKind() const { return TrackedPresentationPlaybackUnit.Token.UnitKind; }
 	TArray<int32> GetTrackedPresentationRecordIndices() const { return TrackedPresentationPlaybackUnit.RecordIndices; }
+
+	// G8-A C++-only detached-cosmetic boundary. Production Damage does not call
+	// these yet; G8-C will own the Controller transaction that prepares/activates
+	// them. Defaults are fail-closed so non-Native/test Widgets remain unchanged.
+	virtual bool PrepareDetachedDamageVisual(
+		const FPresentationSessionToken& SessionToken,
+		const FPresentationRecord& Record,
+		int64 SourceFinalStateRevision,
+		float VisualDuration,
+		FDetachedDamageToken& OutToken);
+	virtual bool ActivatePreparedDetachedDamageVisual(
+		const FDetachedDamageToken& Token);
+	virtual bool CancelDetachedDamageVisual(
+		const FDetachedDamageToken& Token);
+	virtual int32 CancelDetachedDamageVisualsForSession(
+		const FPresentationSessionToken& SessionToken);
+	virtual void CancelAllDetachedDamageVisuals();
+	virtual void PlayCommittedDamageCombatantCues(
+		const FPresentationRecord& Record,
+		const FPresentationSessionToken& SessionToken);
 
 	// Blueprint override point used by the controller-facing SingleRecord wrapper.
 	// Return true only when Blueprint actually started asynchronous playback and
