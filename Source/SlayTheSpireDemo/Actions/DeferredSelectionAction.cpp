@@ -80,6 +80,12 @@ void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 	if (Mode == EDeferredSelectionMode::Player)
 	{
 		Writer = BoundaryAccess.Execute(this);
+		if (Writer.GetBattleId() == 0 || Writer.GetSelectionBoundaryRevision() <= 0)
+		{
+			Queue->RequestResolutionFault(TEXT("DeferredSelection interactive boundary did not provide an exact pending-selection identity."));
+			Finish();
+			return;
+		}
 		if (!Queue->RebindPendingPresentationRecordWriter(this, Writer))
 		{
 			Queue->RequestResolutionFault(TEXT("DeferredSelection could not rebind the continuation tail."));
@@ -87,8 +93,12 @@ void UDeferredSelectionAction::Execute(UBattleActionQueue* Queue)
 			return;
 		}
 
+		FPendingSelectionRequestIdentity RequestIdentity;
+		RequestIdentity.BattleId = static_cast<int64>(Writer.GetBattleId());
+		RequestIdentity.SelectionBoundaryRevision = Writer.GetSelectionBoundaryRevision();
+
 		USelectionRequestAction* Selection = NewObject<USelectionRequestAction>(Queue);
-		Selection->Initialize(Resolver, Request, Continuation);
+		Selection->Initialize(Resolver, Request, Continuation, RequestIdentity);
 		Next = Selection;
 	}
 	else
