@@ -33,6 +33,69 @@ namespace
 		}
 		return true;
 	}
+
+	bool SubmitCurrentPendingCardSelection(
+		USelectionResolver* Resolver,
+		const TArray<int32>& CardRuntimeIds
+	)
+	{
+		const FSelectionRequest* Request = IsValid(Resolver) ? Resolver->GetPendingRequest() : nullptr;
+		if (!IsSupportedExactCardRequest(Request)
+			|| CardRuntimeIds.Num() != Request->MinCount)
+		{
+			return false;
+		}
+
+		TSet<int32> RequestedRuntimeIds;
+		for (const int32 RuntimeId : CardRuntimeIds)
+		{
+			if (RuntimeId == INDEX_NONE
+				|| RequestedRuntimeIds.Contains(RuntimeId))
+			{
+				return false;
+			}
+
+			const bool bIsCandidate = Request->Candidates.ContainsByPredicate(
+				[RuntimeId](const FSelectionCandidate& Candidate)
+				{
+					return Candidate.RuntimeSequence == RuntimeId;
+				}
+			);
+			if (!bIsCandidate)
+			{
+				return false;
+			}
+			RequestedRuntimeIds.Add(RuntimeId);
+		}
+
+		FSelectionResult Result;
+		Result.Status = ESelectionStatus::Resolved;
+		Result.SelectedObjects.Reserve(CardRuntimeIds.Num());
+
+		// Rebuild in authoritative candidate order. Player click order is not an
+		// implicit Gameplay ordering control for later Exhaust/Trigger resolution.
+		for (const FSelectionCandidate& Candidate : Request->Candidates)
+		{
+			if (!RequestedRuntimeIds.Contains(Candidate.RuntimeSequence))
+			{
+				continue;
+			}
+
+			UCardInstance* Card = Cast<UCardInstance>(Candidate.RuntimeObject.Get());
+			if (!IsValid(Card)
+				|| Card->GetRuntimeId() != Candidate.RuntimeSequence)
+			{
+				return false;
+			}
+			Result.SelectedObjects.Add(Card);
+		}
+
+		if (Result.SelectedObjects.Num() != CardRuntimeIds.Num())
+		{
+			return false;
+		}
+		return Resolver->SubmitResult(Result);
+	}
 }
 
 bool BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
@@ -53,6 +116,13 @@ bool BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
 		return false;
 	}
 
+	OutView.RequestIdentity = Resolver->GetPendingRequestIdentity();
+#if !WITH_DEV_AUTOMATION_TESTS
+	if (!OutView.RequestIdentity.IsValid())
+	{
+		return false;
+	}
+#endif
 	OutView.SelectionSource = Request->SelectionSource;
 	OutView.RequiredCount = Request->MinCount;
 	OutView.bCanCancel = Resolver->CanCancelPendingSelection();
@@ -66,6 +136,42 @@ bool BattleSelectionRequest::TryBuildPendingCardSelectionReadView(
 
 bool BattleSelectionRequest::SubmitPendingCardSelection(
 	ABattleManager* Battle,
+	const FPendingSelectionRequestIdentity& ExpectedIdentity,
+	const TArray<int32>& CardRuntimeIds
+)
+{
+	if (!IsValid(Battle) || !ExpectedIdentity.IsValid())
+	{
+		return false;
+	}
+
+	USelectionResolver* Resolver = Battle->GetSelectionResolver();
+	if (!IsValid(Resolver) || !Resolver->IsPendingRequestIdentity(ExpectedIdentity))
+	{
+		return false;
+	}
+	return SubmitCurrentPendingCardSelection(Resolver, CardRuntimeIds);
+}
+
+bool BattleSelectionRequest::SubmitPendingSelectionCancel(
+	ABattleManager* Battle,
+	const FPendingSelectionRequestIdentity& ExpectedIdentity
+)
+{
+	if (!IsValid(Battle) || !ExpectedIdentity.IsValid())
+	{
+		return false;
+	}
+
+	USelectionResolver* Resolver = Battle->GetSelectionResolver();
+	return IsValid(Resolver)
+		&& Resolver->IsPendingRequestIdentity(ExpectedIdentity)
+		&& Resolver->SubmitCancel();
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+bool BattleSelectionRequest::SubmitPendingCardSelection(
+	ABattleManager* Battle,
 	const TArray<int32>& CardRuntimeIds
 )
 {
@@ -73,64 +179,7 @@ bool BattleSelectionRequest::SubmitPendingCardSelection(
 	{
 		return false;
 	}
-
-	USelectionResolver* Resolver = Battle->GetSelectionResolver();
-	const FSelectionRequest* Request = IsValid(Resolver) ? Resolver->GetPendingRequest() : nullptr;
-	if (!IsSupportedExactCardRequest(Request)
-		|| CardRuntimeIds.Num() != Request->MinCount)
-	{
-		return false;
-	}
-
-	TSet<int32> RequestedRuntimeIds;
-	for (const int32 RuntimeId : CardRuntimeIds)
-	{
-		if (RuntimeId == INDEX_NONE
-			|| RequestedRuntimeIds.Contains(RuntimeId))
-		{
-			return false;
-		}
-
-		const bool bIsCandidate = Request->Candidates.ContainsByPredicate(
-			[RuntimeId](const FSelectionCandidate& Candidate)
-			{
-				return Candidate.RuntimeSequence == RuntimeId;
-			}
-		);
-		if (!bIsCandidate)
-		{
-			return false;
-		}
-		RequestedRuntimeIds.Add(RuntimeId);
-	}
-
-	FSelectionResult Result;
-	Result.Status = ESelectionStatus::Resolved;
-	Result.SelectedObjects.Reserve(CardRuntimeIds.Num());
-
-	// Rebuild in authoritative candidate order. Player click order is not an
-	// implicit Gameplay ordering control for later Exhaust/Trigger resolution.
-	for (const FSelectionCandidate& Candidate : Request->Candidates)
-	{
-		if (!RequestedRuntimeIds.Contains(Candidate.RuntimeSequence))
-		{
-			continue;
-		}
-
-		UCardInstance* Card = Cast<UCardInstance>(Candidate.RuntimeObject.Get());
-		if (!IsValid(Card)
-			|| Card->GetRuntimeId() != Candidate.RuntimeSequence)
-		{
-			return false;
-		}
-		Result.SelectedObjects.Add(Card);
-	}
-
-	if (Result.SelectedObjects.Num() != CardRuntimeIds.Num())
-	{
-		return false;
-	}
-	return Resolver->SubmitResult(Result);
+	return SubmitCurrentPendingCardSelection(Battle->GetSelectionResolver(), CardRuntimeIds);
 }
 
 bool BattleSelectionRequest::SubmitPendingSelectionCancel(ABattleManager* Battle)
@@ -139,7 +188,7 @@ bool BattleSelectionRequest::SubmitPendingSelectionCancel(ABattleManager* Battle
 	{
 		return false;
 	}
-
 	USelectionResolver* Resolver = Battle->GetSelectionResolver();
 	return IsValid(Resolver) && Resolver->SubmitCancel();
 }
+#endif
