@@ -30,7 +30,8 @@ public:
 	void Initialize(
 		USelectionResolver* InResolver,
 		const FSelectionRequest& InRequest,
-		UAuthoredContinuation* InContinuation
+		UAuthoredContinuation* InContinuation,
+		FPendingSelectionRequestIdentity InRequestIdentity = FPendingSelectionRequestIdentity{}
 	);
 
 	virtual void Execute(UBattleActionQueue* Queue) override;
@@ -58,6 +59,9 @@ private:
 
 	UPROPERTY(Transient)
 	FSelectionRequest Request;
+
+	UPROPERTY(Transient)
+	FPendingSelectionRequestIdentity RequestIdentity;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleActionQueue> OwningQueue = nullptr;
