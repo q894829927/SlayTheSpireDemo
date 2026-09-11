@@ -14,6 +14,8 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2NR5HUDProbe : public UBattleHUDWidget
 public:
 	void SetTestWorld(UWorld* InWorld);
 	void SetAcceptSyntheticPlayback(bool bInAccept) { bAcceptSyntheticPlayback = bInAccept; }
+	void SetAcceptSyntheticBlockPlayback(bool bInAccept) { bAcceptSyntheticBlockPlayback = bInAccept; }
+	void SetAcceptDetachedDamage(bool bInAccept) { bAcceptDetachedDamage = bInAccept; }
 	void SetForceTimerFailure(bool bInForceFailure) { bForceTimerFailure = bInForceFailure; }
 
 	virtual UWorld* GetWorld() const override;
@@ -27,8 +29,31 @@ public:
 	void InvokeCancelForTesting(const FPresentationPlaybackToken& Token);
 	void InvokeNativeDestructForTesting();
 
+	virtual bool PrepareDetachedDamageVisual(
+		const FPresentationSessionToken& SessionToken,
+		const FPresentationRecord& Record,
+		int64 SourceFinalStateRevision,
+		float VisualDuration,
+		FDetachedDamageToken& OutToken) override;
+	virtual bool ActivatePreparedDetachedDamageVisual(
+		const FDetachedDamageToken& Token) override;
+	virtual bool CancelDetachedDamageVisual(
+		const FDetachedDamageToken& Token) override;
+	virtual int32 CancelDetachedDamageVisualsForSession(
+		const FPresentationSessionToken& SessionToken) override;
+	virtual void CancelAllDetachedDamageVisuals() override;
+	virtual void PlayCommittedDamageCombatantCues(
+		const FPresentationRecord& Record,
+		const FPresentationSessionToken& SessionToken) override;
+
 	int32 CancelDispatchCount = 0;
 	FPresentationPlaybackToken LastCancelDispatchToken;
+	int32 DetachedPrepareCount = 0;
+	int32 DetachedActivateCount = 0;
+	int32 DetachedCancelCount = 0;
+	int32 DetachedCueCount = 0;
+	FDetachedDamageToken LastPreparedDetachedToken;
+	FDetachedDamageToken LastActivatedDetachedToken;
 
 protected:
 	virtual bool BeginPresentationRecordPlayback_Implementation(
@@ -42,5 +67,10 @@ private:
 	TObjectPtr<UWorld> TestWorld = nullptr;
 
 	bool bAcceptSyntheticPlayback = false;
+	bool bAcceptSyntheticBlockPlayback = false;
+	bool bAcceptDetachedDamage = false;
 	bool bForceTimerFailure = false;
+	bool bHasPreparedDetachedDamage = false;
+	bool bHasActiveDetachedDamage = false;
+	int64 NextSyntheticDetachedGeneration = 1;
 };
