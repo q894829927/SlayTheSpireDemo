@@ -9,6 +9,9 @@ namespace
 	// 18fps texture sequence instead of the visibly stepped 24-frame bake.
 	constexpr int32 IroncladIdleFrameCount = 120;
 	constexpr int32 IroncladHitFrameCount = 8;
+	constexpr int32 AwakenedOneIdleFrameCount = 48;
+	constexpr int32 AwakenedOneHitFrameCount = 8;
+	constexpr int32 AwakenedOneAttackFrameCount = 24;
 
 	TSoftObjectPtr<UTexture2D> MakeIroncladFramePath(const TCHAR* Folder, const TCHAR* Prefix, int32 Index)
 	{
@@ -26,6 +29,24 @@ namespace
 	{
 		return TSoftObjectPtr<UTexture2D>(FSoftObjectPath(
 			TEXT("/Game/SlayTheSpireDemo/UI/Textures/Ironclad/corpse.corpse")));
+	}
+
+	TSoftObjectPtr<UTexture2D> MakeAwakenedOneFramePath(const TCHAR* Folder, const TCHAR* Prefix, int32 Index)
+	{
+		const FString ObjectPath = FString::Printf(
+			TEXT("/Game/SlayTheSpireDemo/UI/Textures/AwakenedOne/%s/%s_%02d.%s_%02d"),
+			Folder,
+			Prefix,
+			Index,
+			Prefix,
+			Index);
+		return TSoftObjectPtr<UTexture2D>(FSoftObjectPath(ObjectPath));
+	}
+
+	TSoftObjectPtr<UTexture2D> MakeAwakenedOneStaticPath()
+	{
+		return TSoftObjectPtr<UTexture2D>(FSoftObjectPath(
+			TEXT("/Game/SlayTheSpireDemo/UI/Textures/T_AwakenedOne_Static.T_AwakenedOne_Static")));
 	}
 }
 
@@ -103,15 +124,22 @@ void UBattleHUDCombatantPresentationWidgetBase::NativeTick(
 	switch (CurrentAnimation)
 	{
 	case EBattleHUDCombatantAnimation::Hit:
-		if (AnimationElapsedSeconds >= FMath::Max(HitAnimationDuration, KINDA_SMALL_NUMBER))
+		if (AnimationElapsedSeconds >= FMath::Max(GetAnimationDuration(CurrentAnimation), KINDA_SMALL_NUMBER))
 		{
 			CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
 			AnimationElapsedSeconds = 0.0f;
 		}
 		break;
 	case EBattleHUDCombatantAnimation::Attack:
-		if (AnimationElapsedSeconds >= FMath::Max(AttackAnimationDuration, KINDA_SMALL_NUMBER))
+		if (AnimationElapsedSeconds >= FMath::Max(GetAnimationDuration(CurrentAnimation), KINDA_SMALL_NUMBER))
 		{
+			if (IsUsingEnemyAnimationProfile() && !EnemyAttackAnimationFrames.IsEmpty())
+			{
+				CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+				AnimationElapsedSeconds = 0.0f;
+				break;
+			}
+
 			// Attack reuses the authored Idle frames. Carry the source timeline
 			// into Idle so returning from the lunge does not snap back to frame 0.
 			AnimationElapsedSeconds = FMath::Fmod(
@@ -164,6 +192,76 @@ void UBattleHUDCombatantPresentationWidgetBase::EnsureAnimationAssetsLoaded()
 {
 	if (bAnimationAssetsLoaded)
 	{
+		return;
+	}
+
+	if (IsUsingEnemyAnimationProfile())
+	{
+		if (EnemyIdleAnimationFrames.IsEmpty())
+		{
+			EnemyIdleAnimationFrames.Reserve(AwakenedOneIdleFrameCount);
+			for (int32 Index = 0; Index < AwakenedOneIdleFrameCount; ++Index)
+			{
+				// Idle_2 is the authored breathing/tail motion. Idle_1 is a
+				// near-static combat stance and reads as a frozen sprite in-game.
+				EnemyIdleAnimationFrames.Add(MakeAwakenedOneFramePath(TEXT("Idle"), TEXT("idle_2"), Index));
+			}
+		}
+		if (EnemyHitAnimationFrames.IsEmpty())
+		{
+			EnemyHitAnimationFrames.Reserve(AwakenedOneHitFrameCount);
+			for (int32 Index = 0; Index < AwakenedOneHitFrameCount; ++Index)
+			{
+				EnemyHitAnimationFrames.Add(MakeAwakenedOneFramePath(TEXT("Hit"), TEXT("hit"), Index));
+			}
+		}
+		if (EnemyAttackAnimationFrames.IsEmpty())
+		{
+			EnemyAttackAnimationFrames.Reserve(AwakenedOneAttackFrameCount);
+			for (int32 Index = 0; Index < AwakenedOneAttackFrameCount; ++Index)
+			{
+				EnemyAttackAnimationFrames.Add(MakeAwakenedOneFramePath(TEXT("Attack"), TEXT("attack_1"), Index));
+			}
+		}
+		if (EnemyCorpseTexture.IsNull())
+		{
+			EnemyCorpseTexture = MakeAwakenedOneStaticPath();
+		}
+		if (!IsValid(FallbackCharacterTexture))
+		{
+			FallbackCharacterTexture = Cast<UTexture2D>(StaticLoadObject(
+				UTexture2D::StaticClass(),
+				nullptr,
+				TEXT("/Game/SlayTheSpireDemo/UI/Textures/T_AwakenedOne_Static.T_AwakenedOne_Static")));
+		}
+
+		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyIdleAnimationFrames)
+		{
+			if (!Frame.IsValid())
+			{
+				Frame.LoadSynchronous();
+			}
+		}
+		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyHitAnimationFrames)
+		{
+			if (!Frame.IsValid())
+			{
+				Frame.LoadSynchronous();
+			}
+		}
+		for (TSoftObjectPtr<UTexture2D>& Frame : EnemyAttackAnimationFrames)
+		{
+			if (!Frame.IsValid())
+			{
+				Frame.LoadSynchronous();
+			}
+		}
+		if (!EnemyCorpseTexture.IsValid())
+		{
+			EnemyCorpseTexture.LoadSynchronous();
+		}
+
+		bAnimationAssetsLoaded = true;
 		return;
 	}
 
@@ -222,22 +320,74 @@ bool UBattleHUDCombatantPresentationWidgetBase::ShouldUseNativeAnimationProfile(
 	return CombatantView.bPlayer || bAnimateEnemyCharacter;
 }
 
+bool UBattleHUDCombatantPresentationWidgetBase::IsUsingEnemyAnimationProfile() const
+{
+	return !CombatantView.bPlayer && bAnimateEnemyCharacter;
+}
+
+float UBattleHUDCombatantPresentationWidgetBase::GetAnimationDuration(
+	EBattleHUDCombatantAnimation Animation) const
+{
+	if (IsUsingEnemyAnimationProfile())
+	{
+		switch (Animation)
+		{
+		case EBattleHUDCombatantAnimation::Hit:
+			return EnemyHitAnimationDuration;
+		case EBattleHUDCombatantAnimation::Attack:
+			return EnemyAttackAnimationDuration;
+		default:
+			return EnemyIdleAnimationDuration;
+		}
+	}
+
+	return Animation == EBattleHUDCombatantAnimation::Hit
+		? HitAnimationDuration
+		: Animation == EBattleHUDCombatantAnimation::Attack
+			? AttackAnimationDuration
+			: IdleAnimationDuration;
+}
+
 TArray<TSoftObjectPtr<UTexture2D>>&
 UBattleHUDCombatantPresentationWidgetBase::GetFramesForAnimation(
 	EBattleHUDCombatantAnimation Animation)
 {
-	return Animation == EBattleHUDCombatantAnimation::Hit
-		? HitAnimationFrames
-		: IdleAnimationFrames;
+	if (IsUsingEnemyAnimationProfile())
+	{
+		if (Animation == EBattleHUDCombatantAnimation::Hit)
+		{
+			return EnemyHitAnimationFrames;
+		}
+		if (Animation == EBattleHUDCombatantAnimation::Attack
+			&& !EnemyAttackAnimationFrames.IsEmpty())
+		{
+			return EnemyAttackAnimationFrames;
+		}
+		return EnemyIdleAnimationFrames;
+	}
+
+	return Animation == EBattleHUDCombatantAnimation::Hit ? HitAnimationFrames : IdleAnimationFrames;
 }
 
 const TArray<TSoftObjectPtr<UTexture2D>>&
 UBattleHUDCombatantPresentationWidgetBase::GetFramesForAnimation(
 	EBattleHUDCombatantAnimation Animation) const
 {
-	return Animation == EBattleHUDCombatantAnimation::Hit
-		? HitAnimationFrames
-		: IdleAnimationFrames;
+	if (IsUsingEnemyAnimationProfile())
+	{
+		if (Animation == EBattleHUDCombatantAnimation::Hit)
+		{
+			return EnemyHitAnimationFrames;
+		}
+		if (Animation == EBattleHUDCombatantAnimation::Attack
+			&& !EnemyAttackAnimationFrames.IsEmpty())
+		{
+			return EnemyAttackAnimationFrames;
+		}
+		return EnemyIdleAnimationFrames;
+	}
+
+	return Animation == EBattleHUDCombatantAnimation::Hit ? HitAnimationFrames : IdleAnimationFrames;
 }
 
 void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
@@ -250,7 +400,7 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 	if (CurrentAnimation == EBattleHUDCombatantAnimation::Defeat
 		|| CurrentAnimation == EBattleHUDCombatantAnimation::Death)
 	{
-		ApplyCharacterTexture(CorpseTexture.Get());
+		ApplyCharacterTexture(IsUsingEnemyAnimationProfile() ? EnemyCorpseTexture.Get() : CorpseTexture.Get());
 		ApplyCharacterTransform(0.0f, 0.98f, -8.0f);
 		Img_Character->SetRenderOpacity(FMath::Clamp(DefeatOpacity, 0.0f, 1.0f));
 		return;
@@ -259,13 +409,17 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 	const TArray<TSoftObjectPtr<UTexture2D>>& Frames = GetFramesForAnimation(CurrentAnimation);
 	const bool bLoop = CurrentAnimation == EBattleHUDCombatantAnimation::Idle
 		|| CurrentAnimation == EBattleHUDCombatantAnimation::Victory;
-	// Attack has no authored frame set, so it uses Idle frames while the
-	// separate AttackAnimationDuration controls only the lunge transform.
-	// Keeping the Idle source cadence prevents the attack from skipping most
-	// of the 120-frame sequence in a 0.30 second window.
-	const float FrameDuration = CurrentAnimation == EBattleHUDCombatantAnimation::Hit
-		? HitAnimationDuration
-		: IdleAnimationDuration;
+	// Player Attack keeps the existing lunge over the authored Idle cadence.
+	// Enemy Attack uses the authored Awakened One Attack_1 sequence directly.
+	const bool bUseEnemyAttackFrames =
+		IsUsingEnemyAnimationProfile()
+		&& CurrentAnimation == EBattleHUDCombatantAnimation::Attack
+		&& !EnemyAttackAnimationFrames.IsEmpty();
+	const float FrameDuration = bUseEnemyAttackFrames
+		? EnemyAttackAnimationDuration
+		: CurrentAnimation == EBattleHUDCombatantAnimation::Hit
+			? (IsUsingEnemyAnimationProfile() ? EnemyHitAnimationDuration : HitAnimationDuration)
+			: (IsUsingEnemyAnimationProfile() ? EnemyIdleAnimationDuration : IdleAnimationDuration);
 	const int32 FrameIndex = GetAnimationFrameIndex(
 		AnimationElapsedSeconds,
 		FrameDuration,
@@ -282,7 +436,7 @@ void UBattleHUDCombatantPresentationWidgetBase::ApplyAnimationFrame()
 
 	float TranslationAlpha = 0.0f;
 	float ScaleMultiplier = 1.0f;
-	if (CurrentAnimation == EBattleHUDCombatantAnimation::Attack)
+	if (CurrentAnimation == EBattleHUDCombatantAnimation::Attack && !bUseEnemyAttackFrames)
 	{
 		const float Progress = FMath::Clamp(
 			AnimationElapsedSeconds / FMath::Max(AttackAnimationDuration, KINDA_SMALL_NUMBER),
@@ -333,11 +487,25 @@ void UBattleHUDCombatantPresentationWidgetBase::SetPresentationData(
 	bool bInTargetHighlighted
 )
 {
+	const bool bProfileChanged = CombatantView.bPlayer != InCombatantView.bPlayer;
+	const bool bNeedEnemyProfileLoad =
+		!InCombatantView.bPlayer
+		&& bAnimateEnemyCharacter
+		&& EnemyIdleAnimationFrames.IsEmpty();
 	CombatantView = InCombatantView;
 	bTargetSelectionActive = bInTargetSelectionActive;
 	bLegalTarget = bInTargetSelectionActive && bInLegalTarget && InTargetId != INDEX_NONE;
 	TargetId = bLegalTarget ? InTargetId : INDEX_NONE;
 	bTargetHighlighted = bLegalTarget || bInTargetHighlighted;
+
+	if (bProfileChanged || bNeedEnemyProfileLoad)
+	{
+		FallbackCharacterTexture = nullptr;
+		bAnimationAssetsLoaded = false;
+		EnsureAnimationAssetsLoaded();
+		CurrentAnimation = EBattleHUDCombatantAnimation::Idle;
+		AnimationElapsedSeconds = 0.0f;
+	}
 
 	BP_OnPresentationChanged();
 	PublishTransientPreviewState();

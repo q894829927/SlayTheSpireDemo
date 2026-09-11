@@ -11,6 +11,20 @@ This document records project progress, implementation history and durable phase
   were removed, with the required Native HUD input path preserved. See [level
   configuration and evidence](RuinedCitadelBattleLevel.md).
 
+- **Awakened One monster animation — implemented, build PASS, focused Idle PIE PASS (2026-09-10).**
+  The Native combatant Presentation widget now uses the authored Awakened One `Idle_2`, `Hit`
+  and `Attack_1` sequences as imported Unreal textures. Enemy Attack playback is requested at
+  the committed damage boundary when the enemy damages the player; the profile is Blueprint-
+  tunable and remains Presentation-only. The focused visual check uses
+  `L_Battle_RuinedCitadel`. See [Awakened One monster animation](AwakenedOneCharacterAnimation.md).
+
+- **Enemy presentation/intent cluster layout — implemented, MCP PIE PASS (2026-09-11).**
+  `WBP_BattleHUD_Native` now keeps the enemy presentation and intent in one Overlay; only the
+  enemy instance is enlarged around its bottom-center pivot, leaving the player size unchanged.
+  The unused legacy character brush widgets were removed from the Native Designer tree so the
+  editor preview and PIE each render one image per combatant.
+  See the layout amendment in [Awakened One monster animation](AwakenedOneCharacterAnimation.md).
+
 - **Ironclad character animation — implemented, build PASS, Native PIE pending (2026-09-10).**
   The Native combatant Presentation widget now plays baked Idle/Hit frames from
   `UI/images/characters/ironclad`, plus Presentation-only attack lunge, Victory pulse and

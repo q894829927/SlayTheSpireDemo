@@ -1,6 +1,6 @@
 # 当前 WBP 蓝图、配置与 UI 布局快照
 
-快照日期：2026-09-09
+快照日期：2026-09-11
 
 ## 1. 用途与边界
 
@@ -39,19 +39,19 @@ MCP `ListWidgetBlueprints` 递归发现以下 12 个 WBP。Graph 列只记录 MC
 | `Relic/WBP_BattleRelicStrip_Native` | `UBattleRelicStripWidget` | 2（1） | `EventGraph` |
 | `Relic/WBP_BattleRelicTooltip_Native` | `UBattleRelicTooltipWidget` | 6（2） | `EventGraph` |
 
-## 2.1 2026-09-09 UI/Widgets WBP 工作树快照 — CURRENT SAVED
+## 2.1 2026-09-11 UI/Widgets WBP 工作树快照 — CURRENT SAVED
 
-本节记录当前工作树中已经保存到磁盘的 `/Game/SlayTheSpireDemo/UI/Widgets` WBP。内容由 UE5.8 MCP 的 UMG/Blueprint 只读工具确认；`CURRENT SAVED` 表示资产文件已经存在并已保存，不表示本节列出的全部运行时交互已经通过 PIE。2026-09-09 对最近修改的 `WBP_BattleHUD_Native` 和 `WBP_BattleCard_Native` 重新读取了 Designer 树、继承控件数量、根类和 CDO 关键默认值。
+本节记录当前工作树中已经保存到磁盘的 `/Game/SlayTheSpireDemo/UI/Widgets` WBP。内容由 UE5.8 MCP 的 UMG/Blueprint 只读工具确认；`CURRENT SAVED` 表示资产文件已经存在并已保存，不表示本节列出的全部运行时交互已经通过 PIE。2026-09-11 重新读取了 `WBP_BattleHUD_Native` 的 Designer 树，并保存了敌人展示/意图组合容器与敌人实例缩放调整。
 
 当前工作树中与 WBP 直接相关的资产如下：
 
 | WBP | 状态 | Parent Class | Designer 控件数 | Graph | 文件时间 / 大小 / SHA-256 |
 |---|---|---|---:|---|---|
-| `WBP_BattleHUD_Native` | 自上次快照修改、CURRENT SAVED | `UBattleHUDSelectionWidget` | 83（29 个继承） | `EventGraph`；当前 MCP `read_graph_dsl` 未返回本地执行节点 | 2026-09-09 11:03:17；154,911 bytes；SHA-256 `98C1C6CE6A45256E9C5EA614B3E0ECFCBF47844516048172D0B31B45C5B25388` |
+| `WBP_BattleHUD_Native` | 自上次快照修改、CURRENT SAVED | `UBattleHUDSelectionWidget` | 82（29 个继承） | `EventGraph`；当前 MCP `read_graph_dsl` 未返回本地执行节点 | 2026-09-11 00:27:20；151,191 bytes；SHA-256 `BA2109C2EAC677EEE7A228183572BF2E36AA1DB367CFAAD26E13A2B169BA9EE7` |
 | `WBP_BattleCard_Native` | 自上次快照修改、CURRENT SAVED | `UBattleCardWidget` | 19（10 个继承） | `EventGraph`；当前 MCP `read_graph_dsl` 未返回本地执行节点 | 2026-09-08 14:16:35；56,362 bytes；SHA-256 `5D5FF3E4F4D2E98DBA050F3138EB2200403D65A9F22ED87686F7E3C001CBA893` |
 | `WBP_BattleStatus_Native` | CURRENT SAVED | `UBattleStatusWidget` | 4（2 个继承） | `EventGraph` | 2026-09-06 21:30:21；16,562 bytes；SHA-256 `F8954AA96BC7E5FEE04E49993C4397807C93A7E2C3CC5F539F9595633E1B0560` |
 | `WBP_BattleTargetButton` | CURRENT SAVED | `UUserWidget` | 3 | `EventGraph` | 2026-09-06 21:30:21；62,839 bytes；SHA-256 `927D250FB00D94A798C36EFF928C7FD8FFE09829E850024DA6B052328D79FBFE` |
-| `WBP_CombatantPresentation` | CURRENT SAVED | `UBattleHUDCombatantPresentationWidgetBase` | 10 | `EventGraph` | 2026-09-06 21:30:21；112,114 bytes；SHA-256 `3244BD20E619D5BA25E4DCD17F2CFD37F14C93D0556A8AD3D905F963443B6EA6` |
+| `WBP_CombatantPresentation` | 自上次快照修改、CURRENT SAVED | `UBattleHUDCombatantPresentationWidgetBase` | 10 | `EventGraph` | 2026-09-11 00:13:17；112,936 bytes；SHA-256 `0878BE245751FAF33F0903EF82E21A7AA97D28E50935BFFD1B638A4478CC9B4C` |
 | `WBP_CombatantTooltip` | CURRENT SAVED | `UUserWidget` | 6 | `EventGraph` | 2026-09-06 21:30:21；29,389 bytes；SHA-256 `718AC7D3E9D701A5BE018AF52D69176121986551DB6E182474F0F26755A13076` |
 | `WBP_StatusTooltip` | CURRENT SAVED | `UUserWidget` | 2 | `RebuildTooltip`；`EventGraph` | 2026-09-06 21:30:21；61,175 bytes；SHA-256 `9D7C837AA209FEC15C0FC8327FA1DCF0E13D8833443A174193E31F82F9EE480E` |
 | `WBP_StatusTooltipEntry` | CURRENT SAVED | `UUserWidget` | 8 | `SetStatusView`；`SetAtlasVector2D`；`EventGraph` | 2026-09-06 21:30:21；128,251 bytes；SHA-256 `1857E4B4ACB8471D3D2F5D0FB4187F91ABFFF69026E8184BDA4AC666F9172B3B` |
@@ -79,7 +79,7 @@ MCP `ListWidgetBlueprints` 递归发现以下 12 个 WBP。Graph 列只记录 MC
 
 ### 2.1.1 WBP_BattleHUD_Native — 当前 Designer 与遗物入口
 
-MCP 确认当前 Parent Class 为 `UBattleHUDSelectionWidget`，根控件为 `CanvasPanel_54`，当前 Designer 控件数为 83，其中 29 个为父类继承控件。当前根 Canvas 的主要直接子项包括 Player/Enemy 面板、EnemyIntent、Energy、Hand、三组牌堆、确认/取消/结束回合按钮、Terminal、状态 Tooltip、角色呈现、PlayArea、伤害文本，以及下列已保存的遗物入口：
+MCP 确认当前 Parent Class 为 `UBattleHUDSelectionWidget`，根控件为 `CanvasPanel_54`，当前 Designer 控件数为 82，其中 29 个为父类继承控件。当前根 Canvas 的主要直接子项包括 Player/Enemy 面板、`EnemyCombatantCluster`、Energy、Hand、三组牌堆、确认/取消/结束回合按钮、Terminal、状态 Tooltip、角色呈现、PlayArea、伤害文本，以及下列已保存的遗物入口：
 
 ```text
 CanvasPanel_54
@@ -95,6 +95,20 @@ ZOrder = 5
 ```
 
 当前 HUD 只记录了玩家遗物条实例；遗物条内部负责从 ViewModel 接收有序 `Relics` 并重建遗物控件。该实例没有移入 Legacy HUD，也没有新增 Gameplay 查询入口。
+
+敌人角色与意图现在共用一个运行时布局容器：
+
+```text
+CanvasPanel_54
+└── EnemyCombatantCluster : Overlay
+    ├── Combatant_EnemyPresentation : Fill / Z-order 0
+    └── EnemyIntentPanel : Center + Top / Padding.Top = 55
+```
+
+容器使用原敌人展示的 Canvas Slot（Anchor `(0.73, 0.69)`、`650 × 350`、ZOrder `1`）。
+`Combatant_EnemyPresentation` 实例使用 Render Transform Scale `(1.18, 1.18)`、Pivot
+`(0.5, 1.0)`，以脚底为锚点放大怪物；`WBP_CombatantPresentation` 模板中的
+`Img_Character` 保持默认 Scale `(1.0, 1.0)`，因此玩家角色不会同步放大。
 
 当前 HUD CDO 的关键默认引用由 MCP 确认如下：
 
@@ -413,7 +427,7 @@ EnemyPanel : VerticalBox
 当前状态：
 
 - `Combatant_PlayerPresentation`、`Combatant_EnemyPresentation` 已作为 HUD 的正式角色呈现实例放入根 Canvas。
-- 旧 `Img_PlayerCharacter`、`Img_EnemyCharacter` 仍保留在 Designer，但均为 `Collapsed`，不会形成第二套角色图像或命中层。
+- 旧 `Img_PlayerCharacter`、`Img_EnemyCharacter` 已从 Native HUD Designer 树移除；当前角色图像只由 `Combatant_PlayerPresentation` 与 `Combatant_EnemyPresentation` 提供。
 - `Txt_PlayerName`、`Txt_EnemyName` 默认 `Hidden`；角色 Hover 的 `OnInspectRequested` 会写入当前 `CombatantView.DisplayName` 并显示，`OnInspectCleared` 会隐藏。
 - `WB_PlayerStatuses`、`WB_EnemyStatuses` 由 `RefreshCombatantPresentations` 末尾的两次 `RebuildStatusIcons` 刷新。
 - `StatusTooltip_Player`、`StatusTooltip_Enemy` 默认 `Collapsed`；Hover 检查时按当前状态数组重建并显示，离开时隐藏。

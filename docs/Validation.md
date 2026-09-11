@@ -38,6 +38,42 @@ MCP cleanup removed template lights/fog/floor/PlayerStart and disabled map AI an
 precomputed lighting; the post-cleanup PIE log reached battle-ready state, while the
 MCP transport disconnected before a second screenshot.
 
+## Awakened One Monster Animation — 2026-09-10
+
+The Native combatant Presentation widget now uses the saved Awakened One `Idle_2`, `Hit` and
+`Attack_1` texture sequences. The first static-looking result was traced to unsaved imported
+textures and the near-static `Idle_1` source; the active profile now points at the visible
+`Idle_2` sequence. Enemy attack presentation is mapped from committed Attack damage aimed at
+the player. Scope and the exact manual gate are documented in
+[Awakened One monster animation](AwakenedOneCharacterAnimation.md).
+
+- Bundled UE 5.8 project-file generation: **PASS** (`Saved/Logs/AwakenedOneMonsterAnimationFinalProjectFiles.log`).
+- Development Editor Win64 build: **PASS** (`Saved/Logs/AwakenedOneMonsterAnimationFinalBuild.log`).
+- MCP `WBP_CombatantPresentation` compile/save: **PASS**.
+- Imported runtime assets: **48 Idle_2 + 8 Hit + 24 Attack_1** textures under
+  `Content/SlayTheSpireDemo/UI/Textures/AwakenedOne`, with the static fallback retained.
+- Focused floating PIE on `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`: **PASS for visible
+  Idle_2 playback**; captures separated by 1.2 seconds showed different tail poses and eye state.
+
+**USER ACTION REQUIRED:** manually end the turn in `L_Battle_RuinedCitadel` to observe the
+enemy `Attack_1` pose during player damage, then play an Attack card to observe the enemy `Hit`
+pose. No final attack/hit visual PASS is claimed until that interaction is observed.
+
+## Enemy Presentation and Intent Cluster Layout — 2026-09-11
+
+Through Unreal MCP, the Native HUD now keeps `Combatant_EnemyPresentation` and
+`EnemyIntentPanel` under one `EnemyCombatantCluster` Overlay. The intent is centered relative to
+the enemy presentation, and the enemy instance is scaled to `1.18` around its bottom center;
+the shared combatant template and player instance remain at scale `1.0`.
+
+- MCP `WBP_BattleHUD_Native` and `WBP_CombatantPresentation` compile/save: **PASS**.
+- Focused floating PIE on `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`: **PASS**; the
+  enemy is visibly larger, the player keeps its previous size, and the intent icon/damage value
+  sits immediately above the enemy.
+- Removed the unused Native-HUD `Img_PlayerCharacter` and `Img_EnemyCharacter` brushes through
+  MCP; Designer and PIE now contain one character presentation per combatant with no overlap.
+- No Gameplay, ViewModel or record-schema changes were made.
+
 ## Ironclad Character Animation — 2026-09-10
 
 The Native combatant Presentation widget now plays the imported Ironclad profile from

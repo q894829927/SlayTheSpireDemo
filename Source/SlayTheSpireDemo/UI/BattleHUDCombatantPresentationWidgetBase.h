@@ -141,7 +141,7 @@ public:
 	bool bEnableNativeCharacterAnimation = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation")
-	bool bAnimateEnemyCharacter = false;
+	bool bAnimateEnemyCharacter = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation", meta = (ClampMin = "0.01", UIMin = "0.01"))
 	float IdleAnimationDuration = 6.6666f;
@@ -151,6 +151,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation", meta = (ClampMin = "0.01", UIMin = "0.01"))
 	float AttackAnimationDuration = 0.30f;
+
+	// The default enemy profile is the authored Awakened One sequence. These
+	// timings match the source Spine animations and remain Blueprint-tunable.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy", meta = (ClampMin = "0.01", UIMin = "0.01"))
+	float EnemyIdleAnimationDuration = 2.40f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy", meta = (ClampMin = "0.01", UIMin = "0.01"))
+	float EnemyHitAnimationDuration = 0.3333f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy", meta = (ClampMin = "0.01", UIMin = "0.01"))
+	float EnemyAttackAnimationDuration = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation", meta = (ClampMin = "0.0", UIMin = "0.0"))
 	float VictoryPulseScale = 1.04f;
@@ -169,6 +180,18 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation")
 	TSoftObjectPtr<UTexture2D> CorpseTexture;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy")
+	TArray<TSoftObjectPtr<UTexture2D>> EnemyIdleAnimationFrames;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy")
+	TArray<TSoftObjectPtr<UTexture2D>> EnemyHitAnimationFrames;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy")
+	TArray<TSoftObjectPtr<UTexture2D>> EnemyAttackAnimationFrames;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Combatant Animation|Enemy")
+	TSoftObjectPtr<UTexture2D> EnemyCorpseTexture;
 
 protected:
 	virtual void NativeConstruct() override;
@@ -191,6 +214,8 @@ private:
 	void ApplyCharacterTexture(UTexture2D* Texture);
 	void ApplyCharacterTransform(float TranslationAlpha, float ScaleMultiplier, float Angle);
 	bool ShouldUseNativeAnimationProfile() const;
+	bool IsUsingEnemyAnimationProfile() const;
+	float GetAnimationDuration(EBattleHUDCombatantAnimation Animation) const;
 	TArray<TSoftObjectPtr<UTexture2D>>& GetFramesForAnimation(EBattleHUDCombatantAnimation Animation);
 	const TArray<TSoftObjectPtr<UTexture2D>>& GetFramesForAnimation(EBattleHUDCombatantAnimation Animation) const;
 

@@ -1749,6 +1749,19 @@ bool UBattleHUDWidget::BeginNativeDamagePresentation(
 	PlayNativeCombatantAnimation(
 		Payload.TargetPresentationId,
 		EBattleHUDCombatantAnimation::Hit);
+	// A committed Attack damage aimed at the player is the enemy's attack cue.
+	// Play it at the same presentation boundary, while player CardPlayed
+	// records continue to own the player attack cue. This keeps the monster
+	// animation presentation-only and avoids duplicating player attacks.
+	if (IsValid(ViewModel)
+		&& Payload.DamageKind == EDamageKind::Attack
+		&& Payload.TargetPresentationId == ViewModel->Player.PresentationId
+		&& Payload.SourcePresentationId != ViewModel->Player.PresentationId)
+	{
+		PlayNativeCombatantAnimation(
+			Payload.SourcePresentationId,
+			EBattleHUDCombatantAnimation::Attack);
+	}
 	return true;
 }
 

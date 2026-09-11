@@ -1,10 +1,40 @@
-# Codex Goal Checkpoint — Ironclad Character Animation
+# Codex Goal Checkpoint — Awakened One Monster Animation
 
-Last updated: **2026-09-10**
+Last updated: **2026-09-11**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable task — Ironclad Character Animation
+## Current resumable task — Awakened One Monster Animation
+
+The Awakened One enemy profile is implemented in the Native combatant Presentation widget and
+is verified in `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`. The active profile uses
+48 `Idle_2` frames, 8 `Hit` frames and 24 `Attack_1` frames imported under
+`Content/SlayTheSpireDemo/UI/Textures/AwakenedOne`. `Damage` aimed at the enemy requests Hit;
+committed non-player Attack damage aimed at the player requests the enemy Attack sequence.
+The profile is Presentation-only and its durations/arrays are Blueprint-editable.
+
+Completed: imported and saved all runtime textures; switched from the near-static `Idle_1` source
+to visible `Idle_2`; set `bAnimateEnemyCharacter` on the combatant Blueprint; added enemy Attack
+record mapping; and confirmed visible tail/eye changes in focused floating PIE on
+`L_Battle_RuinedCitadel`. Bundled project-file generation and the Development Editor build passed
+(`Saved/Logs/AwakenedOneMonsterAnimationFinalProjectFiles.log`,
+`Saved/Logs/AwakenedOneMonsterAnimationFinalBuild.log`). Full scope and acceptance are recorded in
+[AwakenedOneCharacterAnimation.md](AwakenedOneCharacterAnimation.md).
+The combatant Widget Blueprint compiled and saved successfully through Unreal MCP.
+
+Layout amendment completed through Unreal MCP: `WBP_BattleHUD_Native` now owns an
+`EnemyCombatantCluster` Overlay containing both `Combatant_EnemyPresentation` and
+`EnemyIntentPanel`. The intent uses centered top alignment with `55` padding, and only the enemy
+instance uses a `1.18` bottom-center scale so the player remains unchanged. Both affected WBP
+assets compiled/saved and focused `L_Battle_RuinedCitadel` PIE confirmed the larger enemy with
+the intent directly above it. The unused `Img_PlayerCharacter` and `Img_EnemyCharacter` brushes
+were removed from the Native Designer tree; the duplicate-image preview issue is resolved.
+
+Next / USER ACTION REQUIRED: in the same level, end the player turn and observe the enemy
+`Attack_1` pose during player damage, then play an Attack card to observe the enemy `Hit` pose.
+Do not claim the final attack/hit visual gate until those interactions are observed.
+
+## Previous resumable task — Ironclad Character Animation
 
 The Ironclad character profile is implemented in the Native combatant Presentation widget.
 The imported source is baked into 120 Idle frames, 8 Hit frames and one corpse texture under
