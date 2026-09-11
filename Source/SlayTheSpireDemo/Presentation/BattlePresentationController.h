@@ -4,6 +4,7 @@
 #include "Containers/Ticker.h"
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
+#include "PresentationG8Types.h"
 #include "BattlePresentationController.generated.h"
 
 class ABattleManager;
@@ -24,6 +25,11 @@ public:
 
 	void Shutdown();
 	void SetWidget(UBattleHUDWidgetBase* InWidget);
+
+	// G8 Presentation-owned authority identity. Ordinary Skip/reconcile keeps the
+	// same token; binding/battle/authority replacement invalidates it.
+	bool TryGetPresentationSessionToken(FPresentationSessionToken& OutToken) const;
+	bool IsCurrentPresentationSession(const FPresentationSessionToken& Token) const;
 
 	// Intentionally C++-only. Blueprint completion/skip must pass through
 	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
@@ -102,8 +108,14 @@ private:
 	void CollapseEntireBacklogToEnvelope(const FPresentationResolutionEnvelope& Envelope);
 	void ResetPlaybackState(bool bAdvanceGeneration);
 	void CancelActivePlaybackUnit();
+	void RetireActivePlaybackForWidgetReplacement(UBattleHUDWidgetBase* ExpectedOldWidget);
 	void MarkPresentationResolutionCompletedExact(const FPresentationResolutionEnvelope& Envelope);
 	void MarkEntireBacklogCompletedExact(const FPresentationResolutionEnvelope* AdditionalEnvelope);
+
+	void EnsureControllerEpoch();
+	bool IsPresentationOwnedMode() const;
+	void InvalidatePresentationSession(UBattleHUDWidgetBase* CleanupWidget = nullptr);
+	void EstablishPresentationSessionForCurrentBinding();
 
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
@@ -158,6 +170,13 @@ private:
 	FPresentationPlaybackToken ActivePlaybackToken;
 	FPresentationPlaybackToken ScheduledTimeoutToken;
 	FTSTicker::FDelegateHandle PlaybackTimeoutTickerHandle;
+
+	// G8 session identity is independent from the per-playback generation.
+	// ControllerEpoch is minted once per UObject instance and intentionally is not
+	// reset by Shutdown/Initialize so replacement Controllers cannot ABA-match.
+	int64 ControllerEpoch = 0;
+	int64 NextPresentationSessionGeneration = 1;
+	FPresentationSessionToken ActivePresentationSessionToken;
 
 	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
 	// record order; future member indices are merely remembered as already shown
