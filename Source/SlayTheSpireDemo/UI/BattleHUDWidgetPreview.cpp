@@ -8,11 +8,15 @@
 
 void UBattleHUDWidget::OnWidgetRebuilt()
 {
+	// Rebuild replaces Slate geometry ownership. Detached positions are frozen in
+	// the old Host space, so they must never survive across the rebuild.
+	ReleaseTransientVFXHost();
 	if (IsValid(ViewModel))
 	{
 		ViewModel->ClearPendingCardSelectionInputState();
 	}
 	Super::OnWidgetRebuilt();
+	EnsureTransientVFXHost();
 
 	// A3 uses dedicated Preview delegates. Inspection remains independently bound
 	// by the existing NativeConstruct path and is never the Preview authority.
@@ -38,6 +42,7 @@ void UBattleHUDWidget::OnWidgetRebuilt()
 
 void UBattleHUDWidget::BeginDestroy()
 {
+	ReleaseTransientVFXHost();
 	if (IsValid(ViewModel))
 	{
 		ViewModel->ClearPendingCardSelectionInputState();
