@@ -63,6 +63,7 @@ namespace
 				OutRelics.Reset();
 				return false;
 			}
+
 			SeenRelicIds.Add(RelicId);
 
 			FRelicReadView View;
@@ -71,11 +72,6 @@ namespace
 			View.RelicId = RelicId;
 			View.RuntimeSequence = RuntimeSequence;
 			View.Counter = Counter;
-			View.CounterMax = Definition->CounterMax;
-			View.DisplayName = Definition->DisplayName;
-			View.Description = Definition->Description;
-			View.bShowCounter = Definition->bShowCounter;
-			View.Icon = Definition->Icon;
 			OutRelics.Add(MoveTemp(View));
 		}
 
