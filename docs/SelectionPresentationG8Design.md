@@ -187,6 +187,43 @@ C 不属于 `DetachedDamageInstance`，也不参与 Record completion。它只�
 
 如果后续 Blocking 卡牌动画比 DamageNumber 更长，某些牌实际看不到跨牌数字重叠是合法结果。验收记录真实 input-ready 时间点和数字是否仍存活，只报告实际收益。
 
+### 3.5 Non-goal：卡牌 Presentation overlap 与 buffered input 延后到 G9
+
+G8 **不**把 `CardPlayed`、`CardZoneChanged`、PlayArea → destination 或其它 card-tail Presentation 改造成 NonBlocking，也不把当前 FastInput 的 catch-up/Skip 机制改造成通用 buffered card-input scheduler。
+
+因此在 G8 范围内，若上一张牌仍存在真实 Blocking card presentation：
+
+```text
+click next card
+→ HasSkippablePresentationDelay() == true
+→ ordinary SkipPresentation / catch-up
+→ exact next-tick retry
+```
+
+仍属于允许且预期的行为。**“快速点击下一张牌导致上一张 Blocking 卡牌动画被收尾/跳过”不是 G8 bug。**
+
+G8 明确不要求、也不授权以下体验：
+
+```text
+A 的完整 CardPlayed / CardZoneChanged 动画继续播放
++ B 已可被选择/确认/打出
++ A/B 拥有可重叠的独立卡牌视觉生命周期
++ 玩家在 A 尚未到安全 Gameplay boundary 时提前缓存 B 的出牌意图
+```
+
+上述能力统一延后到后续 **G9 — Buffered Card Input + Detached Card Presentation** 独立设计。G9 可以在不并发 authoritative Gameplay 的前提下设计：
+
+```text
+提前点击 B
+→ capture exact buffered intent
+→ 不为了接受 B 而 Skip A 的无害 card visual
+→ A Gameplay 到达安全 boundary
+→ exact revalidate B 的 session / BattleId / revision / RuntimeId / legality
+→ 合法后再提交 B Gameplay
+```
+
+G9 若进一步允许 `CardPlayed` / `CardZoneChanged` visual tail 跨 Resolution 或跨下一次输入存活，必须独立定义 card Widget ownership、Hand/PlayArea reconciliation、RuntimeId identity、stale visual cleanup、replacement 与 GC 合同；这些均不属于 G8 seal 的 acceptance。
+
 ## 4. 权威所有权与身份
 
 ### 4.1 Presentation session authority：由 Controller 唯一 mint
@@ -1841,6 +1878,8 @@ DamageNumber 由 NativeTick + finite VisualDuration 管理；任何停止 tick �
 首版不额外定义不可达 HardTimeout
 数量 ceiling 只是高位 bug containment；首版无 eviction
 card tail / opacity hit flash / status VFX 不在首版 detached 范围
+G8 不要求 CardPlayed / CardZoneChanged 视觉尾巴与下一次卡牌输入重叠；Blocking card presentation 上的 FastInput 仍可按现有 Skip/catch-up 语义收尾当前动画
+buffered card input、保留上一张完整卡牌动画并同时接受下一张牌、以及 detached card presentation 统一延后到 G9 独立设计
 ```
 
 CardPlayed、PlayArea card tail、Selection transitions、Draw→Hand、G6 Group、status VFX、combatant animation 是否未来获得更广泛 overlap/detach，需要新的独立设计与 acceptance；不因 G8 DamageNumber seal 自动获得授权。
