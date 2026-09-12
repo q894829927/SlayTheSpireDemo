@@ -34,6 +34,11 @@ def custom(m, code, inputs, typ=u.CustomMaterialOutputType.CMOT_FLOAT3):
 def output(n, prop):
     assert E.connect_material_property(n, '', prop)
 
+# P2-B uses UE 5.8's EyeAdaptationInverse. Fail before deleting the existing portal material graph
+# if the engine build does not expose the node, so a setup-script error cannot leave the portal as a black rectangle.
+if not hasattr(u, 'MaterialExpressionEyeAdaptationInverse'):
+    raise RuntimeError('UE build does not expose MaterialExpressionEyeAdaptationInverse; existing portal material was not modified.')
+
 placeholder = asset('RT_Portal_Default', u.TextureRenderTarget2D, u.TextureRenderTargetFactoryNew())
 placeholder.set_editor_property('render_target_format', u.TextureRenderTargetFormat.RTF_RGBA16F)
 placeholder.set_editor_property('size_x', 256); placeholder.set_editor_property('size_y', 256)
@@ -54,11 +59,12 @@ linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
 # P2-B: the SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
 # back out of the current player view's eye-adaptation domain before it is emitted and tonemapped again.
+# UE 5.8 exposes these expression inputs as LightValueInput and AlphaInput (not LightValue / Alpha).
 # Alpha is exposed as a scalar parameter so 0 = legacy raw RenderTarget and 1 = production correction.
 view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 1.0)
 view_inverse = node(portal, u.MaterialExpressionEyeAdaptationInverse)
-assert E.connect_material_expressions(tex, 'RGB', view_inverse, 'LightValue')
-assert E.connect_material_expressions(view_exposure_correction, '', view_inverse, 'Alpha')
+assert E.connect_material_expressions(tex, 'RGB', view_inverse, 'LightValueInput')
+assert E.connect_material_expressions(view_exposure_correction, '', view_inverse, 'AlphaInput')
 shade = custom(portal, '''
 float2 p=(UV-.5)*2;
 float r=length(p);
