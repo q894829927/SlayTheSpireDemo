@@ -2,7 +2,7 @@
 
 Date: 2026-09-12
 
-Status: **IN PROGRESS — E1 STRUCTURAL CLEANUP ON MAIN**
+Status: **IN PROGRESS — E2 CLEANUP IMPLEMENTED / VALIDATION PENDING**
 
 ## Entry condition
 
@@ -33,7 +33,9 @@ CardPlayed/CardZoneChanged remain Blocking; buffered card input is G9
 
 ## E1 — Remove physical compatibility-debt state
 
-Completed on main:
+Completed on main and UE5.8 Development Editor build **PASS** was reported before E2 began.
+
+Completed cleanup:
 
 - removed `CompatibilityDebtSeconds` from `UBattlePresentationController`
 - removed `CompatibilityDebtTimerHandle`
@@ -42,13 +44,13 @@ Completed on main:
 - removed TimerManager/world debt servicing code from the detached-Damage implementation file
 - updated G8-D tests to validate only external NonBlocking behavior instead of obsolete debt internals
 
-The old debt-named Controller helper methods remain temporarily as **stateless call-site migration wrappers**. They own no timer and no accumulated duration. This isolates E1 from chronology-order refactoring in `BattlePresentationController.cpp`.
+E1 intentionally retained stateless debt-named call-site migration wrappers so physical state removal could be compiled independently before chronology call sites were cleaned.
 
 ## E2 — Remove debt-named call-site migration wrappers
 
-Pending after E1 compile/regression validation.
+Implemented on main; compile/regression validation is pending.
 
-Target cleanup:
+Removed production helper surface:
 
 ```text
 AddCompatibilityDebtForCommittedDamage
@@ -60,7 +62,13 @@ HasCompatibilityDebt
 IsExactReadSurfaceCaughtUpForDebtService
 ```
 
-Expected replacement shape:
+Replacement production helper:
+
+```text
+RefreshInputIfPresentationCaughtUp
+```
+
+Current behavior:
 
 ```text
 Damage formal commit
@@ -70,7 +78,8 @@ accepted/new chronology
 → no debt pause operation
 
 chronology/read-ready completion
-→ exact RefreshLiveInputBindingsIfCaughtUp path only
+→ RefreshInputIfPresentationCaughtUp
+→ ViewModel RefreshLiveInputBindingsIfCaughtUp remains the exact read/revision guard
 
 Skip/session invalidation/replacement
 → cosmetic cleanup only; no debt cleanup state exists
@@ -79,11 +88,21 @@ SetWidget in-flight detection
 → active envelope / playback queue only
 ```
 
-E2 is structural cleanup only. It must not alter SessionToken rules, reducer order, Blocking fallback, FastInput fencing, or ViewModel readiness guards.
+Static current-main inspection confirms no `CompatibilityDebt` symbol remains in:
+
+```text
+BattlePresentationController.h
+BattlePresentationController.cpp
+BattlePresentationControllerG8C.cpp
+```
+
+Historical G8-C design/evidence documentation intentionally retains compatibility-debt terminology because it describes the earlier staging contract; G8-E does not rewrite historical evidence.
+
+E2 is structural cleanup only. It does not authorize changes to SessionToken rules, reducer order, Blocking fallback, FastInput fencing, card Presentation overlap, or ViewModel readiness guards.
 
 ## E integration matrix
 
-After E2, rerun at minimum:
+After E2 build passes, rerun at minimum:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G8D
@@ -127,4 +146,4 @@ G8-D NonBlocking behavior is unchanged
 G9 non-goals remain untouched
 ```
 
-After G8-E completes, proceed to **G8-F — Evidence / Seal**. G8-F records the final build, Automation, PIE evidence and freezes the G8 implementation; it does not introduce new presentation behavior.
+After G8-E completes, proceed to **G8-F — Evidence / Seal**. G8-F records the final build, Automation and PIE evidence and freezes the G8 implementation; it does not introduce new presentation behavior.
