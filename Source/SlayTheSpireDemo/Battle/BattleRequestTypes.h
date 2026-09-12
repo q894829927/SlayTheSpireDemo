@@ -2,6 +2,35 @@
 
 #include "CoreMinimal.h"
 
+// G9 Gameplay-owned identity for one exact authoritative player turn.  This is
+// deliberately independent from PresentationSessionToken: Presentation may be
+// replaced or absent while the same Gameplay turn remains authoritative.
+struct SLAYTHESPIREDEMO_API FPlayerTurnAuthorityToken
+{
+	uint64 BattleId = 0;
+	uint64 PlayerTurnSerial = 0;
+
+	bool IsValid() const
+	{
+		return BattleId > 0 && PlayerTurnSerial > 0;
+	}
+
+	friend bool operator==(
+		const FPlayerTurnAuthorityToken& A,
+		const FPlayerTurnAuthorityToken& B)
+	{
+		return A.BattleId == B.BattleId
+			&& A.PlayerTurnSerial == B.PlayerTurnSerial;
+	}
+
+	friend bool operator!=(
+		const FPlayerTurnAuthorityToken& A,
+		const FPlayerTurnAuthorityToken& B)
+	{
+		return !(A == B);
+	}
+};
+
 enum class EGameplayRequestFailureReason : uint8
 {
 	None,
