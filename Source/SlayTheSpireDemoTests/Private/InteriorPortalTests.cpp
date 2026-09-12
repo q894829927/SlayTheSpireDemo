@@ -40,7 +40,8 @@ bool FInteriorPortalProjectionTest::RunTest(const FString& Parameters)
 	const FMatrix Base = FReversedZPerspectiveMatrix(PI/4, 1920, 1080, 1);
 	for (const FVector4 Plane : {FVector4(0,0,1,-50), FVector4(.2,-.1,1,-50)})
 	{
-		const FMatrix Projection = InteriorPortalMath::ObliqueProjection(Base, Plane);
+		FMatrix Projection;
+		TestTrue(TEXT("Valid oblique plane builds a projection"), InteriorPortalMath::TryObliqueProjection(Base, Plane, Projection));
 		const FVector4 OnPlane(20,10,50-20*Plane.X-10*Plane.Y,1);
 		const FVector4 Clip = Projection.TransformFVector4(OnPlane);
 		TestTrue(TEXT("Exit plane is reversed-Z near boundary"), FMath::IsNearlyEqual(Clip.Z, Clip.W,.001));
@@ -50,6 +51,9 @@ bool FInteriorPortalProjectionTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Exit room remains visible"), Front.Z < Front.W && Front.Z > 0);
 		TestTrue(TEXT("Screen alignment unchanged"), FMath::IsNearlyEqual(Clip.X,Base.TransformFVector4(OnPlane).X,.001));
 	}
+	FMatrix InvalidProjection;
+	TestFalse(TEXT("Degenerate clip plane is rejected instead of silently unclipping"),
+		InteriorPortalMath::TryObliqueProjection(Base, FVector4(0,0,0,0), InvalidProjection));
 	return true;
 }
 
@@ -61,7 +65,15 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 	AInteriorPortalSystem* System=World->SpawnActor<AInteriorPortalSystem>();
 	AInteriorPortal* A=World->SpawnActor<AInteriorPortal>();
 	AInteriorPortal* B=World->SpawnActor<AInteriorPortal>();
-	TestTrue(TEXT("Portal surface faces the crossing frame normal"), A->Surface->GetUpVector().Equals(A->GetActorForwardVector(),.001));
+	const FTransform LogicalFrame(FRotator(0,35,0), FVector(100,200,300));
+	A->SetActorTransform(LogicalFrame);
+	A->SurfaceVisualBias = .75f;
+	A->RefreshAppearance();
+	TestTrue(TEXT("Portal actor transform remains the logical aperture frame"), A->GetLogicalFrame().Equals(LogicalFrame,.001));
+	TestTrue(TEXT("Visual surface bias does not move the logical frame"),
+		A->Surface->GetComponentLocation().Equals(LogicalFrame.TransformPosition(FVector(.75f,0,0)),.001));
+	TestTrue(TEXT("Portal surface faces the crossing frame normal"), A->Surface->GetUpVector().Equals(A->GetLogicalFrame().GetUnitAxis(EAxis::X),.001));
+	TestEqual(TEXT("Native SceneCapture clipping is the default P1 path"), System->RenderClipMode, EInteriorPortalRenderClipMode::NativeClipPlane);
 	System->BluePortal=A; System->OrangePortal=B;
 	TestTrue(TEXT("Explicit placed pair is linked"),System->IsLinked());
 	System->OrangePortal=A;
