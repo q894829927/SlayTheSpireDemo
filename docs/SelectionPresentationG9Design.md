@@ -1,6 +1,6 @@
-# Selection Presentation G9 — Buffered Card Input + Detached Card Presentation
+# Selection Presentation G9 — Buffered Player Input + Detached Card Presentation
 
-Date: **2026-09-12**
+Date: **2026-09-13**
 
 Status: **DESIGN REVIEWED / NOT IMPLEMENTED / NOT SEALED**
 
@@ -8,182 +8,246 @@ Authority baseline: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8F
 
 G8 is sealed. G9 is a new initiative and must not reopen sealed G8 behavior for speculative cleanup.
 This document defines the reviewed scope, sequencing, ownership rules, stale fencing, migration strategy,
-and acceptance criteria for buffered next-card **selection** and detached played-card visual tails. It does
-**not** authorize production implementation by itself.
-
-This revision freezes the following architecture decisions before G9 implementation begins:
+and acceptance criteria for two player-facing improvements:
 
 ```text
-1. ExpectedReadyRevision is Controller-authoritative and must identify an already-sealed normal player surface; it is never predicted.
-2. A buffered card click replays card selection only. It never replays Confirm or Target input.
-3. Buffered-intent ownership and replay are event/readiness driven, never cosmetic-tick driven.
-4. A second physical click re-captures its exact credential; RuntimeId-only replacement is allowed only when the credential is identical.
-5. Card presentation gets a Controller-owned played-card lifecycle identity separate from RuntimeId and separate from visual-job identity.
-6. Detached card jobs own all per-instance animation phase/geometry/elapsed state; no singleton animation state may be shared across jobs.
-7. Detached card visuals live in a dedicated non-interactive host and never occupy formal OV_PlayArea / Hand ownership surfaces.
-8. Card historical reducer semantics are centralized before NonBlocking activation; visual eligibility is a separate concern.
-9. G9-D is split into D1 destination-tail detach first, then D2 CardPlayed-arrival detach.
-10. D2 CardPlayed detach is allowed only when the matching future PlayArea destination lifecycle is already sealed and exactly correlatable.
-11. Other committed Records may exist between the card-visual anchor and the exact target player surface; buffering does not imply Skip.
-12. Feature disable always clears buffered intent. Already-committed card lifecycle correlation remains long enough to finish formal chronology safely.
-13. Hand hover is split from structural layout, and non-Hand ViewModel updates must not needlessly rebuild the formal Hand.
+1. buffered player input
+   - buffered card selection
+   - buffered EndTurn intent
+
+2. detached played-card visual presentation
 ```
+
+This document does **not** authorize production implementation by itself.
+
+The reviewed G9 architecture freezes these principles before implementation begins:
+
+```text
+1. Gameplay remains serial and authoritative even when Presentation visuals overlap.
+2. Presentation animation alone must not own EndTurn availability.
+3. During the player's turn, EndTurn remains available through ordinary animation and ordinary resolving;
+   if it cannot execute safely yet, the EndTurn intent is buffered.
+4. Authoritative mandatory selection is the primary player-turn condition that disables EndTurn.
+5. Buffered EndTurn has priority over an older buffered card selection.
+6. A buffered EndTurn never calls SkipPresentation merely to become executable.
+7. A buffered card click replays card selection only; it never replays Confirm or Target input.
+8. ExpectedReadyRevision for buffered card selection is Controller-authoritative and already sealed; it is never predicted.
+9. Buffered-input ownership and replay are readiness/event driven, never cosmetic-tick driven.
+10. Card Presentation gets a Controller-owned played-card lifecycle identity separate from RuntimeId and visual-job identity.
+11. Detached card jobs own all per-instance phase/geometry/elapsed/opacity/scale state.
+12. Detached card visuals live in a dedicated non-interactive host and never occupy formal Hand / OV_PlayArea ownership.
+13. Card historical reducer semantics are centralized before NonBlocking activation.
+14. G9-D is split into D1 destination-tail detach first and D2 CardPlayed-arrival detach second.
+15. D2 is allowed only when the future supported PlayArea destination is already sealed and exactly correlatable.
+16. Feature disable clears buffered player input, while already-required formal card lifecycle correlation survives long enough to finish chronology safely.
+17. Hand hover is separated from structural layout; unrelated ViewModel publications must not needlessly rebuild the formal Hand.
+```
+
+---
 
 ## 1. Goal
 
-G9 targets the following player experience:
+G9 targets a Slay-the-Spire-like input feel without sacrificing deterministic Gameplay chronology.
+
+### 1.1 Card-selection experience
 
 ```text
 play card A
-→ A card Presentation continues
+→ A Presentation continues
 
 while A visual is still alive:
 → surviving formal Hand card B can hover / raise normally
 → clicking B does not Skip A merely because A is still visible
 
-if the exact normal player-card surface is not displayed yet:
-→ capture one buffered selection intent for B
+if the exact normal player-card selection surface is not displayed yet:
+→ capture one buffered card-selection intent for B
 → do not execute B Gameplay early
 
-when the exact sealed player-card surface is reached:
+when the exact sealed player-card surface is displayed:
 → revalidate Battle / Session / revision / RuntimeId / legality
-→ replay B selection exactly once if still valid
+→ replay SelectCard(B) exactly once if still valid
 ```
 
-Important interaction semantics:
+The buffered click is selection only:
 
 ```text
-buffered click B
-→ later replays SelectCard(B) only
+buffered B has no target
+→ replay enters ReadyToConfirm
+→ NEW physical Confirm is required
 
-if B has no target:
-→ enters ReadyToConfirm
-→ requires a NEW physical Confirm input
-
-if B requires a target:
-→ enters ChoosingTarget
-→ requires a NEW physical Target input
+buffered B requires a target
+→ replay enters ChoosingTarget
+→ NEW physical Target click is required
 ```
 
-The old click must never cross two interaction-state transitions. G9 does not convert the current
-selection/confirm/target interaction model into click-to-autoplay.
+One old click must never cross multiple interaction-state transitions.
 
-After the fresh Confirm/Target input is accepted, B Gameplay and B Presentation may begin while A's old
-cosmetic card tail is still alive.
+### 1.2 EndTurn experience
 
-Core invariant:
+During an authoritative player turn, ordinary Presentation or ordinary resolving must not make the EndTurn
+control unavailable merely because visuals/chronology are still catching up.
 
-> **G9 may overlap card visual lifetimes, but it must not overlap authoritative Gameplay resolutions.**
-
-The authoritative flow remains:
+Desired behavior:
 
 ```text
-physical input
-→ exact interaction request
-→ BattleActionQueue / reducer / committed Presentation facts
-→ exact player-facing read boundary
-→ next legal physical/request boundary
+DamageNumber is still alive
+→ EndTurn can be clicked
+
+card A is still flying to PlayArea / Discard / Exhaust
+→ EndTurn can be clicked
+
+Draw / Shuffle / Status / other ordinary Presentation is still playing
+→ EndTurn can be clicked
+
+ordinary Gameplay resolution is still finishing
+→ EndTurn can be clicked
+→ request is buffered if it cannot safely execute yet
 ```
 
-Visual overlap is never permission to speculatively execute future Gameplay.
-
-## 2. Current baseline and why G9 needs separate architecture
-
-### 2.1 FastInput currently means catch-up by Skip
-
-The G8-sealed FastInput path captures:
+If EndTurn is already safe and legal, execute it normally. If not:
 
 ```text
-SessionToken + BattleId + ExpectedCatchUpRevision
+physical EndTurn click
+→ capture one BufferedEndTurnIntent
+→ do not Skip Presentation
+→ wait for the next exact legal EndTurn surface
+→ revalidate authority
+→ execute EndTurn exactly once
 ```
 
-and, when real Blocking chronology owns the delay, performs:
+The main exception is authoritative mandatory selection:
 
 ```text
-click
+"choose one card to exhaust"
+"choose N cards to discard"
+other PendingCardSelection / mandatory card-choice contract
+→ EndTurn is disabled/rejected until that mandatory decision is completed
+```
+
+`ReadyToConfirm` and `ChoosingTarget` are **not** mandatory selections. EndTurn remains available there:
+
+```text
+EndTurn from ReadyToConfirm
+→ cancel the transient selected-card state
+→ EndTurn immediately or buffer it until safe
+
+EndTurn from ChoosingTarget
+→ cancel the transient target/card selection
+→ EndTurn immediately or buffer it until safe
+```
+
+### 1.3 Core invariant
+
+> **G9 may overlap visual lifetimes and may buffer player intent, but it must never overlap authoritative Gameplay resolutions.**
+
+The authoritative flow remains serial:
+
+```text
+physical player intent
+→ exact legal request boundary
+→ Gameplay / BattleActionQueue / reducer
+→ committed Presentation facts
+→ next exact legal request boundary
+```
+
+Visual overlap and buffered input never authorize speculative Gameplay.
+
+---
+
+## 2. Blocking semantics after G9
+
+G9 separates three concepts that must no longer be conflated:
+
+```text
+A. Controller/Presentation Blocking
+B. card-selection availability
+C. EndTurn availability
+```
+
+A Presentation record may remain Blocking for Controller chronology and may still block ordinary card
+selection, while **not** disabling the EndTurn button.
+
+Example:
+
+```text
+DrawPile -> Hand remains Blocking in G9 v1
+
+meaning:
+→ Controller still waits for the draw Presentation contract
+→ ordinary next-card interaction may remain unavailable
+
+but NOT meaning:
+→ EndTurn button must be disabled solely because the draw animation is playing
+```
+
+EndTurn has its own authority contract in §7.
+
+---
+
+## 3. Current baseline and why G9 needs separate architecture
+
+### 3.1 G8 FastInput is catch-up by Skip
+
+The sealed FastInput card path captures an exact catch-up credential and, when real Blocking chronology owns
+the delay, may perform:
+
+```text
+card click
+→ capture exact catch-up target
 → SkipPresentation()
-→ next-tick exact retry
+→ exact retry
 ```
 
-That is correct for explicit catch-up. It is not a buffered-input scheduler and must remain sealed.
+That remains valid for its existing purpose. G9 does not reinterpret every card click as buffered input.
 
-G9 therefore introduces a distinct buffered-selection contract whose normal path is:
+### 3.2 Hand interaction currently mixes layout and hover
+
+Current Native Hand interaction couples layout work and hover transforms. G9-B must separate:
 
 ```text
-click
-→ capture exact intent
-→ DO NOT Skip
-→ wait for exact already-known target surface
-→ replay selection once
+formal Hand structural reconciliation
+from
+visual-only hover affordance
 ```
 
-### 2.2 Hand hover currently mixes structural and affordance work
+Unrelated HP/Status/Energy publications must not needlessly destroy/recreate Hand Widgets.
 
-Current Native Hand interaction is gated while tracked/native Presentation is active. In addition,
-`UBattleHandFanPanel::UpdateInteraction()` performs layout work before hover transforms, and the HUD's
-normal ViewModel refresh path can rebuild the formal Hand even when a publication changed only unrelated
-surfaces.
+### 3.3 Card Presentation currently has singleton ownership
 
-G9 must separate:
+The sealed R8 lifecycle retains one played-card Widget across `CardPlayed -> PlayArea destination`, while the
+Native animation path also stores singleton moving-card animation state.
 
-```text
-A. formal Hand structural reconciliation
-   card set / slot order / authoritative membership / base geometry
+True overlap requires per-lifecycle and per-job ownership; converting one pointer into an array is insufficient.
 
-B. hover affordance
-   visual-only raise / scale / angle / z-order on surviving formal Hand cards
-```
+### 3.4 Detached visuals cannot live in formal PlayArea
 
-A non-Hand publication must not destroy/recreate the Hand merely to refresh HP, Status, Energy or another
-unrelated surface. Equivalent dirty-aware/stable-widget behavior is required before G9-B can claim hover
-continuity.
+Formal `OV_PlayArea` has historical shape/child-count semantics. Old detached tails inside that container
+would contaminate later `CardPlayed` validation.
 
-### 2.3 Card lifecycle currently has singleton cross-record ownership
+G9 therefore requires a dedicated non-interactive detached-card visual host.
 
-The sealed R8 lifecycle intentionally retains one `NativePlayedCardWidget` from `CardPlayed` finish until
-the matching `PlayArea -> destination` Record.
-
-The Native card animation also stores singleton state such as active moving Widget, phase kind, elapsed
-time, start/end geometry, scale and opacity.
-
-Therefore this migration is insufficient:
-
-```text
-NativePlayedCardWidget
-→ TArray<Widget>
-```
-
-G9 needs true per-lifecycle/per-job ownership before two old/new card visuals can coexist.
-
-### 2.4 Formal PlayArea and detached card visuals cannot share a container
-
-Current R8 historical checks assume the formal `OV_PlayArea` has the exact expected child shape for a new
-`CardPlayed` Record. An old A tail left inside that container would make B CardPlayed fail historical/visual
-preconditions.
-
-G9 therefore freezes a dedicated detached-card visual host. Old tails must not consume formal PlayArea or
-formal Hand child ownership.
-
-### 2.5 G8 authority remains unchanged
-
-G9 reuses the sealed G8 authority distinction:
+### 3.5 PresentationOwned versus DirectBaseline remains sealed
 
 ```text
 PresentationOwned
-→ valid Controller + exact PresentationSessionToken
+→ Controller + exact PresentationSessionToken
 
 DirectBaseline
-→ intentional sessionless direct delivery
+→ intentionally sessionless direct delivery
 ```
 
-G9 buffered Presentation lag exists only in `PresentationOwned` mode. DirectBaseline has no Controller-owned
-card chronology to buffer through and does not receive a fake SessionToken.
+Buffered card Presentation-lag behavior is PresentationOwned-only.
 
-## 3. Scope
+EndTurn in DirectBaseline follows the normal direct legal EndTurn path. G9 does not fabricate a fake
+PresentationSessionToken for DirectBaseline.
 
-### 3.1 G9 v1 card Presentation scope
+---
 
-The reviewed v1 target includes:
+## 4. G9 v1 scope
+
+### 4.1 Detached card Presentation scope
+
+Reviewed candidates:
 
 ```text
 CardPlayed
@@ -192,23 +256,21 @@ PlayArea -> ExhaustPile
 PlayArea -> RemovedPile
 ```
 
-Activation is intentionally staged:
+Activation is staged:
 
 ```text
 G9-D1
-→ detach PlayArea -> destination tail first
+→ detach PlayArea -> destination tails
 → CardPlayed arrival remains Blocking
 
 G9-D2
-→ detach CardPlayed arrival only after D1 is proven
-→ support destination command arriving before visual arrival finishes
+→ detach CardPlayed arrival
+→ destination may formally commit before visual arrival finishes
 ```
 
-Both D1 and D2 belong to the full G9 v1 scope unless a later explicit scope amendment removes D2.
+### 4.2 Presentation paths that remain Blocking in v1
 
-### 3.2 Remain Blocking in G9 v1
-
-Unless separately amended, these remain Blocking:
+Unless amended later:
 
 ```text
 DrawPile -> Hand
@@ -219,35 +281,121 @@ G6 multi-selection Group
 Shuffle
 PendingSelection presentation
 TargetChoice presentation
-formal Energy / HP / Block / Status updates
+formal Energy / HP / Block / Status chronology
 Terminal / unavailable / recovery
 ```
 
-G9 is not a universal Presentation concurrency framework.
+Again: **Blocking here does not automatically mean EndTurn-disabled.**
 
-### 3.3 Buffered intent scope
+### 4.3 Buffered player-input scope
 
-First version buffers **one card-selection intent only**.
+G9 v1 supports two mutually exclusive buffered player intents:
+
+```text
+BufferedCardSelection
+BufferedEndTurn
+```
 
 It does not buffer:
 
 ```text
-EndTurn
 Confirm
 Cancel
 Target click
 PendingSelection submit/cancel
 multiple future card commands
+multiple EndTurn commands
 ```
 
-A buffered target-requiring card may later enter `ChoosingTarget`, but the target requires a fresh physical
-click. A buffered no-target card may later enter `ReadyToConfirm`, but Confirm also requires a fresh click.
+There is at most one pending G9 player intent at a time.
 
-## 4. Buffered card intent authority
+Conceptually:
 
-### 4.1 Separate target credential, capture-window identity and requested RuntimeId
+```cpp
+enum class EBufferedPlayerIntentKind : uint8
+{
+    None,
+    CardSelection,
+    EndTurn
+};
+```
 
-Conceptually the buffered state is:
+Exact implementation shape is not frozen.
+
+---
+
+## 5. Buffered input ownership and arbitration
+
+### 5.1 One owner
+
+One battle-HUD input owner owns at most one pending G9 player intent.
+
+Do not duplicate pending intent state independently across HUD, ViewModel and Controller.
+
+Responsibilities:
+
+```text
+Controller
+→ mints exact Presentation authority credentials
+
+ViewModel/Battle
+→ owns current interaction legality / Gameplay legality
+
+G9 input owner
+→ owns the one pending physical player intent
+```
+
+### 5.2 EndTurn wins over an older card intent
+
+When a physical EndTurn click is accepted:
+
+```text
+clear BufferedCardSelection first
+cancel/retire any pending G9 card replay
+cancel transient ReadyToConfirm / ChoosingTarget selection if present
+then execute EndTurn now or store BufferedEndTurn
+```
+
+An old card click must never fire after the player has explicitly requested EndTurn.
+
+If a sealed G8 FastInput card retry has already been scheduled, G9 integration must ensure an accepted
+EndTurn cannot be followed by that stale retry. This may require a narrow cancellation/retirement hook, but
+must not change G8 FastInput catch-up semantics outside the explicit G9 arbitration path.
+
+### 5.3 Buffered EndTurn is decisive
+
+Once a `BufferedEndTurn` has been accepted for the current player-turn authority window:
+
+```text
+new ordinary card selections are not accepted/buffered
+until EndTurn executes or the EndTurn intent is invalidated
+```
+
+This mirrors a normal EndTurn click: once the command is accepted, it is the player's terminal command for
+that current turn-input window.
+
+### 5.4 Replay/evaluation is event driven
+
+Buffered input evaluation may be triggered by authoritative Presentation/ViewModel/readiness transitions.
+
+It must not be driven by:
+
+```text
+NativeTick polling for Gameplay readiness
+DamageNumber completion
+DetachedCardVisualJob completion
+arbitrary cosmetic timer expiry
+```
+
+Cosmetic NativeTick may animate private jobs only.
+
+---
+
+## 6. Buffered card-selection authority
+
+### 6.1 Identity
+
+Conceptual state:
 
 ```cpp
 struct FBufferedCardTargetCredential
@@ -259,11 +407,9 @@ struct FBufferedCardTargetCredential
 
 struct FBufferedCardWindowIdentity
 {
-    // Exact provenance of the card Presentation window in which the physical click occurred.
     int64 SourceResolutionId = 0;
     int64 SourcePresentationSequence = 0;
     uint64 LocalWindowGeneration = 0;
-    // Implementation may additionally encode Blocking-playback vs detached-job anchor kind.
 };
 
 struct FBufferedCardIntent
@@ -274,26 +420,11 @@ struct FBufferedCardIntent
 };
 ```
 
-Exact type names/layout are not frozen, but the three responsibilities are:
+RuntimeId is Gameplay card identity, not visual-job identity.
 
-```text
-Target credential
-→ authoritative future replay surface
+### 6.2 ExpectedReadyRevision is exact and already sealed
 
-Capture-window identity
-→ proves whether two physical clicks happened in the same exact bufferable visual window
-
-RuntimeId
-→ requested authoritative card instance
-```
-
-`RuntimeId` is not a visual-job identity and cannot replace `CaptureWindow`.
-
-### 4.2 ExpectedReadyRevision is minted by Controller authority only
-
-G9 must not predict a future revision and must not simply rename the current FastInput target capture.
-
-A Controller-authoritative helper conceptually provides:
+A Controller-authoritative helper such as:
 
 ```cpp
 bool TryCaptureBufferedCardTarget(
@@ -301,313 +432,391 @@ bool TryCaptureBufferedCardTarget(
     FBufferedCardTargetCredential& OutCredential) const;
 ```
 
-It may succeed only when all of the following are already true:
+may succeed only when the intended target player surface is already an exact frozen authoritative fact.
 
-```text
-PresentationOwned mode is current
-exact current PresentationSessionToken exists
-BattleId matches current Controller/ViewModel authority
-latest frozen Presentation baseline already exists
-latest frozen baseline is the exact intended target revision
-latest target outcome == None
-latest target BattleState is PlayerTurn
-exact player-facing read can be built for the SAME BattleId + StateRevision
-no authoritative PendingCardSelection owns that target boundary
-RequestedRuntimeId exists as the same authoritative card instance in the target Hand
-that target card is known player-facing/playable enough to justify buffering
-no unavailable / terminal / recovery ambiguity owns the capture
-```
-
-The target is therefore **already sealed authoritative state whose display is lagging**, not a guessed state
-that Gameplay may or may not reach.
-
-If the exact target player read does not exist yet, G9 buffering declines. It does not invent:
+It must not invent:
 
 ```text
 CurrentRevision + 1
-ActiveEnvelope.FinalStateRevision without validating the exact player-facing target
-latest integer revision regardless of mode
+numeric future revision guesses
+"eventually this should be player ready"
 ```
 
-### 4.3 Target remains exact while waiting
-
-While a buffered intent is waiting, a not-yet-displayed target is allowed to remain pending only while the
-Controller/Battle can still prove the same frozen target credential is current.
-
-Conceptually:
+Required authority includes, conceptually:
 
 ```text
-ViewModel.StateRevision != ExpectedReadyRevision
-+
-latest sealed target is still exactly ExpectedReadyRevision
-+
-same Session/Battle authority
-→ keep waiting
-
-latest sealed target changes to another revision
-→ buffered intent stale; drop
+PresentationOwned current
+exact SessionToken
+same BattleId
+latest frozen baseline exists
+baseline identifies the intended player-turn target
+Outcome == None
+no authoritative mandatory PendingCardSelection owns that target
+requested RuntimeId exists as the same authoritative card instance
+no unavailable / terminal / recovery ambiguity
 ```
 
-Do not use numeric ordering such as `<` or `>=` as authority. Revision numbers are exact identities, not
-permission ranges.
+### 6.3 Waiting and replay
 
-### 4.4 Exact replay rule
+While display is behind the exact target:
 
-Replay is permitted only when all of the following hold at one exact boundary:
+```text
+same Session/Battle
++
+latest sealed target is still the exact ExpectedReadyRevision
+→ wait
+
+sealed target changes
+→ stale; drop
+```
+
+Do not use `<`, `>`, or `>=` as authority ranges.
+
+Replay requires all exact conditions again, including:
+
+```text
+same SessionToken
+same BattleId
+latest frozen target still exact
+current displayed revision == ExpectedReadyRevision
+exact player-facing read matches
+Outcome == None
+normal card-selection surface
+no mandatory PendingSelection
+RuntimeId still in current authoritative Hand
+same card instance
+normal live QueryCardPlayability passes
+```
+
+Then:
+
+```text
+Take buffered card intent
+clear stored intent FIRST
+call normal SelectCardByRuntimeId(RuntimeId) once
+```
+
+Never automatically restore a failed/rejected old click.
+
+### 6.4 Repeated card clicks
+
+Each physical click captures authority again.
+
+```text
+same exact target credential + same capture window
+→ RuntimeId-only replacement is permitted
+
+different valid credential
+→ replace the whole buffered-card intent
+```
+
+Never attach a newly clicked card to an older credential accidentally.
+
+### 6.5 Card-intent stale boundaries
+
+Clear/drop on:
+
+```text
+Session replacement
+HUD / Controller / Battle replacement
+BattleId change
+authority transition / DirectBaseline
+presentation unavailable
+terminal
+mandatory PendingSelection boundary
+Global Skip / backlog collapse
+recovery involving target chronology
+runtime G9 disable
+sealed target revision replacement
+accepted EndTurn
+card leaving Hand / becoming illegal at replay
+```
+
+---
+
+## 7. Buffered EndTurn authority
+
+EndTurn intentionally uses a different contract from exact-target card selection.
+
+A card selection is tied to one exact future player-card surface. EndTurn represents:
+
+> **"End this same authoritative player turn at the next legal EndTurn boundary."**
+
+It therefore must not guess one exact future revision just to remain pending.
+
+### 7.1 Conceptual identity
+
+```cpp
+struct FBufferedEndTurnIntent
+{
+    FPresentationSessionToken SessionToken;
+    int64 BattleId = 0;
+    int64 CaptureStateRevision = 0; // provenance/diagnostic, not a replay target
+    uint64 LocalIntentGeneration = 0;
+};
+```
+
+Exact shape may differ.
+
+`CaptureStateRevision` must not be interpreted as `ExpectedReadyRevision` and must not authorize numeric
+range replay.
+
+### 7.2 EndTurn button availability contract
+
+During the player's turn, the EndTurn control should remain available unless an authoritative rule requires
+it to be unavailable.
+
+EndTurn is enabled/accepting through:
+
+```text
+ordinary Idle
+ReadyToConfirm
+ChoosingTarget
+ordinary Resolving
+Blocking Presentation animation
+Draw / Shuffle animation
+Damage / Status Presentation
+CardPlayed animation
+Detached card tails
+multiple detached cosmetics
+```
+
+The following disable/reject EndTurn:
+
+```text
+not PlayerTurn
+Outcome != None
+Terminal
+PresentationUnavailable / unsafe recovery
+Battle/authority unavailable
+active authoritative mandatory card-selection contract
+```
+
+The implementation must not use a generic `bInputLocked`/`Resolving` test as the sole EndTurn enable rule.
+Card-selection input and EndTurn input now have different availability contracts.
+
+### 7.3 What counts as mandatory selection
+
+Mandatory selection means the battle has an authoritative decision that must be answered before the player
+may leave the turn, for example:
+
+```text
+PendingCardSelection
+choose one card to exhaust
+choose N cards to discard
+mandatory choose-from-selection-area contract
+```
+
+Presentation animation associated with a selection is not itself the blocker. The authoritative unresolved
+selection contract is the blocker.
+
+Once the mandatory selection has been resolved, a trailing visual animation alone does not keep EndTurn
+disabled.
+
+`ReadyToConfirm` and `ChoosingTarget` are cancelable transient card-play states, not mandatory selections.
+
+### 7.4 Immediate EndTurn path
+
+On physical EndTurn click:
+
+```text
+1. reject if mandatory selection / terminal / unavailable / not player turn
+2. clear old BufferedCardSelection
+3. cancel transient ReadyToConfirm / ChoosingTarget state through the normal cancel contract if needed
+4. re-evaluate EndTurn legality
+5. if exact safe EndTurn request is legal now:
+      execute normal RequestEndTurn once
+   else:
+      capture BufferedEndTurn
+```
+
+Do not call `SkipPresentation()` merely to make EndTurn legal sooner.
+
+### 7.5 Buffered EndTurn replay rule
+
+A pending EndTurn may execute only when all current authority checks pass:
 
 ```text
 same exact PresentationSessionToken
 same BattleId
-latest frozen baseline is still ExpectedReadyRevision
-current displayed ViewModel StateRevision == ExpectedReadyRevision
-exact player-facing read == BattleId + ExpectedReadyRevision
 Outcome == None
-InteractionState == Idle / normal player-card selection surface
-bInputLocked == false
-no authoritative PendingCardSelection
-RuntimeId exists in current displayed Hand
-RuntimeId resolves to the same live authoritative card instance
-normal Gameplay QueryCardPlayability passes now
-no newer decision surface superseded the intent
+battle is still the same PlayerTurn authority window
+no authoritative mandatory selection
+no terminal / unavailable / recovery ambiguity
+normal Gameplay EndTurn legality passes now
+action/resolution boundary is safe for one EndTurn request
 ```
 
-Then and only then:
+Then:
 
 ```text
-replay SelectCardByRuntimeId(RuntimeId) once
+Take BufferedEndTurn
+clear stored intent FIRST
+call normal RequestEndTurn once
 ```
 
-The replay does not call Confirm, Target, EndTurn or Skip.
+The request is consumed even if the final normal EndTurn request rejects because authority changed
+synchronously during the boundary.
 
-### 4.5 Buffered-intent owner and replay trigger
+### 7.6 Mandatory selection supersedes old EndTurn
 
-G9 v1 uses one UI-side owner for at most one `FBufferedCardIntent`. The exact class may be HUD-owned or an
-equivalent battle-HUD input owner, but ownership must not be duplicated between HUD, ViewModel and Controller.
-
-The Controller owns **target credential minting**. The ViewModel/Battle own **current readiness and Gameplay
-legality**. The buffered-input owner owns only the pending physical intent.
-
-Replay evaluation is triggered by authoritative Presentation/ViewModel/readiness transitions, for example
-a dedicated readiness notification or an equivalent ViewModel-change hook.
-
-It must **not** be driven by:
+If an authoritative mandatory selection appears before a buffered EndTurn executes:
 
 ```text
-NativeTick polling
-card visual completion callback alone
-DamageNumber completion
-DetachedCardVisualJob completion
-arbitrary timer expiry
+clear BufferedEndTurn
+show/enter the mandatory selection normally
+require fresh player action after that selection is resolved
 ```
 
-### 4.6 Atomic consume before normal selection request
+An old EndTurn click must never cross a newly introduced mandatory decision boundary.
 
-To prevent synchronous ViewModel broadcasts/reentrancy from replaying the same click twice:
+### 7.7 EndTurn stale/clear boundaries
 
-```text
-exact ready + exact revalidation
-→ move/take buffered intent to a local value
-→ clear stored buffered intent FIRST
-→ call the existing normal SelectCardByRuntimeId path
-→ never restore the old intent automatically
-```
-
-If normal selection is rejected by the final Gameplay query, the consumed old click remains consumed.
-
-### 4.7 Stale fencing / mandatory clear boundaries
-
-The buffered intent is cleared on:
+Clear a pending EndTurn on:
 
 ```text
-PresentationSessionToken replacement
-HUD / Controller / battle replacement
+Session replacement
+HUD / Controller / Battle replacement
 BattleId change
-authority transition
-DirectBaseline transition
-presentation unavailable
-terminal transition
-new authoritative PendingSelection boundary
-ordinary Global Skip / backlog collapse
-active-envelope recovery/reconcile involving its target chronology
+authority transition / DirectBaseline transition where buffered Presentation authority no longer applies
+terminal
+presentation unavailable / unsafe recovery
+mandatory PendingSelection appears
+battle leaves PlayerTurn before the buffered request executes
+EndTurn executes successfully
 runtime G9 disable
-latest sealed target revision changing away from ExpectedReadyRevision
-new physical input choosing a different non-buffer path
+Global Skip/recovery if its exact capture authority can no longer be proven
 ```
 
-Card leaving Hand or becoming unplayable at replay also consumes/drops the intent.
+Detached cosmetic completion does **not** clear EndTurn.
 
-Clearing a buffered intent never triggers Skip and never emits Gameplay.
+### 7.8 Presentation must not own EndTurn lock
 
-### 4.8 Repeated physical clicks
+A pure detached visual never controls EndTurn readiness.
 
-Every physical card click must re-evaluate the current capture opportunity.
+Likewise, a still-Blocking Presentation record may delay **execution** of EndTurn if chronology is not yet at
+a safe Gameplay boundary, but the player may still press the EndTurn button and create one pending intent.
 
-If the new click produces the exact same:
+This distinction is mandatory:
 
 ```text
-TargetCredential
-+
-CaptureWindowIdentity
+UI accepts EndTurn intent
+!=
+Gameplay EndTurn executes immediately
 ```
 
-then the implementation may replace only the buffered `RuntimeId`.
+---
 
-If the new click produces a different valid credential, the new physical click may replace the **entire**
-old intent with the new credential + RuntimeId.
+## 8. Relationship with sealed FastInput
 
-Never bind a newly clicked RuntimeId to an older credential merely because a buffer already exists.
-
-If the new click follows another route, such as sealed FastInput catch-up, clear the old G9 buffer before
-starting that route so two different physical intents cannot later fire.
-
-## 5. Buffered-input window classification
-
-The presence of Presentation is not blanket permission to buffer.
-
-### Case A — exact normal surface already ready
+G9 has three different mechanisms:
 
 ```text
-normal card selection is legal now
-→ clear any stale prior G9 buffer
-→ SelectCard normally
-→ no buffering
+G8 FastInput card catch-up
+→ physical card click chooses Skip of real Blocking chronology
+→ exact catch-up retry
+
+G9 buffered card selection
+→ physical card click during exact G9 card visual window
+→ no Skip
+→ exact sealed card-selection replay later
+
+G9 buffered EndTurn
+→ physical EndTurn click during same player turn
+→ no Skip merely because Presentation exists
+→ execute at next legal EndTurn boundary
 ```
 
-### Case B1 — Blocking card-presentation anchor
-
-Used by G9-B and still available later when appropriate:
+For a physical card click, preserve the reviewed order:
 
 ```text
-current exact visible/tracked card playback is an approved G9 card anchor
-+
-Controller can mint an exact sealed normal-player TargetCredential
-→ capture buffered card selection
-→ do not Skip
+1. normal card selection legal now? → normal selection
+2. exact G9 card-buffer window?      → buffered card selection
+3. sealed FastInput eligible?        → G8 catch-up path
+4. otherwise                          → normal reject/base behavior
 ```
 
-Approved first-version Blocking anchors are limited to the played-card lifecycle being migrated; this is not
-"any active Record".
+For a physical EndTurn click, use the EndTurn-specific path in §7.4 rather than routing through FastInput.
 
-### Case B2 — detached-card visual anchor
-
-Enabled only after the corresponding detached-card job infrastructure is validated:
+A pure detached card tail remains:
 
 ```text
-an exact current-session detached card job from the relevant played-card lifecycle is still alive
-+
-Controller can mint the exact sealed normal-player TargetCredential
-→ capture buffered selection
-→ do not Skip
+HasSkippablePresentationDelay() == false
 ```
 
-This allows an old A card visual to remain the UX anchor while Controller chronology continues through other
-committed Records such as Damage or Status before the target player surface is displayed.
+Detached visuals are never a reason to Skip.
 
-Those intermediate Records are allowed. Buffering does not require the card visual to be the **only**
-remaining chronology.
+---
 
-The contract is:
+## 9. Hand structural ownership versus hover affordance
 
-```text
-card visual = buffer capture anchor
-sealed normal-player baseline = replay authority
-intermediate chronology = must finish normally unless separately skipped by a NEW physical input route
-```
-
-### Case C — no G9 anchor / ambiguous or unsafe authority
-
-Examples:
-
-```text
-PendingSelection owns the request
-terminal / unavailable
-recovery ambiguity
-DirectBaseline
-no exact sealed normal-player target
-non-G9 Presentation with no active exact G9 card anchor
-```
-
-Do not create a buffered intent.
-
-After clearing any conflicting old buffer, preserve sealed FastInput behavior if the **new** physical click is
-FastInput-eligible; otherwise preserve the normal rejection/request path.
-
-## 6. Hand structural ownership vs hover affordance
-
-### 6.1 Structural Hand reconciliation
+### 9.1 Structural Hand reconciliation
 
 Structural work includes:
 
 ```text
-authoritative Hand card membership
+authoritative Hand membership
 slot/order changes
-base fan layout
 formal card Widget creation/removal
-arrival geometry used by committed Presentation
+base fan layout
+transition geometry
 ```
 
-It remains governed by reducer/Presentation ownership.
+It remains governed by authoritative state/reducer ownership.
 
-G9-B must avoid unconditional formal Hand rebuilds for ViewModel publications whose dirty state does not
-include a Hand change. Equivalent stable-widget reconciliation is acceptable.
+Non-Hand publications must not needlessly rebuild formal Hand Widgets.
 
-When Hand really changes, authoritative reconciliation wins and may reset hover state safely.
+### 9.2 Hover affordance
 
-### 6.2 Hover affordance
-
-Hover work includes only presentation transforms on surviving formal Hand cards:
+Hover-only work includes:
 
 ```text
-hover hit region
+hit region
 raise translation
 scale
-angle interpolation
+angle
 z-order
 ```
 
-A conceptually split API is preferred:
+Conceptually split APIs:
 
 ```cpp
-FanHand->ReconcileLayout(...);        // structural, only when required
-FanHand->UpdateHoverAffordance(...);  // hover-only, no LayoutCards side effect
+FanHand->ReconcileLayout(...);
+FanHand->UpdateHoverAffordance(...);
 ```
 
-Exact names are not frozen.
-
-Hover updates must not:
+Hover-only work must not:
 
 ```text
-call structural reconciliation implicitly
-reorder formal Hand
-move the active transient/detached card
-claim a card owned by PlayArea or a detached job
-write Gameplay selected-card state
+rebuild Hand
+reorder formal cards
+move a transient/detached card
+claim PlayArea ownership
+mutate Gameplay selected-card state
 mutate reducer state
 restore a hidden historical source card
-invalidate frozen transition geometry
 ```
 
-Only currently visible/enabled formal Hand cards can be hover candidates. The historical source card hidden
-for A CardPlayed is not a hover target.
+Only current formal visible Hand cards are hover candidates.
 
-## 7. Played-card lifecycle identity and detached visual ownership
+---
+
+## 10. Played-card lifecycle identity and detached visual ownership
 
 G9 separates three identities:
 
 ```text
-Gameplay card identity
-→ RuntimeId
+RuntimeId
+→ Gameplay card instance
 
-played-card Presentation lifecycle occurrence
-→ Controller-owned FPlayedCardPresentationLifecycleToken
+PlayedCardPresentationLifecycleToken
+→ one exact CardPlayed -> destination Presentation occurrence
 
-private visual instance
-→ FDetachedCardVisualToken
+DetachedCardVisualToken
+→ one private visual job occurrence
 ```
 
-They are not interchangeable.
-
-### 7.1 Controller-owned played-card lifecycle token
+### 10.1 Controller-owned lifecycle token
 
 Conceptual shape:
 
@@ -624,41 +833,21 @@ struct FPlayedCardPresentationLifecycleToken
 };
 ```
 
-This is Presentation correlation, not Gameplay zone ownership.
-
-The Controller creates one exact unresolved lifecycle when a `CardPlayed` Record formally commits. The
-matching `PlayArea -> destination` Record must consume that exact unresolved lifecycle.
-
-Contract:
+Rules:
 
 ```text
 at most one unresolved played-card lifecycle per RuntimeId
-PlayArea destination requires exact current lifecycle correlation
-zero or multiple matching unresolved lifecycles = historical/recovery failure
-lifecycle correlation survives visual-job loss
-lifecycle correlation clears when destination formally commits
-Skip/recovery/replacement clears correlations whose chronology was collapsed/abandoned
+PlayArea destination requires exact unresolved lifecycle correlation
+zero/multiple/mismatched matches = historical/recovery failure
+correlation survives cosmetic job loss
+formal destination commit consumes correlation exactly once
+Skip/recovery clears correlations whose chronology is collapsed
 ```
 
-After destination formal commit, an old visual tail may remain alive, but it no longer owns the unresolved
-played-card lifecycle. Therefore the same RuntimeId may later return to Hand and begin a new lifecycle with a
-new LocalLifecycleGeneration while the old cosmetic tail still exists.
+After formal destination commit, the old cosmetic tail may continue while the same RuntimeId later returns
+to Hand and receives a new lifecycle generation.
 
-### 7.2 Detached card visual token
-
-Conceptually:
-
-```text
-DetachedCardVisualToken
-=
-  PlayedCardPresentationLifecycleToken
-  + LocalVisualJobGeneration
-```
-
-The visual token must also retain source Record provenance needed to reject stale callbacks. RuntimeId alone
-can never address a job.
-
-### 7.3 Per-job state is complete, not just a Widget pointer
+### 10.2 Detached visual job state is fully per-instance
 
 Conceptual job:
 
@@ -672,38 +861,25 @@ struct FDetachedCardVisualJob
     float PhaseElapsedSeconds = 0.0f;
     float PhaseDurationSeconds = 0.0f;
 
-    // Frozen host-local visual state.
     FVector2D StartPosition;
     FVector2D PlayAreaPosition;
     FVector2D DestinationPosition;
+
     float StartScale = 1.0f;
     float EndScale = 1.0f;
     float StartOpacity = 1.0f;
     float EndOpacity = 1.0f;
 
     bool bDestinationCommitted = false;
-    // Optional exact frozen destination spec / destination Record provenance.
 };
 ```
 
-Every field that is currently singleton active-card animation state and is required for overlapping visuals
-must move into the exact job or an equivalent per-job structure.
+Every animation field required for overlap must be job-local. No two jobs may share singleton elapsed,
+geometry, phase, opacity, transform or completion state.
 
-A detached job must never read/write another job's:
+### 10.3 Dedicated DetachedCardVFXHost
 
-```text
-elapsed time
-anchors
-phase
-opacity
-transform
-completion state
-Widget pointer
-```
-
-### 7.4 Dedicated `DetachedCardVFXHost`
-
-G9 creates a runtime non-interactive visual host under the stable root Canvas, conceptually:
+Detached card visuals live under a stable non-interactive runtime host:
 
 ```text
 DetachedCardVFXHost
@@ -715,19 +891,15 @@ Requirements:
 HitTestInvisible
 never receives focus
 never binds card request delegates
-never participates in Hand/Selection/Target hit testing
+never participates in Hand/Target/Selection hit testing
 never counts as formal OV_PlayArea child ownership
 ```
 
-Before a card becomes detached, its start/play-area/destination geometry is converted to frozen host-local
-coordinates using valid cached geometry.
+Geometry is frozen/converted into host-local coordinates before detach.
 
-If the viewport/DPI/root geometry changes such that safe remapping cannot be proven, cancel affected private
-visual jobs. Formal state remains untouched.
+Unsafe viewport/geometry changes may cancel cosmetics only; formal state remains untouched.
 
-### 7.5 Card visual phase machine
-
-The reviewed phase model must support a destination command arriving before the arrival visual finishes:
+### 10.4 Phase machine
 
 ```text
 Prepared
@@ -737,456 +909,343 @@ Prepared
 → Done
 ```
 
-with an orthogonal exact pending destination command:
+Destination may formally commit before visual arrival finishes:
 
 ```text
-Destination formal Record commits while Phase == EnteringPlayArea
-→ store bDestinationCommitted + frozen destination spec
-→ DO NOT teleport and DO NOT complete Controller from visual callback
-→ finish EnteringPlayArea normally
+Destination commits during EnteringPlayArea
+→ store exact pending destination spec
+→ finish arrival normally
 → immediately enter DestinationTail
 ```
 
 If arrival finishes first:
 
 ```text
-EnteringPlayArea finishes
-→ AtPlayArea
-→ wait visually until exact destination Record formally commits
+EnteringPlayArea -> AtPlayArea
+→ wait visually
+→ exact destination formal commit
 → DestinationTail
 ```
 
-### 7.6 Formal ownership always wins
+Detached completion cleans its own visual only. It never completes Controller chronology or grants input
+readiness.
 
-A detached job never owns Gameplay card-zone state.
+### 10.5 Formal ownership always wins
 
-If the same RuntimeId later becomes a formal Hand/zone owner while an old tail exists:
+If an old visual tail and a new formal owner share the same RuntimeId:
 
 ```text
-formal owner wins immediately
-→ retire/cancel the old exact visual job
-→ never hide/remove/move the new formal Widget
+formal owner wins
+old exact visual job is retired
+old callback becomes no-op
 ```
 
-Old callbacks are exact-token no-ops after retirement.
+The old job must never hide/remove/move the new formal Widget.
 
-### 7.7 GC and finite lifetime
+### 10.6 GC and cleanup
 
-Use a GC-reachable deterministic owner, conceptually:
+Use deterministic GC-reachable ownership, for example:
 
 ```cpp
 UPROPERTY(Transient)
 TArray<FDetachedCardVisualJob> DetachedCardVisualJobs;
 ```
 
-Any UObject/Widget held by a live job must be strongly reachable through `UPROPERTY`/`TObjectPtr` or an
-equivalent GC-safe owner.
-
-Each visual phase must have finite positive duration. NativeTick may advance private cosmetic phases, but
-NativeTick does not decide Gameplay readiness.
-
-Mandatory cleanup boundaries include:
+Cleanup is exact/idempotent on:
 
 ```text
 HUD deactivation/destruction
-session invalidation
-Controller/battle replacement
+Session invalidation
+Controller/Battle replacement
 terminal/unavailable
 runtime detached-card disable
 Global Skip/backlog collapse
-recovery for the affected chronology
-same-RuntimeId formal-owner collision
-unsafe viewport/host geometry change
+recovery of affected chronology
+same-RuntimeId formal collision
+unsafe geometry change
 ```
 
-Cleanup is exact and idempotent.
+---
 
-A defensive high ceiling may decline new visual preparation before formal commit; no random eviction or
-container-order eviction is allowed.
+## 11. Canonical card historical semantics
 
-## 8. Canonical card historical semantics
-
-G9 must not add a third CardPlayed/CardZone validator in a detached path.
-
-Before NonBlocking activation, extract or centralize one Controller-side card historical reducer contract,
-conceptually:
-
-```cpp
-bool TryApplyCardPlayedRecord(
-    FPresentationStateSnapshot& Snapshot,
-    const FCardPlayedPresentationPayload& Payload);
-
-bool TryApplyCardZoneChangedRecord(
-    FPresentationStateSnapshot& Snapshot,
-    const FCardZoneChangedPresentationPayload& Payload,
-    const FPlayedCardPresentationLifecycleToken* PlayedLifecycleContext);
-```
-
-Exact API shape may differ, but semantics are unique.
-
-### 8.1 CardPlayed historical contract
-
-It must preserve the sealed historical requirements currently split between Controller and Native Widget,
-including as applicable:
+Before card NonBlocking activation, G9 must centralize one Controller-side historical rule for:
 
 ```text
-valid frozen card identity
-unique exact RuntimeId/CardId in historical Hand
-exact HandIndexBefore
-exact historical EnergyBefore
-valid EnergyAfter / CostPaid relationship under the current producer contract
-valid source/optional target Presentation identity under the current producer contract
-valid PlayArea lifecycle shape
+CardPlayed
+CardZoneChanged
 ```
 
-The reducer mutates only the candidate formal snapshot. Widget/host geometry is not part of historical
-validity.
+Conceptual helpers:
 
-### 8.2 PlayArea destination needs lifecycle context
+```cpp
+bool TryApplyCardPlayedRecord(...);
+bool TryApplyCardZoneChangedRecord(...);
+```
 
-The frozen snapshot does not itself contain an authoritative PlayArea card array. Therefore a
-`PlayArea -> destination` Record cannot prove the source lifecycle from snapshot counters alone.
+Historical validity and visual eligibility are separate.
 
-Its exact historical contract additionally requires the Controller-owned unresolved
-`FPlayedCardPresentationLifecycleToken` for the same RuntimeId/CardId and expected chronology.
+### 11.1 Historical validity
 
-Missing/mismatched lifecycle correlation is a historical Presentation failure and follows active-envelope
-recovery. It is not a cosmetic eligibility decline.
+Includes, as applicable:
 
-### 8.3 Visual eligibility is separate
+```text
+exact frozen card identity
+unique RuntimeId/CardId
+exact HandIndexBefore
+EnergyBefore / EnergyAfter / CostPaid producer contract
+source/target Presentation identity
+exact played-card lifecycle correlation
+valid zone route
+```
 
-Visual eligibility includes only things such as:
+Historical invalidity causes recovery, not cosmetic fallback.
+
+### 11.2 Visual eligibility
+
+Includes only visual concerns:
 
 ```text
 DetachedCardVFXHost exists
 CardWidgetClass/resource exists
-required formal source/anchor geometry is valid
-host geometry is finite/non-zero
-AbsoluteToLocal conversion succeeds
-per-job phase durations are finite positive
-visual-job capacity is available
+required cached geometry is valid
+coordinate conversion succeeds
+phase timings are finite positive
+job capacity is available
 ```
 
-Thus:
+Rules:
 
 ```text
-historical invalid / lifecycle correlation invalid
+historical invalid
 → recovery
 
-historical valid + visual prepare ineligible BEFORE formal commit
-→ sealed Blocking path when such fallback is still valid
+historical valid + visual preparation declines BEFORE formal commit
+→ sealed Blocking fallback when fallback remains valid
 
-formal commit already happened + visual activation/update failure
-→ drop private visual only
+formal commit already happened + visual activation/update fails
+→ drop cosmetic only
 → never replay reducer
-→ never roll back formal card-zone state
+→ never roll back formal state
 ```
 
-### 8.4 Blocking migration uses the same semantics first
+G9-C migrates the Blocking path onto the canonical semantics before any timing change.
 
-G9-C must migrate the existing Blocking R8 card path onto the canonical reducer/lifecycle correlation before
-G9-D changes timing.
+---
 
-Blocking migration may validate a candidate copy before visual start and formally commit once on exact
-Blocking completion. The important invariant is one semantic rule and one formal state transition, not one
-particular helper call count.
+## 12. Card NonBlocking transaction strategy
 
-## 9. Relationship with sealed FastInput
+### 12.1 G9-C — ownership migration while still Blocking
 
-The two mechanisms have different meanings:
+Migrate:
 
 ```text
-FastInput
-→ new physical click chooses to collapse real Blocking chronology
-→ SkipPresentation
-→ exact catch-up retry
-
-G9 buffered selection
-→ new physical click occurs in an exact G9 card-visual window
-→ do NOT Skip
-→ wait for exact sealed target surface
-→ replay card selection once
-```
-
-Decision ordering for each NEW physical card click:
-
-```text
-1. exact normal selection surface ready now?
-   → clear old G9 buffer
-   → normal SelectCard
-
-2. exact G9 bufferable card anchor + Controller target credential?
-   → capture/replace G9 intent
-   → no Skip
-
-3. otherwise sealed FastInput catch-up eligible?
-   → clear old G9 intent
-   → preserve G8 FastInput behavior
-
-4. otherwise
-   → clear/retain only according to explicit current request policy
-   → normal reject/base behavior
-```
-
-Once a G9 intent has been captured, intermediate Damage/Status/other chronology does **not** automatically
-convert that old click into FastInput. A future Skip requires a new physical input path.
-
-A pure detached card tail remains:
-
-```text
-HasSkippablePresentationDelay() == false
-```
-
-It can be a G9 buffer anchor, but it is never a reason to call `SkipPresentation()`.
-
-Ordinary Global Skip caused by another legitimate route clears current buffered G9 intent and cancels
-current-session detached card visuals according to G9 cleanup policy.
-
-## 10. Card-record migration and NonBlocking transaction strategy
-
-### 10.1 G9-C: migrate ownership while still Blocking
-
-Before any card Record becomes NonBlocking:
-
-```text
-single NativePlayedCardWidget + singleton animation state
-→ Controller played-card lifecycle token
-→ exact per-job visual owner
+singleton NativePlayedCardWidget / singleton animation state
+→ exact played-card lifecycle token
 → DetachedCardVFXHost
-→ per-job animation state
+→ exact job token
+→ per-job state
 ```
 
-Controller timing remains equivalent to R8:
+Timing remains R8-equivalent Blocking until C passes.
+
+### 12.2 G9-D1 — detach destination tail first
+
+`CardPlayed` remains Blocking and reaches PlayArea normally.
+
+Eligible PlayArea destination:
 
 ```text
-start exact Blocking visual job
-→ Controller waits on existing exact playback contract
-→ exact finish
-→ canonical reducer formal commit
-→ publish
-→ next Record
-```
-
-The temporary Blocking adapter may receive private job completion to satisfy the existing tracked playback
-token. This completion edge is removed for jobs once that phase becomes detached in G9-D.
-
-### 10.2 G9-D1: detach PlayArea -> destination tail first
-
-`CardPlayed` remains Blocking and reaches its normal PlayArea visual point.
-
-For eligible PlayArea destination:
-
-```text
-validate canonical historical record + exact unresolved played lifecycle
-prepare destination visual spec/job continuation
+validate canonical historical record + exact lifecycle
+prepare destination visual continuation
 pre-commit exact recheck
-commit destination reducer exactly once
-publish formal snapshot
-mark played lifecycle destination formally consumed
+commit formal destination exactly once
+publish snapshot
+consume formal played-card lifecycle
 post-publication exact recheck
-activate/continue private DestinationTail
+activate private DestinationTail
 advance Controller immediately
 ```
 
-After formal commit:
+DestinationTail completion affects cosmetics only.
+
+This already permits:
 
 ```text
-DestinationTail finish
-→ cleanup exact job only
-→ no Controller completion
-→ no readiness mutation
+A tail alive
++ next exact player surface ready
+→ card input / EndTurn can proceed according to their own authority contracts
+→ A tail continues
 ```
 
-This stage already produces the key overlap:
+### 12.3 G9-D2 — detach CardPlayed arrival
+
+D2 requires an end-to-end preflight before CardPlayed formal commit:
 
 ```text
-A destination tail alive
-+ exact next normal surface ready
-→ B can be selected/confirmed/played through normal fresh inputs
-→ A tail continues privately
+exact current CardPlayed Record
+canonical candidate snapshot
+exact Session/Battle/record cursor
+one supported future matching PlayArea -> {Discard, Exhaust, Removed} Record already sealed
+no ambiguous matching lifecycle
+visual host/resources
+Hand start geometry
+PlayArea geometry
+future destination endpoint/spec representable
+finite timings/capacity
 ```
 
-### 10.3 G9-D2: detach CardPlayed arrival only with end-to-end sealed correlation
-
-D2 is higher risk because Controller may reach the destination Record while the card is still visually
-entering PlayArea.
-
-Therefore `CardPlayed` may detach only if the Controller can prove, from already-sealed chronology, an exact
-supported future played-card destination lifecycle.
-
-Before formal CardPlayed commit, D2 must preflight at least:
+If preflight fails before formal commit:
 
 ```text
-exact current CardPlayed Record identity
-canonical CardPlayed candidate snapshot
-exact current Session/Battle/record cursor
-one supported future matching PlayArea -> {Discard, Exhaust, Removed} Record in the sealed chronology
-no ambiguous second matching unresolved lifecycle
-required card visual host/resources
-frozen Hand start geometry
-frozen PlayArea geometry
-future destination visual endpoint/spec can be safely prepared or represented
-finite phase timings / capacity
-```
-
-This is not early Gameplay execution. The future destination Record is already a committed/sealed
-Presentation fact; G9 may freeze its cosmetic endpoint, but must not apply its reducer or start its
-destination phase before chronology reaches that Record.
-
-If this end-to-end preflight fails:
-
-```text
-CardPlayed detach DECLINES BEFORE formal commit
-→ sealed Blocking CardPlayed path
-→ D1 may still detach the later destination when it is reached
+decline CardPlayed detach
+→ sealed Blocking CardPlayed
+→ D1 may still detach destination later
 ```
 
 Detached CardPlayed transaction:
 
 ```text
-prepare hidden EnteringPlayArea job
-canonical CardPlayed candidate reducer
+prepare EnteringPlayArea job
+canonical candidate reducer
 pre-commit exact recheck
-formal CardPlayed commit exactly once
-create exact unresolved PlayedCardPresentationLifecycleToken
-publish formal snapshot
-post-publication exact recheck
-activate EnteringPlayArea job
-advance Controller immediately
-```
-
-When the future exact destination Record is reached:
-
-```text
-validate canonical destination reducer + exact lifecycle token
-commit destination formal snapshot exactly once
+formal CardPlayed commit once
+create unresolved played lifecycle token
 publish
-mark lifecycle destination consumed
-if exact visual job still exists:
-    record bDestinationCommitted + frozen destination spec
-    EnteringPlayArea -> finish arrival -> DestinationTail
-    OR AtPlayArea -> DestinationTail immediately
-if visual job is already gone:
-    formal chronology still advances normally
+post-publication exact recheck
+activate private arrival job
 advance Controller immediately
 ```
 
-The destination Record never waits for the detached arrival to finish.
-
-### 10.4 Failure boundary after detached CardPlayed formal commit
-
-Once detached CardPlayed has formally committed, the later destination path cannot assume sealed R8 still has
-a retained `NativePlayedCardWidget` in formal `OV_PlayArea`.
-
-Therefore after that commit:
+Future exact destination:
 
 ```text
-visual loss / feature disable / geometry loss
-→ may remove private card job
-→ MUST NOT remove the Controller played-card lifecycle correlation prematurely
-→ later exact destination Record still commits formal state from canonical reducer + lifecycle token
-→ no attempt to resurrect/replay CardPlayed
+validate destination + lifecycle
+commit destination formal state once
+publish
+consume formal lifecycle
+if visual job exists:
+    store pending destination spec
+    transition when phase permits
+advance Controller immediately
 ```
 
-This is why lifecycle correlation is Controller-owned and visual-job-independent.
+The destination never waits for detached arrival.
 
-### 10.5 Transaction reentrancy rules
+### 12.4 Visual loss after formal CardPlayed commit
 
-As in G8, ViewModel publication may synchronously trigger replacement, disablement, recovery or other callbacks.
-Every detached commit path requires:
+After formal commit:
 
 ```text
-pre-commit exact Session/Battle/record/lifecycle recheck
+visual job loss / feature disable / geometry loss
+→ may remove cosmetic job
+→ must retain Controller lifecycle correlation until destination is consumed/collapsed
+→ never resurrect/replay CardPlayed
+```
+
+### 12.5 Reentrancy
+
+Every detached formal transaction follows:
+
+```text
+pre-commit exact authority check
 formal commit exactly once
 publication
-post-publication exact recheck
-only then activate/update private visual state
+post-publication exact check
+then private visual activation/update
 ```
 
-A post-commit stale result is `Consumed`; it never falls back and never replays the reducer.
+Post-commit failure is consumed; it never falls back to reducer replay.
 
-## 11. Proposed stages
+---
 
-### G9-A — Buffered Target / Intent Foundation
+## 13. Proposed implementation stages
 
-Goal: build exact non-predictive target identity and stale fencing without production UX change.
+### G9-A — Buffered Player Intent Foundation (shadow only)
 
 Implement/shadow:
 
 ```text
-Controller-authoritative TryCaptureBufferedCardTarget or equivalent
-FBufferedCardTargetCredential
-FBufferedCardWindowIdentity
-single FBufferedCardIntent owner
-wait-vs-stale evaluator
-atomic consume helper
-mandatory clear boundaries
-second-click credential replacement rules
-Automation-only shadow capture/revalidation
+FBufferedCardTargetCredential or equivalent
+FBufferedCardIntent
+FBufferedEndTurnIntent
+single buffered-player-intent owner
+card exact-target capture/revalidation
+EndTurn same-turn authority/revalidation
+intent arbitration
+atomic consume helpers
+mandatory-selection fencing
+stale/clear boundaries
+Automation-only shadow evaluation
 ```
 
 Do not yet:
 
 ```text
-change Hand hover
-change FastInput Skip behavior
-replay buffered selection in production
+change production hover
+change production EndTurn availability
+change Skip behavior
+replay buffered input in production
 change card visual ownership
 ```
 
-Stop gate: A must prove no predicted revision and no Gameplay request from the shadow path.
-
-### G9-B — Buffered Hand Selection + Hover
-
-Goal: first player-visible improvement while card presentation remains Blocking.
-
-Implement:
+Stop gate:
 
 ```text
-dirty-aware/stable formal Hand reconciliation
-split structural layout from hover affordance
-allow surviving formal Hand cards to hover in exact G9 Blocking-card window
-click B captures buffered selection instead of Skip
-replay B selection once at exact sealed normal surface
+no predicted card revision
+no shadow Gameplay requests
+EndTurn intent cannot cross mandatory-selection or player-turn boundaries
+```
+
+### G9-B — Buffered Player Input + Hand Hover
+
+Production UX activation:
+
+```text
+dirty-aware stable Hand reconciliation
+hover/layout separation
+buffered card selection
+EndTurn availability independent from ordinary Presentation animation
+BufferedEndTurn during ordinary resolving/blocking Presentation
+EndTurn from ReadyToConfirm / ChoosingTarget cancels transient selection
+EndTurn clears older card buffer
+mandatory selection disables EndTurn
 ```
 
 Expected UX:
 
 ```text
-A Blocking card animation active
-→ B hover works
-→ early click B does not Skip A
-→ no B Gameplay occurs early
-→ at exact ready surface B becomes selected once
-→ fresh Confirm/Target input is still required
+A Blocking animation active
+→ B hover can work in eligible card window
+→ early B selection can buffer without Skip
+→ EndTurn can be clicked independently
+
+ordinary resolving active
+→ EndTurn button remains usable
+→ EndTurn executes at next legal boundary exactly once
 ```
 
 ### G9-C — Canonical Card Reducer + Multi-instance Visual Ownership, still Blocking
 
-Goal: remove singleton ownership before timing changes.
-
 Implement:
 
 ```text
-canonical CardPlayed/CardZone historical reducer contract
-Controller FPlayedCardPresentationLifecycleToken or equivalent
-exact unresolved lifecycle correlation
+canonical card historical semantics
+played-card lifecycle token
+exact lifecycle correlation
 DetachedCardVFXHost
-FDetachedCardVisualToken
-GC-safe deterministic job container
-per-job phase/elapsed/geometry/opacity/scale state
+visual-job token
+GC-safe job container
+per-job animation state
 Blocking completion adapter
-cleanup/replacement/recovery behavior
-same-RuntimeId formal-owner protection
+same-RuntimeId protection
 ```
 
-Production timing remains Blocking.
+Timing remains Blocking.
 
-Stop gate: C must prove R8 timing/behavior parity independently of NonBlocking activation.
+### G9-D1 — NonBlocking destination tails
 
-### G9-D1 — NonBlocking destination tail
-
-Goal: detach only:
+Detach:
 
 ```text
 PlayArea -> DiscardPile
@@ -1194,58 +1253,46 @@ PlayArea -> ExhaustPile
 PlayArea -> RemovedPile
 ```
 
-while keeping CardPlayed Blocking.
-
-Required result:
+Pure tail must not own:
 
 ```text
-formal destination commits immediately
-A DestinationTail continues privately
-exact next player surface may become ready while A tail is alive
-pure A tail does not create HasSkippablePresentationDelay
+card-selection readiness
+EndTurn readiness
+HasSkippablePresentationDelay
+Controller completion
 ```
 
 ### G9-D2 — NonBlocking CardPlayed arrival
 
-Goal: detach CardPlayed only after D1 is proven.
+Detach CardPlayed with the full end-to-end preflight and pending-destination phase handoff.
 
-Required result:
+### G9-E — Integration / cleanup
 
-```text
-CardPlayed formal commit can advance before visual arrival completes
-future exact destination Record may commit before arrival completes
-job records pending destination command and transitions correctly
-Controller chronology never waits for the detached job
-```
-
-D2 must keep the full end-to-end preflight/fallback boundary from §10.3.
-
-### G9-E — Integration / Cleanup
-
-No new feature is added here. Validate/clean:
+Validate:
 
 ```text
 FastInput coexistence
-buffer anchor during intermediate Damage/Status chronology
+BufferedEndTurn arbitration with FastInput retry
 PendingSelection
 ReadyToConfirm
-TargetChoice
+ChoosingTarget
+ordinary Resolving
+Draw/Shuffle Blocking Presentation with EndTurn available
 runtime disable
 Global Skip
-active-envelope recovery
-HUD replacement
-Controller replacement
-battle replacement
-terminal/unavailable
-DirectBaseline exclusion
-same-RuntimeId redraw/replay
-GC / destruction
-viewport/layout changes
+recovery
+HUD/Controller/Battle replacement
+DirectBaseline
+same-RuntimeId redraw
+GC/destruction
+viewport changes
 G8 DamageNumber coexistence
-G6 Selection Group regression
+G6 selection regressions
 ```
 
-### G9-F — Evidence / Seal
+No new feature is introduced here.
+
+### G9-F — Evidence / seal
 
 Only after build + affected Automation + manual PIE + evidence review may G9 become:
 
@@ -1253,403 +1300,417 @@ Only after build + affected Automation + manual PIE + evidence review may G9 bec
 G9 — COMPLETE / VALIDATED / SEALED
 ```
 
-## 12. Automation requirements
+---
 
-At minimum dedicated G9 tests must prove the following.
+## 14. Automation requirements
 
-### 12.1 Buffered target authority
+### 14.1 Buffered card target authority
 
-```text
-capture succeeds only with PresentationOwned exact Session
-capture target comes from an already-sealed exact frozen baseline
-exact player-facing read must match target BattleId + revision
-pending-selection / terminal / unavailable target cannot be captured
-DirectBaseline does not fabricate a target SessionToken
-requested card absent from target Hand declines capture
-no CurrentRevision+1 / numeric prediction path exists
-```
-
-### 12.2 Buffered intent lifecycle
+Prove:
 
 ```text
-A eligible card window -> B intent captured -> no Skip
-while displayed revision is older but sealed target is unchanged -> intent waits
-sealed target revision changes -> old intent drops
-exact ready -> B SelectCard replay exactly once
-reentrant ViewModel broadcast cannot replay twice
-stale SessionToken -> drop
-stale BattleId -> drop
-HUD/Controller/battle replacement -> drop
-B leaves Hand -> drop
-B becomes unplayable -> drop
-PendingSelection appears -> drop
-terminal/unavailable -> drop
-runtime disable -> drop unconditionally
+exact PresentationOwned Session required
+already-sealed exact target required
+no numeric future-revision prediction
+exact target replacement makes old intent stale
+card absent/unplayable drops
+mandatory PendingSelection drops
+exact ready replays SelectCard once
+reentrant broadcast cannot replay twice
 ```
 
-### 12.3 Interaction transition boundary
+### 14.2 EndTurn availability
+
+Prove EndTurn remains available/accepted during the player turn through:
 
 ```text
-buffered no-target card
-→ replay selects card
-→ ReadyToConfirm
-→ no automatic Confirm / no Gameplay until fresh Confirm
-
-buffered target card
-→ replay selects card
-→ ChoosingTarget
-→ no automatic target / no Gameplay until fresh target click
+Damage Presentation
+Status Presentation
+CardPlayed Presentation
+PlayArea destination Presentation
+Draw Presentation
+Shuffle Presentation
+ordinary Resolving
+pure detached card visuals
+multiple detached visuals
+ReadyToConfirm
+ChoosingTarget
 ```
 
-### 12.4 Repeated click / FastInput coexistence
+Prove it is disabled/rejected for:
 
 ```text
-second click same exact TargetCredential + CaptureWindow -> RuntimeId may replace
-second click different valid credential -> entire intent credential replaced
-new FastInput physical click -> old G9 intent cleared before Skip
-captured G9 intent is not auto-converted to FastInput by later intermediate Records
-pure detached card tail -> HasSkippablePresentationDelay false
+mandatory PendingCardSelection
+not PlayerTurn
+Terminal
+Outcome != None
+PresentationUnavailable / unsafe recovery
 ```
 
-### 12.5 Hand hover / structural stability
+### 14.3 Buffered EndTurn execution
+
+```text
+Resolving + EndTurn click
+→ no Skip
+→ one BufferedEndTurn
+→ next legal boundary executes RequestEndTurn once
+
+Blocking Presentation + EndTurn click
+→ animation is not skipped merely for EndTurn
+→ EndTurn eventually executes once
+
+Detached cosmetic only + legal EndTurn
+→ EndTurn executes immediately; cosmetic may continue
+```
+
+### 14.4 EndTurn versus transient card states
+
+```text
+ReadyToConfirm + EndTurn
+→ transient card selection canceled
+→ EndTurn executes/buffers
+→ no later Confirm
+
+ChoosingTarget + EndTurn
+→ target/card selection canceled
+→ EndTurn executes/buffers
+→ no later target request
+```
+
+### 14.5 EndTurn versus buffered card input
+
+```text
+BufferedCardSelection exists
+→ physical EndTurn accepted
+→ card buffer cleared
+→ card never replays later
+→ EndTurn executes once
+
+BufferedEndTurn exists
+→ ordinary card click does not create a new card intent
+→ EndTurn remains the accepted terminal turn command
+```
+
+If a G8 FastInput card retry is already pending:
+
+```text
+accepted EndTurn
+→ pending card retry cannot fire after EndTurn acceptance
+```
+
+### 14.6 Mandatory selection fencing
+
+```text
+mandatory selection already authoritative
+→ EndTurn cannot be captured/executed
+
+BufferedEndTurn waiting
+→ new mandatory selection becomes authoritative
+→ EndTurn intent clears
+→ mandatory selection proceeds
+→ completing selection does not resurrect old EndTurn
+```
+
+### 14.7 EndTurn stale fencing
+
+```text
+Session replacement -> drop
+Battle replacement -> drop
+BattleId change -> drop
+terminal -> drop
+unavailable -> drop
+battle leaves PlayerTurn before replay -> drop
+runtime G9 disable -> drop
+successful EndTurn -> consumed exactly once
+```
+
+### 14.8 Hand stability
 
 ```text
 non-Hand publication does not needlessly recreate formal Hand Widgets
-hover-only update does not call structural layout
-hidden A historical source is not hoverable
-surviving B hover works during exact eligible window
-real Hand change reconciles authoritatively and safely resets hover if needed
+hover-only update does not perform structural layout
+hidden historical source is not hoverable
+surviving Hand card hover works in eligible G9 window
 ```
 
-### 12.6 Canonical card reducer / lifecycle correlation
+### 14.9 Card lifecycle / detached ownership
 
 ```text
-Blocking and detached paths share one CardPlayed historical rule
-Blocking and detached paths share one CardZone historical rule
-PlayArea destination requires exact unresolved lifecycle token
-missing/wrong lifecycle token -> recovery, not cosmetic fallback
-formal destination consumes lifecycle exactly once
-same RuntimeId later play receives a new lifecycle generation
-```
-
-### 12.7 Card visual ownership
-
-```text
-A and B visual jobs coexist
+Blocking/detached paths share canonical card history semantics
+PlayArea destination requires exact lifecycle token
+A/B visual jobs coexist
 all animation state is per-job
-A callback cannot mutate B
-completion order inversion is harmless
-wrong/stale token completion is no-op
-exact cleanup removes only exact job
-formal OV_PlayArea child invariants are unaffected by detached tails
-DetachedCardVFXHost is non-interactive
-same RuntimeId redraw retires old tail without touching new formal Widget
-old tail cannot restore stale opacity/visibility/transform
+stale callback is no-op
+formal OV_PlayArea unaffected by detached tails
+same-RuntimeId redraw retires old visual only
+visual loss does not lose required formal lifecycle correlation
 ```
 
-### 12.8 D1 destination detach transaction
+### 14.10 D1/D2 transactions
+
+D1:
 
 ```text
-pre-commit visual decline -> Blocking fallback, zero formal side effect
-destination formal reducer commits once
-publication occurs before private detached activation
-post-commit visual failure -> visual dropped only
-destination-tail finish has no Controller/readiness callback
+pre-commit visual decline -> Blocking fallback with zero formal side effect
+formal destination commits once
+post-commit visual failure -> cosmetic drop only
+tail completion has no Controller/input callback
 ```
 
-### 12.9 D2 arrival/destination phase handoff
+D2:
 
 ```text
-D2 refuses detach when no exact sealed future supported destination exists
-D2 refuses ambiguous future lifecycle correlation
-CardPlayed formal commit creates exact unresolved lifecycle
-Destination Record may commit while job still EnteringPlayArea
-job stores exact pending destination command
-arrival completion then begins DestinationTail
-arrival may finish first and wait AtPlayArea until destination commit
-visual loss before destination does not lose formal lifecycle correlation
-destination formal state still commits with no visual job
+no sealed future destination -> detach declines
+ambiguous lifecycle -> detach declines
+CardPlayed formal commit creates lifecycle
+future destination may commit during EnteringPlayArea
+pending destination phase handoff is exact
+visual loss before destination does not break formal destination commit
 ```
 
-### 12.10 Recovery / lifecycle
+### 14.11 Recovery/lifecycle
 
-These boundaries:
-
-```text
-Global Skip
-active-envelope reconcile
-HUD replacement
-Controller replacement
-battle replacement
-terminal
-unavailable
-runtime feature disable
-Widget destruction/deactivation
-viewport geometry invalidation
-GC
-```
-
-must leave:
+All replacement/recovery/disable/destruction boundaries must leave:
 
 ```text
 no ghost card
 no duplicate card
 no stale callback mutation
-no stuck input
-no lost formal Hand card
-no stranded unresolved lifecycle token
-no buffered intent replay after its authority was invalidated
+no stranded played-card lifecycle
+no stuck buffered card intent
+no stuck BufferedEndTurn
+no EndTurn replay after mandatory-selection / turn / session invalidation
 ```
 
-## 13. Required regressions
+---
 
-G9 validates affected sealed contracts rather than arbitrary whole-project reruns. Expected minimum regression
-set includes the current equivalents of:
+## 15. Manual PIE gates
 
-```text
-G8-D detached Damage behavior
-G8-B exact readiness / session fencing
-Phase6UIA2N.FastInput
-R8 Native Card Lifecycle
-CardSelection.Unified
-G5/G6 Selection Presentation lifecycle/group behavior
-TargetChoice / ReadyToConfirm interaction tests
-```
-
-Exact suite names/counts are recorded from the current tree in the eventual G9 execution/evidence document,
-not frozen prematurely here.
-
-## 14. Manual PIE gates
-
-### 14.1 G9-B PIE — Blocking card + buffered selection
+### 15.1 G9-B — buffered card selection
 
 ```text
 play A
-→ while A Blocking card animation is active, hover surviving B
-→ B raises/scales normally
+→ while A Blocking animation is active, hover B
+→ B raises/scales
 → click B
-→ A does not Skip
+→ A is not Skipped
 → B Gameplay does not execute early
-→ at exact target surface B becomes selected once
+→ exact ready surface replays selection once
+→ fresh Confirm/Target still required
 ```
 
-Then verify both modes:
+### 15.2 G9-B — EndTurn during ordinary Presentation
+
+Test at least:
 
 ```text
-no-target B
-→ ReadyToConfirm
-→ requires fresh Confirm
-
-target B
-→ ChoosingTarget
-→ requires fresh target click
+Damage animation
+CardPlayed animation
+Draw animation
+Shuffle animation
+ordinary resolving
 ```
 
-### 14.2 G9-C PIE — visual parity before detach
+For each:
 
 ```text
-CardPlayed / destination movement visually matches R8 expectations
-formal OV_PlayArea has no detached-tail contamination
-Skip/cancel/recovery leaves no retained card
-same RuntimeId formal return cannot be damaged by old job
+EndTurn control remains usable while still PlayerTurn and no mandatory selection exists
+→ click EndTurn
+→ current Presentation is not Skipped merely because of EndTurn
+→ EndTurn executes at the first legal Gameplay boundary
+→ exactly once
 ```
 
-Timing remains Blocking in this stage.
+### 15.3 G9-B — EndTurn from transient card selection
 
-### 14.3 G9-D1 PIE — destination tail overlap
+```text
+select no-target card -> ReadyToConfirm
+→ EndTurn remains available
+→ click EndTurn
+→ card selection clears
+→ turn ends normally
+
+select target card -> ChoosingTarget
+→ EndTurn remains available
+→ click EndTurn
+→ targeting clears
+→ turn ends normally
+```
+
+### 15.4 G9-B — mandatory selection
+
+```text
+trigger a mandatory choose-card effect
+→ EndTurn becomes unavailable/rejected
+→ complete required selection
+→ trailing visual animation alone must not continue to own EndTurn lock
+```
+
+### 15.5 G9-D1 — destination-tail overlap
 
 ```text
 play A
-→ CardPlayed arrival completes normally
-→ destination Record formally commits
-→ A destination tail continues
-→ exact player surface becomes interactive while A tail is alive
-→ select/Confirm/Target/play B normally
-→ A tail is not Skipped merely because B input is accepted
-→ A/B visual lifetimes may overlap
+→ destination formally commits
+→ A tail continues privately
+→ next player input surface becomes available
+→ card selection and EndTurn follow their independent authority contracts
+→ A tail is not Skipped merely to accept input
 ```
 
-### 14.4 G9-D2 PIE — detached arrival + pending destination
-
-Use at least one card whose committed resolution contains intervening records:
+### 15.6 G9-D2 — detached arrival
 
 ```text
-play A
-→ A CardPlayed arrival is detached and visibly still moving
-→ committed Damage/Status/other Records may continue chronologically
-→ hover/click surviving B can buffer without Skip while exact A visual anchor is alive
-→ destination Record may formally commit before A visually reaches PlayArea
-→ A does not teleport or flash back
-→ A completes arrival then destination tail
-→ B selection replays only at exact normal surface
-→ fresh Confirm/Target is still required
+A CardPlayed arrival still moving
+→ intermediate committed Records continue
+→ destination may formally commit before arrival ends
+→ A does not teleport/flash back
+→ pending destination transitions after arrival
+→ EndTurn/card input can be expressed according to authority without cosmetic ownership
 ```
 
-Observe throughout:
+### 15.7 Same-RuntimeId return
 
 ```text
-no duplicate
-no ghost card
-no flashback
-no stale opacity/visibility restore
-no formal zone rollback
-no stuck input
-no accidental Skip caused only by detached card tail
-DamageNumber and card-tail cosmetics coexist without owning Gameplay readiness
+old A tail alive
+→ same RuntimeId returns formally to Hand
+→ formal Hand owner is correct/interactable
+→ old tail retires safely
+→ later new play gets a new lifecycle generation
 ```
 
-### 14.5 Same-RuntimeId redraw/replay scenario
+---
 
-When achievable:
+## 16. Feature disable, Skip and recovery
 
-```text
-old A destination tail alive
-→ same RuntimeId formally returns to Hand
-→ formal Hand card is visible/correct/interactive
-→ old tail is retired safely
-→ same RuntimeId can later begin a NEW played-card lifecycle
-→ old callback cannot mutate the new lifecycle/widget
-```
-
-## 15. Feature-disable, Skip and recovery contracts
-
-### 15.1 Runtime G9 disable without authority replacement
-
-Runtime disable is a feature-policy change, not a Presentation authority replacement:
+### 16.1 Runtime G9 disable without authority replacement
 
 ```text
 keep current PresentationSessionToken
-clear buffered intent UNCONDITIONALLY
-cancel all current private detached-card visual jobs
-stop accepting new G9 buffered captures
-stop accepting new detached-card transactions
-future new eligible card lifecycles use sealed Blocking path
-re-evaluate input through existing exact guards
+clear BufferedCardSelection
+clear BufferedEndTurn
+cancel private detached card visual jobs
+stop new G9 buffered captures
+stop new detached-card transactions
+future new card lifecycles use sealed Blocking path
+re-evaluate normal input through sealed guards
 ```
 
-Do not mint a new SessionToken merely because G9 is disabled.
+Do not mint a new SessionToken merely because a feature flag changed.
 
-However:
+Already-formally-committed detached `CardPlayed` may still have an unresolved Controller lifecycle required
+for its future destination. Feature disable may delete its cosmetic job but must retain that formal
+correlation until destination chronology is consumed/collapsed.
 
-```text
-already-formally-committed detached CardPlayed
-+
-unresolved played-card lifecycle awaiting its exact destination
-```
-
-must keep the **Controller lifecycle correlation** until that destination chronology is formally consumed or
-collapsed by Skip/recovery. Feature disable may delete the cosmetic job, but cannot delete the correlation
-needed to validate already-committed history.
-
-### 15.2 Global Skip / backlog collapse
+### 16.2 Global Skip / backlog collapse
 
 A legitimate sealed Skip path:
 
 ```text
-clears current G9 buffered intent
-cancels current-session detached card visuals
-clears/retire played-card lifecycle correlations whose chronology is collapsed
-preserves or replaces SessionToken exactly according to the sealed G8 Skip/replacement contract
+clears G9 buffered player intents
+cancels current-session detached visuals
+retires played-card correlations whose chronology is collapsed
+preserves/replaces SessionToken according to sealed G8 rules
 ```
 
-A pure detached card tail alone never makes Skip eligible.
+A pure detached visual alone never makes Skip eligible.
 
-### 15.3 Active-envelope recovery/reconcile
+### 16.3 Recovery
 
-Ordinary G8 recovery may preserve the PresentationSessionToken, but G9 must still clear buffered intents and
-card lifecycle/job state associated with the recovered/collapsed chronology because their exact target/Record
-proof is no longer valid.
+Recovery clears buffered intents and G9 lifecycle/job state associated with invalidated chronology even when
+G8 intentionally preserves the same PresentationSessionToken.
 
 ```text
 same SessionToken
 !=
-G9 intent/lifecycle still valid after chronology recovery
+old G9 buffered intent still valid after chronology recovery
 ```
 
-If recovery upgrades to authority replacement/unavailable, normal Session invalidation rules also apply.
+---
 
-### 15.4 PendingSelection / TargetChoice
-
-A new authoritative PendingSelection boundary clears buffered card intent. Detached private card tails may
-continue only if they do not collide with formal ownership; they never grant PendingSelection readiness.
-
-A replayed target card entering `ChoosingTarget` consumes the buffer. The detached old card tail may continue,
-but the next target click is a new input.
-
-## 16. Non-goals
+## 17. Non-goals
 
 G9 v1 does not authorize:
 
 ```text
 parallel Gameplay resolutions
-multiple-command buffered queue
+multiple queued card commands
+multiple queued EndTurn commands
+buffered Confirm
+buffered Cancel
+buffered Target click
 speculative energy reservation
 speculative target reservation
-buffered Confirm/Cancel/EndTurn
-auto-confirm or auto-target from an old card click
+auto-confirm / auto-target from an old card click
 numeric future-revision prediction
-generalized detached framework for every Presentation Record
-detached DrawPile -> Hand
-detached Selection Group
+EndTurn crossing a mandatory-selection boundary
+general detached framework for every Presentation Record
+detached DrawPile -> Hand card visuals
 rewriting G8 DamageNumber ownership
 changing Gameplay card-zone authority
 using RuntimeId as visual-job occurrence identity
-letting detached visuals occupy formal OV_PlayArea/Hand ownership
+letting detached visuals occupy formal Hand / OV_PlayArea ownership
 ```
 
-Future broader Presentation overlap requires separate evidence after G9 is sealed.
+G9 **does** intentionally allow the EndTurn UI/intent to remain available while some v1 Presentation paths
+are still Controller-Blocking. That is part of the design, not a contradiction.
 
-## 17. Delivery order and stop gates
+---
 
-Recommended execution order:
+## 18. Delivery order and stop gates
+
+Recommended order:
 
 ```text
-G9-A  target credential / buffered intent shadow authority
+G9-A
+buffered card target + BufferedEndTurn authority in shadow
 → build + focused Automation
 
-G9-B  dirty-aware Hand hover + buffered selection production activation
+G9-B
+production buffered player input + EndTurn contract + Hand hover
 → build + focused Automation + manual PIE
 
-G9-C  canonical card reducer + lifecycle correlation + multi-job host migration, still Blocking
-→ build + R8-focused Automation + manual parity PIE
+G9-C
+canonical card reducer + lifecycle correlation + multi-job host, still Blocking
+→ build + R8-focused Automation + parity PIE
 
-G9-D1 destination-tail NonBlocking activation
-→ build + D1/G8/FastInput/card regressions + manual overlap PIE
+G9-D1
+destination-tail NonBlocking activation
+→ build + D1/G8/FastInput/input regressions + overlap PIE
 
-G9-D2 CardPlayed-arrival NonBlocking activation + pending-destination phase handoff
-→ build + D2/D1/G8/card regressions + manual overlap PIE
+G9-D2
+CardPlayed-arrival NonBlocking + pending-destination handoff
+→ build + D2/D1/G8/input regressions + overlap PIE
 
-G9-E  integration cleanup
+G9-E
+integration cleanup
 → affected integration matrix
 
-G9-F  evidence / seal
+G9-F
+evidence / seal
 ```
 
 Hard stop gates:
 
 ```text
 A -> B
-requires exact non-predictive target capture + stale fencing proven
+requires exact card target authority + EndTurn same-turn/mandatory-selection fencing proven
 
 B -> C
-requires buffered selection UX proven without changing card chronology
+requires production buffered card/EndTurn arbitration and Hand hover proven without card chronology changes
 
 C -> D1
-requires canonical reducer/lifecycle correlation + job ownership proven while still Blocking
+requires canonical reducer/lifecycle/job ownership proven while still Blocking
 
 D1 -> D2
-requires one-way destination-tail completion and host isolation proven
+requires one-way tail completion + formal host isolation proven
 
 D2 -> E
-requires destination-before-arrival handoff, feature-disable/recovery and same-RuntimeId ABA coverage proven
+requires destination-before-arrival + feature-disable/recovery + same-RuntimeId ABA coverage proven
 ```
 
-Do not mark G9 complete based only on buffered selection. Full v1 completion requires the reviewed detached
-card lifecycle scope and final integration evidence.
+---
 
-## 18. Current status and frozen design candidate
-
-At this review revision:
+## 19. Current status
 
 ```text
 G8    — COMPLETE / VALIDATED / SEALED
@@ -1663,31 +1724,22 @@ G9-E  — NOT STARTED
 G9-F  — NOT STARTED
 ```
 
-Frozen candidate principles:
+Final reviewed target:
 
 ```text
-Gameplay remains serial and authoritative
-buffered click is selection-only, never auto-confirm/auto-target
-ExpectedReadyRevision is exact sealed authority, never prediction
-Controller mints target credential; UI owner holds one pending physical intent
-replay is readiness-event driven and atomically consumed
-new physical input never inherits an old credential accidentally
-Hand structural reconciliation and hover affordance are separate
-non-Hand updates do not needlessly rebuild formal Hand
-played-card lifecycle occurrence has exact Controller identity independent of RuntimeId
-visual job identity is independent of both Gameplay card identity and formal lifecycle identity
-DetachedCardVFXHost is physically separate from formal OV_PlayArea/Hand
-all overlapping card animation state is per-job
-canonical card reducer semantics precede NonBlocking activation
-PlayArea destination requires exact unresolved played lifecycle correlation
-D1 detaches destination tail before D2 detaches CardPlayed arrival
-D2 requires end-to-end sealed destination correlation before CardPlayed formal commit
-future destination may formally commit before detached arrival finishes
-private visual finish never completes Controller chronology or grants readiness
-formal ownership always wins same-RuntimeId collisions
-pure detached card tail never becomes HasSkippablePresentationDelay
-runtime feature disable clears buffered intent but preserves already-required formal lifecycle correlation
-G8 sealed behavior remains the authority outside explicitly activated G9 scope
+Gameplay remains serial
+Presentation visuals may overlap
+ordinary animation does not own EndTurn lock
+ordinary Resolving may delay EndTurn execution but not the player's ability to express EndTurn intent
+mandatory selection blocks EndTurn
+EndTurn clears older buffered card selection
+buffered card click remains selection-only
+card replay uses exact sealed target authority
+EndTurn replay stays within the same authoritative player-turn window
+Hand hover is independent from structural reconciliation
+detached card visuals are physically and logically private
+formal ownership always wins
+G8 sealed behavior remains authority outside explicit G9 scope
 ```
 
 No production C++ change is authorized by this document alone.
