@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
-#include "TimerManager.h"
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
 #include "PresentationG8Types.h"
@@ -32,20 +31,18 @@ public:
 	bool TryGetPresentationSessionToken(FPresentationSessionToken& OutToken) const;
 	bool IsCurrentPresentationSession(const FPresentationSessionToken& Token) const;
 
-	// G8-B keeps HasActiveNativePresentation scoped to concrete Widget playback.
-	// Fast input instead asks the Controller whether authoritative chronology can
-	// currently be collapsed by Skip. G8-C extends this query with the staging
-	// compatibility-debt wait without changing Widget playback semantics.
+	// Fast input asks whether authoritative Blocking chronology can currently be
+	// collapsed by Skip. Detached DamageNumber cosmetic lifetime is never part of
+	// this query after G8-D.
 	bool HasSkippablePresentationDelay() const;
 	bool TryCaptureFastInputCatchUpTarget(
 		FPresentationSessionToken& OutSessionToken,
 		int64& OutBattleId,
 		int64& OutExpectedCatchUpRevision) const;
 
-	// G8-C feature control. Disabling detached Damage is not an authority/binding
-	// replacement, so it keeps the current PresentationSessionToken. It only
-	// clears private cosmetics + staging debt; later Damage falls back to the
-	// existing Blocking path.
+	// Detached Damage feature control. Disabling it is not an authority/binding
+	// replacement, so it keeps the current PresentationSessionToken, retires
+	// current-session cosmetics, and routes later Damage through Blocking.
 	void SetDetachedDamageG8CEnabled(bool bEnabled);
 	bool IsDetachedDamageG8CEnabled() const { return bDetachedDamageG8CEnabled; }
 
@@ -107,8 +104,6 @@ public:
 		FPresentationGroupSemanticCandidate& OutCandidate
 	);
 	int32 GetG6VisuallyPresentedRecordCountForTesting() const;
-	float GetCompatibilityDebtSecondsForTesting() const { return CompatibilityDebtSeconds; }
-	bool IsCompatibilityDebtServiceActiveForTesting() const;
 #endif
 
 protected:
@@ -143,7 +138,7 @@ private:
 	void InvalidatePresentationSession(UBattleHUDWidgetBase* CleanupWidget = nullptr);
 	void EstablishPresentationSessionForCurrentBinding();
 
-	// G8-C detached Damage transaction and staging-only compatibility debt.
+	// G8 detached Damage transaction.
 	EDetachedDamageAttemptResult TryCommitDetachedDamageRecord(
 		const FPresentationRecord& Record);
 	bool IsDetachedDamageCommitContextCurrent(
@@ -152,14 +147,20 @@ private:
 		UBattleHUDWidgetBase* ExpectedWidget,
 		const FPresentationSessionToken& ExpectedSession) const;
 	void AdvancePastCommittedDetachedDamageRecord();
+
+	// G8-E temporary call-site migration wrappers. G8-D already removed all debt
+	// semantics and G8-E removes the physical debt state. These declarations stay
+	// only until the mature Controller call sites are renamed/flattened in the next
+	// cleanup checkpoint; they own no timer or accumulated duration.
 	void AddCompatibilityDebtForCommittedDamage(float DurationSeconds);
 	void PauseCompatibilityDebtService();
 	void TryServiceCompatibilityDebtOrRefreshInput();
 	void HandleCompatibilityDebtElapsed();
 	void ClearCompatibilityDebt();
-	void CancelCurrentSessionDetachedDamageVisuals();
 	bool HasCompatibilityDebt() const;
 	bool IsExactReadSurfaceCaughtUpForDebtService() const;
+
+	void CancelCurrentSessionDetachedDamageVisuals();
 
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
@@ -222,13 +223,9 @@ private:
 	int64 NextPresentationSessionGeneration = 1;
 	FPresentationSessionToken ActivePresentationSessionToken;
 
-	// G8-C staging-only state. Debt is accumulated only by formally committed
-	// detached Damage Records and is serviced only after all chronological work is
-	// otherwise ready. The World TimerManager supplies the legacy game-time clock
-	// domain; new chronology pauses the timer and freezes the remaining debt.
+	// Detached Damage production switch. G8-D removed compatibility debt from the
+	// Controller; no duration/timer state is retained here in G8-E.
 	bool bDetachedDamageG8CEnabled = true;
-	float CompatibilityDebtSeconds = 0.0f;
-	FTimerHandle CompatibilityDebtTimerHandle;
 
 	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
 	// record order; future member indices are merely remembered as already shown
