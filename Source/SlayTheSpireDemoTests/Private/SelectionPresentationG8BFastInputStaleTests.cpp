@@ -78,24 +78,25 @@ namespace SelectionPresentationG8BFastInputStaleTest
 		{
 			return false;
 		}
-		const int64 ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 400;
-		Fixture.Battle->OnPresentationResolutionReady.Broadcast(MakeDamageEnvelope(OutBaseline, ResolutionId));
-		if (!Test.TestTrue(TEXT("Controller-owned visual is active"), OutProbe->IsLocalPresentationActive()))
-		{
-			return false;
-		}
 
-		// The synthetic Envelope above bypasses the normal Gameplay request/read-edge
-		// sequence that would already leave the Presentation-owned ViewModel locked
-		// while playback is catching up. Recreate that required FastInput precondition
-		// explicitly; otherwise SelectCard correctly takes the ordinary Idle path and
-		// the test never exercises the deferred credential/retry logic at all.
+		// A real Gameplay mutation locks the Presentation-owned VM before the
+		// historical playback catches up. The synthetic envelope below deliberately
+		// reuses the current revision, so recreate that pre-catch-up surface before
+		// starting playback; doing it afterwards would itself cancel the tracked
+		// visual through the sealed Base-widget VM-change contract.
 		OutViewModel->ApplyPresentationSnapshot(OutBaseline, true);
 		if (!Test.TestEqual(
 			TEXT("Synthetic catch-up surface is resolving"),
 			OutViewModel->InteractionState,
 			EBattleHUDInteractionState::Resolving)
 			|| !Test.TestTrue(TEXT("Synthetic catch-up surface is input locked"), OutViewModel->bInputLocked))
+		{
+			return false;
+		}
+
+		const int64 ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 400;
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(MakeDamageEnvelope(OutBaseline, ResolutionId));
+		if (!Test.TestTrue(TEXT("Controller-owned visual is active"), OutProbe->IsLocalPresentationActive()))
 		{
 			return false;
 		}
