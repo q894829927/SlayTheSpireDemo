@@ -24,13 +24,15 @@ AInteriorPortal::AInteriorPortal()
 	Capture->SetupAttachment(RootComponent);
 	Capture->bCaptureEveryFrame = false;
 	Capture->bCaptureOnMovement = false;
+	// Persistent rendering state is required for temporal/Lumen history even though captures are issued manually.
 	Capture->bAlwaysPersistRenderingState = true;
 	Capture->CaptureSource = SCS_SceneColorHDRNoAlpha;
 	Capture->bUseCustomProjectionMatrix = true;
 	// Portal clipping is owned by the selected render path. Do not stack a second near-plane override on top.
 	Capture->bOverride_CustomNearClippingPlane = false;
 	Capture->ShowFlags.SetMotionBlur(false);
-	Capture->ShowFlags.SetTemporalAA(false);
+	// P2-A starts from a temporal capture path; the system can disable this only for controlled A/B diagnostics.
+	Capture->ShowFlags.SetTemporalAA(true);
 	Capture->ShowFlags.SetBloom(false);
 	// Store scene-linear radiance: the player's view must apply exposure exactly once.
 	Capture->ShowFlags.SetEyeAdaptation(false);
