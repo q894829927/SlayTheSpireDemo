@@ -78,8 +78,8 @@ struct SLAYTHESPIREDEMO_API FBufferedEndTurnIntent
 	}
 };
 
-// G9-A shadow-only owner. It models arbitration/atomic consume semantics without
-// issuing Gameplay requests or changing any production input path.
+// Single pending-intent owner. G9-A exercised this type in shadow mode; G9-B
+// activates the same arbitration contract for production Native HUD input.
 class SLAYTHESPIREDEMO_API FBufferedPlayerIntentShadowState
 {
 public:
@@ -87,6 +87,14 @@ public:
 	bool HasCardSelection() const { return Kind == EBufferedPlayerIntentKind::CardSelection; }
 	bool HasEndTurn() const { return Kind == EBufferedPlayerIntentKind::EndTurn; }
 	bool IsEmpty() const { return Kind == EBufferedPlayerIntentKind::None; }
+	const FBufferedCardIntent* GetCardSelection() const
+	{
+		return HasCardSelection() ? &CardIntent : nullptr;
+	}
+	const FBufferedEndTurnIntent* GetEndTurn() const
+	{
+		return HasEndTurn() ? &EndTurnIntent : nullptr;
+	}
 
 	bool StoreCardSelection(const FBufferedCardIntent& Intent);
 	bool StoreEndTurn(FBufferedEndTurnIntent Intent);
@@ -101,7 +109,9 @@ private:
 	uint64 NextIntentGeneration = 1;
 };
 
-// Shadow-only EndTurn authority helpers. They never call RequestEndPlayerTurn().
+// Exact EndTurn authority helpers. They do not themselves call
+// RequestEndPlayerTurn(); G9-B production code consumes them through the single
+// buffered-player-intent owner.
 SLAYTHESPIREDEMO_API bool TryCaptureBufferedEndTurnShadow(
 	const ABattleManager* Battle,
 	FBufferedEndTurnIntent& OutIntent
