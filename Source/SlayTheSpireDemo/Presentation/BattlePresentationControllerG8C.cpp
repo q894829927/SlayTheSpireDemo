@@ -19,7 +19,7 @@ void UBattlePresentationController::SetDetachedDamageG8CEnabled(bool bEnabled)
 		// Keep the current SessionToken, retire current-session cosmetics, and
 		// refresh only when authoritative chronology is otherwise caught up.
 		CancelCurrentSessionDetachedDamageVisuals();
-		TryServiceCompatibilityDebtOrRefreshInput();
+		RefreshInputIfPresentationCaughtUp();
 	}
 }
 
@@ -166,30 +166,7 @@ void UBattlePresentationController::AdvancePastCommittedDetachedDamageRecord()
 	CompleteActiveEnvelope();
 }
 
-// -----------------------------------------------------------------------------
-// G8-E call-site migration wrappers.
-//
-// G8-D removed compatibility debt semantically. G8-E removes its physical state
-// here as well. The old method names remain temporarily only so the mature
-// Controller chronology call sites can be renamed/flattened in an isolated
-// follow-up cleanup without mixing ordering changes into this state-removal step.
-// -----------------------------------------------------------------------------
-
-void UBattlePresentationController::AddCompatibilityDebtForCommittedDamage(
-	float /*DurationSeconds*/)
-{
-}
-
-void UBattlePresentationController::PauseCompatibilityDebtService()
-{
-}
-
-bool UBattlePresentationController::IsExactReadSurfaceCaughtUpForDebtService() const
-{
-	return false;
-}
-
-void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
+void UBattlePresentationController::RefreshInputIfPresentationCaughtUp()
 {
 	if (!IsValid(ViewModel)
 		|| !IsPresentationOwnedMode()
@@ -208,18 +185,9 @@ void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 		return;
 	}
 
-	// ViewModel owns exact frozen/read-facing revision checks. There is no extra
-	// Damage timing barrier once chronological work has completed.
+	// ViewModel owns exact frozen/read-facing revision checks. G8-E adds no
+	// presentation-side timing barrier after chronological work has completed.
 	ViewModel->RefreshLiveInputBindingsIfCaughtUp();
-}
-
-void UBattlePresentationController::HandleCompatibilityDebtElapsed()
-{
-	TryServiceCompatibilityDebtOrRefreshInput();
-}
-
-void UBattlePresentationController::ClearCompatibilityDebt()
-{
 }
 
 void UBattlePresentationController::CancelCurrentSessionDetachedDamageVisuals()
@@ -229,9 +197,4 @@ void UBattlePresentationController::CancelCurrentSessionDetachedDamageVisuals()
 		Widget->CancelDetachedDamageVisualsForSession(
 			ActivePresentationSessionToken);
 	}
-}
-
-bool UBattlePresentationController::HasCompatibilityDebt() const
-{
-	return false;
 }
