@@ -13,6 +13,13 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UPhysicsHandleComponent;
 
+UENUM(BlueprintType)
+enum class EInteriorPortalRenderClipMode : uint8
+{
+	NativeClipPlane UMETA(DisplayName="Native SceneCapture Clip Plane"),
+	ObliqueFallback UMETA(DisplayName="Oblique Projection Fallback")
+};
+
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API AInteriorPortalSystem : public AActor
@@ -37,6 +44,12 @@ public:
 	int32 RecursionDepth = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals", meta=(ClampMin="0.25", ClampMax="1.0"))
 	float ResolutionScale = 1.0f;
+	/** Native clip plane is the P1 production candidate; fallback exists only for controlled comparison/rollback. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
+	EInteriorPortalRenderClipMode RenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
+	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
+	float ClipPlaneBias = 0.5f;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	FString PlacementMessage;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
