@@ -26,9 +26,27 @@ Related contracts and current references:
 - `tools/setup_interior_portals.py`
 - `tools/validate_interior_portals.py`
 
-Current review baseline: `94c2d9d568dae50d1d4455cb188e194713ee5da6` (`main`, 2026-09-12).
+The implementation inventory in this plan was reviewed against current `main` on 2026-09-12. Do not treat the document commit itself as a permanent code baseline. When execution starts or resumes, record the exact implementation HEAD in `docs/CODEX_GOAL_CHECKPOINT.md` and verify the inventory against that HEAD.
 
 This initiative is independent from the card-battle phase plan. It must not change battle architecture, gameplay authority, UI phase state or retained Legacy UI policy.
+
+---
+
+## 0. Review-driven design corrections
+
+This revision keeps the original architecture and feature scope, but tightens several places where the previous plan described the desired result more strongly than the current implementation path could guarantee.
+
+The following corrections are intentional:
+
+1. **Native SceneCapture clip planes are preferred, not assumed to be free or universally superior.** P1 now has a correctness-and-performance gate before making the native clip path the production path.
+2. **Camera continuity needs an explicit quaternion-owned transient view state.** Mapping a quaternion and immediately converting it back into ordinary `ControlRotation` is not sufficient for arbitrary wall/floor/ceiling transitions if roll is simultaneously being recovered.
+3. **Aperture-local collision must use swept/substep-aware gate entry and exit.** A per-frame broad support ignore alone cannot guarantee that a fast traveller will not leave the aperture laterally between checks.
+4. **Rigid-body fit is renamed from "exact fit" to geometry-aware conservative fit.** Representative samples are only exact when the supported collision geometry and proof are exact; the production contract should not overstate approximation quality.
+5. **Dual-space contact bridging gets a feasibility spike before full implementation.** Chaos callback timing, friction fidelity and impulse duplication are high-risk enough to prove on one constrained case before building the complete bridge.
+6. **Portal-aware queries must analytically compete with ordinary world hits.** The visual portal surface currently has no collision, so a normal world trace cannot rely on "hitting the portal" first.
+7. **The project gets two useful acceptance seals.** Core portal fidelity can be accepted without pretending that experimental cross-portal constraint/contact bridging is already production ready.
+
+These changes reduce implementation ambiguity and make failure states explicit instead of allowing an approximation to satisfy a stronger acceptance statement accidentally.
 
 ---
 
@@ -60,11 +78,42 @@ Primary supported product scope is the existing **single-local-player UE 5.8 exp
 
 ---
 
-## 2. Full-fidelity acceptance definition
+## 2. Acceptance levels
 
-The implementation is not accepted merely because teleportation works. It is accepted only when the following observable contract holds.
+The implementation is not accepted merely because teleportation works. Acceptance is split into two levels so the project can reach a stable production-useful portal system before optional/high-risk dual-space physics is sealed.
 
-### 2.1 Visual continuity
+### 2.1 Core portal fidelity seal
+
+The core seal requires:
+
+```text
+stable portal rendering
++ continuous player crossing
++ ordinary rigid-body transfer
++ Physics Handle continuity
++ partial-crossing visual slicing
++ aperture-local collision passage
++ portal-aware line/sweep queries
++ deterministic lifecycle cleanup
++ bounded recursion
+```
+
+It does **not** claim physically correct destination-side contact for the remote half of a partially crossed body, nor general cross-portal multi-body constraint solving.
+
+### 2.2 Full physics fidelity seal
+
+The full physics seal additionally requires:
+
+```text
+remote-half destination collision/contact
++ mapped contact impulse/torque response
++ stable authority swap
++ the documented supported constraint policy
+```
+
+If the core seal passes while dual-space contact bridging remains deferred, the project status should say **CORE PORTAL FIDELITY SEALED / FULL PHYSICS FIDELITY DEFERRED**, not "full-fidelity complete".
+
+### 2.3 Visual continuity
 
 - Looking through either portal shows the paired portal's space from the correct transformed eye position and orientation.
 - Parallax remains correct while moving laterally, vertically, toward, away from and across the aperture.
@@ -76,9 +125,9 @@ The implementation is not accepted merely because teleportation works. It is acc
 - Portal rendering applies exposure/tone mapping exactly once and does not visibly diverge from the destination room solely because it is seen through a portal.
 - Local portal rim art is allowed to be stylized, but the scene inside the aperture must remain spatially faithful.
 
-### 2.2 Player traversal continuity
+### 2.4 Player traversal continuity
 
-- Crossing works wall-to-wall, wall-to-floor, floor-to-wall, floor-to-ceiling and arbitrary valid portal orientations.
+- Crossing works wall-to-wall, wall-to-floor, floor-to-wall, floor-to-ceiling and arbitrary valid portal orientations within the declared character/gravity policy.
 - Position, camera orientation and linear momentum map through the same rigid portal transform.
 - Entry speed magnitude is preserved except for ordinary game movement rules applied after exit.
 - High-speed crossings cannot tunnel past the portal plane.
@@ -86,7 +135,7 @@ The implementation is not accepted merely because teleportation works. It is acc
 - The player cannot escape through the supporting wall outside the legal portal opening.
 - Crossing cannot immediately retrigger the exit portal in a ping-pong loop.
 
-### 2.3 Rigid-body continuity
+### 2.5 Rigid-body continuity
 
 - Position, body orientation, linear velocity and angular velocity map correctly.
 - Momentum magnitude is unchanged by equal-scale portals.
@@ -94,10 +143,10 @@ The implementation is not accepted merely because teleportation works. It is acc
 - High-speed rigid bodies cannot miss the crossing.
 - A rigid body that does not fit the aperture cannot pass.
 - A partially inserted object is visually split between spaces without duplicate visible geometry.
-- Final full-fidelity physics includes a remote collision representation so the portion visible through the remote portal can participate in destination-side contacts before center-plane authority transfer.
+- Full physics fidelity additionally requires a remote collision representation so the portion visible through the remote portal can participate in destination-side contacts before center-plane authority transfer.
 - Crossing while held by a Physics Handle remains stable and cannot produce an impulse explosion.
 
-### 2.4 Interaction continuity
+### 2.6 Interaction continuity
 
 Portal-aware world queries must support at least:
 
@@ -111,7 +160,7 @@ future laser/beam-style queries without rewriting portal math
 
 A query that enters one portal can continue from the paired portal with transformed origin/direction and a finite recursion limit.
 
-### 2.5 Lifecycle and robustness
+### 2.7 Lifecycle and robustness
 
 - Moving, clearing or replacing a portal cannot strand ignored collisions, constraints, proxies or render targets in an invalid state.
 - Destruction/unregistration of a traveller during crossing is safe.
@@ -178,6 +227,8 @@ Current traversal already uses:
 - last-exit tracking to avoid immediate retrigger;
 - temporary support collision ignore while the capsule occupies the valid passage region.
 
+Known hardening gap: exit blocking currently evaluates an upright capsule/world-space orientation rather than a separately owned arbitrary portal camera orientation. The final character/root orientation policy therefore needs to stay distinct from the camera-view policy.
+
 ### 3.5 Rigid-body traversal — IMPLEMENTED BASELINE
 
 Current physics traversal already contains the core state required for correct basic rigid-body transport:
@@ -191,6 +242,8 @@ Current physics traversal already contains the core state required for correct b
 - destination-side exit tracking;
 - pairwise collision suppression against the portal support using a free Chaos constraint rather than globally disabling the wall.
 
+Known hardening gap: final exit occupancy still uses a coarse bounding-sphere approximation rather than collision-geometry-aware fit/overlap.
+
 ### 3.6 Held-object support — PARTIALLY IMPLEMENTED
 
 The system already has a `UPhysicsHandleComponent` path that:
@@ -200,7 +253,7 @@ The system already has a `UPhysicsHandleComponent` path that:
 - ignores the relevant support wall during cross-portal targeting;
 - prevents the handle target from treating the two spaces as ordinary distant world points.
 
-This path still requires dedicated angular-velocity preservation and crossing-state hardening described later in this plan.
+This path still requires dedicated angular-velocity preservation, shared portal-query usage and crossing-state hardening described later in this plan.
 
 ### 3.7 Partial-crossing visual proxy — IMPLEMENTED BASELINE
 
@@ -255,6 +308,8 @@ The existing implementation has four risk factors that must be treated as one bl
 3. **the support wall remains renderable**, so correctness depends entirely on the clipping plane rather than on explicit support suppression;
 4. SceneCapture currently uses both a custom projection matrix and a custom near-clipping-plane override, producing two near-plane mechanisms that should not be allowed to drift independently.
 
+Additionally, the current fallback behavior of returning the unmodified projection when the oblique denominator is invalid effectively removes portal clipping for that frame. A hardened fallback must never silently convert numerical failure into a visibly unclipped capture.
+
 This defect blocks any claim of seamless visual parity.
 
 ---
@@ -276,11 +331,14 @@ PortalMath
 PortalRenderBridge
     virtual cameras / clip plane / recursion / render targets
 
+PortalCameraState
+    transient quaternion view orientation / crossing / horizon recovery
+
 PortalTraveller state
     previous pose / crossing state / support gating / proxy state
 
 PortalQuery
-    recursive line/sweep/interaction traversal
+    analytic portal intersections + recursive line/sweep routing
 
 PortalPhysicsBridge
     authoritative rigid body + remote proxy + contact mapping
@@ -326,7 +384,7 @@ Rules:
 
 ## 7. Delivery stages
 
-The work is intentionally staged so each stage has a visible acceptance gate and the most severe current defect is addressed first.
+Stage numbers identify feature areas. **They are not the final execution order.** Section 14 defines the execution order and intentionally runs P10 before P6/P7 so later interaction and Physics Handle work does not accumulate more one-off trace logic.
 
 ### P0 — Freeze baseline and instrument the defect
 
@@ -363,9 +421,9 @@ No gameplay behavior change is authorized by P0.
 
 **Goal:** remove the current black-wall/giant-triangle artifact without changing portal mapping.
 
-Preferred implementation:
+Preferred implementation candidate:
 
-1. enable UE's project support for global clip planes required by SceneCapture clip-plane rendering;
+1. enable UE project support required for SceneCapture clip-plane rendering;
 2. use `SceneCaptureComponent2D::bEnableClipPlane`;
 3. set:
 
@@ -374,19 +432,32 @@ ClipPlaneBase   = ExitPortalLocation + ExitForward * ClipBias;
 ClipPlaneNormal = ExitForward;
 ```
 
-4. retain the player's projection matrix for matching FOV/aspect, but remove oblique near-plane mutation from the normal production path;
+4. retain the player's projection matrix for matching FOV/aspect, but remove oblique near-plane mutation from the normal native-clip candidate path;
 5. disable the redundant `bOverride_CustomNearClippingPlane` path unless an independently justified camera near clip is required;
 6. keep the exit portal actor hidden from its own capture;
 7. do **not** permanently hide the entire support wall as the final solution, because doing so can create a visually oversized hole beyond the aperture.
 
 `ClipBias` must be data-driven/tunable and chosen from portal/support geometry, not hard-coded as a magic large distance. Start with a minimal centimeter-scale bias and validate at all view angles.
 
-Fallback only if native SceneCapture clip planes prove incompatible with required Lumen/render behavior:
+#### P1 production-path gate
+
+Native clipping becomes the production path only if all of the following are true:
+
+- it passes the complete P0 visual matrix;
+- Lumen/reflection/fog/translucency behavior remains acceptable;
+- enabling the required renderer/project setting does not create an unacceptable project-wide rendering cost on the target hardware;
+- editor/shader rebuild implications are recorded in the implementation notes;
+- recursion depth >= 2 remains visually correct.
+
+**Why this gate exists:** native clipping removes fragile projection surgery, but it changes renderer configuration outside the portal actor itself. The plan should therefore compare correctness and measured cost instead of assuming that the native path is automatically free.
+
+Fallback if native SceneCapture clip planes fail the production gate:
 
 - keep the custom oblique path behind one explicit implementation switch;
 - normalize/orient the view plane consistently;
-- reject or clamp ill-conditioned denominators using a meaningful epsilon rather than `UE_SMALL_NUMBER` alone;
-- preserve the previous valid matrix rather than emitting a pathological matrix for one frame;
+- classify invalid/ill-conditioned denominators using a meaningful configured epsilon and sign rule rather than `UE_SMALL_NUMBER` alone;
+- never emit an unclipped projection as a silent numerical fallback;
+- either preserve a previously validated matrix for a bounded case or deliberately skip/blank the affected capture with diagnostics while the issue is investigated;
 - add extreme near/grazing unit tests;
 - remove the second competing near-clipping mechanism.
 
@@ -395,7 +466,8 @@ Acceptance:
 - no support-wall leak in the full P0 view matrix;
 - no diagonal giant triangle at grazing angles;
 - no one-frame flash when camera approaches or crosses the portal plane;
-- projection alignment remains unchanged.
+- projection alignment remains unchanged;
+- selected production clip mode and measured reason are documented.
 
 This is the first blocking delivery and should land before expanding physics.
 
@@ -440,11 +512,7 @@ Acceptance:
 
 **Goal:** remove all discontinuity around the instant the eye/capsule crosses the portal plane.
 
-Required work:
-
-- make camera-view mapping and physical traversal use the exact same crossing frame;
-- retain continuous previous/current eye segment detection;
-- add explicit crossing state:
+Required crossing state:
 
 ```text
 Outside
@@ -454,15 +522,25 @@ Transferred
 ClearingExit
 ```
 
+Required work:
+
+- make camera-view mapping and physical traversal use the exact same crossing frame;
+- retain continuous previous/current eye segment detection;
 - use hysteresis to avoid plane-chatter around `X ~= 0`;
 - preserve transformed velocity before/after `TeleportPhysics`;
-- preserve full control-view quaternion through arbitrary portal orientations;
+- introduce an explicit transient **portal camera orientation state** owned by the camera/controller path;
+- store the crossing view as a quaternion and keep quaternion composition authoritative while crossing/clearing;
+- do not rely on `FRotator -> SetControlRotation -> immediate roll recovery` as the sole representation of the mapped view;
+- only begin optional horizon/roll recovery after the camera is safely in `ClearingExit` or later;
+- define the recovery policy as comfort behavior, not as portal-space math;
 - keep Character actor-root orientation policy explicit:
-  - upright capsule/world-gravity behavior remains controlled by CharacterMovement;
-  - camera orientation may carry transformed pitch/yaw/roll as required by the portal view;
-  - any post-exit horizon correction must be an intentional comfort policy, not an accidental Euler clamp;
-- make exit blocking use the actual target capsule pose;
+  - upright capsule/world-gravity behavior remains controlled by CharacterMovement unless a later gravity system is separately authorized;
+  - camera orientation may carry transformed pitch/yaw/roll during the crossing;
+  - actor root yaw policy and camera quaternion policy are separate contracts;
+- make exit blocking use the actual target capsule pose required by the chosen character-root policy;
 - make exit offset minimal and derived from collision clearance.
+
+**Why this change is better:** the existing implementation transforms a quaternion but then immediately re-enters an Euler/control-rotation path where roll is interpolated toward zero. An explicit transient quaternion state prevents the visual portal transform from being partially undone during the exact frames where continuity matters most.
 
 Acceptance scenarios:
 
@@ -473,7 +551,8 @@ Acceptance scenarios:
 - wall->floor fall;
 - ceiling-related orientation where placement is allowed;
 - enter while looking sharply up/down/sideways;
-- repeatedly alternate portals without camera snap or retrigger.
+- repeatedly alternate portals without camera snap or retrigger;
+- no roll snap on the transfer frame; any later horizon recovery is intentional and visible only after clearance.
 
 ---
 
@@ -486,27 +565,31 @@ Current behavior temporarily ignores the whole support primitive when the charac
 Target behavior:
 
 - support collision is bypassed only while the traveller occupies the legal portal prism and is committed to passage;
-- leaving the aperture laterally immediately restores normal support collision;
+- **entry into and exit from the legal prism are swept/substep-aware**, not only sampled once per game frame;
+- leaving the aperture laterally immediately restores normal support collision before the traveller can cross the support outside the legal opening;
 - restore uses a safe non-penetrating pose or depenetration path;
 - cleanup on portal clear/destroy always restores collision.
 
 Implementation options, in preferred order:
 
-1. aperture-gated collision state with per-frame/substep validation and immediate restore;
+1. aperture-gated collision state with swept/substep validation and immediate restore;
 2. segmented/custom support collision that exposes an actual portal-shaped opening when the asset topology permits;
 3. low-level Chaos contact modification only if higher-level solutions cannot provide robust aperture-local filtering.
 
-Do not globally disable shared wall collision.
+A game-thread Tick-only support ignore is acceptable as an intermediate prototype, not as the final P4 acceptance mechanism for high-speed rigid bodies.
+
+**Why this change is better:** per-frame membership can miss a fast lateral escape between samples. Swept/substep state transitions make the collision contract match the same continuous-crossing philosophy already used for portal-plane traversal.
 
 Acceptance:
 
 - player/body can pass through the portal center;
 - the same traveller cannot move sideways through the support wall beside the portal while passage gating is active;
+- high-speed diagonal motion cannot enter through the aperture and leave through solid support between gate checks;
 - closing/moving a portal cannot leave a permanent collision hole.
 
 ---
 
-### P5 — Generic traveller model and exact body fit
+### P5 — Generic traveller model and geometry-aware conservative body fit
 
 **Goal:** stop treating portal-capable physics bodies as an editor-authored fixed list with bounding-sphere-only fit.
 
@@ -531,19 +614,25 @@ Requirements:
 
 Replace `Bounds.SphereRadius` as the final aperture-fit authority.
 
-Exact-fit strategy:
+Geometry-aware conservative fit strategy:
 
-- inspect body collision geometry (box/sphere/capsule/convex as available);
-- transform representative/support points into portal local space;
-- project the oriented shape against the elliptical aperture;
-- reject shapes that would contact the rim;
-- keep a small configurable safety margin.
+- **sphere:** analytic radius inset against the aperture;
+- **capsule:** project segment endpoints plus radius/support extent in portal-local coordinates;
+- **box:** transform all 8 oriented vertices and reject any required support extent outside the inset aperture;
+- **convex:** use all available convex vertices or a proven support-function equivalent;
+- **compound body:** evaluate every collision primitive required to pass the aperture;
+- keep a small configurable safety margin around the rim.
+
+Do not call a finite representative-point approximation "exact" unless its supported geometry and proof make it exact.
+
+**Why this change is better:** a bounding sphere rejects long thin objects that really fit, while sparse samples can accept shapes that actually clip the rim. Naming the contract "geometry-aware conservative" accurately describes a safe production test and lets each supported collision primitive use an appropriate proof/approximation.
 
 Acceptance:
 
 - long thin object can pass in an orientation that truly fits;
 - the same object is rejected in an orientation that does not fit;
-- sphere/cube behavior does not regress.
+- sphere/cube behavior does not regress;
+- compound shapes cannot pass merely because their root/bounds center fits.
 
 ---
 
@@ -568,11 +657,12 @@ through the same portal quaternion;
 - preserve sleep/awake state intentionally;
 - preserve mass/inertia for equal-scale portals;
 - avoid applying displacement-derived fake velocity;
-- verify destination overlap before authority transfer where required;
+- verify destination overlap using geometry-aware collision rather than the old reduced bounding sphere where required;
 - protect against repeated transfer in the same simulation interval.
 
 Held-object requirements:
 
+- use the P10 portal-query layer for remote targeting rather than adding another bespoke trace path;
 - snapshot linear and angular velocity before any release/re-grab sequence;
 - transform both velocities;
 - transform Physics Handle target location and orientation;
@@ -617,13 +707,15 @@ Acceptance:
 - no missing middle slab;
 - no duplicate shadow obvious at the aperture.
 
+Passing P0-P7 plus the executed P10 query layer and required lifecycle/performance gates is sufficient for the **Core Portal Fidelity Seal** defined later.
+
 ---
 
 ### P8 — Dual-space collision/contact bridge
 
 **Goal:** make the remote half of a partially crossed rigid body physically interact with the destination world before the authoritative body center transfers.
 
-This is the largest remaining physics feature and must be implemented only after P5-P7 are stable.
+This is the largest remaining physics feature and must be attempted only after the core portal path is stable.
 
 Target model:
 
@@ -639,7 +731,42 @@ Destination world
 
 The remote proxy is not independent gameplay state. It is a physical projection of the authoritative body.
 
-Required behavior:
+#### P8A — Contact-bridge feasibility spike
+
+Before building the complete bridge, prove one deliberately narrow case:
+
+```text
+one dynamic cube
+half inserted through one portal
+remote kinematic/contact-reporting proxy
+one static destination wall
+one remote normal contact
+mapped impulse applied back to authoritative body at mapped source contact point
+```
+
+The spike must answer:
+
+- can the required contact data be obtained at a deterministic enough point in the Chaos simulation lifecycle;
+- can one remote impulse be mapped back exactly once without a one-frame duplicate or feedback loop;
+- does applying the mapped impulse at the mapped contact point generate plausible linear and angular response;
+- can sleep/wake state remain stable;
+- can proxy/support collision filtering avoid blocking legal passage;
+- is an engine-level/Chaos contact hook required, or are project-level callbacks sufficient.
+
+P8A acceptance:
+
+- remote wall contact visibly pushes the source body back;
+- oblique contact produces torque in the correct mapped direction;
+- no duplicate impulse, NaN, runaway energy or persistent proxy remains after cleanup;
+- the implementation layer required for the full bridge is documented.
+
+**Go/no-go rule:** do not implement friction, movable-vs-movable contact or authority swapping until P8A passes. If P8A cannot provide stable contact timing without disproportionate engine-level complexity, stop at the Core Portal Fidelity Seal and document full physics fidelity as deferred.
+
+**Why this change is better:** the hardest P8 problem is not the portal quaternion math; it is contact timing and ownership inside Chaos. A narrow spike prevents a large remote-physics framework from being built on top of an unsuitable callback path.
+
+#### P8B — Full dual-space bridge
+
+After P8A passes, required behavior is:
 
 - destination-side proxy has collision enabled only while the source body intersects the portal slab;
 - proxy pose/velocity are continuously mapped from the authoritative body;
@@ -653,8 +780,8 @@ Required behavior:
 
 Implementation preference:
 
-1. begin with a kinematic/contact-reporting remote proxy and explicit impulse mapping;
-2. if UE-level hit callbacks cannot provide sufficient contact/friction fidelity, introduce a narrowly scoped Chaos contact bridge inside the project;
+1. begin with the P8A contact-reporting proxy and explicit impulse mapping;
+2. if UE-level callbacks cannot provide sufficient contact/friction fidelity, introduce a narrowly scoped Chaos bridge inside the project;
 3. do not add a third-party physics dependency.
 
 Required impulse mapping math:
@@ -672,6 +799,7 @@ Acceptance scenarios:
 - half-inserted cube collides with a wall in the exit room and is pushed back;
 - remote collision with another movable cube transfers momentum plausibly;
 - rotating/oblique contact produces angular response;
+- friction/tangential response is stable enough for the supported use case;
 - no energy explosion when authority swaps;
 - repeated passage does not accumulate proxy bodies.
 
@@ -701,7 +829,7 @@ Required policy:
 
 Do not silently break a constraint or teleport one constrained body with no documented behavior.
 
-If full cross-portal constraint bridging is too risky for the initial seal, it must be an explicit deferred limitation with placement/traversal rejection rather than undefined physics.
+For the Core Portal Fidelity Seal, unsupported multi-body constrained traversal may be **explicitly rejected** rather than bridged. Cross-portal constraint bridging is required only for the Full Physics Fidelity Seal if the project chooses to claim that support.
 
 ---
 
@@ -709,32 +837,50 @@ If full cross-portal constraint bridging is too risky for the initial seal, it m
 
 **Goal:** make a portal a real spatial connection for traces and interaction, not only for cameras and bodies.
 
-Provide a reusable bounded query function equivalent to:
+Provide reusable bounded query functions equivalent to:
 
 ```cpp
 PortalLineTrace(..., MaxPortalDepth)
 PortalSweep(..., MaxPortalDepth)
 ```
 
-Algorithm:
+#### Required line-trace algorithm
+
+The portal surface mesh currently does not provide collision and therefore cannot be treated as an ordinary hit target. Each query segment must compare two independently computed candidate events:
 
 ```text
-trace in current space
-    -> ordinary hit: return
-    -> portal aperture hit:
-         consume travelled distance
-         map hit point + direction through pair
-         apply tiny forward epsilon
-         continue in exit space
-         decrement recursion budget
+1. ordinary world trace -> nearest blocking world hit distance (if any)
+2. analytic ray/segment vs each valid portal plane
+       -> front-side eligibility
+       -> plane intersection distance
+       -> aperture ellipse membership
+       -> portal state/link validity
+
+choose the nearest valid event
+
+world hit nearest:
+    return ordinary hit
+
+portal intersection nearest:
+    consume travelled distance
+    map intersection point + direction through pair
+    apply tiny forward epsilon in exit space
+    continue query
+    decrement recursion budget
 ```
+
+For sweeps, the same competition applies, but portal eligibility must use the swept shape/support extent rather than a zero-radius ray aperture test.
+
+**Why this change is better:** relying on a normal trace to "hit the portal" first is incompatible with the current no-collision portal surface. Analytic portal-plane competition also makes query behavior independent from decorative portal mesh collision settings.
 
 Requirements:
 
+- ordinary hit distance and portal-plane distance are compared in the same segment;
 - prevent immediate self-rehit at the exit plane;
 - finite recursion/cycle protection;
 - preserve ignored actors/components correctly across each segment;
 - return a segmented debug path for diagnostics;
+- preserve total remaining distance across hops;
 - support sweep radius/shape where Physics Handle targeting needs volume rather than a ray.
 
 Adopt it for:
@@ -749,24 +895,39 @@ Portal placement shots may opt in or out as an explicit gameplay rule; they must
 Acceptance:
 
 - interact with a valid target through one portal;
+- a nearer ordinary wall hit beats a farther portal intersection;
+- a nearer valid portal intersection beats a farther ordinary wall hit;
 - query can traverse A->B and a bounded recursive pair view without infinite loop;
-- sweep retains expected radius through transform.
+- remaining-distance accounting is correct across hops;
+- sweep retains expected radius/shape through transform.
 
 ---
 
-### P11 — Moving support / endpoint lifecycle
+### P11 — Support policy / endpoint lifecycle
 
-**Goal:** make portal placement robust if a valid support primitive moves or rotates.
+**Goal:** make endpoint ownership explicit and lifecycle cleanup deterministic.
 
-Required work:
+#### V1 support policy
 
-- store portal frame relative to its support where dynamic support is permitted;
+For the initial Core Portal Fidelity Seal, **portal support primitives are static-only unless a separate moving-support feature is explicitly authorized**.
+
+Placement validation must reject unsupported movable support rather than accidentally allowing it.
+
+Required static-support lifecycle work:
+
+- cleanup all movement ignores/constraints/proxies on endpoint invalidation;
+- cancel or reject portal replacement while a traveller is in an unsafe crossing state;
+- reset render, slice, query and hysteresis state atomically;
+- destroyed support invalidates its endpoint safely.
+
+Deferred moving-support work, if later authorized:
+
+- store portal frame relative to its support;
 - update endpoint world transform before render/traversal/physics queries;
 - move render plane, clip plane and aperture gate atomically;
-- forbid moving a portal while a traveller is in an unsafe ambiguous crossing state unless the traveller state can be migrated safely;
-- cleanup all ignores/constraints/proxies on endpoint invalidation.
+- define migration/rejection behavior for travellers already crossing a moving endpoint.
 
-If this project chooses static-only portal supports, that restriction must be explicit in placement validation rather than accidental.
+**Why this change is better:** the current project does not need moving portal surfaces to validate the core mechanic. Making static support an explicit product rule removes accidental undefined behavior without forcing a separate moving-frame physics problem into the first seal.
 
 ---
 
@@ -783,6 +944,7 @@ Requirements:
 - deepest-first recursion remains deterministic;
 - profile GPU cost of two portals at recursion depths 1/2/3/4;
 - profile Lumen SceneCapture cost;
+- if P1 native clip planes require a project-wide renderer setting, measure its cost in the same performance pass;
 - optional update throttling is allowed only when it is visually indistinguishable for the target use case;
 - no optimization may reintroduce one-frame stale portal images during movement/crossing.
 
@@ -804,7 +966,7 @@ Player projection
     -> ScreenPosition.ViewportUV portal material
 ```
 
-### Target first change
+### First candidate change
 
 ```text
 Player projection (unchanged spatial projection)
@@ -815,13 +977,13 @@ Player projection (unchanged spatial projection)
 
 The change should intentionally leave traversal and physics untouched so any visual difference can be attributed to clipping.
 
-Diagnostic fallback toggle during development:
+Diagnostic comparison toggle during development:
 
 ```text
 Portal.RenderClipMode = NativeClipPlane | ObliqueFallback
 ```
 
-This toggle is for validation and rollback only; final production should have one preferred path.
+This toggle is for validation and rollback only; final production should have one selected preferred path.
 
 Required new tests:
 
@@ -830,7 +992,9 @@ Required new tests:
 - clip plane nearly perpendicular to view direction;
 - exit support with finite thickness;
 - portal at wall/floor/ceiling orientations;
-- recursion depth >= 2 under the same cases.
+- recursion depth >= 2 under the same cases;
+- fallback denominator near the configured validity threshold;
+- invalid fallback math never silently produces an unclipped frame.
 
 ---
 
@@ -865,6 +1029,8 @@ traveller registry
 render orchestration
 ```
 
+The camera/controller path owns only transient mapped view orientation/recovery state.
+
 Each traveller state owns only transient traversal/proxy data for that traveller.
 
 Temporary state that must always be paired with cleanup:
@@ -877,9 +1043,10 @@ remote physics proxies
 slice material parameters
 held-through-portal state
 last-exit hysteresis
+portal camera orientation state
 ```
 
-Reset, endpoint replacement, actor destruction and EndPlay must all leave the ordinary world collision configuration restored.
+Reset, endpoint replacement, actor destruction and EndPlay must all leave the ordinary world collision/camera configuration restored.
 
 ---
 
@@ -887,20 +1054,28 @@ Reset, endpoint replacement, actor destruction and EndPlay must all leave the or
 
 ### Rendering
 
-If native clip plane causes a specific unsupported SceneCapture/Lumen regression, keep the stabilized oblique implementation available until native clipping passes the full manual gate. Do not silently revert to the currently unstable matrix.
+If native clip plane causes a specific unsupported SceneCapture/Lumen regression or unacceptable measured project-wide cost, keep the stabilized oblique implementation available until a better native path passes the complete gate. Do not silently revert to the currently unstable matrix.
+
+### Camera
+
+If arbitrary roll/horizon behavior conflicts with the existing first-person movement model, preserve mathematically correct crossing orientation through transfer/clearance first, then apply a documented comfort recovery. Do not clamp Euler angles on the transfer frame to hide the conflict.
+
+### Collision
+
+If aperture-local support filtering cannot be made safe for high-speed rigid bodies at game-thread frequency, require a substep/contact-level solution for those bodies or reduce the supported traveller set explicitly. Do not claim high-speed full fidelity from Tick-only broad wall ignores.
 
 ### Physics
 
-If dual-space contact bridging is not stable enough for a production seal:
+If P8A cannot prove stable contact mapping:
 
 - retain correct full-body traversal and visual slicing;
 - disable remote proxy collision;
-- document the limitation explicitly;
-- do not claim full-fidelity physics acceptance.
+- seal Core Portal Fidelity if all core gates pass;
+- document Full Physics Fidelity as deferred.
 
 ### Constraints
 
-If cross-portal constraints cannot be made stable, reject constrained traversal explicitly rather than allowing undefined behavior.
+If cross-portal constraints cannot be made stable, reject unsupported constrained traversal explicitly rather than allowing undefined behavior.
 
 ### Performance
 
@@ -927,13 +1102,20 @@ For the fallback oblique path if retained:
 
 - reversed-Z near-boundary correctness;
 - grazing-angle denominator guard;
-- no invalid/NaN matrices;
+- invalid denominator handling never produces NaN or silently unclipped output;
 - consistent front/back retained half-space.
 
 For native clip path:
 
 - test computed clip base/normal orientation;
 - test portal/support relative offset selection independent of rendering.
+
+### Camera state
+
+- crossing quaternion maps exactly through arbitrary portal orientation;
+- transfer-frame quaternion is not modified by horizon recovery;
+- recovery begins only after declared clearance state;
+- reset/portal clear removes transient camera state.
 
 ### Placement
 
@@ -942,23 +1124,45 @@ For native clip path:
 - overlapping portal rejected;
 - unapproved surface rejected;
 - floor/wall/ceiling frames stable;
-- dynamic-support restriction enforced if not supported.
+- movable support rejected while V1 static-only support policy is active.
 
-### Traveller state
+### Traveller state / fit
 
 - register/unregister;
 - destroy during approach;
 - reset during ordinary idle state;
 - cleanup of ignore/constraint/proxy state;
-- no immediate re-entry after transfer.
+- no immediate re-entry after transfer;
+- sphere/capsule/box fit boundary tests;
+- long-thin box orientation pass/fail cases;
+- compound primitive conservative rejection.
+
+### Aperture collision gate
+
+- swept entry into legal prism;
+- swept lateral exit restores collision;
+- high-speed diagonal motion cannot bypass solid rim/support;
+- endpoint reset restores all ignored collision.
 
 ### Portal query
 
+- nearest ordinary world hit beats farther portal;
+- nearest portal beats farther ordinary world hit;
 - one-hop line trace;
 - multi-hop bounded trace;
 - remaining-distance accounting;
 - cycle protection;
+- no-collision decorative portal mesh is not required for query routing;
 - sweep shape preserved.
+
+### P8A physics spike
+
+Where automation can observe deterministic state:
+
+- one remote contact maps one impulse;
+- mapped impulse direction round trip;
+- mapped contact point produces angular response;
+- proxy cleanup after clear/destroy.
 
 Automation cannot prove final visual continuity or Chaos contact feel. Those remain manual PIE gates.
 
@@ -968,58 +1172,70 @@ Automation cannot prove final visual continuity or Chaos contact feel. Those rem
 
 A release candidate must pass all applicable cells below in both directions unless noted.
 
-| Area | Scenario | Expected result |
-|---|---|---|
-| Visual | far centered view | destination aligned, no wall leak |
-| Visual | near centered view | no near-plane flash |
-| Visual | grazing side view | no giant triangle / diagonal wedge |
-| Visual | move around aperture | correct parallax |
-| Visual | cross camera plane slowly | no image jump |
-| Visual | recursion facing pair | stable finite recursion |
-| Visual | bright->dark / dark->bright | no double exposure/gamma discontinuity |
-| Player | walk wall->wall | seamless transfer |
-| Player | sprint/jump | momentum preserved |
-| Player | fall floor->wall | exit velocity correctly rotated |
-| Player | blocked exit | no embed/teleport |
-| Player | edge of aperture | cannot escape through rim/wall |
-| Physics | throw cube | speed preserved |
-| Physics | spinning cube | angular axis transformed |
-| Physics | high-speed cube | no missed plane |
-| Physics | partial insertion | visual split continuous |
-| Physics | remote-half wall contact | mapped response before authority swap |
-| Physics | remote movable-body contact | plausible impulse transfer |
-| Grab | carry through portal | no handle explosion |
-| Grab | object remains opposite side | target remains coherent |
-| Query | interact through portal | correct remote hit |
-| Lifecycle | clear/re-place after use | no stale image/proxy/ignore |
-| Existing map | E/Q/F/M and ordinary movement | no regression |
+| Seal | Area | Scenario | Expected result |
+|---|---|---|---|
+| Core | Visual | far centered view | destination aligned, no wall leak |
+| Core | Visual | near centered view | no near-plane flash |
+| Core | Visual | grazing side view | no giant triangle / diagonal wedge |
+| Core | Visual | move around aperture | correct parallax |
+| Core | Visual | cross camera plane slowly | no image/roll jump |
+| Core | Visual | recursion facing pair | stable finite recursion |
+| Core | Visual | bright->dark / dark->bright | no double exposure/gamma discontinuity |
+| Core | Player | walk wall->wall | seamless transfer |
+| Core | Player | sprint/jump | momentum preserved |
+| Core | Player | fall floor->wall | exit velocity correctly rotated |
+| Core | Player | blocked exit | no embed/teleport |
+| Core | Player | edge of aperture | cannot escape through rim/wall |
+| Core | Player | high-speed diagonal aperture approach | cannot leak through support beside aperture |
+| Core | Physics | throw cube | speed preserved |
+| Core | Physics | spinning cube | angular axis transformed |
+| Core | Physics | high-speed cube | no missed plane |
+| Core | Physics | long thin body fit | only fitting orientation passes |
+| Core | Physics | partial insertion | visual split continuous |
+| Core | Grab | carry through portal | no handle explosion, angular state stable |
+| Core | Grab | object remains opposite side | target remains coherent |
+| Core | Query | portal nearer than world hit | query continues through portal |
+| Core | Query | world hit nearer than portal | world hit returned |
+| Core | Query | interact through portal | correct remote hit |
+| Core | Lifecycle | clear/re-place after use | no stale image/proxy/ignore/camera state |
+| Core | Existing map | E/Q/F/M and ordinary movement | no regression |
+| Full Physics | Physics | remote-half wall contact | mapped response before authority swap |
+| Full Physics | Physics | remote movable-body contact | plausible impulse transfer |
+| Full Physics | Physics | oblique/friction contact | stable linear + angular/tangential response |
+| Full Physics | Physics | repeated authority swap | no energy growth/proxy leak |
+| Full Physics | Constraint | supported constrained traversal | matches documented policy |
 
-Evidence should record both the action and observation. A C++ pass alone must never be used as evidence for the rows above that are inherently visual/physical.
+Evidence should record both the action and observation. A C++ pass alone must never be used as evidence for rows that are inherently visual/physical.
 
 ---
 
 ## 14. Recommended implementation order
 
-The execution order is intentionally different from a feature-list order:
+The execution order intentionally differs from the feature numbering:
 
 ```text
 P0 reproduce/instrument
--> P1 stable clip plane
+-> P1 stable clip-plane candidate + production-path gate
 -> P2 render/exposure fidelity
--> P3 camera/player crossing
--> P4 aperture-local collision gating
--> P5 generic traveller + exact fit
--> P6 full-body physics + held object hardening
+-> P3 quaternion camera/player crossing
+-> P4 swept aperture-local collision gating
+-> P5 generic traveller + geometry-aware conservative fit
+-> P10 portal-aware query layer
+-> P6 full-body physics + held-object hardening using PortalQuery
 -> P7 production visual slicing
--> P8 dual-space contact bridge
--> P9 constraints policy/bridge
--> P10 portal-aware queries
--> P11 moving-support lifecycle
--> P12 recursion/performance polish
--> final full acceptance
+-> P11 static-support lifecycle hardening
+-> P12 core recursion/performance profiling
+-> CORE PORTAL FIDELITY SEAL
+-> P8A dual-space contact feasibility spike
+-> P8B full dual-space contact bridge (only if P8A passes)
+-> P9 supported constraint policy/bridge
+-> P12 final full-physics profiling as affected
+-> FULL PHYSICS FIDELITY SEAL
 ```
 
-Do not start the dual-space physics bridge while the current SceneCapture clipping artifact remains unresolved. The rendering bug is visible, reproducible and isolated enough to fix first.
+Why P10 moves earlier in execution: Physics Handle and later interaction features already need portal-aware targeting. Building the shared query layer before P6 prevents more bespoke portal trace rules from accumulating and then being migrated later.
+
+Why P8 moves after the core seal: the current visible rendering/crossing/collision/query problems are independently solvable and more important to a usable portal feature. The Chaos dual-space bridge should not block acceptance of a stable core system.
 
 ---
 
@@ -1032,15 +1248,19 @@ Recommended boundaries:
 ```text
 portal-render-clip-fix
 portal-render-fidelity
-portal-traversal-state
+portal-camera-traversal-state
 portal-collision-aperture-gate
 portal-traveller-registry-shape-fit
-portal-physics-transfer-hardening
-portal-visual-slice-generalization
-portal-dual-space-contact-bridge
 portal-query-layer
-portal-lifecycle-performance
-portal-full-fidelity-seal
+portal-physics-transfer-handle-hardening
+portal-visual-slice-generalization
+portal-static-support-lifecycle
+portal-core-performance
+portal-core-fidelity-seal
+portal-dual-space-contact-spike
+portal-dual-space-contact-bridge
+portal-constraint-policy
+portal-full-physics-fidelity-seal
 ```
 
 Each boundary should update focused tests and the relevant current-status documentation. Do not mix unrelated battle/UI refactors into these commits.
@@ -1049,21 +1269,42 @@ Each boundary should update focused tests and the relevant current-status docume
 
 ## 16. Definition of Done
 
-The portal initiative can be marked **FULL-FIDELITY COMPLETE / VALIDATED / SEALED** only when:
+### 16.1 Core Portal Fidelity Complete / Validated / Sealed
+
+The project may mark **CORE PORTAL FIDELITY COMPLETE / VALIDATED / SEALED** only when:
 
 1. the current near/grazing visual artifact is gone;
-2. camera projection and clipping pass the complete visual matrix;
-3. player traversal is continuous for supported portal orientations;
-4. ordinary rigid-body position/orientation/linear/angular momentum transfer passes;
-5. partial crossing is visually continuous;
-6. remote-half destination collision/contact is implemented and validated if claiming full physics fidelity;
-7. Physics Handle crossing is stable;
-8. portal-aware traces/sweeps are available to exploration interactions;
-9. collision suppression is aperture-local and cleans up deterministically;
-10. recursion is finite, stable and profiled;
-11. focused Automation passes;
-12. required manual PIE gates pass in both directions;
-13. existing exploration controls/interaction behavior show no regression;
-14. `docs/InteriorPortals.md`, validation evidence and any active checkpoint agree with the sealed state.
+2. the selected production clip path has passed correctness and measured performance review;
+3. camera projection and clipping pass the complete visual matrix;
+4. transfer-frame camera orientation remains quaternion-correct through arbitrary supported portal orientations and any horizon recovery begins only after clearance;
+5. player traversal is continuous for supported portal orientations;
+6. ordinary rigid-body position/orientation/linear/angular momentum transfer passes;
+7. geometry-aware conservative aperture fit is used for supported traveller shapes;
+8. aperture-local collision suppression uses continuous/swept or physics-step-safe gating appropriate to the supported traveller speed;
+9. partial crossing is visually continuous;
+10. Physics Handle crossing is stable and preserves required linear/angular state;
+11. portal-aware traces/sweeps are available to exploration interactions and analytically compete with ordinary world hits;
+12. V1 support policy is explicit and lifecycle cleanup is deterministic;
+13. recursion is finite, stable and profiled;
+14. focused Automation passes;
+15. required Core manual PIE gates pass in both directions;
+16. existing exploration controls/interaction behavior show no regression;
+17. `docs/InteriorPortals.md`, validation evidence and any active checkpoint agree with the sealed state.
 
-Until all relevant items above pass, the correct project status is **implemented baseline / not full-fidelity accepted**.
+### 16.2 Full Physics Fidelity Complete / Validated / Sealed
+
+The project may additionally mark **FULL PHYSICS FIDELITY COMPLETE / VALIDATED / SEALED** only when:
+
+1. Core Portal Fidelity is already sealed;
+2. P8A proved stable contact acquisition and mapped impulse application;
+3. remote-half destination collision/contact is implemented and validated;
+4. mapped contacts produce stable linear and angular response without duplicate energy injection;
+5. friction/tangential behavior is acceptable for the documented supported cases;
+6. authority swap does not create energy explosions or proxy leaks;
+7. the supported multi-body constraint policy is implemented, or unsupported cases are explicitly outside the claimed Full Physics scope;
+8. required Full Physics manual PIE gates pass;
+9. performance is profiled after the dual-space bridge is enabled.
+
+Until the Core seal passes, the correct project status is **implemented baseline / not core-fidelity accepted**.
+
+After the Core seal but before the Full Physics seal, the correct status is **core portal fidelity sealed / full physics fidelity deferred or in progress**.
