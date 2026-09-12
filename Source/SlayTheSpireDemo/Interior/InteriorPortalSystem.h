@@ -53,9 +53,9 @@ public:
 	/** P2-A: keep the portal capture on a persistent temporal path so Lumen/history behavior can match the player view. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
 	bool bCaptureTemporalAA = true;
-	/** SceneCapture-specific Lumen Surface Cache resolution. UE defaults Scene Captures to 0.5 when not overridden; P2-A tests full-resolution 1.0. */
+	/** SceneCapture-specific Lumen Surface Cache resolution. 0.5 is the production-oriented baseline; raise to 1.0 only for controlled fidelity diagnosis. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics", meta=(ClampMin="0.5", ClampMax="1.0"))
-	float CaptureLumenSurfaceCacheResolution = 1.0f;
+	float CaptureLumenSurfaceCacheResolution = 0.5f;
 	/** P2-A diagnostic only. Disables global eye adaptation and fixes pre-exposure so direct-vs-portal lighting can be compared without metering changes. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
 	bool bExposureIsolationDiagnostic = false;
