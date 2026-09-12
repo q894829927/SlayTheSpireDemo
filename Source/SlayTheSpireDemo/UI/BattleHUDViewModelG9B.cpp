@@ -3,6 +3,7 @@
 #include "BattleBufferedPlayerIntent.h"
 #include "../Battle/BattleManager.h"
 #include "../Presentation/BattlePresentationController.h"
+#include "Containers/Ticker.h"
 
 namespace
 {
@@ -13,6 +14,7 @@ namespace
 		TWeakObjectPtr<ABattleManager> OpportunityBattle;
 		FDelegateHandle OpportunityHandle;
 		bool bRefreshing = false;
+		bool bOpportunityRefreshScheduled = false;
 	};
 
 	TMap<TWeakObjectPtr<UBattleHUDViewModel>, FG9BViewModelInputState> GInputStates;
@@ -73,6 +75,37 @@ namespace
 		return GInputStates.FindOrAdd(TWeakObjectPtr<UBattleHUDViewModel>(ViewModel));
 	}
 
+	void ScheduleOpportunityRefresh(UBattleHUDViewModel* ViewModel)
+	{
+		FG9BViewModelInputState* State = FindState(ViewModel);
+		if (State == nullptr || State->bOpportunityRefreshScheduled)
+		{
+			return;
+		}
+		State->bOpportunityRefreshScheduled = true;
+
+		const TWeakObjectPtr<UBattleHUDViewModel> WeakViewModel(ViewModel);
+		FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateLambda(
+				[WeakViewModel](float /*DeltaSeconds*/)
+				{
+					UBattleHUDViewModel* Current = WeakViewModel.Get();
+					if (!IsValid(Current))
+					{
+						PruneDeadStates();
+						return false;
+					}
+
+					if (FG9BViewModelInputState* CurrentState = FindState(Current))
+					{
+						CurrentState->bOpportunityRefreshScheduled = false;
+					}
+					Current->RefreshBufferedPlayerIntentG9();
+					return false;
+				}),
+			0.0f);
+	}
+
 	void BindEndTurnOpportunity(
 		UBattleHUDViewModel* ViewModel,
 		ABattleManager* Battle,
@@ -96,7 +129,9 @@ namespace
 			{
 				if (UBattleHUDViewModel* Current = WeakViewModel.Get())
 				{
-					Current->RefreshBufferedPlayerIntentG9();
+					// Never submit Gameplay from inside ActionQueue ResolutionIdle's
+					// callback stack. The event schedules one exact next-tick replay.
+					ScheduleOpportunityRefresh(Current);
 				}
 				else
 				{
