@@ -68,6 +68,21 @@ bool UBattleHUDWidget::SelectCard(
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 	}
 
+	// A stale retirement fence exists only to kill an older scheduled G8 retry.
+	// If no such retry exists at this new physical click, it cannot constrain the
+	// new input window.
+	if (!bFastCardSelectionRetryScheduled)
+	{
+		BattleHUDWidgetG9BInput::ClearFastInputRetirementFence(this);
+	}
+
+	// Accepted EndTurn is decisive until it executes or becomes stale. Do not
+	// schedule a new card future intent behind it.
+	if (BattleHUDWidgetG9BInput::IsEnabled() && ViewModel->HasBufferedEndTurnG9())
+	{
+		return false;
+	}
+
 	FPendingCardSelectionReadView PendingView;
 	if (ViewModel->TryGetPendingCardSelectionReadView(PendingView))
 	{
@@ -237,6 +252,17 @@ bool UBattleHUDWidget::SelectCard(
 void UBattleHUDWidget::RetryPendingFastCardSelection()
 {
 	PruneDeadFastCardCredentials();
+
+	// A later accepted EndTurn decisively retires this older future card click.
+	// Consume the fence before reading/replaying its credential.
+	if (BattleHUDWidgetG9BInput::ConsumeFastInputRetirementFence(this))
+	{
+		PendingFastCardRuntimeId = INDEX_NONE;
+		bFastCardSelectionRetryScheduled = false;
+		GPendingFastCardCredentials.Remove(this);
+		return;
+	}
+
 	if (!bFastCardSelectionRetryScheduled)
 	{
 		return;
