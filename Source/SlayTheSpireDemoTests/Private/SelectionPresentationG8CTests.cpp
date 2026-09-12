@@ -5,6 +5,7 @@
 #include "Phase6UIA1TestFixture.h"
 #include "Phase6UIA2NR5TestTypes.h"
 #include "Battle/BattleManager.h"
+#include "Containers/Ticker.h"
 #include "Presentation/BattlePresentationController.h"
 #include "Presentation/PresentationDamageTiming.h"
 #include "UI/BattleHUDViewModel.h"
@@ -283,6 +284,10 @@ bool FG8CBlockingChronologyFreezesAndResumesDebt::RunTest(const FString& Paramet
 	TestTrue(TEXT("Blocking start does not increase debt"), Fixture.Controller->GetCompatibilityDebtSecondsForTesting() <= DebtBeforeBlocking + KINDA_SMALL_NUMBER);
 
 	Fixture.Widget->InvokeFinishForTesting(Fixture.Widget->ActiveLocalToken());
+	// Native Finish clears local ownership first, then Base defers the exact
+	// Controller NotifyPresentationFinished to the CoreTicker. Drain that real
+	// production completion edge before asserting Controller/debt state.
+	FTSTicker::GetCoreTicker().Tick(0.0f);
 	TestFalse(TEXT("Blocking Record completes"), Fixture.Controller->IsWaitingForCompletionForTesting());
 	TestTrue(TEXT("Debt resumes only after chronology is otherwise ready"), Fixture.Controller->IsCompatibilityDebtServiceActiveForTesting());
 
