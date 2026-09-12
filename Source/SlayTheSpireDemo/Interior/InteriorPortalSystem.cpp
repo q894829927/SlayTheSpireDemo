@@ -29,7 +29,7 @@ namespace
 	}
 	bool BodyFits(const UPrimitiveComponent* Body, const AInteriorPortal* Portal)
 	{
-		const FVector Local = Portal->GetActorTransform().InverseTransformPositionNoScale(Body->GetComponentLocation());
+		const FVector Local = Portal->GetLogicalFrame().InverseTransformPositionNoScale(Body->GetComponentLocation());
 		// Bounding sphere is conservative for arbitrary rigid bodies.
 		const float Radius = Body->Bounds.SphereRadius;
 		return InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight, Radius, Radius);
@@ -94,7 +94,7 @@ bool AInteriorPortalSystem::FitsCharacter(const ACharacter* Pawn, const FVector&
 	const UCapsuleComponent* Capsule = Pawn->GetCapsuleComponent();
 	const float R = Capsule->GetScaledCapsuleRadius() + 1;
 	const float Segment = Capsule->GetScaledCapsuleHalfHeight() - Capsule->GetScaledCapsuleRadius();
-	const FTransform Frame = Portal->GetActorTransform();
+	const FTransform Frame = Portal->GetLogicalFrame();
 	const FVector Local = Frame.InverseTransformPositionNoScale(Center);
 	const FVector Spine = Frame.InverseTransformVectorNoScale(FVector::UpVector * Segment);
 	for (int32 I = 0; I < 16; ++I)
@@ -137,12 +137,13 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 		const FVector Center = Pawn->GetActorLocation();
 		if (LastPlayerExit.IsValid())
 		{
-			const FVector Local = LastPlayerExit->GetActorTransform().InverseTransformPositionNoScale(Center);
+			const FTransform ExitFrame = LastPlayerExit->GetLogicalFrame();
+			const FVector Local = ExitFrame.InverseTransformPositionNoScale(Center);
 			if (FMath::Abs(Local.X) > Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+12) { LastPlayerExit.Reset(); }
 		}
 		for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
 		{
-			const FTransform Frame = Portal->GetActorTransform();
+			const FTransform Frame = Portal->GetLogicalFrame();
 			const FVector Local = Frame.InverseTransformPositionNoScale(Center);
 			const float Reach = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 12;
 			const float Approach = Reach + Pawn->GetVelocity().Size() * FMath::Min(DeltaSeconds, .1f);
@@ -174,9 +175,11 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 				{
 					AInteriorPortal* Entry = HeldThroughEntry.Get();
 					AInteriorPortal* Exit = Entry==BluePortal ? OrangePortal : BluePortal;
-					Eye = InteriorPortalMath::Position(Eye,Entry->GetActorTransform(),Exit->GetActorTransform());
-					Desired = InteriorPortalMath::Position(Desired,Entry->GetActorTransform(),Exit->GetActorTransform());
-					TargetRotation = (InteriorPortalMath::Rotation(Entry->GetActorTransform(),Exit->GetActorTransform())*TargetRotation.Quaternion()).Rotator();
+					const FTransform EntryFrame = Entry->GetLogicalFrame();
+					const FTransform ExitFrame = Exit->GetLogicalFrame();
+					Eye = InteriorPortalMath::Position(Eye, EntryFrame, ExitFrame);
+					Desired = InteriorPortalMath::Position(Desired, EntryFrame, ExitFrame);
+					TargetRotation = (InteriorPortalMath::Rotation(EntryFrame, ExitFrame)*TargetRotation.Quaternion()).Rotator();
 					if (Exit->Support) { Params.AddIgnoredComponent(Exit->Support.Get()); }
 				}
 				else
@@ -184,7 +187,7 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 					for (AInteriorPortal* Entry : {BluePortal.Get(),OrangePortal.Get()})
 					{
 						FVector Intersection;
-						if (Entry->Support && InteriorPortalMath::Crossed(Eye,Desired,Entry->GetActorTransform(),Entry->HalfWidth-30,Entry->HalfHeight-30,Intersection))
+						if (Entry->Support && InteriorPortalMath::Crossed(Eye,Desired,Entry->GetLogicalFrame(),Entry->HalfWidth-30,Entry->HalfHeight-30,Intersection))
 						{ Params.AddIgnoredComponent(Entry->Support.Get()); }
 					}
 				}
@@ -206,7 +209,9 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 		{
 			for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
 			{
-				const double Distance = FVector::DotProduct(Body->GetComponentLocation() - Portal->GetActorLocation(), Portal->GetActorForwardVector());
+				const FTransform Frame = Portal->GetLogicalFrame();
+				const FVector Normal = Frame.GetUnitAxis(EAxis::X);
+				const double Distance = FVector::DotProduct(Body->GetComponentLocation() - Frame.GetLocation(), Normal);
 				const double Approach = Body->Bounds.SphereRadius + 20 + Body->GetPhysicsLinearVelocity().Size() * FMath::Min(GetWorld()->GetDeltaSeconds(), .1f);
 				if (FMath::Abs(Distance) < Approach && BodyFits(Body, Portal))
 				{
@@ -217,7 +222,8 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 			if (BodyExits[I].IsValid())
 			{
 				AInteriorPortal* Exit = BodyExits[I].Get();
-				const double D = FVector::DotProduct(Body->GetComponentLocation()-Exit->GetActorLocation(), Exit->GetActorForwardVector());
+				const FTransform ExitFrame = Exit->GetLogicalFrame();
+				const double D = FVector::DotProduct(Body->GetComponentLocation()-ExitFrame.GetLocation(), ExitFrame.GetUnitAxis(EAxis::X));
 				if (FMath::Abs(D) < Body->Bounds.SphereRadius+20 && BodyFits(Body, Exit)) { Support=Exit->Support; }
 				else { BodyExits[I].Reset(); }
 			}
@@ -258,15 +264,17 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 		{
 			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
 			{
+				const FTransform EntryFrame = Entry->GetLogicalFrame();
 				FVector Intersection;
-				if (!InteriorPortalMath::Crossed(PreviousEye, Eye, Entry->GetActorTransform(), Entry->HalfWidth*.94, Entry->HalfHeight*.94, Intersection)) { continue; }
+				if (!InteriorPortalMath::Crossed(PreviousEye, Eye, EntryFrame, Entry->HalfWidth*.94, Entry->HalfHeight*.94, Intersection)) { continue; }
 				const FVector CenterAtPlane = Pawn->GetActorLocation() + Intersection - Eye;
 				if (!FitsCharacter(Pawn, CenterAtPlane, Entry)) { continue; }
 				AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
-				const FQuat Rotation = InteriorPortalMath::Rotation(Entry->GetActorTransform(), Exit->GetActorTransform());
+				const FTransform ExitFrame = Exit->GetLogicalFrame();
+				const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
 				const FVector Velocity = Rotation.RotateVector(Pawn->GetCharacterMovement()->Velocity);
 				const FRotator View = (Rotation * Player->GetControlRotation().Quaternion()).Rotator();
-				const FVector NewEye = InteriorPortalMath::Position(Eye, Entry->GetActorTransform(), Exit->GetActorTransform());
+				const FVector NewEye = InteriorPortalMath::Position(Eye, EntryFrame, ExitFrame);
 				const FVector EyeOffset = Eye - Pawn->GetActorLocation();
 				const FVector Location = NewEye - EyeOffset;
 				FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalExit), false, Pawn);
@@ -275,7 +283,7 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 				if (GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, ECC_Pawn,
 					FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params))
 				{
-					Pawn->SetActorLocation(Pawn->GetActorLocation() + Intersection - Eye + Entry->GetActorForwardVector() * 2, false);
+					Pawn->SetActorLocation(Pawn->GetActorLocation() + Intersection - Eye + EntryFrame.GetUnitAxis(EAxis::X) * 2, false);
 					Pawn->GetCharacterMovement()->Velocity = FVector::ZeroVector;
 					PlacementMessage = TEXT("Exit blocked");
 					break;
@@ -292,13 +300,13 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 					if (HeldThroughEntry.Get()==Entry) { HeldThroughEntry.Reset(); }
 					else
 					{
-					GrabHandle->ReleaseComponent();
-					const FVector HeldVelocity = Rotation.RotateVector(Held->GetPhysicsLinearVelocity());
-					Held->SetWorldLocationAndRotation(InteriorPortalMath::Position(Held->GetComponentLocation(), Entry->GetActorTransform(), Exit->GetActorTransform()), Rotation*Held->GetComponentQuat(), false, nullptr, ETeleportType::TeleportPhysics);
-					Held->SetPhysicsLinearVelocity(HeldVelocity);
-					const int32 HeldIndex = PhysicsTravellers.IndexOfByKey(Held);
-					if (PreviousBodyPositions.IsValidIndex(HeldIndex)) { PreviousBodyPositions[HeldIndex]=Held->GetComponentLocation(); BodyExits[HeldIndex]=Exit; }
-					GrabHandle->GrabComponentAtLocationWithRotation(Held,NAME_None,Held->GetComponentLocation(),Held->GetComponentRotation());
+						GrabHandle->ReleaseComponent();
+						const FVector HeldVelocity = Rotation.RotateVector(Held->GetPhysicsLinearVelocity());
+						Held->SetWorldLocationAndRotation(InteriorPortalMath::Position(Held->GetComponentLocation(), EntryFrame, ExitFrame), Rotation*Held->GetComponentQuat(), false, nullptr, ETeleportType::TeleportPhysics);
+						Held->SetPhysicsLinearVelocity(HeldVelocity);
+						const int32 HeldIndex = PhysicsTravellers.IndexOfByKey(Held);
+						if (PreviousBodyPositions.IsValidIndex(HeldIndex)) { PreviousBodyPositions[HeldIndex]=Held->GetComponentLocation(); BodyExits[HeldIndex]=Exit; }
+						GrabHandle->GrabComponentAtLocationWithRotation(Held,NAME_None,Held->GetComponentLocation(),Held->GetComponentRotation());
 					}
 				}
 				Player->SetControlRotation(View);
@@ -318,19 +326,21 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 		if (!IsValid(Body) || !Body->IsSimulatingPhysics()) { continue; }
 		for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
 		{
+			const FTransform EntryFrame = Entry->GetLogicalFrame();
 			FVector Intersection;
-			if (!InteriorPortalMath::Crossed(PreviousBodyPositions[I], Body->GetComponentLocation(), Entry->GetActorTransform(),
+			if (!InteriorPortalMath::Crossed(PreviousBodyPositions[I], Body->GetComponentLocation(), EntryFrame,
 				Entry->HalfWidth, Entry->HalfHeight, Intersection) || !BodyFits(Body, Entry)) { continue; }
 			AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
-			const FQuat Rotation = InteriorPortalMath::Rotation(Entry->GetActorTransform(), Exit->GetActorTransform());
+			const FTransform ExitFrame = Exit->GetLogicalFrame();
+			const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
 			const FVector Velocity = Rotation.RotateVector(Body->GetPhysicsLinearVelocity());
 			const FVector Spin = Rotation.RotateVector(Body->GetPhysicsAngularVelocityInRadians());
-			const FVector Destination = InteriorPortalMath::Position(Body->GetComponentLocation(), Entry->GetActorTransform(), Exit->GetActorTransform());
+			const FVector Destination = InteriorPortalMath::Position(Body->GetComponentLocation(), EntryFrame, ExitFrame);
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalPhysicsExit), false, Body->GetOwner());
 			if (Exit->Support) { Params.AddIgnoredComponent(Exit->Support.Get()); }
 			if (GetWorld()->OverlapBlockingTestByChannel(Destination, FQuat::Identity, Body->GetCollisionObjectType(), FCollisionShape::MakeSphere(Body->Bounds.SphereRadius*.6f),Params))
 			{
-				Body->SetWorldLocation(Intersection+Entry->GetActorForwardVector()*(Body->Bounds.SphereRadius+1),false,nullptr,ETeleportType::TeleportPhysics);
+				Body->SetWorldLocation(Intersection+EntryFrame.GetUnitAxis(EAxis::X)*(Body->Bounds.SphereRadius+1),false,nullptr,ETeleportType::TeleportPhysics);
 				Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
 				break;
 			}
@@ -385,7 +395,7 @@ void AInteriorPortalSystem::UpdateBodyVisuals()
 		{
 			for (AInteriorPortal* P : {BluePortal.Get(),OrangePortal.Get()})
 			{
-				const FVector L=P->GetActorTransform().InverseTransformPositionNoScale(Body->GetComponentLocation());
+				const FVector L=P->GetLogicalFrame().InverseTransformPositionNoScale(Body->GetComponentLocation());
 				if (FMath::Abs(L.X)<Body->Bounds.SphereRadius+2 && BodyFits(Body,P)) { Entry=P; break; }
 			}
 		}
@@ -393,13 +403,15 @@ void AInteriorPortalSystem::UpdateBodyVisuals()
 		BodyMaterials[I]->SetScalarParameterValue(TEXT("SliceEnabled"),Entry?1:0);
 		if (!Entry) { continue; }
 		AInteriorPortal* Exit=Entry==BluePortal?OrangePortal:BluePortal;
-		const FQuat Q=InteriorPortalMath::Rotation(Entry->GetActorTransform(),Exit->GetActorTransform());
-		Proxy->SetWorldTransform(FTransform(Q*Body->GetComponentQuat(),InteriorPortalMath::Position(Body->GetComponentLocation(),Entry->GetActorTransform(),Exit->GetActorTransform()),Body->GetComponentScale()));
-		BodyMaterials[I]->SetVectorParameterValue(TEXT("SliceOrigin"),FLinearColor(Entry->GetActorLocation()));
-		BodyMaterials[I]->SetVectorParameterValue(TEXT("SliceNormal"),FLinearColor(Entry->GetActorForwardVector()));
+		const FTransform EntryFrame = Entry->GetLogicalFrame();
+		const FTransform ExitFrame = Exit->GetLogicalFrame();
+		const FQuat Q=InteriorPortalMath::Rotation(EntryFrame,ExitFrame);
+		Proxy->SetWorldTransform(FTransform(Q*Body->GetComponentQuat(),InteriorPortalMath::Position(Body->GetComponentLocation(),EntryFrame,ExitFrame),Body->GetComponentScale()));
+		BodyMaterials[I]->SetVectorParameterValue(TEXT("SliceOrigin"),FLinearColor(EntryFrame.GetLocation()));
+		BodyMaterials[I]->SetVectorParameterValue(TEXT("SliceNormal"),FLinearColor(EntryFrame.GetUnitAxis(EAxis::X)));
 		ProxyMaterials[I]->SetScalarParameterValue(TEXT("SliceEnabled"),1);
-		ProxyMaterials[I]->SetVectorParameterValue(TEXT("SliceOrigin"),FLinearColor(Exit->GetActorLocation()));
-		ProxyMaterials[I]->SetVectorParameterValue(TEXT("SliceNormal"),FLinearColor(Exit->GetActorForwardVector()));
+		ProxyMaterials[I]->SetVectorParameterValue(TEXT("SliceOrigin"),FLinearColor(ExitFrame.GetLocation()));
+		ProxyMaterials[I]->SetVectorParameterValue(TEXT("SliceNormal"),FLinearColor(ExitFrame.GetUnitAxis(EAxis::X)));
 	}
 }
 
@@ -419,7 +431,8 @@ bool AInteriorPortalSystem::ValidatePlacement(const FHitResult& Hit, const FVect
 	FVector Up = FVector::VectorPlaneProject(FVector::UpVector, Normal).GetSafeNormal();
 	if (Up.IsNearlyZero()) { Up = FVector::CrossProduct(Normal, ViewRight).GetSafeNormal(); }
 	const FQuat Rotation = FRotationMatrix::MakeFromXZ(Normal, Up).ToQuat();
-	OutFrame = FTransform(Rotation, Hit.ImpactPoint + Normal * .6f);
+	// The actor transform is the logical aperture plane. Cosmetic mesh depth bias belongs only to AInteriorPortal::Surface.
+	OutFrame = FTransform(Rotation, Hit.ImpactPoint);
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalPlacement), true);
 	for (int32 I = 0; I < 32; ++I)
 	{
@@ -444,7 +457,7 @@ bool AInteriorPortalSystem::ValidatePlacement(const FHitResult& Hit, const FVect
 	const AInteriorPortal* Other = Endpoint == BluePortal ? OrangePortal : BluePortal;
 	if (IsValid(Other) && Other->bPlaced)
 	{
-		const FVector Delta = Other->GetActorTransform().InverseTransformPositionNoScale(OutFrame.GetLocation());
+		const FVector Delta = Other->GetLogicalFrame().InverseTransformPositionNoScale(OutFrame.GetLocation());
 		if (FMath::Abs(Delta.X) < 10 && FMath::Abs(Delta.Y) < Other->HalfWidth+Endpoint->HalfWidth+6
 			&& FMath::Abs(Delta.Z) < Other->HalfHeight+Endpoint->HalfHeight+6)
 		{
@@ -504,8 +517,9 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	const FMinimalViewInfo& POV = Player->PlayerCameraManager->GetCameraCacheView();
 	const auto IsVisible = [&ProjectionData](const AInteriorPortal* Portal, const FTransform& View)
 	{
-		if (FVector::DotProduct(View.GetLocation()-Portal->GetActorLocation(), Portal->GetActorForwardVector()) < -.5) { return false; }
-		const FVector P = View.InverseTransformPositionNoScale(Portal->GetActorLocation());
+		const FTransform PortalFrame = Portal->GetLogicalFrame();
+		if (FVector::DotProduct(View.GetLocation()-PortalFrame.GetLocation(), PortalFrame.GetUnitAxis(EAxis::X)) < -.5) { return false; }
+		const FVector P = View.InverseTransformPositionNoScale(PortalFrame.GetLocation());
 		const double R = FMath::Sqrt(FMath::Square(Portal->HalfWidth)+FMath::Square(Portal->HalfHeight));
 		const double XScale = ProjectionData.ProjectionMatrix.M[0][0];
 		const double YScale = ProjectionData.ProjectionMatrix.M[1][1];
@@ -517,12 +531,14 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	{
 		if (!IsVisible(Entry, FTransform(POV.Rotation,POV.Location))) { continue; }
 		AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
+		const FTransform EntryFrame = Entry->GetLogicalFrame();
+		const FTransform ExitFrame = Exit->GetLogicalFrame();
 		TArray<FTransform, TInlineAllocator<4>> Views;
 		FTransform View(POV.Rotation, POV.Location);
-		const FQuat Rotation = InteriorPortalMath::Rotation(Entry->GetActorTransform(), Exit->GetActorTransform());
+		const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
 		for (int32 I=0; I<Depth; ++I)
 		{
-			View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), Entry->GetActorTransform(), Exit->GetActorTransform()));
+			View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), EntryFrame, ExitFrame));
 			Views.Add(View);
 			if (!IsVisible(Entry,View)) { break; }
 		}
@@ -538,19 +554,40 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		Capture->PostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
 		Capture->PostProcessSettings.bOverride_ReflectionMethod = true;
 		Capture->PostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
+
+		const bool bNativeClip = RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
+		Capture->bEnableClipPlane = bNativeClip;
+		if (bNativeClip)
+		{
+			const FVector ExitNormal = ExitFrame.GetUnitAxis(EAxis::X);
+			Capture->ClipPlaneBase = ExitFrame.GetLocation() + ExitNormal * ClipPlaneBias;
+			Capture->ClipPlaneNormal = ExitNormal;
+			Capture->CustomProjectionMatrix = ProjectionData.ProjectionMatrix;
+		}
+
+		bool bCaptureValid = true;
 		for (int32 I=VisibleDepth-1; I>=0; --I)
 		{
 			Entry->SetView(I+1<VisibleDepth ? Entry->RenderTargets[I+1] : nullptr, I+1<VisibleDepth);
 			Capture->SetWorldLocationAndRotation(Views[I].GetLocation(), Views[I].GetRotation());
-			const FVector N = Views[I].InverseTransformVectorNoScale(Exit->GetActorForwardVector());
-			const FVector P = Views[I].InverseTransformPositionNoScale(Exit->GetActorLocation()+Exit->GetActorForwardVector()*.1f);
-			// Camera local X/Y/Z -> projection view Z/X/Y.
-			const FVector4 Plane(N.Y, N.Z, N.X, -FVector::DotProduct(N,P));
-			Capture->CustomProjectionMatrix = InteriorPortalMath::ObliqueProjection(ProjectionData.ProjectionMatrix, Plane);
+			if (!bNativeClip)
+			{
+				const FVector N = Views[I].InverseTransformVectorNoScale(ExitFrame.GetUnitAxis(EAxis::X));
+				const FVector P = Views[I].InverseTransformPositionNoScale(ExitFrame.GetLocation()+ExitFrame.GetUnitAxis(EAxis::X)*ClipPlaneBias);
+				// Camera local X/Y/Z -> projection view Z/X/Y.
+				const FVector4 Plane(N.Y, N.Z, N.X, -FVector::DotProduct(N,P));
+				FMatrix ObliqueProjection;
+				if (!InteriorPortalMath::TryObliqueProjection(ProjectionData.ProjectionMatrix, Plane, ObliqueProjection))
+				{
+					bCaptureValid = false;
+					break;
+				}
+				Capture->CustomProjectionMatrix = ObliqueProjection;
+			}
 			Capture->TextureTarget = Entry->RenderTargets[I];
 			Capture->CaptureScene();
 		}
-		Entry->SetView(Entry->RenderTargets[0], true);
+		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid);
 	}
 }
 
