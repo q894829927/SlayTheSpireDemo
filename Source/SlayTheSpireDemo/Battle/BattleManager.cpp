@@ -415,8 +415,8 @@ void ABattleManager::TestGainBlock()
 	}
 
 	BeginPresentationResolution(EPresentationResolutionOrigin::System);
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Phase 5C block test queued: BaseBlock=5."));
-	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Player test block queued: BaseAmount=%d"), PlayerTestBlockAmount);
+	QueueGainBlockAction(Player.Get(), Player.Get(), PlayerTestBlockAmount);
 	ActionQueue->StartProcessing();
 }
 
@@ -758,7 +758,7 @@ void ABattleManager::TestPhase5CBlockPipeline()
 
 	UStatusData* DexterityDefinition = DebugPhase5CStatuses[0].Get();
 	UStatusData* FrailtyDefinition = DebugPhase5CStatuses[1].Get();
-	if (StrengthDefinition->StatusId.IsNone() || WeakDefinition->StatusId.IsNone() || VulnerableDefinition->StatusId.IsNone())
+	if (DexterityDefinition->StatusId.IsNone() || FrailtyDefinition->StatusId.IsNone())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline requires non-empty StatusId values."));
 		return;
