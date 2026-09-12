@@ -34,7 +34,7 @@ AInteriorPortal::AInteriorPortal()
 	// P2-A starts from a temporal capture path; the system can disable this only for controlled A/B diagnostics.
 	Capture->ShowFlags.SetTemporalAA(true);
 	Capture->ShowFlags.SetBloom(false);
-	// Store scene-linear radiance: the player's view must apply exposure exactly once.
+	// Keep SceneCapture eye adaptation disabled. PortalView is converted back out of the player's exposure domain in the display material.
 	Capture->ShowFlags.SetEyeAdaptation(false);
 }
 
@@ -66,7 +66,11 @@ void AInteriorPortal::RefreshAppearance()
 		DynamicMaterial = UMaterialInstanceDynamic::Create(PortalMaterial, this);
 		Surface->SetMaterial(0, DynamicMaterial);
 	}
-	if (DynamicMaterial) { DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor); }
+	if (DynamicMaterial)
+	{
+		DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor);
+		DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
+	}
 }
 
 void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked)
@@ -74,6 +78,8 @@ void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked)
 	if (!DynamicMaterial) { return; }
 	if (Texture) { DynamicMaterial->SetTextureParameterValue(TEXT("PortalView"), Texture); }
 	DynamicMaterial->SetScalarParameterValue(TEXT("Linked"), bLinked && Texture ? 1 : 0);
+	// Keep the diagnostic A/B switch live in PIE if the property is edited while running.
+	DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
 }
 
 void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
