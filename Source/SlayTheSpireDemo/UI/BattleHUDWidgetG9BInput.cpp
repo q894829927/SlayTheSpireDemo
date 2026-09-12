@@ -8,18 +8,18 @@
 
 namespace
 {
-	struct FG9BBufferedCardState
+	struct FG9BWidgetWakeState
 	{
-		FBufferedCardIntent Intent;
-		TWeakObjectPtr<UBattlePresentationController> Controller;
 		TWeakObjectPtr<UBattleHUDViewModel> BoundViewModel;
 		FDelegateHandle ViewModelChangedHandle;
 		bool bReplayScheduled = false;
 	};
 
-	TMap<TWeakObjectPtr<UBattleHUDWidget>, FG9BBufferedCardState> GBufferedCardStates;
+	TMap<TWeakObjectPtr<UBattleHUDWidget>, FG9BWidgetWakeState> GWakeStates;
+	TSet<TWeakObjectPtr<UBattleHUDWidget>> GFastInputRetirementFences;
+	bool bG9BEnabled = true;
 
-	void RemoveState(UBattleHUDWidget* Widget)
+	void RemoveWakeState(UBattleHUDWidget* Widget)
 	{
 		if (!IsValid(Widget))
 		{
@@ -27,7 +27,7 @@ namespace
 		}
 
 		const TWeakObjectPtr<UBattleHUDWidget> Key(Widget);
-		if (FG9BBufferedCardState* State = GBufferedCardStates.Find(Key))
+		if (FG9BWidgetWakeState* State = GWakeStates.Find(Key))
 		{
 			if (UBattleHUDViewModel* BoundViewModel = State->BoundViewModel.Get();
 				IsValid(BoundViewModel) && State->ViewModelChangedHandle.IsValid())
@@ -35,25 +35,31 @@ namespace
 				BoundViewModel->OnNativeChanged.Remove(State->ViewModelChangedHandle);
 			}
 		}
-		GBufferedCardStates.Remove(Key);
+		GWakeStates.Remove(Key);
 	}
 
-	void PruneDeadStates()
+	void PruneDeadState()
 	{
-		for (auto It = GBufferedCardStates.CreateIterator(); It; ++It)
+		for (auto It = GWakeStates.CreateIterator(); It; ++It)
 		{
 			if (It.Key().IsValid())
 			{
 				continue;
 			}
-
-			FG9BBufferedCardState& State = It.Value();
-			if (UBattleHUDViewModel* BoundViewModel = State.BoundViewModel.Get();
-				IsValid(BoundViewModel) && State.ViewModelChangedHandle.IsValid())
+			if (UBattleHUDViewModel* BoundViewModel = It.Value().BoundViewModel.Get();
+				IsValid(BoundViewModel) && It.Value().ViewModelChangedHandle.IsValid())
 			{
-				BoundViewModel->OnNativeChanged.Remove(State.ViewModelChangedHandle);
+				BoundViewModel->OnNativeChanged.Remove(It.Value().ViewModelChangedHandle);
 			}
 			It.RemoveCurrent();
+		}
+
+		for (auto It = GFastInputRetirementFences.CreateIterator(); It; ++It)
+		{
+			if (!It->IsValid())
+			{
+				It.RemoveCurrent();
+			}
 		}
 	}
 
@@ -72,43 +78,29 @@ namespace
 		UBattleHUDWidget* Widget = WeakWidget.Get();
 		if (!IsValid(Widget))
 		{
-			PruneDeadStates();
+			PruneDeadState();
 			return;
 		}
 
-		FG9BBufferedCardState* State = GBufferedCardStates.Find(WeakWidget);
+		FG9BWidgetWakeState* State = GWakeStates.Find(WeakWidget);
 		if (State == nullptr)
 		{
 			return;
 		}
 		State->bReplayScheduled = false;
 
-		UBattlePresentationController* Controller = State->Controller.Get();
-		if (!IsValid(Controller))
+		UBattleHUDViewModel* ViewModel = Widget->ViewModel.Get();
+		if (!IsValid(ViewModel))
 		{
-			RemoveState(Widget);
+			RemoveWakeState(Widget);
 			return;
 		}
 
-		const EBufferedIntentShadowEvaluation Evaluation =
-			Controller->EvaluateBufferedCardTarget(State->Intent);
-		if (Evaluation == EBufferedIntentShadowEvaluation::Waiting)
+		ViewModel->RefreshBufferedPlayerIntentG9();
+		if (!ViewModel->HasBufferedCardSelectionG9())
 		{
-			return;
+			RemoveWakeState(Widget);
 		}
-		if (Evaluation != EBufferedIntentShadowEvaluation::Ready)
-		{
-			RemoveState(Widget);
-			return;
-		}
-
-		const int32 RuntimeId = State->Intent.RuntimeId;
-		RemoveState(Widget);
-
-		// One old physical click crosses only the Presentation-lag boundary. The
-		// replay enters the ordinary SelectCard contract and does not auto-confirm
-		// or auto-target the selected card.
-		Widget->SelectCard(RuntimeId, false);
 	}
 
 	void ScheduleExactReplayCheck(UBattleHUDWidget* Widget)
@@ -119,7 +111,7 @@ namespace
 		}
 
 		const TWeakObjectPtr<UBattleHUDWidget> Key(Widget);
-		FG9BBufferedCardState* State = GBufferedCardStates.Find(Key);
+		FG9BWidgetWakeState* State = GWakeStates.Find(Key);
 		if (State == nullptr || State->bReplayScheduled)
 		{
 			return;
@@ -136,9 +128,16 @@ namespace
 			0.0f);
 	}
 
-	void BindViewModelWakeup(UBattleHUDWidget* Widget, FG9BBufferedCardState& State)
+	void BindViewModelWakeup(UBattleHUDWidget* Widget)
 	{
-		UBattleHUDViewModel* DesiredViewModel = IsValid(Widget) ? Widget->ViewModel.Get() : nullptr;
+		if (!IsValid(Widget) || !IsValid(Widget->ViewModel))
+		{
+			return;
+		}
+
+		const TWeakObjectPtr<UBattleHUDWidget> Key(Widget);
+		FG9BWidgetWakeState& State = GWakeStates.FindOrAdd(Key);
+		UBattleHUDViewModel* DesiredViewModel = Widget->ViewModel.Get();
 		if (State.BoundViewModel.Get() == DesiredViewModel && State.ViewModelChangedHandle.IsValid())
 		{
 			return;
@@ -152,11 +151,6 @@ namespace
 		State.BoundViewModel = DesiredViewModel;
 		State.ViewModelChangedHandle.Reset();
 
-		if (!IsValid(DesiredViewModel))
-		{
-			return;
-		}
-
 		const TWeakObjectPtr<UBattleHUDWidget> WeakWidget(Widget);
 		State.ViewModelChangedHandle = DesiredViewModel->OnNativeChanged.AddLambda(
 			[WeakWidget](EBattleHUDDirtyFlags /*DirtyFlags*/)
@@ -167,26 +161,43 @@ namespace
 				}
 				else
 				{
-					PruneDeadStates();
+					PruneDeadState();
 				}
 			});
 	}
+}
+
+bool BattleHUDWidgetG9BInput::IsEnabled()
+{
+	return bG9BEnabled;
 }
 
 EG9BCardClickDisposition BattleHUDWidgetG9BInput::TryHandleBufferedCardClick(
 	UBattleHUDWidget* Widget,
 	int32 RuntimeId)
 {
-	PruneDeadStates();
-	if (!IsValid(Widget) || RuntimeId == INDEX_NONE || !IsValid(Widget->ViewModel))
+	PruneDeadState();
+	if (!bG9BEnabled
+		|| !IsValid(Widget)
+		|| RuntimeId == INDEX_NONE
+		|| !IsValid(Widget->ViewModel))
 	{
 		return EG9BCardClickDisposition::NotHandled;
 	}
 
 	UBattleHUDViewModel* ViewModel = Widget->ViewModel.Get();
+	if (ViewModel->HasBufferedEndTurnG9())
+	{
+		return EG9BCardClickDisposition::Rejected;
+	}
+
 	if (IsNormalCardInputAvailableNow(ViewModel))
 	{
-		RemoveState(Widget);
+		if (ViewModel->HasBufferedCardSelectionG9())
+		{
+			ViewModel->ClearBufferedPlayerIntentG9();
+		}
+		RemoveWakeState(Widget);
 		return EG9BCardClickDisposition::NotHandled;
 	}
 
@@ -195,63 +206,140 @@ EG9BCardClickDisposition BattleHUDWidgetG9BInput::TryHandleBufferedCardClick(
 	if (!IsValid(Controller)
 		|| !Controller->TryCaptureBufferedCardTarget(RuntimeId, Captured))
 	{
-		// Every physical click re-captures authority. If the new click cannot prove
-		// an exact G9 window, do not keep an older credential alive behind it.
-		RemoveState(Widget);
+		// Every physical card click re-captures authority. A click outside an exact
+		// G9 window retires an older card credential before normal G8 FastInput is
+		// considered for this new input.
+		if (ViewModel->HasBufferedCardSelectionG9())
+		{
+			ViewModel->ClearBufferedPlayerIntentG9();
+		}
+		RemoveWakeState(Widget);
 		return EG9BCardClickDisposition::NotHandled;
 	}
 
-	const TWeakObjectPtr<UBattleHUDWidget> Key(Widget);
-	FG9BBufferedCardState& State = GBufferedCardStates.FindOrAdd(Key);
-	State.Intent = Captured;
-	State.Controller = Controller;
-	BindViewModelWakeup(Widget, State);
+	if (!ViewModel->StoreBufferedCardSelectionG9(Captured, Controller))
+	{
+		return ViewModel->HasBufferedEndTurnG9()
+			? EG9BCardClickDisposition::Rejected
+			: EG9BCardClickDisposition::NotHandled;
+	}
+
+	BindViewModelWakeup(Widget);
 	return EG9BCardClickDisposition::Buffered;
+}
+
+bool BattleHUDWidgetG9BInput::CanAcceptEndTurn(const UBattleHUDWidget* Widget)
+{
+	return bG9BEnabled
+		&& IsValid(Widget)
+		&& IsValid(Widget->ViewModel)
+		&& Widget->ViewModel->CanAcceptEndTurnIntentG9();
+}
+
+bool BattleHUDWidgetG9BInput::TryHandleEndTurn(UBattleHUDWidget* Widget)
+{
+	PruneDeadState();
+	if (!bG9BEnabled || !IsValid(Widget) || !IsValid(Widget->ViewModel))
+	{
+		return false;
+	}
+
+	UBattleHUDViewModel* ViewModel = Widget->ViewModel.Get();
+	if (!ViewModel->TryAcceptEndTurnIntentG9())
+	{
+		return false;
+	}
+
+	// EndTurn has now been accepted against exact player-turn authority. It owns
+	// priority over the older card future work from this input owner.
+	RemoveWakeState(Widget);
+	MarkFastInputRetiredByEndTurn(Widget);
+	ViewModel->FinalizeAcceptedEndTurnIntentG9();
+	return true;
 }
 
 void BattleHUDWidgetG9BInput::RefreshBufferedCardIntent(UBattleHUDWidget* Widget)
 {
-	PruneDeadStates();
-	if (!IsValid(Widget))
+	PruneDeadState();
+	if (!bG9BEnabled || !IsValid(Widget) || !IsValid(Widget->ViewModel))
 	{
 		return;
 	}
 
-	FG9BBufferedCardState* State = GBufferedCardStates.Find(TWeakObjectPtr<UBattleHUDWidget>(Widget));
-	if (State == nullptr)
+	if (!Widget->ViewModel->HasBufferedCardSelectionG9())
 	{
+		RemoveWakeState(Widget);
 		return;
 	}
 
-	UBattlePresentationController* Controller = State->Controller.Get();
-	if (!IsValid(Controller))
-	{
-		ScheduleExactReplayCheck(Widget);
-		return;
-	}
-
-	const EBufferedIntentShadowEvaluation Evaluation =
-		Controller->EvaluateBufferedCardTarget(State->Intent);
-	if (Evaluation != EBufferedIntentShadowEvaluation::Waiting)
-	{
-		// Defer replay/drop outside the synchronous ViewModel multicast stack.
-		ScheduleExactReplayCheck(Widget);
-	}
+	// Defer exact replay/drop outside the synchronous ViewModel multicast stack.
+	ScheduleExactReplayCheck(Widget);
 }
 
 void BattleHUDWidgetG9BInput::ClearBufferedCardIntent(UBattleHUDWidget* Widget)
 {
-	PruneDeadStates();
-	RemoveState(Widget);
+	PruneDeadState();
+	if (IsValid(Widget) && IsValid(Widget->ViewModel)
+		&& Widget->ViewModel->HasBufferedCardSelectionG9())
+	{
+		Widget->ViewModel->ClearBufferedPlayerIntentG9();
+	}
+	RemoveWakeState(Widget);
 }
 
 bool BattleHUDWidgetG9BInput::HasBufferedCardIntent(const UBattleHUDWidget* Widget)
 {
-	PruneDeadStates();
+	PruneDeadState();
+	return IsValid(Widget)
+		&& IsValid(Widget->ViewModel)
+		&& Widget->ViewModel->HasBufferedCardSelectionG9();
+}
+
+void BattleHUDWidgetG9BInput::MarkFastInputRetiredByEndTurn(UBattleHUDWidget* Widget)
+{
+	PruneDeadState();
+	if (IsValid(Widget))
+	{
+		GFastInputRetirementFences.Add(TWeakObjectPtr<UBattleHUDWidget>(Widget));
+	}
+}
+
+bool BattleHUDWidgetG9BInput::ConsumeFastInputRetirementFence(UBattleHUDWidget* Widget)
+{
+	PruneDeadState();
 	if (!IsValid(Widget))
 	{
 		return false;
 	}
-	return GBufferedCardStates.Contains(
-		TWeakObjectPtr<UBattleHUDWidget>(const_cast<UBattleHUDWidget*>(Widget)));
+	return GFastInputRetirementFences.Remove(TWeakObjectPtr<UBattleHUDWidget>(Widget)) > 0;
 }
+
+void BattleHUDWidgetG9BInput::ClearFastInputRetirementFence(UBattleHUDWidget* Widget)
+{
+	PruneDeadState();
+	if (IsValid(Widget))
+	{
+		GFastInputRetirementFences.Remove(TWeakObjectPtr<UBattleHUDWidget>(Widget));
+	}
+}
+
+void BattleHUDWidgetG9BInput::ClearWidgetState(UBattleHUDWidget* Widget)
+{
+	if (!IsValid(Widget))
+	{
+		return;
+	}
+	if (IsValid(Widget->ViewModel))
+	{
+		Widget->ViewModel->ClearBufferedPlayerIntentG9();
+	}
+	RemoveWakeState(Widget);
+	ClearFastInputRetirementFence(Widget);
+}
+
+#if WITH_DEV_AUTOMATION_TESTS
+void BattleHUDWidgetG9BInput::SetEnabledForTesting(bool bEnabled)
+{
+	bG9BEnabled = bEnabled;
+}
+#endif
