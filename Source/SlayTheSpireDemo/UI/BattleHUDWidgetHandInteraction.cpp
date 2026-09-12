@@ -5,6 +5,7 @@
 #include "BattleTargetingArrowWidget.h"
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 #include "BattleHUDViewModel.h"
+#include "BattleHUDWidgetG9BInput.h"
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
@@ -64,6 +65,12 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 		if (TargetingArrow) TargetingArrow->SetVisibility(ESlateVisibility::Hidden);
 		return;
 	}
+
+	// Idempotent G9-B binding. After the first valid ViewModel/Button pair this is
+	// only an identity check; EndTurn readiness updates are driven by ViewModel
+	// change events, not Gameplay polling from NativeTick.
+	BattleHUDWidgetG9BInput::EnsureWidgetInputBinding(this);
+
 	const FVector2D Pointer = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
 
@@ -79,7 +86,11 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 			true,
 			DeltaTime);
 	}
-	else if (FanHand && !bPending && HasTrackedPresentationPlayback() && HasActiveNativePresentation())
+	else if (BattleHUDWidgetG9BInput::IsEnabled()
+		&& FanHand
+		&& !bPending
+		&& HasTrackedPresentationPlayback()
+		&& HasActiveNativePresentation())
 	{
 		// G9-B separates hover affordance from formal Hand layout. Only the exact
 		// played-card windows approved for buffered selection may animate surviving
