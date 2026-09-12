@@ -50,6 +50,18 @@ public:
 	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float ClipPlaneBias = 0.5f;
+	/** P2-A: keep the portal capture on a persistent temporal path so Lumen/history behavior can match the player view. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
+	bool bCaptureTemporalAA = true;
+	/** P2-A diagnostic only. Disables global eye adaptation and fixes pre-exposure so direct-vs-portal lighting can be compared without metering changes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
+	bool bExposureIsolationDiagnostic = false;
+	/** Pre-exposure value used while the diagnostic is active. 1.0 removes pre-exposure scaling from the comparison. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics", meta=(ClampMin="0.125", ClampMax="8.0"))
+	float DiagnosticPreExposureOverride = 1.0f;
+	/** Runtime description of which P2-A diagnostic state is actually active. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Rendering|P2 Diagnostics")
+	FString FidelityDiagnosticStatus;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	FString PlacementMessage;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
@@ -73,6 +85,8 @@ private:
 	void RestoreIgnores();
 	void UpdatePhysicsGates();
 	void UpdateBodyVisuals();
+	void UpdateFidelityDiagnostics();
+	void RestoreFidelityDiagnostics();
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
@@ -92,4 +106,9 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> BodyMaterials;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> ProxyMaterials;
+	bool bExposureDiagnosticsApplied = false;
+	bool bSavedEyeAdaptationQuality = false;
+	bool bSavedPreExposureOverride = false;
+	int32 SavedEyeAdaptationQuality = 0;
+	float SavedPreExposureOverride = 0.0f;
 };
