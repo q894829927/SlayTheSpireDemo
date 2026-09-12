@@ -279,14 +279,14 @@ void ABattleManager::StartBattle()
 	EventDispatcher = NewObject<UBattleEventDispatcher>(this);
 	if (!HasValidEventDispatcher())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not initialize EventDispatcher."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create EventDispatcher."));
 		return;
 	}
 
 	DeckRuntime = NewObject<UDeckRuntime>(this);
 	if (!HasValidDeckRuntime())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not initialize DeckRuntime."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create DeckRuntime."));
 		return;
 	}
 	DeckRuntime->InitializeFromDefinitions(DebugStartingDeck, DeckDebugSeed);
@@ -415,8 +415,8 @@ void ABattleManager::TestGainBlock()
 	}
 
 	BeginPresentationResolution(EPresentationResolutionOrigin::System);
-	UE_LOG(LogTemp, Log, TEXT("[Battle] Player test block queued: BaseAmount=%d"), PlayerTestBlockAmount);
-	QueueGainBlockAction(Player.Get(), Player.Get(), PlayerTestBlockAmount);
+	UE_LOG(LogTemp, Log, TEXT("[Battle] Phase 5C block test queued: BaseBlock=5."));
+	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
 	ActionQueue->StartProcessing();
 }
 
@@ -723,6 +723,7 @@ void ABattleManager::TestApplyPhase5B2DamageStatuses()
 		*WeakDefinition->StatusId.ToString(),
 		*StrengthDefinition->StatusId.ToString()
 	);
+
 	QueueApplyStatusAction(Player.Get(), Enemy.Get(), VulnerableDefinition, 2);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), WeakDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), StrengthDefinition, 2);
@@ -757,7 +758,7 @@ void ABattleManager::TestPhase5CBlockPipeline()
 
 	UStatusData* DexterityDefinition = DebugPhase5CStatuses[0].Get();
 	UStatusData* FrailtyDefinition = DebugPhase5CStatuses[1].Get();
-	if (DexterityDefinition->StatusId.IsNone() || FrailtyDefinition->StatusId.IsNone())
+	if (StrengthDefinition->StatusId.IsNone() || WeakDefinition->StatusId.IsNone() || VulnerableDefinition->StatusId.IsNone())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Battle] TestPhase5CBlockPipeline requires non-empty StatusId values."));
 		return;
@@ -771,6 +772,7 @@ void ABattleManager::TestPhase5CBlockPipeline()
 		*FrailtyDefinition->StatusId.ToString(),
 		*DexterityDefinition->StatusId.ToString()
 	);
+
 	QueueApplyStatusAction(Player.Get(), Player.Get(), FrailtyDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), DexterityDefinition, 2);
 	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
@@ -1003,15 +1005,23 @@ bool ABattleManager::InitializeRelicsForBattle()
 	PlayerRelicContainer->Initialize(this);
 	for (const TObjectPtr<URelicData>& Definition : DebugStartingRelics)
 	{
-		switch (const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get()); Result.Outcome)
+		const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get());
+		switch (Result.Outcome)
 		{
 		case ERelicAddOutcome::Added:
 			break;
 		case ERelicAddOutcome::Duplicate:
-			UE_LOG(LogTemp, Warning, TEXT("[Battle] Duplicate starting relic ignored: %s"), *GetNameSafe(Definition.Get()));
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("[Relic] Duplicate DebugStartingRelics entry ignored: RelicId=%s."),
+				IsValid(Definition.Get()) ? *Definition->RelicId.ToString() : TEXT("None")
+			);
 			break;
+		case ERelicAddOutcome::Invalid:
 		default:
-			return false;
+			UE_LOG(LogTemp, Warning, TEXT("[Relic] Invalid DebugStartingRelics entry ignored."));
+			break;
 		}
 	}
 	return true;
