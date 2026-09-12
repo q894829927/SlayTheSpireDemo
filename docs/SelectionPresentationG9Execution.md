@@ -113,6 +113,18 @@ SlayTheSpireDemo.SelectionPresentation.G9A — PASS
 
 The focused suite contains the four A1/A2 tests plus the four A3 tests above. No G9 production replay/input behavior is enabled by this checkpoint.
 
+Static review against the G9-A branch point also passes:
+
+```text
+no SelectCard production path change
+no EndTurn production path change
+no FastInput production path change
+no Hand hover/layout production path change
+no card visual ownership production path change
+G9-A changes are limited to Gameplay turn authority, shadow buffered-intent state,
+Controller shadow card-target authority, focused tests and execution evidence
+```
+
 ---
 
 ## Current validation gates
@@ -123,7 +135,7 @@ Before G9-A can become COMPLETE / VALIDATED:
 1. UE5.8 Development Editor build with A3 — PASS
 2. SlayTheSpireDemo.SelectionPresentation.G9A — PASS
 3. affected G8 regressions — pending
-4. static review: no production input behavior changed — pending final checkpoint
+4. static review: no production input behavior changed — PASS
 ```
 
 Minimum affected regressions:
