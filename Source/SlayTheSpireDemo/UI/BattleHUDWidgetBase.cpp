@@ -99,7 +99,7 @@ namespace
 		return Result.IsEmpty() ? TEXT("<empty>") : Result;
 	}
 
-	bool AreGroupTagsEquivalent(
+	bool AreHUDGroupTagsEquivalent(
 		const FPresentationGroupTag& Left,
 		const FPresentationGroupTag& Right)
 	{
@@ -264,7 +264,7 @@ bool UBattleHUDWidgetBase::PlayPresentationGroup(
 			|| Record.ResolutionId != Token.ResolutionId
 			|| Record.PresentationSequence <= 0
 			|| (PreviousSequence > 0 && Record.PresentationSequence <= PreviousSequence)
-			|| !AreGroupTagsEquivalent(Record.Group, Group))
+			|| !AreHUDGroupTagsEquivalent(Record.Group, Group))
 		{
 			return false;
 		}
