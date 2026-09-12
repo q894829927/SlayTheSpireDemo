@@ -2,6 +2,7 @@
 
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
+#include "BattleHUDWidgetG9BInput.h"
 #include "../Battle/BattleSelectionRequest.h"
 #include "../Presentation/BattlePresentationController.h"
 #include "Components/Button.h"
@@ -142,6 +143,22 @@ bool UBattleHUDWidget::SelectCard(
 	if (ViewModel->HasAuthoritativePendingCardSelection())
 	{
 		return false;
+	}
+
+	if (bAllowFastPresentationCatchUp)
+	{
+		switch (BattleHUDWidgetG9BInput::TryHandleBufferedCardClick(this, RuntimeId))
+		{
+		case EG9BCardClickDisposition::Buffered:
+			// Exact sealed target exists: keep the current card Presentation alive.
+			// G9 replays this one selection when that exact target becomes displayed.
+			return true;
+		case EG9BCardClickDisposition::Rejected:
+			return false;
+		case EG9BCardClickDisposition::NotHandled:
+		default:
+			break;
+		}
 	}
 
 	if (!bAllowFastPresentationCatchUp)
