@@ -19,7 +19,7 @@ class SLAYTHESPIREDEMO_API AInteriorChildCharacter : public ACharacter
 	GENERATED_BODY()
 
 public:
-	AInteriorChildCharacter();
+	AInteriorChildCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void Tick(float DeltaSeconds) override;

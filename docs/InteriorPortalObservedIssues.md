@@ -220,7 +220,9 @@ This defect takes priority over additional visual polish because it allows the p
 
 ### Current contributing behavior
 
-The current traversal prototype temporarily ignores the entire support primitive when the capsule is near the portal and appears to fit the aperture. The exit-side path also keeps support ignore active while `LastPlayerExit` considers the player to still be clearing the exit.
+The original traversal prototype temporarily ignored the entire support primitive when the capsule was near the portal and appeared to fit the aperture. The exit-side path also kept support ignore active while `LastPlayerExit` considered the player to still be clearing the exit.
+
+**2026-09-13 player repair candidate implemented; full issue matrix remains open.** `UInteriorPortalMovementComponent` now checks a swept capsule aperture interval on every movement submove, and explicit clearance state prevents reversal behind the exit before full clearance. Transfer occurs before subsequent floor queries. This also fixes the reproduced 3 Hz failure where entry-side simulation dropped the player below the destination floor before transfer. Actual-map repeated traversal and focused test evidence: [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). The remaining jump/edge/arbitrary-orientation visual matrix and Chaos body gates must not be inferred from these player tests.
 
 Conceptually, the current behavior is too close to:
 

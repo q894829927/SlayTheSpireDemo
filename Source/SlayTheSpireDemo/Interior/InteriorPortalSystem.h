@@ -14,6 +14,12 @@ class UMaterialInstanceDynamic;
 class UPhysicsHandleComponent;
 
 UENUM(BlueprintType)
+enum class EInteriorPortalCrossingState : uint8
+{
+	Outside, ApproachingEntry, IntersectingAperture, Transferred, ClearingExit
+};
+
+UENUM(BlueprintType)
 enum class EInteriorPortalRenderClipMode : uint8
 {
 	NativeClipPlane UMETA(DisplayName="Native SceneCapture Clip Plane"),
@@ -71,6 +77,12 @@ public:
 	int32 PlayerCrossings = 0;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	int32 PhysicsCrossings = 0;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Traversal")
+	EInteriorPortalCrossingState PlayerCrossingState = EInteriorPortalCrossingState::Outside;
+	/** CharacterMovement submove boundary. The returned fraction is safe before any world sweep occurs. */
+	double ConstrainCharacterMove(ACharacter* Pawn, const FVector& Delta, FHitResult& OutGateHit);
+	void FinishCharacterMove(ACharacter* Pawn);
+	bool IsPlayerClearingPortal() const;
 	UFUNCTION(BlueprintCallable, Category="Portals")
 	bool FirePortal(APlayerController* Player, bool bOrange);
 	UFUNCTION(BlueprintCallable, Category="Portals")
@@ -80,12 +92,23 @@ public:
 	bool TryGrab(APlayerController* Player);
 	/** Called by the local controller immediately before and after its camera update. */
 	void UpdateTraversal(APlayerController* Player);
+	/** Resolve after each character submove, before CharacterMovement probes the next floor. */
+	void UpdateCharacterTraversal(APlayerController* Player);
 	void RenderViews(APlayerController* Player);
+	/**
+	 * Returns true when a first-person flashlight clearance sweep hit a portal's
+	 * supporting wall through the portal aperture. The caller can ignore that hit
+	 * while retaining normal wall retraction everywhere else.
+	 */
+	bool IsFlashlightTraceThroughPortal(const FHitResult& Hit, const FVector& TraceStart,
+		const FVector& TraceEnd, float TraceRadius) const;
 	bool ValidatePlacement(const FHitResult& Hit, const FVector& ViewRight, const AInteriorPortal* Endpoint,
 		FTransform& OutFrame, FString& OutReason) const;
 private:
 	bool FitsCharacter(const ACharacter* Character, const FVector& Center, const AInteriorPortal* Portal) const;
 	void RestoreIgnores();
+	void RecoverCharacterPassage();
+	double CharacterNormalExtent(const ACharacter* Pawn, const FTransform& Frame) const;
 	void UpdatePhysicsGates();
 	void UpdateBodyVisuals();
 	void UpdateFidelityDiagnostics();
@@ -93,6 +116,11 @@ private:
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
+	TWeakObjectPtr<AInteriorPortal> PlayerGate;
+	FTransform PlayerGateFrame;
+	FVector LastSafePlayerCenter = FVector::ZeroVector;
+	bool bHasSafePlayerCenter = false;
+	uint64 LastPlayerTransferFrame = MAX_uint64;
 	TWeakObjectPtr<AInteriorPortal> HeldThroughEntry;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> IgnoredSupports;
 	FVector PreviousEye = FVector::ZeroVector;

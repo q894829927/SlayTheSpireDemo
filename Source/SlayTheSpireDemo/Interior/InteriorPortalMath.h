@@ -32,6 +32,33 @@ namespace InteriorPortalMath
 		return Inside(Local, Width, Height);
 	}
 
+	/** Continuous fit of an upright capsule projected into the logical aperture.
+	 * The 32-sided polygon is INSIDE the ellipse. Capsule support functions are analytic;
+	 * thus this is conservative geometry, not a set of unproven capsule surface samples.
+	 * Returns the segment interval whose complete capsule fits, and the inward exit normal. */
+	inline bool CapsuleApertureInterval(const FVector& Center, const FVector& Delta, const FVector& Spine,
+		double Radius, double Width, double Height, double& Enter, double& Leave, FVector& InwardNormal)
+	{
+		Enter = 0; Leave = 1; InwardNormal = FVector::ZeroVector;
+		if (Width <= 0 || Height <= 0 || Radius < 0) { return false; }
+		constexpr int32 Sides = 32;
+		const double Edge = FMath::Cos(UE_PI / Sides);
+		for (int32 I=0; I<Sides; ++I)
+		{
+			const double Angle = (I+.5)*2*UE_PI/Sides;
+			const FVector N(0,FMath::Cos(Angle)/Width,FMath::Sin(Angle)/Height);
+			const double Room = Edge - FMath::Abs(FVector::DotProduct(N,Spine)) - Radius*N.Size();
+			const double Gap = Room - FVector::DotProduct(N,Center);
+			const double Speed = FVector::DotProduct(N,Delta);
+			if (FMath::Abs(Speed) < 1.e-10) { if (Gap < -1.e-8) { return false; } continue; }
+			const double T = Gap/Speed;
+			if (Speed > 0 && T < Leave) { Leave=T; InwardNormal=-N.GetSafeNormal(); }
+			else if (Speed < 0) { Enter=FMath::Max(Enter,T); }
+			if (Enter > Leave) { return false; }
+		}
+		return Leave >= 0 && Enter <= 1;
+	}
+
 	/**
 	 * Builds a reversed-Z oblique near projection using UE row-vector matrices.
 	 * Returns false for invalid/ill-conditioned planes so production code can deliberately skip the capture

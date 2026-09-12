@@ -673,6 +673,8 @@ Option B is a new architecture authorization, not an incidental P2 refactor.
 
 **Goal:** remove all discontinuity around the instant the eye/capsule crosses the portal plane.
 
+Execution update, 2026-09-13: the [player traversal delivery](InteriorPortalPlayerTraversal.md) implements explicit states, quaternion camera/input ownership and per-submove transfer before floor queries. Its evidence does not seal every orientation/visual cell below. Follow the observed-issues priority order for subsequent work.
+
 Required crossing state:
 
 ```text
@@ -736,6 +738,8 @@ Acceptance scenarios:
 ### P4 — Aperture-local collision passage instead of broad wall ignore
 
 **Goal:** allow traversal through the portal hole while preventing escape through the rest of the support surface.
+
+Execution update, 2026-09-13: the player capsule now uses a continuous conservative aperture interval at the CharacterMovement submove boundary; [scope and evidence](InteriorPortalPlayerTraversal.md). The high-speed Chaos rigid-body half of P4 remains open. Do not label the whole P4 stage complete from player-only evidence.
 
 Current behavior temporarily ignores the whole support primitive when the character/body is close enough and fits the aperture. This is safe as a prototype but not full-fidelity collision.
 

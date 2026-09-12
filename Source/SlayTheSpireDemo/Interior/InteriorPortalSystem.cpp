@@ -1,6 +1,8 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPlayerController.h"
+#include "InteriorPortalMovementComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -26,7 +28,10 @@ namespace
 	FVector EyeOf(const ACharacter* Pawn)
 	{
 		const UCameraComponent* Camera = Pawn->FindComponentByClass<UCameraComponent>();
-		return Camera ? Camera->GetComponentLocation() : Pawn->GetPawnViewLocation();
+		// CharacterMovement can defer child component transforms inside a scoped move.
+		// The eye must follow the current capsule, not a stale cached camera transform.
+		return Camera && Camera->GetAttachParent()==Pawn->GetCapsuleComponent()
+			? Pawn->GetActorTransform().TransformPosition(Camera->GetRelativeLocation()) : Pawn->GetPawnViewLocation();
 	}
 	bool BodyFits(const UPrimitiveComponent* Body, const AInteriorPortal* Portal)
 	{
@@ -91,6 +96,50 @@ bool AInteriorPortalSystem::IsLinked() const
 		&& BluePortal->bPlaced && OrangePortal->bPlaced;
 }
 
+bool AInteriorPortalSystem::IsFlashlightTraceThroughPortal(const FHitResult& Hit,
+	const FVector& TraceStart, const FVector& TraceEnd, const float TraceRadius) const
+{
+	const UPrimitiveComponent* HitComponent = Hit.GetComponent();
+	if (!HitComponent || TraceRadius < 0.0f) { return false; }
+
+	for (const AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
+	{
+		if (!IsValid(Portal) || !Portal->bPlaced || !IsValid(Portal->Support)
+			|| Portal->Support.Get() != HitComponent) { continue; }
+
+		const FTransform Frame = Portal->GetLogicalFrame();
+		const FVector Start = Frame.InverseTransformPositionNoScale(TraceStart);
+		const FVector End = Frame.InverseTransformPositionNoScale(TraceEnd);
+		const FVector Delta = End - Start;
+
+		// The sweep must approach the portal plane from one of its two sides.
+		// This rejects a wall hit that happens to use the same support component
+		// while the flashlight is pointing away from the portal.
+		const bool bApproachesPlane = (Start.X >= 0.0f && Delta.X < 0.0f)
+			|| (Start.X <= 0.0f && Delta.X > 0.0f);
+		if (!bApproachesPlane) { continue; }
+
+		float PlaneTime = 0.0f;
+		if (!FMath::IsNearlyZero(Delta.X))
+		{
+			PlaneTime = FMath::Clamp(-Start.X / Delta.X, 0.0f, 1.0f);
+		}
+		const FVector NearestToPlane = Start + Delta * PlaneTime;
+		if (FMath::Abs(NearestToPlane.X) > TraceRadius + 1.0f) { continue; }
+
+		// Expand the aperture by the sweep radius so the spherical clearance
+		// query follows the visible opening instead of the solid support wall.
+		const float Width = Portal->HalfWidth + TraceRadius;
+		const float Height = Portal->HalfHeight + TraceRadius;
+		if (Width > 0.0f && Height > 0.0f
+			&& FMath::Square(NearestToPlane.Y / Width) + FMath::Square(NearestToPlane.Z / Height) <= 1.0f)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool AInteriorPortalSystem::FitsCharacter(const ACharacter* Pawn, const FVector& Center, const AInteriorPortal* Portal) const
 {
 	const UCapsuleComponent* Capsule = Pawn->GetCapsuleComponent();
@@ -99,14 +148,127 @@ bool AInteriorPortalSystem::FitsCharacter(const ACharacter* Pawn, const FVector&
 	const FTransform Frame = Portal->GetLogicalFrame();
 	const FVector Local = Frame.InverseTransformPositionNoScale(Center);
 	const FVector Spine = Frame.InverseTransformVectorNoScale(FVector::UpVector * Segment);
-	for (int32 I = 0; I < 16; ++I)
+	double Enter, Leave; FVector Normal;
+	return InteriorPortalMath::CapsuleApertureInterval(Local,FVector::ZeroVector,Spine,R,
+		Portal->HalfWidth*.94,Portal->HalfHeight*.94,Enter,Leave,Normal);
+}
+
+double AInteriorPortalSystem::CharacterNormalExtent(const ACharacter* Pawn, const FTransform& Frame) const
+{
+	const UCapsuleComponent* Capsule=Pawn->GetCapsuleComponent();
+	return Capsule->GetScaledCapsuleRadius() + FMath::Abs(Frame.GetUnitAxis(EAxis::X).Z)
+		*(Capsule->GetScaledCapsuleHalfHeight()-Capsule->GetScaledCapsuleRadius());
+}
+
+bool AInteriorPortalSystem::IsPlayerClearingPortal() const
+{
+	return PlayerCrossingState==EInteriorPortalCrossingState::Transferred
+		|| PlayerCrossingState==EInteriorPortalCrossingState::ClearingExit;
+}
+
+void AInteriorPortalSystem::RecoverCharacterPassage()
+{
+	if (Character.IsValid() && (PlayerGate.IsValid() || !IgnoredSupports.IsEmpty()))
 	{
-		const float Angle = I * 2 * PI / 16;
-		const FVector Rim(0, R * FMath::Cos(Angle), R * FMath::Sin(Angle));
-		if (!InteriorPortalMath::Inside(Local + Spine + Rim, Portal->HalfWidth * .94, Portal->HalfHeight * .94)
-			|| !InteriorPortalMath::Inside(Local - Spine + Rim, Portal->HalfWidth * .94, Portal->HalfHeight * .94)) { return false; }
+		ACharacter* Pawn=Character.Get();
+		const FVector Normal=PlayerGateFrame.GetUnitAxis(EAxis::X);
+		const double Distance=FVector::DotProduct(Pawn->GetActorLocation()-PlayerGateFrame.GetLocation(),Normal);
+		const FVector Candidate=Pawn->GetActorLocation()+Normal*FMath::Max(0.0,CharacterNormalExtent(Pawn,PlayerGateFrame)+2-Distance);
+		const UCapsuleComponent* Capsule=Pawn->GetCapsuleComponent();
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalRestore),false,Pawn);
+		const bool bBlocked=GetWorld()->OverlapBlockingTestByChannel(Candidate,FQuat::Identity,ECC_Pawn,
+			FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(),Capsule->GetScaledCapsuleHalfHeight()),Params);
+		if (!bBlocked || bHasSafePlayerCenter)
+		{
+			Pawn->SetActorLocation(bBlocked?LastSafePlayerCenter:Candidate,false,nullptr,ETeleportType::TeleportPhysics);
+			Pawn->GetCharacterMovement()->Velocity=FVector::VectorPlaneProject(Pawn->GetVelocity(),Normal);
+		}
 	}
-	return true;
+	RestoreIgnores(); PlayerGate.Reset(); LastPlayerExit.Reset();
+	PlayerCrossingState=EInteriorPortalCrossingState::Outside;
+	bHasPreviousEye=false;
+}
+
+double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVector& Delta,FHitResult& OutGateHit)
+{
+	if (!Pawn || Character.Get()!=Pawn) { return 1; }
+	if (!IsLinked()) { RecoverCharacterPassage(); return 1; }
+	if (!PlayerGate.IsValid() && !IgnoredSupports.IsEmpty()) { RecoverCharacterPassage(); }
+	if (PlayerGate.IsValid() && (!PlayerGate->GetLogicalFrame().Equals(PlayerGateFrame,.001)
+		|| !IsValid(PlayerGate->Support))) { RecoverCharacterPassage(); }
+	const FVector Center=Pawn->GetActorLocation();
+	const UCapsuleComponent* Capsule=Pawn->GetCapsuleComponent();
+	const double Radius=Capsule->GetScaledCapsuleRadius()+1;
+	const double Segment=Capsule->GetScaledCapsuleHalfHeight()-Capsule->GetScaledCapsuleRadius();
+	AInteriorPortal* Gate=PlayerGate.Get();
+	if (!Gate)
+	{
+		for (AInteriorPortal* Candidate : {BluePortal.Get(),OrangePortal.Get()})
+		{
+			if (!IsValid(Candidate->Support)) { continue; }
+			const FTransform Frame=Candidate->GetLogicalFrame();
+			const FVector Start=Frame.InverseTransformPositionNoScale(Center);
+			const FVector Move=Frame.InverseTransformVectorNoScale(Delta);
+			const double Reach=CharacterNormalExtent(Pawn,Frame)+2;
+			if (Start.X < 0 || (Start.X>Reach && (Move.X>=0 || Start.X+Move.X>Reach))) { continue; }
+			double Enter,Leave; FVector N;
+			if (!InteriorPortalMath::CapsuleApertureInterval(Start,Move,Frame.InverseTransformVectorNoScale(FVector::UpVector*Segment),
+				Radius,Candidate->HalfWidth*.94,Candidate->HalfHeight*.94,Enter,Leave,N)) { continue; }
+			const double Contact=Start.X<=Reach?0:(Reach-Start.X)/Move.X;
+			if (Enter>Contact || Leave<Contact) { continue; }
+			Gate=Candidate; PlayerGate=Gate; PlayerGateFrame=Frame;
+			PlayerCrossingState=EInteriorPortalCrossingState::ApproachingEntry;
+			break;
+		}
+	}
+	if (!Gate) { return 1; }
+	const FTransform Frame=Gate->GetLogicalFrame();
+	const FVector Local=Frame.InverseTransformPositionNoScale(Center);
+	const FVector Move=Frame.InverseTransformVectorNoScale(Delta);
+	double Enter,Leave; FVector N;
+	const bool bFits=InteriorPortalMath::CapsuleApertureInterval(Local,Move,Frame.InverseTransformVectorNoScale(FVector::UpVector*Segment),
+		Radius,Gate->HalfWidth*.94,Gate->HalfHeight*.94,Enter,Leave,N);
+	double Fraction=bFits?FMath::Clamp(Leave,0.0,1.0):0;
+	FVector HitNormal=Frame.TransformVectorNoScale(N);
+	const double Clearance=CharacterNormalExtent(Pawn,Frame)+2;
+	// Once the entire capsule is in front of the wall, lateral movement is ordinary room movement.
+	if (bFits && Move.X>0 && (Clearance-Local.X)/Move.X<=Fraction) { Fraction=1; }
+	if (!bFits) { HitNormal=-Delta.GetSafeNormal(); }
+	if ((IsPlayerClearingPortal() || LastPlayerTransferFrame==GFrameCounter) && Move.X<0)
+	{
+		const double EyeX=Frame.InverseTransformPositionNoScale(EyeOf(Pawn)).X;
+		const double Stop=FMath::Clamp((.05-EyeX)/Move.X,0.0,1.0);
+		if (Stop<Fraction) { Fraction=Stop; HitNormal=Frame.GetUnitAxis(EAxis::X); }
+	}
+	if (Fraction<1)
+	{
+		// Leave a geometric skin, independent of requested speed or frame duration.
+		Fraction=FMath::Max(0.0,Fraction-.01/FMath::Max(Delta.Size(),.01));
+		OutGateHit=FHitResult(Gate->Support->GetOwner(),Gate->Support,Center+Delta*Fraction,HitNormal);
+		OutGateHit.bBlockingHit=true; OutGateHit.Time=Fraction;
+		OutGateHit.Location=Center+Delta*Fraction;
+		OutGateHit.TraceStart=Center; OutGateHit.TraceEnd=Center+Delta;
+	}
+	Pawn->GetCapsuleComponent()->IgnoreComponentWhenMoving(Gate->Support,true);
+	IgnoredSupports.AddUnique(Gate->Support);
+	return Fraction;
+}
+
+void AInteriorPortalSystem::FinishCharacterMove(ACharacter* Pawn)
+{
+	if (!Pawn || Character.Get()!=Pawn) { return; }
+	if (AInteriorPortal* Gate=PlayerGate.Get())
+	{
+		const double Distance=PlayerGateFrame.InverseTransformPositionNoScale(Pawn->GetActorLocation()).X;
+		if (Distance>CharacterNormalExtent(Pawn,PlayerGateFrame)+2)
+		{
+			RestoreIgnores(); PlayerGate.Reset(); LastPlayerExit.Reset();
+			PlayerCrossingState=EInteriorPortalCrossingState::Outside;
+		}
+		else if (IsPlayerClearingPortal()) { PlayerCrossingState=EInteriorPortalCrossingState::ClearingExit; }
+		else { PlayerCrossingState=EInteriorPortalCrossingState::IntersectingAperture; }
+	}
+	if (!PlayerGate.IsValid()) { LastSafePlayerCenter=Pawn->GetActorLocation(); bHasSafePlayerCenter=true; }
 }
 
 void AInteriorPortalSystem::RestoreIgnores()
@@ -132,33 +294,16 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 		Character = Pawn;
 		bHasPreviousEye = false;
 		LastPlayerExit.Reset();
+		PlayerGate.Reset(); bHasSafePlayerCenter=false;
+		PlayerCrossingState=EInteriorPortalCrossingState::Outside;
 		if (Pawn) { Pawn->GetCharacterMovement()->AddTickPrerequisiteActor(this); }
 	}
-	RestoreIgnores();
+	if (!IsLinked() || (!PlayerGate.IsValid() && !IgnoredSupports.IsEmpty())
+		|| (PlayerGate.IsValid() && (!IsValid(PlayerGate->Support) || !PlayerGate->GetLogicalFrame().Equals(PlayerGateFrame,.001))))
+	{ RecoverCharacterPassage(); }
 	if (Pawn && IsLinked())
 	{
-		const FVector Center = Pawn->GetActorLocation();
-		if (LastPlayerExit.IsValid())
-		{
-			const FTransform ExitFrame = LastPlayerExit->GetLogicalFrame();
-			const FVector Local = ExitFrame.InverseTransformPositionNoScale(Center);
-			if (FMath::Abs(Local.X) > Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+12) { LastPlayerExit.Reset(); }
-		}
-		for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
-		{
-			const FTransform Frame = Portal->GetLogicalFrame();
-			const FVector Local = Frame.InverseTransformPositionNoScale(Center);
-			const float Reach = Pawn->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 12;
-			const float Approach = Reach + Pawn->GetVelocity().Size() * FMath::Min(DeltaSeconds, .1f);
-			const bool bExiting = LastPlayerExit.Get() == Portal && FMath::Abs(Local.X) < Reach
-				&& InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight);
-			if (IsValid(Portal->Support) && FMath::Abs(Local.X) < Approach
-				&& (FitsCharacter(Pawn, Center, Portal) || bExiting))
-			{
-				Pawn->GetCapsuleComponent()->IgnoreComponentWhenMoving(Portal->Support, true);
-				IgnoredSupports.AddUnique(Portal->Support);
-			}
-		}
+		FinishCharacterMove(Pawn);
 		if (!bHasPreviousEye) { PreviousEye = EyeOf(Pawn); bHasPreviousEye = true; }
 	}
 	UpdatePhysicsGates();
@@ -256,17 +401,18 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 	}
 }
 
-void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
+void AInteriorPortalSystem::UpdateCharacterTraversal(APlayerController* Player)
 {
-	if (!IsLinked() || !Player) { bHasPreviousEye = false; return; }
+	if (!IsLinked() || !Player) { RecoverCharacterPassage(); bHasPreviousEye = false; return; }
 	ACharacter* Pawn = Cast<ACharacter>(Player->GetPawn());
 	if (Pawn && Character.Get() == Pawn)
 	{
 		FVector Eye = EyeOf(Pawn);
-		if (bHasPreviousEye)
+		if (bHasPreviousEye && !IsPlayerClearingPortal() && LastPlayerTransferFrame!=GFrameCounter)
 		{
 			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
 			{
+				if (PlayerGate.Get()!=Entry) { continue; }
 				const FTransform EntryFrame = Entry->GetLogicalFrame();
 				FVector Intersection;
 				if (!InteriorPortalMath::Crossed(PreviousEye, Eye, EntryFrame, Entry->HalfWidth*.94, Entry->HalfHeight*.94, Intersection)) { continue; }
@@ -276,16 +422,28 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 				const FTransform ExitFrame = Exit->GetLogicalFrame();
 				const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
 				const FVector Velocity = Rotation.RotateVector(Pawn->GetCharacterMovement()->Velocity);
-				const FRotator View = (Rotation * Player->GetControlRotation().Quaternion()).Rotator();
+				AInteriorPlayerController* InteriorPlayer=Cast<AInteriorPlayerController>(Player);
+				const FRotator View = (Rotation * (InteriorPlayer?InteriorPlayer->GetPortalView():Player->GetControlRotation().Quaternion())).Rotator();
 				const FVector NewEye = InteriorPortalMath::Position(Eye, EntryFrame, ExitFrame);
 				const FVector EyeOffset = Eye - Pawn->GetActorLocation();
 				const FVector Location = NewEye - EyeOffset;
 				FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalExit), false, Pawn);
 				if (Exit->Support) { Params.AddIgnoredComponent(Exit->Support.Get()); }
 				const UCapsuleComponent* Capsule = Pawn->GetCapsuleComponent();
-				if (GetWorld()->OverlapBlockingTestByChannel(Location, FQuat::Identity, ECC_Pawn,
-					FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params))
+				const FVector ExitPlaneCenter=InteriorPortalMath::Position(Intersection,EntryFrame,ExitFrame)-EyeOffset;
+				FHitResult ExitSweep;
+				const bool bExitFits=FitsCharacter(Pawn,ExitPlaneCenter,Exit);
+				const bool bExitSweepBlocked=GetWorld()->SweepSingleByChannel(ExitSweep,ExitPlaneCenter,Location,FQuat::Identity,ECC_Pawn,
+					FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(),Capsule->GetScaledCapsuleHalfHeight()),Params);
+				const bool bExitOverlap=GetWorld()->OverlapBlockingTestByChannel(Location,FQuat::Identity,ECC_Pawn,
+					FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(),Capsule->GetScaledCapsuleHalfHeight()),Params);
+				if (!bExitFits || bExitSweepBlocked || bExitOverlap)
 				{
+					if (PlacementMessage!=TEXT("Exit blocked"))
+					{
+						UE_LOG(LogTemp,Display,TEXT("Portal exit rejected: fit=%d sweep=%d overlap=%d component=%s from=%s to=%s"),
+							bExitFits,bExitSweepBlocked,bExitOverlap,*GetNameSafe(ExitSweep.GetComponent()),*ExitPlaneCenter.ToString(),*Location.ToString());
+					}
 					Pawn->SetActorLocation(Pawn->GetActorLocation() + Intersection - Eye + EntryFrame.GetUnitAxis(EAxis::X) * 2, false);
 					Pawn->GetCharacterMovement()->Velocity = FVector::ZeroVector;
 					PlacementMessage = TEXT("Exit blocked");
@@ -305,17 +463,27 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 					{
 						GrabHandle->ReleaseComponent();
 						const FVector HeldVelocity = Rotation.RotateVector(Held->GetPhysicsLinearVelocity());
+						const FVector HeldSpin = Rotation.RotateVector(Held->GetPhysicsAngularVelocityInRadians());
 						Held->SetWorldLocationAndRotation(InteriorPortalMath::Position(Held->GetComponentLocation(), EntryFrame, ExitFrame), Rotation*Held->GetComponentQuat(), false, nullptr, ETeleportType::TeleportPhysics);
 						Held->SetPhysicsLinearVelocity(HeldVelocity);
+						Held->SetPhysicsAngularVelocityInRadians(HeldSpin);
 						const int32 HeldIndex = PhysicsTravellers.IndexOfByKey(Held);
 						if (PreviousBodyPositions.IsValidIndex(HeldIndex)) { PreviousBodyPositions[HeldIndex]=Held->GetComponentLocation(); BodyExits[HeldIndex]=Exit; }
 						GrabHandle->GrabComponentAtLocationWithRotation(Held,NAME_None,Held->GetComponentLocation(),Held->GetComponentRotation());
 					}
 				}
-				Player->SetControlRotation(View);
+				if (InteriorPlayer) { InteriorPlayer->ApplyPortalView(Rotation); }
+				else { Player->SetControlRotation(View); }
 				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 				Pawn->GetCharacterMovement()->Velocity = Velocity;
+				// Do not infer a velocity from the discontinuous world-space location delta.
+				Pawn->GetCharacterMovement()->bJustTeleported = true;
+				if (UInteriorPortalMovementComponent* Movement=Cast<UInteriorPortalMovementComponent>(Pawn->GetCharacterMovement()))
+				{ Movement->MapPortalAcceleration(Rotation); }
 				LastPlayerExit = Exit;
+				PlayerGate=Exit; PlayerGateFrame=ExitFrame;
+				PlayerCrossingState=EInteriorPortalCrossingState::Transferred;
+				LastPlayerTransferFrame=GFrameCounter;
 				++PlayerCrossings;
 				break;
 			}
@@ -323,6 +491,12 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 		PreviousEye = EyeOf(Pawn);
 		bHasPreviousEye = true;
 	}
+}
+
+void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
+{
+	UpdateCharacterTraversal(Player);
+	if (!IsLinked() || !Player) { return; }
 	for (int32 I = 0; I < PreviousBodyPositions.Num(); ++I)
 	{
 		UPrimitiveComponent* Body = PhysicsTravellers[I];
