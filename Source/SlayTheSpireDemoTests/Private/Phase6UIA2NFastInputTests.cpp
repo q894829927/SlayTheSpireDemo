@@ -110,6 +110,16 @@ bool FNativeFastCardPresentationCatchUpTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// Real Gameplay mutations lock the Presentation-owned VM before their
+	// chronology is played. This synthetic envelope reuses the current revision,
+	// so establish that pre-catch-up state before starting playback; applying it
+	// afterwards would itself cancel the tracked visual via the sealed Base-widget
+	// VM-change contract.
+	ViewModel->ApplyPresentationSnapshot(Baseline, true);
+	TestEqual(TEXT("Synthetic catch-up surface is resolving"), ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
+	TestTrue(TEXT("Synthetic catch-up surface is input locked"), ViewModel->bInputLocked);
+
 	const int64 ResolutionId = static_cast<int64>(Fixture.Battle->GetLatestFrozenPresentationBaselineResolutionId()) + 300;
 	Fixture.Battle->OnPresentationResolutionReady.Broadcast(MakeControllerDamageEnvelope(Baseline, ResolutionId));
 	if (!TestTrue(TEXT("Controller-owned Damage playback is active"), Probe->IsLocalPresentationActive()))
@@ -117,14 +127,6 @@ bool FNativeFastCardPresentationCatchUpTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestTrue(TEXT("Controller reports an authoritative skippable delay"), Controller->HasSkippablePresentationDelay());
-
-	// The synthetic envelope reuses the current frozen revision, so unlike a real
-	// Gameplay mutation it does not produce a ReadStateReady edge that would lock
-	// the Presentation-owned VM. Explicitly recreate that pre-catch-up surface so
-	// this regression tests the FastInput path instead of ordinary card selection.
-	ViewModel->ApplyPresentationSnapshot(Baseline, true);
-	TestEqual(TEXT("Synthetic catch-up surface is resolving"), ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
-	TestTrue(TEXT("Synthetic catch-up surface is input locked"), ViewModel->bInputLocked);
 
 	const int32 RuntimeId = ViewModel->HandCards.Num() > 0
 		? ViewModel->HandCards[0].RuntimeId
