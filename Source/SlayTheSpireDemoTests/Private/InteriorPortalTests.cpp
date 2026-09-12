@@ -74,6 +74,8 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 		A->Surface->GetComponentLocation().Equals(LogicalFrame.TransformPosition(FVector(.75f,0,0)),.001));
 	TestTrue(TEXT("Portal surface faces the crossing frame normal"), A->Surface->GetUpVector().Equals(A->GetLogicalFrame().GetUnitAxis(EAxis::X),.001));
 	TestTrue(TEXT("Native SceneCapture clipping is the default P1 path"), System->RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane);
+	TestTrue(TEXT("P2-A temporal capture is enabled by default"), System->bCaptureTemporalAA);
+	TestFalse(TEXT("P2-A exposure isolation is diagnostic-only and defaults off"), System->bExposureIsolationDiagnostic);
 	System->BluePortal=A; System->OrangePortal=B;
 	TestTrue(TEXT("Explicit placed pair is linked"),System->IsLinked());
 	System->OrangePortal=A;
