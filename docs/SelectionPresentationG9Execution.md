@@ -2,7 +2,7 @@
 
 Date: **2026-09-13**
 
-Status: **G9-A IN PROGRESS — BUILD PASS / FOCUSED AUTOMATION PASS / G8 REGRESSIONS PENDING**
+Status: **G9-A COMPLETE / VALIDATED — G9-B NOT STARTED**
 
 Design authority: [`SelectionPresentationG9Design.md`](SelectionPresentationG9Design.md).
 Baseline authority: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
@@ -45,7 +45,7 @@ mandatory-selection fencing
 no Gameplay replay
 ```
 
-Focused tests added:
+Focused tests:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G9A.Authority.PlayerTurnABA
@@ -93,7 +93,7 @@ Gameplay-busy speculative future card surfaces
 DirectBaseline card buffering
 ```
 
-Focused A3 tests added:
+Focused A3 tests:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G9A.CardTarget.ExactWaitReady
@@ -109,6 +109,13 @@ Reported by user:
 ```text
 UE5.8 Development Editor build with A3 — PASS
 SlayTheSpireDemo.SelectionPresentation.G9A — PASS
+
+Affected G8 regressions — PASS:
+SlayTheSpireDemo.SelectionPresentation.G8B
+SlayTheSpireDemo.Phase6UIA2N.FastInput
+SlayTheSpireDemo.SelectionPresentation.G8A
+SlayTheSpireDemo.SelectionPresentation.G8D
+SlayTheSpireDemo.CardSelection.Unified
 ```
 
 The focused suite contains the four A1/A2 tests plus the four A3 tests above. No G9 production replay/input behavior is enabled by this checkpoint.
@@ -127,25 +134,20 @@ Controller shadow card-target authority, focused tests and execution evidence
 
 ---
 
-## Current validation gates
-
-Before G9-A can become COMPLETE / VALIDATED:
+## G9-A final gate
 
 ```text
-1. UE5.8 Development Editor build with A3 — PASS
-2. SlayTheSpireDemo.SelectionPresentation.G9A — PASS
-3. affected G8 regressions — pending
-4. static review: no production input behavior changed — PASS
+UE5.8 Development Editor build with A3             PASS
+SlayTheSpireDemo.SelectionPresentation.G9A         PASS
+affected G8 regressions                            PASS
+static review: no production input behavior change PASS
 ```
 
-Minimum affected regressions:
+Result:
 
 ```text
-SlayTheSpireDemo.SelectionPresentation.G8B
-SlayTheSpireDemo.Phase6UIA2N.FastInput
-SlayTheSpireDemo.SelectionPresentation.G8A
-SlayTheSpireDemo.SelectionPresentation.G8D
-SlayTheSpireDemo.CardSelection.Unified
+G9-A — COMPLETE / VALIDATED
+G9-B — NOT STARTED
 ```
 
-G9-B remains **NOT STARTED**. G9-A does not alter hover, EndTurn UI availability, ChoosingTarget behavior, FastInput Skip, or card visual ownership.
+G9-A does not alter hover, EndTurn UI availability, ChoosingTarget behavior, FastInput Skip, or card visual ownership. Production activation begins only in G9-B.
