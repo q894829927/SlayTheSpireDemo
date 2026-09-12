@@ -2,7 +2,7 @@
 
 Date: **2026-09-13**
 
-Status: **G9-A IN PROGRESS — A1/A2 BUILD PASS / A3 IMPLEMENTED / VALIDATION PENDING**
+Status: **G9-A IN PROGRESS — BUILD PASS / FOCUSED AUTOMATION PASS / G8 REGRESSIONS PENDING**
 
 Design authority: [`SelectionPresentationG9Design.md`](SelectionPresentationG9Design.md).
 Baseline authority: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
@@ -54,15 +54,9 @@ SlayTheSpireDemo.SelectionPresentation.G9A.Intent.Arbitration
 SlayTheSpireDemo.SelectionPresentation.G9A.EndTurn.MandatorySelectionFence
 ```
 
-Build checkpoint reported by user:
-
-```text
-UE5.8 Development Editor build — PASS after exact FPresentationSessionToken field fix
-```
-
 ### A3 — exact sealed card target authority
 
-Implemented, validation pending:
+Implemented:
 
 ```text
 UBattlePresentationController::TryCaptureBufferedCardTarget
@@ -108,6 +102,17 @@ SlayTheSpireDemo.SelectionPresentation.G9A.CardTarget.SealedTargetChangeStales
 SlayTheSpireDemo.SelectionPresentation.G9A.CardTarget.SessionReplacementStales
 ```
 
+### Validation checkpoint
+
+Reported by user:
+
+```text
+UE5.8 Development Editor build with A3 — PASS
+SlayTheSpireDemo.SelectionPresentation.G9A — PASS
+```
+
+The focused suite contains the four A1/A2 tests plus the four A3 tests above. No G9 production replay/input behavior is enabled by this checkpoint.
+
 ---
 
 ## Current validation gates
@@ -115,13 +120,13 @@ SlayTheSpireDemo.SelectionPresentation.G9A.CardTarget.SessionReplacementStales
 Before G9-A can become COMPLETE / VALIDATED:
 
 ```text
-1. UE5.8 Development Editor build with A3 — pending
-2. SlayTheSpireDemo.SelectionPresentation.G9A — pending
+1. UE5.8 Development Editor build with A3 — PASS
+2. SlayTheSpireDemo.SelectionPresentation.G9A — PASS
 3. affected G8 regressions — pending
 4. static review: no production input behavior changed — pending final checkpoint
 ```
 
-Minimum affected regressions after G9-A focused suite is green:
+Minimum affected regressions:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G8B
