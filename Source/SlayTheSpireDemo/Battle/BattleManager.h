@@ -29,6 +29,10 @@ enum class EDamageKind : uint8;
 
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnBattleReadStateReady, uint64, uint64);
 DECLARE_MULTICAST_DELEGATE_OneParam(
+	FOnBattlePlayerCommandOpportunity,
+	const FPlayerTurnAuthorityToken&
+);
+DECLARE_MULTICAST_DELEGATE_OneParam(
 	FOnPresentationResolutionReady,
 	const FPresentationResolutionEnvelope&
 );
@@ -149,6 +153,12 @@ public:
 	FGameplayValidationResult QueryEndPlayerTurn() const;
 	FGameplayRequestResult RequestEndPlayerTurn();
 
+	// G9 Gameplay-owned authority for one exact player turn. This intentionally
+	// does not depend on Presentation recording/session availability.
+	bool TryGetCurrentPlayerTurnAuthorityToken(
+		FPlayerTurnAuthorityToken& OutToken
+	) const;
+
 	void GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const;
 	bool TryBuildReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
 	bool TryBuildPlayerFacingReadSnapshot(FBattleReadSnapshot& OutSnapshot) const;
@@ -190,6 +200,11 @@ public:
 
 	FOnPresentationResolutionReady OnPresentationResolutionReady;
 	FOnBattleReadStateReady OnReadStateReady;
+
+	// G9 shadow/production wake-up source. It fires only at a genuinely settled
+	// ActionQueue ResolutionIdle while the same Gameplay player turn remains
+	// authoritative. Consumers must still revalidate Query/selection authority.
+	FOnBattlePlayerCommandOpportunity OnPlayerCommandOpportunity;
 
 	bool TryBuildEventDispatchContext(
 		UBattleEventDispatcher*& OutDispatcher,
@@ -342,6 +357,7 @@ private:
 	FEnemyIntent CommittedEnemyIntent;
 	uint64 BattleId = 0;
 	uint64 StateRevision = 0;
+	uint64 PlayerTurnSerial = 0;
 	uint64 NextRuntimeSequence = 1;
 	uint64 LastPublishedBattleId = 0;
 	uint64 LastPublishedReadStateRevision = 0;
