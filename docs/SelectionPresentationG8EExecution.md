@@ -2,7 +2,7 @@
 
 Date: 2026-09-12
 
-Status: **IN PROGRESS — E2 CLEANUP IMPLEMENTED / VALIDATION PENDING**
+Status: **IN PROGRESS — E2 BUILD PASS / AUTOMATION PENDING**
 
 ## Entry condition
 
@@ -48,7 +48,7 @@ E1 intentionally retained stateless debt-named call-site migration wrappers so p
 
 ## E2 — Remove debt-named call-site migration wrappers
 
-Implemented on main; compile/regression validation is pending.
+Implemented on main. UE5.8 Development Editor build **PASS** reported on 2026-09-12. Integration Automation is pending.
 
 Removed production helper surface:
 
@@ -102,7 +102,7 @@ E2 is structural cleanup only. It does not authorize changes to SessionToken rul
 
 ## E integration matrix
 
-After E2 build passes, rerun at minimum:
+E2 build has passed. Rerun at minimum:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G8D
