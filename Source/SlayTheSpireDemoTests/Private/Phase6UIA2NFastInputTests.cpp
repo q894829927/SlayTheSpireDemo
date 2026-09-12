@@ -118,6 +118,14 @@ bool FNativeFastCardPresentationCatchUpTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("Controller reports an authoritative skippable delay"), Controller->HasSkippablePresentationDelay());
 
+	// The synthetic envelope reuses the current frozen revision, so unlike a real
+	// Gameplay mutation it does not produce a ReadStateReady edge that would lock
+	// the Presentation-owned VM. Explicitly recreate that pre-catch-up surface so
+	// this regression tests the FastInput path instead of ordinary card selection.
+	ViewModel->ApplyPresentationSnapshot(Baseline, true);
+	TestEqual(TEXT("Synthetic catch-up surface is resolving"), ViewModel->InteractionState, EBattleHUDInteractionState::Resolving);
+	TestTrue(TEXT("Synthetic catch-up surface is input locked"), ViewModel->bInputLocked);
+
 	const int32 RuntimeId = ViewModel->HandCards.Num() > 0
 		? ViewModel->HandCards[0].RuntimeId
 		: INDEX_NONE;
@@ -169,11 +177,14 @@ bool FNativeFastCardLocalVisualDoesNotSkipTest::RunTest(const FString& Parameter
 	}
 
 	TestFalse(TEXT("Local visual alone is not accepted as a fast catch-up intent"), Probe->SelectCard(42));
-	TestTrue(TEXT("Local visual remains active without Controller chronology"), Probe->IsLocalPresentationActive());
-	TestEqual(TEXT("No formal Skip/cancel is dispatched for cosmetic/local-only visual"), Probe->CancelDispatchCount, 0);
+	// There is deliberately no PresentationController here, so formal FastInput
+	// Skip cannot run. The normal ViewModel failure path still broadcasts a dirty
+	// change, and the sealed Base-widget contract cancels any tracked playback on
+	// such a change. That local cancellation is not evidence of a formal Skip.
+	TestFalse(TEXT("Normal ViewModel feedback retires the tracked local visual"), Probe->IsLocalPresentationActive());
+	TestEqual(TEXT("Normal ViewModel dirty-change dispatches one local Cancel"), Probe->CancelDispatchCount, 1);
 	TestEqual(TEXT("Normal ViewModel gate reports busy"), ViewModel->LastFeedback.ToString(), FString(TEXT("Battle resolution is still in progress.")));
 
-	Probe->CancelTrackedPresentationPlayback(Token);
 	Probe->SetViewModel(nullptr);
 	World->DestroyWorld(false);
 	return true;
