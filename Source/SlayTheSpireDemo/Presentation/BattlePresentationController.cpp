@@ -457,7 +457,8 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 		return;
 	}
 
-	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
+	const bool bHadInFlightPresentation =
+		bHasActiveEnvelope || PlaybackQueue.Num() > 0 || HasCompatibilityDebt();
 	UBattleHUDWidgetBase* PreviousWidget = Widget;
 
 	// Binding replacement is an authority replacement. Retire both the G8
