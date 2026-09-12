@@ -2,11 +2,8 @@
 
 #include "PresentationDamageReducer.h"
 #include "PresentationDamageTiming.h"
-#include "../Battle/BattleManager.h"
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
-#include "Engine/World.h"
-#include "TimerManager.h"
 
 void UBattlePresentationController::SetDetachedDamageG8CEnabled(bool bEnabled)
 {
@@ -18,10 +15,9 @@ void UBattlePresentationController::SetDetachedDamageG8CEnabled(bool bEnabled)
 	bDetachedDamageG8CEnabled = bEnabled;
 	if (!bEnabled)
 	{
-		// G8-D keeps feature disable as a policy change, not an authority
-		// replacement. Retire current-session cosmetics, keep SessionToken, and
-		// only refresh input when chronology is otherwise caught up.
-		ClearCompatibilityDebt();
+		// Feature disable remains a policy change, not an authority replacement.
+		// Keep the current SessionToken, retire current-session cosmetics, and
+		// refresh only when authoritative chronology is otherwise caught up.
 		CancelCurrentSessionDetachedDamageVisuals();
 		TryServiceCompatibilityDebtOrRefreshInput();
 	}
@@ -57,8 +53,8 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		return EDetachedDamageAttemptResult::Consumed;
 	}
 
-	// G8-D still uses the existing finite DamageNumber duration as cosmetic
-	// lifetime. It no longer contributes to readiness, FastInput or chronology.
+	// DamageNumber keeps the historical 0.5s value only as a finite cosmetic
+	// lifetime. G8-D/G8-E never use this duration as readiness or chronology debt.
 	const float DamageNumberVisualDuration =
 		PresentationDamageTiming::GetLegacyDamageBlockingDuration();
 	if (!FMath::IsFinite(DamageNumberVisualDuration)
@@ -89,9 +85,9 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		return EDetachedDamageAttemptResult::Consumed;
 	}
 
-	// G8-D formal commit has no compatibility-debt bookkeeping. Publication may
-	// synchronously trigger replacement/disablement; after this point the reducer
-	// is committed exactly once and must never fall back/replay.
+	// Formal commit has no compatibility-wait bookkeeping. Publication may
+	// synchronously trigger replacement/disablement; after this boundary the
+	// reducer is committed exactly once and must never fall back/replay.
 	WorkingPresentationSnapshot = MoveTemp(CandidateSnapshot);
 
 	if (IsValid(ViewModel))
@@ -171,23 +167,21 @@ void UBattlePresentationController::AdvancePastCommittedDetachedDamageRecord()
 }
 
 // -----------------------------------------------------------------------------
-// G8-C compatibility-debt migration shims.
+// G8-E call-site migration wrappers.
 //
-// These helpers remain temporarily because G0-G8 call sites already route
-// through them, but G8-D never accrues or services debt. This guarantees that
-// readiness and FastInput are independent from DamageNumber lifetime while
-// keeping the migration patch narrow. G8-E may physically remove these shims.
+// G8-D removed compatibility debt semantically. G8-E removes its physical state
+// here as well. The old method names remain temporarily only so the mature
+// Controller chronology call sites can be renamed/flattened in an isolated
+// follow-up cleanup without mixing ordering changes into this state-removal step.
 // -----------------------------------------------------------------------------
 
 void UBattlePresentationController::AddCompatibilityDebtForCommittedDamage(
 	float /*DurationSeconds*/)
 {
-	ClearCompatibilityDebt();
 }
 
 void UBattlePresentationController::PauseCompatibilityDebtService()
 {
-	ClearCompatibilityDebt();
 }
 
 bool UBattlePresentationController::IsExactReadSurfaceCaughtUpForDebtService() const
@@ -197,8 +191,6 @@ bool UBattlePresentationController::IsExactReadSurfaceCaughtUpForDebtService() c
 
 void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 {
-	ClearCompatibilityDebt();
-
 	if (!IsValid(ViewModel)
 		|| !IsPresentationOwnedMode()
 		|| !ActivePresentationSessionToken.IsValid()
@@ -216,27 +208,18 @@ void UBattlePresentationController::TryServiceCompatibilityDebtOrRefreshInput()
 		return;
 	}
 
-	// ViewModel owns the exact frozen/read-facing revision checks. In G8-D there
-	// is no extra Damage timing barrier once chronological work has completed.
+	// ViewModel owns exact frozen/read-facing revision checks. There is no extra
+	// Damage timing barrier once chronological work has completed.
 	ViewModel->RefreshLiveInputBindingsIfCaughtUp();
 }
 
 void UBattlePresentationController::HandleCompatibilityDebtElapsed()
 {
-	ClearCompatibilityDebt();
 	TryServiceCompatibilityDebtOrRefreshInput();
 }
 
 void UBattlePresentationController::ClearCompatibilityDebt()
 {
-	ABattleManager* Battle = BattleManager.Get();
-	UWorld* World = IsValid(Battle) ? Battle->GetWorld() : nullptr;
-	if (IsValid(World) && CompatibilityDebtTimerHandle.IsValid())
-	{
-		World->GetTimerManager().ClearTimer(CompatibilityDebtTimerHandle);
-	}
-	CompatibilityDebtTimerHandle.Invalidate();
-	CompatibilityDebtSeconds = 0.0f;
 }
 
 void UBattlePresentationController::CancelCurrentSessionDetachedDamageVisuals()
@@ -252,10 +235,3 @@ bool UBattlePresentationController::HasCompatibilityDebt() const
 {
 	return false;
 }
-
-#if WITH_DEV_AUTOMATION_TESTS
-bool UBattlePresentationController::IsCompatibilityDebtServiceActiveForTesting() const
-{
-	return false;
-}
-#endif
