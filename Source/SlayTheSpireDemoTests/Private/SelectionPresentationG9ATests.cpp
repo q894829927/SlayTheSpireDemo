@@ -63,8 +63,9 @@ namespace SelectionPresentationG9ATest
 	FBufferedCardIntent MakeCardIntent()
 	{
 		FBufferedCardIntent Intent;
+		Intent.SessionToken.BattleId = 7;
 		Intent.SessionToken.ControllerEpoch = 1;
-		Intent.SessionToken.SessionId = 1;
+		Intent.SessionToken.PresentationSessionGeneration = 1;
 		Intent.BattleId = 7;
 		Intent.ExpectedReadyRevision = 11;
 		Intent.CaptureWindow.SourceResolutionId = 3;
