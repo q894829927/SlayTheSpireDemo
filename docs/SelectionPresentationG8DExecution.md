@@ -2,7 +2,7 @@
 
 Date: 2026-09-12
 
-Status: **IMPLEMENTED ON MAIN / VALIDATION PENDING**
+Status: **COMPLETE / VALIDATED ON MAIN**
 
 G8-D removes the G8-C compatibility-wait behavior from production readiness while preserving the detached Damage transaction, exact Presentation session fencing, Blocking fallback, runtime-disable fallback, and one-way cosmetic ownership.
 
@@ -43,9 +43,7 @@ A pure DamageNumber tail therefore cannot cause `SkipPresentation()` through Fas
 
 ## G8-C debt migration
 
-The existing Controller debt helper call sites are retained temporarily as migration shims so the G8-D patch does not broaden into unrelated Controller refactoring before validation.
-
-In G8-D production behavior:
+G8-D production behavior has already removed compatibility debt from readiness/FastInput semantics:
 
 ```text
 CompatibilityDebtSeconds is never accrued
@@ -54,17 +52,17 @@ HasCompatibilityDebt() is false
 HasSkippablePresentationDelay() ignores debt/cosmetic lifetime
 ```
 
-The shims synchronously clear any stale staging debt and then use the existing exact ViewModel refresh guard once chronology is otherwise caught up. Physical removal/renaming of the obsolete G8-C helper surface is deferred to G8-E cleanup after D validation.
+The Controller debt helper call sites were intentionally retained as temporary migration shims during D validation so the semantic change and the structural cleanup were not mixed in one checkpoint. G8-E owns physical cleanup of that obsolete surface before final integration seal.
 
-## Focused Automation
+## Focused Automation — PASS
 
-New suite:
+Suite:
 
 ```text
 SlayTheSpireDemo.SelectionPresentation.G8D
 ```
 
-Focused cases:
+Validated cases:
 
 ```text
 DetachedDamage.NonBlockingReadiness
@@ -73,51 +71,39 @@ RuntimeDisable.KeepsSession
 Cosmetic.WidgetReplacement
 ```
 
+Result reported on the validated main line:
+
+```text
+4/4 PASS
+0 failed
+```
+
 The old G8-C debt-specific Automation files were retired because their required contract (`Damage → compatibility debt`) is intentionally removed by G8-D. G8-C validation remains historical evidence rather than a current production expectation.
 
-## Required validation before G8-D can be marked COMPLETE / VALIDATED
+## Affected regression validation — PASS
 
-Build:
-
-```text
-UE5.8 Development Editor build PASS
-```
-
-Focused:
+The following affected suites were rerun after G8-D and reported passing:
 
 ```text
-SlayTheSpireDemo.SelectionPresentation.G8D
+SlayTheSpireDemo.SelectionPresentation.G8B      9/9 PASS
+SlayTheSpireDemo.Phase6UIA2N.FastInput          2/2 PASS
+SlayTheSpireDemo.SelectionPresentation.G8A      4/4 PASS
+SlayTheSpireDemo.CardSelection.Unified         14/14 PASS
 ```
 
-Affected regressions:
+## Validated G8-D checkpoint
+
+The accepted G8-D checkpoint is therefore:
 
 ```text
-SlayTheSpireDemo.SelectionPresentation.G8B
-SlayTheSpireDemo.Phase6UIA2N.FastInput
-SlayTheSpireDemo.SelectionPresentation.G8A
-SlayTheSpireDemo.CardSelection.Unified
+Damage formal reducer remains authoritative
+DamageNumber is detached cosmetic only
+pure DamageNumber tail does not create FastInput Skip eligibility
+readiness no longer waits for legacy Damage duration
+prepare-decline still falls back to Blocking
+runtime disable preserves SessionToken and restores Blocking fallback
+Widget replacement retires old-session cosmetic without re-locking ready input
+no G9 card-presentation overlap behavior is introduced
 ```
 
-Manual PIE minimum:
-
-```text
-play attack A
-→ formal HP/Block updates
-→ DamageNumber appears
-→ exact normal player surface becomes ready while A DamageNumber is still visible
-→ next legal interaction is accepted without Skip caused by A DamageNumber
-→ A DamageNumber continues/finishes independently
-
-prepare-decline / runtime-disable fallback
-→ old Blocking Damage behavior remains intact
-
-pure cosmetic tail
-→ clicking next card does not clear DamageNumber via FastInput Skip
-
-HUD replacement / terminal / destruction
-→ old cosmetic cleanup remains exact
-→ no ghost DamageNumber
-→ no stuck input
-```
-
-G8-D must not be marked sealed until these gates pass.
+G8-D is now handed off to **G8-E — Integration Validation / Cleanup**. G8-E may remove the temporary compatibility-debt migration surface, but must preserve the validated G8-D external behavior above.
