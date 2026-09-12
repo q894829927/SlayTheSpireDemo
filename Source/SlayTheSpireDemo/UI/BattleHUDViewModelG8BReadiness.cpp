@@ -15,16 +15,19 @@ FBattleHUDInteractionReadinessShadow UBattleHUDViewModel::EvaluateInteractionRea
 
 	ABattleManager* Battle = BattleManager.Get();
 	FPresentationStateSnapshot LatestBaseline;
-	FBattleReadSnapshot CurrentRead;
-	const bool bExactFrozenAndReadSurface = IsValid(Battle)
+	const bool bExactFrozenSurface = IsValid(Battle)
 		&& Battle->IsPresentationAvailable()
 		&& Battle->TryGetLatestFrozenPresentationBaseline(LatestBaseline)
 		&& LatestBaseline.BattleId == BattleId
-		&& LatestBaseline.StateRevision == StateRevision
+		&& LatestBaseline.StateRevision == StateRevision;
+
+	FBattleReadSnapshot CurrentRead;
+	const bool bExactPlayerFacingReadSurface = bExactFrozenSurface
 		&& Battle->TryBuildPlayerFacingReadSnapshot(CurrentRead)
 		&& static_cast<int64>(CurrentRead.BattleId) == BattleId
 		&& static_cast<int64>(CurrentRead.StateRevision) == StateRevision;
 
+	bool bAuthorityExact = false;
 	if (bPresentationDisplayOwned)
 	{
 		Result.AuthoritySource = EBattleHUDReadinessAuthoritySource::PresentationOwned;
@@ -35,14 +38,16 @@ FBattleHUDInteractionReadinessShadow UBattleHUDViewModel::EvaluateInteractionRea
 			&& SessionToken.BattleId == BattleId)
 		{
 			Result.SessionToken = SessionToken;
-			Result.bExactReadSurface = bExactFrozenAndReadSurface;
+			bAuthorityExact = true;
+			Result.bExactReadSurface = bExactPlayerFacingReadSurface;
 		}
 	}
 	else
 	{
 		Result.AuthoritySource = EBattleHUDReadinessAuthoritySource::DirectBaseline;
 		// Direct/no-history authority is intentionally sessionless.
-		Result.bExactReadSurface = bExactFrozenAndReadSurface;
+		bAuthorityExact = true;
+		Result.bExactReadSurface = bExactPlayerFacingReadSurface;
 	}
 
 	FPendingCardSelectionReadView AuthoritativePendingView;
@@ -71,11 +76,15 @@ FBattleHUDInteractionReadinessShadow UBattleHUDViewModel::EvaluateInteractionRea
 	}
 
 	// An authoritative pending Gameplay request has priority over the ordinary
-	// battle interaction enum. It can exist while the formal VM still reads
-	// Resolving during boundary catch-up.
+	// battle interaction enum. A pending decision intentionally has an
+	// identity-only public read edge: ordinary TryBuildPlayerFacingReadSnapshot()
+	// may be unavailable while Gameplay is waiting on the resolver. Therefore the
+	// exact frozen boundary + exact pending request identity is the readiness
+	// surface for this mode; normal modes still require the full player-facing read.
 	if (Result.bAuthoritativePendingSelection)
 	{
 		Result.Mode = EBattleHUDReadinessMode::PendingCardSelection;
+		Result.bExactReadSurface = bAuthorityExact && bExactFrozenSurface;
 		const bool bPresentationSelectionScopeExact =
 			ActiveCardPresentationSelectionGeneration <= 0
 			|| (ActiveCardPresentationSelectionBattleId == BattleId
