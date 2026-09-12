@@ -279,14 +279,14 @@ void ABattleManager::StartBattle()
 	EventDispatcher = NewObject<UBattleEventDispatcher>(this);
 	if (!HasValidEventDispatcher())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create EventDispatcher."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not initialize EventDispatcher."));
 		return;
 	}
 
 	DeckRuntime = NewObject<UDeckRuntime>(this);
 	if (!HasValidDeckRuntime())
 	{
-		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not create DeckRuntime."));
+		UE_LOG(LogTemp, Error, TEXT("[Battle] StartBattle failed: could not initialize DeckRuntime."));
 		return;
 	}
 	DeckRuntime->InitializeFromDefinitions(DebugStartingDeck, DeckDebugSeed);
@@ -310,6 +310,7 @@ void ABattleManager::StartBattle()
 		BattleId = 1;
 	}
 	StateRevision = 1;
+	PlayerTurnSerial = 0;
 	LastPublishedBattleId = 0;
 	LastPublishedReadStateRevision = 0;
 
@@ -722,7 +723,6 @@ void ABattleManager::TestApplyPhase5B2DamageStatuses()
 		*WeakDefinition->StatusId.ToString(),
 		*StrengthDefinition->StatusId.ToString()
 	);
-
 	QueueApplyStatusAction(Player.Get(), Enemy.Get(), VulnerableDefinition, 2);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), WeakDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), StrengthDefinition, 2);
@@ -771,7 +771,6 @@ void ABattleManager::TestPhase5CBlockPipeline()
 		*FrailtyDefinition->StatusId.ToString(),
 		*DexterityDefinition->StatusId.ToString()
 	);
-
 	QueueApplyStatusAction(Player.Get(), Player.Get(), FrailtyDefinition, 3);
 	QueueApplyStatusAction(Player.Get(), Player.Get(), DexterityDefinition, 2);
 	QueueGainBlockAction(Player.Get(), Player.Get(), 5);
@@ -1004,23 +1003,15 @@ bool ABattleManager::InitializeRelicsForBattle()
 	PlayerRelicContainer->Initialize(this);
 	for (const TObjectPtr<URelicData>& Definition : DebugStartingRelics)
 	{
-		const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get());
-		switch (Result.Outcome)
+		switch (const FRelicAddResult Result = PlayerRelicContainer->AddRelic(Definition.Get()); Result.Outcome)
 		{
 		case ERelicAddOutcome::Added:
 			break;
 		case ERelicAddOutcome::Duplicate:
-			UE_LOG(
-				LogTemp,
-				Warning,
-				TEXT("[Relic] Duplicate DebugStartingRelics entry ignored: RelicId=%s."),
-				IsValid(Definition.Get()) ? *Definition->RelicId.ToString() : TEXT("None")
-			);
+			UE_LOG(LogTemp, Warning, TEXT("[Battle] Duplicate starting relic ignored: %s"), *GetNameSafe(Definition.Get()));
 			break;
-		case ERelicAddOutcome::Invalid:
 		default:
-			UE_LOG(LogTemp, Warning, TEXT("[Relic] Invalid DebugStartingRelics entry ignored."));
-			break;
+			return false;
 		}
 	}
 	return true;
@@ -1183,6 +1174,11 @@ void ABattleManager::CompletePlayerTurnStart()
 	}
 
 	BattleState = EBattleState::PlayerTurn;
+	++PlayerTurnSerial;
+	if (PlayerTurnSerial == 0)
+	{
+		PlayerTurnSerial = 1;
+	}
 	AdvanceStateRevision();
 
 	UE_LOG(
