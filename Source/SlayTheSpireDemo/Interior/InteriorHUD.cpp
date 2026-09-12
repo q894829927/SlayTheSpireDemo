@@ -5,6 +5,9 @@
 #include "Engine/Engine.h"
 #include "InteriorChildCharacter.h"
 #include "InteriorLightSwitch.h"
+#include "InteriorPlayerController.h"
+#include "InteriorPortalSystem.h"
+#include "InteriorPortal.h"
 #include "GameFramework/PlayerController.h"
 
 void AInteriorHUD::DrawHUD()
@@ -18,6 +21,32 @@ void AInteriorHUD::DrawHUD()
 
 	const float CenterX = Canvas->ClipX * 0.5f;
 	const float CenterY = Canvas->ClipY * 0.5f;
+	const AInteriorPlayerController* PortalPlayer = Cast<AInteriorPlayerController>(GetOwningPlayerController());
+	const AInteriorPortalSystem* Portals = PortalPlayer ? PortalPlayer->GetPortalSystem() : nullptr;
+	const bool bGun = PortalPlayer && PortalPlayer->IsPortalGunEquipped();
+	if (Portals)
+	{
+		DrawRect(FLinearColor(0.01f, .015f, .025f, .8f), 18, 146, 820, 64);
+		DrawText(bGun ? TEXT("LMB Blue  |  RMB Orange  |  R Clear  |  G Holster  |  E Interact")
+			: TEXT("[G] Equip portal device  |  E / LMB Interact"), FLinearColor::White, 24, 150, GEngine->GetMediumFont(), 1.7f);
+		DrawText(Portals->PlacementMessage, FLinearColor(.7f,.8f,.9f), 24, 179, GEngine->GetMediumFont(), 1.5f);
+		if (bGun)
+		{
+			for (int32 Side = 0; Side < 2; ++Side)
+			{
+				const AInteriorPortal* Endpoint = Side ? Portals->OrangePortal : Portals->BluePortal;
+				const FLinearColor Color = Side ? FLinearColor(1,.3f,.02f) : FLinearColor(.02f,.5f,1);
+				for (int32 I=0; I<18; ++I)
+				{
+					const float A = (I/18.f * PI + PI*.5f) + Side*PI;
+					const float B = ((I+1)/18.f * PI + PI*.5f) + Side*PI;
+					DrawLine(CenterX+FMath::Cos(A)*18, CenterY+FMath::Sin(A)*24,
+						CenterX+FMath::Cos(B)*18, CenterY+FMath::Sin(B)*24,
+						Endpoint && Endpoint->bPlaced ? Color : Color*.3f, 3);
+				}
+			}
+		}
+	}
 	DrawRect(FLinearColor::Black, CenterX - 4.0f, CenterY - 2.0f, 8.0f, 4.0f);
 	DrawRect(FLinearColor::White, CenterX - 3.0f, CenterY - 1.0f, 6.0f, 2.0f);
 
@@ -43,7 +72,7 @@ void AInteriorHUD::DrawHUD()
 		return;
 	}
 
-	const FString Prompt = Switch->AreLightsOn() ? TEXT("[E / LMB] Turn lights OFF") : TEXT("[E / LMB] Turn lights ON");
+	const FString Prompt = FString(bGun ? TEXT("[E] ") : TEXT("[E / LMB] ")) + (Switch->AreLightsOn() ? TEXT("Turn lights OFF") : TEXT("Turn lights ON"));
 	float PromptWidth = 0.0f, PromptHeight = 0.0f;
 	Canvas->StrLen(GEngine->GetMediumFont(), Prompt, PromptWidth, PromptHeight);
 	PromptWidth *= 2.5f;

@@ -1,4 +1,22 @@
-# Codex Goal Checkpoint — Awakened One Monster Animation
+# Codex Goal Checkpoint — Interior Portals (interrupted)
+
+## Current resumable task — Interior portals, 2026-09-12
+
+HEAD: `18d4686d9113aacd9fb655426e3b7a7bfcfcd830`.
+
+User requests a Portal-like mechanism in `/Game/House/L_Interior_LivingKitchen` and prefers MCP over desktop control. Desktop Computer Use was stopped by the user with Escape; no further desktop actions were issued. Use MCP for subsequent editor work.
+
+Implemented but **not compiled or accepted**: `InteriorPortalMath`, `InteriorPortal`, `InteriorPortalSystem`, controller/HUD/input integration and three focused Automation tests. Design and gates: `docs/InteriorPortals.md`. No portal material assets or endpoint/system map instances have been created yet. The code still needs build diagnostics and review, especially recursive render correctness, near-plane crossing, upright capsule transitions, scoped collision restoration, physics exit obstruction and partial-body rendering. Do not claim a finished or visually identical portal mechanism.
+
+Existing user modifications at entry: map, `InteriorChildCharacter.cpp/.h`, untracked `Content/House/BP_CorridorSegment.uasset`. Preserve these. MCP inspection found PlayerStart `(1300,300,100)`, yaw 90, in the corridor extension. Author initial portals near there, not in the old living-room spawn. Detailed transforms/bounds: `Saved/PortalSceneInspection.json`.
+
+Validation: bundled UE 5.8 project-file generation succeeded. Editor build blocked before compilation by active Live Coding, evidence `Saved/Logs/InteriorPortalsBuild.log`; no Automation or portal PIE tests executed. Map and corridor Blueprint were confirmed saved via MCP. MCP Slate Click close and Alt+F4 returned true but editor process 63544 remained running; do not assume closure.
+
+Next: close editor normally using MCP if possible (or ask user to close it), execute prescribed Development Editor build, fix compilation failures, create and save procedural portal material + pair/system + surface references using UE-supported tooling, run focused tests and actual-map visual/runtime checks. MCP endpoint `http://127.0.0.1:8000/mcp`; helper `Saved/PortalMcp.ps1` handles JSON/SSE, session ID in `Saved/PortalMcpSession.txt` (reinitialize after restart). Discovered schemas are `Saved/Portal*Schema.json`. `ProgrammaticToolset.get_execution_environment` was read: scripts may only orchestrate registered tools with allowed standard modules. Do not bypass its sandbox. Slate observers: `observer_1`, `observer_2`; window `w1`, may become stale after restart.
+
+`Saved/PortalEditorBridge.py` and `Saved/PortalEditorCommand.py` were written locally but **never executed or activated**. They are not evidence of editor edits. No plugin/config/build-setting changes, commits or generated-file staging were performed.
+
+## Prior checkpoint retained below
 
 Last updated: **2026-09-11**
 

@@ -6,6 +6,7 @@
 
 class AInteriorLightSwitch;
 class AInteriorDayNightController;
+class AActor;
 class UCameraComponent;
 class USceneComponent;
 class USpotLightComponent;
@@ -99,11 +100,33 @@ protected:
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<AInteriorDayNightController> DayNightController;
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> EntranceDoor = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> DoorLeft = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> DoorRight = nullptr;
+	UPROPERTY(Transient)
+	TObjectPtr<USceneComponent> DoorPanel = nullptr;
+
+	bool ResolveEntranceDoor();
+	bool IsEntranceDoorActor(const AActor* Actor) const;
+	bool HasEntranceDoorPanels(const AActor* Actor) const;
+	bool TryInteractWithEntranceDoor();
+	void ApplyEntranceDoorPose(float OpenAlpha);
+	FRotator DoorLeftClosedRotation = FRotator::ZeroRotator;
+	FRotator DoorRightClosedRotation = FRotator::ZeroRotator;
+	FRotator DoorPanelClosedRotation = FRotator::ZeroRotator;
+	float EntranceDoorOpenAlpha = 0.0f;
+	float EntranceDoorTargetAlpha = 0.0f;
+	bool bEntranceDoorPoseInitialized = false;
+
 	void InputLookYaw(float Value);
 	void InputLookPitch(float Value);
 	void InputJumpPressed();
 	void InputJumpReleased();
 	void InputInteract();
+	void InputPrimaryAction();
 	void InputFlashlight();
 	void InputMapToggle();
 	void InputMapToggleReleased();

@@ -8,10 +8,13 @@
 #include "Engine/StaticMesh.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Actor.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
 #include "InputCoreTypes.h"
 #include "InteriorLightSwitch.h"
+#include "InteriorPlayerController.h"
+#include "InteriorPortalSystem.h"
 #include "InteriorDayNightController.h"
 #include "../MapToggle/MapToggle.h"
 #include "EngineUtils.h"
@@ -181,7 +184,7 @@ void AInteriorChildCharacter::SetupPlayerInputComponent(UInputComponent* PlayerI
 	PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AInteriorChildCharacter::InputJumpPressed);
 	PlayerInputComponent->BindKey(EKeys::SpaceBar, IE_Released, this, &AInteriorChildCharacter::InputJumpReleased);
 	PlayerInputComponent->BindKey(EKeys::E, IE_Pressed, this, &AInteriorChildCharacter::InputInteract);
-	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AInteriorChildCharacter::InputInteract);
+	PlayerInputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AInteriorChildCharacter::InputPrimaryAction);
 	PlayerInputComponent->BindKey(EKeys::Q, IE_Pressed, this, &AInteriorChildCharacter::ToggleDayNight);
 	PlayerInputComponent->BindKey(EKeys::F, IE_Pressed, this, &AInteriorChildCharacter::InputFlashlight);
 	PlayerInputComponent->BindKey(EKeys::M, IE_Pressed, this, &AInteriorChildCharacter::InputMapToggle);
@@ -192,6 +195,7 @@ void AInteriorChildCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	SetFlashlightEnabled(bFlashlightStartsOn);
+	ResolveEntranceDoor();
 	// One level-owned controller, resolved once. Never select by actor discovery order.
 	for (TActorIterator<AInteriorDayNightController> It(GetWorld()); It; ++It)
 	{
@@ -264,8 +268,209 @@ AInteriorLightSwitch* AInteriorChildCharacter::GetInteractionFocus() const
 	return IsValid(Switch) ? Switch : nullptr;
 }
 
+bool AInteriorChildCharacter::IsEntranceDoorActor(const AActor* Actor) const
+{
+	if (!IsValid(Actor))
+	{
+		return false;
+	}
+
+	if (Actor->GetName().StartsWith(TEXT("Entrance_Door")))
+	{
+		return true;
+	}
+
+#if WITH_EDITOR
+	return Actor->GetActorLabel().StartsWith(TEXT("Entrance_Door"));
+#else
+	return false;
+#endif
+}
+
+bool AInteriorChildCharacter::HasEntranceDoorPanels(const AActor* Actor) const
+{
+	if (!IsValid(Actor))
+	{
+		return false;
+	}
+
+	bool bHasLeftPanel = false;
+	bool bHasRightPanel = false;
+	TArray<USceneComponent*> SceneComponents;
+	Actor->GetComponents<USceneComponent>(SceneComponents);
+	for (const USceneComponent* Component : SceneComponents)
+	{
+		if (!IsValid(Component))
+		{
+			continue;
+		}
+
+		const FString ComponentName = Component->GetName();
+		bHasLeftPanel |= ComponentName.Contains(TEXT("DoorLeft"));
+		bHasRightPanel |= ComponentName.Contains(TEXT("DoorRight"));
+	}
+	return bHasLeftPanel || bHasRightPanel;
+}
+
+bool AInteriorChildCharacter::ResolveEntranceDoor()
+{
+	if (!GetWorld())
+	{
+		return false;
+	}
+
+	if (IsValid(EntranceDoor) && bEntranceDoorPoseInitialized)
+	{
+		return true;
+	}
+
+	EntranceDoor = nullptr;
+	DoorLeft = nullptr;
+	DoorRight = nullptr;
+	DoorPanel = nullptr;
+
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		if (IsEntranceDoorActor(*It))
+		{
+			EntranceDoor = *It;
+			break;
+		}
+	}
+	if (!IsValid(EntranceDoor))
+	{
+		// Actor labels are editor-only. The component names provide a runtime-safe
+		// fallback for the same authored door in a cooked build.
+		for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+		{
+			if (HasEntranceDoorPanels(*It))
+			{
+				EntranceDoor = *It;
+				break;
+			}
+		}
+	}
+
+	if (!IsValid(EntranceDoor))
+	{
+		return false;
+	}
+
+	TArray<USceneComponent*> SceneComponents;
+	EntranceDoor->GetComponents<USceneComponent>(SceneComponents);
+	for (USceneComponent* Component : SceneComponents)
+	{
+		if (!IsValid(Component))
+		{
+			continue;
+		}
+
+		const FString ComponentName = Component->GetName();
+		if (!IsValid(DoorLeft) && ComponentName.Contains(TEXT("DoorLeft")))
+		{
+			DoorLeft = Component;
+		}
+		else if (!IsValid(DoorRight) && ComponentName.Contains(TEXT("DoorRight")))
+		{
+			DoorRight = Component;
+		}
+	}
+	if (!IsValid(DoorLeft) && !IsValid(DoorRight))
+	{
+		// The authored room entrance is a single StaticMeshActor named
+		// Entrance_Door, rather than the two-panel corridor Blueprint.
+		DoorPanel = Cast<UStaticMeshComponent>(EntranceDoor->GetRootComponent());
+		if (!IsValid(DoorPanel))
+		{
+			for (USceneComponent* Component : SceneComponents)
+			{
+				if (UStaticMeshComponent* StaticMesh = Cast<UStaticMeshComponent>(Component))
+				{
+					DoorPanel = StaticMesh;
+					break;
+				}
+			}
+		}
+	}
+
+	if (IsValid(DoorLeft))
+	{
+		DoorLeft->SetMobility(EComponentMobility::Movable);
+		DoorLeftClosedRotation = DoorLeft->GetRelativeRotation();
+	}
+	if (IsValid(DoorRight))
+	{
+		DoorRight->SetMobility(EComponentMobility::Movable);
+		DoorRightClosedRotation = DoorRight->GetRelativeRotation();
+	}
+	if (IsValid(DoorPanel))
+	{
+		DoorPanel->SetMobility(EComponentMobility::Movable);
+		DoorPanelClosedRotation = DoorPanel->GetRelativeRotation();
+	}
+
+	bEntranceDoorPoseInitialized = IsValid(DoorLeft) || IsValid(DoorRight) || IsValid(DoorPanel);
+	if (bEntranceDoorPoseInitialized)
+	{
+		ApplyEntranceDoorPose(EntranceDoorOpenAlpha);
+	}
+	return bEntranceDoorPoseInitialized;
+}
+
+void AInteriorChildCharacter::ApplyEntranceDoorPose(const float OpenAlpha)
+{
+	const float ClampedAlpha = FMath::Clamp(OpenAlpha, 0.0f, 1.0f);
+	constexpr float DoorOpenAngle = 95.0f;
+
+	if (IsValid(DoorLeft))
+	{
+		FRotator Rotation = DoorLeftClosedRotation;
+		Rotation.Yaw += DoorOpenAngle * ClampedAlpha;
+		DoorLeft->SetRelativeRotation(Rotation);
+	}
+	if (IsValid(DoorRight))
+	{
+		FRotator Rotation = DoorRightClosedRotation;
+		Rotation.Yaw -= DoorOpenAngle * ClampedAlpha;
+		DoorRight->SetRelativeRotation(Rotation);
+	}
+	if (IsValid(DoorPanel))
+	{
+		FRotator Rotation = DoorPanelClosedRotation;
+		Rotation.Yaw += DoorOpenAngle * ClampedAlpha;
+		DoorPanel->SetRelativeRotation(Rotation);
+	}
+}
+
+bool AInteriorChildCharacter::TryInteractWithEntranceDoor()
+{
+	if (!GetWorld() || !IsValid(FirstPersonCamera))
+	{
+		return false;
+	}
+
+	const FVector Start = GetInteriorViewOrigin();
+	const FVector End = Start + GetInteriorViewDirection() * 260.0f;
+	FCollisionQueryParams Params(TEXT("InteriorDoorInteraction"), true, this);
+	FHitResult Hit;
+	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params)
+		|| !ResolveEntranceDoor()
+		|| Hit.GetActor() != EntranceDoor)
+	{
+		return false;
+	}
+
+	EntranceDoorTargetAlpha = EntranceDoorTargetAlpha > 0.5f ? 0.0f : 1.0f;
+	return true;
+}
+
 bool AInteriorChildCharacter::TryInteract()
 {
+	if (TryInteractWithEntranceDoor())
+	{
+		return true;
+	}
+
 	if (AInteriorLightSwitch* Switch = GetInteractionFocus())
 	{
 		Switch->Toggle();
@@ -278,6 +483,15 @@ void AInteriorChildCharacter::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	UpdateFlashlightPose(DeltaSeconds);
+	if (bEntranceDoorPoseInitialized && !FMath::IsNearlyEqual(EntranceDoorOpenAlpha, EntranceDoorTargetAlpha))
+	{
+		EntranceDoorOpenAlpha = FMath::FInterpTo(
+			EntranceDoorOpenAlpha,
+			EntranceDoorTargetAlpha,
+			DeltaSeconds,
+			8.0f);
+		ApplyEntranceDoorPose(EntranceDoorOpenAlpha);
+	}
 	// Poll only this local player's held keys. This avoids global axis mappings and
 	// stale pressed-state flags when PIE loses focus. Opposing keys cancel naturally.
 	const APlayerController* Player = Cast<APlayerController>(GetController());
@@ -349,12 +563,23 @@ void AInteriorChildCharacter::InputJumpReleased()
 
 void AInteriorChildCharacter::InputInteract()
 {
+	if (AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController()))
+	{
+		if (AInteriorPortalSystem* Portals = Player->GetPortalSystem()) { if (Portals->TryGrab(Player)) { return; } }
+	}
 	TryInteract();
 }
 
 void AInteriorChildCharacter::InputFlashlight()
 {
 	ToggleFlashlight();
+}
+
+void AInteriorChildCharacter::InputPrimaryAction()
+{
+	AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
+	if (Player && Player->IsPortalGunEquipped()) { Player->FireBluePortal(); }
+	else { TryInteract(); }
 }
 
 void AInteriorChildCharacter::InputMapToggle()
