@@ -457,8 +457,7 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 		return;
 	}
 
-	const bool bHadInFlightPresentation =
-		bHasActiveEnvelope || PlaybackQueue.Num() > 0 || HasCompatibilityDebt();
+	const bool bHadInFlightPresentation = bHasActiveEnvelope || PlaybackQueue.Num() > 0;
 	UBattleHUDWidgetBase* PreviousWidget = Widget;
 
 	// Binding replacement is an authority replacement. Retire both the G8
@@ -531,10 +530,9 @@ void UBattlePresentationController::SkipPresentation()
 	}
 
 	// Ordinary catch-up changes chronology, not Presentation authority. G8 session
-	// identity intentionally remains unchanged here. G8-C global Skip also retires
-	// current-session cosmetics and staging debt for the collapsed chronology.
+	// identity intentionally remains unchanged here. Current-session detached
+	// cosmetics are retired because Skip collapses their source chronology.
 	CancelCurrentSessionDetachedDamageVisuals();
-	ClearCompatibilityDebt();
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -650,9 +648,6 @@ void UBattlePresentationController::HandlePresentationResolutionReady(const FPre
 		return;
 	}
 
-	// Accepted new chronology freezes any debt-only wait in the same game-time
-	// clock domain. Blocking work must never consume detached Damage debt.
-	PauseCompatibilityDebtService();
 	LastQueuedResolutionId = Envelope.ResolutionId;
 	const int32 CurrentBacklogCount = PlaybackQueue.Num() + (bHasActiveEnvelope ? 1 : 0);
 	if (CurrentBacklogCount >= MaxPlaybackEnvelopes)
@@ -699,7 +694,7 @@ void UBattlePresentationController::HandleReadStateReady(uint64 InBattleId, uint
 
 	(void)InBattleId;
 	(void)InStateRevision;
-	TryServiceCompatibilityDebtOrRefreshInput();
+	RefreshInputIfPresentationCaughtUp();
 }
 
 void UBattlePresentationController::StartNextEnvelope()
@@ -709,7 +704,6 @@ void UBattlePresentationController::StartNextEnvelope()
 		return;
 	}
 
-	PauseCompatibilityDebtService();
 	ActiveEnvelope = MoveTemp(PlaybackQueue[0]);
 	PlaybackQueue.RemoveAt(0);
 	bHasActiveEnvelope = true;
@@ -755,10 +749,10 @@ void UBattlePresentationController::StartNextRecord()
 		return;
 	}
 
-	// G8-C is the only production split: eligible Damage commits formally through
-	// the Controller-owned detached transaction. A pre-commit visual eligibility
-	// decline falls through to the unchanged Blocking path; a consumed attempt has
-	// already advanced/reconciled its exact chronology and must return immediately.
+	// G8 detached Damage is the only production split: eligible Damage commits
+	// formally through the Controller-owned detached transaction. A pre-commit
+	// visual eligibility decline falls through to the unchanged Blocking path;
+	// a consumed attempt has already advanced/reconciled exact chronology.
 	if (Record.Type == EBattlePresentationRecordType::Damage
 		&& bDetachedDamageG8CEnabled
 		&& IsPresentationOwnedMode())
@@ -931,7 +925,7 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 		return;
 	}
 
-	TryServiceCompatibilityDebtOrRefreshInput();
+	RefreshInputIfPresentationCaughtUp();
 }
 
 void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
@@ -973,14 +967,13 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 	ActivePlaybackToken = FPresentationPlaybackToken{};
 
 	// Deliberately preserve PlaybackQueue. This is the G3 ActiveEnvelope scope.
-	// G8 ordinary reconcile also deliberately preserves PresentationSessionToken
-	// and any already-accrued G8-C compatibility debt.
+	// G8 ordinary reconcile also deliberately preserves PresentationSessionToken.
 	if (PlaybackQueue.Num() > 0)
 	{
 		StartNextEnvelope();
 		return;
 	}
-	TryServiceCompatibilityDebtOrRefreshInput();
+	RefreshInputIfPresentationCaughtUp();
 }
 
 void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
@@ -1000,7 +993,6 @@ void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
 	}
 
 	CancelCurrentSessionDetachedDamageVisuals();
-	ClearCompatibilityDebt();
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -1095,7 +1087,6 @@ void UBattlePresentationController::InvalidatePresentationSession(
 	const FPresentationSessionToken OldToken = ActivePresentationSessionToken;
 	// Invalidate first so any synchronous cleanup callback already observes stale.
 	ActivePresentationSessionToken = FPresentationSessionToken{};
-	ClearCompatibilityDebt();
 	if (OldToken.IsValid())
 	{
 		UBattleHUDWidgetBase* Owner = IsValid(CleanupWidget) ? CleanupWidget : Widget.Get();
