@@ -27,13 +27,18 @@ AInteriorPortal::AInteriorPortal()
 	Capture->bAlwaysPersistRenderingState = true;
 	Capture->CaptureSource = SCS_SceneColorHDRNoAlpha;
 	Capture->bUseCustomProjectionMatrix = true;
-	Capture->bOverride_CustomNearClippingPlane = true;
-	Capture->CustomNearClippingPlane = 0.5f;
+	// Portal clipping is owned by the selected render path. Do not stack a second near-plane override on top.
+	Capture->bOverride_CustomNearClippingPlane = false;
 	Capture->ShowFlags.SetMotionBlur(false);
 	Capture->ShowFlags.SetTemporalAA(false);
 	Capture->ShowFlags.SetBloom(false);
 	// Store scene-linear radiance: the player's view must apply exposure exactly once.
 	Capture->ShowFlags.SetEyeAdaptation(false);
+}
+
+FTransform AInteriorPortal::GetLogicalFrame() const
+{
+	return GetActorTransform();
 }
 
 void AInteriorPortal::OnConstruction(const FTransform& Transform)
@@ -50,6 +55,8 @@ void AInteriorPortal::BeginPlay()
 
 void AInteriorPortal::RefreshAppearance()
 {
+	// Keep the actor transform as the logical aperture plane. Only the render surface receives cosmetic depth bias.
+	Surface->SetRelativeLocation(FVector(SurfaceVisualBias, 0, 0));
 	Surface->SetRelativeScale3D(FVector(HalfWidth / 50.f, HalfHeight / 50.f, 1));
 	Surface->SetVisibility(bPlaced);
 	if (PortalMaterial && (!DynamicMaterial || DynamicMaterial->Parent != PortalMaterial))
