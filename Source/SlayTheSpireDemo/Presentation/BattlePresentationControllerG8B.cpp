@@ -11,13 +11,12 @@ bool UBattlePresentationController::HasSkippablePresentationDelay() const
 		return false;
 	}
 
-	// Concrete tracked playback/backlog and G8-C staging compatibility debt are
-	// authoritative delays that the existing global Skip path may collapse.
-	// Detached DamageNumber cosmetics themselves remain intentionally absent.
+	// G8-D: only authoritative Blocking chronology is skippable. Detached
+	// DamageNumber cosmetics are fire-and-forget and never create a FastInput
+	// catch-up reason.
 	return bWaitingForCompletion
 		|| bHasActiveEnvelope
-		|| PlaybackQueue.Num() > 0
-		|| HasCompatibilityDebt();
+		|| PlaybackQueue.Num() > 0;
 }
 
 bool UBattlePresentationController::TryCaptureFastInputCatchUpTarget(
