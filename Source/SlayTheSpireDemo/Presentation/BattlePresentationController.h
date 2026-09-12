@@ -147,19 +147,7 @@ private:
 		UBattleHUDWidgetBase* ExpectedWidget,
 		const FPresentationSessionToken& ExpectedSession) const;
 	void AdvancePastCommittedDetachedDamageRecord();
-
-	// G8-E temporary call-site migration wrappers. G8-D already removed all debt
-	// semantics and G8-E removes the physical debt state. These declarations stay
-	// only until the mature Controller call sites are renamed/flattened in the next
-	// cleanup checkpoint; they own no timer or accumulated duration.
-	void AddCompatibilityDebtForCommittedDamage(float DurationSeconds);
-	void PauseCompatibilityDebtService();
-	void TryServiceCompatibilityDebtOrRefreshInput();
-	void HandleCompatibilityDebtElapsed();
-	void ClearCompatibilityDebt();
-	bool HasCompatibilityDebt() const;
-	bool IsExactReadSurfaceCaughtUpForDebtService() const;
-
+	void RefreshInputIfPresentationCaughtUp();
 	void CancelCurrentSessionDetachedDamageVisuals();
 
 	void EnterPresentationUnavailableFailSafe();
