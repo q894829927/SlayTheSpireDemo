@@ -34,6 +34,11 @@ def custom(m, code, inputs, typ=u.CustomMaterialOutputType.CMOT_FLOAT3):
 def output(n, prop):
     assert E.connect_material_property(n, '', prop)
 
+# P2-B uses UE 5.8's EyeAdaptationInverse. Fail before deleting the existing portal material graph
+# if the engine build does not expose the node, so a setup-script error cannot leave the portal as a black rectangle.
+if not hasattr(u, 'MaterialExpressionEyeAdaptationInverse'):
+    raise RuntimeError('UE build does not expose MaterialExpressionEyeAdaptationInverse; existing portal material was not modified.')
+
 placeholder = asset('RT_Portal_Default', u.TextureRenderTarget2D, u.TextureRenderTargetFactoryNew())
 placeholder.set_editor_property('render_target_format', u.TextureRenderTargetFormat.RTF_RGBA16F)
 placeholder.set_editor_property('size_x', 256); placeholder.set_editor_property('size_y', 256)
@@ -52,6 +57,14 @@ time = node(portal, u.MaterialExpressionTime)
 color = vector(portal, 'PortalColor', (.01, .25, 1, 1))
 linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
+# P2-B: the SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
+# back out of the current player view's eye-adaptation domain before it is emitted and tonemapped again.
+# UE 5.8 exposes these expression inputs as LightValueInput and AlphaInput (not LightValue / Alpha).
+# Alpha is exposed as a scalar parameter so 0 = legacy raw RenderTarget and 1 = production correction.
+view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 1.0)
+view_inverse = node(portal, u.MaterialExpressionEyeAdaptationInverse)
+assert E.connect_material_expressions(tex, 'RGB', view_inverse, 'LightValueInput')
+assert E.connect_material_expressions(view_exposure_correction, '', view_inverse, 'AlphaInput')
 shade = custom(portal, '''
 float2 p=(UV-.5)*2;
 float r=length(p);
@@ -64,7 +77,7 @@ float glow=ring*(5+filament*7+ripple*3)+core*14;
 float3 dormant=C*(.025+.16*pow(saturate(1-r),2))*(.65+.35*sin(r*32-T*3+a*3));
 float edge=smoothstep(.925,.967,r);
 return lerp(lerp(dormant/max(Exposure,.000001),View,saturate(Linked)),(C*glow+core*2)/max(Exposure,.000001),edge);
-''', {'UV':(uv,''), 'View':(tex,'RGB'), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
+''', {'UV':(uv,''), 'View':(view_inverse,''), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
 output(shade, u.MaterialProperty.MP_EMISSIVE_COLOR)
 mask = custom(portal, 'return 1-step(.995,length((UV-.5)*2));', {'UV':(uv,'')}, u.CustomMaterialOutputType.CMOT_FLOAT1)
 output(mask,u.MaterialProperty.MP_OPACITY_MASK)
@@ -101,6 +114,9 @@ def actor(name,cls,loc,rotation=None):
     if a is None:
         a=actors.spawn_actor_from_class(cls,u.Vector(*loc),rotation or u.Rotator())
         a.set_actor_label(name); a.set_folder_path('Interior/Portals')
+    # Setup is idempotent: existing authored demo actors are migrated to the current logical-frame convention too.
+    a.set_actor_location(u.Vector(*loc), False, False)
+    if rotation is not None: a.set_actor_rotation(rotation, False)
     return a
 
 panel=actor('Portal_DemonstrationPanel',u.StaticMeshActor,(1300,900,120))
@@ -108,14 +124,17 @@ panel.set_actor_scale3d(u.Vector(2.2,.12,3))
 panel.static_mesh_component.set_static_mesh(u.load_asset('/Engine/BasicShapes/Cube'))
 panel.static_mesh_component.set_material(0,panel_material)
 panel.static_mesh_component.set_collision_profile_name('BlockAll')
-blue=actor('Portal_Blue',u.InteriorPortal,(1300,893.4,105),u.Rotator(yaw=-90))
-orange=actor('Portal_Orange',u.InteriorPortal,(1789.4,1200,105),u.Rotator(yaw=180))
+# Actor transforms are the logical support planes; the visible portal surface receives its own +X visual bias in C++.
+blue=actor('Portal_Blue',u.InteriorPortal,(1300,894.0,105),u.Rotator(yaw=-90))
+orange=actor('Portal_Orange',u.InteriorPortal,(1790.0,1200,105),u.Rotator(yaw=180))
 east=by_label['LivingKitchenLoop_TurnLeg_Wall_East']
 for endpoint,support,tint in [(blue,panel.static_mesh_component,(.01,.25,1,1)),(orange,east.static_mesh_component,(1,.15,.008,1))]:
     endpoint.get_component_by_class(u.StaticMeshComponent).set_relative_rotation(u.Rotator(yaw=90,roll=-90),False,True)
     endpoint.set_editor_property('portal_material',portal)
     endpoint.set_editor_property('half_width',65)
     endpoint.set_editor_property('half_height',115)
+    endpoint.set_editor_property('surface_visual_bias',.6)
+    endpoint.set_editor_property('portal_view_exposure_correction',1.0)
     endpoint.set_editor_property('support',support)
     endpoint.set_editor_property('portal_color',u.LinearColor(*tint))
     endpoint.set_editor_property('placed',True)
@@ -141,6 +160,7 @@ system.set_editor_property('portal_surfaces',surfaces)
 system.set_editor_property('physics_travellers',[cube.static_mesh_component])
 system.set_editor_property('recursion_depth',3)
 system.set_editor_property('resolution_scale',.75)
+system.set_editor_property('clip_plane_bias',.5)
 assert level.save_current_level()
 manifest={'map':MAP,'system':system.get_path_name(),'blue':blue.get_path_name(),'orange':orange.get_path_name(),'surfaces':[s.get_path_name() for s in surfaces],'cube':cube.get_path_name(),'materials':[m.get_path_name() for m in [portal,cube_material,panel_material]]}
 with open(u.Paths.project_saved_dir()+'InteriorPortalsSetup.json','w') as f: json.dump(manifest,f,indent=2)

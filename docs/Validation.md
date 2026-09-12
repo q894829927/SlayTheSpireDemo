@@ -2,6 +2,19 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Portal-aware flashlight clearance — 2026-09-12
+
+The first-person flashlight clearance sweep now ignores a placed portal's supporting wall only
+when the sweep approaches the portal plane through its aperture. Ordinary wall hits and hits
+outside the aperture continue to retract the complete flashlight rig.
+
+- Bundled UE 5.8 project-file generation: **PASS**.
+- Development Editor Win64 build: **PASS** (`Saved/Logs/SlayTheSpireDemo.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **3/3 PASS**, 0 failed, 0 notRun
+  (`Saved/Logs/FlashlightPortalFixAutomation.log`,
+  `Saved/AutomationReports/FlashlightPortalFix/index.json`).
+- Manual PIE visual confirmation: **USER ACTION REQUIRED**; see `docs/InteriorFlashlight.md`.
+
 ## Shipping packaging fix and Native HUD alignment — 2026-09-10
 
 `InteriorDayNightController.cpp` now uses the runtime-safe directional light component

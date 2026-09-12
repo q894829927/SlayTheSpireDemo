@@ -10,19 +10,21 @@ One map-owned `InteriorPortalSystem` references blue/orange endpoints, an explic
 
 Rigid frames use +X outward, +Y horizontal, +Z vertical. Crossing transforms position, viewing orientation, linear velocity and rigid-body angular velocity through a 180-degree local Z rotation between endpoints. Swept front-to-back plane crossings avoid overlap-trigger teleports and speed-dependent missed planes. Closed/unpaired portals do not traverse. Placement requires a complete supported rim, an allowed planar surface, free opening and non-overlap. Moving or clearing a portal during traversal is rejected.
 
-Pre-movement gates ignore only the character's supporting primitive. Physics travellers use entirely free Chaos constraints with pairwise collision disabled against that primitive. Teardown restores movement ignores and removes temporary constraints. Shared wall collision is never disabled globally.
+The player movement component constrains each submove to a continuous legal capsule interval before bypassing its supporting primitive. Explicit crossing/clearance state prevents immediate reverse transfer until the capsule clears. Physics travellers still use the prototype free Chaos constraints with pairwise support collision disabled. Teardown restores movement ignores and removes temporary constraints. Shared wall collision is never disabled globally.
 
-Scene captures run after the local player camera update. Full viewport aspect/projection is retained. The current implementation uses a reversed-Z oblique projection to clip geometry behind the exit and finite deepest-first recursive captures into separate HDR targets. An emissive oval material shows the capture in screen coordinates and animated blue/orange rim detail.
+Scene captures run after the local player camera update. Full viewport aspect/projection is retained. Native SceneCapture clipping is the current production candidate, with guarded oblique projection retained for comparison/fallback. The logical aperture and cosmetic surface bias are separate. Finite deepest-first captures use HDR targets. An emissive oval material shows the capture in screen coordinates and animated blue/orange rim detail.
 
 Implementation reference: [Froyok, Creating Seamless Portals](https://www.froyok.fr/blog/2019-03-creating-seamless-portals-in-unreal-engine-4/). The implementation uses original project code and generated procedural materials, without Valve game assets or third-party plugins.
 
-## Current implementation state — 2026-09-12
+## Current implementation state — 2026-09-13
 
 The portal feature is now materially implemented on `main`: C++ endpoint/system/math/camera code, generated portal materials, map setup, recursive SceneCapture rendering, player traversal, rigid-body transfer, Physics Handle support, visual slice proxies and focused portal Automation are present.
 
-The feature is **not yet full-fidelity accepted**. Current PIE evidence shows a blocking near/grazing rendering defect in which exit-support geometry can appear inside the portal as a large black region or diagonal triangular wedge. The full-fidelity plan treats the current custom oblique near-plane path as the first repair target and prefers a stable SceneCapture native clip-plane path while retaining matched player projection.
+The feature is **not yet full-fidelity accepted**. Native clipping mitigated the reproduced black-wall/diagonal-wedge issue in the observed normal views; its full near/grazing matrix remains open. Capture/player exposure parity, player/held-item partial visuals and portal-aware flashlight illumination remain blocking items in [the observed issue log](InteriorPortalObservedIssues.md).
 
-Further required work includes aperture-local collision hardening, generic traveller registration and exact body fit, held-object angular-velocity hardening, production slicing across material slots, dual-space remote collision/contact bridging for partially crossed rigid bodies, portal-aware traces/sweeps, lifecycle hardening, recursion/performance profiling and the final manual PIE matrix.
+The current delivery adds player submove aperture constraints, explicit crossing/clearance states, same-frame transfer protection, quaternion camera/input ownership, and early transfer before destination floor queries. Detailed scope, the reproduced large-timestep floor defect and actual-map reversal evidence are recorded in [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). It preserves the user's existing flashlight-clearance and material/map edits.
+
+Further required work includes Chaos aperture-local collision hardening, generic traveller registration and geometry-aware conservative body fit, production slicing across material slots, dual-space remote collision/contact bridging for partially crossed rigid bodies, portal-aware traces/sweeps, lifecycle hardening, recursion/performance profiling and the final manual PIE matrix.
 
 ## Acceptance
 

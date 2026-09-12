@@ -24,16 +24,23 @@ AInteriorPortal::AInteriorPortal()
 	Capture->SetupAttachment(RootComponent);
 	Capture->bCaptureEveryFrame = false;
 	Capture->bCaptureOnMovement = false;
+	// Persistent rendering state is required for temporal/Lumen history even though captures are issued manually.
 	Capture->bAlwaysPersistRenderingState = true;
 	Capture->CaptureSource = SCS_SceneColorHDRNoAlpha;
 	Capture->bUseCustomProjectionMatrix = true;
-	Capture->bOverride_CustomNearClippingPlane = true;
-	Capture->CustomNearClippingPlane = 0.5f;
+	// Portal clipping is owned by the selected render path. Do not stack a second near-plane override on top.
+	Capture->bOverride_CustomNearClippingPlane = false;
 	Capture->ShowFlags.SetMotionBlur(false);
-	Capture->ShowFlags.SetTemporalAA(false);
+	// P2-A starts from a temporal capture path; the system can disable this only for controlled A/B diagnostics.
+	Capture->ShowFlags.SetTemporalAA(true);
 	Capture->ShowFlags.SetBloom(false);
-	// Store scene-linear radiance: the player's view must apply exposure exactly once.
+	// Keep SceneCapture eye adaptation disabled. PortalView is converted back out of the player's exposure domain in the display material.
 	Capture->ShowFlags.SetEyeAdaptation(false);
+}
+
+FTransform AInteriorPortal::GetLogicalFrame() const
+{
+	return GetActorTransform();
 }
 
 void AInteriorPortal::OnConstruction(const FTransform& Transform)
@@ -50,6 +57,8 @@ void AInteriorPortal::BeginPlay()
 
 void AInteriorPortal::RefreshAppearance()
 {
+	// Keep the actor transform as the logical aperture plane. Only the render surface receives cosmetic depth bias.
+	Surface->SetRelativeLocation(FVector(SurfaceVisualBias, 0, 0));
 	Surface->SetRelativeScale3D(FVector(HalfWidth / 50.f, HalfHeight / 50.f, 1));
 	Surface->SetVisibility(bPlaced);
 	if (PortalMaterial && (!DynamicMaterial || DynamicMaterial->Parent != PortalMaterial))
@@ -57,7 +66,11 @@ void AInteriorPortal::RefreshAppearance()
 		DynamicMaterial = UMaterialInstanceDynamic::Create(PortalMaterial, this);
 		Surface->SetMaterial(0, DynamicMaterial);
 	}
-	if (DynamicMaterial) { DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor); }
+	if (DynamicMaterial)
+	{
+		DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor);
+		DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
+	}
 }
 
 void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked)
@@ -65,6 +78,8 @@ void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked)
 	if (!DynamicMaterial) { return; }
 	if (Texture) { DynamicMaterial->SetTextureParameterValue(TEXT("PortalView"), Texture); }
 	DynamicMaterial->SetScalarParameterValue(TEXT("Linked"), bLinked && Texture ? 1 : 0);
+	// Keep the diagnostic A/B switch live in PIE if the property is edited while running.
+	DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
 }
 
 void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)

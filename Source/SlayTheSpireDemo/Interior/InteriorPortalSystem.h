@@ -13,6 +13,19 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UPhysicsHandleComponent;
 
+UENUM(BlueprintType)
+enum class EInteriorPortalCrossingState : uint8
+{
+	Outside, ApproachingEntry, IntersectingAperture, Transferred, ClearingExit
+};
+
+UENUM(BlueprintType)
+enum class EInteriorPortalRenderClipMode : uint8
+{
+	NativeClipPlane UMETA(DisplayName="Native SceneCapture Clip Plane"),
+	ObliqueFallback UMETA(DisplayName="Oblique Projection Fallback")
+};
+
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
 UCLASS(Blueprintable)
 class SLAYTHESPIREDEMO_API AInteriorPortalSystem : public AActor
@@ -37,12 +50,39 @@ public:
 	int32 RecursionDepth = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals", meta=(ClampMin="0.25", ClampMax="1.0"))
 	float ResolutionScale = 1.0f;
+	/** Native clip plane is the P1 production candidate; fallback exists only for controlled comparison/rollback. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
+	EInteriorPortalRenderClipMode RenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
+	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
+	float ClipPlaneBias = 0.5f;
+	/** P2-A: keep the portal capture on a persistent temporal path so Lumen/history behavior can match the player view. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
+	bool bCaptureTemporalAA = true;
+	/** SceneCapture-specific Lumen Surface Cache resolution. 0.5 is the production-oriented baseline; raise to 1.0 only for controlled fidelity diagnosis. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics", meta=(ClampMin="0.5", ClampMax="1.0"))
+	float CaptureLumenSurfaceCacheResolution = 0.5f;
+	/** P2-A diagnostic only. Disables global eye adaptation and fixes pre-exposure so direct-vs-portal lighting can be compared without metering changes. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
+	bool bExposureIsolationDiagnostic = false;
+	/** Pre-exposure value used while the diagnostic is active. 1.0 removes pre-exposure scaling from the comparison. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics", meta=(ClampMin="0.125", ClampMax="8.0"))
+	float DiagnosticPreExposureOverride = 1.0f;
+	/** Runtime description of which P2-A diagnostic state is actually active. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Rendering|P2 Diagnostics")
+	FString FidelityDiagnosticStatus;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	FString PlacementMessage;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	int32 PlayerCrossings = 0;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals")
 	int32 PhysicsCrossings = 0;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Traversal")
+	EInteriorPortalCrossingState PlayerCrossingState = EInteriorPortalCrossingState::Outside;
+	/** CharacterMovement submove boundary. The returned fraction is safe before any world sweep occurs. */
+	double ConstrainCharacterMove(ACharacter* Pawn, const FVector& Delta, FHitResult& OutGateHit);
+	void FinishCharacterMove(ACharacter* Pawn);
+	bool IsPlayerClearingPortal() const;
 	UFUNCTION(BlueprintCallable, Category="Portals")
 	bool FirePortal(APlayerController* Player, bool bOrange);
 	UFUNCTION(BlueprintCallable, Category="Portals")
@@ -52,17 +92,35 @@ public:
 	bool TryGrab(APlayerController* Player);
 	/** Called by the local controller immediately before and after its camera update. */
 	void UpdateTraversal(APlayerController* Player);
+	/** Resolve after each character submove, before CharacterMovement probes the next floor. */
+	void UpdateCharacterTraversal(APlayerController* Player);
 	void RenderViews(APlayerController* Player);
+	/**
+	 * Returns true when a first-person flashlight clearance sweep hit a portal's
+	 * supporting wall through the portal aperture. The caller can ignore that hit
+	 * while retaining normal wall retraction everywhere else.
+	 */
+	bool IsFlashlightTraceThroughPortal(const FHitResult& Hit, const FVector& TraceStart,
+		const FVector& TraceEnd, float TraceRadius) const;
 	bool ValidatePlacement(const FHitResult& Hit, const FVector& ViewRight, const AInteriorPortal* Endpoint,
 		FTransform& OutFrame, FString& OutReason) const;
 private:
 	bool FitsCharacter(const ACharacter* Character, const FVector& Center, const AInteriorPortal* Portal) const;
 	void RestoreIgnores();
+	void RecoverCharacterPassage();
+	double CharacterNormalExtent(const ACharacter* Pawn, const FTransform& Frame) const;
 	void UpdatePhysicsGates();
 	void UpdateBodyVisuals();
+	void UpdateFidelityDiagnostics();
+	void RestoreFidelityDiagnostics();
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
+	TWeakObjectPtr<AInteriorPortal> PlayerGate;
+	FTransform PlayerGateFrame;
+	FVector LastSafePlayerCenter = FVector::ZeroVector;
+	bool bHasSafePlayerCenter = false;
+	uint64 LastPlayerTransferFrame = MAX_uint64;
 	TWeakObjectPtr<AInteriorPortal> HeldThroughEntry;
 	TArray<TWeakObjectPtr<UPrimitiveComponent>> IgnoredSupports;
 	FVector PreviousEye = FVector::ZeroVector;
@@ -79,4 +137,9 @@ private:
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> BodyMaterials;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> ProxyMaterials;
+	bool bExposureDiagnosticsApplied = false;
+	bool bSavedEyeAdaptationQuality = false;
+	bool bSavedPreExposureOverride = false;
+	int32 SavedEyeAdaptationQuality = 0;
+	float SavedPreExposureOverride = 0.0f;
 };

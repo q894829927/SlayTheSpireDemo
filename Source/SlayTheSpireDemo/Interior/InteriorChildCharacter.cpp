@@ -15,12 +15,14 @@
 #include "InteriorLightSwitch.h"
 #include "InteriorPlayerController.h"
 #include "InteriorPortalSystem.h"
+#include "InteriorPortalMovementComponent.h"
 #include "InteriorDayNightController.h"
 #include "../MapToggle/MapToggle.h"
 #include "EngineUtils.h"
 #include "UObject/ConstructorHelpers.h"
 
-AInteriorChildCharacter::AInteriorChildCharacter()
+AInteriorChildCharacter::AInteriorChildCharacter(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UInteriorPortalMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -501,8 +503,14 @@ void AInteriorChildCharacter::Tick(const float DeltaSeconds)
 	}
 	const float Forward = float(Player->IsInputKeyDown(EKeys::W)) - float(Player->IsInputKeyDown(EKeys::S));
 	const float Right = float(Player->IsInputKeyDown(EKeys::D)) - float(Player->IsInputKeyDown(EKeys::A));
-	AddMovementInput(GetActorForwardVector(), Forward);
-	AddMovementInput(GetActorRightVector(), Right);
+	const AInteriorPlayerController* InteriorPlayer=Cast<AInteriorPlayerController>(Player);
+	const FQuat View=InteriorPlayer?InteriorPlayer->GetPortalView():Player->GetControlRotation().Quaternion();
+	FVector ForwardOnFloor=FVector::VectorPlaneProject(View.GetForwardVector(),FVector::UpVector).GetSafeNormal();
+	FVector RightOnFloor=FVector::VectorPlaneProject(View.GetRightVector(),FVector::UpVector).GetSafeNormal();
+	if (ForwardOnFloor.IsNearlyZero()) { ForwardOnFloor=GetActorForwardVector(); }
+	if (RightOnFloor.IsNearlyZero()) { RightOnFloor=FVector::CrossProduct(FVector::UpVector,ForwardOnFloor); }
+	AddMovementInput(ForwardOnFloor, Forward);
+	AddMovementInput(RightOnFloor, Right);
 }
 
 void AInteriorChildCharacter::UpdateFlashlightPose(const float DeltaSeconds)
@@ -535,7 +543,14 @@ void AInteriorChildCharacter::UpdateFlashlightPose(const float DeltaSeconds)
 	if (GetWorld()->SweepSingleByChannel(Hit, Eye, Eye + LensOffset, FQuat::Identity,
 		ECC_Visibility, FCollisionShape::MakeSphere(4.0f), Params))
 	{
-		Clearance = FMath::Clamp(Hit.Time - 0.05f, 0.0f, 1.0f);
+		const AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
+		const AInteriorPortalSystem* Portals = Player ? Player->GetPortalSystem() : nullptr;
+		const bool bThroughPortal = Portals
+			&& Portals->IsFlashlightTraceThroughPortal(Hit, Eye, Eye + LensOffset, 4.0f);
+		if (!bThroughPortal)
+		{
+			Clearance = FMath::Clamp(Hit.Time - 0.05f, 0.0f, 1.0f);
+		}
 	}
 	// Retract every component together; never leave the beam on the far side of a wall.
 	FlashlightRig->SetRelativeLocation(View.UnrotateVector(LensOffset * (Clearance - 1.0f)));
