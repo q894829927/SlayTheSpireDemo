@@ -66,13 +66,36 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 	}
 	const FVector2D Pointer = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
-	// Playback keeps its exact source/arrival transform. Fan updates resume only
-	// once the reducer has reconciled the structural Hand slots.
-	if (FanHand && !HasTrackedPresentationPlayback() && !HasActiveNativePresentation()
-		&& (!ViewModel->bInputLocked || bPending))
+
+	const bool bCanUpdateStructuralHand = FanHand
+		&& !HasTrackedPresentationPlayback()
+		&& !HasActiveNativePresentation()
+		&& (!ViewModel->bInputLocked || bPending);
+	if (bCanUpdateStructuralHand)
 	{
-		FanHand->UpdateInteraction(Pointer, bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId, true, DeltaTime);
+		FanHand->UpdateInteraction(
+			Pointer,
+			bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId,
+			true,
+			DeltaTime);
 	}
+	else if (FanHand && !bPending && HasTrackedPresentationPlayback() && HasActiveNativePresentation())
+	{
+		// G9-B separates hover affordance from formal Hand layout. Only the exact
+		// played-card windows approved for buffered selection may animate surviving
+		// Hand cards while the structural source/arrival geometry remains frozen.
+		const bool bCardPlayedWindow =
+			GetActiveNativePresentationType() == EBattlePresentationRecordType::CardPlayed
+			&& GetActiveNativeCardPresentationKind() == ENativeCardPresentationKind::CardPlayed;
+		const bool bPlayAreaDestinationWindow =
+			GetActiveNativePresentationType() == EBattlePresentationRecordType::CardZoneChanged
+			&& GetActiveNativeCardPresentationKind() == ENativeCardPresentationKind::PlayAreaToDestination;
+		if (bCardPlayedWindow || bPlayAreaDestinationWindow)
+		{
+			FanHand->UpdateHoverAffordance(Pointer, INDEX_NONE, true, DeltaTime);
+		}
+	}
+
 	if (!TargetingArrow) return;
 	UBattleCardWidget* Selected = nullptr;
 	if (HB_Hand)
