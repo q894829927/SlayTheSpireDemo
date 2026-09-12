@@ -198,8 +198,7 @@ bool UBattleHUDViewModel::FinalizeAcceptedEndTurnIntentG9()
 	{
 		return false;
 	}
-
-	TGuardValue<bool> RefreshGuard(State->bRefreshing, true);
+	State->bRefreshing = true;
 
 	// G9-B scoped supersede: only after the exact EndTurn intent is accepted may
 	// it retire a cancelable transient card selection.
@@ -219,6 +218,7 @@ bool UBattleHUDViewModel::FinalizeAcceptedEndTurnIntentG9()
 	ABattleManager* Battle = BattleManager.Get();
 	if (Pending == nullptr || !IsValid(Battle))
 	{
+		State->bRefreshing = false;
 		RemoveState(this);
 		return false;
 	}
@@ -228,11 +228,19 @@ bool UBattleHUDViewModel::FinalizeAcceptedEndTurnIntentG9()
 	if (Evaluation == EBufferedIntentShadowEvaluation::Waiting)
 	{
 		BindEndTurnOpportunity(this, Battle, *State);
+		// Keep the guard raised across the synchronous publication so listeners
+		// cannot recursively re-enter this same Waiting intent.
 		PublishInputRefresh(this);
+		State = FindState(this);
+		if (State != nullptr)
+		{
+			State->bRefreshing = false;
+		}
 		return true;
 	}
 	if (Evaluation != EBufferedIntentShadowEvaluation::Ready)
 	{
+		State->bRefreshing = false;
 		RemoveState(this);
 		PublishInputRefresh(this);
 		return false;
@@ -241,9 +249,11 @@ bool UBattleHUDViewModel::FinalizeAcceptedEndTurnIntentG9()
 	FBufferedEndTurnIntent Consumed;
 	if (!State->Owner.TryTakeEndTurn(Consumed))
 	{
+		State->bRefreshing = false;
 		RemoveState(this);
 		return false;
 	}
+	State->bRefreshing = false;
 	RemoveState(this);
 
 	// Consume before the authoritative request so a synchronous state transition
