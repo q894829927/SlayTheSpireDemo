@@ -77,6 +77,7 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("P2-A temporal capture is enabled by default"), System->bCaptureTemporalAA);
 	TestTrue(TEXT("P2-A SceneCapture Lumen cache defaults to full resolution"), FMath::IsNearlyEqual(System->CaptureLumenSurfaceCacheResolution,1.0f));
 	TestFalse(TEXT("P2-A exposure isolation is diagnostic-only and defaults off"), System->bExposureIsolationDiagnostic);
+	TestTrue(TEXT("P2-B portal-view exposure-domain correction defaults on"), FMath::IsNearlyEqual(A->PortalViewExposureCorrection,1.0f));
 	System->BluePortal=A; System->OrangePortal=B;
 	TestTrue(TEXT("Explicit placed pair is linked"),System->IsLinked());
 	System->OrangePortal=A;
