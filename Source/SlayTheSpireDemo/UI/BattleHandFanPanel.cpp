@@ -97,9 +97,22 @@ void UBattleHandFanPanel::OnSlotRemoved(UPanelSlot* InSlot)
 	LayoutCards();
 }
 
-void UBattleHandFanPanel::UpdateInteraction(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime)
+void UBattleHandFanPanel::UpdateInteraction(
+	const FVector2D& AbsolutePointer,
+	int32 SelectedRuntimeId,
+	bool bAllowHover,
+	float DeltaTime)
 {
 	LayoutCards();
+	UpdateHoverAffordance(AbsolutePointer, SelectedRuntimeId, bAllowHover, DeltaTime);
+}
+
+void UBattleHandFanPanel::UpdateHoverAffordance(
+	const FVector2D& AbsolutePointer,
+	int32 SelectedRuntimeId,
+	bool bAllowHover,
+	float DeltaTime)
+{
 	const FGeometry& Geometry = GetCachedGeometry();
 	if (Geometry.GetLocalSize().IsNearlyZero()) return;
 	const FVector2D Pointer = Geometry.AbsoluteToLocal(AbsolutePointer);
