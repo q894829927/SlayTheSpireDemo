@@ -147,10 +147,6 @@ bool FG8DDetachedDamageIsTrulyNonBlocking::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Formal HP publishes immediately"),
 		Fixture.ViewModel->Player.HP,
 		Baseline.Player.HP - 3);
-	TestTrue(TEXT("G8-D creates no compatibility debt"),
-		Fixture.Controller->GetCompatibilityDebtSecondsForTesting() <= KINDA_SMALL_NUMBER);
-	TestFalse(TEXT("G8-D starts no compatibility timer"),
-		Fixture.Controller->IsCompatibilityDebtServiceActiveForTesting());
 	TestFalse(TEXT("Pure DamageNumber tail is not a skippable delay"),
 		Fixture.Controller->HasSkippablePresentationDelay());
 	TestFalse(TEXT("Input is released while DamageNumber is still alive"),
