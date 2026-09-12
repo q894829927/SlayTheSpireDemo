@@ -12,6 +12,10 @@ class SLAYTHESPIREDEMO_API UBattleHandFanPanel : public UCanvasPanel
 	GENERATED_BODY()
 public:
 	void UpdateInteraction(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime);
+	// G9-B hover-only path: preserves the already-frozen structural slot geometry
+	// while allowing surviving Hand cards to raise during an approved card
+	// Presentation window. It never calls LayoutCards().
+	void UpdateHoverAffordance(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime);
 	void LayoutCards();
 	// Apply the final slot geometry and fan angles before an incoming card's
 	// presentation starts. This keeps the target deterministic while the card
