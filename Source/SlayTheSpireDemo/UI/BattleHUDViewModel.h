@@ -13,6 +13,7 @@ class ABattleManager;
 class ACombatant;
 class UBattlePresentationController;
 class UCardInstance;
+struct FBufferedCardIntent;
 struct FPendingCardSelectionReadView;
 struct FPresentationStateSnapshot;
 enum class EBattleState : uint8;
@@ -59,6 +60,19 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
+
+	// G9-B production input owner. Card buffering remains Presentation-target
+	// authority; EndTurn buffering remains Gameplay player-turn authority.
+	bool StoreBufferedCardSelectionG9(
+		const FBufferedCardIntent& Intent,
+		UBattlePresentationController* Controller);
+	bool HasBufferedCardSelectionG9() const;
+	bool HasBufferedEndTurnG9() const;
+	bool CanAcceptEndTurnIntentG9() const;
+	bool TryAcceptEndTurnIntentG9();
+	bool FinalizeAcceptedEndTurnIntentG9();
+	void RefreshBufferedPlayerIntentG9();
+	void ClearBufferedPlayerIntentG9();
 
 	// Wave 1C asynchronous Gameplay selection is intentionally separate from the
 	// normal caught-up card-play binding. These helpers query/submit through the
