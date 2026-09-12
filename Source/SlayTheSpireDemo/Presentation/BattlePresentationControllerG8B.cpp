@@ -11,12 +11,13 @@ bool UBattlePresentationController::HasSkippablePresentationDelay() const
 		return false;
 	}
 
-	// G8-B has no compatibility debt yet. Only authoritative chronology that the
-	// existing Skip path can collapse counts as a skippable delay. Detached
-	// cosmetic instances are intentionally absent from this query.
+	// Concrete tracked playback/backlog and G8-C staging compatibility debt are
+	// authoritative delays that the existing global Skip path may collapse.
+	// Detached DamageNumber cosmetics themselves remain intentionally absent.
 	return bWaitingForCompletion
 		|| bHasActiveEnvelope
-		|| PlaybackQueue.Num() > 0;
+		|| PlaybackQueue.Num() > 0
+		|| HasCompatibilityDebt();
 }
 
 bool UBattlePresentationController::TryCaptureFastInputCatchUpTarget(

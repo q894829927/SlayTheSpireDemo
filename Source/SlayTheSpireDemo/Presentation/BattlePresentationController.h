@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
+#include "TimerManager.h"
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
 #include "PresentationG8Types.h"
@@ -33,13 +34,20 @@ public:
 
 	// G8-B keeps HasActiveNativePresentation scoped to concrete Widget playback.
 	// Fast input instead asks the Controller whether authoritative chronology can
-	// currently be collapsed by Skip. G8-C may later extend this query with its
+	// currently be collapsed by Skip. G8-C extends this query with the staging
 	// compatibility-debt wait without changing Widget playback semantics.
 	bool HasSkippablePresentationDelay() const;
 	bool TryCaptureFastInputCatchUpTarget(
 		FPresentationSessionToken& OutSessionToken,
 		int64& OutBattleId,
 		int64& OutExpectedCatchUpRevision) const;
+
+	// G8-C feature control. Disabling detached Damage is not an authority/binding
+	// replacement, so it keeps the current PresentationSessionToken. It only
+	// clears private cosmetics + staging debt; later Damage falls back to the
+	// existing Blocking path.
+	void SetDetachedDamageG8CEnabled(bool bEnabled);
+	bool IsDetachedDamageG8CEnabled() const { return bDetachedDamageG8CEnabled; }
 
 	// Intentionally C++-only. Blueprint completion/skip must pass through
 	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
@@ -99,12 +107,20 @@ public:
 		FPresentationGroupSemanticCandidate& OutCandidate
 	);
 	int32 GetG6VisuallyPresentedRecordCountForTesting() const;
+	float GetCompatibilityDebtSecondsForTesting() const { return CompatibilityDebtSeconds; }
+	bool IsCompatibilityDebtServiceActiveForTesting() const;
 #endif
 
 protected:
 	virtual void BeginDestroy() override;
 
 private:
+	enum class EDetachedDamageAttemptResult : uint8
+	{
+		DeclinedToBlocking,
+		Consumed
+	};
+
 	void HandlePresentationResolutionReady(const FPresentationResolutionEnvelope& Envelope);
 	void HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision);
 	void StartNextEnvelope();
@@ -126,6 +142,24 @@ private:
 	bool IsPresentationOwnedMode() const;
 	void InvalidatePresentationSession(UBattleHUDWidgetBase* CleanupWidget = nullptr);
 	void EstablishPresentationSessionForCurrentBinding();
+
+	// G8-C detached Damage transaction and staging-only compatibility debt.
+	EDetachedDamageAttemptResult TryCommitDetachedDamageRecord(
+		const FPresentationRecord& Record);
+	bool IsDetachedDamageCommitContextCurrent(
+		const FPresentationRecord& Record,
+		int32 ExpectedRecordIndex,
+		UBattleHUDWidgetBase* ExpectedWidget,
+		const FPresentationSessionToken& ExpectedSession) const;
+	void AdvancePastCommittedDetachedDamageRecord();
+	void AddCompatibilityDebtForCommittedDamage(float DurationSeconds);
+	void PauseCompatibilityDebtService();
+	void TryServiceCompatibilityDebtOrRefreshInput();
+	void HandleCompatibilityDebtElapsed();
+	void ClearCompatibilityDebt();
+	void CancelCurrentSessionDetachedDamageVisuals();
+	bool HasCompatibilityDebt() const;
+	bool IsExactReadSurfaceCaughtUpForDebtService() const;
 
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
@@ -187,6 +221,14 @@ private:
 	int64 ControllerEpoch = 0;
 	int64 NextPresentationSessionGeneration = 1;
 	FPresentationSessionToken ActivePresentationSessionToken;
+
+	// G8-C staging-only state. Debt is accumulated only by formally committed
+	// detached Damage Records and is serviced only after all chronological work is
+	// otherwise ready. The World TimerManager supplies the legacy game-time clock
+	// domain; new chronology pauses the timer and freezes the remaining debt.
+	bool bDetachedDamageG8CEnabled = true;
+	float CompatibilityDebtSeconds = 0.0f;
+	FTimerHandle CompatibilityDebtTimerHandle;
 
 	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
 	// record order; future member indices are merely remembered as already shown
