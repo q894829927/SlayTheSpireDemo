@@ -13,6 +13,7 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Math/RotationMatrix.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
@@ -80,6 +81,7 @@ void AInteriorPortalSystem::BeginPlay()
 			BodyProxies[I] = Proxy;
 		}
 	}
+	UpdateFidelityDiagnostics();
 	SetActorTickEnabled(true);
 }
 
@@ -122,6 +124,7 @@ void AInteriorPortalSystem::RestoreIgnores()
 void AInteriorPortalSystem::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	UpdateFidelityDiagnostics();
 	ACharacter* Pawn = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 	if (Character.Get() != Pawn)
 	{
@@ -554,6 +557,8 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		Capture->PostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
 		Capture->PostProcessSettings.bOverride_ReflectionMethod = true;
 		Capture->PostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
+		Capture->bAlwaysPersistRenderingState = true;
+		Capture->ShowFlags.SetTemporalAA(bCaptureTemporalAA);
 
 		const bool bNativeClip = RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
 		Capture->bEnableClipPlane = bNativeClip;
@@ -591,8 +596,60 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	}
 }
 
+void AInteriorPortalSystem::UpdateFidelityDiagnostics()
+{
+	IConsoleVariable* EyeAdaptation = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptationQuality"));
+	IConsoleVariable* PreExposure = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptation.PreExposureOverride"));
+
+	if (bExposureIsolationDiagnostic)
+	{
+		if (!bExposureDiagnosticsApplied)
+		{
+			if (EyeAdaptation)
+			{
+				SavedEyeAdaptationQuality = EyeAdaptation->GetInt();
+				bSavedEyeAdaptationQuality = true;
+			}
+			if (PreExposure)
+			{
+				SavedPreExposureOverride = PreExposure->GetFloat();
+				bSavedPreExposureOverride = true;
+			}
+			bExposureDiagnosticsApplied = true;
+			UE_LOG(LogTemp, Display, TEXT("Portal P2-A exposure isolation enabled. This globally disables eye adaptation for diagnosis only."));
+		}
+		if (EyeAdaptation) { EyeAdaptation->Set(0, ECVF_SetByCode); }
+		if (PreExposure) { PreExposure->Set(DiagnosticPreExposureOverride, ECVF_SetByCode); }
+		FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A exposure isolation: CaptureTAA=%s EyeAdaptation=%s PreExposure=%.3f"),
+			bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), EyeAdaptation ? TEXT("OFF") : TEXT("CVAR MISSING"), DiagnosticPreExposureOverride);
+		return;
+	}
+
+	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
+	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production exposure path: CaptureTAA=%s; SceneCapture eye adaptation remains disabled"),
+		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"));
+}
+
+void AInteriorPortalSystem::RestoreFidelityDiagnostics()
+{
+	if (!bExposureDiagnosticsApplied) { return; }
+	if (IConsoleVariable* EyeAdaptation = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptationQuality")))
+	{
+		if (bSavedEyeAdaptationQuality) { EyeAdaptation->Set(SavedEyeAdaptationQuality, ECVF_SetByCode); }
+	}
+	if (IConsoleVariable* PreExposure = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptation.PreExposureOverride")))
+	{
+		if (bSavedPreExposureOverride) { PreExposure->Set(SavedPreExposureOverride, ECVF_SetByCode); }
+	}
+	bExposureDiagnosticsApplied = false;
+	bSavedEyeAdaptationQuality = false;
+	bSavedPreExposureOverride = false;
+	UE_LOG(LogTemp, Display, TEXT("Portal P2-A exposure isolation disabled; previous eye-adaptation/pre-exposure values restored."));
+}
+
 void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 {
+	RestoreFidelityDiagnostics();
 	GrabHandle->ReleaseComponent();
 	for (UMaterialInstanceDynamic* Material : BodyMaterials) { if (Material) { Material->SetScalarParameterValue(TEXT("SliceEnabled"),0); } }
 	RestoreIgnores();
