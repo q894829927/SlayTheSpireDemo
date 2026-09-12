@@ -52,6 +52,13 @@ time = node(portal, u.MaterialExpressionTime)
 color = vector(portal, 'PortalColor', (.01, .25, 1, 1))
 linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
+# P2-B: the SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
+# back out of the current player view's eye-adaptation domain before it is emitted and tonemapped again.
+# Alpha is exposed as a scalar parameter so 0 = legacy raw RenderTarget and 1 = production correction.
+view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 1.0)
+view_inverse = node(portal, u.MaterialExpressionEyeAdaptationInverse)
+assert E.connect_material_expressions(tex, 'RGB', view_inverse, 'LightValue')
+assert E.connect_material_expressions(view_exposure_correction, '', view_inverse, 'Alpha')
 shade = custom(portal, '''
 float2 p=(UV-.5)*2;
 float r=length(p);
@@ -64,7 +71,7 @@ float glow=ring*(5+filament*7+ripple*3)+core*14;
 float3 dormant=C*(.025+.16*pow(saturate(1-r),2))*(.65+.35*sin(r*32-T*3+a*3));
 float edge=smoothstep(.925,.967,r);
 return lerp(lerp(dormant/max(Exposure,.000001),View,saturate(Linked)),(C*glow+core*2)/max(Exposure,.000001),edge);
-''', {'UV':(uv,''), 'View':(tex,'RGB'), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
+''', {'UV':(uv,''), 'View':(view_inverse,''), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
 output(shade, u.MaterialProperty.MP_EMISSIVE_COLOR)
 mask = custom(portal, 'return 1-step(.995,length((UV-.5)*2));', {'UV':(uv,'')}, u.CustomMaterialOutputType.CMOT_FLOAT1)
 output(mask,u.MaterialProperty.MP_OPACITY_MASK)
@@ -121,6 +128,7 @@ for endpoint,support,tint in [(blue,panel.static_mesh_component,(.01,.25,1,1)),(
     endpoint.set_editor_property('half_width',65)
     endpoint.set_editor_property('half_height',115)
     endpoint.set_editor_property('surface_visual_bias',.6)
+    endpoint.set_editor_property('portal_view_exposure_correction',1.0)
     endpoint.set_editor_property('support',support)
     endpoint.set_editor_property('portal_color',u.LinearColor(*tint))
     endpoint.set_editor_property('placed',True)
