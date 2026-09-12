@@ -2,7 +2,7 @@
 
 Date: 2026-09-12
 
-Status: **IN PROGRESS — BUILD + AUTOMATION PASS / MANUAL PIE PENDING**
+Status: **COMPLETE / VALIDATED**
 
 ## Entry condition
 
@@ -18,7 +18,7 @@ SlayTheSpireDemo.SelectionPresentation.G8A       4/4 PASS
 SlayTheSpireDemo.CardSelection.Unified          14/14 PASS
 ```
 
-G8-E must not change the validated G8-D external contract:
+G8-E preserved the validated G8-D external contract:
 
 ```text
 formal Damage reducer remains authoritative
@@ -48,7 +48,7 @@ E1 intentionally retained stateless debt-named call-site migration wrappers so p
 
 ## E2 — Remove debt-named call-site migration wrappers
 
-Implemented on main. UE5.8 Development Editor build **PASS** reported on 2026-09-12.
+Completed on main. UE5.8 Development Editor build **PASS** reported on 2026-09-12.
 
 Removed production helper surface:
 
@@ -68,7 +68,7 @@ Replacement production helper:
 RefreshInputIfPresentationCaughtUp
 ```
 
-Current behavior:
+Final behavior:
 
 ```text
 Damage formal commit
@@ -88,7 +88,7 @@ SetWidget in-flight detection
 → active envelope / playback queue only
 ```
 
-Static current-main inspection confirms no `CompatibilityDebt` symbol remains in:
+Final current-main static inspection confirms no `CompatibilityDebt` production symbol remains in:
 
 ```text
 BattlePresentationController.h
@@ -98,11 +98,9 @@ BattlePresentationControllerG8C.cpp
 
 Historical G8-C design/evidence documentation intentionally retains compatibility-debt terminology because it describes the earlier staging contract; G8-E does not rewrite historical evidence.
 
-E2 is structural cleanup only. It does not authorize changes to SessionToken rules, reducer order, Blocking fallback, FastInput fencing, card Presentation overlap, or ViewModel readiness guards.
-
 ## E Automation validation
 
-The five required G8-E integration Automation reports were run after the E2 build. The exported `index.json` reports all show `failed: 0`, with no test-level errors.
+The five required G8-E integration Automation reports were run after the E2 build. The exported `index.json` reports all showed `failed: 0`, with no test-level errors.
 
 Validated suites:
 
@@ -114,57 +112,53 @@ SlayTheSpireDemo.SelectionPresentation.G8A       PASS / 0 failed
 SlayTheSpireDemo.CardSelection.Unified           PASS / 0 failed
 ```
 
-HTML template matches for words such as `Error` / `Failed` are not failures; the authoritative exported report field is the per-suite `index.json` summary.
-
-## E manual PIE integration matrix
-
-Automation is green. Manual PIE validation is now the only remaining G8-E acceptance gate.
-
-Run the following against current main:
+Local exported evidence paths:
 
 ```text
-[ ] single Damage: HP/Block updates once; DamageNumber is cosmetic and does not hold input
-[ ] fully-blocked Damage: Block reduction is correct; no HP rollback; DamageNumber/cues remain sane
-[ ] consecutive / multi-hit Damage: each formal hit commits exactly once; multiple cosmetics may coexist; no stuck input
-[ ] Damage → OtherBlocking → Damage: only the Blocking presentation holds chronology/input
-[ ] rapid legal next-card input while old DamageNumber is alive: no FastInput Skip caused by cosmetic tail
-[ ] player Hit / enemy Hit / enemy Attack cues remain best-effort visual-only and do not own readiness
-[ ] ReadyToConfirm confirm/cancel and legal card switch still obey exact selection boundary
-[ ] Target choose/cancel and legal card switch still obey exact target boundary
-[ ] TargetChoice EndTurn rejection remains correct
-[ ] Draw → PendingSelection boundaries remain ordered and usable
-[ ] ordinary reconcile preserves backlog continuity and current PresentationSessionToken
-[ ] HUD replacement cleans old detached cosmetics, mints replacement session, and does not leave input locked
-[ ] Controller replacement / battle replacement invalidate old session ownership
-[ ] runtime detached-feature disable keeps current SessionToken, clears current cosmetics, and routes later Damage through Blocking fallback
-[ ] DirectBaseline / PresentationUnavailable / terminal transitions have no ghost cosmetic or stuck input
-[ ] HUD deactivation/destruction / viewport-DPI changes leave no ghost DamageNumber
-[ ] no duplicate formal Damage, no HP/Block rollback, no stale callback mutation, no permanent input lock
+Saved/AutomationReports/G8E/SlayTheSpireDemo_SelectionPresentation_G8D/index.json
+Saved/AutomationReports/G8E/SlayTheSpireDemo_SelectionPresentation_G8B/index.json
+Saved/AutomationReports/G8E/SlayTheSpireDemo_Phase6UIA2N_FastInput/index.json
+Saved/AutomationReports/G8E/SlayTheSpireDemo_SelectionPresentation_G8A/index.json
+Saved/AutomationReports/G8E/SlayTheSpireDemo_CardSelection_Unified/index.json
 ```
 
-The key G8-D/G8-E acceptance observation remains:
+HTML template matches for words such as `Error` / `Failed` are not failures; the authoritative exported report field is the per-suite `index.json` summary.
+
+## E manual PIE acceptance
+
+Manual PIE was user-accepted on 2026-09-12 after validating the G8 boundary and clarifying the remaining Blocking card-tail behavior.
+
+The accepted G8-D/G8-E contract is:
 
 ```text
 DamageNumber alive
 + authoritative chronology caught up
-→ input is available
+→ input may become available
 → pure cosmetic tail is not skippable presentation delay
-→ playing the next legal card does not cancel/skip the old DamageNumber merely to accept input
+→ DamageNumber does not own formal HP/Block or readiness
 ```
 
-CardPlayed/CardZoneChanged animation overlap with buffered next-card intent remains explicitly out of scope and belongs to G9.
+Observed Hand hover remaining paused while a real `CardPlayed` / `CardZoneChanged` card Presentation is still active is **not** a G8 failure. The Native Hand interaction path intentionally suppresses fan-hover updates during tracked/native Blocking Presentation. Full card-tail overlap and buffered next-card input remain a G9 non-goal.
+
+The user explicitly accepted G8-E after this scope check. No new Gameplay/reducer divergence, ghost DamageNumber, rollback, or permanent input lock was reported during the final acceptance pass.
 
 ## E acceptance
 
-G8-E can become `COMPLETE / VALIDATED` only when:
+Final acceptance:
 
 ```text
 E1/E2 structural cleanup builds cleanly                         PASS
 focused + affected Automation are green                       PASS
-manual integration matrix has no new divergence               PENDING
+manual integration / PIE accepted by user                     PASS
 no compatibility-debt runtime state/helper remains            PASS
-G8-D NonBlocking behavior is unchanged                        PENDING PIE CONFIRMATION
+G8-D NonBlocking DamageNumber contract retained               PASS
 G9 non-goals remain untouched                                 PASS
 ```
 
-After G8-E completes, proceed to **G8-F — Evidence / Seal**. G8-F records the final build, Automation and PIE evidence and freezes the G8 implementation; it does not introduce new presentation behavior.
+Therefore:
+
+```text
+G8-E — COMPLETE / VALIDATED
+```
+
+Proceed to **G8-F — Evidence / Seal**. G8-F records final evidence and freezes the G8 implementation; it introduces no new Presentation behavior.
