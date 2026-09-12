@@ -85,6 +85,21 @@ namespace SelectionPresentationG8BFastInputStaleTest
 			return false;
 		}
 
+		// The synthetic Envelope above bypasses the normal Gameplay request/read-edge
+		// sequence that would already leave the Presentation-owned ViewModel locked
+		// while playback is catching up. Recreate that required FastInput precondition
+		// explicitly; otherwise SelectCard correctly takes the ordinary Idle path and
+		// the test never exercises the deferred credential/retry logic at all.
+		OutViewModel->ApplyPresentationSnapshot(OutBaseline, true);
+		if (!Test.TestEqual(
+			TEXT("Synthetic catch-up surface is resolving"),
+			OutViewModel->InteractionState,
+			EBattleHUDInteractionState::Resolving)
+			|| !Test.TestTrue(TEXT("Synthetic catch-up surface is input locked"), OutViewModel->bInputLocked))
+		{
+			return false;
+		}
+
 		OutRuntimeId = OutViewModel->HandCards.Num() > 0
 			? OutViewModel->HandCards[0].RuntimeId
 			: INDEX_NONE;
