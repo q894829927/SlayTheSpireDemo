@@ -15,6 +15,11 @@ namespace BattleHUDWidgetG9BInput
 {
 	bool IsEnabled();
 
+	// Idempotent Native HUD hook. It replaces only the Native EndTurn button
+	// binding and then keeps its enabled affordance event-driven from ViewModel
+	// changes; ordinary calls after binding are cheap identity checks.
+	void EnsureWidgetInputBinding(UBattleHUDWidget* Widget);
+
 	EG9BCardClickDisposition TryHandleBufferedCardClick(
 		UBattleHUDWidget* Widget,
 		int32 RuntimeId);
