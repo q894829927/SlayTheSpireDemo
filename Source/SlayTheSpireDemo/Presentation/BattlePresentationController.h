@@ -10,6 +10,8 @@
 class ABattleManager;
 class UBattleHUDViewModel;
 class UBattleHUDWidgetBase;
+struct FBufferedCardIntent;
+enum class EBufferedIntentShadowEvaluation : uint8;
 
 UCLASS(Transient, BlueprintType)
 class SLAYTHESPIREDEMO_API UBattlePresentationController : public UObject
@@ -39,6 +41,15 @@ public:
 		FPresentationSessionToken& OutSessionToken,
 		int64& OutBattleId,
 		int64& OutExpectedCatchUpRevision) const;
+
+	// G9-A exact Presentation-lag authority only. These helpers capture/evaluate
+	// an already-sealed future normal player-card surface without replaying input,
+	// skipping Presentation or predicting a future Gameplay revision.
+	bool TryCaptureBufferedCardTarget(
+		int32 RequestedRuntimeId,
+		FBufferedCardIntent& OutIntent) const;
+	EBufferedIntentShadowEvaluation EvaluateBufferedCardTarget(
+		const FBufferedCardIntent& Intent) const;
 
 	// Detached Damage feature control. Disabling it is not an authority/binding
 	// replacement, so it keeps the current PresentationSessionToken, retires
