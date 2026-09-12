@@ -557,6 +557,8 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		Capture->PostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
 		Capture->PostProcessSettings.bOverride_ReflectionMethod = true;
 		Capture->PostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
+		Capture->PostProcessSettings.bOverride_LumenSurfaceCacheResolution = true;
+		Capture->PostProcessSettings.LumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
 		Capture->bAlwaysPersistRenderingState = true;
 		Capture->ShowFlags.SetTemporalAA(bCaptureTemporalAA);
 
@@ -620,14 +622,15 @@ void AInteriorPortalSystem::UpdateFidelityDiagnostics()
 		}
 		if (EyeAdaptation) { EyeAdaptation->Set(0, ECVF_SetByCode); }
 		if (PreExposure) { PreExposure->Set(DiagnosticPreExposureOverride, ECVF_SetByCode); }
-		FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A exposure isolation: CaptureTAA=%s EyeAdaptation=%s PreExposure=%.3f"),
-			bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), EyeAdaptation ? TEXT("OFF") : TEXT("CVAR MISSING"), DiagnosticPreExposureOverride);
+		FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A isolation: CaptureTAA=%s LumenCache=%.2f EyeAdaptation=%s PreExposure=%.3f"),
+			bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution,
+			EyeAdaptation ? TEXT("OFF") : TEXT("CVAR MISSING"), DiagnosticPreExposureOverride);
 		return;
 	}
 
 	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
-	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production exposure path: CaptureTAA=%s; SceneCapture eye adaptation remains disabled"),
-		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"));
+	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production path: CaptureTAA=%s LumenCache=%.2f; SceneCapture eye adaptation remains disabled"),
+		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution);
 }
 
 void AInteriorPortalSystem::RestoreFidelityDiagnostics()
