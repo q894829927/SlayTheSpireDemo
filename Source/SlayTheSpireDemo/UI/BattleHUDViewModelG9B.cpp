@@ -156,13 +156,13 @@ bool UBattleHUDViewModel::StoreBufferedCardSelectionG9(
 	const FBufferedCardIntent& Intent,
 	UBattlePresentationController* Controller)
 {
-	if (!Intent.IsValid() || !IsValid(Controller))
+	if (!Intent.IsValid() || !IsValid(Controller) || HasBufferedEndTurnG9())
 	{
 		return false;
 	}
 
 	FG9BViewModelInputState& State = FindOrAddState(this);
-	if (State.Owner.HasEndTurn() || !State.Owner.StoreCardSelection(Intent))
+	if (!State.Owner.StoreCardSelection(Intent))
 	{
 		return false;
 	}
@@ -174,14 +174,42 @@ bool UBattleHUDViewModel::StoreBufferedCardSelectionG9(
 
 bool UBattleHUDViewModel::HasBufferedCardSelectionG9() const
 {
-	const FG9BViewModelInputState* State = FindState(this);
-	return State != nullptr && State->Owner.HasCardSelection();
+	FG9BViewModelInputState* State = FindState(this);
+	if (State == nullptr || !State->Owner.HasCardSelection())
+	{
+		return false;
+	}
+
+	UBattlePresentationController* Controller = State->CardController.Get();
+	const FBufferedCardIntent* Pending = State->Owner.GetCardSelection();
+	if (!IsValid(Controller)
+		|| Pending == nullptr
+		|| Controller->EvaluateBufferedCardTarget(*Pending) == EBufferedIntentShadowEvaluation::Stale)
+	{
+		RemoveState(const_cast<UBattleHUDViewModel*>(this));
+		return false;
+	}
+	return true;
 }
 
 bool UBattleHUDViewModel::HasBufferedEndTurnG9() const
 {
-	const FG9BViewModelInputState* State = FindState(this);
-	return State != nullptr && State->Owner.HasEndTurn();
+	FG9BViewModelInputState* State = FindState(this);
+	if (State == nullptr || !State->Owner.HasEndTurn())
+	{
+		return false;
+	}
+
+	ABattleManager* Battle = BattleManager.Get();
+	const FBufferedEndTurnIntent* Pending = State->Owner.GetEndTurn();
+	if (!IsValid(Battle)
+		|| Pending == nullptr
+		|| EvaluateBufferedEndTurnShadow(Battle, *Pending) == EBufferedIntentShadowEvaluation::Stale)
+	{
+		RemoveState(const_cast<UBattleHUDViewModel*>(this));
+		return false;
+	}
+	return true;
 }
 
 bool UBattleHUDViewModel::CanAcceptEndTurnIntentG9() const
