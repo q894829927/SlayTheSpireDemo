@@ -2,7 +2,7 @@
 
 Date: **2026-09-13**
 
-Status: **G9-A COMPLETE / VALIDATED — G9-B NOT STARTED**
+Status: **G9-A COMPLETE / VALIDATED — G9-B IN PROGRESS / BUILD PENDING**
 
 Design authority: [`SelectionPresentationG9Design.md`](SelectionPresentationG9Design.md).
 Baseline authority: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
@@ -118,7 +118,7 @@ SlayTheSpireDemo.SelectionPresentation.G8D
 SlayTheSpireDemo.CardSelection.Unified
 ```
 
-The focused suite contains the four A1/A2 tests plus the four A3 tests above. No G9 production replay/input behavior is enabled by this checkpoint.
+The focused suite contains the four A1/A2 tests plus the four A3 tests above.
 
 Static review against the G9-A branch point also passes:
 
@@ -128,26 +128,107 @@ no EndTurn production path change
 no FastInput production path change
 no Hand hover/layout production path change
 no card visual ownership production path change
-G9-A changes are limited to Gameplay turn authority, shadow buffered-intent state,
-Controller shadow card-target authority, focused tests and execution evidence
-```
-
----
-
-## G9-A final gate
-
-```text
-UE5.8 Development Editor build with A3             PASS
-SlayTheSpireDemo.SelectionPresentation.G9A         PASS
-affected G8 regressions                            PASS
-static review: no production input behavior change PASS
 ```
 
 Result:
 
 ```text
 G9-A — COMPLETE / VALIDATED
-G9-B — NOT STARTED
 ```
 
-G9-A does not alter hover, EndTurn UI availability, ChoosingTarget behavior, FastInput Skip, or card visual ownership. Production activation begins only in G9-B.
+---
+
+## G9-B — Buffered Player Input + Hand Hover
+
+Implementation branch:
+
+```text
+g9/g9-b-buffered-player-input-hand-hover
+```
+
+### B1 — Buffered CardSelection + hover/layout split
+
+Implemented, validation pending:
+
+```text
+exact G9 card-buffer capture is attempted before sealed G8 FastInput Skip
+exact capture success:
+  store one BufferedCardSelection
+  do NOT Skip current played-card Presentation
+  replay normal SelectCard only after exact target becomes Ready
+capture failure:
+  retire older card credential
+  preserve ordinary G8 FastInput/reject fallback for the new click
+```
+
+Hand behavior:
+
+```text
+structural fan layout remains frozen during active played-card Presentation
+hover affordance is a separate UpdateHoverAffordance path
+hover-only path never calls LayoutCards
+hover is enabled only for approved G9 card windows:
+  CardPlayed
+  PlayArea -> destination
+G9 disabled -> sealed pre-G9 hover behavior remains
+```
+
+### B2 — Buffered EndTurn production activation
+
+Implemented, validation pending:
+
+```text
+single ViewModel-side pending G9 intent owner
+BufferedEndTurn > BufferedCardSelection > pending G8 FastInput retry
+CanAcceptEndTurnIntentG9 is independent from generic bInputLocked/bCanEndTurn
+DirectBaseline and PresentationOwned both use Gameplay PlayerTurnAuthorityToken
+accepted EndTurn retires buffered card before future replay
+accepted EndTurn creates a retirement fence for any older G8 FastInput retry
+ReadyToConfirm / ChoosingTarget are cancelled only AFTER exact EndTurn acceptance
+mandatory authoritative selection remains a hard rejection/stale boundary
+```
+
+ResolutionBusy replay:
+
+```text
+ActionQueue ResolutionIdle
+→ OnPlayerCommandOpportunity
+→ schedule one next-tick exact revalidation
+→ never RequestEndPlayerTurn from inside ResolutionIdle callback stack
+→ RequestEndPlayerTurn exactly once if the same turn token is still Ready
+```
+
+Native EndTurn button:
+
+```text
+G9 enabled:
+  enabled by CanAcceptEndTurnIntentG9
+  physical click routes through exact G9 EndTurn transaction
+
+G9 disabled:
+  proxy falls back to existing EndTurn()/RequestEndTurn behavior
+  old bInputLocked + bCanEndTurn availability semantics are restored
+```
+
+### B focused Automation added
+
+```text
+SlayTheSpireDemo.SelectionPresentation.G9B.Card.BufferedReplayExactOnce
+SlayTheSpireDemo.SelectionPresentation.G9B.Arbitration.EndTurnOverridesCard
+SlayTheSpireDemo.SelectionPresentation.G9B.EndTurn.DirectBaselineResolutionBusy
+SlayTheSpireDemo.SelectionPresentation.G9B.EndTurn.ReadyToConfirmSupersede
+SlayTheSpireDemo.SelectionPresentation.G9B.EndTurn.ChoosingTargetSupersede
+SlayTheSpireDemo.SelectionPresentation.G9B.Hover.LayoutIsolation
+```
+
+### Current B gate
+
+```text
+UE5.8 Development Editor build           PENDING
+G9-B focused Automation                  PENDING
+G9-A regression                          PENDING
+G8 affected regressions                  PENDING
+manual PIE card hover/buffer/EndTurn     PENDING
+```
+
+G9-C remains **NOT STARTED**. G9-B still does not detach CardPlayed or destination visual ownership; those timing changes remain G9-C/G9-D work.
