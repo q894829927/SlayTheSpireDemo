@@ -63,7 +63,6 @@ namespace
 				OutRelics.Reset();
 				return false;
 			}
-
 			SeenRelicIds.Add(RelicId);
 
 			FRelicReadView View;
@@ -72,6 +71,11 @@ namespace
 			View.RelicId = RelicId;
 			View.RuntimeSequence = RuntimeSequence;
 			View.Counter = Counter;
+			View.CounterMax = Definition->CounterMax;
+			View.DisplayName = Definition->DisplayName;
+			View.Description = Definition->Description;
+			View.bShowCounter = Definition->bShowCounter;
+			View.Icon = Definition->Icon;
 			OutRelics.Add(MoveTemp(View));
 		}
 
@@ -149,6 +153,17 @@ void ABattleManager::HandleActionQueueResolutionIdle()
 	// synchronously here so the active builder is released before another
 	// Resolution may begin. Only public delivery remains deferred.
 	FinalizePresentationResolutionAtStableBoundary();
+
+	// G9 player-command wake-up is tied directly to the authoritative settled
+	// ActionQueue boundary rather than to read-state publication. ReadStateReady
+	// may legitimately coalesce an unchanged revision, but a BufferedEndTurn must
+	// still get one chance to revalidate when ResolutionBusy becomes idle.
+	FPlayerTurnAuthorityToken PlayerTurnToken;
+	if (TryGetCurrentPlayerTurnAuthorityToken(PlayerTurnToken))
+	{
+		OnPlayerCommandOpportunity.Broadcast(PlayerTurnToken);
+	}
+
 	ScheduleReadStateReadyPublish();
 }
 
