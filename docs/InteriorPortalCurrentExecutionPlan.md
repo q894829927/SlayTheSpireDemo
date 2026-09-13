@@ -4,21 +4,23 @@ Date: **2026-09-14**
 
 Branch reviewed: **`portal/full-fidelity-p1`**
 
-Review HEAD: **`b9e5eb75b8451bd8d944591da3ed832fe0cd4d83`**
+Review baseline HEAD: **`27f0bf58ddb0b8f95b453bd2ab9545eae5a5508e`**
 
 Status:
 
 ```text
 CORE IMPLEMENTATION BASELINE ESTABLISHED /
 STEP 1 — FINAL RENDERER CLOSURE ACTIVE /
-SCENECAPTURE PATH RETAINED AS FALLBACK / COMPARISON PATH /
-STENCIL / MAIN-VIEW RENDERER FEASIBILITY NOW AUTHORIZED /
-FULL PHYSICS REMAINS DEFERRED UNTIL CORE SEAL
+SCENECAPTURE RETAINED AS FALLBACK / COMPARISON PATH /
+STENCIL / MAIN-VIEW RENDERER FEASIBILITY AUTHORIZED /
+FULL PHYSICS DEFERRED UNTIL CORE SEAL
 ```
 
-This document is the **active execution-order authority** for the current portal branch. The durable scope, architecture constraints and final Definition of Done remain in [`InteriorPortalFullFidelityImplementationPlan.md`](InteriorPortalFullFidelityImplementationPlan.md).
+This document is the **active execution-order authority** for the current portal branch. The durable scope, architectural constraints and final Definition of Done remain in [`InteriorPortalFullFidelityImplementationPlan.md`](InteriorPortalFullFidelityImplementationPlan.md).
 
-The current branch is no longer a prototype that should execute every old P-stage in sequence. Most spatial, traversal, query and presentation foundations already exist. The remaining work is therefore grouped into **three large delivery steps** instead of many small stages.
+When the durable plan still contains older sequencing or renderer-escalation wording, **this document wins for current execution order**. In particular, a bounded Stencil/MainView feasibility spike is already authorized in Step 1; production migration still requires the complete renderer acceptance matrix below.
+
+The current branch is no longer a prototype that should execute every old P-stage in sequence. Most spatial, traversal, query and presentation foundations already exist. Remaining work is grouped into **three large delivery steps**.
 
 ---
 
@@ -43,20 +45,20 @@ PortalQuery line trace + sphere sweep
 focused Automation + actual-map traversal regressions
 ```
 
-Current known gap boundaries:
+Current gap boundaries:
 
 - portal visual parity is not sealed;
 - rigid-body high-speed / CCD aperture safety is not sealed;
 - remote-half physical contact does not exist yet;
 - cross-portal multi-body constraint support does not exist yet.
 
-The latest `SCS_FinalColorHDR` + capture-owned exposure normalization path is an **experiment/candidate**, not a final P2 seal.
+The current `SCS_FinalColorHDR` + capture-owned exposure-normalization path is an **experiment/candidate**, not a final renderer decision.
 
 ---
 
-## 2. Architecture adjustment
+## 2. Architecture contracts
 
-The implementation should now be treated as three cooperating layers:
+Treat the implementation as three cooperating layers:
 
 ```text
 Portal Spatial Core
@@ -75,31 +77,149 @@ Portal Physics
     future PortalPhysicsBubble + ShadowPhysicsClone
 ```
 
-Two rules are now explicit:
+The following contracts are mandatory for all later work.
 
-1. **One final exposure authority.** The player main view should own the final exposure / local exposure / tone mapping for the production renderer. Do not keep adding scene-specific brightness compensation.
-2. **Independent virtual-view history.** Portal views must not blindly share one TAA/Lumen history with the player or with other recursion levels. Synchronize frame/jitter/render policy where needed, but keep distinct virtual-view histories when temporal accumulation is used.
+### 2.1 One final exposure authority
+
+The production renderer should make the **player main view** the final owner of:
+
+```text
+Exposure
+Local Exposure
+Color Grading
+Tone Mapping
+Display conversion
+```
+
+Do not solve parity with scene-specific brightness gains. `FinalColorHDR + capture EyeAdaptation` remains a comparison path, not proof that capture-owned exposure is the final architecture.
+
+### 2.2 Independent virtual-view histories
+
+Portal views must not blindly share one TAA/TSR/Lumen history with the player or with other recursion levels.
+
+When temporal accumulation is enabled, history identity is at least:
+
+```text
+Endpoint + RecursionDepth + RendererViewIdentity
+```
+
+Conceptually:
+
+```text
+PlayerViewState
+Blue/Depth0 ViewState
+Blue/Depth1 ViewState
+Blue/Depth2 ViewState
+Orange/Depth0 ViewState
+Orange/Depth1 ViewState
+Orange/Depth2 ViewState
+```
+
+Synchronize frame timing, jitter policy and render settings where required, but keep history ownership distinct.
+
+Invalidate the affected virtual history on at least:
+
+```text
+portal placement / replacement / clear
+camera cut / discontinuous virtual-camera transform
+recursion-depth change
+render-target / viewport resolution change
+renderer-mode change
+endpoint destruction
+```
+
+The current SceneCapture fallback must obey this contract too; it is not only a requirement for the future Stencil renderer.
+
+### 2.3 Exact render-sample ownership
+
+Every captured/composited portal image must have an auditable relationship:
+
+```text
+Portal image / RT
+    <-> exact virtual view transform
+    <-> exact recursion level
+    <-> exact PreExposure or exposure-domain state used to render it
+    <-> exact temporal-history identity
+```
+
+Do not assume that a `GetPreExposure()` value read after a capture necessarily belongs to that exact image unless the implementation proves the renderer timing. If the component-level API cannot prove the association, record exposure state from the actual view/render stage instead.
+
+### 2.4 Portal-bounded rendering
+
+The renderer should not treat a small portal as a full-screen secondary camera when the engine path allows tighter work.
+
+Target contract:
+
+```text
+Portal aperture geometry
+    -> project to screen
+    -> conservative projected bounds
+    -> scissor / restricted viewport
+    -> off-axis or aperture-derived portal frustum
+    -> render only geometry potentially visible through the aperture
+```
+
+For the Stencil/MainView path, combine the projected bounds with stencil/depth. For SceneCapture fallback, use the same bounds to reduce unnecessary RT/render work where practical without breaking projection correctness.
 
 ---
 
 # STEP 1 — FINAL RENDERER CLOSURE
 
-This step combines the old P1/P2/P7 visual work, recursion, temporal behavior and rendering performance into one decision.
+This combines the old P1/P2/P7 visual work, recursion, temporal behavior and renderer performance into one decision.
 
-## 1A. Time-box the current SceneCapture path
+## 1A. Bound the current SceneCapture experiments
 
-Keep both current capture experiments available for controlled A/B comparison:
+Keep both capture paths available for controlled A/B comparison:
 
 ```text
 A — FinalColorHDR + capture eye adaptation + measured PreExposure normalization
 B — SceneColorHDRNoAlpha + capture eye adaptation disabled + measured PreExposure normalization
 ```
 
-Use the same portal pair, same player pose, same destination region and same frame conditions.
+Use the same portal pair, same player pose, same destination region and same frame conditions. Do not accept a solution because one scalar makes one room look correct.
 
-Do not accept a solution based on tuning one scalar until one room looks correct.
+SceneCapture remains eligible as the Core production renderer only if it passes the same acceptance matrix as the MainView candidate. If it cannot, freeze it as fallback/debug behavior rather than continuing unbounded material/exposure workarounds.
 
-Required comparison matrix:
+## 1B. Stencil / MainView feasibility spike
+
+Build one narrow proof:
+
+```text
+one portal pair
+one recursion level
+main-view / SceneView based transformed virtual camera
+portal aperture written to stencil/depth
+exit-plane clipping
+projected portal bounds / scissor
+render only inside the legal aperture
+single final player exposure / tone-map path
+```
+
+The spike only proves feasibility. It must answer:
+
+- can a transformed Portal view be rendered into the main frame without a separate final-color composite domain?
+- can depth/stencil preserve ordinary occlusion and prevent support-wall leakage?
+- can current projection/parallax and clip-plane contracts be preserved?
+- can a portal-bounded viewport/frustum be derived robustly?
+- is the UE 5.8 integration cost acceptable for this project?
+
+**A successful single-layer spike does not become production automatically.** Promotion is:
+
+```text
+Feasibility Spike
+    -> Renderer Candidate
+    -> finite recursion + temporal/Lumen/render-feature implementation
+    -> full visual/performance acceptance matrix
+    -> Production Renderer Freeze
+```
+
+If the spike fails for an engine-level reason, record the exact limitation and keep the best validated SceneCapture path instead.
+
+## 1C. Unified renderer acceptance matrix
+
+Run the selected candidates through one matrix rather than separate ad-hoc screenshots.
+
+### View / exposure / traversal cells
 
 ```text
 bright -> dark
@@ -112,73 +232,71 @@ grazing angle
 recursion depth 1 and >= 2
 flashlight off/on
 slow camera motion
+fast camera motion
 ```
 
-Record at minimum:
+### Render-feature cells
+
+```text
+opaque static geometry
+moving object / velocity-dependent rendering
+translucent material
+fog / volumetric contribution
+decal
+emissive + bloom
+Lumen GI
+Lumen / supported reflections
+TAA / TSR temporal stability
+recursive portal facing portal
+```
+
+### Required telemetry
+
+For SceneCapture paths record at minimum:
 
 ```text
 capture source
-CapturePreExposure
+exact CapturePreExposure ownership per image
 player PreExposure
 RenderTarget format / linear-gamma state
+virtual-view history identity
 recursion level
+projected portal screen bounds
 GPU cost
 RenderTarget / VRAM cost
 visible temporal artifacts
 ```
 
-If one SceneCapture path passes the full visual and performance matrix, it may remain the production Core renderer.
-
-## 1B. Run a stencil / main-view renderer feasibility spike
-
-Do not wait until every SceneCapture workaround is exhausted. Build one narrow proof:
-
-```text
-one portal pair
-one recursion level
-main-view / SceneView based virtual camera
-portal aperture written to stencil/depth
-exit-plane clipping
-render only inside the aperture
-single final player exposure / tone-map path
-```
-
-The spike only needs to answer:
-
-- can the virtual Portal view be rendered into the main frame without a separate final-color texture/composite domain?
-- can depth/stencil prevent support-wall leakage and preserve ordinary world occlusion?
-- can the transformed camera preserve the current projection/parallax contract?
-- is the integration cost acceptable in UE 5.8 for this project?
-
-If the spike succeeds, extend it to finite recursion and make it the production target. The existing SceneCapture implementation remains a fallback/debug path.
-
-If the spike fails for an engine-level reason, record the exact limitation and keep the best validated SceneCapture path instead of accumulating unbounded hacks.
+For the MainView/Stencil candidate record equivalent virtual-view, history, GPU and memory data even if no portal RT exists.
 
 ## Step 1 acceptance
 
-The selected production renderer must pass:
+The production renderer may be frozen only when it passes:
 
 ```text
 no black support-wall leak / giant triangle
-no unexplained portal-vs-direct exposure shift
+no unexplained portal-vs-direct exposure or color shift
 no crossing brightness pop
-no obvious portal-only temporal smear / shimmer
+no portal-only temporal smear / shimmer / reset flash
 correct near / grazing / edge parallax
+correct depth / occlusion around the aperture
 stable finite recursion
-acceptable GPU + VRAM cost
+acceptable translucency / fog / decal / emissive behavior
+acceptable Lumen / reflection behavior for the documented scope
+acceptable GPU + memory cost
 ```
 
-After this step the renderer architecture is frozen for Core Seal.
+After this gate the renderer architecture is frozen for Core Seal. SceneCapture may remain as fallback/debug even if Stencil/MainView becomes production.
 
 ---
 
 # STEP 2 — CORE GAMEPLAY CLOSURE + CORE SEAL
 
-This step merges the old player/camera, rigid-body, PortalQuery, presentation, lifecycle and performance cleanup stages.
+This merges the old player/camera, rigid-body, PortalQuery, presentation and lifecycle work.
 
 ## Player / camera
 
-Keep the existing submove aperture gate, crossing state machine and quaternion camera ownership. Finish the manual matrix for:
+Keep the existing submove aperture gate, crossing state machine and quaternion camera ownership. Finish the matrix for:
 
 ```text
 slow enter / stop / retreat
@@ -195,7 +313,7 @@ No wall escape, roll snap, input inversion, ping-pong transfer or stale ignore s
 
 ## Rigid bodies / held objects
 
-Harden the existing Core transfer path without adding remote-half contact yet:
+Harden the existing Core transfer path without adding remote-half physical contact yet:
 
 - high-speed / CCD crossing;
 - lateral aperture escape prevention;
@@ -230,11 +348,11 @@ PIE EndPlay
 renderer target/history reset
 ```
 
-No stale constraints, ignores, proxies, slice materials, remote lights, camera state, traveller records or linked views may remain.
+No stale constraints, ignores, proxies, slice materials, remote lights, camera state, traveller records, linked views or virtual-view histories may remain.
 
 ## Core Seal
 
-Core may be sealed only when the selected renderer from Step 1 and all supported Core gameplay paths pass Automation, actual-map PIE/manual acceptance and packaged-build smoke.
+Core may be sealed only when the production renderer from Step 1 and all supported Core gameplay paths pass Automation, actual-map PIE/manual acceptance, performance profiling and packaged-build smoke.
 
 Required status wording:
 
@@ -249,7 +367,7 @@ FULL PHYSICS FIDELITY — NOT YET SEALED
 
 Only start this after Step 2 Core Seal, except for an explicitly isolated feasibility experiment.
 
-The target is a Valve-style local hybrid physics model rather than globally cutting the level collision or trying to solve two worlds as one monolithic exact solver.
+The target is a Valve-style local hybrid physics model rather than globally cutting level collision or trying to solve two worlds as one monolithic exact solver.
 
 ## PortalPhysicsBubble
 
@@ -264,7 +382,7 @@ PortalPhysicsBubble
     explicit collision-pair filtering
 ```
 
-The current support-wall bypass can remain the Core fallback, but the Full Physics path must prevent lateral wall escape using local aperture geometry rather than a broad temporary hole.
+The current support-wall bypass can remain the Core fallback, but Full Physics must prevent lateral wall escape using local aperture geometry rather than a broad temporary hole.
 
 ## ShadowPhysicsClone
 
@@ -273,21 +391,22 @@ A partially crossed supported rigid body gets one destination-side collision rep
 ```text
 Source authoritative body
         |
-        | portal mapping
+        | rigid portal mapping
         v
 ShadowPhysicsClone
 ```
 
 Rules:
 
-- exactly one authoritative gameplay body;
+- exactly one authoritative gameplay body at all times;
 - clone never becomes an accidental second authority;
 - source and clone cannot self-collide;
 - clone only collides with the legal destination-side set;
 - visual proxy and physics clone are separate concepts;
+- gravity is applied exactly once;
 - reset/destruction removes the clone deterministically.
 
-## Contact response / authority swap / constraints
+## Contact response, atomic authority swap and constraints
 
 Implement in increasing complexity:
 
@@ -298,11 +417,24 @@ remote half vs static world
 then supported dynamic-vs-dynamic cases
     -> finite-mass response, no kinematic infinite-mass shortcut
 
-then authority swap when the supported centre crosses
-    -> no double impulse / energy spike
+then authority swap
+    -> no double impulse / no missing contact / no energy spike
 
-then the explicitly supported cross-portal constraint policy
+then explicitly supported cross-portal constraints
 ```
+
+Authority swap must have a single explicit rule. For each supported traveller define an **authority reference point** (normally the authoritative rigid body's centre of mass unless another reference is documented). Transfer ownership only when that reference crosses the `LogicalPortalPlane` with configured hysteresis.
+
+The swap is atomic within one physics step:
+
+```text
+before swap: Source authoritative, Shadow clone derived
+swap condition reached once
+same physics step: mapped pose/velocities/contact ownership committed
+       -> Destination authoritative, old source becomes derived/removed
+```
+
+There must never be a step where both bodies are authoritative or neither body owns gravity/contact response.
 
 The acceptance target is behavioral fidelity and stability:
 
@@ -310,6 +442,7 @@ The acceptance target is behavioral fidelity and stability:
 no wall escape
 no duplicate gravity
 no duplicate impulse
+no missing-contact frame at authority swap
 bounded energy
 correct visible push / torque
 stable crossing and reversal
@@ -332,16 +465,20 @@ FULL PHYSICS FIDELITY — SEALED FOR DOCUMENTED SUPPORTED CATEGORIES
 ```text
 STEP 1
     SceneCapture A/B ceiling test
-    + single-layer stencil/main-view feasibility spike
-    -> choose/freeze production renderer
+    + single-layer Stencil/MainView feasibility spike
+    + portal-bounded frustum/scissor + virtual-history contract
+    -> compare Renderer Candidates
+    -> full renderer matrix
+    -> freeze production renderer
 
 STEP 2
     player/camera + rigid-body/held + PortalQuery + presentation + cleanup
     -> Core Portal Fidelity Seal
 
 STEP 3
-    PortalPhysicsBubble + ShadowPhysicsClone + mapped contacts + supported constraints
+    PortalPhysicsBubble + ShadowPhysicsClone + mapped contacts
+    + atomic authority swap + supported constraints
     -> Full Physics Fidelity Seal
 ```
 
-This three-step order supersedes the older A0-A7 / B0-B6 execution breakdown. Those older labels may still be used as historical references in logs, but new work should be planned and reported against **Step 1 / Step 2 / Step 3**.
+This three-step order supersedes the older A0-A7 / B0-B6 execution breakdown. Older labels may remain as historical references in logs, but new work should be planned and reported against **Step 1 / Step 2 / Step 3**.
