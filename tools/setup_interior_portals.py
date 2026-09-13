@@ -58,25 +58,28 @@ portal.set_editor_property('shading_model', u.MaterialShadingModel.MSM_UNLIT)
 portal.set_editor_property('two_sided', False)
 uv = node(portal, u.MaterialExpressionTextureCoordinate)
 screen = node(portal, u.MaterialExpressionScreenPosition)
-# SceneCapture writes FinalColorHDR into the RGBA16f target. Keep a Linear
-# Color sampler so HDR values stay in the capture's linear color domain.
+# Both SceneCapture A/B paths write HDR into the RGBA16f target. Keep a Linear
+# Color sampler. SceneColorLinear is scene-referred only within the explicit
+# capture contract; FinalColorHDR is already in the capture post-process domain.
 tex = node(portal, u.MaterialExpressionTextureSampleParameter2D, parameter_name='PortalView', texture=placeholder, sampler_type=u.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
 assert E.connect_material_expressions(screen, 'ViewportUV', tex, 'UVs')
 time = node(portal, u.MaterialExpressionTime)
 color = vector(portal, 'PortalColor', (.01, .25, 1, 1))
 linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
-# P2-B: FinalColorHDR can still carry the capture view's pre-exposure domain.
-# Normalize with the value measured from that capture, then let the player's main view
-# apply exposure and tonemapping exactly once. Do not use the player's
-# EyeAdaptationInverse here: it describes the display view, not the capture view.
-view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 1.0)
+# P2-B is diagnostic-only. It is never a production brightness gain and never
+# uses the player's EyeAdaptationInverse: that node describes the display view,
+# not the capture view. SceneColorLinear disables capture eye adaptation and
+# therefore does not need a guessed pre-exposure division.
+view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 0.0)
 capture_pre_exposure = scalar(portal, 'PortalCapturePreExposure', 1.0)
+capture_color_mode = scalar(portal, 'PortalCaptureColorMode', 0.0)
 view_normalized = custom(portal, '''
 float3 raw=Raw;
 float3 sceneLinear=Raw/max(CapturePreExposure,.000001);
-return lerp(raw,sceneLinear,saturate(Normalize));
-''', {'Raw':(tex,'RGB'), 'CapturePreExposure':(capture_pre_exposure,''), 'Normalize':(view_exposure_correction,'')})
+float3 corrected=lerp(raw,sceneLinear,saturate(Normalize));
+return lerp(raw,corrected,step(.5,FinalColorHDR));
+''', {'Raw':(tex,'RGB'), 'CapturePreExposure':(capture_pre_exposure,''), 'Normalize':(view_exposure_correction,''), 'FinalColorHDR':(capture_color_mode,'')})
 shade = custom(portal, '''
 float2 p=(UV-.5)*2;
 float r=length(p);
@@ -146,7 +149,7 @@ for endpoint,support,tint in [(blue,panel.static_mesh_component,(.01,.25,1,1)),(
     endpoint.set_editor_property('half_width',65)
     endpoint.set_editor_property('half_height',115)
     endpoint.set_editor_property('surface_visual_bias',.6)
-    endpoint.set_editor_property('portal_view_exposure_correction',1.0)
+    endpoint.set_editor_property('portal_view_exposure_correction',0.0)
     endpoint.set_editor_property('support',support)
     endpoint.set_editor_property('portal_color',u.LinearColor(*tint))
     endpoint.set_editor_property('placed',True)
@@ -177,6 +180,7 @@ system.set_editor_property('physics_travellers',[cube.static_mesh_component])
 system.set_editor_property('recursion_depth',3)
 system.set_editor_property('resolution_scale',.75)
 system.set_editor_property('clip_plane_bias',.5)
+system.set_editor_property('capture_color_mode',u.InteriorPortalCaptureColorMode.SCENE_COLOR_LINEAR)
 assert level.save_current_level()
 manifest={'map':MAP,'system':system.get_path_name(),'blue':blue.get_path_name(),'orange':orange.get_path_name(),'surfaces':[s.get_path_name() for s in surfaces],'cube':cube.get_path_name(),'materials':[m.get_path_name() for m in [portal,cube_material,panel_material]]}
 with open(u.Paths.project_saved_dir()+'InteriorPortalsSetup.json','w') as f: json.dump(manifest,f,indent=2)

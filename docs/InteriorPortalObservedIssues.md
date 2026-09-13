@@ -1,6 +1,6 @@
 # Interior Portal — Observed Issues and Regression Targets
 
-Date: **2026-09-13**
+Date: **2026-09-14**
 
 Status:
 
@@ -79,17 +79,31 @@ Observed A/B results:
 
 ### Current status
 
-**Capture-owned normalization implemented — direct-vs-portal parity remains open and
+**STEP 1A A/B baseline implemented — direct-vs-portal parity remains open and
 continues to block P2 visual fidelity.**
 
-The capture now uses `SCS_FinalColorHDR`, so its destination post-process
-exposure is resolved by the capture view itself before the HDR texture is
-sampled by the portal surface. The portal material still removes the exact
-capture `PreExposure` measured for that RenderTarget; the player's
-`EyeAdaptationInverse` is not applied to a different view domain. This removes
-the observed raw SceneColor/portal black-crush path. The direct-vs-portal visual
-matrix is still required to prove parity across bright/dark transitions and
-temporal history.
+The current renderer has two explicit paths. `FinalColorHDR` uses
+`SCS_FinalColorHDR` with capture EyeAdaptation enabled, but the public UE 5.8
+API does not prove that a `GetViewState(0)->GetPreExposure()` read immediately
+after `CaptureScene()` belongs to the RenderTarget image just enqueued. The
+implementation therefore records the ownership as `Unavailable / Unverified`,
+does not perform a one-frame shift or magic correction, and leaves the
+normalization diagnostic disabled by default. `FinalColorHDR` is a capture
+post-process-domain comparison path; it is not claimed to restore original
+scene-linear radiance.
+
+`SceneColorLinear` uses `SCS_SceneColorHDRNoAlpha` and disables capture EyeAdaptation.
+In the UE 5.8 renderer path, `UpdatePreExposure()` leaves capture PreExposure at
+`1.0` when EyeAdaptation is not relevant, so this path does not divide by a
+guessed value and does not use the player's `EyeAdaptationInverse`. The player
+main view remains the intended owner of final Exposure, Local Exposure, color
+grading and tone mapping. This is a contract baseline, not visual parity proof.
+
+Both paths use the same explicit portal material and linear-gamma HDR target;
+the old `PortalViewExposureCorrection` blend is available only when the system
+diagnostic switch is enabled. A scene-specific brightness multiplier is not
+introduced. `Saved/PortalRendererDiagnostics.json` supplies the per-sample
+comparison data, while direct-vs-portal visual parity remains a PIE/manual gate.
 
 ### Why the first correction is insufficient
 
@@ -101,17 +115,26 @@ inverse-eye-adaptation transform is not a correct general solution.
 
 ### Required direction
 
-The next P2 correction must explicitly reason about the **capture view's own pre-exposure**, not tune a scene-specific brightness multiplier.
+The next P2 correction must explicitly reason about the **capture view's own pre-exposure**, not tune a scene-specific brightness multiplier. If the required image-bound ownership cannot be obtained through a supported public hook, the limitation must remain an explicit SceneCapture ceiling and feed the Stencil/MainView feasibility decision.
 
 Target pipeline:
 
 ```text
-SceneCapture FinalColorHDR
-    -> remove/normalize Capture PreExposure
-    -> HDR portal value in the resolved capture domain
+SceneCapture FinalColorHDR (comparison path)
+    -> only normalize Capture PreExposure when image ownership is proven
+    -> HDR portal value in the resolved capture post-process domain
     -> emit through portal material
     -> player view applies its normal exposure/tonemap once
 ```
+
+### STEP 1A renderer ceiling and history diagnostics — 2026-09-14
+
+- The A/B enum is separate from `RenderClipMode`; no comment-edit switch is required.
+- Each endpoint has persistent depth-indexed capture components/ViewStates. Their identities are recorded as endpoint/depth/ViewKey/generation and are covered by focused Automation.
+- History reset requests cover portal placement/replacement, clear, endpoint invalidation, renderer mode/configuration changes, camera cuts and discontinuous virtual-camera transforms. This proves ownership separation and invalidation signaling, not temporal visual quality.
+- The shared projected-aperture helper is independent of SceneCapture and handles viewport clipping, near-plane intersection, camera crossing, behind-camera rejection and grazing/partial visibility. Its bounds are normalized to the player view and are available for later scissor work.
+- `FinalColorHDR` exact image PreExposure ownership is still unavailable through the inspected public UE 5.8 timing. This is an architectural limitation of the current public SceneCapture boundary, not a reason to add a frame offset.
+- No exposure parity, Lumen parity, TAA/TSR quality or visual seal is claimed. Manual PIE evidence is still required for both paths.
 
 ### Acceptance
 

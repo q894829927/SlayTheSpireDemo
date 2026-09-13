@@ -5,6 +5,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
+#include "SceneManagement.h"
 
 AInteriorPortal::AInteriorPortal()
 {
@@ -22,26 +23,29 @@ AInteriorPortal::AInteriorPortal()
 	if (Plane.Succeeded()) { Surface->SetStaticMesh(Plane.Object); }
 	Capture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("PortalCapture"));
 	Capture->SetupAttachment(RootComponent);
-	Capture->bCaptureEveryFrame = false;
-	Capture->bCaptureOnMovement = false;
+	CaptureViews.Add(Capture);
+	ConfigureCaptureDefaults(Capture);
+	PortalCapturePreExposureOwnership = TEXT("Unavailable / Unverified");
+}
+
+void AInteriorPortal::ConfigureCaptureDefaults(USceneCaptureComponent2D* InCapture)
+{
+	if (!InCapture) { return; }
+	InCapture->bCaptureEveryFrame = false;
+	InCapture->bCaptureOnMovement = false;
 	// Persistent rendering state is required for temporal/Lumen history even though captures are issued manually.
-	Capture->bAlwaysPersistRenderingState = true;
-	// Capture the destination after its post-process exposure has been resolved.
-	// This keeps the portal and the player's direct view in the same exposure
-	// domain instead of asking a surface material to reconstruct another view's
-	// eye-adaptation history.
-	Capture->CaptureSource = SCS_FinalColorHDR;
-	Capture->bUseCustomProjectionMatrix = true;
+	InCapture->bAlwaysPersistRenderingState = true;
+	// SceneColorLinear is the explicit system default. The system applies the
+	// selected A/B mode again before every capture so authored component state
+	// cannot silently select a different path.
+	InCapture->CaptureSource = SCS_SceneColorHDRNoAlpha;
+	InCapture->bUseCustomProjectionMatrix = true;
 	// Portal clipping is owned by the selected render path. Do not stack a second near-plane override on top.
-	Capture->bOverride_CustomNearClippingPlane = false;
-	Capture->ShowFlags.SetMotionBlur(false);
-	// P2-A starts from a temporal capture path; the system can disable this only for controlled A/B diagnostics.
-	Capture->ShowFlags.SetTemporalAA(true);
-	Capture->ShowFlags.SetBloom(false);
-	// Use the same auto-exposure path as the player view. FinalColorHDR keeps
-	// the capture's resolved exposure while preserving HDR precision; the portal
-	// material still removes any measured capture PreExposure before display.
-	Capture->ShowFlags.SetEyeAdaptation(true);
+	InCapture->bOverride_CustomNearClippingPlane = false;
+	InCapture->ShowFlags.SetMotionBlur(false);
+	InCapture->ShowFlags.SetTemporalAA(true);
+	InCapture->ShowFlags.SetBloom(false);
+	InCapture->ShowFlags.SetEyeAdaptation(false);
 }
 
 FTransform AInteriorPortal::GetLogicalFrame() const
@@ -77,19 +81,31 @@ void AInteriorPortal::RefreshAppearance()
 		DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor);
 		DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
 		DynamicMaterial->SetScalarParameterValue(TEXT("PortalCapturePreExposure"), FMath::Max(PortalCapturePreExposure, .000001f));
+		DynamicMaterial->SetScalarParameterValue(TEXT("PortalCaptureColorMode"), 0.0f);
 	}
 }
 
-void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure)
+void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure,
+	const FString& InputCapturePreExposureOwnership, float EffectiveExposureCorrection)
 {
+	PortalCapturePreExposure = (FMath::IsFinite(InputCapturePreExposure) && InputCapturePreExposure > .000001f)
+		? InputCapturePreExposure : 1.0f;
+	PortalCapturePreExposureOwnership = InputCapturePreExposureOwnership.IsEmpty()
+		? TEXT("Unavailable / Unverified") : InputCapturePreExposureOwnership;
 	if (!DynamicMaterial) { return; }
 	if (Texture) { DynamicMaterial->SetTextureParameterValue(TEXT("PortalView"), Texture); }
 	DynamicMaterial->SetScalarParameterValue(TEXT("Linked"), bLinked && Texture ? 1 : 0);
-	PortalCapturePreExposure = (FMath::IsFinite(InputCapturePreExposure) && InputCapturePreExposure > .000001f)
-		? InputCapturePreExposure : 1.0f;
 	DynamicMaterial->SetScalarParameterValue(TEXT("PortalCapturePreExposure"), PortalCapturePreExposure);
-	// Keep the compatibility diagnostic live in PIE if the property is edited while running.
-	DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
+	DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"),
+		EffectiveExposureCorrection >= 0.0f ? EffectiveExposureCorrection : PortalViewExposureCorrection);
+}
+
+void AInteriorPortal::SetCaptureColorMode(const bool bFinalColorHDR)
+{
+	if (DynamicMaterial)
+	{
+		DynamicMaterial->SetScalarParameterValue(TEXT("PortalCaptureColorMode"), bFinalColorHDR ? 1.0f : 0.0f);
+	}
 }
 
 void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
@@ -109,4 +125,45 @@ void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
 	{
 		if (Target->SizeX != Width || Target->SizeY != Height) { Target->ResizeTarget(Width, Height); }
 	}
+}
+
+void AInteriorPortal::EnsureCaptureViews(const int32 Depth)
+{
+	const int32 SafeDepth = FMath::Clamp(Depth, 1, 4);
+	while (CaptureViews.Num() < SafeDepth)
+	{
+		const int32 RecursionLevel = CaptureViews.Num();
+		const FName Name(*FString::Printf(TEXT("PortalCaptureDepth%d"), RecursionLevel));
+		USceneCaptureComponent2D* NewCapture = NewObject<USceneCaptureComponent2D>(this, Name, RF_Transient);
+		NewCapture->SetupAttachment(RootComponent);
+		ConfigureCaptureDefaults(NewCapture);
+		NewCapture->RegisterComponent();
+		CaptureViews.Add(NewCapture);
+	}
+}
+
+USceneCaptureComponent2D* AInteriorPortal::GetCaptureForDepth(const int32 RecursionLevel) const
+{
+	return CaptureViews.IsValidIndex(RecursionLevel) ? CaptureViews[RecursionLevel] : nullptr;
+}
+
+void AInteriorPortal::ResetCaptureHistories()
+{
+	for (int32 RecursionLevel = 0; RecursionLevel < CaptureViews.Num(); ++RecursionLevel)
+	{
+		ResetCaptureHistory(RecursionLevel);
+	}
+}
+
+void AInteriorPortal::ResetCaptureHistory(const int32 RecursionLevel)
+{
+	USceneCaptureComponent2D* CaptureView = GetCaptureForDepth(RecursionLevel);
+	if (!IsValid(CaptureView)) { return; }
+	if (FSceneViewStateInterface* ViewState = CaptureView->GetViewState(0))
+	{
+		ViewState->ResetViewState();
+	}
+	// The renderer consumes this flag for the next queued capture and resets it
+	// after the scene-capture render command has been built.
+	CaptureView->bCameraCutThisFrame = true;
 }

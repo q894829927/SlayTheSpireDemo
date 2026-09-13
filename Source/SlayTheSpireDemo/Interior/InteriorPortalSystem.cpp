@@ -30,6 +30,8 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "SceneManagement.h"
 #include "SceneView.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 namespace
 {
@@ -125,6 +127,17 @@ namespace
 	}
 }
 
+ESceneCaptureSource AInteriorPortalSystem::GetCaptureSourceForColorMode(const EInteriorPortalCaptureColorMode Mode)
+{
+	return Mode == EInteriorPortalCaptureColorMode::FinalColorHDR
+		? SCS_FinalColorHDR : SCS_SceneColorHDRNoAlpha;
+}
+
+bool AInteriorPortalSystem::UsesCaptureEyeAdaptation(const EInteriorPortalCaptureColorMode Mode)
+{
+	return Mode == EInteriorPortalCaptureColorMode::FinalColorHDR;
+}
+
 AInteriorPortalSystem::AInteriorPortalSystem()
 {
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("PortalSystemRoot"));
@@ -134,6 +147,9 @@ AInteriorPortalSystem::AInteriorPortalSystem()
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false;
 	PrimaryActorTick.TickGroup = TG_PrePhysics;
+	PreviousVirtualViews.Init(FTransform::Identity, 8);
+	bPreviousVirtualViewsValid.Init(false, 8);
+	CaptureHistoryGenerations.Init(0, 8);
 }
 
 void AInteriorPortalSystem::BeginPlay()
@@ -155,6 +171,7 @@ void AInteriorPortalSystem::BeginPlay()
 	PhysicsTravellers.Reset();
 	for (UPrimitiveComponent* Traveller : AuthoredTravellers) { RegisterPhysicsTraveller(Traveller); }
 	DiscoverTaggedTravellers();
+	InvalidateRendererHistories(TEXT("begin play"));
 	UpdateFidelityDiagnostics();
 	SetActorTickEnabled(true);
 }
@@ -467,6 +484,11 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 	// the first traversal sample in the same frame.
 	DiscoverTaggedTravellers();
 	UpdateFidelityDiagnostics();
+	if (!IsLinked() && bWasRendererLinked)
+	{
+		InvalidateRendererHistories(TEXT("endpoint destruction or pair became invalid"));
+		bWasRendererLinked = false;
+	}
 	ACharacter* Pawn = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 	if (Character.Get() != Pawn)
 	{
@@ -911,7 +933,7 @@ bool AInteriorPortalSystem::FirePortal(APlayerController* Player, bool bOrange)
 	Portal->Support = Hit.GetComponent();
 	Portal->bPlaced = true;
 	Portal->RefreshAppearance();
-	Portal->Capture->bCameraCutThisFrame = true;
+	InvalidateRendererHistories(TEXT("portal placement or replacement"));
 	bHasPreviousEye = false;
 	for (int32 I=0; I<PreviousBodyPositions.Num(); ++I)
 	{
@@ -926,8 +948,14 @@ void AInteriorPortalSystem::ResetPortals()
 	if (IsBusy()) { PlacementMessage = TEXT("Finish crossing before clearing portals"); return; }
 	for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
 	{
-		if (IsValid(Portal)) { Portal->bPlaced = false; Portal->RefreshAppearance(); Portal->SetView(nullptr, false); }
+		if (IsValid(Portal))
+		{
+			Portal->bPlaced = false;
+			Portal->RefreshAppearance();
+			Portal->SetView(nullptr, false, 1.0f, TEXT("Not applicable: no captured image"), 0.0f);
+		}
 	}
+	InvalidateRendererHistories(TEXT("portal clear"));
 	bHasPreviousEye = false;
 	PlacementMessage = TEXT("Portals cleared");
 }
@@ -944,72 +972,145 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	const int32 Height = FMath::Max(144, FMath::RoundToInt(Width * double(Rect.Height()) / FMath::Max(1, Rect.Width())));
 	const int32 Depth = FMath::Clamp(RecursionDepth, 1, 4);
 	const FMinimalViewInfo& POV = Player->PlayerCameraManager->GetCameraCacheView();
-	const auto IsVisible = [&ProjectionData](const AInteriorPortal* Portal, const FTransform& View)
+	const bool bFinalColorHDR = CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR;
+	const bool bCaptureEyeAdaptation = UsesCaptureEyeAdaptation(CaptureColorMode);
+	const bool bCameraCut = Player->PlayerCameraManager->bGameCameraCutThisFrame;
+	if (!bRendererConfigurationInitialized
+		|| LastRenderClipMode != RenderClipMode
+		|| LastCaptureColorMode != CaptureColorMode
+		|| bLastCaptureTemporalAA != bCaptureTemporalAA
+		|| !FMath::IsNearlyEqual(LastCaptureLumenSurfaceCacheResolution, CaptureLumenSurfaceCacheResolution)
+		|| LastRendererWidth != Width || LastRendererHeight != Height || LastRendererDepth != Depth)
 	{
-		const FTransform PortalFrame = Portal->GetLogicalFrame();
-		if (FVector::DotProduct(View.GetLocation()-PortalFrame.GetLocation(), PortalFrame.GetUnitAxis(EAxis::X)) < -.5) { return false; }
-		const FVector P = View.InverseTransformPositionNoScale(PortalFrame.GetLocation());
-		const double R = FMath::Sqrt(FMath::Square(Portal->HalfWidth)+FMath::Square(Portal->HalfHeight));
-		const double XScale = ProjectionData.ProjectionMatrix.M[0][0];
-		const double YScale = ProjectionData.ProjectionMatrix.M[1][1];
-		// Conservative sphere/frustum test also keeps the aperture visible while the camera crosses it.
-		return P.X+R>0 && FMath::Abs(P.Y)*XScale-P.X < R*FMath::Sqrt(1+XScale*XScale)
-			&& FMath::Abs(P.Z)*YScale-P.X < R*FMath::Sqrt(1+YScale*YScale);
+		const FString Reason = !bRendererConfigurationInitialized ? TEXT("renderer configuration initialized")
+			: (LastCaptureColorMode != CaptureColorMode ? TEXT("capture color mode changed")
+			: (LastRenderClipMode != RenderClipMode ? TEXT("render clip mode changed")
+			: ((LastRendererWidth != Width || LastRendererHeight != Height) ? TEXT("render target resolution changed")
+			: (LastRendererDepth != Depth ? TEXT("recursion depth changed")
+			: TEXT("capture temporal/render settings changed")))));
+		InvalidateRendererHistories(Reason);
+		bRendererConfigurationInitialized = true;
+		LastRenderClipMode = RenderClipMode;
+		LastCaptureColorMode = CaptureColorMode;
+		bLastCaptureTemporalAA = bCaptureTemporalAA;
+		LastCaptureLumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
+		LastRendererWidth = Width;
+		LastRendererHeight = Height;
+		LastRendererDepth = Depth;
 	};
+	if (bCameraCut)
+	{
+		InvalidateRendererHistories(TEXT("player camera cut"));
+	}
+	const FTransform PlayerView(POV.Rotation, POV.Location);
+	if (bPreviousPlayerViewValid && InteriorPortalMath::IsVirtualViewDiscontinuous(PreviousPlayerView, PlayerView))
+	{
+		InvalidateRendererHistories(TEXT("player camera discontinuity"));
+	}
+	PreviousPlayerView = PlayerView;
+	bPreviousPlayerViewValid = true;
+
+	const FMatrix PortalViewPlanes(
+		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+	const auto ViewProjectionForTransform = [&ProjectionData, &PortalViewPlanes](const FTransform& View)
+	{
+		return FTranslationMatrix(-View.GetLocation()) * FInverseRotationMatrix(View.Rotator())
+			* PortalViewPlanes * ProjectionData.ProjectionMatrix;
+	};
+	const auto IsVisible = [&ProjectionData, &Rect, &ViewProjectionForTransform](const AInteriorPortal* Portal,
+		const FTransform& View, InteriorPortalMath::FPortalScreenBounds& OutBounds)
+	{
+		return Portal && InteriorPortalMath::ProjectPortalApertureToScreenBounds(
+			Portal->GetLogicalFrame(), Portal->HalfWidth, Portal->HalfHeight,
+			ViewProjectionForTransform(View), Rect, OutBounds, ProjectionData.IsPerspectiveProjection(),
+			ProjectionData.GetNearPlaneFromProjectionMatrix());
+	};
+	FString SamplesJson;
+	int32 SampleCount = 0;
 	for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
 	{
-		if (!IsVisible(Entry, FTransform(POV.Rotation,POV.Location))) { continue; }
+		InteriorPortalMath::FPortalScreenBounds DirectBounds;
+		if (!IsVisible(Entry, PlayerView, DirectBounds)) { continue; }
 		AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
 		const FTransform EntryFrame = Entry->GetLogicalFrame();
 		const FTransform ExitFrame = Exit->GetLogicalFrame();
 		TArray<FTransform, TInlineAllocator<4>> Views;
-		FTransform View(POV.Rotation, POV.Location);
+		TArray<InteriorPortalMath::FPortalScreenBounds, TInlineAllocator<4>> ViewBounds;
+		FTransform View = PlayerView;
 		const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
 		for (int32 I=0; I<Depth; ++I)
 		{
 			View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), EntryFrame, ExitFrame));
+			InteriorPortalMath::FPortalScreenBounds Bounds;
+			if (!IsVisible(Entry, View, Bounds)) { break; }
 			Views.Add(View);
-			if (!IsVisible(Entry,View)) { break; }
+			ViewBounds.Add(Bounds);
 		}
 		const int32 VisibleDepth = Views.Num();
+		if (VisibleDepth <= 0) { continue; }
 		Entry->EnsureTargets(Width, Height, VisibleDepth);
-		TArray<float, TInlineAllocator<4>> TargetPreExposures;
-		TargetPreExposures.Init(1.0f, VisibleDepth);
-		USceneCaptureComponent2D* Capture = Entry->Capture;
-		// Keep authored component instances on the production exposure contract;
-		// this must not drift back to SceneColorHDR through a serialized override.
-		Capture->CaptureSource = SCS_FinalColorHDR;
-		Capture->ShowFlags.SetEyeAdaptation(true);
-		Capture->HiddenActors.Reset();
-		Capture->HiddenActors.Add(Exit);
-		Capture->FOVAngle = POV.FOV;
-		Capture->PostProcessSettings = POV.PostProcessSettings;
-		Capture->PostProcessBlendWeight = 1;
-		Capture->PostProcessSettings.bOverride_DynamicGlobalIlluminationMethod = true;
-		Capture->PostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
-		Capture->PostProcessSettings.bOverride_ReflectionMethod = true;
-		Capture->PostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
-		Capture->PostProcessSettings.bOverride_LumenSurfaceCacheResolution = true;
-		Capture->PostProcessSettings.LumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
-		Capture->bAlwaysPersistRenderingState = true;
-		Capture->ShowFlags.SetTemporalAA(bCaptureTemporalAA);
-
-		const bool bNativeClip = RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
-		Capture->bEnableClipPlane = bNativeClip;
-		if (bNativeClip)
-		{
-			const FVector ExitNormal = ExitFrame.GetUnitAxis(EAxis::X);
-			Capture->ClipPlaneBase = ExitFrame.GetLocation() + ExitNormal * ClipPlaneBias;
-			Capture->ClipPlaneNormal = ExitNormal;
-			Capture->CustomProjectionMatrix = ProjectionData.ProjectionMatrix;
-		}
-
+		Entry->EnsureCaptureViews(VisibleDepth);
+		Entry->SetCaptureColorMode(bFinalColorHDR);
 		bool bCaptureValid = true;
 		for (int32 I=VisibleDepth-1; I>=0; --I)
 		{
-			const bool bHasInputTarget = I+1<VisibleDepth;
-			Entry->SetView(bHasInputTarget ? Entry->RenderTargets[I+1] : nullptr, bHasInputTarget,
-				bHasInputTarget ? TargetPreExposures[I+1] : 1.0f);
+			const int32 EndpointIndex = Entry == BluePortal ? 0 : 1;
+			const int32 HistorySlot = EndpointIndex * 4 + I;
+			USceneCaptureComponent2D* Capture = Entry->GetCaptureForDepth(I);
+			if (!Capture)
+			{
+				bCaptureValid = false;
+				break;
+			}
+			bool bHistoryReset = false;
+			FString HistoryResetReason = TEXT("None");
+			if (!bPreviousVirtualViewsValid.IsValidIndex(HistorySlot) || !bPreviousVirtualViewsValid[HistorySlot])
+			{
+				InvalidateRendererHistorySlot(EndpointIndex, I, TEXT("new virtual view history"));
+				bHistoryReset = true;
+				HistoryResetReason = TEXT("new virtual view history");
+			}
+			else if (InteriorPortalMath::IsVirtualViewDiscontinuous(PreviousVirtualViews[HistorySlot], Views[I]))
+			{
+				InvalidateRendererHistorySlot(EndpointIndex, I, TEXT("virtual camera discontinuity"));
+				bHistoryReset = true;
+				HistoryResetReason = TEXT("virtual camera discontinuity");
+			}
+			PreviousVirtualViews[HistorySlot] = Views[I];
+			bPreviousVirtualViewsValid[HistorySlot] = true;
+
+			Capture->CaptureSource = GetCaptureSourceForColorMode(CaptureColorMode);
+			Capture->ShowFlags.SetEyeAdaptation(bCaptureEyeAdaptation);
+			Capture->HiddenActors.Reset();
+			Capture->HiddenActors.Add(Exit);
+			Capture->FOVAngle = POV.FOV;
+			Capture->PostProcessSettings = POV.PostProcessSettings;
+			Capture->PostProcessBlendWeight = 1;
+			Capture->PostProcessSettings.bOverride_DynamicGlobalIlluminationMethod = true;
+			Capture->PostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
+			Capture->PostProcessSettings.bOverride_ReflectionMethod = true;
+			Capture->PostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
+			Capture->PostProcessSettings.bOverride_LumenSurfaceCacheResolution = true;
+			Capture->PostProcessSettings.LumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
+			Capture->bAlwaysPersistRenderingState = true;
+			Capture->ShowFlags.SetTemporalAA(bCaptureTemporalAA);
+
+			const bool bNativeClip = RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
+			Capture->bEnableClipPlane = bNativeClip;
+			if (bNativeClip)
+			{
+				const FVector ExitNormal = ExitFrame.GetUnitAxis(EAxis::X);
+				Capture->ClipPlaneBase = ExitFrame.GetLocation() + ExitNormal * ClipPlaneBias;
+				Capture->ClipPlaneNormal = ExitNormal;
+				Capture->CustomProjectionMatrix = ProjectionData.ProjectionMatrix;
+			}
+
+			const FString CapturePreExposureOwnership = bFinalColorHDR
+				? TEXT("Unavailable / Unverified: CaptureScene enqueues render work; public component ViewState is not image-bound")
+				: TEXT("Not applicable / UE 5.8 contract: capture EyeAdaptation OFF makes PreExposure 1; no readback used");
+			Entry->SetView(I+1<VisibleDepth ? Entry->RenderTargets[I+1] : nullptr, I+1<VisibleDepth,
+				1.0f, CapturePreExposureOwnership,
+				bCaptureExposureNormalizationDiagnostic ? Entry->PortalViewExposureCorrection : 0.0f);
 			Capture->SetWorldLocationAndRotation(Views[I].GetLocation(), Views[I].GetRotation());
 			if (!bNativeClip)
 			{
@@ -1027,22 +1128,100 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			}
 			Capture->TextureTarget = Entry->RenderTargets[I];
 			Capture->CaptureScene();
-			// FinalColorHDR remains HDR and can still carry the capture view's
-			// pre-exposure domain.
-			// Keep one value per recursion target so a recursive surface is
-			// normalized with the exposure that produced that exact texture.
-			if (FSceneViewStateInterface* CaptureState = Capture->GetViewState(0))
-			{
-				const float Measured = CaptureState->GetPreExposure();
-				if (FMath::IsFinite(Measured) && Measured > .000001f)
-				{
-					TargetPreExposures[I] = Measured;
-				}
-			}
+
+			const FSceneViewStateInterface* CaptureState = Capture->GetViewState(0);
+			const uint32 ViewKey = CaptureState ? CaptureState->GetViewKey() : 0;
+			const uint64 HistoryGeneration = CaptureHistoryGenerations.IsValidIndex(HistorySlot)
+				? CaptureHistoryGenerations[HistorySlot] : 0;
+			const FString HistoryIdentity = ViewKey != 0
+				? FString::Printf(TEXT("%s/Depth%d/ViewKey%u/Generation%llu"), Entry == BluePortal ? TEXT("Blue") : TEXT("Orange"), I, ViewKey, HistoryGeneration)
+				: TEXT("Unavailable / Unverified");
+			const FString RenderTargetFormat = StaticEnum<ETextureRenderTargetFormat>()
+				? StaticEnum<ETextureRenderTargetFormat>()->GetNameStringByValue(
+					static_cast<int64>(Entry->RenderTargets[I]->RenderTargetFormat))
+				: TEXT("Unavailable / Unverified");
+			const FString EndpointPath = Entry->GetPathName();
+			const FString RenderTargetPath = Entry->RenderTargets[I]->GetPathName();
+			const InteriorPortalMath::FPortalScreenBounds& Bounds = ViewBounds[I];
+			const FString BoundsJson = Bounds.bHasVisiblePortion
+				? FString::Printf(TEXT("{\"minX\":%.6f,\"minY\":%.6f,\"maxX\":%.6f,\"maxY\":%.6f,\"hasVisiblePortion\":true,\"nearClip\":%s,\"cameraCrossing\":%s,\"behindCamera\":%s,\"clippedToViewport\":%s}"),
+					Bounds.Min.X, Bounds.Min.Y, Bounds.Max.X, Bounds.Max.Y,
+					Bounds.bIntersectsNearClip ? TEXT("true") : TEXT("false"),
+					Bounds.bCameraCrossing ? TEXT("true") : TEXT("false"),
+					Bounds.bEntirelyBehindCamera ? TEXT("true") : TEXT("false"),
+					Bounds.bClippedToViewport ? TEXT("true") : TEXT("false"))
+				: TEXT("{\"hasVisiblePortion\":false}");
+			if (SampleCount++ > 0) { SamplesJson += TEXT(","); }
+			SamplesJson += FString::Printf(TEXT("{\"endpoint\":\"%s\",\"endpointPath\":\"%s\",\"recursionDepth\":%d,\"virtualViewLocation\":[%.6f,%.6f,%.6f],\"virtualViewRotation\":[%.8f,%.8f,%.8f,%.8f],\"captureColorMode\":\"%s\",\"captureSource\":\"%s\",\"capturePreExposure\":%s,\"capturePreExposureOwnership\":\"%s\",\"playerPreExposure\":\"Unavailable / Unverified\",\"rtFormat\":\"%s\",\"renderTarget\":\"%s\",\"bForceLinearGamma\":%s,\"rtSize\":[%d,%d],\"historyIdentity\":\"%s\",\"historyReset\":%s,\"historyResetReason\":\"%s\",\"renderClipMode\":\"%s\",\"captureTAA\":%s,\"cameraCutRequested\":%s,\"captureValid\":true,\"projectedBounds\":%s}"),
+				Entry == BluePortal ? TEXT("Blue") : TEXT("Orange"), *EndpointPath, I,
+				Views[I].GetLocation().X, Views[I].GetLocation().Y, Views[I].GetLocation().Z,
+				Views[I].GetRotation().X, Views[I].GetRotation().Y, Views[I].GetRotation().Z, Views[I].GetRotation().W,
+				bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
+				bFinalColorHDR ? TEXT("SCS_FinalColorHDR") : TEXT("SCS_SceneColorHDRNoAlpha"),
+				bFinalColorHDR ? TEXT("null") : TEXT("1.0"), *CapturePreExposureOwnership,
+				*RenderTargetFormat, *RenderTargetPath, Entry->RenderTargets[I]->bForceLinearGamma ? TEXT("true") : TEXT("false"), Entry->RenderTargets[I]->SizeX, Entry->RenderTargets[I]->SizeY,
+				*HistoryIdentity, bHistoryReset ? TEXT("true") : TEXT("false"), *HistoryResetReason,
+				RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane ? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
+				bCaptureTemporalAA ? TEXT("true") : TEXT("false"), bCameraCut ? TEXT("true") : TEXT("false"), *BoundsJson);
 		}
-		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid,
-			bCaptureValid ? TargetPreExposures[0] : 1.0f);
+		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid, 1.0f,
+			bFinalColorHDR ? TEXT("Unavailable / Unverified: capture image exposure is not publicly image-bound")
+				: TEXT("Not applicable / UE 5.8 contract: capture EyeAdaptation OFF makes PreExposure 1; no readback used"),
+			bCaptureExposureNormalizationDiagnostic ? Entry->PortalViewExposureCorrection : 0.0f);
 	}
+	bWasRendererLinked = true;
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	if (bRendererDiagnosticsDirty || LastRendererDiagnosticsWriteTime < 0.0 || Now - LastRendererDiagnosticsWriteTime >= 0.5)
+	{
+		const FString Json = FString::Printf(TEXT("{\n  \"frame\":%llu,\n  \"captureColorMode\":\"%s\",\n  \"captureEyeAdaptation\":%s,\n  \"renderClipMode\":\"%s\",\n  \"historyGeneration\":%llu,\n  \"lastHistoryResetReason\":\"%s\",\n  \"sampleCount\":%d,\n  \"samples\":[%s]\n}\n"),
+			GFrameCounter, bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
+			bCaptureEyeAdaptation ? TEXT("true") : TEXT("false"),
+			RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane ? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
+			RendererHistoryGeneration, *LastHistoryResetReason, SampleCount, *SamplesJson);
+		FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
+		LastRendererDiagnosticsWriteTime = Now;
+		bRendererDiagnosticsDirty = false;
+	}
+}
+
+void AInteriorPortalSystem::InvalidateRendererHistorySlot(const int32 EndpointIndex, const int32 RecursionLevel,
+	const FString& Reason)
+{
+	if (EndpointIndex < 0 || EndpointIndex > 1 || RecursionLevel < 0 || RecursionLevel >= 4) { return; }
+	const int32 Slot = EndpointIndex * 4 + RecursionLevel;
+	if (CaptureHistoryGenerations.Num() < 8) { CaptureHistoryGenerations.Init(0, 8); }
+	if (bPreviousVirtualViewsValid.Num() < 8) { bPreviousVirtualViewsValid.Init(false, 8); }
+	if (PreviousVirtualViews.Num() < 8) { PreviousVirtualViews.Init(FTransform::Identity, 8); }
+	AInteriorPortal* Portal = EndpointIndex == 0 ? BluePortal.Get() : OrangePortal.Get();
+	if (IsValid(Portal))
+	{
+		Portal->EnsureCaptureViews(RecursionLevel + 1);
+		Portal->ResetCaptureHistory(RecursionLevel);
+	}
+	++RendererHistoryGeneration;
+	CaptureHistoryGenerations[Slot] = RendererHistoryGeneration;
+	bPreviousVirtualViewsValid[Slot] = false;
+	LastHistoryResetReason = Reason;
+	bRendererDiagnosticsDirty = true;
+}
+
+void AInteriorPortalSystem::InvalidateRendererHistories(const FString& Reason)
+{
+	if (PreviousVirtualViews.Num() < 8) { PreviousVirtualViews.Init(FTransform::Identity, 8); }
+	if (bPreviousVirtualViewsValid.Num() < 8) { bPreviousVirtualViewsValid.Init(false, 8); }
+	if (CaptureHistoryGenerations.Num() < 8) { CaptureHistoryGenerations.Init(0, 8); }
+	++RendererHistoryGeneration;
+	for (int32 Index = 0; Index < 8; ++Index)
+	{
+		bPreviousVirtualViewsValid[Index] = false;
+		CaptureHistoryGenerations[Index] = RendererHistoryGeneration;
+	}
+	for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
+	{
+		if (IsValid(Portal)) { Portal->ResetCaptureHistories(); }
+	}
+	LastHistoryResetReason = Reason;
+	bRendererDiagnosticsDirty = true;
 }
 
 void AInteriorPortalSystem::UpdateFidelityDiagnostics()
@@ -1076,7 +1255,10 @@ void AInteriorPortalSystem::UpdateFidelityDiagnostics()
 	}
 
 	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
-	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production path: CaptureTAA=%s LumenCache=%.2f; SceneCapture eye adaptation follows the player post-process contract"),
+	FidelityDiagnosticStatus = FString::Printf(TEXT("STEP1A CaptureColorMode=%s CaptureSource=%s CaptureEyeAdaptation=%s CapturePreExposureOwnership=UnavailableOrContract; CaptureTAA=%s LumenCache=%.2f Diagnostics=Saved/PortalRendererDiagnostics.json"),
+		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
+		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("SCS_FinalColorHDR") : TEXT("SCS_SceneColorHDRNoAlpha"),
+		UsesCaptureEyeAdaptation(CaptureColorMode) ? TEXT("ON") : TEXT("OFF"),
 		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution);
 }
 

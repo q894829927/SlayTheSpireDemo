@@ -11,9 +11,11 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SceneCaptureComponent2D.h"
 #include "Engine/World.h"
 #include "Math/PerspectiveMatrix.h"
 #include "Kismet/GameplayStatics.h"
+#include "SceneManagement.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalMappingTest,
 	"SlayTheSpireDemo.Interior.Portals.RigidMapping", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -130,7 +132,38 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("P2-A temporal capture is enabled by default"), System->bCaptureTemporalAA);
 	TestTrue(TEXT("P2 production Lumen cache baseline is half resolution"), FMath::IsNearlyEqual(System->CaptureLumenSurfaceCacheResolution,0.5f));
 	TestFalse(TEXT("P2-A exposure isolation is diagnostic-only and defaults off"), System->bExposureIsolationDiagnostic);
-	TestTrue(TEXT("P2-B portal-view exposure-domain correction defaults on"), FMath::IsNearlyEqual(A->PortalViewExposureCorrection,1.0f));
+	TestTrue(TEXT("P2-B portal-view exposure-domain correction is diagnostic-only and defaults off"),
+		FMath::IsNearlyZero(A->PortalViewExposureCorrection));
+	TestTrue(TEXT("SceneColorLinear is the explicit default capture mode"),
+		System->CaptureColorMode == EInteriorPortalCaptureColorMode::SceneColorLinear);
+	TestTrue(TEXT("FinalColorHDR maps to SCS_FinalColorHDR"),
+		AInteriorPortalSystem::GetCaptureSourceForColorMode(EInteriorPortalCaptureColorMode::FinalColorHDR) == SCS_FinalColorHDR);
+	TestTrue(TEXT("SceneColorLinear maps to SCS_SceneColorHDRNoAlpha"),
+		AInteriorPortalSystem::GetCaptureSourceForColorMode(EInteriorPortalCaptureColorMode::SceneColorLinear) == SCS_SceneColorHDRNoAlpha);
+	TestTrue(TEXT("FinalColorHDR enables capture eye adaptation"),
+		AInteriorPortalSystem::UsesCaptureEyeAdaptation(EInteriorPortalCaptureColorMode::FinalColorHDR));
+	TestFalse(TEXT("SceneColorLinear disables capture eye adaptation"),
+		AInteriorPortalSystem::UsesCaptureEyeAdaptation(EInteriorPortalCaptureColorMode::SceneColorLinear));
+	A->EnsureCaptureViews(3);
+	TestEqual(TEXT("Three recursion capture components are created"), A->CaptureViews.Num(), 3);
+	TestTrue(TEXT("Each recursion level owns a distinct SceneCapture component"),
+		A->GetCaptureForDepth(0) != A->GetCaptureForDepth(1)
+		&& A->GetCaptureForDepth(1) != A->GetCaptureForDepth(2)
+		&& A->GetCaptureForDepth(0) != A->GetCaptureForDepth(2));
+	FSceneViewStateInterface* State0 = A->GetCaptureForDepth(0)->GetViewState(0);
+	FSceneViewStateInterface* State1 = A->GetCaptureForDepth(1)->GetViewState(0);
+	FSceneViewStateInterface* State2 = A->GetCaptureForDepth(2)->GetViewState(0);
+	TestNotNull(TEXT("Depth 0 owns a persistent ViewState"), State0);
+	TestNotNull(TEXT("Depth 1 owns a persistent ViewState"), State1);
+	TestNotNull(TEXT("Depth 2 owns a persistent ViewState"), State2);
+	if (State0 && State1 && State2)
+	{
+		TestTrue(TEXT("Recursion ViewStates have distinct identities"),
+			State0 != State1 && State1 != State2 && State0 != State2);
+	}
+	A->ResetCaptureHistory(1);
+	TestTrue(TEXT("Resetting one recursion history requests a camera cut"),
+		A->GetCaptureForDepth(1)->bCameraCutThisFrame);
 	System->BluePortal=A; System->OrangePortal=B;
 	TestTrue(TEXT("Explicit placed pair is linked"),System->IsLinked());
 	UBoxComponent* PortalSupport = NewObject<UBoxComponent>(A, TEXT("PortalSupport"));
@@ -156,6 +189,72 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Clearing pair disables traversal"),System->IsLinked());
 	TestFalse(TEXT("Clearing hides blue endpoint"),A->bPlaced);
 	TestFalse(TEXT("Clearing hides orange endpoint"),B->bPlaced);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalScreenBoundsTest,
+	"SlayTheSpireDemo.Interior.Portals.ProjectedScreenBounds", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalScreenBoundsTest::RunTest(const FString& Parameters)
+{
+	const FMatrix ViewPlanes(
+		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+	const FMatrix Projection = ViewPlanes * FReversedZPerspectiveMatrix(PI / 4, 1920, 1080, 1);
+	const FIntRect ViewRect(0, 0, 1920, 1080);
+	auto Project = [&Projection, &ViewRect](const FTransform& Frame, double HalfWidth, double HalfHeight,
+		InteriorPortalMath::FPortalScreenBounds& OutBounds)
+	{
+		return InteriorPortalMath::ProjectPortalApertureToScreenBounds(Frame, HalfWidth, HalfHeight,
+			Projection, ViewRect, OutBounds, true, 1.0);
+	};
+
+	InteriorPortalMath::FPortalScreenBounds Bounds;
+	TestTrue(TEXT("Centered aperture projects to visible bounds"),
+		Project(FTransform(FRotator::ZeroRotator, FVector(100, 0, 0)), 20, 20, Bounds));
+	TestTrue(TEXT("Centered bounds are inside normalized viewport"),
+		Bounds.Min.X >= 0 && Bounds.Min.Y >= 0 && Bounds.Max.X <= 1 && Bounds.Max.Y <= 1);
+
+	TestTrue(TEXT("Partially offscreen aperture remains conservatively visible"),
+		Project(FTransform(FRotator::ZeroRotator, FVector(100, 120, 0)), 30, 20, Bounds));
+	TestTrue(TEXT("Partially offscreen bounds are clipped to the viewport"),
+		Bounds.bClippedToViewport && FMath::IsNearlyEqual(Bounds.Max.X, 1.0f));
+
+	TestTrue(TEXT("Near-edge aperture remains visible"),
+		Project(FTransform(FRotator::ZeroRotator, FVector(100, 80, 0)), 20, 20, Bounds));
+	TestTrue(TEXT("Near-edge bounds retain a positive visible area"),
+		Bounds.Max.X > Bounds.Min.X && Bounds.Max.Y > Bounds.Min.Y);
+
+	TestTrue(TEXT("Grazing-angle aperture remains finite and visible"),
+		Project(FTransform(FRotator(0, 89, 0), FVector(100, 0, 0)), 25, 25, Bounds));
+	TestTrue(TEXT("Grazing-angle bounds are finite"),
+		FMath::IsFinite(Bounds.Min.X) && FMath::IsFinite(Bounds.Min.Y)
+		&& FMath::IsFinite(Bounds.Max.X) && FMath::IsFinite(Bounds.Max.Y));
+
+	TestFalse(TEXT("Aperture behind the camera is rejected"),
+		Project(FTransform(FRotator::ZeroRotator, FVector(-100, 0, 0)), 20, 20, Bounds));
+	TestTrue(TEXT("Behind-camera diagnostic is explicit"), Bounds.bEntirelyBehindCamera);
+
+	TestFalse(TEXT("Aperture crossing the camera plane is not treated as a valid screen region"),
+		Project(FTransform::Identity, 20, 20, Bounds));
+	TestTrue(TEXT("Camera crossing diagnostic is explicit"), Bounds.bCameraCrossing);
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	AInteriorPortal* Portal = World->SpawnActor<AInteriorPortal>();
+	Portal->SetActorTransform(FTransform(FRotator::ZeroRotator, FVector(100, 0, 0)));
+	InteriorPortalMath::FPortalScreenBounds BoundsBeforeBias;
+	TestTrue(TEXT("Logical portal frame supplies the screen-bound aperture"),
+		Project(Portal->GetLogicalFrame(), Portal->HalfWidth, Portal->HalfHeight, BoundsBeforeBias));
+	Portal->SurfaceVisualBias = 40.0f;
+	Portal->RefreshAppearance();
+	InteriorPortalMath::FPortalScreenBounds BoundsAfterBias;
+	TestTrue(TEXT("Logical portal frame remains the screen-bound aperture after visual bias"),
+		Project(Portal->GetLogicalFrame(), Portal->HalfWidth, Portal->HalfHeight, BoundsAfterBias));
+	TestTrue(TEXT("Visual surface bias does not change screen-bound spatial contract"),
+		BoundsBeforeBias.Min.Equals(BoundsAfterBias.Min, 0.001f)
+		&& BoundsBeforeBias.Max.Equals(BoundsAfterBias.Max, 0.001f));
+	const FTransform LogicalFrame = Portal->GetLogicalFrame();
+	TestTrue(TEXT("Visual surface bias leaves the logical frame unchanged"),
+		LogicalFrame.GetLocation().Equals(FVector(100, 0, 0), 0.001f));
 	World->DestroyWorld(false);
 	return true;
 }

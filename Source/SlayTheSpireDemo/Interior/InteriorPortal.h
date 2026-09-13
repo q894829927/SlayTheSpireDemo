@@ -29,14 +29,18 @@ public:
 	/** Cosmetic offset of the visible portal plane from the logical aperture plane. Never use this for traversal/query math. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float SurfaceVisualBias = 0.6f;
-	/** P2-B normalization blend. 1 uses the capture's measured PreExposure;
-	 * 0 exposes the raw RenderTarget for controlled diagnostics. This is not a
-	 * scene-specific brightness gain and never uses the player's eye adaptation. */
+	/** P2-B normalization blend. This is gated by the system's explicit
+	 * exposure diagnostic switch. It is never a production brightness gain and
+	 * never uses the player's eye adaptation. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering|P2 Diagnostics", meta=(ClampMin="0.0", ClampMax="1.0"))
-	float PortalViewExposureCorrection = 1.0f;
-	/** Runtime PreExposure of the capture target currently bound to the surface. */
+	float PortalViewExposureCorrection = 0.0f;
+	/** Numeric material fallback. A value read from the component ViewState after
+	 * CaptureScene is not assumed to belong to the bound image. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Portal|Rendering|P2 Diagnostics")
 	float PortalCapturePreExposure = 1.0f;
+	/** Ownership status for PortalCapturePreExposure. Never reports an inferred value as measured. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Portal|Rendering|P2 Diagnostics")
+	FString PortalCapturePreExposureOwnership;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal")
 	TObjectPtr<UMaterialInterface> PortalMaterial;
 	/** Explicit supporting primitive: only this component can be ignored during a valid crossing. */
@@ -50,12 +54,22 @@ public:
 	TObjectPtr<USceneCaptureComponent2D> Capture;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTextureRenderTarget2D>> RenderTargets;
+	/** One persistent SceneCapture/ViewState per recursion level. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<USceneCaptureComponent2D>> CaptureViews;
 	/** Actor transform is the single logical portal/aperture frame. Visual bias lives only on Surface. */
 	FTransform GetLogicalFrame() const;
-	void SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure = 1.0f);
+	void SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure = 1.0f,
+		const FString& InputCapturePreExposureOwnership = FString(), float EffectiveExposureCorrection = -1.0f);
+	void SetCaptureColorMode(bool bFinalColorHDR);
 	void RefreshAppearance();
 	void EnsureTargets(int32 Width, int32 Height, int32 Depth);
+	void EnsureCaptureViews(int32 Depth);
+	USceneCaptureComponent2D* GetCaptureForDepth(int32 RecursionLevel) const;
+	void ResetCaptureHistory(int32 RecursionLevel);
+	void ResetCaptureHistories();
 private:
+	void ConfigureCaptureDefaults(USceneCaptureComponent2D* InCapture);
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> DynamicMaterial;
 };

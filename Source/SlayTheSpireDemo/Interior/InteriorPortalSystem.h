@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineTypes.h"
 #include "GameFramework/Actor.h"
 #include "InteriorPortalSystem.generated.h"
 
@@ -25,6 +26,15 @@ enum class EInteriorPortalRenderClipMode : uint8
 {
 	NativeClipPlane UMETA(DisplayName="Native SceneCapture Clip Plane"),
 	ObliqueFallback UMETA(DisplayName="Oblique Projection Fallback")
+};
+
+UENUM(BlueprintType)
+enum class EInteriorPortalCaptureColorMode : uint8
+{
+	/** Capture post-process FinalColorHDR. This remains an explicit comparison path. */
+	FinalColorHDR UMETA(DisplayName="FinalColorHDR (Capture Post-Process Domain)"),
+	/** Capture scene color with capture eye adaptation disabled. */
+	SceneColorLinear UMETA(DisplayName="SceneColor Linear (Eye Adaptation Off)")
 };
 
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
@@ -56,6 +66,9 @@ public:
 	/** Native clip plane is the P1 production candidate; fallback exists only for controlled comparison/rollback. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
 	EInteriorPortalRenderClipMode RenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
+	/** Explicit SceneCapture A/B path. SceneColorLinear is the default production candidate because the player view remains the final exposure owner. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
+	EInteriorPortalCaptureColorMode CaptureColorMode = EInteriorPortalCaptureColorMode::SceneColorLinear;
 	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float ClipPlaneBias = 0.5f;
@@ -71,6 +84,9 @@ public:
 	/** Pre-exposure value used while the diagnostic is active. 1.0 removes pre-exposure scaling from the comparison. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics", meta=(ClampMin="0.125", ClampMax="8.0"))
 	float DiagnosticPreExposureOverride = 1.0f;
+	/** P2-A diagnostic only. Allows the legacy PortalViewExposureCorrection parameter to be compared explicitly; production paths leave it disabled. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
+	bool bCaptureExposureNormalizationDiagnostic = false;
 	/** Runtime description of which P2-A diagnostic state is actually active. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Rendering|P2 Diagnostics")
 	FString FidelityDiagnosticStatus;
@@ -104,6 +120,9 @@ public:
 	/** Resolve after each character submove, before CharacterMovement probes the next floor. */
 	void UpdateCharacterTraversal(APlayerController* Player);
 	void RenderViews(APlayerController* Player);
+	/** Explicit mapping used by the renderer and focused Automation. */
+	static ESceneCaptureSource GetCaptureSourceForColorMode(EInteriorPortalCaptureColorMode Mode);
+	static bool UsesCaptureEyeAdaptation(EInteriorPortalCaptureColorMode Mode);
 	/**
 	 * Returns true when a first-person flashlight clearance sweep hit a portal's
 	 * supporting wall through the portal aperture. The caller can ignore that hit
@@ -124,6 +143,8 @@ private:
 	void RemoveInvalidTravellers();
 	void UpdateFidelityDiagnostics();
 	void RestoreFidelityDiagnostics();
+	void InvalidateRendererHistories(const FString& Reason);
+	void InvalidateRendererHistorySlot(int32 EndpointIndex, int32 RecursionLevel, const FString& Reason);
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
@@ -154,4 +175,22 @@ private:
 	bool bSavedPreExposureOverride = false;
 	int32 SavedEyeAdaptationQuality = 0;
 	float SavedPreExposureOverride = 0.0f;
+	bool bRendererConfigurationInitialized = false;
+	EInteriorPortalRenderClipMode LastRenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
+	EInteriorPortalCaptureColorMode LastCaptureColorMode = EInteriorPortalCaptureColorMode::SceneColorLinear;
+	bool bLastCaptureTemporalAA = true;
+	float LastCaptureLumenSurfaceCacheResolution = 0.5f;
+	int32 LastRendererWidth = 0;
+	int32 LastRendererHeight = 0;
+	int32 LastRendererDepth = 0;
+	bool bWasRendererLinked = false;
+	bool bRendererDiagnosticsDirty = true;
+	double LastRendererDiagnosticsWriteTime = -1.0;
+	uint64 RendererHistoryGeneration = 0;
+	FString LastHistoryResetReason = TEXT("Not initialized");
+	TArray<FTransform> PreviousVirtualViews;
+	TArray<uint8> bPreviousVirtualViewsValid;
+	TArray<uint64> CaptureHistoryGenerations;
+	bool bPreviousPlayerViewValid = false;
+	FTransform PreviousPlayerView;
 };

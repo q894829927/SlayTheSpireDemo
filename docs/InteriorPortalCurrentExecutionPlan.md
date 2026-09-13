@@ -4,7 +4,7 @@ Date: **2026-09-14**
 
 Branch reviewed: **`portal/full-fidelity-p1`**
 
-Review baseline HEAD: **`27f0bf58ddb0b8f95b453bd2ab9545eae5a5508e`**
+Review baseline HEAD: **`ab0f590d2ccde39a785837c0db6d44422ac698e8`**
 
 Status:
 
@@ -12,6 +12,8 @@ Status:
 CORE IMPLEMENTATION BASELINE ESTABLISHED /
 STEP 1 — FINAL RENDERER CLOSURE ACTIVE /
 SCENECAPTURE RETAINED AS FALLBACK / COMPARISON PATH /
+STEP 1A — A/B BASELINE + HISTORY DIAGNOSTICS IMPLEMENTED /
+VISUAL CEILING TEST STILL OPEN /
 STENCIL / MAIN-VIEW RENDERER FEASIBILITY AUTHORIZED /
 FULL PHYSICS DEFERRED UNTIL CORE SEAL
 ```
@@ -53,6 +55,25 @@ Current gap boundaries:
 - cross-portal multi-body constraint support does not exist yet.
 
 The current `SCS_FinalColorHDR` + capture-owned exposure-normalization path is an **experiment/candidate**, not a final renderer decision.
+
+### 1.1 STEP 1A first delivery status — 2026-09-14
+
+The first STEP 1A implementation is now present in the current branch. It establishes two explicit, independently selectable SceneCapture paths without duplicating the portal system:
+
+```text
+FinalColorHDR   -> SCS_FinalColorHDR, capture EyeAdaptation ON
+SceneColorLinear -> SCS_SceneColorHDRNoAlpha, capture EyeAdaptation OFF
+```
+
+`SceneColorLinear` is the explicit code default and the authored setup default. `PortalViewExposureCorrection` remains disabled by default and is only a diagnostic A/B parameter; it is not a brightness fix and does not use the player's `EyeAdaptationInverse`.
+
+Each endpoint owns one persistent `USceneCaptureComponent2D` per recursion level. The current SceneCapture fallback therefore no longer reuses one endpoint ViewState for multiple virtual camera transforms in the same frame. A history reset is requested for placement/replacement, clear, endpoint invalidation, mode/clip/temporal/render-target/recursion changes, camera cuts and detected discontinuous virtual-camera jumps.
+
+`Saved/PortalRendererDiagnostics.json` records the endpoint, endpoint path, recursion depth, virtual transform, capture mode/source, exposure ownership, RenderTarget format and linear-gamma flag, target path/size, ViewState key/generation, reset reason, clip/TAA state and projected bounds. For `FinalColorHDR`, the image-bound capture PreExposure remains **Unavailable / Unverified**: UE 5.8's public `CaptureScene()` path enqueues the render work, while `GetViewState(0)` is not a proof that a post-call value belongs to the image already written to the target. For `SceneColorLinear`, the capture disables EyeAdaptation; the UE 5.8 renderer contract leaves PreExposure at `1.0`, so no readback or guessed division is performed.
+
+The shared `InteriorPortalMath::ProjectPortalApertureToScreenBounds` helper now produces conservative normalized `MinX/MinY/MaxX/MaxY` bounds with near-clip, camera-crossing, behind-camera and viewport-clipping diagnostics. It is independent of SceneCapture and is intended for later scissor/restricted-viewport use.
+
+This delivery does **not** establish exposure parity, Lumen parity, temporal quality, visual clipping acceptance or production renderer freeze. Those remain manual/renderer-matrix gates below. No Step 1B Stencil/MainView implementation is included in this delivery.
 
 ---
 
@@ -172,8 +193,8 @@ This combines the old P1/P2/P7 visual work, recursion, temporal behavior and ren
 Keep both capture paths available for controlled A/B comparison:
 
 ```text
-A — FinalColorHDR + capture eye adaptation + measured PreExposure normalization
-B — SceneColorHDRNoAlpha + capture eye adaptation disabled + measured PreExposure normalization
+A — FinalColorHDR + capture eye adaptation; image-bound PreExposure ownership is currently unverified through the public API
+B — SceneColorHDRNoAlpha + capture eye adaptation disabled; UE 5.8 capture PreExposure is 1.0 by contract, with no guessed normalization
 ```
 
 Use the same portal pair, same player pose, same destination region and same frame conditions. Do not accept a solution because one scalar makes one room look correct.
