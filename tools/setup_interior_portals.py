@@ -46,11 +46,6 @@ def clear_graph(material):
     for expression in list(E.get_material_expressions(material)):
         E.delete_material_expression(material, expression)
 
-# Do not touch the existing portal graph when the required UE expression is unavailable.
-# This guard must run before delete_all_material_expressions so a failed setup cannot leave a black portal.
-if not hasattr(u, 'MaterialExpressionEyeAdaptationInverse'):
-    raise RuntimeError('UE build does not expose MaterialExpressionEyeAdaptationInverse; existing portal material was not modified.')
-
 placeholder = asset('RT_Portal_Default', u.TextureRenderTarget2D, u.TextureRenderTargetFactoryNew())
 placeholder.set_editor_property('render_target_format', u.TextureRenderTargetFormat.RTF_RGBA16F)
 placeholder.set_editor_property('size_x', 256); placeholder.set_editor_property('size_y', 256)
@@ -63,23 +58,25 @@ portal.set_editor_property('shading_model', u.MaterialShadingModel.MSM_UNLIT)
 portal.set_editor_property('two_sided', False)
 uv = node(portal, u.MaterialExpressionTextureCoordinate)
 screen = node(portal, u.MaterialExpressionScreenPosition)
-# SceneCapture writes HDR scene-linear data into the RGBA16f target. UE 5.8
-# requires a Linear Color sampler here; using Color makes the material fall
-# back to the default shader at runtime.
+# SceneCapture writes FinalColorHDR into the RGBA16f target. Keep a Linear
+# Color sampler so HDR values stay in the capture's linear color domain.
 tex = node(portal, u.MaterialExpressionTextureSampleParameter2D, parameter_name='PortalView', texture=placeholder, sampler_type=u.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
 assert E.connect_material_expressions(screen, 'ViewportUV', tex, 'UVs')
 time = node(portal, u.MaterialExpressionTime)
 color = vector(portal, 'PortalColor', (.01, .25, 1, 1))
 linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
-# P2-B: The SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
-# back out of the current player view's eye-adaptation domain before it is emitted and tonemapped again.
-# UE 5.8 exposes these expression inputs as LightValueInput and AlphaInput (not LightValue / Alpha).
-# Alpha is exposed as a scalar parameter so 0 = legacy raw RenderTarget and 1 = production correction.
+# P2-B: FinalColorHDR can still carry the capture view's pre-exposure domain.
+# Normalize with the value measured from that capture, then let the player's main view
+# apply exposure and tonemapping exactly once. Do not use the player's
+# EyeAdaptationInverse here: it describes the display view, not the capture view.
 view_exposure_correction = scalar(portal, 'PortalViewExposureCorrection', 1.0)
-view_inverse = node(portal, u.MaterialExpressionEyeAdaptationInverse)
-assert E.connect_material_expressions(tex, 'RGB', view_inverse, 'LightValueInput')
-assert E.connect_material_expressions(view_exposure_correction, '', view_inverse, 'AlphaInput')
+capture_pre_exposure = scalar(portal, 'PortalCapturePreExposure', 1.0)
+view_normalized = custom(portal, '''
+float3 raw=Raw;
+float3 sceneLinear=Raw/max(CapturePreExposure,.000001);
+return lerp(raw,sceneLinear,saturate(Normalize));
+''', {'Raw':(tex,'RGB'), 'CapturePreExposure':(capture_pre_exposure,''), 'Normalize':(view_exposure_correction,'')})
 shade = custom(portal, '''
 float2 p=(UV-.5)*2;
 float r=length(p);
@@ -92,7 +89,7 @@ float glow=ring*(5+filament*7+ripple*3)+core*14;
 float3 dormant=C*(.025+.16*pow(saturate(1-r),2))*(.65+.35*sin(r*32-T*3+a*3));
 float edge=smoothstep(.925,.967,r);
 return lerp(lerp(dormant/max(Exposure,.000001),View,saturate(Linked)),(C*glow+core*2)/max(Exposure,.000001),edge);
-''', {'UV':(uv,''), 'View':(view_inverse,'EyeAdaptationInverse'), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
+''', {'UV':(uv,''), 'View':(view_normalized,''), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
 output(shade, u.MaterialProperty.MP_EMISSIVE_COLOR)
 mask = custom(portal, 'return 1-step(.995,length((UV-.5)*2));', {'UV':(uv,'')}, u.CustomMaterialOutputType.CMOT_FLOAT1)
 output(mask,u.MaterialProperty.MP_OPACITY_MASK)

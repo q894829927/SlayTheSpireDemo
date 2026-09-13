@@ -29,9 +29,9 @@ public:
 	/** Cosmetic offset of the visible portal plane from the logical aperture plane. Never use this for traversal/query math. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float SurfaceVisualBias = 0.6f;
-	/** P2-B compatibility diagnostic. The portal view is now normalized with the
-	 * capture view's measured PreExposure; this value is retained for authored
-	 * A/B diagnostics and is no longer used as a scene-specific brightness gain. */
+	/** P2-B normalization blend. 1 uses the capture's measured PreExposure;
+	 * 0 exposes the raw RenderTarget for controlled diagnostics. This is not a
+	 * scene-specific brightness gain and never uses the player's eye adaptation. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering|P2 Diagnostics", meta=(ClampMin="0.0", ClampMax="1.0"))
 	float PortalViewExposureCorrection = 1.0f;
 	/** Runtime PreExposure of the capture target currently bound to the surface. */

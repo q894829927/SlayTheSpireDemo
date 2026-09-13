@@ -79,19 +79,25 @@ Observed A/B results:
 
 ### Current status
 
-**Open — blocking P2 visual fidelity.**
+**Capture-owned normalization implemented — direct-vs-portal parity remains open and
+continues to block P2 visual fidelity.**
 
-Recovery note, 2026-09-13: an uncommitted attempt to divide the sampled view by
-the measured capture pre-exposure used invalid UE Python material pins and
-temporarily produced a black portal surface. `M_InteriorPortal` was restored to
-the last known-good graph before the current PIE verification; the setup script
-now checks the required expression before clearing the graph. This removes the
-black-surface regression, but it does not close the underlying direct-vs-portal
-exposure mismatch.
+The capture now uses `SCS_FinalColorHDR`, so its destination post-process
+exposure is resolved by the capture view itself before the HDR texture is
+sampled by the portal surface. The portal material still removes the exact
+capture `PreExposure` measured for that RenderTarget; the player's
+`EyeAdaptationInverse` is not applied to a different view domain. This removes
+the observed raw SceneColor/portal black-crush path. The direct-vs-portal visual
+matrix is still required to prove parity across bright/dark transitions and
+temporal history.
 
 ### Why the first correction is insufficient
 
-The SceneCapture uses `SCS_SceneColorHDRNoAlpha`, so the RenderTarget participates in SceneColor / pre-exposure behavior. Applying the player's `EyeAdaptationInverse` to that texture does not necessarily invert the SceneCapture's own pre-exposure state. The current 0/1 result demonstrates that a constant gain or a full inverse-eye-adaptation transform is not a correct general solution.
+The earlier SceneCapture path used `SCS_SceneColorHDRNoAlpha`, which left the
+portal surface in a separate capture exposure domain. Applying the player's
+`EyeAdaptationInverse` to that texture did not invert the SceneCapture's own
+history and produced the over-bright screenshot. A constant gain or a full
+inverse-eye-adaptation transform is not a correct general solution.
 
 ### Required direction
 
@@ -100,9 +106,9 @@ The next P2 correction must explicitly reason about the **capture view's own pre
 Target pipeline:
 
 ```text
-SceneCapture SceneColor
+SceneCapture FinalColorHDR
     -> remove/normalize Capture PreExposure
-    -> scene-linear portal value
+    -> HDR portal value in the resolved capture domain
     -> emit through portal material
     -> player view applies its normal exposure/tonemap once
 ```

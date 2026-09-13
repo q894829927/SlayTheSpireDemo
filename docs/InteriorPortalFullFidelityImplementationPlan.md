@@ -692,10 +692,12 @@ Acceptance:
 
 Execution update, 2026-09-13: the live PIE capture path reports finite positive
 capture pre-exposure for both endpoints (`Saved/PortalExposureNormalizationRuntime.json`).
-An experimental material graph that tried to divide by that value used invalid
-UE Python expression pins and produced a black surface; it was reverted to the
-known-good graph before acceptance, and the setup script now guards before graph
-deletion. This does not close P2: direct-vs-portal exposure parity and the full
+The production capture source is now `SCS_FinalColorHDR`, using the player's
+post-process exposure contract before the HDR RenderTarget is sampled. The
+portal material normalizes each sampled target with the measured capture
+PreExposure; the player's `EyeAdaptationInverse` is no longer applied to a
+different view domain. This removes the observed SceneColor black-crush path,
+but does not close P2: direct-vs-portal parity, temporal behavior and the full
 visual matrix remain open.
 
 #### P2 SceneCapture capability escalation gate

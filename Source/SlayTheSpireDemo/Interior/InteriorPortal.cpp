@@ -26,7 +26,11 @@ AInteriorPortal::AInteriorPortal()
 	Capture->bCaptureOnMovement = false;
 	// Persistent rendering state is required for temporal/Lumen history even though captures are issued manually.
 	Capture->bAlwaysPersistRenderingState = true;
-	Capture->CaptureSource = SCS_SceneColorHDRNoAlpha;
+	// Capture the destination after its post-process exposure has been resolved.
+	// This keeps the portal and the player's direct view in the same exposure
+	// domain instead of asking a surface material to reconstruct another view's
+	// eye-adaptation history.
+	Capture->CaptureSource = SCS_FinalColorHDR;
 	Capture->bUseCustomProjectionMatrix = true;
 	// Portal clipping is owned by the selected render path. Do not stack a second near-plane override on top.
 	Capture->bOverride_CustomNearClippingPlane = false;
@@ -34,8 +38,10 @@ AInteriorPortal::AInteriorPortal()
 	// P2-A starts from a temporal capture path; the system can disable this only for controlled A/B diagnostics.
 	Capture->ShowFlags.SetTemporalAA(true);
 	Capture->ShowFlags.SetBloom(false);
-	// Keep SceneCapture eye adaptation disabled. PortalView is converted back out of the player's exposure domain in the display material.
-	Capture->ShowFlags.SetEyeAdaptation(false);
+	// Use the same auto-exposure path as the player view. FinalColorHDR keeps
+	// the capture's resolved exposure while preserving HDR precision; the portal
+	// material still removes any measured capture PreExposure before display.
+	Capture->ShowFlags.SetEyeAdaptation(true);
 }
 
 FTransform AInteriorPortal::GetLogicalFrame() const

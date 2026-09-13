@@ -976,6 +976,10 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		TArray<float, TInlineAllocator<4>> TargetPreExposures;
 		TargetPreExposures.Init(1.0f, VisibleDepth);
 		USceneCaptureComponent2D* Capture = Entry->Capture;
+		// Keep authored component instances on the production exposure contract;
+		// this must not drift back to SceneColorHDR through a serialized override.
+		Capture->CaptureSource = SCS_FinalColorHDR;
+		Capture->ShowFlags.SetEyeAdaptation(true);
 		Capture->HiddenActors.Reset();
 		Capture->HiddenActors.Add(Exit);
 		Capture->FOVAngle = POV.FOV;
@@ -1023,7 +1027,8 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			}
 			Capture->TextureTarget = Entry->RenderTargets[I];
 			Capture->CaptureScene();
-			// SceneColor HDR is written in the capture view's pre-exposed domain.
+			// FinalColorHDR remains HDR and can still carry the capture view's
+			// pre-exposure domain.
 			// Keep one value per recursion target so a recursive surface is
 			// normalized with the exposure that produced that exact texture.
 			if (FSceneViewStateInterface* CaptureState = Capture->GetViewState(0))
@@ -1071,7 +1076,7 @@ void AInteriorPortalSystem::UpdateFidelityDiagnostics()
 	}
 
 	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
-	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production path: CaptureTAA=%s LumenCache=%.2f; SceneCapture eye adaptation remains disabled"),
+	FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A production path: CaptureTAA=%s LumenCache=%.2f; SceneCapture eye adaptation follows the player post-process contract"),
 		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution);
 }
 
