@@ -1171,7 +1171,9 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	}
 	bWasRendererLinked = true;
 	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	if (bRendererDiagnosticsDirty || LastRendererDiagnosticsWriteTime < 0.0 || Now - LastRendererDiagnosticsWriteTime >= 0.5)
+	// JSON diagnostics are opt-in so periodic disk I/O does not contaminate renderer profiling.
+	if (bEnableRendererDiagnostics
+		&& (bRendererDiagnosticsDirty || LastRendererDiagnosticsWriteTime < 0.0 || Now - LastRendererDiagnosticsWriteTime >= 0.5))
 	{
 		const FString Json = FString::Printf(TEXT("{\n  \"frame\":%llu,\n  \"captureColorMode\":\"%s\",\n  \"captureEyeAdaptation\":%s,\n  \"renderClipMode\":\"%s\",\n  \"historyGeneration\":%llu,\n  \"lastHistoryResetReason\":\"%s\",\n  \"sampleCount\":%d,\n  \"samples\":[%s]\n}\n"),
 			GFrameCounter, bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
@@ -1255,11 +1257,12 @@ void AInteriorPortalSystem::UpdateFidelityDiagnostics()
 	}
 
 	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
-	FidelityDiagnosticStatus = FString::Printf(TEXT("STEP1A CaptureColorMode=%s CaptureSource=%s CaptureEyeAdaptation=%s CapturePreExposureOwnership=UnavailableOrContract; CaptureTAA=%s LumenCache=%.2f Diagnostics=Saved/PortalRendererDiagnostics.json"),
+	FidelityDiagnosticStatus = FString::Printf(TEXT("STEP1A CaptureColorMode=%s CaptureSource=%s CaptureEyeAdaptation=%s CapturePreExposureOwnership=UnavailableOrContract; CaptureTAA=%s LumenCache=%.2f RendererDiagnostics=%s"),
 		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
 		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("SCS_FinalColorHDR") : TEXT("SCS_SceneColorHDRNoAlpha"),
 		UsesCaptureEyeAdaptation(CaptureColorMode) ? TEXT("ON") : TEXT("OFF"),
-		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution);
+		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution,
+		bEnableRendererDiagnostics ? TEXT("ON:Saved/PortalRendererDiagnostics.json") : TEXT("OFF"));
 }
 
 void AInteriorPortalSystem::RestoreFidelityDiagnostics()

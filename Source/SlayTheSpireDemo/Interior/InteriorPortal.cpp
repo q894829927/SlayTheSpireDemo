@@ -114,8 +114,9 @@ void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
 	{
 		UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(this);
 		Target->ClearColor = FLinearColor::Black;
-		// SceneCapture writes scene-linear HDR. Force the target to stay in linear gamma.
-		// so the portal material can use a LinearColor sampler without an implicit sRGB decode.
+		// Both capture modes require a linear HDR target. CaptureColorMode defines
+		// whether the sampled values are scene-referred or already in the capture
+		// post-process domain; linear gamma prevents an implicit sRGB decode.
 		Target->bForceLinearGamma = true;
 		Target->bAutoGenerateMips = false;
 		Target->InitAutoFormat(Width, Height);

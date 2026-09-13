@@ -87,6 +87,9 @@ public:
 	/** P2-A diagnostic only. Allows the legacy PortalViewExposureCorrection parameter to be compared explicitly; production paths leave it disabled. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|P2 Diagnostics")
 	bool bCaptureExposureNormalizationDiagnostic = false;
+	/** Opt-in STEP1A JSON diagnostics. Disabled by default so periodic file I/O does not contaminate renderer profiling. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering|Diagnostics")
+	bool bEnableRendererDiagnostics = false;
 	/** Runtime description of which P2-A diagnostic state is actually active. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Rendering|P2 Diagnostics")
 	FString FidelityDiagnosticStatus;
