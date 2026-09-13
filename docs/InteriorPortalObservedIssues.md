@@ -81,6 +81,14 @@ Observed A/B results:
 
 **Open — blocking P2 visual fidelity.**
 
+Recovery note, 2026-09-13: an uncommitted attempt to divide the sampled view by
+the measured capture pre-exposure used invalid UE Python material pins and
+temporarily produced a black portal surface. `M_InteriorPortal` was restored to
+the last known-good graph before the current PIE verification; the setup script
+now checks the required expression before clearing the graph. This removes the
+black-surface regression, but it does not close the underlying direct-vs-portal
+exposure mismatch.
+
 ### Why the first correction is insufficient
 
 The SceneCapture uses `SCS_SceneColorHDRNoAlpha`, so the RenderTarget participates in SceneColor / pre-exposure behavior. Applying the player's `EyeAdaptationInverse` to that texture does not necessarily invert the SceneCapture's own pre-exposure state. The current 0/1 result demonstrates that a constant gain or a full inverse-eye-adaptation transform is not a correct general solution.
@@ -118,13 +126,29 @@ When the player is only partially through a portal, first-person geometry such a
 
 ### Current status
 
-**Open — blocking seamless crossing.**
+**Implementation candidate present — visual acceptance remains open.**
+
+On 2026-09-13 `UInteriorPortalPresentation` added a mapped, no-collision proxy
+for every player mesh tagged `PortalTravellerVisual`. The authored flashlight
+body/rim/lens/grip and child body parts now use the five generated slice
+materials in `/Game/SlayTheSpireDemo/Interior/Portals/`. The source and remote
+materials receive the same logical portal origin/normal, so the visual plane is
+independent of the cosmetic portal-surface bias.
+
+The state-level PIE check in `Saved/PortalPlayerPresentationRuntime.json`
+reported five bound slice materials and three active remote player visuals while
+the pawn was placed at the blue entry. This is runtime evidence for the proxy
+path; it does not close the manual near-plane, grazing-angle or held-item visual
+matrix.
 
 ### Why it happens
 
-The current partial-crossing proxy/slice implementation exists for configured rigid-body `PhysicsTravellers`, but the player and first-person attached visuals do not yet have an equivalent remote visual representation.
+The original partial-crossing proxy/slice implementation covered configured
+rigid-body `PhysicsTravellers`. The player path now has the equivalent remote
+representation, but it is still limited to mesh components whose material slots
+are explicitly mapped in the map-owned presentation component.
 
-The current visual model is effectively:
+Before the candidate path, the visual model was effectively:
 
 ```text
 source first-person mesh
@@ -133,7 +157,9 @@ source first-person mesh
         X destination-side copy does not exist
 ```
 
-The portal surface correctly occludes geometry behind it, but the SceneCapture cannot show a destination-side copy that was never created.
+The candidate now creates that destination-side copy for mapped player meshes;
+the remaining question is whether the material and proxy placement satisfy the
+full visual acceptance matrix in PIE.
 
 ### Required behavior
 
@@ -167,11 +193,27 @@ When the player shines the flashlight at/through the portal, illumination can ap
 
 ### Current status
 
-**Open — visual/gameplay lighting defect.**
+**Implementation candidate present — visual acceptance remains open.**
+
+`UInteriorPortalPresentation` now maps the attached flashlight origin,
+orientation and cone into the paired endpoint. It creates up to two movable
+remote spotlights, assigns `M_LF_PortalFlashlight` as a light-function mask for
+the legal aperture, reserves a free lighting channel, and restores every
+temporary channel assignment during reset or teardown. The source intensity is
+suppressed while its emitter is crossing so the two copies do not double-light
+the scene.
+
+The same PIE state-level check reported one active remote light with the
+flashlight enabled at the blue entry (`Saved/PortalPlayerPresentationRuntime.json`).
+The direct and portal exposure matrix, arbitrary light directions and manual
+visual quality gate remain open.
 
 ### Current implementation constraint
 
-The flashlight is an ordinary movable `USpotLightComponent` attached to the first-person `FlashlightRig`. It follows the player/camera transform. There is currently no portal-specific light transport, no destination-side flashlight proxy, and no aperture mask for the light cone.
+The authoritative light remains the ordinary movable `USpotLightComponent`
+attached to the first-person `FlashlightRig`; the presentation component adds a
+destination-side proxy only while the linked portal aperture can receive the
+cone. General world-light transport is still outside the supported scope.
 
 This means the existing light behaves as an ordinary world-space spotlight even while the player's visual/camera state is transitioning between two portal spaces.
 
@@ -224,7 +266,7 @@ The original traversal prototype temporarily ignored the entire support primitiv
 
 **2026-09-13 player repair candidate implemented; full issue matrix remains open.** `UInteriorPortalMovementComponent` now checks a swept capsule aperture interval on every movement submove, and explicit clearance state prevents reversal behind the exit before full clearance. Transfer occurs before subsequent floor queries. This also fixes the reproduced 3 Hz failure where entry-side simulation dropped the player below the destination floor before transfer. Actual-map repeated traversal and focused test evidence: [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). The remaining jump/edge/arbitrary-orientation visual matrix and Chaos body gates must not be inferred from these player tests.
 
-Conceptually, the current behavior is too close to:
+Conceptually, the original prototype behavior was too close to:
 
 ```text
 near valid aperture
@@ -255,6 +297,12 @@ frame N+3: collision is restored after the capsule may already be on the invalid
 ```
 
 Different frame rates, movement speeds and reversal timing therefore make the issue look random even though the underlying state transition is deterministic.
+
+### Follow-up: slow entry / partial-crossing wall lock — 2026-09-13
+
+User report at baseline `82e2651`: slow entry or stopping midway can leave the player unable to move. The aperture constraint returned zero movement in every direction when the current capsule footprint became slightly invalid. The native regression now exercises a rim contact followed by a 0.25 cm pose correction, then checks that retreat and motion toward the center remain available.
+
+The correction permits non-worsening recovery against initially violated aperture edges while retaining strict acquisition/transfer checks and blocking deeper wall entry. Portal Automation and actual-map slow passage/pause/rim-retreat replay each passed 6/6. The corrected actual-map pose probe confirms 8 cm outward retreat, 10 cm movement toward center, blocked deeper entry and restored passage state. Regression evidence and the discarded direction-mutating probe are recorded in [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). Keep the broader jump/orientation/physics acceptance matrix open; the original centered continuous-traversal replay alone does not prove freedom from wall sticking.
 
 ### Required fix
 
@@ -315,10 +363,10 @@ Recommended order from the current branch state:
 ```text
 1. Keep P1 clipping regression coverage active.
 2. Fix P3/P4 traversal-state + aperture-local collision safety.
-3. Implement player/first-person partial-crossing visual proxy/slicing.
-4. Implement portal-aware flashlight remote-light behavior.
+3. Finish manual acceptance for player/first-person partial-crossing visuals.
+4. Finish manual acceptance for the portal-aware flashlight path.
 5. Return to P2 capture-pre-exposure normalization and finish direct-vs-portal exposure parity.
-6. Continue remaining PortalQuery / rigid-body / dual-space physics work from the main plan.
+6. Complete PortalQuery segmented diagnostics and exploration weapon/projectile coverage, then continue rigid-body / dual-space physics work from the main plan.
 ```
 
 Reason for moving traversal safety ahead of the remaining exposure work: an exposure mismatch is visually wrong, but support-wall escape breaks world topology and can invalidate later physics/query validation. The collision state must therefore become trustworthy before more advanced crossing behavior is layered on top.

@@ -29,9 +29,14 @@ public:
 	/** Cosmetic offset of the visible portal plane from the logical aperture plane. Never use this for traversal/query math. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float SurfaceVisualBias = 0.6f;
-	/** P2-B exposure-domain correction. 1 applies EyeAdaptationInverse to PortalView; 0 preserves the legacy raw RenderTarget path for A/B diagnosis. */
+	/** P2-B compatibility diagnostic. The portal view is now normalized with the
+	 * capture view's measured PreExposure; this value is retained for authored
+	 * A/B diagnostics and is no longer used as a scene-specific brightness gain. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal|Rendering|P2 Diagnostics", meta=(ClampMin="0.0", ClampMax="1.0"))
 	float PortalViewExposureCorrection = 1.0f;
+	/** Runtime PreExposure of the capture target currently bound to the surface. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Transient, Category="Portal|Rendering|P2 Diagnostics")
+	float PortalCapturePreExposure = 1.0f;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Portal")
 	TObjectPtr<UMaterialInterface> PortalMaterial;
 	/** Explicit supporting primitive: only this component can be ignored during a valid crossing. */
@@ -47,7 +52,7 @@ public:
 	TArray<TObjectPtr<UTextureRenderTarget2D>> RenderTargets;
 	/** Actor transform is the single logical portal/aperture frame. Visual bias lives only on Surface. */
 	FTransform GetLogicalFrame() const;
-	void SetView(UTextureRenderTarget2D* Texture, bool bLinked);
+	void SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure = 1.0f);
 	void RefreshAppearance();
 	void EnsureTargets(int32 Width, int32 Height, int32 Depth);
 private:

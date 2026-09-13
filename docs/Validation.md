@@ -2,6 +2,94 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal material recovery and runtime regression — 2026-09-13 (latest)
+
+An experimental uncommitted exposure-material graph used an invalid custom-node
+connection and produced a black portal surface. The portal material was restored
+to the last known-good graph, and `tools/setup_interior_portals.py` now checks for
+the required UE expression before clearing an existing graph. The map and portal
+runtime code were left intact.
+
+- MCP `CaptureEditorImage` after PIE restart: portal surface visible again in
+  `Saved/PortalRecoveryCapture.png` (supplemental visual evidence only).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **8/8 PASS**, 0 failed /
+  skipped (`Saved/AutomationReports/PortalRecoveryCurrent/index.json`).
+- Actual PIE player presentation check: **PASS**, five slice materials, three
+  remote visuals and one remote light (`Saved/PortalPlayerPresentationRuntime.json`).
+- Actual PIE physics wall-escape replay: **PASS**, two intended crossings and no
+  escape behind either support (`Saved/PortalPhysicsWallEscape.json`).
+- Capture pre-exposure state check: **PASS**, both endpoints report finite positive
+  runtime values (`Saved/PortalExposureNormalizationRuntime.json`). This is state
+  evidence only; direct-vs-portal exposure parity remains an open P2 visual gate.
+
+This recovery and verification used MCP plus the UE Python bridge; no desktop
+control input was used.
+
+## Interior portal player presentation pass — 2026-09-13
+
+The map-owned presentation component now covers tagged first-person meshes and
+the handheld flashlight's destination-side continuation.
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalPresentationFinalProjectFiles.log`,
+  `Saved/Logs/PortalPresentationFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **6/6 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalPresentationFinal/index.json`,
+  `Saved/Logs/PortalPresentationFinalTests.log`).
+- MCP/UE Python map setup: **PASS**; five player slice materials and the portal
+  flashlight light-function material were bound and the level was saved
+  (`Saved/PortalPlayerPresentationSetup.json`).
+- Actual `L_Interior_LivingKitchen` PIE runtime check: **PASS**; five bound slice
+  materials, three active remote player visuals and one active remote light at the
+  blue entry, followed by restoration of the original pose/light state
+  (`tools/validate_portal_player_presentation.py`,
+  `Saved/PortalPlayerPresentationRuntime.json`).
+- `Saved/PortalPresentationOverall.png` is supplemental visual evidence only;
+  manual near-plane, grazing-angle, held-item and exposure acceptance remains
+  `USER ACTION REQUIRED`.
+
+This pass used MCP and the UE Python bridge; it did not use desktop-control input.
+
+## Portal-aware interaction query pass — 2026-09-13
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalQueryFinalProjectFiles.log`, `Saved/Logs/PortalQueryFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **7/7 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalQueryFinal/index.json`,
+  `Saved/Logs/PortalQueryFinalTests.log`). The added `PortalAwareQuery` case covers
+  line and sphere continuation through a support wall, outside-aperture blocking,
+  and a nearer unrelated obstacle.
+- `TryGrab`, light-switch focus and entrance-door interaction now call the
+  bounded line-query path when an `InteriorPortalSystem` is available.
+
+This is state-level query evidence. The complete exploration weapon/projectile
+matrix and segmented debug-path diagnostics remain open.
+
+## Interior portal wall-stuck correction — 2026-09-13
+
+Scope: active player passage recovery when the capsule footprint becomes slightly invalid;
+strict aperture acquisition/transfer and ordinary wall collision remain enforced.
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalWallStuckFinalProjectFiles.log`, `Saved/Logs/PortalWallStuckFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **6/6 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalWallStuckFinal/index.json`, `Saved/Logs/PortalWallStuckFinalTests.log`).
+- Actual `L_Interior_LivingKitchen` PIE movement replay through MCP/UE Python:
+  **6/6 PASS** at 60 Hz simulation / 20 cm/s. Both endpoints cover slow entry with
+  entry/exit pauses, partial-entry retreat, and rim strafe then retreat
+  (`tools/validate_portal_player_wall_stuck.py`, `Saved/PortalPlayerWallStuck.json`).
+- Actual-map corrected-footprint probe: **PASS**. After a 0.25 cm correction at the rim,
+  outward movement advances 8 cm, centerward movement advances 10 cm, deeper wall
+  movement stays blocked, and passage state returns to `Outside`
+  (`Saved/PortalWallStuckFixedAcceptance.json`). Input is restored and walk speed is 260 cm/s.
+- Initial ad hoc baseline/fix probes are **discarded evidence**: UE Python unary
+  vector negation modified a reused direction. See the detailed account in
+  [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md).
+
+These state assertions do not seal manual moving-camera, jump, floor/ceiling portal,
+exposure, visual slicing or Chaos contact acceptance. No desktop control or asset edits
+were used for this correction.
+
 ## Portal-aware flashlight clearance — 2026-09-12
 
 The first-person flashlight clearance sweep now ignores a placed portal's supporting wall only

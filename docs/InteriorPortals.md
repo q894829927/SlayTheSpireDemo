@@ -20,11 +20,26 @@ Implementation reference: [Froyok, Creating Seamless Portals](https://www.froyok
 
 The portal feature is now materially implemented on `main`: C++ endpoint/system/math/camera code, generated portal materials, map setup, recursive SceneCapture rendering, player traversal, rigid-body transfer, Physics Handle support, visual slice proxies and focused portal Automation are present.
 
-The feature is **not yet full-fidelity accepted**. Native clipping mitigated the reproduced black-wall/diagonal-wedge issue in the observed normal views; its full near/grazing matrix remains open. Capture/player exposure parity, player/held-item partial visuals and portal-aware flashlight illumination remain blocking items in [the observed issue log](InteriorPortalObservedIssues.md).
+The feature is **not yet full-fidelity accepted**. Native clipping mitigated the reproduced black-wall/diagonal-wedge issue in the observed normal views; its full near/grazing matrix remains open. Capture/player exposure parity and manual acceptance of the player/held-item partial visuals and portal-aware flashlight illumination remain open in [the observed issue log](InteriorPortalObservedIssues.md).
 
-The current delivery adds player submove aperture constraints, explicit crossing/clearance states, same-frame transfer protection, quaternion camera/input ownership, and early transfer before destination floor queries. Detailed scope, the reproduced large-timestep floor defect and actual-map reversal evidence are recorded in [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). It preserves the user's existing flashlight-clearance and material/map edits.
+The current delivery adds player submove aperture constraints, explicit crossing/clearance states, same-frame transfer protection, quaternion camera/input ownership, early transfer before destination floor queries, a player presentation component that slices tagged first-person meshes and maps the handheld flashlight into the paired aperture, and a bounded PortalQuery layer for line traces and sphere sweeps. PortalQuery analytically arbitrates a support-wall hit inside the legal aperture, maps the remaining segment through the pair and is reused by Physics Handle and player interaction targeting. Generated slice/light-function assets are bound to the map-owned system. Detailed scope, the reproduced large-timestep floor defect, actual-map reversal evidence and presentation runtime evidence are recorded in [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md). It preserves the user's existing flashlight-clearance and material/map edits.
 
-Further required work includes Chaos aperture-local collision hardening, generic traveller registration and geometry-aware conservative body fit, production slicing across material slots, dual-space remote collision/contact bridging for partially crossed rigid bodies, portal-aware traces/sweeps, lifecycle hardening, recursion/performance profiling and the final manual PIE matrix.
+The latest MCP recovery restored `M_InteriorPortal` after an experimental exposure
+graph produced a black surface. The setup script now refuses to clear the graph
+when its required UE expression is unavailable. A fresh PIE capture shows the
+portal surface again; the P2 direct-vs-portal exposure comparison remains open
+until the planned visual matrix is completed.
+
+The follow-up wall-stuck fix keeps outward retreat and movement toward the aperture available after a small capsule footprint correction, while deeper wall entry remains blocked. Focused portal Automation and actual-map slow-entry/pause/rim-retreat replay each pass 6/6; the same traversal document records evidence and remaining visual acceptance.
+
+Further required work now centers on the remaining acceptance gates: high-speed
+Chaos aperture-local collision, the complete geometry/shape-fit matrix for the
+generic traveller registry, dual-space remote collision/contact bridging for
+partially crossed rigid bodies, PortalQuery segmented diagnostics and
+exploration weapon/projectile coverage, lifecycle/performance profiling,
+exposure parity and the final manual PIE matrix. The registry and conservative
+sphere/capsule/box fit implementation are present; their broader acceptance
+matrix is not yet sealed.
 
 ## Acceptance
 

@@ -14,6 +14,7 @@
 #include "InputCoreTypes.h"
 #include "InteriorLightSwitch.h"
 #include "InteriorPlayerController.h"
+#include "InteriorPortalQuery.h"
 #include "InteriorPortalSystem.h"
 #include "InteriorPortalMovementComponent.h"
 #include "InteriorDayNightController.h"
@@ -72,6 +73,7 @@ AInteriorChildCharacter::AInteriorChildCharacter(const FObjectInitializer& Objec
 		Part->SetCanEverAffectNavigation(false);
 		Part->SetCastShadow(false);
 		Part->SetOnlyOwnerSee(true);
+		Part->ComponentTags.Add(TEXT("PortalTravellerVisual"));
 	}
 	// Engine cylinder axis is Z; rotate the barrel along the viewing direction.
 	FlashlightBody->SetRelativeLocation(FVector(24.0f, 12.0f, -12.0f));
@@ -123,6 +125,7 @@ AInteriorChildCharacter::AInteriorChildCharacter(const FObjectInitializer& Objec
 	{
 		BodyPart->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		BodyPart->SetCanEverAffectNavigation(false);
+		BodyPart->ComponentTags.Add(TEXT("PortalTravellerVisual"));
 	}
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -261,7 +264,12 @@ AInteriorLightSwitch* AInteriorChildCharacter::GetInteractionFocus() const
 	const FVector End = Start + GetInteriorViewDirection() * AInteriorLightSwitch::InteractionDistance;
 	FCollisionQueryParams Params(TEXT("InteriorCharacterInteraction"), true, this);
 	FHitResult Hit;
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+	const AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
+	const AInteriorPortalSystem* Portals = Player ? Player->GetPortalSystem() : nullptr;
+	const bool bHit = Portals
+		? InteriorPortalQuery::LineTrace(Portals, Start, End, ECC_Visibility, Params, Hit, 3, 1.0f)
+		: GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
+	if (!bHit)
 	{
 		return nullptr;
 	}
@@ -455,7 +463,12 @@ bool AInteriorChildCharacter::TryInteractWithEntranceDoor()
 	const FVector End = Start + GetInteriorViewDirection() * 260.0f;
 	FCollisionQueryParams Params(TEXT("InteriorDoorInteraction"), true, this);
 	FHitResult Hit;
-	if (!GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params)
+	const AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
+	const AInteriorPortalSystem* Portals = Player ? Player->GetPortalSystem() : nullptr;
+	const bool bHit = Portals
+		? InteriorPortalQuery::LineTrace(Portals, Start, End, ECC_Visibility, Params, Hit, 3, 1.0f)
+		: GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params);
+	if (!bHit
 		|| !ResolveEntranceDoor()
 		|| Hit.GetActor() != EntranceDoor)
 	{
@@ -540,17 +553,20 @@ void AInteriorChildCharacter::UpdateFlashlightPose(const float DeltaSeconds)
 	FHitResult Hit;
 	FCollisionQueryParams Params(TEXT("FlashlightWallClearance"), false, this);
 	float Clearance = 1.0f;
-	if (GetWorld()->SweepSingleByChannel(Hit, Eye, Eye + LensOffset, FQuat::Identity,
-		ECC_Visibility, FCollisionShape::MakeSphere(4.0f), Params))
+	const AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
+	const AInteriorPortalSystem* Portals = Player ? Player->GetPortalSystem() : nullptr;
+	// Use the same bounded sphere path as interaction/Physics Handle targeting. A
+	// support-wall hit inside the aperture is replaced by the portal event, and
+	// the remaining segment is tested in the destination space before deciding
+	// how far the first-person rig must retract.
+	const bool bHit = Portals
+		? InteriorPortalQuery::SphereSweep(Portals, Eye, Eye + LensOffset, 4.0f,
+			ECC_Visibility, Params, Hit, 3, 1.0f)
+		: GetWorld()->SweepSingleByChannel(Hit, Eye, Eye + LensOffset, FQuat::Identity,
+			ECC_Visibility, FCollisionShape::MakeSphere(4.0f), Params);
+	if (bHit)
 	{
-		const AInteriorPlayerController* Player = Cast<AInteriorPlayerController>(GetController());
-		const AInteriorPortalSystem* Portals = Player ? Player->GetPortalSystem() : nullptr;
-		const bool bThroughPortal = Portals
-			&& Portals->IsFlashlightTraceThroughPortal(Hit, Eye, Eye + LensOffset, 4.0f);
-		if (!bThroughPortal)
-		{
-			Clearance = FMath::Clamp(Hit.Time - 0.05f, 0.0f, 1.0f);
-		}
+		Clearance = FMath::Clamp(Hit.Time - 0.05f, 0.0f, 1.0f);
 	}
 	// Retract every component together; never leave the beam on the far side of a wall.
 	FlashlightRig->SetRelativeLocation(View.UnrotateVector(LensOffset * (Clearance - 1.0f)));

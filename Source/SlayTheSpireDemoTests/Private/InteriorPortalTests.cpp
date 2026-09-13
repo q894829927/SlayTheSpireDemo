@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Interior/InteriorPortalMath.h"
+#include "Interior/InteriorPortalQuery.h"
 #include "Interior/InteriorPortal.h"
 #include "Interior/InteriorPortalSystem.h"
 #include "Interior/InteriorPortalCameraState.h"
@@ -63,6 +64,52 @@ bool FInteriorPortalProjectionTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalQueryTest,
+	"SlayTheSpireDemo.Interior.Portals.PortalAwareQuery", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalQueryTest::RunTest(const FString& Parameters)
+{
+	UWorld* World=UWorld::CreateWorld(EWorldType::Game,false);
+	AInteriorPortalSystem* System=World->SpawnActor<AInteriorPortalSystem>();
+	AInteriorPortal* A=World->SpawnActor<AInteriorPortal>();
+	AInteriorPortal* B=World->SpawnActor<AInteriorPortal>();
+	A->SetActorTransform(FTransform(FRotator::ZeroRotator,FVector(0,0,100)));
+	B->SetActorTransform(FTransform(FRotator::ZeroRotator,FVector(1000,0,100)));
+	auto MakeBox = [World](const FVector& Location,const FVector& Extent,const TCHAR* Name)
+	{
+		AActor* Owner=World->SpawnActor<AActor>();
+		UBoxComponent* Box=NewObject<UBoxComponent>(Owner,Name);
+		Owner->SetRootComponent(Box);
+		Box->SetBoxExtent(Extent);
+		Box->SetCollisionProfileName(TEXT("BlockAll"));
+		Box->RegisterComponent();
+		Owner->SetActorLocation(Location);
+		return Box;
+	};
+	A->Support=MakeBox(FVector(-5,0,100),FVector(5,300,300),TEXT("EntrySupport"));
+	B->Support=MakeBox(FVector(995,0,100),FVector(5,300,300),TEXT("ExitSupport"));
+	UBoxComponent* Target=MakeBox(FVector(1080,0,100),FVector(12,12,12),TEXT("PortalTarget"));
+	System->BluePortal=A;
+	System->OrangePortal=B;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalQueryTest),false);
+	FHitResult Hit;
+	TestTrue(TEXT("Line query continues through an aperture"),InteriorPortalQuery::LineTrace(
+		System,FVector(100,0,100),FVector(-100,0,100),ECC_Visibility,Params,Hit,3,1.0f));
+	TestTrue(TEXT("Line query returns the destination object"),Hit.GetComponent()==Target);
+	TestTrue(TEXT("Mapped hit retains a bounded source-segment time"),Hit.Time>0.5f && Hit.Time<1.0f);
+	TestTrue(TEXT("Sphere query continues through an aperture"),InteriorPortalQuery::SphereSweep(
+		System,FVector(100,0,100),FVector(-100,0,100),5.0f,ECC_Visibility,Params,Hit,3,1.0f));
+	TestTrue(TEXT("Sphere query returns the destination object"),Hit.GetComponent()==Target);
+	TestTrue(TEXT("Support wall remains solid outside the aperture"),InteriorPortalQuery::LineTrace(
+		System,FVector(100,100,100),FVector(-100,100,100),ECC_Visibility,Params,Hit,3,1.0f));
+	TestTrue(TEXT("Outside-aperture query returns the support wall"),Hit.GetComponent()==A->Support);
+	UBoxComponent* Obstacle=MakeBox(FVector(50,0,100),FVector(5,12,12),TEXT("PrePortalObstacle"));
+	TestTrue(TEXT("Unrelated object before a portal wins"),InteriorPortalQuery::LineTrace(
+		System,FVector(100,0,100),FVector(-100,0,100),ECC_Visibility,Params,Hit,3,1.0f));
+	TestTrue(TEXT("Unrelated pre-portal hit is preserved"),Hit.GetComponent()==Obstacle);
+	World->DestroyWorld(false);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalPlacementTest,
 	"SlayTheSpireDemo.Interior.Portals.PlacementAndLifecycle", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
@@ -109,6 +156,33 @@ bool FInteriorPortalPlacementTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Clearing pair disables traversal"),System->IsLinked());
 	TestFalse(TEXT("Clearing hides blue endpoint"),A->bPlaced);
 	TestFalse(TEXT("Clearing hides orange endpoint"),B->bPlaced);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalTravellerRegistryTest,
+	"SlayTheSpireDemo.Interior.Portals.TravellerRegistry", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalTravellerRegistryTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	World->InitializeActorsForPlay(FURL());
+	AInteriorPortalSystem* System = World->SpawnActor<AInteriorPortalSystem>();
+	AActor* Owner = World->SpawnActor<AActor>();
+	UBoxComponent* Body = NewObject<UBoxComponent>(Owner, TEXT("RuntimeTraveller"));
+	Owner->SetRootComponent(Body);
+	Body->SetBoxExtent(FVector(20, 12, 12));
+	Body->SetCollisionProfileName(TEXT("PhysicsActor"));
+	Body->RegisterComponent();
+	Body->SetSimulatePhysics(true);
+	TestTrue(TEXT("A simulated primitive can register as a portal traveller"),
+		System->RegisterPhysicsTraveller(Body));
+	TestFalse(TEXT("Duplicate traveller registration is rejected"),
+		System->RegisterPhysicsTraveller(Body));
+	Body->ComponentTags.Add(TEXT("PortalTraveller"));
+	TestTrue(TEXT("Runtime traveller unregister removes transient state"),
+		System->UnregisterPhysicsTraveller(Body));
+	TestFalse(TEXT("Unregistering an absent traveller is harmless"),
+		System->UnregisterPhysicsTraveller(Body));
 	World->DestroyWorld(false);
 	return true;
 }
@@ -196,6 +270,28 @@ bool FInteriorPortalMovementGateTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("Entry move: %s; hit=%s; state=%d; ignore count=%d"),*Pawn->GetActorLocation().ToString(),
 		*GetNameSafe(Hit.GetComponent()),int32(System->PlayerCrossingState),Pawn->GetCapsuleComponent()->GetMoveIgnoreComponents().Num()));
 	TestTrue(TEXT("Full capsule enters legal aperture"),Pawn->GetActorLocation().X<12);
+	// A real rim contact followed by a small external pose correction used to lock all
+	// movement, including retreat. Exercise the movement component, not just the fit math.
+	Movement->MoveUpdatedComponent(FVector(0,300,0),FQuat::Identity,true,&Hit);
+	TestTrue(TEXT("Rim blocks lateral movement"),Hit.bBlockingHit);
+	Pawn->SetActorLocation(Pawn->GetActorLocation()+FVector(0,.25,0),false,nullptr,ETeleportType::TeleportPhysics);
+	const FVector CorrectedCenter=Pawn->GetActorLocation();
+	Movement->MoveUpdatedComponent(FVector(8,0,0),FQuat::Identity,true,&Hit);
+	TestTrue(TEXT("Slightly invalid footprint can retreat without a teleport"),
+		Pawn->GetActorLocation().Equals(CorrectedCenter+FVector(8,0,0),.01));
+	const FVector BeforeBlockedMove=Pawn->GetActorLocation();
+	Movement->MoveUpdatedComponent(FVector(-8,1,0),FQuat::Identity,true,&Hit);
+	TestTrue(TEXT("Invalid footprint cannot enter deeper into wall"),
+		Pawn->GetActorLocation().Equals(BeforeBlockedMove,.01) && Hit.bBlockingHit);
+	// Inverse rotation can leave a tiny normal residual in an otherwise tangent move.
+	Movement->MoveUpdatedComponent(FVector(-1.e-12,-10,0),FQuat::Identity,true,&Hit);
+	TestTrue(TEXT("Invalid footprint can move back towards aperture center"),
+		FMath::IsNearlyEqual(Pawn->GetActorLocation().Y,BeforeBlockedMove.Y-10,.01));
+	Movement->MoveUpdatedComponent(FVector(100,0,0),FQuat::Identity,true,&Hit);
+	TestTrue(TEXT("Retreat releases support ignore"),Pawn->GetCapsuleComponent()->GetMoveIgnoreComponents().IsEmpty());
+	TestEqual(TEXT("Retreat restores Outside state"),System->PlayerCrossingState,EInteriorPortalCrossingState::Outside);
+	Pawn->SetActorLocation(FVector(80,0,100)); System->Tick(.016f);
+	Movement->MoveUpdatedComponent(FVector(-70,0,0),FQuat::Identity,true,&Hit);
 	Movement->MoveUpdatedComponent(FVector(-500,600,0),FQuat::Identity,true,&Hit);
 	TestTrue(TEXT("High-speed lateral escape produces a collision"),Hit.bBlockingHit);
 	TestTrue(TEXT("Capsule cannot leave through wall beside aperture"),FMath::Abs(Pawn->GetActorLocation().Y)<42);

@@ -70,15 +70,19 @@ void AInteriorPortal::RefreshAppearance()
 	{
 		DynamicMaterial->SetVectorParameterValue(TEXT("PortalColor"), PortalColor);
 		DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
+		DynamicMaterial->SetScalarParameterValue(TEXT("PortalCapturePreExposure"), FMath::Max(PortalCapturePreExposure, .000001f));
 	}
 }
 
-void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked)
+void AInteriorPortal::SetView(UTextureRenderTarget2D* Texture, bool bLinked, float InputCapturePreExposure)
 {
 	if (!DynamicMaterial) { return; }
 	if (Texture) { DynamicMaterial->SetTextureParameterValue(TEXT("PortalView"), Texture); }
 	DynamicMaterial->SetScalarParameterValue(TEXT("Linked"), bLinked && Texture ? 1 : 0);
-	// Keep the diagnostic A/B switch live in PIE if the property is edited while running.
+	PortalCapturePreExposure = (FMath::IsFinite(InputCapturePreExposure) && InputCapturePreExposure > .000001f)
+		? InputCapturePreExposure : 1.0f;
+	DynamicMaterial->SetScalarParameterValue(TEXT("PortalCapturePreExposure"), PortalCapturePreExposure);
+	// Keep the compatibility diagnostic live in PIE if the property is edited while running.
 	DynamicMaterial->SetScalarParameterValue(TEXT("PortalViewExposureCorrection"), PortalViewExposureCorrection);
 }
 
@@ -88,7 +92,9 @@ void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
 	{
 		UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(this);
 		Target->ClearColor = FLinearColor::Black;
-		Target->RenderTargetFormat = RTF_RGBA16f;
+		// SceneCapture writes scene-linear HDR. Force the target to stay in linear gamma.
+		// so the portal material can use a LinearColor sampler without an implicit sRGB decode.
+		Target->bForceLinearGamma = true;
 		Target->bAutoGenerateMips = false;
 		Target->InitAutoFormat(Width, Height);
 		RenderTargets.Add(Target);

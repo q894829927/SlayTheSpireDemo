@@ -34,8 +34,20 @@ def custom(m, code, inputs, typ=u.CustomMaterialOutputType.CMOT_FLOAT3):
 def output(n, prop):
     assert E.connect_material_property(n, '', prop)
 
-# P2-B uses UE 5.8's EyeAdaptationInverse. Fail before deleting the existing portal material graph
-# if the engine build does not expose the node, so a setup-script error cannot leave the portal as a black rectangle.
+def clear_graph(material):
+    # delete_all_material_expressions leaves nodes that are still referenced by
+    # a material output. Disconnect the authored outputs first, then remove
+    # every expression so repeated recovery runs cannot compile stale Custom
+    # nodes alongside the current portal graph.
+    for prop in [u.MaterialProperty.MP_EMISSIVE_COLOR, u.MaterialProperty.MP_OPACITY_MASK,
+                 u.MaterialProperty.MP_BASE_COLOR, u.MaterialProperty.MP_ROUGHNESS]:
+        try: E.disconnect_material_property(material, prop)
+        except Exception: pass
+    for expression in list(E.get_material_expressions(material)):
+        E.delete_material_expression(material, expression)
+
+# Do not touch the existing portal graph when the required UE expression is unavailable.
+# This guard must run before delete_all_material_expressions so a failed setup cannot leave a black portal.
 if not hasattr(u, 'MaterialExpressionEyeAdaptationInverse'):
     raise RuntimeError('UE build does not expose MaterialExpressionEyeAdaptationInverse; existing portal material was not modified.')
 
@@ -45,19 +57,22 @@ placeholder.set_editor_property('size_x', 256); placeholder.set_editor_property(
 u.EditorAssetLibrary.save_loaded_asset(placeholder)
 
 portal = asset('M_InteriorPortal', u.Material, u.MaterialFactoryNew())
-E.delete_all_material_expressions(portal)
+clear_graph(portal)
 portal.set_editor_property('blend_mode', u.BlendMode.BLEND_MASKED)
 portal.set_editor_property('shading_model', u.MaterialShadingModel.MSM_UNLIT)
 portal.set_editor_property('two_sided', False)
 uv = node(portal, u.MaterialExpressionTextureCoordinate)
 screen = node(portal, u.MaterialExpressionScreenPosition)
-tex = node(portal, u.MaterialExpressionTextureSampleParameter2D, parameter_name='PortalView', texture=placeholder, sampler_type=u.MaterialSamplerType.SAMPLERTYPE_COLOR)
+# SceneCapture writes HDR scene-linear data into the RGBA16f target. UE 5.8
+# requires a Linear Color sampler here; using Color makes the material fall
+# back to the default shader at runtime.
+tex = node(portal, u.MaterialExpressionTextureSampleParameter2D, parameter_name='PortalView', texture=placeholder, sampler_type=u.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
 assert E.connect_material_expressions(screen, 'ViewportUV', tex, 'UVs')
 time = node(portal, u.MaterialExpressionTime)
 color = vector(portal, 'PortalColor', (.01, .25, 1, 1))
 linked = scalar(portal, 'Linked', 0)
 exposure = node(portal, u.MaterialExpressionEyeAdaptation)
-# P2-B: the SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
+# P2-B: The SceneCapture is stored in SceneColor/pre-exposure space. Convert the sampled portal view
 # back out of the current player view's eye-adaptation domain before it is emitted and tonemapped again.
 # UE 5.8 exposes these expression inputs as LightValueInput and AlphaInput (not LightValue / Alpha).
 # Alpha is exposed as a scalar parameter so 0 = legacy raw RenderTarget and 1 = production correction.
@@ -77,13 +92,13 @@ float glow=ring*(5+filament*7+ripple*3)+core*14;
 float3 dormant=C*(.025+.16*pow(saturate(1-r),2))*(.65+.35*sin(r*32-T*3+a*3));
 float edge=smoothstep(.925,.967,r);
 return lerp(lerp(dormant/max(Exposure,.000001),View,saturate(Linked)),(C*glow+core*2)/max(Exposure,.000001),edge);
-''', {'UV':(uv,''), 'View':(view_inverse,''), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
+''', {'UV':(uv,''), 'View':(view_inverse,'EyeAdaptationInverse'), 'T':(time,''), 'C':(color,'RGB'), 'Linked':(linked,''), 'Exposure':(exposure,'')})
 output(shade, u.MaterialProperty.MP_EMISSIVE_COLOR)
 mask = custom(portal, 'return 1-step(.995,length((UV-.5)*2));', {'UV':(uv,'')}, u.CustomMaterialOutputType.CMOT_FLOAT1)
 output(mask,u.MaterialProperty.MP_OPACITY_MASK)
 
 cube_material = asset('M_PortalTestCube',u.Material,u.MaterialFactoryNew())
-E.delete_all_material_expressions(cube_material)
+clear_graph(cube_material)
 cube_material.set_editor_property('blend_mode',u.BlendMode.BLEND_MASKED)
 cube_uv=node(cube_material,u.MaterialExpressionTextureCoordinate)
 cube_color=custom(cube_material,'''float2 p=abs(UV-.5)*2; float edge=step(.76,max(p.x,p.y)); float circle=1-smoothstep(.24,.28,length(UV-.5)); return lerp(lerp(float3(.68,.73,.77),float3(.055,.075,.095),edge),float3(.08,.35,.55),circle);''',{'UV':(cube_uv,'')})
@@ -93,11 +108,11 @@ world=node(cube_material,u.MaterialExpressionWorldPosition)
 origin=vector(cube_material,'SliceOrigin',(0,0,0,0))
 normal=vector(cube_material,'SliceNormal',(1,0,0,0))
 enabled=scalar(cube_material,'SliceEnabled',0)
-slice_mask=custom(cube_material,'return lerp(1,step(0,dot(P-O,N)),Enable);',{'P':(world,''),'O':(origin,'RGB'),'N':(normal,'RGB'),'Enable':(enabled,'')},u.CustomMaterialOutputType.CMOT_FLOAT1)
+slice_mask=custom(cube_material,'return lerp(1,step(0,dot(P-O,N)),Enable);',{'P':(world,'XYZ'),'O':(origin,'RGB'),'N':(normal,'RGB'),'Enable':(enabled,'')},u.CustomMaterialOutputType.CMOT_FLOAT1)
 output(slice_mask,u.MaterialProperty.MP_OPACITY_MASK)
 
 panel_material=asset('M_PortalSurface',u.Material,u.MaterialFactoryNew())
-E.delete_all_material_expressions(panel_material)
+clear_graph(panel_material)
 output(node(panel_material,u.MaterialExpressionConstant3Vector,constant=u.LinearColor(.68,.7,.72,1)),u.MaterialProperty.MP_BASE_COLOR)
 output(scalar(panel_material,'Roughness',.74),u.MaterialProperty.MP_ROUGHNESS)
 for material in [portal,cube_material,panel_material]:
@@ -145,6 +160,10 @@ cube.static_mesh_component.set_mobility(u.ComponentMobility.MOVABLE)
 cube.static_mesh_component.set_static_mesh(u.load_asset('/Engine/BasicShapes/Cube'))
 cube.static_mesh_component.set_material(0,cube_material)
 cube.static_mesh_component.set_collision_profile_name('PhysicsActor')
+cube_tags = cube.static_mesh_component.get_editor_property('component_tags')
+if 'PortalTraveller' not in cube_tags:
+    cube_tags.append('PortalTraveller')
+cube.static_mesh_component.set_editor_property('component_tags', cube_tags)
 cube.static_mesh_component.set_simulate_physics(True)
 cube.static_mesh_component.set_mass_override_in_kg('',12,True)
 

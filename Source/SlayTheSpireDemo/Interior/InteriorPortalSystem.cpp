@@ -1,8 +1,10 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalQuery.h"
 #include "InteriorPlayerController.h"
 #include "InteriorPortalMovementComponent.h"
+#include "InteriorPortalPresentation.h"
 #include "Camera/CameraComponent.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
@@ -12,6 +14,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -20,7 +23,12 @@
 #include "Math/RotationMatrix.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "PhysicsEngine/PhysicsHandleComponent.h"
+#include "CollisionShape.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/SphereComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "SceneManagement.h"
 #include "SceneView.h"
 
 namespace
@@ -33,12 +41,87 @@ namespace
 		return Camera && Camera->GetAttachParent()==Pawn->GetCapsuleComponent()
 			? Pawn->GetActorTransform().TransformPosition(Camera->GetRelativeLocation()) : Pawn->GetPawnViewLocation();
 	}
+	struct FPortalBodySupport
+	{
+		float Normal = 0.0f;
+		float Width = 0.0f;
+		float Height = 0.0f;
+	};
+
+	FPortalBodySupport BodySupport(const UPrimitiveComponent* Body, const FTransform& PortalFrame)
+	{
+		FPortalBodySupport Result;
+		if (!Body) { return Result; }
+
+		const FCollisionShape Shape = Body->GetCollisionShape();
+		const FVector PortalX = PortalFrame.GetUnitAxis(EAxis::X);
+		const FVector PortalY = PortalFrame.GetUnitAxis(EAxis::Y);
+		const FVector PortalZ = PortalFrame.GetUnitAxis(EAxis::Z);
+		const FQuat BodyRotation = Body->GetComponentQuat();
+
+		if (Shape.IsSphere())
+		{
+			Result.Normal = Result.Width = Result.Height = Shape.GetSphereRadius();
+			return Result;
+		}
+
+		if (Shape.IsCapsule())
+		{
+			// UE capsules use local +Z as their axial direction. The radial
+			// support and axial half-length are projected independently into the
+			// portal frame, so a rotated capsule cannot scrape through the rim
+			// merely because its center fits.
+			const FVector Axis = BodyRotation.GetAxisZ();
+			const float Radius = Shape.GetCapsuleRadius();
+			const float HalfLength = Shape.GetCapsuleAxisHalfLength();
+			Result.Normal = Radius + FMath::Abs(FVector::DotProduct(Axis, PortalX)) * HalfLength;
+			Result.Width = Radius + FMath::Abs(FVector::DotProduct(Axis, PortalY)) * HalfLength;
+			Result.Height = Radius + FMath::Abs(FVector::DotProduct(Axis, PortalZ)) * HalfLength;
+			return Result;
+		}
+
+		if (Shape.IsBox())
+		{
+			const FVector Extent = Shape.GetBox();
+			// Shape components expose local extents. Generic primitive components
+			// (including static meshes) expose a world-aligned conservative bounds
+			// box from the base implementation, so use world axes for those.
+			const bool bLocalAxes = Body->IsA<UBoxComponent>();
+			const FVector AxisX = bLocalAxes ? BodyRotation.GetAxisX() : FVector::ForwardVector;
+			const FVector AxisY = bLocalAxes ? BodyRotation.GetAxisY() : FVector::RightVector;
+			const FVector AxisZ = bLocalAxes ? BodyRotation.GetAxisZ() : FVector::UpVector;
+			const auto ProjectBox = [&Extent, &AxisX, &AxisY, &AxisZ](const FVector& Axis)
+			{
+				return FMath::Abs(FVector::DotProduct(Axis, AxisX)) * Extent.X
+					+ FMath::Abs(FVector::DotProduct(Axis, AxisY)) * Extent.Y
+					+ FMath::Abs(FVector::DotProduct(Axis, AxisZ)) * Extent.Z;
+			};
+			Result.Normal = ProjectBox(PortalX);
+			Result.Width = ProjectBox(PortalY);
+			Result.Height = ProjectBox(PortalZ);
+			return Result;
+		}
+
+		Result.Normal = Result.Width = Result.Height = Body->Bounds.SphereRadius;
+		return Result;
+	}
+
 	bool BodyFits(const UPrimitiveComponent* Body, const AInteriorPortal* Portal)
 	{
+		if (!Body || !Portal) { return false; }
 		const FVector Local = Portal->GetLogicalFrame().InverseTransformPositionNoScale(Body->GetComponentLocation());
-		// Bounding sphere is conservative for arbitrary rigid bodies.
-		const float Radius = Body->Bounds.SphereRadius;
-		return InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight, Radius, Radius);
+		const FPortalBodySupport Support = BodySupport(Body, Portal->GetLogicalFrame());
+		return InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight,
+			Support.Width, Support.Height);
+	}
+
+	bool BodyFitsAt(const UPrimitiveComponent* Body, const AInteriorPortal* Portal, const FVector& Location)
+	{
+		if (!Body || !Portal) { return false; }
+		const FVector Local = Portal->GetLogicalFrame().InverseTransformPositionNoScale(Location);
+		const FPortalBodySupport Support = BodySupport(Body, Portal->GetLogicalFrame());
+		return InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight,
+			Support.Width, Support.Height);
 	}
 }
 
@@ -46,6 +129,7 @@ AInteriorPortalSystem::AInteriorPortalSystem()
 {
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("PortalSystemRoot"));
 	GrabHandle = CreateDefaultSubobject<UPhysicsHandleComponent>(TEXT("PortalCubeHandle"));
+	PlayerPresentation = CreateDefaultSubobject<UInteriorPortalPresentation>(TEXT("PortalPlayerPresentation"));
 	// Only active play needs pre-movement collision preparation, never editor ticking.
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false;
@@ -64,30 +148,111 @@ void AInteriorPortalSystem::BeginPlay()
 	OrangePortal->PortalColor = FLinearColor(1.0f, 0.15f, 0.008f);
 	BluePortal->RefreshAppearance();
 	OrangePortal->RefreshAppearance();
-	PreviousBodyPositions.SetNum(PhysicsTravellers.Num());
-	BodyExits.SetNum(PhysicsTravellers.Num());
-	PassageConstraints.SetNum(PhysicsTravellers.Num());
-	BodyProxies.SetNum(PhysicsTravellers.Num());
-	BodyMaterials.SetNum(PhysicsTravellers.Num());
-	ProxyMaterials.SetNum(PhysicsTravellers.Num());
-	for (int32 I = 0; I < PhysicsTravellers.Num(); ++I)
-	{
-		if (IsValid(PhysicsTravellers[I])) { PreviousBodyPositions[I] = PhysicsTravellers[I]->GetComponentLocation(); }
-		if (UStaticMeshComponent* Body = Cast<UStaticMeshComponent>(PhysicsTravellers[I]))
-		{
-			UStaticMeshComponent* Proxy = NewObject<UStaticMeshComponent>(this);
-			Proxy->SetStaticMesh(Body->GetStaticMesh());
-			Proxy->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			Proxy->SetCanEverAffectNavigation(false);
-			Proxy->SetVisibility(false);
-			Proxy->RegisterComponent();
-			ProxyMaterials[I] = Proxy->CreateDynamicMaterialInstance(0, Body->GetMaterial(0));
-			BodyMaterials[I] = Body->CreateDynamicMaterialInstance(0);
-			BodyProxies[I] = Proxy;
-		}
-	}
+	// Preserve authored ordering, then append runtime-tagged bodies in stable
+	// path order. Registration validates the supported solver contract and owns
+	// all parallel traversal/proxy arrays from this point onward.
+	const TArray<TObjectPtr<UPrimitiveComponent>> AuthoredTravellers = PhysicsTravellers;
+	PhysicsTravellers.Reset();
+	for (UPrimitiveComponent* Traveller : AuthoredTravellers) { RegisterPhysicsTraveller(Traveller); }
+	DiscoverTaggedTravellers();
 	UpdateFidelityDiagnostics();
 	SetActorTickEnabled(true);
+}
+
+bool AInteriorPortalSystem::RegisterPhysicsTraveller(UPrimitiveComponent* Traveller)
+{
+	if (!IsValid(Traveller) || Traveller->GetOwner() == this || !Traveller->IsSimulatingPhysics()
+		|| PhysicsTravellers.Contains(Traveller))
+	{
+		return false;
+	}
+
+	const int32 Index = PhysicsTravellers.Add(Traveller);
+	PreviousBodyPositions.Add(Traveller->GetComponentLocation());
+	LastSafeBodyPositions.Add(Traveller->GetComponentLocation());
+	BodyExits.Add(nullptr);
+	PassageConstraints.Add(nullptr);
+	BodyProxies.Add(nullptr);
+	BodyMaterials.Add(nullptr);
+	ProxyMaterials.Add(nullptr);
+
+	if (UStaticMeshComponent* Body = Cast<UStaticMeshComponent>(Traveller))
+	{
+		UStaticMeshComponent* Proxy = NewObject<UStaticMeshComponent>(this);
+		Proxy->SetStaticMesh(Body->GetStaticMesh());
+		Proxy->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Proxy->SetCanEverAffectNavigation(false);
+		Proxy->SetVisibility(false);
+		Proxy->RegisterComponent();
+		ProxyMaterials[Index] = Proxy->CreateDynamicMaterialInstance(0, Body->GetMaterial(0));
+		BodyMaterials[Index] = Body->CreateDynamicMaterialInstance(0);
+		BodyProxies[Index] = Proxy;
+	}
+	return true;
+}
+
+bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Traveller)
+{
+	const int32 Index = PhysicsTravellers.IndexOfByKey(Traveller);
+	if (Index == INDEX_NONE) { return false; }
+
+	if (GrabHandle && GrabHandle->GetGrabbedComponent() == Traveller) { GrabHandle->ReleaseComponent(); }
+	if (PassageConstraints.IsValidIndex(Index) && IsValid(PassageConstraints[Index]))
+	{
+		PassageConstraints[Index]->DestroyComponent();
+	}
+	if (BodyProxies.IsValidIndex(Index) && IsValid(BodyProxies[Index]))
+	{
+		BodyProxies[Index]->DestroyComponent();
+	}
+
+	PhysicsTravellers.RemoveAt(Index);
+	PreviousBodyPositions.RemoveAt(Index);
+	LastSafeBodyPositions.RemoveAt(Index);
+	BodyExits.RemoveAt(Index);
+	PassageConstraints.RemoveAt(Index);
+	BodyProxies.RemoveAt(Index);
+	BodyMaterials.RemoveAt(Index);
+	ProxyMaterials.RemoveAt(Index);
+	return true;
+}
+
+void AInteriorPortalSystem::RemoveInvalidTravellers()
+{
+	for (int32 Index = PhysicsTravellers.Num() - 1; Index >= 0; --Index)
+	{
+		UPrimitiveComponent* Traveller = PhysicsTravellers[Index];
+		if (!IsValid(Traveller) || !Traveller->IsSimulatingPhysics())
+		{
+			UnregisterPhysicsTraveller(Traveller);
+		}
+	}
+}
+
+void AInteriorPortalSystem::DiscoverTaggedTravellers()
+{
+	if (!GetWorld()) { return; }
+	RemoveInvalidTravellers();
+
+	TArray<UPrimitiveComponent*> Candidates;
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		TArray<UPrimitiveComponent*> Components;
+		It->GetComponents<UPrimitiveComponent>(Components);
+		for (UPrimitiveComponent* Component : Components)
+		{
+			if (IsValid(Component) && Component->ComponentHasTag(TEXT("PortalTraveller"))
+				&& Component->IsSimulatingPhysics() && !PhysicsTravellers.Contains(Component))
+			{
+				Candidates.Add(Component);
+			}
+		}
+	}
+	Candidates.Sort([](const UPrimitiveComponent& A, const UPrimitiveComponent& B)
+	{
+		return A.GetPathName() < B.GetPathName();
+	});
+	for (UPrimitiveComponent* Candidate : Candidates) { RegisterPhysicsTraveller(Candidate); }
 }
 
 bool AInteriorPortalSystem::IsLinked() const
@@ -196,6 +361,9 @@ double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVec
 	if (!PlayerGate.IsValid() && !IgnoredSupports.IsEmpty()) { RecoverCharacterPassage(); }
 	if (PlayerGate.IsValid() && (!PlayerGate->GetLogicalFrame().Equals(PlayerGateFrame,.001)
 		|| !IsValid(PlayerGate->Support))) { RecoverCharacterPassage(); }
+	// Scoped movement rollback or an external pose correction can leave a stale gate.
+	// Release it before constraining a capsule which is already clear of the wall.
+	FinishCharacterMove(Pawn);
 	const FVector Center=Pawn->GetActorLocation();
 	const UCapsuleComponent* Capsule=Pawn->GetCapsuleComponent();
 	const double Radius=Capsule->GetScaledCapsuleRadius()+1;
@@ -227,13 +395,21 @@ double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVec
 	const FVector Move=Frame.InverseTransformVectorNoScale(Delta);
 	double Enter,Leave; FVector N;
 	const bool bFits=InteriorPortalMath::CapsuleApertureInterval(Local,Move,Frame.InverseTransformVectorNoScale(FVector::UpVector*Segment),
-		Radius,Gate->HalfWidth*.94,Gate->HalfHeight*.94,Enter,Leave,N);
+		Radius,Gate->HalfWidth*.94,Gate->HalfHeight*.94,Enter,Leave,N,true);
+	if (!bFits) { RecoverCharacterPassage(); return 1; }
 	double Fraction=bFits?FMath::Clamp(Leave,0.0,1.0):0;
 	FVector HitNormal=Frame.TransformVectorNoScale(N);
 	const double Clearance=CharacterNormalExtent(Pawn,Frame)+2;
 	// Once the entire capsule is in front of the wall, lateral movement is ordinary room movement.
 	if (bFits && Move.X>0 && (Clearance-Local.X)/Move.X<=Fraction) { Fraction=1; }
-	if (!bFits) { HitNormal=-Delta.GetSafeNormal(); }
+	// A floor/step correction can put the capsule slightly outside the conservative
+	// aperture. Keep retreat and motion towards the opening available; blocking every
+	// direction here traps the player permanently. Deeper wall entry still needs a fit.
+	if (Move.X < -UE_SMALL_NUMBER && !FitsCharacter(Pawn,Center,Gate))
+	{
+		Fraction=0;
+		HitNormal=Frame.GetUnitAxis(EAxis::X);
+	}
 	if ((IsPlayerClearingPortal() || LastPlayerTransferFrame==GFrameCounter) && Move.X<0)
 	{
 		const double EyeX=Frame.InverseTransformPositionNoScale(EyeOf(Pawn)).X;
@@ -286,6 +462,10 @@ void AInteriorPortalSystem::RestoreIgnores()
 void AInteriorPortalSystem::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	// Runtime-spawned physics actors opt in with the PortalTraveller component
+	// tag. Discovering them before the pre-physics gates keeps registration and
+	// the first traversal sample in the same frame.
+	DiscoverTaggedTravellers();
 	UpdateFidelityDiagnostics();
 	ACharacter* Pawn = Cast<ACharacter>(UGameplayStatics::GetPlayerPawn(this, 0));
 	if (Character.Get() != Pawn)
@@ -349,32 +529,103 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 
 void AInteriorPortalSystem::UpdatePhysicsGates()
 {
-	for (int32 I = 0; I < PreviousBodyPositions.Num(); ++I)
+	for (int32 I = 0; I < PhysicsTravellers.Num(); ++I)
 	{
 		UPrimitiveComponent* Body = PhysicsTravellers[I];
 		UPrimitiveComponent* Support = nullptr;
+		AInteriorPortal* InvalidPortal = nullptr;
+		bool bInvalidInsideSupport = false;
+		bool bNearSupport = false;
 		if (IsValid(Body) && Body->IsSimulatingPhysics() && IsLinked())
 		{
+			const FVector Location = Body->GetComponentLocation();
+			const FVector Velocity = Body->GetPhysicsLinearVelocity();
+			const float Delta = FMath::Min(GetWorld()->GetDeltaSeconds(), .1f);
+			const FVector PredictedLocation = Location + Velocity * Delta;
 			for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
 			{
+				if (!IsValid(Portal) || !IsValid(Portal->Support)) { continue; }
 				const FTransform Frame = Portal->GetLogicalFrame();
 				const FVector Normal = Frame.GetUnitAxis(EAxis::X);
-				const double Distance = FVector::DotProduct(Body->GetComponentLocation() - Frame.GetLocation(), Normal);
-				const double Approach = Body->Bounds.SphereRadius + 20 + Body->GetPhysicsLinearVelocity().Size() * FMath::Min(GetWorld()->GetDeltaSeconds(), .1f);
-				if (FMath::Abs(Distance) < Approach && BodyFits(Body, Portal))
+				const FPortalBodySupport BodyExtent = BodySupport(Body, Frame);
+				const double Distance = FVector::DotProduct(Location - Frame.GetLocation(), Normal);
+				const double PredictedDistance = FVector::DotProduct(PredictedLocation - Frame.GetLocation(), Normal);
+				const double Approach = BodyExtent.Normal + 20 + Velocity.Size() * Delta;
+				if (FMath::Abs(Distance) >= Approach) { continue; }
+				bNearSupport = true;
+				const bool bFits = BodyFits(Body, Portal);
+				const bool bPredictedFits = BodyFitsAt(Body, Portal, PredictedLocation);
+				const bool bWillClearSupport = FMath::Abs(PredictedDistance) > BodyExtent.Normal + 20;
+				// Disable only this body's contact while both the current and
+				// predicted poses occupy the legal opening. A lateral prediction
+				// outside the aperture keeps the wall solid for the next physics
+				// step, preventing a body from sliding behind the support.
+				if (bFits && (bPredictedFits || bWillClearSupport))
 				{
 					Support = Portal->Support;
 					break;
+				}
+				if (!bFits && FMath::Abs(Distance) <= BodyExtent.Normal + 2)
+				{
+					bInvalidInsideSupport = true;
+					InvalidPortal = Portal;
 				}
 			}
 			if (BodyExits[I].IsValid())
 			{
 				AInteriorPortal* Exit = BodyExits[I].Get();
-				const FTransform ExitFrame = Exit->GetLogicalFrame();
-				const double D = FVector::DotProduct(Body->GetComponentLocation()-ExitFrame.GetLocation(), ExitFrame.GetUnitAxis(EAxis::X));
-				if (FMath::Abs(D) < Body->Bounds.SphereRadius+20 && BodyFits(Body, Exit)) { Support=Exit->Support; }
+				if (IsValid(Exit) && IsValid(Exit->Support))
+				{
+					const FTransform ExitFrame = Exit->GetLogicalFrame();
+					const FPortalBodySupport ExitExtent = BodySupport(Body, ExitFrame);
+					const double D = FVector::DotProduct(Location - ExitFrame.GetLocation(), ExitFrame.GetUnitAxis(EAxis::X));
+					const double PredictedD = FVector::DotProduct(PredictedLocation - ExitFrame.GetLocation(), ExitFrame.GetUnitAxis(EAxis::X));
+					if (FMath::Abs(D) < ExitExtent.Normal + 20)
+					{
+						bNearSupport = true;
+						const bool bFits = BodyFits(Body, Exit);
+						const bool bPredictedFits = BodyFitsAt(Body, Exit, PredictedLocation);
+						const bool bWillClearSupport = FMath::Abs(PredictedD) > ExitExtent.Normal + 20;
+						if (bFits && (bPredictedFits || bWillClearSupport)) { Support = Exit->Support; }
+						else if (!bFits && FMath::Abs(D) <= ExitExtent.Normal + 2)
+						{
+							bInvalidInsideSupport = true;
+							InvalidPortal = Exit;
+						}
+					}
+					else { BodyExits[I].Reset(); }
+				}
 				else { BodyExits[I].Reset(); }
 			}
+		}
+
+		// A previous frame can have advanced a body through the one-frame
+		// ignore window before the aperture test runs again. Restore the last
+		// legal pose before re-enabling support collision, and remove only the
+		// velocity component that points farther into the wall.
+		if (bInvalidInsideSupport && IsValid(Body) && LastSafeBodyPositions.IsValidIndex(I))
+		{
+			const FVector SafeLocation = LastSafeBodyPositions[I];
+			if (!Body->GetComponentLocation().Equals(SafeLocation, .01f))
+			{
+				Body->SetWorldLocation(SafeLocation, false, nullptr, ETeleportType::TeleportPhysics);
+			}
+			if (InvalidPortal)
+			{
+				const FTransform Frame = InvalidPortal->GetLogicalFrame();
+				const FVector Local = Frame.InverseTransformPositionNoScale(SafeLocation);
+				const FVector Outward = Frame.GetUnitAxis(EAxis::X) * (Local.X >= 0.0f ? 1.0f : -1.0f);
+				FVector SafeVelocity = Body->GetPhysicsLinearVelocity();
+				const float InwardSpeed = FVector::DotProduct(SafeVelocity, -Outward);
+				if (InwardSpeed > 0.0f) { SafeVelocity += Outward * InwardSpeed; }
+				Body->SetPhysicsLinearVelocity(SafeVelocity);
+			}
+			Support = nullptr;
+		}
+		else if (IsValid(Body) && (!bNearSupport || Support || !IsLinked())
+			&& LastSafeBodyPositions.IsValidIndex(I))
+		{
+			LastSafeBodyPositions[I] = Body->GetComponentLocation();
 		}
 		UPhysicsConstraintComponent* Constraint = PassageConstraints[I];
 		if (Constraint && (!Support || Constraint->OverrideComponent1.Get() != Support))
@@ -551,7 +802,7 @@ bool AInteriorPortalSystem::TryGrab(APlayerController* Player)
 	FVector Eye; FRotator View; Player->GetPlayerViewPoint(Eye,View);
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalPickup),false,Player->GetPawn());
-	if (GetWorld()->LineTraceSingleByChannel(Hit,Eye,Eye+View.Vector()*220,ECC_Visibility,Params)
+	if (InteriorPortalQuery::LineTrace(this,Eye,Eye+View.Vector()*220,ECC_Visibility,Params,Hit,3,1.0f)
 		&& PhysicsTravellers.Contains(Hit.GetComponent()) && Hit.GetComponent()->IsSimulatingPhysics())
 	{
 		GrabHandle->GrabComponentAtLocationWithRotation(Hit.GetComponent(),NAME_None,Hit.GetComponent()->GetComponentLocation(),Hit.GetComponent()->GetComponentRotation());
@@ -683,6 +934,7 @@ void AInteriorPortalSystem::ResetPortals()
 
 void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 {
+	PlayerPresentation->Update(this,Player?Cast<ACharacter>(Player->GetPawn()):nullptr,PlayerGate.Get());
 	if (!IsLinked() || !Player || !Player->PlayerCameraManager) { return; }
 	ULocalPlayer* Local = Player->GetLocalPlayer();
 	FSceneViewProjectionData ProjectionData;
@@ -721,6 +973,8 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		}
 		const int32 VisibleDepth = Views.Num();
 		Entry->EnsureTargets(Width, Height, VisibleDepth);
+		TArray<float, TInlineAllocator<4>> TargetPreExposures;
+		TargetPreExposures.Init(1.0f, VisibleDepth);
 		USceneCaptureComponent2D* Capture = Entry->Capture;
 		Capture->HiddenActors.Reset();
 		Capture->HiddenActors.Add(Exit);
@@ -749,7 +1003,9 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		bool bCaptureValid = true;
 		for (int32 I=VisibleDepth-1; I>=0; --I)
 		{
-			Entry->SetView(I+1<VisibleDepth ? Entry->RenderTargets[I+1] : nullptr, I+1<VisibleDepth);
+			const bool bHasInputTarget = I+1<VisibleDepth;
+			Entry->SetView(bHasInputTarget ? Entry->RenderTargets[I+1] : nullptr, bHasInputTarget,
+				bHasInputTarget ? TargetPreExposures[I+1] : 1.0f);
 			Capture->SetWorldLocationAndRotation(Views[I].GetLocation(), Views[I].GetRotation());
 			if (!bNativeClip)
 			{
@@ -767,8 +1023,20 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			}
 			Capture->TextureTarget = Entry->RenderTargets[I];
 			Capture->CaptureScene();
+			// SceneColor HDR is written in the capture view's pre-exposed domain.
+			// Keep one value per recursion target so a recursive surface is
+			// normalized with the exposure that produced that exact texture.
+			if (FSceneViewStateInterface* CaptureState = Capture->GetViewState(0))
+			{
+				const float Measured = CaptureState->GetPreExposure();
+				if (FMath::IsFinite(Measured) && Measured > .000001f)
+				{
+					TargetPreExposures[I] = Measured;
+				}
+			}
 		}
-		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid);
+		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid,
+			bCaptureValid ? TargetPreExposures[0] : 1.0f);
 	}
 }
 
@@ -826,6 +1094,7 @@ void AInteriorPortalSystem::RestoreFidelityDiagnostics()
 
 void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 {
+	PlayerPresentation->Reset();
 	RestoreFidelityDiagnostics();
 	GrabHandle->ReleaseComponent();
 	for (UMaterialInstanceDynamic* Material : BodyMaterials) { if (Material) { Material->SetScalarParameterValue(TEXT("SliceEnabled"),0); } }

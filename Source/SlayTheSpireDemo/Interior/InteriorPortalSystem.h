@@ -12,6 +12,7 @@ class UPhysicsConstraintComponent;
 class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UPhysicsHandleComponent;
+class UInteriorPortalPresentation;
 
 UENUM(BlueprintType)
 enum class EInteriorPortalCrossingState : uint8
@@ -33,6 +34,8 @@ class SLAYTHESPIREDEMO_API AInteriorPortalSystem : public AActor
 	GENERATED_BODY()
 public:
 	AInteriorPortalSystem();
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Portals|Presentation")
+	TObjectPtr<UInteriorPortalPresentation> PlayerPresentation;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -89,6 +92,12 @@ public:
 	void ResetPortals();
 	UFUNCTION(BlueprintPure, Category="Portals")
 	bool IsLinked() const;
+	/** Register a supported, independently simulated primitive for portal traversal. */
+	UFUNCTION(BlueprintCallable, Category="Portals|Travellers")
+	bool RegisterPhysicsTraveller(UPrimitiveComponent* Traveller);
+	/** Remove a runtime traveller and all of its transient portal state. */
+	UFUNCTION(BlueprintCallable, Category="Portals|Travellers")
+	bool UnregisterPhysicsTraveller(UPrimitiveComponent* Traveller);
 	bool TryGrab(APlayerController* Player);
 	/** Called by the local controller immediately before and after its camera update. */
 	void UpdateTraversal(APlayerController* Player);
@@ -111,6 +120,8 @@ private:
 	double CharacterNormalExtent(const ACharacter* Pawn, const FTransform& Frame) const;
 	void UpdatePhysicsGates();
 	void UpdateBodyVisuals();
+	void DiscoverTaggedTravellers();
+	void RemoveInvalidTravellers();
 	void UpdateFidelityDiagnostics();
 	void RestoreFidelityDiagnostics();
 	bool IsBusy() const;
@@ -126,6 +137,7 @@ private:
 	FVector PreviousEye = FVector::ZeroVector;
 	bool bHasPreviousEye = false;
 	TArray<FVector> PreviousBodyPositions;
+	TArray<FVector> LastSafeBodyPositions;
 	TArray<TWeakObjectPtr<AInteriorPortal>> BodyExits;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPhysicsConstraintComponent>> PassageConstraints;
