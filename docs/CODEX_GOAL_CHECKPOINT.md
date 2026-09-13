@@ -1,14 +1,56 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current resumable task — STEP 1A SceneCapture renderer baseline, 2026-09-14
+## Current resumable task — STEP 1B MainView / Stencil feasibility spike, 2026-09-14
 
-Implementation commit: `b89552a` on `portal/full-fidelity-p1` (based on `ab0f590d2ccde39a785837c0db6d44422ac698e8`). The working tree was clean after the scoped STEP 1A source, test, asset, setup-script and portal-document changes. Preserve the earlier portal, map, material, traversal and presentation work; do not reset or restore the retained Legacy UI.
+Branch: `portal/full-fidelity-p1`. Starting HEAD for this delivery:
+`dbf41b81dec24ab86415f07a6861cedb0f73272e` (`portal: gate renderer diagnostics during profiling`).
+The working tree must remain scoped to the Portal renderer spike and its
+documents/tests; preserve unrelated portal, map, material, traversal and
+presentation work and do not reset or restore the retained Legacy UI.
 
-Completed in the current resumable edit: added explicit `EInteriorPortalCaptureColorMode` A/B selection with `SceneColorLinear` as the code/setup default; mapped A to `SCS_FinalColorHDR` + capture EyeAdaptation ON and B to `SCS_SceneColorHDRNoAlpha` + EyeAdaptation OFF; stopped treating a post-`CaptureScene()` public ViewState PreExposure read as image ownership; added per-endpoint/per-recursion persistent SceneCapture/ViewState instances and reset paths; added `Saved/PortalRendererDiagnostics.json` emission; added SceneCapture-independent conservative projected portal bounds; extended focused Automation for mode mapping, history identity/reset and bounds edge cases; updated `tools/setup_interior_portals.py` plus the current/observed issue documents; and reran the scoped idempotent setup so `M_InteriorPortal` and the authored living-kitchen map contain the A/B material/system contract.
+STEP 1B result: **BLOCKED at the UE 5.8 project-side renderer boundary**.
+The project now has an explicit `SceneCapture` default backend and an opt-in
+`MainViewStencilSpike` backend. The latter builds immutable
+`FInteriorPortalRenderRequest` data (logical frames, mapped virtual view,
+player-view bounds, conservative pixel rect, exit logical clip plane and
+history identity) and registers `FInteriorPortalViewExtension` through
+`FSceneViewExtensions::NewExtension`. It intentionally does not claim a real
+transformed scene pass: no portal `FSceneView`/`FViewInfo`, GPU stencil/depth
+mask, renderer-side exit clip/scissor or pre-tonemap SceneColor write is
+submitted. Explicit spike selection clears the SceneCapture image path rather
+than hiding a fallback composite.
 
-Confirmed engine limitation: UE 5.8 `CaptureScene()` enqueues render work. The public component ViewState can expose a PreExposure value and a ViewKey, but the inspected public timing does not prove that a value read after `CaptureScene()` is the PreExposure used by the just-written image. FinalColorHDR therefore reports `Unavailable / Unverified`; SceneColorLinear relies on the explicit EyeAdaptation-off contract and reports `1.0` without a guessed division. No Engine source/private renderer hook was modified.
+The inspected UE 5.8 public `ISceneViewExtension`/RDG hooks provide the real
+view-family lifecycle but not the deferred renderer's scene visibility,
+base-pass/Lumen, depth-stencil and main SceneColor integration needed for a
+second transformed view under a portal aperture. The required next boundary is
+an Engine-private pass in `FDeferredShadingSceneRenderer::Render` around the
+scene-color resolve/pre-post-process stage. No Engine source was modified.
 
-Validation completed for this STEP 1A edit: bundled UE 5.8 project-file generation passed (`Saved/Logs/STEP1A_ProjectFiles.log`), the final prescribed Development Editor build passed (`Saved/Logs/STEP1A_Build_Final.log`), and focused `SlayTheSpireDemo.Interior.Portals` passed 9/9 (`Saved/AutomationReports/STEP1A_Final/index.json`). Actual floating-PIE renderer samples were captured for SceneColorLinear at recursion depth 1 and 3 (`Saved/PortalRendererDiagnostics.SceneColorLinear.Depth1.json`, `Saved/PortalRendererDiagnostics.SceneColorLinear.Depth3.json`) and FinalColorHDR at depth 3 (`Saved/PortalRendererDiagnostics.FinalColorHDR.Depth3.json`). These prove runtime configuration, distinct history identities and diagnostics emission only; they do not prove exposure, Lumen or temporal visual parity.
+Changed source: `InteriorPortalMath.h`, `InteriorPortalRenderer.h/.cpp`,
+`InteriorPortalSystem.h/.cpp` and `InteriorPortalTests.cpp`. Added coverage for
+backend separation/defaults, history invalidation identity, virtual-view
+mapping/round trip, bounds-to-pixel conversion, clip-plane signs, logical
+activation gate, immutable request copies and extension lifecycle. The
+existing logical-frame/surface-bias, SceneCapture ViewState and projected-bound
+regressions remain in the focused suite.
+
+Validation for this delivery: bundled UE 5.8 project-file generation was run;
+Development Editor build passed; focused
+`SlayTheSpireDemo.Interior.Portals` passed **15/15** in
+`Saved/AutomationReports/STEP1B_Final_PostBuild/index.json`. Automation proves only
+contract/math/lifecycle behavior. It does not prove real GPU stencil,
+pre-tonemap scene composition, exposure parity, Lumen, TAA/TSR or visual
+clipping. The editor loaded `/Game/House/L_Interior_LivingKitchen` and a PIE
+session visibly ran the retained SceneCapture fallback; the requested full
+manual matrix was not completed, and no visual parity/pass is claimed. MainView
+PIE visual acceptance is unavailable while the renderer pass is blocked;
+retained SceneCapture PIE remains `MANUAL VISUAL ACCEPTANCE REQUIRED`.
+
+Next action: keep SceneCapture A/B as the validated fallback and decide whether
+to authorize an Engine-level renderer feasibility patch in the renderer module.
+Do not start Step 2 or Step 3, recursion > 1, full temporal/Lumen fidelity or
+physics work from this checkpoint.
 
 Rollback checkpoint, 2026-09-13 14:22: the uncommitted portal files were reconstructed from the session history immediately before the 14:22 MCP capture rather than using `git reset --hard`, which would have discarded the earlier portal and presentation work. The map-owned pair and generated assets were rebuilt and saved. UE 5.8's HDR RenderTarget contract was preserved with a Linear Color sampler, and stale disconnected material expressions were removed so `M_InteriorPortal` compiles instead of falling back to the default shader. Final MCP viewport evidence is `Saved/PortalRollback1422FinalViewport.png`; PIE was stopped after capture. The final editor viewport shows both animated portal rings with no checkerboard/default-material surface.
 

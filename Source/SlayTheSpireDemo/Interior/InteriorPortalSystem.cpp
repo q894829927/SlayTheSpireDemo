@@ -1,6 +1,7 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalRenderer.h"
 #include "InteriorPortalQuery.h"
 #include "InteriorPlayerController.h"
 #include "InteriorPortalMovementComponent.h"
@@ -138,6 +139,23 @@ bool AInteriorPortalSystem::UsesCaptureEyeAdaptation(const EInteriorPortalCaptur
 	return Mode == EInteriorPortalCaptureColorMode::FinalColorHDR;
 }
 
+bool AInteriorPortalSystem::UsesSceneCapture(const EInteriorPortalRendererBackend Backend)
+{
+	return Backend == EInteriorPortalRendererBackend::SceneCapture;
+}
+
+bool AInteriorPortalSystem::UsesMainViewStencil(const EInteriorPortalRendererBackend Backend)
+{
+	return Backend == EInteriorPortalRendererBackend::MainViewStencilSpike;
+}
+
+bool AInteriorPortalSystem::RequiresRendererHistoryReset(
+	const EInteriorPortalRendererBackend PreviousBackend,
+	const EInteriorPortalRendererBackend NewBackend)
+{
+	return PreviousBackend != NewBackend;
+}
+
 AInteriorPortalSystem::AInteriorPortalSystem()
 {
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("PortalSystemRoot"));
@@ -164,6 +182,8 @@ void AInteriorPortalSystem::BeginPlay()
 	OrangePortal->PortalColor = FLinearColor(1.0f, 0.15f, 0.008f);
 	BluePortal->RefreshAppearance();
 	OrangePortal->RefreshAppearance();
+	MainViewStencilExtension = FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(GetWorld());
+	MainViewStencilExtension->SetEnabled(false);
 	// Preserve authored ordering, then append runtime-tagged bodies in stable
 	// path order. Registration validates the supported solver contract and owns
 	// all parallel traversal/proxy arrays from this point onward.
@@ -963,7 +983,29 @@ void AInteriorPortalSystem::ResetPortals()
 void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 {
 	PlayerPresentation->Update(this,Player?Cast<ACharacter>(Player->GetPawn()):nullptr,PlayerGate.Get());
-	if (!IsLinked() || !Player || !Player->PlayerCameraManager) { return; }
+	const bool bUsingMainViewStencil = UsesMainViewStencil(RendererBackend);
+	if (!bRendererBackendInitialized || LastRendererBackend != RendererBackend)
+	{
+		const FString Reason = !bRendererBackendInitialized
+			? TEXT("renderer backend initialized")
+			: TEXT("renderer backend changed");
+		InvalidateRendererHistories(Reason);
+		bRendererBackendInitialized = true;
+		LastRendererBackend = RendererBackend;
+		if (MainViewStencilExtension)
+		{
+			MainViewStencilExtension->SetEnabled(bUsingMainViewStencil);
+			MainViewStencilExtension->ClearRequest();
+		}
+	}
+	if (!IsLinked() || !Player || !Player->PlayerCameraManager)
+	{
+		if (bUsingMainViewStencil && MainViewStencilExtension)
+		{
+			MainViewStencilExtension->ClearRequest();
+		}
+		return;
+	}
 	ULocalPlayer* Local = Player->GetLocalPlayer();
 	FSceneViewProjectionData ProjectionData;
 	if (!Local || !Local->ViewportClient || !Local->GetProjectionData(Local->ViewportClient->Viewport, ProjectionData)) { return; }
@@ -1025,6 +1067,100 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			ViewProjectionForTransform(View), Rect, OutBounds, ProjectionData.IsPerspectiveProjection(),
 			ProjectionData.GetNearPlaneFromProjectionMatrix());
 	};
+
+	if (bUsingMainViewStencil)
+	{
+		FInteriorPortalRenderRequest Request;
+		bool bRequestBuilt = false;
+		FString Blocker = TEXT("Activation gate rejected: no visible valid single-layer portal request");
+		if (RecursionDepth != 1)
+		{
+			Blocker = TEXT("MainViewStencilSpike supports RecursionDepth=1 only");
+		}
+		else
+		{
+			int32 EndpointIndex = 0;
+			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
+			{
+				InteriorPortalMath::FPortalScreenBounds DirectBounds;
+				if (!IsVisible(Entry, PlayerView, DirectBounds))
+				{
+					++EndpointIndex;
+					continue;
+				}
+				AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
+				if (!IsValid(Exit))
+				{
+					Blocker = TEXT("Activation gate rejected: exit endpoint is invalid");
+					++EndpointIndex;
+					continue;
+				}
+
+				const FTransform EntryFrame = Entry->GetLogicalFrame();
+				const FTransform ExitFrame = Exit->GetLogicalFrame();
+				const FTransform VirtualView = InteriorPortalMath::BuildVirtualViewTransform(
+					PlayerView, EntryFrame, ExitFrame);
+				const FVector VirtualLocation = VirtualView.GetLocation();
+				const bool bValidVirtualView = FMath::IsFinite(VirtualLocation.X)
+					&& FMath::IsFinite(VirtualLocation.Y)
+					&& FMath::IsFinite(VirtualLocation.Z)
+					&& VirtualView.GetRotation().IsNormalized();
+				const bool bActivationGate = InteriorPortalRenderer::CanSubmitMainViewStencilRequest(
+					true, true, DirectBounds.bHasVisiblePortion, bValidVirtualView, RecursionDepth);
+				if (!bActivationGate)
+				{
+					Blocker = TEXT("Activation gate rejected: invalid bounds or virtual view");
+					++EndpointIndex;
+					continue;
+				}
+
+				const bool bBuilt = FInteriorPortalRenderRequest::Build(
+					EndpointIndex, EndpointIndex, 0, PlayerView, EntryFrame, ExitFrame,
+					Entry->HalfWidth, Entry->HalfHeight,
+					ViewProjectionForTransform(PlayerView), Rect,
+					ProjectionData.IsPerspectiveProjection(),
+					ProjectionData.GetNearPlaneFromProjectionMatrix(), ClipPlaneBias,
+					RendererHistoryGeneration, Request);
+				if (bBuilt)
+				{
+					bRequestBuilt = true;
+					Blocker = TEXT("UE 5.8 project-side API cannot submit a transformed scene pass with a per-portal stencil aperture");
+					break;
+				}
+				Blocker = TEXT("Request construction rejected: projected bounds, scissor, or exit clip plane invalid");
+				++EndpointIndex;
+			}
+		}
+
+		for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
+		{
+			if (IsValid(Entry))
+			{
+				Entry->SetView(nullptr, false, 1.0f,
+					TEXT("MainViewStencilSpike: no SceneCapture image; project-side scene pass is blocked"), 0.0f);
+			}
+		}
+
+		if (MainViewStencilExtension)
+		{
+			if (bRequestBuilt)
+			{
+				MainViewStencilExtension->PublishRequest(Request);
+			}
+			else
+			{
+				MainViewStencilExtension->ClearRequest();
+			}
+		}
+		bRendererDiagnosticsDirty = true;
+		WriteMainViewStencilSpikeDiagnostics(
+			bRequestBuilt ? &Request : nullptr,
+			bRequestBuilt ? EInteriorPortalSpikeStatus::Blocked : EInteriorPortalSpikeStatus::Disabled,
+			Blocker);
+		bWasRendererLinked = true;
+		return;
+	}
+
 	FString SamplesJson;
 	int32 SampleCount = 0;
 	for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
@@ -1175,7 +1311,7 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	if (bEnableRendererDiagnostics
 		&& (bRendererDiagnosticsDirty || LastRendererDiagnosticsWriteTime < 0.0 || Now - LastRendererDiagnosticsWriteTime >= 0.5))
 	{
-		const FString Json = FString::Printf(TEXT("{\n  \"frame\":%llu,\n  \"captureColorMode\":\"%s\",\n  \"captureEyeAdaptation\":%s,\n  \"renderClipMode\":\"%s\",\n  \"historyGeneration\":%llu,\n  \"lastHistoryResetReason\":\"%s\",\n  \"sampleCount\":%d,\n  \"samples\":[%s]\n}\n"),
+		const FString Json = FString::Printf(TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"SceneCapture\",\n  \"rendererHook\":\"Unavailable / Unverified: SceneCapture custom view\",\n  \"captureColorMode\":\"%s\",\n  \"captureEyeAdaptation\":%s,\n  \"renderClipMode\":\"%s\",\n  \"historyGeneration\":%llu,\n  \"lastHistoryResetReason\":\"%s\",\n  \"sampleCount\":%d,\n  \"samples\":[%s]\n}\n"),
 			GFrameCounter, bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
 			bCaptureEyeAdaptation ? TEXT("true") : TEXT("false"),
 			RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane ? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
@@ -1184,6 +1320,78 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		LastRendererDiagnosticsWriteTime = Now;
 		bRendererDiagnosticsDirty = false;
 	}
+}
+
+void AInteriorPortalSystem::WriteMainViewStencilSpikeDiagnostics(
+	const FInteriorPortalRenderRequest* Request, const EInteriorPortalSpikeStatus Status,
+	const FString& Blocker)
+{
+	if (!bEnableRendererDiagnostics)
+	{
+		return;
+	}
+
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	if (!bRendererDiagnosticsDirty && LastRendererDiagnosticsWriteTime >= 0.0
+		&& Now - LastRendererDiagnosticsWriteTime < 0.5)
+	{
+		return;
+	}
+
+	const FString SafeBlocker = Blocker.Replace(TEXT("\""), TEXT("'"));
+	FString RequestJson = TEXT("null");
+	if (Request)
+	{
+		const float PortalAreaPercent = Request->ProjectedBounds.bHasVisiblePortion
+			? (Request->ProjectedBounds.Max.X - Request->ProjectedBounds.Min.X)
+			* (Request->ProjectedBounds.Max.Y - Request->ProjectedBounds.Min.Y) * 100.0f
+			: 0.0f;
+		RequestJson = FString::Printf(
+			TEXT("{\"portalId\":%d,\"endpointIndex\":%d,\"recursionDepth\":%d,"
+			"\"virtualViewLocation\":[%.6f,%.6f,%.6f],"
+			"\"virtualViewRotation\":[%.8f,%.8f,%.8f,%.8f],"
+			"\"projectedBounds\":{\"minX\":%.6f,\"minY\":%.6f,\"maxX\":%.6f,\"maxY\":%.6f},"
+			"\"viewRect\":[%d,%d,%d,%d],\"scissorRect\":[%d,%d,%d,%d],"
+			"\"scissorApplied\":false,\"portalAreaPercentage\":%.6f,"
+			"\"exitClipPlane\":[%.8f,%.8f,%.8f,%.8f],"
+			"\"historyIdentity\":%llu,\"rendererHistoryGeneration\":%llu,"
+			"\"stencilRef\":\"Unavailable / Unverified\","
+			"\"viewStateIdentity\":\"Unavailable / Unverified: no FSceneView was created\","
+			"\"temporalStatus\":\"TEMPORAL NOT IMPLEMENTED\","
+			"\"playerExposureAuthority\":\"Intended contract; no virtual scene pass submitted\"}"),
+			Request->PortalId, Request->EndpointIndex, Request->RecursionLevel,
+			Request->VirtualView.GetLocation().X, Request->VirtualView.GetLocation().Y,
+			Request->VirtualView.GetLocation().Z,
+			Request->VirtualView.GetRotation().X, Request->VirtualView.GetRotation().Y,
+			Request->VirtualView.GetRotation().Z, Request->VirtualView.GetRotation().W,
+			Request->ProjectedBounds.Min.X, Request->ProjectedBounds.Min.Y,
+			Request->ProjectedBounds.Max.X, Request->ProjectedBounds.Max.Y,
+			Request->ViewRect.Min.X, Request->ViewRect.Min.Y,
+			Request->ViewRect.Max.X, Request->ViewRect.Max.Y,
+			Request->ScissorRect.Min.X, Request->ScissorRect.Min.Y,
+			Request->ScissorRect.Max.X, Request->ScissorRect.Max.Y,
+			PortalAreaPercent,
+			Request->ExitClipPlane.X, Request->ExitClipPlane.Y,
+			Request->ExitClipPlane.Z, Request->ExitClipPlane.W,
+			Request->HistoryIdentity, Request->RendererHistoryGeneration);
+	}
+
+	const FString Json = FString::Printf(
+		TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"MainViewStencilSpike\",\n"
+		"  \"spikeStatus\":\"%s\",\n"
+		"  \"rendererHook\":\"FInteriorPortalViewExtension::PreRenderViewFamily_RenderThread\",\n"
+		"  \"renderStage\":\"PreRenderViewFamily_RenderThread hook observed; transformed scene pass unavailable\",\n"
+		"  \"captureColorMode\":\"Not applicable\",\n"
+		"  \"renderClipMode\":\"%s\",\n"
+		"  \"blocker\":\"%s\",\n"
+		"  \"request\":%s\n}\n"),
+		GFrameCounter, InteriorPortalSpikeStatusToString(Status),
+		RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane
+			? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
+		*SafeBlocker, *RequestJson);
+	FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
+	LastRendererDiagnosticsWriteTime = Now;
+	bRendererDiagnosticsDirty = false;
 }
 
 void AInteriorPortalSystem::InvalidateRendererHistorySlot(const int32 EndpointIndex, const int32 RecursionLevel,
@@ -1284,6 +1492,12 @@ void AInteriorPortalSystem::RestoreFidelityDiagnostics()
 
 void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 {
+	if (MainViewStencilExtension)
+	{
+		MainViewStencilExtension->SetEnabled(false);
+		MainViewStencilExtension->ClearRequest();
+		MainViewStencilExtension.Reset();
+	}
 	PlayerPresentation->Reset();
 	RestoreFidelityDiagnostics();
 	GrabHandle->ReleaseComponent();

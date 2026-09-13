@@ -4,6 +4,7 @@
 #include "Interior/InteriorPortalQuery.h"
 #include "Interior/InteriorPortal.h"
 #include "Interior/InteriorPortalSystem.h"
+#include "Interior/InteriorPortalRenderer.h"
 #include "Interior/InteriorPortalCameraState.h"
 #include "Interior/InteriorPortalMovementComponent.h"
 #include "Interior/InteriorChildCharacter.h"
@@ -405,6 +406,214 @@ bool FInteriorPortalMovementGateTest::RunTest(const FString& Parameters)
 	B->bPlaced=false; System->Tick(.016f);
 	TestTrue(TEXT("Invalid pair clears temporary movement ignores"),Pawn->GetCapsuleComponent()->GetMoveIgnoreComponents().IsEmpty());
 	TestTrue(TEXT("Pair invalidation leaves capsule safely in front of exit"),Pawn->GetActorLocation().X>=1024);
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalRendererBackendTest,
+	"SlayTheSpireDemo.Interior.Portals.RendererBackendContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalRendererBackendTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	AInteriorPortalSystem* System = World->SpawnActor<AInteriorPortalSystem>();
+	TestTrue(TEXT("SceneCapture is the explicit default renderer backend"),
+		System->RendererBackend == EInteriorPortalRendererBackend::SceneCapture);
+	TestTrue(TEXT("SceneCapture backend is identified independently"),
+		AInteriorPortalSystem::UsesSceneCapture(EInteriorPortalRendererBackend::SceneCapture));
+	TestFalse(TEXT("SceneCapture is not the MainView stencil backend"),
+		AInteriorPortalSystem::UsesMainViewStencil(EInteriorPortalRendererBackend::SceneCapture));
+	System->RendererBackend = EInteriorPortalRendererBackend::MainViewStencilSpike;
+	TestTrue(TEXT("MainView stencil backend can be explicitly selected"),
+		AInteriorPortalSystem::UsesMainViewStencil(System->RendererBackend));
+	TestFalse(TEXT("MainView stencil selection does not use SceneCapture"),
+		AInteriorPortalSystem::UsesSceneCapture(System->RendererBackend));
+	System->CaptureColorMode = EInteriorPortalCaptureColorMode::FinalColorHDR;
+	TestTrue(TEXT("CaptureColorMode remains independently configurable"),
+		AInteriorPortalSystem::GetCaptureSourceForColorMode(System->CaptureColorMode) == SCS_FinalColorHDR);
+	TestTrue(TEXT("Changing renderer backend requires a history reset"),
+		AInteriorPortalSystem::RequiresRendererHistoryReset(
+			EInteriorPortalRendererBackend::SceneCapture,
+			EInteriorPortalRendererBackend::MainViewStencilSpike));
+	TestTrue(TEXT("Returning to SceneCapture also requires a history reset"),
+		AInteriorPortalSystem::RequiresRendererHistoryReset(
+			EInteriorPortalRendererBackend::MainViewStencilSpike,
+			EInteriorPortalRendererBackend::SceneCapture));
+	TestFalse(TEXT("Keeping one backend does not require a backend reset"),
+		AInteriorPortalSystem::RequiresRendererHistoryReset(
+			EInteriorPortalRendererBackend::SceneCapture,
+			EInteriorPortalRendererBackend::SceneCapture));
+	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalVirtualViewRequestTest,
+	"SlayTheSpireDemo.Interior.Portals.VirtualViewRequest", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalVirtualViewRequestTest::RunTest(const FString& Parameters)
+{
+	const FTransform PlayerView(FRotator(17.0f, -31.0f, 8.0f), FVector(31.0f, -22.0f, 74.0f));
+	const FTransform EntryFrame(FRotator(0.0f, 90.0f, 0.0f), FVector(100.0f, 20.0f, 130.0f));
+	const FTransform ExitFrame(FRotator(25.0f, 173.0f, 47.0f), FVector(1700.0f, -850.0f, 300.0f));
+	const FTransform Expected(
+		InteriorPortalMath::Rotation(EntryFrame, ExitFrame) * PlayerView.GetRotation(),
+		InteriorPortalMath::Position(PlayerView.GetLocation(), EntryFrame, ExitFrame));
+	const FTransform Actual = InteriorPortalMath::BuildVirtualViewTransform(PlayerView, EntryFrame, ExitFrame);
+	TestTrue(TEXT("Virtual view location uses the existing portal position mapping"),
+		Actual.GetLocation().Equals(Expected.GetLocation(), 0.001f));
+	TestTrue(TEXT("Virtual view rotation uses the existing portal quaternion mapping"),
+		Actual.GetRotation().Equals(Expected.GetRotation(), 0.001f));
+	const FTransform RoundTrip = InteriorPortalMath::BuildVirtualViewTransform(Actual, ExitFrame, EntryFrame);
+	TestTrue(TEXT("Virtual view mapping round trips through the paired logical frames"),
+		RoundTrip.Equals(PlayerView, 0.001f));
+
+	const FMatrix PortalViewPlanes(
+		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+	const FMatrix Projection = FReversedZPerspectiveMatrix(PI / 4.0f, 1920.0f, 1080.0f, 1.0f);
+	const FIntRect ViewRect(0, 0, 1920, 1080);
+	const FTransform SimplePlayer(FRotator::ZeroRotator, FVector(0.0f, 0.0f, 100.0f));
+	const FTransform SimpleEntry(FRotator::ZeroRotator, FVector(100.0f, 0.0f, 100.0f));
+	const FTransform SimpleExit(FRotator::ZeroRotator, FVector(500.0f, 0.0f, 100.0f));
+	const FTransform SimpleVirtual = InteriorPortalMath::BuildVirtualViewTransform(SimplePlayer, SimpleEntry, SimpleExit);
+	const FMatrix SimplePlayerViewProjection = FTranslationMatrix(-SimplePlayer.GetLocation())
+		* FInverseRotationMatrix(SimplePlayer.Rotator()) * PortalViewPlanes * Projection;
+	FInteriorPortalRenderRequest Request;
+	TestTrue(TEXT("A valid one-layer immutable render request is constructible"),
+		FInteriorPortalRenderRequest::Build(7, 0, 0, SimplePlayer, SimpleEntry, SimpleExit,
+			65.0, 115.0, SimplePlayerViewProjection, ViewRect, true, 1.0, 0.5, 12, Request));
+	TestTrue(TEXT("Constructed request has a valid activation contract"), Request.IsValid());
+	TestTrue(TEXT("Request history identity includes the renderer generation"),
+		Request.HistoryIdentity == FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 12));
+	const FTransform SavedEntry = Request.EntryFrame;
+	const FIntRect SavedScissor = Request.ScissorRect;
+	const uint64 SavedHistoryIdentity = Request.HistoryIdentity;
+	FTransform MutableEntry = SimpleEntry;
+	MutableEntry.SetLocation(FVector(9000.0f, 9000.0f, 9000.0f));
+	TestTrue(TEXT("Request retains copied logical transforms after source mutation"),
+		Request.EntryFrame.Equals(SavedEntry, 0.001f));
+	TestTrue(TEXT("Request retains copied scissor after source mutation"), Request.ScissorRect == SavedScissor);
+	TestTrue(TEXT("Request retains copied history identity after source mutation"),
+		Request.HistoryIdentity == SavedHistoryIdentity);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalScreenBoundsPixelRectTest,
+	"SlayTheSpireDemo.Interior.Portals.ScreenBoundsPixelRect", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalScreenBoundsPixelRectTest::RunTest(const FString& Parameters)
+{
+	InteriorPortalMath::FPortalScreenBounds Bounds;
+	FIntRect PixelRect;
+	Bounds.bHasVisiblePortion = true;
+	Bounds.Min = FVector2D(0.25f, 0.25f);
+	Bounds.Max = FVector2D(0.75f, 0.75f);
+	TestTrue(TEXT("Centered normalized bounds convert to pixels"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect));
+	TestTrue(TEXT("Centered pixel rect uses conservative floor/ceil"),
+		PixelRect == FIntRect(480, 270, 1440, 810));
+
+	Bounds.Min = FVector2D(0.0f, 0.2f); Bounds.Max = FVector2D(0.12f, 0.8f);
+	TestTrue(TEXT("Partial left edge is retained"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect)
+		&& PixelRect.Min.X == 0);
+	Bounds.Min = FVector2D(0.88f, 0.2f); Bounds.Max = FVector2D(1.0f, 0.8f);
+	TestTrue(TEXT("Partial right edge is retained"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect)
+		&& PixelRect.Max.X == 1920);
+	Bounds.Min = FVector2D(0.2f, 0.0f); Bounds.Max = FVector2D(0.8f, 0.03f);
+	TestTrue(TEXT("Partial top edge is retained"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect)
+		&& PixelRect.Min.Y == 0);
+	Bounds.Min = FVector2D(0.2f, 0.97f); Bounds.Max = FVector2D(0.8f, 1.0f);
+	TestTrue(TEXT("Partial bottom edge is retained"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect)
+		&& PixelRect.Max.Y == 1080);
+	Bounds.Min = FVector2D(0.9994f, 0.9994f); Bounds.Max = FVector2D(0.9999f, 0.9999f);
+	TestTrue(TEXT("Tiny visible portion expands to at least one conservative pixel"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect)
+		&& PixelRect.Width() >= 1 && PixelRect.Height() >= 1);
+	Bounds.Min = FVector2D(0.25f, 0.25f); Bounds.Max = FVector2D(0.75f, 0.75f);
+	TestTrue(TEXT("Non-zero view rect origins are preserved"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(100, 50, 1700, 950), PixelRect));
+	TestTrue(TEXT("Non-zero view rect conversion does not reset to zero origin"),
+		PixelRect == FIntRect(500, 275, 1300, 725));
+	Bounds.bHasVisiblePortion = false;
+	TestFalse(TEXT("Fully outside aperture produces an invalid pixel rect"),
+		InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, FIntRect(0, 0, 1920, 1080), PixelRect));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalClipPlaneContractTest,
+	"SlayTheSpireDemo.Interior.Portals.ExitClipPlaneContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalClipPlaneContractTest::RunTest(const FString& Parameters)
+{
+	for (const FTransform& ExitFrame : {
+		FTransform(FRotator::ZeroRotator, FVector(500.0f, 20.0f, 100.0f)),
+		FTransform(FRotator(0.0f, 90.0f, 0.0f), FVector(900.0f, -40.0f, 210.0f)),
+		FTransform(FRotator(35.0f, 20.0f, 10.0f), FVector(-300.0f, 700.0f, 80.0f))})
+	{
+		FPlane ClipPlane;
+		TestTrue(TEXT("Logical exit frame produces a clip plane"),
+			InteriorPortalMath::BuildPortalClipPlane(ExitFrame, 0.5, ClipPlane));
+		const FVector Normal = ExitFrame.GetUnitAxis(EAxis::X).GetSafeNormal();
+		const FVector PlanePoint = ExitFrame.GetLocation() + Normal * 0.5f;
+		TestTrue(TEXT("Exit clip plane contains its biased logical point"),
+			FMath::Abs(ClipPlane.PlaneDot(PlanePoint)) < 0.01f);
+		TestTrue(TEXT("Destination-side point is retained by the plane contract"),
+			ClipPlane.PlaneDot(PlanePoint + Normal * 10.0f) > 0.0f);
+		TestTrue(TEXT("Camera-side point is rejected by the plane contract"),
+			ClipPlane.PlaneDot(PlanePoint - Normal * 10.0f) < 0.0f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalSpikeActivationTest,
+	"SlayTheSpireDemo.Interior.Portals.SpikeActivationGate", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalSpikeActivationTest::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("Valid linked visible one-layer request is allowed"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(true, true, true, true, 1));
+	TestFalse(TEXT("Unlinked pair cannot submit a request"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(false, true, true, true, 1));
+	TestFalse(TEXT("Behind-camera portal cannot submit a request"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(true, false, true, true, 1));
+	TestFalse(TEXT("Invalid projected rect cannot submit a request"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(true, true, false, true, 1));
+	TestFalse(TEXT("Invalid virtual view cannot submit a request"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(true, true, true, false, 1));
+	TestFalse(TEXT("Recursion depth above the spike contract cannot submit a request"),
+		InteriorPortalRenderer::CanSubmitMainViewStencilRequest(true, true, true, true, 2));
+	TestTrue(TEXT("Endpoint and recursion identities do not collide"),
+		FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 3)
+		!= FInteriorPortalRenderRequest::MakeHistoryIdentity(1, 0, 3)
+		&& FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 3)
+		!= FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 1, 3)
+		&& FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 3)
+		!= FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 4));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalViewExtensionLifecycleTest,
+	"SlayTheSpireDemo.Interior.Portals.ViewExtensionLifecycle", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalViewExtensionLifecycleTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> Extension =
+		FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
+	TestFalse(TEXT("ViewExtension starts disabled"), Extension->IsEnabled());
+	Extension->SetEnabled(true);
+	TestTrue(TEXT("ViewExtension can be enabled"), Extension->IsEnabled());
+	FInteriorPortalRenderRequest Request;
+	Request.PortalId = 1;
+	Request.EndpointIndex = 0;
+	Request.HistoryIdentity = 77;
+	Request.bEnabled = true;
+	Extension->PublishRequest(Request);
+	TestTrue(TEXT("ViewExtension receives an immutable request copy"), Extension->HasPublishedRequest());
+	TestEqual(TEXT("Published request keeps its history identity"),
+		Extension->GetPublishedRequest().HistoryIdentity, uint64(77));
+	Extension->ClearRequest();
+	TestFalse(TEXT("ViewExtension clear removes stale request state"), Extension->HasPublishedRequest());
+	Extension->SetEnabled(false);
+	TestFalse(TEXT("Disabling the extension clears request state"), Extension->HasPublishedRequest());
+	Extension.Reset();
 	World->DestroyWorld(false);
 	return true;
 }

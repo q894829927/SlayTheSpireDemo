@@ -21,6 +21,77 @@ namespace InteriorPortalMath
 		bool bClippedToViewport = false;
 	};
 
+	inline FQuat Rotation(const FTransform& Entry, const FTransform& Exit);
+	inline FVector Position(const FVector& Point, const FTransform& Entry, const FTransform& Exit);
+
+	/** Build the one-step virtual camera transform used by every renderer backend. */
+	inline FTransform BuildVirtualViewTransform(const FTransform& PlayerView,
+		const FTransform& EntryFrame, const FTransform& ExitFrame)
+	{
+		const FQuat PortalRotation = Rotation(EntryFrame, ExitFrame);
+		return FTransform(PortalRotation * PlayerView.GetRotation(),
+			Position(PlayerView.GetLocation(), EntryFrame, ExitFrame));
+	}
+
+	/**
+	 * Convert normalized conservative portal bounds into a pixel rectangle.
+	 * The normalized coordinates are relative to InViewRect, not the full
+	 * desktop or DPI-scaled editor viewport. Floor/ceil preserve coverage.
+	 */
+	inline bool ScreenBoundsToPixelRect(const FPortalScreenBounds& Bounds,
+		const FIntRect& InViewRect, FIntRect& OutRect)
+	{
+		OutRect = FIntRect(0, 0, 0, 0);
+		if (!Bounds.bHasVisiblePortion || InViewRect.Width() <= 0 || InViewRect.Height() <= 0)
+		{
+			return false;
+		}
+		if (!FMath::IsFinite(Bounds.Min.X) || !FMath::IsFinite(Bounds.Min.Y)
+			|| !FMath::IsFinite(Bounds.Max.X) || !FMath::IsFinite(Bounds.Max.Y))
+		{
+			return false;
+		}
+
+		const float MinNormalizedX = FMath::Clamp(Bounds.Min.X, 0.0f, 1.0f);
+		const float MinNormalizedY = FMath::Clamp(Bounds.Min.Y, 0.0f, 1.0f);
+		const float MaxNormalizedX = FMath::Clamp(Bounds.Max.X, 0.0f, 1.0f);
+		const float MaxNormalizedY = FMath::Clamp(Bounds.Max.Y, 0.0f, 1.0f);
+		if (MaxNormalizedX <= MinNormalizedX || MaxNormalizedY <= MinNormalizedY)
+		{
+			return false;
+		}
+
+		const int32 MinX = InViewRect.Min.X + FMath::FloorToInt(MinNormalizedX * float(InViewRect.Width()));
+		const int32 MinY = InViewRect.Min.Y + FMath::FloorToInt(MinNormalizedY * float(InViewRect.Height()));
+		const int32 MaxX = InViewRect.Min.X + FMath::CeilToInt(MaxNormalizedX * float(InViewRect.Width()));
+		const int32 MaxY = InViewRect.Min.Y + FMath::CeilToInt(MaxNormalizedY * float(InViewRect.Height()));
+
+		OutRect.Min.X = FMath::Clamp(MinX, InViewRect.Min.X, InViewRect.Max.X);
+		OutRect.Min.Y = FMath::Clamp(MinY, InViewRect.Min.Y, InViewRect.Max.Y);
+		OutRect.Max.X = FMath::Clamp(MaxX, InViewRect.Min.X, InViewRect.Max.X);
+		OutRect.Max.Y = FMath::Clamp(MaxY, InViewRect.Min.Y, InViewRect.Max.Y);
+		return OutRect.Width() > 0 && OutRect.Height() > 0;
+	}
+
+	/**
+	 * Construct the destination-side exit clip plane from the logical frame.
+	 * UE's TPlane stores Normal dot Position = W, and PlaneDot returns
+	 * Normal dot Position - W. PlaneDot > 0 is the destination side (+X of
+	 * the logical exit frame).
+	 */
+	inline bool BuildPortalClipPlane(const FTransform& ExitFrame, double Bias, FPlane& OutPlane)
+	{
+		const FVector Normal = ExitFrame.GetUnitAxis(EAxis::X).GetSafeNormal();
+		if (!Normal.IsNearlyZero())
+		{
+			const FVector Point = ExitFrame.GetLocation() + Normal * float(Bias);
+			OutPlane = FPlane(Normal, FVector::DotProduct(Normal, Point));
+			return true;
+		}
+		OutPlane = FPlane(0.0, 0.0, 0.0, 0.0);
+		return false;
+	}
+
 	/** Projects an aperture into the current view. The rectangle used for the
 	 * projection encloses the portal's ellipse, making the bounds conservative.
 	 * ViewProjectionMatrix must be the UE world-to-clip matrix for ViewRect. */

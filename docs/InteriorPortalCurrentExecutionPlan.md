@@ -4,7 +4,7 @@ Date: **2026-09-14**
 
 Branch reviewed: **`portal/full-fidelity-p1`**
 
-Review baseline HEAD: **`ab0f590d2ccde39a785837c0db6d44422ac698e8`**
+Review baseline HEAD: **`dbf41b81dec24ab86415f07a6861cedb0f73272e`**
 
 Status:
 
@@ -13,6 +13,7 @@ CORE IMPLEMENTATION BASELINE ESTABLISHED /
 STEP 1 — FINAL RENDERER CLOSURE ACTIVE /
 SCENECAPTURE RETAINED AS FALLBACK / COMPARISON PATH /
 STEP 1A — A/B BASELINE + HISTORY DIAGNOSTICS IMPLEMENTED /
+STEP 1B — MAINVIEW / STENCIL PROJECT-SIDE SPIKE BLOCKED /
 VISUAL CEILING TEST STILL OPEN /
 STENCIL / MAIN-VIEW RENDERER FEASIBILITY AUTHORIZED /
 FULL PHYSICS DEFERRED UNTIL CORE SEAL
@@ -73,7 +74,70 @@ Each endpoint owns one persistent `USceneCaptureComponent2D` per recursion level
 
 The shared `InteriorPortalMath::ProjectPortalApertureToScreenBounds` helper now produces conservative normalized `MinX/MinY/MaxX/MaxY` bounds with near-clip, camera-crossing, behind-camera and viewport-clipping diagnostics. It is independent of SceneCapture and is intended for later scissor/restricted-viewport use.
 
-This delivery does **not** establish exposure parity, Lumen parity, temporal quality, visual clipping acceptance or production renderer freeze. Those remain manual/renderer-matrix gates below. No Step 1B Stencil/MainView implementation is included in this delivery.
+This delivery does **not** establish exposure parity, Lumen parity, temporal quality, visual clipping acceptance or production renderer freeze. Those remain manual/renderer-matrix gates below. The Step 1B result is recorded separately below.
+
+### 1.2 STEP 1B MainView / Stencil feasibility result — 2026-09-14
+
+**Result: `STEP 1B BLOCKED` at the UE 5.8 project-side renderer boundary.**
+
+The project now has an explicit renderer backend contract:
+
+```text
+RendererBackend = SceneCapture             (default / retained fallback)
+RendererBackend = MainViewStencilSpike    (explicit feasibility selection)
+
+CaptureColorMode = FinalColorHDR | SceneColorLinear
+RenderClipMode   = NativeClipPlane | ObliqueFallback
+```
+
+The new `FInteriorPortalRenderRequest` is a copied, immutable game-thread
+description containing the endpoint, recursion level, logical entry/exit
+frames, mapped virtual transform, player-view projected bounds, conservative
+pixel scissor, exit logical clip plane and renderer history identity. The
+shared math is tested independently of SceneCapture. Backend changes invalidate
+the existing renderer history generation, and the project-side
+`FInteriorPortalViewExtension` is enabled/cleared/destroyed with the backend
+and world lifecycle.
+
+The spike also registers against the real UE 5.8 main-view lifecycle through
+`FWorldSceneViewExtension` / `FSceneViewExtensions::NewExtension`, including
+`BeginRenderViewFamily` and
+`PreRenderViewFamily_RenderThread(FRDGBuilder&, FSceneViewFamily&)`. That
+establishes a legitimate renderer-extension boundary, but it does **not** make
+the required renderer pass possible. No transformed `FSceneView`/`FViewInfo`
+is created for the portal, no scene visibility/base-pass/Lumen pass is issued,
+no GPU stencil/depth aperture is written, no exit clip is applied in the
+renderer, and no scissor is applied. The explicit spike path clears portal
+SceneCapture images rather than presenting a SceneCapture composite, so it
+cannot be mistaken for a MainView result.
+
+Inspection of the UE 5.8 source shows that the public extension/RDG hooks can
+modify the existing view family or add custom RDG work, but do not expose a
+project-side call that renders a second transformed scene view into the current
+`SceneTextures.Color` through an arbitrary per-portal stencil aperture. The
+post-process hooks receive the current view's post-process inputs and therefore
+cannot retroactively perform the required scene render while retaining one
+player exposure/tone-map authority. Public `FSceneViewFamily::Views` does not
+provide the missing portal aperture/depth integration; an ordinary additional
+view is a rectangular scene view, not a portal-bounded sub-view merged into the
+main SceneColor.
+
+The minimum engine escalation point is a renderer-private portal pass in the
+deferred renderer, at or immediately before the existing
+`AddResolveSceneColorPass` / `RendererModule.RenderPostResolvedSceneColorExtension`
+and `PrePostProcessPass_RenderThread` boundary in
+`FDeferredShadingSceneRenderer::Render`. That pass would need private access to
+the renderer's `FViewInfo`, scene visibility/base-pass/Lumen machinery,
+`FSceneTextures` depth-stencil and SceneColor, and a mapped portal view with
+exit clipping, stencil test and conservative scissor. The pass must write the
+portal view into the main pre-post-process SceneColor and then let the player's
+normal exposure/local-exposure/tone-map chain run once. No Engine source was
+modified or submitted by this task.
+
+Focused Automation covers the contract only: **15/15 PASS**. This does not
+prove GPU stencil correctness, exposure parity, Lumen parity, temporal quality
+or visual clipping. The SceneCapture A/B backend remains the only runnable
+renderer fallback; production renderer freeze and Core seal remain open.
 
 ---
 

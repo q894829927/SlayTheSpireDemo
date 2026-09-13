@@ -14,6 +14,9 @@ class UStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UPhysicsHandleComponent;
 class UInteriorPortalPresentation;
+class FInteriorPortalViewExtension;
+struct FInteriorPortalRenderRequest;
+enum class EInteriorPortalSpikeStatus : uint8;
 
 UENUM(BlueprintType)
 enum class EInteriorPortalCrossingState : uint8
@@ -35,6 +38,14 @@ enum class EInteriorPortalCaptureColorMode : uint8
 	FinalColorHDR UMETA(DisplayName="FinalColorHDR (Capture Post-Process Domain)"),
 	/** Capture scene color with capture eye adaptation disabled. */
 	SceneColorLinear UMETA(DisplayName="SceneColor Linear (Eye Adaptation Off)")
+};
+
+/** Renderer implementation backend. CaptureColorMode remains SceneCapture-only. */
+UENUM(BlueprintType)
+enum class EInteriorPortalRendererBackend : uint8
+{
+	SceneCapture UMETA(DisplayName="SceneCapture Fallback"),
+	MainViewStencilSpike UMETA(DisplayName="MainView Stencil Feasibility Spike")
 };
 
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
@@ -69,6 +80,9 @@ public:
 	/** Explicit SceneCapture A/B path. SceneColorLinear is the default production candidate because the player view remains the final exposure owner. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
 	EInteriorPortalCaptureColorMode CaptureColorMode = EInteriorPortalCaptureColorMode::SceneColorLinear;
+	/** STEP 1B is explicit opt-in. SceneCapture remains the default and production fallback. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
+	EInteriorPortalRendererBackend RendererBackend = EInteriorPortalRendererBackend::SceneCapture;
 	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float ClipPlaneBias = 0.5f;
@@ -126,6 +140,10 @@ public:
 	/** Explicit mapping used by the renderer and focused Automation. */
 	static ESceneCaptureSource GetCaptureSourceForColorMode(EInteriorPortalCaptureColorMode Mode);
 	static bool UsesCaptureEyeAdaptation(EInteriorPortalCaptureColorMode Mode);
+	static bool UsesSceneCapture(EInteriorPortalRendererBackend Backend);
+	static bool UsesMainViewStencil(EInteriorPortalRendererBackend Backend);
+	static bool RequiresRendererHistoryReset(EInteriorPortalRendererBackend PreviousBackend,
+		EInteriorPortalRendererBackend NewBackend);
 	/**
 	 * Returns true when a first-person flashlight clearance sweep hit a portal's
 	 * supporting wall through the portal aperture. The caller can ignore that hit
@@ -148,6 +166,8 @@ private:
 	void RestoreFidelityDiagnostics();
 	void InvalidateRendererHistories(const FString& Reason);
 	void InvalidateRendererHistorySlot(int32 EndpointIndex, int32 RecursionLevel, const FString& Reason);
+	void WriteMainViewStencilSpikeDiagnostics(const FInteriorPortalRenderRequest* Request,
+		EInteriorPortalSpikeStatus Status, const FString& Blocker);
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
@@ -179,6 +199,8 @@ private:
 	int32 SavedEyeAdaptationQuality = 0;
 	float SavedPreExposureOverride = 0.0f;
 	bool bRendererConfigurationInitialized = false;
+	bool bRendererBackendInitialized = false;
+	EInteriorPortalRendererBackend LastRendererBackend = EInteriorPortalRendererBackend::SceneCapture;
 	EInteriorPortalRenderClipMode LastRenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
 	EInteriorPortalCaptureColorMode LastCaptureColorMode = EInteriorPortalCaptureColorMode::SceneColorLinear;
 	bool bLastCaptureTemporalAA = true;
@@ -196,4 +218,5 @@ private:
 	TArray<uint64> CaptureHistoryGenerations;
 	bool bPreviousPlayerViewValid = false;
 	FTransform PreviousPlayerView;
+	TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainViewStencilExtension;
 };
