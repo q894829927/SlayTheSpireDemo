@@ -7,8 +7,8 @@
 #include "InteriorPortalSystem.h"
 
 #include "Camera/PlayerCameraManager.h"
+#include "CanvasTypes.h"
 #include "Components/PrimitiveComponent.h"
-#include "Engine/Canvas.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -267,6 +267,7 @@ void UInteriorPortalFullSceneViewSubsystem::Render(
 			.SetResolveScene(true)
 			.SetAdditionalViewFamily(true));
 	ViewFamily.bIsHDR = true;
+	ViewFamily.bIsMainViewFamily = false;
 
 	FSceneViewInitOptions ViewInitOptions;
 	ViewInitOptions.SetViewRectangle(FIntRect(0, 0, Target->SizeX, Target->SizeY));
