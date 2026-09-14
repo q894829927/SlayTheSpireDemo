@@ -29,7 +29,7 @@ UENUM(BlueprintType)
 enum class EInteriorPortalRenderClipMode : uint8
 {
 	NativeClipPlane UMETA(DisplayName="Native SceneCapture Clip Plane"),
-	ObliqueFallback UMETA(DisplayName="Oblique Projection Fallback")
+	ObliqueFallback UMETA(DisplayName="Oblique Projection (Experimental / Known Broken)")
 };
 
 UENUM(BlueprintType)
@@ -76,7 +76,7 @@ public:
 	int32 RecursionDepth = 3;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals", meta=(ClampMin="0.25", ClampMax="1.0"))
 	float ResolutionScale = 1.0f;
-	/** Native clip plane is the P1 production candidate; fallback exists only for controlled comparison/rollback. */
+	/** Native clip plane is the SceneCapture validation baseline. The oblique path is diagnostic-only after PIE A/B reproduced giant-triangle/wedge distortion. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
 	EInteriorPortalRenderClipMode RenderClipMode = EInteriorPortalRenderClipMode::NativeClipPlane;
 	/** Explicit SceneCapture A/B path. SceneColorLinear is the default production candidate because the player view remains the final exposure owner. */
