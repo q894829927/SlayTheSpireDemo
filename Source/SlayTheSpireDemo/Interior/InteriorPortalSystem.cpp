@@ -1317,13 +1317,33 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		const FTransform ExitFrame = Exit->GetLogicalFrame();
 		TArray<FTransform, TInlineAllocator<4>> Views;
 		TArray<InteriorPortalMath::FPortalScreenBounds, TInlineAllocator<4>> ViewBounds;
-		FTransform View = PlayerView;
 		const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
-		for (int32 I=0; I<Depth; ++I)
+		FTransform View = FTransform(
+			Rotation * PlayerView.GetRotation(),
+			InteriorPortalMath::Position(
+				PlayerView.GetLocation(), EntryFrame, ExitFrame));
+
+		// Depth0 is required whenever the player directly sees Entry. The
+		// virtual view's own visibility only gates the next recursion level.
+		InteriorPortalMath::FPortalScreenBounds Depth0Bounds;
+		IsVisible(Entry, View, Depth0Bounds);
+		Views.Add(View);
+		ViewBounds.Add(Depth0Bounds);
+
+		for (int32 I = 1; I < Depth; ++I)
 		{
-			View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), EntryFrame, ExitFrame));
+			InteriorPortalMath::FPortalScreenBounds RecursiveGateBounds;
+			if (!IsVisible(Entry, View, RecursiveGateBounds))
+			{
+				break;
+			}
+
+			View = FTransform(
+				Rotation * View.GetRotation(),
+				InteriorPortalMath::Position(
+					View.GetLocation(), EntryFrame, ExitFrame));
 			InteriorPortalMath::FPortalScreenBounds Bounds;
-			if (!IsVisible(Entry, View, Bounds)) { break; }
+			IsVisible(Entry, View, Bounds);
 			Views.Add(View);
 			ViewBounds.Add(Bounds);
 		}
