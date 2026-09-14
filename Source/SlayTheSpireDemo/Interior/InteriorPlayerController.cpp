@@ -1,6 +1,7 @@
 #include "InteriorPlayerController.h"
 #include "InteriorPortalSystem.h"
 #include "InteriorPortalCameraManager.h"
+#include "InteriorPortalFullSceneViewSubsystem.h"
 #include "Components/InputComponent.h"
 #include "EngineUtils.h"
 #include "InputCoreTypes.h"
@@ -58,7 +59,17 @@ void AInteriorPlayerController::UpdateCameraManager(float DeltaSeconds)
 	if (IsValid(PortalSystem)) { PortalSystem->UpdateTraversal(this); }
 	if (PortalCamera.bActive) { SetControlRotation(PortalCamera.Orientation.Rotator()); }
 	Super::UpdateCameraManager(DeltaSeconds);
-	if (IsValid(PortalSystem)) { PortalSystem->RenderViews(this); }
+	if (IsValid(PortalSystem))
+	{
+		PortalSystem->RenderViews(this);
+		if (UWorld* World = GetWorld())
+		{
+			if (UInteriorPortalFullSceneViewSubsystem* FullSceneView = World->GetSubsystem<UInteriorPortalFullSceneViewSubsystem>())
+			{
+				FullSceneView->Render(this, PortalSystem);
+			}
+		}
+	}
 }
 
 void AInteriorPlayerController::ApplyPortalView(const FQuat& Mapping)
