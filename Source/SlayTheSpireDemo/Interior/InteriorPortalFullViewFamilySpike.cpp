@@ -18,6 +18,7 @@
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
 #include "RendererInterface.h"
 #include "RenderingThread.h"
 #include "SceneManagement.h"
@@ -317,7 +318,9 @@ namespace
 
 		FCanvas Canvas(TargetResource, nullptr, World, World->GetFeatureLevel(),
 			FCanvas::CDM_DeferDrawing, 1.0f);
-		GetRendererModule().BeginRenderingViewFamily(&Canvas, &ViewFamily);
+		IRendererModule& RendererModule =
+			FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
+		RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
 		// This is intentionally a blocking, one-shot diagnostic. It is not the
 		// production per-frame path. The flush makes the exported evidence belong
