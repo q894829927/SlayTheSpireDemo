@@ -14,6 +14,12 @@ namespace
 		TEXT("Emit STEP 1B.3 public composition subscription/execution diagnostics. 0=off, 1=on."),
 		ECVF_Default);
 
+	TAutoConsoleVariable<int32> CVarPortalCompositionDebugMode(
+		TEXT("portal.CompositionDebugMode"),
+		0,
+		TEXT("STEP 1B.3 composition diagnostic. 0=normal portal texture, 1=solid magenta inside the analytic aperture."),
+		ECVF_RenderThreadSafe);
+
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
@@ -30,6 +36,7 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
 		SHADER_PARAMETER(FVector4f, PortalBounds)
+		SHADER_PARAMETER(float, CompositionDebugMode)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -262,16 +269,18 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	// player's constrained view rect may have a non-zero origin, so it must not
 	// be reused as the portal texture viewport.
 	const FScreenPassTextureViewport PortalViewport(PortalTexture);
+	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
 
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
 			PortalTexture->Desc.Extent.X,
-			PortalTexture->Desc.Extent.Y);
+			PortalTexture->Desc.Extent.Y,
+			CompositionDebugMode);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -287,6 +296,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalBounds = FVector4f(
 		Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
 		Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y);
+	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	TShaderMapRef<InteriorPortalRenderer::FInteriorPortalCompositionPS> PixelShader(
@@ -303,10 +313,11 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d"),
+			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d DebugMode=%d"),
 			GFrameCounter,
 			Request.PortalId,
-			Request.EndpointIndex);
+			Request.EndpointIndex,
+			CompositionDebugMode);
 	}
 	return Output;
 }
