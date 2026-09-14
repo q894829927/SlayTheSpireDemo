@@ -182,7 +182,6 @@ namespace
 		AInteriorPortal* Entry = nullptr;
 		AInteriorPortal* Exit = nullptr;
 		int32 EndpointIndex = INDEX_NONE;
-		InteriorPortalMath::FPortalScreenBounds DirectBounds;
 		int32 CandidateIndex = 0;
 		for (AInteriorPortal* Candidate : {PortalSystem->BluePortal.Get(), PortalSystem->OrangePortal.Get()})
 		{
@@ -198,7 +197,6 @@ namespace
 				Exit = Candidate == PortalSystem->BluePortal
 					? PortalSystem->OrangePortal.Get() : PortalSystem->BluePortal.Get();
 				EndpointIndex = CandidateIndex;
-				DirectBounds = CandidateBounds;
 				break;
 			}
 			++CandidateIndex;
@@ -266,6 +264,11 @@ namespace
 		ShowFlags.SetTemporalAA(false);
 		ShowFlags.SetScreenPercentage(false);
 
+		// The view state must outlive the view family because FSceneView retains a
+		// pointer to it until FSceneViewFamilyContext destroys its owned views.
+		FSceneViewStateReference ViewState;
+		ViewState.Allocate(World->GetFeatureLevel());
+
 		FSceneViewFamilyContext ViewFamily(
 			FSceneViewFamily::ConstructionValues(TargetResource, World->Scene, ShowFlags)
 				.SetTime(World->GetTime())
@@ -276,8 +279,6 @@ namespace
 		ViewFamily.SceneCaptureSource = SCS_FinalColorHDR;
 		ViewFamily.ViewMode = VMI_Lit;
 
-		FSceneViewStateReference ViewState;
-		ViewState.Allocate(World->GetFeatureLevel());
 		FSceneViewInitOptions ViewInitOptions;
 		ViewInitOptions.ViewFamily = &ViewFamily;
 		ViewInitOptions.SceneViewStateInterface = ViewState.GetReference();
@@ -350,8 +351,6 @@ namespace
 			*Detail,
 			bSavedPng ? *PngPath : TEXT("<not written>"),
 			bSavedExr ? *ExrPath : TEXT("<not written>"));
-
-		ViewState.Destroy();
 	}
 
 	FAutoConsoleCommand GRunPortalFullViewFamilySpike(
