@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
 #include "GameFramework/Actor.h"
+#include "SceneTypes.h"
 #include "InteriorPortalSystem.generated.h"
 
 class AInteriorPortal;
@@ -45,7 +46,8 @@ UENUM(BlueprintType)
 enum class EInteriorPortalRendererBackend : uint8
 {
 	SceneCapture UMETA(DisplayName="SceneCapture Fallback"),
-	MainViewStencilSpike UMETA(DisplayName="MainView Stencil Feasibility Spike")
+	MainViewStencilSpike UMETA(DisplayName="MainView Stencil Feasibility Spike"),
+	CustomRenderPassSpike UMETA(DisplayName="Public CustomRenderPass Feasibility Spike")
 };
 
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
@@ -142,6 +144,7 @@ public:
 	static bool UsesCaptureEyeAdaptation(EInteriorPortalCaptureColorMode Mode);
 	static bool UsesSceneCapture(EInteriorPortalRendererBackend Backend);
 	static bool UsesMainViewStencil(EInteriorPortalRendererBackend Backend);
+	static bool UsesCustomRenderPass(EInteriorPortalRendererBackend Backend);
 	static bool RequiresRendererHistoryReset(EInteriorPortalRendererBackend PreviousBackend,
 		EInteriorPortalRendererBackend NewBackend);
 	/**
@@ -168,6 +171,8 @@ private:
 	void InvalidateRendererHistorySlot(int32 EndpointIndex, int32 RecursionLevel, const FString& Reason);
 	void WriteMainViewStencilSpikeDiagnostics(const FInteriorPortalRenderRequest* Request,
 		EInteriorPortalSpikeStatus Status, const FString& Blocker);
+	void WriteCustomRenderPassSpikeDiagnostics(const FInteriorPortalRenderRequest* Request,
+		EInteriorPortalSpikeStatus Status, bool bSubmitted, const FString& Result);
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;
@@ -208,6 +213,7 @@ private:
 	int32 LastRendererWidth = 0;
 	int32 LastRendererHeight = 0;
 	int32 LastRendererDepth = 0;
+	FIntPoint LastCustomRenderTargetSize = FIntPoint::ZeroValue;
 	bool bWasRendererLinked = false;
 	bool bRendererDiagnosticsDirty = true;
 	double LastRendererDiagnosticsWriteTime = -1.0;
@@ -219,4 +225,6 @@ private:
 	bool bPreviousPlayerViewValid = false;
 	FTransform PreviousPlayerView;
 	TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainViewStencilExtension;
+	/** Persistent state identities are independent from PlayerViewState and SceneCapture states. */
+	FSceneViewStateReference CustomRenderPassViewStates[2];
 };

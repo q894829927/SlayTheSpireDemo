@@ -2,10 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "InteriorPortalMath.h"
+#include "Math/RotationMatrix.h"
+#include "Rendering/CustomRenderPass.h"
+#include "SceneInterface.h"
 #include "SceneViewExtension.h"
 
 class FSceneViewFamily;
 class FRDGBuilder;
+class FRenderTarget;
 struct FPostProcessingInputs;
 
 /**
@@ -13,8 +17,11 @@ struct FPostProcessingInputs;
  *
  * This type deliberately contains no Actor, Component, RenderTarget or other
  * mutable UObject reference. It is safe to copy into a renderer-side queue.
- * STEP 1B currently builds and diagnoses this description, but does not claim
- * that UE 5.8's project-side API can submit it as a second scene pass.
+ * STEP 1B.2 extends this description with the exact matrices consumed by
+ * UE 5.8's public FCustomRenderPassRendererInput. The custom-pass backend
+ * submits this snapshot to the main renderer, but its output remains a
+ * separate render target because the public API has no main SceneColor merge
+ * or aperture/depth binding contract.
  */
 struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 {
@@ -24,10 +31,14 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	FTransform EntryFrame;
 	FTransform ExitFrame;
 	FTransform VirtualView;
+	FVector ViewLocation = FVector::ZeroVector;
+	FMatrix ViewRotationMatrix = FMatrix::Identity;
+	FMatrix ProjectionMatrix = FMatrix::Identity;
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
 	FIntRect ViewRect;
 	FIntRect ScissorRect;
 	FPlane ExitClipPlane = FPlane(FVector::ForwardVector, 0.0f);
+	bool bExitClipEncodedInProjection = false;
 	uint64 HistoryIdentity = 0;
 	uint64 RendererHistoryGeneration = 0;
 	bool bEnabled = false;
@@ -46,6 +57,7 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		const FTransform& PlayerView, const FTransform& InEntryFrame,
 		const FTransform& InExitFrame, double HalfWidth, double HalfHeight,
 		const FMatrix& PortalViewProjection, const FIntRect& InViewRect,
+		const FMatrix& InProjectionMatrix,
 		bool bPerspectiveProjection, double NearClip, double ClipPlaneBias,
 		uint64 InRendererHistoryGeneration, FInteriorPortalRenderRequest& OutRequest)
 	{
@@ -82,6 +94,28 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		OutRequest.ExitFrame = InExitFrame;
 		OutRequest.VirtualView = InteriorPortalMath::BuildVirtualViewTransform(
 			PlayerView, InEntryFrame, InExitFrame);
+		OutRequest.ViewLocation = OutRequest.VirtualView.GetLocation();
+		const FMatrix PortalViewPlanes(
+			FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0),
+			FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+		OutRequest.ViewRotationMatrix = FInverseRotationMatrix(
+			OutRequest.VirtualView.Rotator()) * PortalViewPlanes;
+		OutRequest.ProjectionMatrix = InProjectionMatrix;
+		// FCustomRenderPassRendererInput has no GlobalClippingPlane field. Encode
+		// the logical exit plane in the public projection matrix so the actual
+		// custom-pass FSceneView still receives a deterministic clip contract.
+		const FVector ExitNormal = InExitFrame.GetUnitAxis(EAxis::X);
+		const FVector ExitPoint = InExitFrame.GetLocation() + ExitNormal * ClipPlaneBias;
+		const FVector ViewPlaneNormal = OutRequest.VirtualView.InverseTransformVectorNoScale(ExitNormal);
+		const FVector ViewPlanePoint = OutRequest.VirtualView.InverseTransformPositionNoScale(ExitPoint);
+		const FVector4 ViewPlane(ViewPlaneNormal.Y, ViewPlaneNormal.Z, ViewPlaneNormal.X,
+			-FVector::DotProduct(ViewPlaneNormal, ViewPlanePoint));
+		FMatrix ObliqueProjection;
+		if (InteriorPortalMath::TryObliqueProjection(InProjectionMatrix, ViewPlane, ObliqueProjection))
+		{
+			OutRequest.ProjectionMatrix = ObliqueProjection;
+			OutRequest.bExitClipEncodedInProjection = true;
+		}
 		OutRequest.ProjectedBounds = Bounds;
 		OutRequest.ViewRect = InViewRect;
 		OutRequest.ScissorRect = ScissorRect;
@@ -105,6 +139,32 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 			&& ScissorRect.Width() > 0 && ScissorRect.Height() > 0
 			&& HistoryIdentity != 0;
 	}
+};
+
+/**
+ * Project-side implementation of UE 5.8's public custom render-pass
+ * contract. It intentionally writes to an existing external render target;
+ * main-view SceneColor composition is not claimed because no public callback
+ * exposes the renderer's private FSceneTextures/depth-stencil bindings.
+ */
+class SLAYTHESPIREDEMO_API FInteriorPortalCustomRenderPass final : public FCustomRenderPassBase
+{
+public:
+	FInteriorPortalCustomRenderPass(const FString& InDebugName, FRenderTarget* InRenderTarget,
+		const FIntPoint& InRenderTargetSize);
+	FInteriorPortalCustomRenderPass(const FInteriorPortalCustomRenderPass&) = delete;
+	FInteriorPortalCustomRenderPass& operator=(const FInteriorPortalCustomRenderPass&) = delete;
+
+	IMPLEMENT_CUSTOM_RENDER_PASS(FInteriorPortalCustomRenderPass)
+
+	bool HasRenderTarget() const { return RenderTargetResource != nullptr; }
+
+protected:
+	virtual void OnPreRender(FRDGBuilder& GraphBuilder) override;
+	virtual void OnEndPass(FRDGBuilder& GraphBuilder) override;
+
+private:
+	FRenderTarget* RenderTargetResource = nullptr;
 };
 
 /** State of the project-side feasibility spike, not visual acceptance. */
@@ -138,6 +198,34 @@ namespace InteriorPortalRenderer
 	{
 		return bPairLinked && bPortalVisible && bValidBounds && bValidVirtualView
 			&& RequestedRecursionDepth == 1;
+	}
+
+	inline bool CanSubmitCustomRenderPassRequest(bool bPairLinked, bool bPortalVisible,
+		bool bValidBounds, bool bValidVirtualView, int32 RequestedRecursionDepth)
+	{
+		return bPairLinked && bPortalVisible && bValidBounds && bValidVirtualView
+			&& RequestedRecursionDepth == 1;
+	}
+
+	inline bool BuildCustomRenderPassInput(
+		const FInteriorPortalRenderRequest& Request,
+		FSceneViewStateInterface* ViewState,
+		FCustomRenderPassBase* CustomRenderPass,
+		FSceneInterface::FCustomRenderPassRendererInput& OutInput)
+	{
+		if (!Request.IsValid() || !ViewState || !CustomRenderPass)
+		{
+			return false;
+		}
+
+		OutInput.ViewLocation = Request.ViewLocation;
+		OutInput.ViewRotationMatrix = Request.ViewRotationMatrix;
+		OutInput.ProjectionMatrix = Request.ProjectionMatrix;
+		OutInput.ViewStateInterface = ViewState;
+		OutInput.bIsSceneCapture = false;
+		OutInput.bUseMainViewFamilyShowFlags = true;
+		OutInput.CustomRenderPass = CustomRenderPass;
+		return true;
 	}
 }
 

@@ -422,10 +422,19 @@ bool FInteriorPortalRendererBackendTest::RunTest(const FString& Parameters)
 		AInteriorPortalSystem::UsesSceneCapture(EInteriorPortalRendererBackend::SceneCapture));
 	TestFalse(TEXT("SceneCapture is not the MainView stencil backend"),
 		AInteriorPortalSystem::UsesMainViewStencil(EInteriorPortalRendererBackend::SceneCapture));
+	TestFalse(TEXT("SceneCapture is not the CustomRenderPass backend"),
+		AInteriorPortalSystem::UsesCustomRenderPass(EInteriorPortalRendererBackend::SceneCapture));
 	System->RendererBackend = EInteriorPortalRendererBackend::MainViewStencilSpike;
 	TestTrue(TEXT("MainView stencil backend can be explicitly selected"),
 		AInteriorPortalSystem::UsesMainViewStencil(System->RendererBackend));
 	TestFalse(TEXT("MainView stencil selection does not use SceneCapture"),
+		AInteriorPortalSystem::UsesSceneCapture(System->RendererBackend));
+	System->RendererBackend = EInteriorPortalRendererBackend::CustomRenderPassSpike;
+	TestTrue(TEXT("CustomRenderPass backend can be explicitly selected"),
+		AInteriorPortalSystem::UsesCustomRenderPass(System->RendererBackend));
+	TestFalse(TEXT("CustomRenderPass selection is not MainView stencil selection"),
+		AInteriorPortalSystem::UsesMainViewStencil(System->RendererBackend));
+	TestFalse(TEXT("CustomRenderPass selection does not use SceneCapture"),
 		AInteriorPortalSystem::UsesSceneCapture(System->RendererBackend));
 	System->CaptureColorMode = EInteriorPortalCaptureColorMode::FinalColorHDR;
 	TestTrue(TEXT("CaptureColorMode remains independently configurable"),
@@ -443,6 +452,60 @@ bool FInteriorPortalRendererBackendTest::RunTest(const FString& Parameters)
 			EInteriorPortalRendererBackend::SceneCapture,
 			EInteriorPortalRendererBackend::SceneCapture));
 	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalCustomRenderPassContractTest,
+	"SlayTheSpireDemo.Interior.Portals.CustomRenderPassContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalCustomRenderPassContractTest::RunTest(const FString& Parameters)
+{
+	FInteriorPortalCustomRenderPass Pass(TEXT("PortalCustomRenderPassTest"), nullptr, FIntPoint(320, 180));
+	TestTrue(TEXT("Custom pass uses the UE 5.8 DepthAndBasePass mode"),
+		Pass.GetRenderMode() == FCustomRenderPassBase::ERenderMode::DepthAndBasePass);
+	TestTrue(TEXT("Custom pass requests scene color without alpha"),
+		Pass.GetRenderOutput() == FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha);
+	TestTrue(TEXT("Custom pass maps to SCS_SceneColorHDRNoAlpha"),
+		Pass.GetSceneCaptureSource() == SCS_SceneColorHDRNoAlpha);
+	TestTrue(TEXT("Custom pass includes translucency in its declared scene-color contract"),
+		Pass.IsTranslucentIncluded());
+	TestFalse(TEXT("A null target is rejected by the render-pass target contract"), Pass.HasRenderTarget());
+
+	const FTransform PlayerView(FRotator(0.0f, 180.0f, 0.0f), FVector(200.0f, 20.0f, 80.0f));
+	const FTransform EntryFrame(FRotator::ZeroRotator, FVector(100.0f, 0.0f, 100.0f));
+	const FTransform ExitFrame(FRotator::ZeroRotator, FVector(500.0f, 50.0f, 100.0f));
+	const FMatrix PortalViewPlanes(
+		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+	const FMatrix Projection = FReversedZPerspectiveMatrix(PI / 4.0f, 1920.0f, 1080.0f, 1.0f);
+	const FIntRect ViewRect(0, 0, 1920, 1080);
+	const FMatrix ViewProjection = FTranslationMatrix(-PlayerView.GetLocation())
+		* FInverseRotationMatrix(PlayerView.Rotator()) * PortalViewPlanes * Projection;
+	FInteriorPortalRenderRequest Request;
+	TestTrue(TEXT("Custom pass request reuses the portal virtual-view builder"),
+		FInteriorPortalRenderRequest::Build(9, 0, 0, PlayerView, EntryFrame, ExitFrame,
+			65.0, 115.0, ViewProjection, ViewRect, Projection, true, 1.0, 0.5, 4, Request));
+
+	FSceneViewStateReference PortalViewState;
+	PortalViewState.Allocate(ERHIFeatureLevel::SM6);
+	FSceneViewStateInterface* State = PortalViewState.GetReference();
+	TestNotNull(TEXT("Custom pass owns an independent portal ViewState identity"), State);
+	if (State)
+	{
+		FSceneInterface::FCustomRenderPassRendererInput Input;
+		TestTrue(TEXT("Immutable request maps to FCustomRenderPassRendererInput"),
+			InteriorPortalRenderer::BuildCustomRenderPassInput(Request, State, &Pass, Input));
+		TestTrue(TEXT("Renderer input uses the mapped virtual location"),
+			Input.ViewLocation.Equals(Request.ViewLocation, 0.001f));
+		TestTrue(TEXT("Renderer input uses the mapped virtual view rotation matrix"),
+			Input.ViewRotationMatrix.Equals(Request.ViewRotationMatrix, 0.001f));
+		TestTrue(TEXT("Renderer input uses the clip-encoded projection matrix"),
+			Input.ProjectionMatrix.Equals(Request.ProjectionMatrix, 0.001f));
+		TestTrue(TEXT("Renderer input keeps the portal ViewState separate from the player"),
+			Input.ViewStateInterface == State);
+		TestTrue(TEXT("Renderer input is a real main-renderer custom pass request"),
+			!Input.bIsSceneCapture && Input.bUseMainViewFamilyShowFlags
+			&& Input.CustomRenderPass == &Pass);
+	}
+	PortalViewState.Destroy();
 	return true;
 }
 
@@ -469,7 +532,7 @@ bool FInteriorPortalVirtualViewRequestTest::RunTest(const FString& Parameters)
 		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
 	const FMatrix Projection = FReversedZPerspectiveMatrix(PI / 4.0f, 1920.0f, 1080.0f, 1.0f);
 	const FIntRect ViewRect(0, 0, 1920, 1080);
-	const FTransform SimplePlayer(FRotator::ZeroRotator, FVector(0.0f, 0.0f, 100.0f));
+	const FTransform SimplePlayer(FRotator(0.0f, 180.0f, 0.0f), FVector(200.0f, 0.0f, 100.0f));
 	const FTransform SimpleEntry(FRotator::ZeroRotator, FVector(100.0f, 0.0f, 100.0f));
 	const FTransform SimpleExit(FRotator::ZeroRotator, FVector(500.0f, 0.0f, 100.0f));
 	const FTransform SimpleVirtual = InteriorPortalMath::BuildVirtualViewTransform(SimplePlayer, SimpleEntry, SimpleExit);
@@ -478,13 +541,21 @@ bool FInteriorPortalVirtualViewRequestTest::RunTest(const FString& Parameters)
 	FInteriorPortalRenderRequest Request;
 	TestTrue(TEXT("A valid one-layer immutable render request is constructible"),
 		FInteriorPortalRenderRequest::Build(7, 0, 0, SimplePlayer, SimpleEntry, SimpleExit,
-			65.0, 115.0, SimplePlayerViewProjection, ViewRect, true, 1.0, 0.5, 12, Request));
+			65.0, 115.0, SimplePlayerViewProjection, ViewRect, Projection, true, 1.0, 0.5, 12, Request));
 	TestTrue(TEXT("Constructed request has a valid activation contract"), Request.IsValid());
+	TestTrue(TEXT("Request copies the transformed virtual location"),
+		Request.ViewLocation.Equals(Request.VirtualView.GetLocation(), 0.001f));
+	TestTrue(TEXT("Request carries the transformed view rotation matrix"),
+		Request.ViewRotationMatrix.Equals(
+			FInverseRotationMatrix(Request.VirtualView.Rotator()) * PortalViewPlanes, 0.001f));
+	TestTrue(TEXT("Request carries either the clip-encoded or unmodified player projection"),
+		Request.bExitClipEncodedInProjection || Request.ProjectionMatrix.Equals(Projection, 0.001f));
 	TestTrue(TEXT("Request history identity includes the renderer generation"),
 		Request.HistoryIdentity == FInteriorPortalRenderRequest::MakeHistoryIdentity(0, 0, 12));
 	const FTransform SavedEntry = Request.EntryFrame;
 	const FIntRect SavedScissor = Request.ScissorRect;
 	const uint64 SavedHistoryIdentity = Request.HistoryIdentity;
+	const FMatrix SavedProjection = Request.ProjectionMatrix;
 	FTransform MutableEntry = SimpleEntry;
 	MutableEntry.SetLocation(FVector(9000.0f, 9000.0f, 9000.0f));
 	TestTrue(TEXT("Request retains copied logical transforms after source mutation"),
@@ -492,6 +563,8 @@ bool FInteriorPortalVirtualViewRequestTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Request retains copied scissor after source mutation"), Request.ScissorRect == SavedScissor);
 	TestTrue(TEXT("Request retains copied history identity after source mutation"),
 		Request.HistoryIdentity == SavedHistoryIdentity);
+	TestTrue(TEXT("Request retains copied projection after source mutation"),
+		Request.ProjectionMatrix.Equals(SavedProjection, 0.001f));
 	return true;
 }
 

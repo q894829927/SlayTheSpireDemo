@@ -1,4 +1,43 @@
 #include "InteriorPortalRenderer.h"
+#include "RenderGraphBuilder.h"
+#include "UnrealClient.h"
+
+FInteriorPortalCustomRenderPass::FInteriorPortalCustomRenderPass(
+	const FString& InDebugName, FRenderTarget* InRenderTarget, const FIntPoint& InRenderTargetSize)
+	: FCustomRenderPassBase(
+		InDebugName,
+		FCustomRenderPassBase::ERenderMode::DepthAndBasePass,
+		FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha,
+		InRenderTargetSize)
+	, RenderTargetResource(InRenderTarget)
+{
+	// The output is an HDR scene-color target. Asking the engine to include
+	// translucency documents the exact pass contract; it does not imply that
+	// reflections or Lumen temporal history are included by this public API.
+	bSceneColorWithTranslucent = true;
+}
+
+void FInteriorPortalCustomRenderPass::OnPreRender(FRDGBuilder& GraphBuilder)
+{
+	if (!RenderTargetResource)
+	{
+		return;
+	}
+
+	RenderTargetTexture = RenderTargetResource->GetRenderTargetTexture(GraphBuilder);
+	if (RenderTargetTexture)
+	{
+		GraphBuilder.UseInternalAccessMode(RenderTargetTexture);
+	}
+}
+
+void FInteriorPortalCustomRenderPass::OnEndPass(FRDGBuilder& GraphBuilder)
+{
+	if (RenderTargetTexture)
+	{
+		GraphBuilder.UseExternalAccessMode(RenderTargetTexture, ERHIAccess::SRVMask);
+	}
+}
 
 FInteriorPortalViewExtension::FInteriorPortalViewExtension(const FAutoRegister& AutoRegister,
 	UWorld* InWorld)

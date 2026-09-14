@@ -136,54 +136,54 @@ SceneCapture FinalColorHDR (comparison path)
 - `FinalColorHDR` exact image PreExposure ownership is still unavailable through the inspected public UE 5.8 timing. This is an architectural limitation of the current public SceneCapture boundary, not a reason to add a frame offset.
 - No exposure parity, Lumen parity, TAA/TSR quality or visual seal is claimed. Manual PIE evidence is still required for both paths.
 
-### STEP 1B MainView / Stencil feasibility spike — 2026-09-14
+### STEP 1B.2 Public CustomRenderPass feasibility spike — 2026-09-14
 
-**Result: `BLOCKED` for a project-side implementation; contract preparation is
-complete.**
+**Result: `PARTIAL`.** UE 5.8's public CustomRenderPass path can submit a real
+transformed portal scene view, but it cannot complete the main-view aperture
+composition from project code.
 
 The branch now separates `RendererBackend` from `CaptureColorMode` and keeps
 `SceneCapture` as the default fallback. An explicit
-`MainViewStencilSpike` backend builds a copied `FInteriorPortalRenderRequest`
-for one visible portal and one recursion layer. The request carries the
-logical frames, transformed virtual camera, player-view projected bounds,
-conservative pixel rect, logical exit clip plane and renderer-history identity.
-The projected-bounds and pixel-rect math is covered by Automation, and backend
-switches invalidate renderer history state.
+`CustomRenderPassSpike` backend builds a copied `FInteriorPortalRenderRequest`
+for one visible portal and one recursion layer, maps it to
+`FSceneInterface::FCustomRenderPassRendererInput`, and submits a heap-owned
+`FInteriorPortalCustomRenderPass : FCustomRenderPassBase` through
+`FSceneInterface::AddCustomRenderPass`. UE 5.8 consumes the supplied
+location, rotation matrix and projection matrix to construct a real
+transformed `FSceneView` / `FViewInfo`, with an independent portal
+`FSceneViewStateReference`. The pass requests `DepthAndBasePass` and
+`SceneColorNoAlpha`, so the output is a separate HDR/pre-tonemap scene-color
+target. This is a genuine transformed scene-render proof, not a SceneCapture
+material wrapper. It is intentionally limited to one visible portal and one
+recursion layer.
 
-UE 5.8 project-side `FWorldSceneViewExtension` integration was implemented and
-verified at the actual view-family lifecycle (`BeginRenderViewFamily` and
-`PreRenderViewFamily_RenderThread`). The public extension surface does not,
-however, expose the renderer-private scene visibility/base-pass/Lumen path or a
-way to merge a second transformed `FSceneView` into the current main
-`SceneTextures.Color` under an arbitrary stencil/depth aperture. The
-post-process/RDG hooks can add custom passes or alter post-process inputs, but
-that would either be a separate compositing domain or lack the required
-scene-render pass. An ordinary extra view would be rectangular and would not
-provide the portal aperture contract.
-
-Therefore the spike deliberately does not submit a fake pass: it creates no
-portal `FSceneView`/`FViewInfo`, writes no GPU stencil/depth mask, applies no
-renderer-side exit clip or scissor, and does not claim a pre-tonemap virtual
-scene or a second independent temporal state. When explicitly selected, it
-clears the SceneCapture image path and reports `Blocked` in opt-in diagnostics.
-This preserves a truthful fallback boundary instead of relabeling
-SceneCapture-compositing as MainView rendering.
+The existing `MainViewStencilSpike` remains a separate request-only
+`FWorldSceneViewExtension` experiment; it is not relabeled as a CustomRenderPass
+result. The public CRP output is not composited into the player's main
+SceneColor. Project code cannot bind the main `FSceneTextures::Color`,
+depth-stencil or stencil to the pass, and the public renderer input has neither
+a scissor field nor a `GlobalClippingPlane` field. The shared projected-bounds
+math and pixel scissor are therefore constructed and diagnosed but
+`scissorApplied` remains false. The logical exit plane is encoded through the
+existing oblique projection helper when possible; this is not equivalent to a
+renderer-private global clip for every view. Lumen/reflection parity is
+unavailable/unverified through this public pass contract. No independent portal
+output is sent through player `EyeAdaptationInverse`, and no brightness
+multiplier was added.
 
 The required engine escalation is a private deferred-renderer portal pass in
-`FDeferredShadingSceneRenderer::Render`, around the existing scene-color resolve
-and pre-post-process boundary, with access to `FViewInfo`, scene visibility,
-scene depth/stencil and the pre-tonemap `SceneTextures.Color`. That hook must
-render the mapped virtual view with the logical exit clip and stencil/scissor
-restriction, then leave the player's normal exposure/local exposure/tone map as
-the sole final display-domain authority. Engine source was not modified.
+`FDeferredShadingSceneRenderer::Render`, around the custom-render-pass phase
+and before the existing SceneColor resolve / `PrePostProcessPass_RenderThread`
+boundary. It needs access to `FViewInfo`, scene visibility/base-pass, main
+`FSceneTextures` SceneColor/depth-stencil, stencil/scissor aperture state and
+the mapped virtual view. Engine source was not modified.
 
-Automation result: **15/15 PASS** for backend/configuration/math/lifecycle
-contracts. This is not GPU evidence. `MANUAL VISUAL ACCEPTANCE REQUIRED` remains
-for the retained SceneCapture matrix; MainView visual acceptance is unavailable
-until the engine-level pass exists. The editor successfully loaded
-`/Game/House/L_Interior_LivingKitchen` and ran a PIE session showing the retained
-SceneCapture fallback; the full bright/dark, crossing, edge, grazing and
-recursion matrix was not completed, so no visual parity/pass is claimed.
+Automation result: **16/16 PASS** for backend/configuration/request mapping,
+ViewState identity, bounds/scissor math, clip contract, activation and
+lifecycle contracts. This is not GPU evidence. `MANUAL VISUAL ACCEPTANCE
+REQUIRED` remains for CustomRenderPass GPU output/aperture/depth and for the
+retained SceneCapture bright/dark, crossing, edge, grazing and recursion
+matrix. No visual parity/pass is claimed.
 
 ### Acceptance
 
