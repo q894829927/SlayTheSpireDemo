@@ -17,7 +17,7 @@ namespace
 	TAutoConsoleVariable<int32> CVarPortalCaptureFrameDiagnostics(
 		TEXT("portal.CaptureFrameDiagnostics"),
 		0,
-		TEXT("When non-zero, log the SceneCapture depth-0 visibility gate and capture transform every game frame.\n")
+		TEXT("When non-zero, log the SceneCapture depth-0 update contract and capture transform every game frame.\n")
 		TEXT("Use this only for short Portal diagnostics; it intentionally produces one line per endpoint per frame."),
 		ECVF_Default);
 
@@ -113,20 +113,20 @@ namespace
 				&& CaptureTransform.GetRotation().AngularDistance(ExpectedDepth0.GetRotation()) < FMath::DegreesToRadians(0.1f);
 			const bool bCaptureTransformMatchesExpected = bLocationMatches && bRotationMatches;
 
-			// This exactly mirrors the current SceneCapture depth-0 gate in RenderViews:
-			// the player must see Entry, then the mapped virtual view must also see Entry
-			// before Views[0] is added and CaptureScene() can be reached.
-			const bool bCurrentCodeWouldCaptureDepth0 = bDirectVisible && bFirstVirtualSeesEntry;
+			// Depth 0 follows direct player visibility only. Seeing Entry again from
+			// the mapped view is now solely the gate for a deeper recursive layer.
+			const bool bDepth0CaptureRequired = bDirectVisible;
+			const bool bRecursiveDepth1Visible = bDirectVisible && bFirstVirtualSeesEntry;
 
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalCaptureDiag Frame=%llu Entry=%s PlayerPitch=%.3f VirtualPitch=%.3f DirectVisible=%d FirstVirtualSeesEntry=%d CurrentCodeWouldCaptureDepth0=%d CaptureTransformMatchesExpected=%d CapturePitch=%.3f RecursionDepth=%d ClipMode=%s"),
+				TEXT("PortalCaptureDiag Frame=%llu Entry=%s PlayerPitch=%.3f VirtualPitch=%.3f DirectVisible=%d Depth0CaptureRequired=%d RecursiveDepth1Visible=%d CaptureTransformMatchesExpected=%d CapturePitch=%.3f RecursionDepth=%d ClipMode=%s"),
 				GFrameCounter,
 				Entry == PortalSystem->BluePortal ? TEXT("Blue") : TEXT("Orange"),
 				POV.Rotation.Pitch,
 				ExpectedDepth0.Rotator().Pitch,
 				bDirectVisible ? 1 : 0,
-				bFirstVirtualSeesEntry ? 1 : 0,
-				bCurrentCodeWouldCaptureDepth0 ? 1 : 0,
+				bDepth0CaptureRequired ? 1 : 0,
+				bRecursiveDepth1Visible ? 1 : 0,
 				bCaptureTransformMatchesExpected ? 1 : 0,
 				bHasCapture ? CaptureTransform.Rotator().Pitch : 0.0f,
 				PortalSystem->RecursionDepth,
