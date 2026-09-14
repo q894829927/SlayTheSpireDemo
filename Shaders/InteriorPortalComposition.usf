@@ -1,0 +1,27 @@
+#include "/Engine/Private/ScreenPass.ush"
+
+Texture2D SceneColorTexture;
+SamplerState SceneColorSampler;
+Texture2D PortalTexture;
+SamplerState PortalSampler;
+
+SCREEN_PASS_TEXTURE_VIEWPORT(Output)
+SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
+float4 PortalBounds;
+
+void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutColor : SV_Target0)
+{
+	const float2 ViewportUV = (UVAndScreenPos.zw - Output_ViewportMin) * Output_ViewportSizeInverse;
+	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
+	const float2 SceneUV = UVAndScreenPos.xy;
+
+	const float2 PortalCenter = 0.5 * (PortalBounds.xy + PortalBounds.zw);
+	const float2 PortalRadius = max(0.5 * (PortalBounds.zw - PortalBounds.xy), float2(1e-5, 1e-5));
+	const float2 EllipsePosition = (ViewportUV - PortalCenter) / PortalRadius;
+	const float EllipseDistance = dot(EllipsePosition, EllipsePosition);
+	const float ApertureMask = 1.0 - smoothstep(0.94, 1.0, EllipseDistance);
+
+	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
+	const float4 PortalColor = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+	OutColor = lerp(MainColor, PortalColor, saturate(ApertureMask));
+}

@@ -7,7 +7,7 @@
 		{
 			"Name": "SlayTheSpireDemo",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostConfigInit"
 		},
 		{
 			"Name": "SlayTheSpireDemoTests",

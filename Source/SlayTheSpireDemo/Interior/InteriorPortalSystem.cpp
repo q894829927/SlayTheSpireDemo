@@ -151,7 +151,13 @@ bool AInteriorPortalSystem::UsesMainViewStencil(const EInteriorPortalRendererBac
 
 bool AInteriorPortalSystem::UsesCustomRenderPass(const EInteriorPortalRendererBackend Backend)
 {
-	return Backend == EInteriorPortalRendererBackend::CustomRenderPassSpike;
+	return Backend == EInteriorPortalRendererBackend::CustomRenderPassSpike
+		|| Backend == EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike;
+}
+
+bool AInteriorPortalSystem::UsesCustomRenderPassComposition(const EInteriorPortalRendererBackend Backend)
+{
+	return Backend == EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike;
 }
 
 bool AInteriorPortalSystem::RequiresRendererHistoryReset(
@@ -993,6 +999,8 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 {
 	PlayerPresentation->Update(this,Player?Cast<ACharacter>(Player->GetPawn()):nullptr,PlayerGate.Get());
 	const bool bUsingMainViewStencil = UsesMainViewStencil(RendererBackend);
+	const bool bUsingCustomRenderPassComposition = UsesCustomRenderPassComposition(RendererBackend);
+	const bool bUsingMainViewRenderer = bUsingMainViewStencil || bUsingCustomRenderPassComposition;
 	if (!bRendererBackendInitialized || LastRendererBackend != RendererBackend)
 	{
 		const FString Reason = !bRendererBackendInitialized
@@ -1003,13 +1011,13 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		LastRendererBackend = RendererBackend;
 		if (MainViewStencilExtension)
 		{
-			MainViewStencilExtension->SetEnabled(bUsingMainViewStencil);
+			MainViewStencilExtension->SetEnabled(bUsingMainViewRenderer);
 			MainViewStencilExtension->ClearRequest();
 		}
 	}
 	if (!IsLinked() || !Player || !Player->PlayerCameraManager)
 	{
-		if (bUsingMainViewStencil && MainViewStencilExtension)
+		if (bUsingMainViewRenderer && MainViewStencilExtension)
 		{
 			MainViewStencilExtension->ClearRequest();
 		}
@@ -1184,6 +1192,13 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 
 	if (UsesCustomRenderPass(RendererBackend))
 	{
+		if (bUsingCustomRenderPassComposition && MainViewStencilExtension)
+		{
+			// Clear the previous frame's copied resource identity before evaluating
+			// this frame's activation gate. This prevents stale same-frame
+			// composition when the portal leaves the view.
+			MainViewStencilExtension->ClearRequest();
+		}
 		FInteriorPortalRenderRequest Request;
 		bool bRequestBuilt = false;
 		bool bSubmitted = false;
@@ -1254,6 +1269,15 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 					Result = TEXT("CustomRenderPass blocked: target resource, independent ViewState, or scene unavailable");
 					break;
 				}
+				if (bUsingCustomRenderPassComposition
+					&& !InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+						true, true, DirectBounds.bHasVisiblePortion, bValidVirtualView,
+						TargetResource != nullptr, RecursionDepth))
+				{
+					Result = TEXT("Composition activation gate rejected: CRP target resource is unavailable");
+					break;
+				}
+				Request.PortalRenderTarget = bUsingCustomRenderPassComposition ? TargetResource : nullptr;
 
 				FInteriorPortalCustomRenderPass* CustomPass =
 					new FInteriorPortalCustomRenderPass(
@@ -1272,9 +1296,15 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 				if (GetWorld()->Scene->AddCustomRenderPass(nullptr, PassInput))
 				{
 					bSubmitted = true;
-					Result = Request.bExitClipEncodedInProjection
-						? TEXT("FSceneInterface::AddCustomRenderPass accepted the transformed scene request")
-						: TEXT("AddCustomRenderPass accepted the transformed scene request; oblique exit clip was unavailable for this view");
+					if (bUsingCustomRenderPassComposition && MainViewStencilExtension)
+					{
+						MainViewStencilExtension->PublishRequest(Request);
+					}
+					Result = bUsingCustomRenderPassComposition
+						? TEXT("AddCustomRenderPass accepted transformed HDR; request published to BeforeDOF SceneColor composition")
+						: (Request.bExitClipEncodedInProjection
+							? TEXT("FSceneInterface::AddCustomRenderPass accepted the transformed scene request")
+							: TEXT("AddCustomRenderPass accepted the transformed scene request; oblique exit clip was unavailable for this view"));
 				}
 				else
 				{
@@ -1293,7 +1323,9 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 				// rebound as a Portal Emissive texture: doing so would turn this
 				// experiment back into SceneCapture compositing.
 				Entry->SetView(nullptr, false, 1.0f,
-					TEXT("CustomRenderPassSpike: proof target is separate; main-view composition unavailable"), 0.0f);
+					bUsingCustomRenderPassComposition
+						? TEXT("CustomRenderPassCompositionSpike: CRP HDR is composed at BeforeDOF; aperture is analytic mask")
+						: TEXT("CustomRenderPassSpike: proof target is separate; main-view composition unavailable"), 0.0f);
 			}
 		}
 		bRendererDiagnosticsDirty = true;
@@ -1301,7 +1333,7 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			bRequestBuilt ? &Request : nullptr,
 			bSubmitted ? EInteriorPortalSpikeStatus::Partial
 				: (bRequestBuilt ? EInteriorPortalSpikeStatus::Blocked : EInteriorPortalSpikeStatus::Disabled),
-			bSubmitted, Result);
+			bSubmitted, bUsingCustomRenderPassComposition, Result);
 		bWasRendererLinked = true;
 		return;
 	}
@@ -1561,7 +1593,7 @@ void AInteriorPortalSystem::WriteMainViewStencilSpikeDiagnostics(
 
 void AInteriorPortalSystem::WriteCustomRenderPassSpikeDiagnostics(
 	const FInteriorPortalRenderRequest* Request, const EInteriorPortalSpikeStatus Status,
-	const bool bSubmitted, const FString& Result)
+	const bool bSubmitted, const bool bCompositionRequested, const FString& Result)
 {
 	if (!bEnableRendererDiagnostics)
 	{
@@ -1576,6 +1608,7 @@ void AInteriorPortalSystem::WriteCustomRenderPassSpikeDiagnostics(
 	}
 
 	const FString SafeResult = Result.Replace(TEXT("\""), TEXT("'"));
+	const bool bCompositionActive = bCompositionRequested && bSubmitted;
 	FString RequestJson = TEXT("null");
 	if (Request)
 	{
@@ -1623,29 +1656,46 @@ void AInteriorPortalSystem::WriteCustomRenderPassSpikeDiagnostics(
 	}
 
 	const FString Json = FString::Printf(
-		TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"CustomRenderPassSpike\",\n"
+		TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"%s\",\n"
 		"  \"spikeStatus\":\"%s\",\n"
-		"  \"rendererHook\":\"FSceneInterface::AddCustomRenderPass\",\n"
+		"  \"rendererHook\":\"FSceneInterface::AddCustomRenderPass + ISceneViewExtension::SubscribeToPostProcessingPass(BeforeDOF)\",\n"
 		"  \"rendererInput\":\"FCustomRenderPassRendererInput\",\n"
 		"  \"customPassClass\":\"FCustomRenderPassBase\",\n"
-		"  \"renderStage\":\"FDeferredShadingSceneRenderer::Render custom-render-pass phase\",\n"
+		"  \"renderStage\":\"%s\",\n"
 		"  \"renderMode\":\"DepthAndBasePass\",\n"
 		"  \"renderOutput\":\"SceneColorNoAlpha\",\n"
 		"  \"outputDomain\":\"separate HDR scene-color target; pre-tonemap custom-pass domain\",\n"
 		"  \"translucency\":\"Requested through bSceneColorWithTranslucent; GPU result not read back\",\n"
 		"  \"lumen\":\"Unavailable / Unverified: no public CustomRenderPass Lumen result contract\",\n"
 		"  \"reflections\":\"Unavailable / Unverified: no public CustomRenderPass reflection result contract\",\n"
-		"  \"mainSceneColorComposition\":false,\n"
-		"  \"mainSceneColorAccess\":\"Unavailable / Unverified from public project hook\",\n"
-		"  \"mainDepthStencilAccess\":\"Unavailable / Unverified from public project hook\",\n"
-		"  \"stencilAperture\":\"Unavailable / Unverified from public project hook\",\n"
+		"  \"mainSceneColorComposition\":%s,\n"
+		"  \"mainSceneColorAccess\":\"FPostProcessMaterialInputs::GetInput(SceneColor) is readable and returned through the public BeforeDOF delegate\",\n"
+		"  \"mainDepthAccess\":\"FPostProcessMaterialInputs::SceneTextures exposes SceneDepthTexture; depth comparison is not applied by this spike\",\n"
+		"  \"mainStencilAccess\":\"Unavailable / Unverified: public scene texture parameters expose CustomStencilTexture, not the main depth-stencil stencil binding\",\n"
+		"  \"apertureMask\":\"Explicit analytic ellipse from logical projected bounds; not a full bounding-rectangle mask\",\n"
 		"  \"scissorApplied\":false,\n"
+		"  \"compositionDomain\":\"%s\",\n"
+		"  \"portalTargetOwnership\":\"External FRenderTarget imported into the same RDG graph by GetRenderTargetTexture; request carries resource identity, not UObject state\",\n"
 		"  \"exitClip\":\"Logical exit plane encoded in ProjectionMatrix because input has no GlobalClippingPlane field\",\n"
-		"  \"playerExposureAuthority\":\"Player remains the only final display authority; custom output is not composed into it\",\n"
+		"  \"playerExposureAuthority\":\"%s\",\n"
 		"  \"customPassSubmitted\":%s,\n"
 		"  \"result\":\"%s\",\n"
 		"  \"request\":%s\n}\n"),
-		GFrameCounter, InteriorPortalSpikeStatusToString(Status),
+		GFrameCounter,
+		bCompositionRequested ? TEXT("CustomRenderPassCompositionSpike") : TEXT("CustomRenderPassSpike"),
+		InteriorPortalSpikeStatusToString(Status),
+		bCompositionRequested
+			? TEXT("FDeferredShadingSceneRenderer::Render custom-render-pass phase; public BeforeDOF post-process delegate")
+			: TEXT("FDeferredShadingSceneRenderer::Render custom-render-pass phase"),
+		bCompositionActive ? TEXT("true") : TEXT("false"),
+		bCompositionActive
+			? TEXT("BeforeDOF; before player eye adaptation, local exposure, color grading and tonemap")
+			: (bCompositionRequested
+				? TEXT("Composition requested but CRP submission did not complete")
+				: TEXT("Not composed into MainView")),
+		bCompositionActive
+			? TEXT("Player remains the only final display authority; BeforeDOF composition precedes player exposure/local exposure/tonemap")
+			: TEXT("Player remains the only final display authority; custom output is not composed into MainView"),
 		bSubmitted ? TEXT("true") : TEXT("false"), *SafeResult, *RequestJson);
 	FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
 	LastRendererDiagnosticsWriteTime = Now;

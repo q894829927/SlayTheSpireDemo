@@ -10,6 +10,8 @@
 class FSceneViewFamily;
 class FRDGBuilder;
 class FRenderTarget;
+struct FScreenPassTexture;
+struct FPostProcessMaterialInputs;
 struct FPostProcessingInputs;
 
 /**
@@ -19,9 +21,9 @@ struct FPostProcessingInputs;
  * mutable UObject reference. It is safe to copy into a renderer-side queue.
  * STEP 1B.2 extends this description with the exact matrices consumed by
  * UE 5.8's public FCustomRenderPassRendererInput. The custom-pass backend
- * submits this snapshot to the main renderer, but its output remains a
- * separate render target because the public API has no main SceneColor merge
- * or aperture/depth binding contract.
+ * submits this snapshot to the main renderer. The optional render-target
+ * resource is a copied external-resource identity used only by the explicit
+ * composition spike; it is never a UObject or mutable Actor reference.
  */
 struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 {
@@ -41,6 +43,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	bool bExitClipEncodedInProjection = false;
 	uint64 HistoryIdentity = 0;
 	uint64 RendererHistoryGeneration = 0;
+	/** External CRP output resource consumed by the same-frame BeforeDOF proof. */
+	FRenderTarget* PortalRenderTarget = nullptr;
 	bool bEnabled = false;
 	/** The intended contract is one player-main-view exposure/tone-map owner. */
 	bool bPlayerExposureAuthority = true;
@@ -143,9 +147,10 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 
 /**
  * Project-side implementation of UE 5.8's public custom render-pass
- * contract. It intentionally writes to an existing external render target;
- * main-view SceneColor composition is not claimed because no public callback
- * exposes the renderer's private FSceneTextures/depth-stencil bindings.
+ * contract. It intentionally writes to an existing external render target.
+ * The separate composition spike consumes that target through the public
+ * BeforeDOF post-process delegate; it does not claim public main-stencil or
+ * depth-continuity access.
  */
 class SLAYTHESPIREDEMO_API FInteriorPortalCustomRenderPass final : public FCustomRenderPassBase
 {
@@ -207,6 +212,15 @@ namespace InteriorPortalRenderer
 			&& RequestedRecursionDepth == 1;
 	}
 
+	inline bool CanSubmitCustomRenderPassCompositionRequest(bool bPairLinked, bool bPortalVisible,
+		bool bValidBounds, bool bValidVirtualView, bool bHasPortalRenderTarget,
+		int32 RequestedRecursionDepth)
+	{
+		return CanSubmitCustomRenderPassRequest(
+			bPairLinked, bPortalVisible, bValidBounds, bValidVirtualView, RequestedRecursionDepth)
+			&& bHasPortalRenderTarget;
+	}
+
 	inline bool BuildCustomRenderPassInput(
 		const FInteriorPortalRenderRequest& Request,
 		FSceneViewStateInterface* ViewState,
@@ -232,8 +246,9 @@ namespace InteriorPortalRenderer
 /**
  * Project-side UE 5.8 renderer extension used to establish the integration
  * boundary. It owns copied request data and registers at the real main-view
- * extension lifecycle. It intentionally does not issue a fake SceneCapture or
- * post-tonemap composite when the required scene-render pass is unavailable.
+ * extension lifecycle. The composition spike subscribes at BeforeDOF and
+ * returns a new main SceneColor texture; it does not issue a post-tonemap
+ * composite or read mutable UObject state on the render thread.
  */
 class SLAYTHESPIREDEMO_API FInteriorPortalViewExtension final : public FWorldSceneViewExtension
 {
@@ -252,11 +267,21 @@ public:
 		FSceneViewFamily& InViewFamily) override;
 	virtual void PostRenderViewFamily_RenderThread(FRDGBuilder& GraphBuilder,
 		FSceneViewFamily& InViewFamily) override;
+	virtual void SubscribeToPostProcessingPass(
+		ISceneViewExtension::EPostProcessingPass Pass,
+		const FSceneView& InView,
+		FPostProcessingPassDelegateArray& InOutPassCallbacks,
+		bool bIsPassEnabled) override;
 
 protected:
 	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
 
 private:
+	static FScreenPassTexture ComposePortalIntoSceneColor(
+		FRDGBuilder& GraphBuilder, const FSceneView& InView,
+		const FPostProcessMaterialInputs& Inputs,
+		const FInteriorPortalRenderRequest& Request);
+
 	bool bEnabled = false;
 	mutable FCriticalSection RequestMutex;
 	TOptional<FInteriorPortalRenderRequest> PublishedRequest;

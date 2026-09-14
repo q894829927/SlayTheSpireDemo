@@ -139,8 +139,8 @@ SceneCapture FinalColorHDR (comparison path)
 ### STEP 1B.2 Public CustomRenderPass feasibility spike — 2026-09-14
 
 **Result: `PARTIAL`.** UE 5.8's public CustomRenderPass path can submit a real
-transformed portal scene view, but it cannot complete the main-view aperture
-composition from project code.
+transformed portal scene view. The CRP itself is a separate target; the
+project-side main SceneColor boundary is tracked separately in STEP 1B.3.
 
 The branch now separates `RendererBackend` from `CaptureColorMode` and keeps
 `SceneCapture` as the default fallback. An explicit
@@ -171,12 +171,13 @@ unavailable/unverified through this public pass contract. No independent portal
 output is sent through player `EyeAdaptationInverse`, and no brightness
 multiplier was added.
 
-The required engine escalation is a private deferred-renderer portal pass in
-`FDeferredShadingSceneRenderer::Render`, around the custom-render-pass phase
-and before the existing SceneColor resolve / `PrePostProcessPass_RenderThread`
-boundary. It needs access to `FViewInfo`, scene visibility/base-pass, main
-`FSceneTextures` SceneColor/depth-stencil, stencil/scissor aperture state and
-the mapped virtual view. Engine source was not modified.
+The remaining production escalation is a private deferred-renderer portal
+aperture/depth pass in `FDeferredShadingSceneRenderer::Render`, around the
+custom-render-pass phase and before the existing SceneColor resolve /
+`PrePostProcessPass_RenderThread` boundary. It needs access to `FViewInfo`,
+scene visibility/base-pass, main `FSceneTextures` depth-stencil/stencil,
+stencil/scissor aperture state and the mapped virtual view. Engine source was
+not modified.
 
 Automation result: **16/16 PASS** for backend/configuration/request mapping,
 ViewState identity, bounds/scissor math, clip contract, activation and
@@ -184,6 +185,50 @@ lifecycle contracts. This is not GPU evidence. `MANUAL VISUAL ACCEPTANCE
 REQUIRED` remains for CustomRenderPass GPU output/aperture/depth and for the
 retained SceneCapture bright/dark, crossing, edge, grazing and recursion
 matrix. No visual parity/pass is claimed.
+
+### STEP 1B.3 Main SceneColor composition boundary — 2026-09-14
+
+**Result: `PARTIAL`.** The public project-side boundary is more capable than
+the CRP-only result suggested, but it is not a complete stencil/depth Portal
+Renderer.
+
+`CustomRenderPassCompositionSpike` retains the real CRP transformed scene pass
+and uses `FInteriorPortalViewExtension::SubscribeToPostProcessingPass` at
+`EPostProcessingPass::BeforeDOF`. The callback receives the current
+`FPostProcessMaterialInputs::SceneColor`, imports the CRP `FRenderTarget` with
+`GetRenderTargetTexture`, and writes a new RDG screen-pass texture. In the
+UE5.8 call chain this is the player's HDR/pre-tonemap SceneColor chain, before
+player exposure/local exposure/color grading/tonemap. It therefore establishes
+a project-side pre-tonemap composition proof without sending the portal image
+through a second final-color material domain.
+
+The aperture in this spike is an explicit analytic ellipse generated from the
+logical portal projected bounds. It avoids exposing the entire conservative
+rectangle, and portal-outside pixels remain the original Main SceneColor.
+However, the shader does not yet compare main SceneDepth, and public
+`FSceneTextureShaderParameters` does not expose the main depth-stencil stencil
+binding (only CustomDepth/CustomStencil resources). The CRP request also has no
+public scissor field. Therefore main-wall/depth continuity, true stencil
+masking and actual scissor application are **NOT IMPLEMENTED / UNVERIFIED**.
+
+The public API findings are:
+
+```text
+SubscribeToPostProcessingPass(BeforeDOF)  readable/replacable SceneColor: YES
+PrePostProcessPass_RenderThread            direct SceneColor replacement: NO
+Main SceneDepth                            visible through SceneTextures: YES
+Main stencil                               public binding: NO / UNVERIFIED
+CRP HDR external target                    same-RDG import: YES
+Player final exposure/tonemap authority    structurally preserved: YES
+```
+
+Focused Automation is **17/17 PASS** in
+`Saved/AutomationReports/PortalCompositionBoundary/index.json`. This is
+contract evidence only. GPU composition, portal aperture edge stability,
+wall/depth occlusion, exposure parity and visual quality require
+`MANUAL VISUAL ACCEPTANCE REQUIRED` in PIE/RenderDoc. SceneCapture remains the
+default fallback; no brightness gain, EyeAdaptationInverse or ObliqueFallback
+change was introduced.
 
 ### Acceptance
 

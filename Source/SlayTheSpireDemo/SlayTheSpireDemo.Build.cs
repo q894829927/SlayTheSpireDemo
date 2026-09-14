@@ -14,7 +14,7 @@ public class SlayTheSpireDemo : ModuleRules
 		// dependency private; no Slate types cross the Gameplay/public boundary.
 		// STEP 1B.2 uses the UE 5.8 public CustomRenderPass/RenderGraph contract
 		// to submit a real transformed scene pass into an external proof target.
-		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "RenderCore", "RHI" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "RenderCore", "Renderer", "RHI" });
 		
 		// Gameplay still exposes no Slate types; this private SlateCore dependency is
 		// limited to the Native HUD's FReply input boundary.

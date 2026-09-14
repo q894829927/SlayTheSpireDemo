@@ -1,6 +1,34 @@
 #include "InteriorPortalRenderer.h"
+#include "GlobalShader.h"
 #include "RenderGraphBuilder.h"
+#include "PostProcess/PostProcessMaterialInputs.h"
+#include "ScreenPass.h"
 #include "UnrealClient.h"
+
+namespace InteriorPortalRenderer
+{
+	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalCompositionParameters, )
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PortalTexture)
+		SHADER_PARAMETER_SAMPLER(SamplerState, PortalSampler)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
+		SHADER_PARAMETER(FVector4f, PortalBounds)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
+
+	class FInteriorPortalCompositionPS : public FGlobalShader
+	{
+	public:
+		DECLARE_SHADER_TYPE(FInteriorPortalCompositionPS, Global);
+		SHADER_USE_PARAMETER_STRUCT(FInteriorPortalCompositionPS, FGlobalShader);
+		using FParameters = FInteriorPortalCompositionParameters;
+	};
+
+	IMPLEMENT_SHADER_TYPE(, FInteriorPortalCompositionPS,
+		TEXT("/Project/InteriorPortalComposition.usf"), TEXT("MainPS"), SF_Pixel);
+}
 
 FInteriorPortalCustomRenderPass::FInteriorPortalCustomRenderPass(
 	const FString& InDebugName, FRenderTarget* InRenderTarget, const FIntPoint& InRenderTargetSize)
@@ -109,4 +137,90 @@ void FInteriorPortalViewExtension::PostRenderViewFamily_RenderThread(
 	// transformed scene view into the main SceneColor domain through a stencil.
 	(void)GraphBuilder;
 	(void)InViewFamily;
+}
+
+void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
+	const ISceneViewExtension::EPostProcessingPass Pass,
+	const FSceneView& InView,
+	FPostProcessingPassDelegateArray& InOutPassCallbacks,
+	const bool bIsPassEnabled)
+{
+	if (!bEnabled || !bIsPassEnabled || Pass != ISceneViewExtension::EPostProcessingPass::BeforeDOF)
+	{
+		return;
+	}
+
+	const FInteriorPortalRenderRequest Request = GetPublishedRequest();
+	if (!Request.IsValid() || !Request.PortalRenderTarget)
+	{
+		return;
+	}
+
+	// Capture the immutable request by value. The callback runs on the render
+	// thread and must not read the PortalSystem or any mutable UObject state.
+	InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
+		[Request](FRDGBuilder& GraphBuilder, const FSceneView& View,
+			const FPostProcessMaterialInputs& Inputs)
+		{
+			return FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
+				GraphBuilder, View, Inputs, Request);
+		}));
+}
+
+FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
+	FRDGBuilder& GraphBuilder, const FSceneView& InView,
+	const FPostProcessMaterialInputs& Inputs,
+	const FInteriorPortalRenderRequest& Request)
+{
+	const FScreenPassTextureSlice SceneColorSlice =
+		Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
+	FScreenPassTexture SceneColor = FScreenPassTexture::CopyFromSlice(GraphBuilder, SceneColorSlice);
+	if (!SceneColor.IsValid() || !Request.PortalRenderTarget)
+	{
+		return SceneColor;
+	}
+
+	FRDGTextureRef PortalTexture = Request.PortalRenderTarget->GetRenderTargetTexture(GraphBuilder);
+	if (!PortalTexture)
+	{
+		return SceneColor;
+	}
+	GraphBuilder.UseInternalAccessMode(PortalTexture);
+
+	const FScreenPassRenderTarget Output = FScreenPassRenderTarget::CreateFromInput(
+		GraphBuilder, SceneColor, ERenderTargetLoadAction::ELoad,
+		TEXT("InteriorPortalBeforeDOFComposition"));
+	const FScreenPassTextureViewport OutputViewport(Output);
+	// The CRP writes the external target from (0,0) at its own extent. The
+	// player's constrained view rect may have a non-zero origin, so it must not
+	// be reused as the portal texture viewport.
+	const FScreenPassTextureViewport PortalViewport(PortalTexture);
+
+	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
+		GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalCompositionParameters>();
+	PassParameters->SceneColorTexture = SceneColor.Texture;
+	PassParameters->SceneColorSampler =
+		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	PassParameters->PortalTexture = PortalTexture;
+	PassParameters->PortalSampler =
+		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
+	PassParameters->Portal = GetScreenPassTextureViewportParameters(PortalViewport);
+	PassParameters->PortalBounds = FVector4f(
+		Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
+		Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y);
+	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
+
+	TShaderMapRef<InteriorPortalRenderer::FInteriorPortalCompositionPS> PixelShader(
+		GetGlobalShaderMap(InView.GetFeatureLevel()));
+	AddDrawScreenPass(
+		GraphBuilder,
+		RDG_EVENT_NAME("InteriorPortal::BeforeDOFComposition"),
+		InView,
+		OutputViewport,
+		OutputViewport,
+		PixelShader,
+		PassParameters);
+
+	return Output;
 }

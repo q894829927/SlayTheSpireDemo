@@ -47,7 +47,8 @@ enum class EInteriorPortalRendererBackend : uint8
 {
 	SceneCapture UMETA(DisplayName="SceneCapture Fallback"),
 	MainViewStencilSpike UMETA(DisplayName="MainView Stencil Feasibility Spike"),
-	CustomRenderPassSpike UMETA(DisplayName="Public CustomRenderPass Feasibility Spike")
+	CustomRenderPassSpike UMETA(DisplayName="Public CustomRenderPass Feasibility Spike"),
+	CustomRenderPassCompositionSpike UMETA(DisplayName="Public CustomRenderPass Composition Feasibility Spike")
 };
 
 /** One explicit, local-player portal pair. Does not participate in card-battle state. */
@@ -145,6 +146,7 @@ public:
 	static bool UsesSceneCapture(EInteriorPortalRendererBackend Backend);
 	static bool UsesMainViewStencil(EInteriorPortalRendererBackend Backend);
 	static bool UsesCustomRenderPass(EInteriorPortalRendererBackend Backend);
+	static bool UsesCustomRenderPassComposition(EInteriorPortalRendererBackend Backend);
 	static bool RequiresRendererHistoryReset(EInteriorPortalRendererBackend PreviousBackend,
 		EInteriorPortalRendererBackend NewBackend);
 	/**
@@ -172,7 +174,8 @@ private:
 	void WriteMainViewStencilSpikeDiagnostics(const FInteriorPortalRenderRequest* Request,
 		EInteriorPortalSpikeStatus Status, const FString& Blocker);
 	void WriteCustomRenderPassSpikeDiagnostics(const FInteriorPortalRenderRequest* Request,
-		EInteriorPortalSpikeStatus Status, bool bSubmitted, const FString& Result);
+		EInteriorPortalSpikeStatus Status, bool bSubmitted, bool bCompositionRequested,
+		const FString& Result);
 	bool IsBusy() const;
 	TWeakObjectPtr<ACharacter> Character;
 	TWeakObjectPtr<AInteriorPortal> LastPlayerExit;

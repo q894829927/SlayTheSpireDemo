@@ -1,58 +1,55 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current resumable task — STEP 1B.2 Public CustomRenderPass feasibility spike, 2026-09-14
+## Current resumable task — STEP 1B.3 Main SceneColor composition boundary, 2026-09-14
 
-Branch: `portal/full-fidelity-p1`. Starting HEAD for this delivery:
-`62aecd616c5184689bc2fd3c47b0fed4c5dbbdc4` (`portal: document main-view renderer integration boundary`).
-The working tree must remain scoped to the Portal renderer spike and its
-documents/tests; preserve unrelated portal, map, material, traversal and
-presentation work and do not reset or restore the retained Legacy UI.
+Branch: `portal/full-fidelity-p1`. Current baseline for this delivery:
+`81ffb09af1945ed8f695c934bcfacd67ab29f835` (`portal: add native exit clip diagnostics`).
+The existing user-owned map change in
+`Content/House/L_Interior_LivingKitchen.umap` remains unrelated and must stay
+uncommitted.
 
-STEP 1B.2 result: **PARTIAL**. The project now has explicit
-`SceneCapture`, `MainViewStencilSpike` and opt-in `CustomRenderPassSpike`
-backends. The CRP backend builds immutable `FInteriorPortalRenderRequest` data
-and submits `FSceneInterface::FCustomRenderPassRendererInput` through
-`FSceneInterface::AddCustomRenderPass` using
-`FInteriorPortalCustomRenderPass : FCustomRenderPassBase`. UE 5.8 consumes the
-mapped location/rotation/projection to construct a real transformed
-`FSceneView`/`FViewInfo`; each endpoint owns an independent persistent
-`FSceneViewStateReference`. The pass requests `DepthAndBasePass` with
-`SceneColorNoAlpha` into a separate HDR/pre-tonemap target.
+STEP 1B.3 result: **PARTIAL**. `CustomRenderPassCompositionSpike` was added as
+an explicit opt-in backend while preserving the default `SceneCapture`
+fallback, `MainViewStencilSpike` and `CustomRenderPassSpike`. It submits the
+existing real transformed one-layer CRP view, copies the external target
+resource identity into the immutable request, and subscribes to
+`ISceneViewExtension::SubscribeToPostProcessingPass(BeforeDOF)`. The callback
+reads `FPostProcessMaterialInputs::SceneColor`, imports the CRP HDR target and
+returns a new RDG SceneColor before player exposure/local exposure/color
+grading/tonemap.
 
-The public CRP API does not expose the main `FSceneTextures` SceneColor,
-depth-stencil/stencil bindings or a scissor field at the project callback, so
-the output is not merged into the player's pre-tonemap SceneColor. The
-project-side oblique projection is used for exit clipping when valid; the
-projected pixel rect is diagnosed but not applied as GPU scissor. Lumen,
-reflections, GPU aperture and main-view visual correctness remain unverified.
-The required escalation is an Engine-private pass in
-`FDeferredShadingSceneRenderer::Render` around the custom-pass/SceneColor
-resolve boundary before `PrePostProcessPass_RenderThread`. No Engine source
-was modified.
+The project-side pre-tonemap composition boundary is therefore implemented,
+but the spike uses an analytic ellipse from logical projected bounds. It does
+not apply main SceneDepth comparison, public main stencil, true CRP scissor or
+depth-continuous wall occlusion. GPU composition and visual parity remain
+manual PIE/RenderDoc evidence, not Automation claims. No Engine source was
+modified, and no SceneCapture exposure/ObliqueFallback/traversal/physics path
+was changed.
 
-Changed source: `InteriorPortalRenderer.h/.cpp`,
-`InteriorPortalSystem.h/.cpp`, both module `Build.cs` files and
-`InteriorPortalTests.cpp`; the existing logical-frame/surface-bias,
-SceneCapture ViewState and projected-bound regressions remain in the focused
-suite. The SceneCapture backend remains default and preserved.
+Changed source includes `InteriorPortalRenderer.h/.cpp`,
+`InteriorPortalSystem.h/.cpp`, `SlayTheSpireDemo.Build.cs`,
+`SlayTheSpireDemo.uproject`, `Shaders/InteriorPortalComposition.usf` and
+`InteriorPortalTests.cpp`; docs are updated in the current execution plan and
+observed-issues log. The SceneCapture backend remains the default fallback.
 
-Validation for this delivery: bundled UE 5.8 project-file generation was run;
-Development Editor build passed; focused
-`SlayTheSpireDemo.Interior.Portals` passed **16/16** in
-`Saved/AutomationReports/STEP1B2_Final/index.json`. Automation proves only
-contract/math/lifecycle behavior; it does not prove GPU CustomRenderPass
-execution, stencil, pre-tonemap main-view composition, exposure parity, Lumen,
-TAA/TSR or visual clipping. Generate Project Files and the Development Editor
-build passed. PIE visual acceptance for the CRP path was not completed;
-`MANUAL VISUAL ACCEPTANCE REQUIRED` remains.
+Validation: bundled UE 5.8 project-file generation passed; Development Editor
+build passed; focused `SlayTheSpireDemo.Interior.Portals` passed **17/17** in
+`Saved/AutomationReports/PortalCompositionBoundary/index.json`. The first
+Automation invocation was discarded because `-run=AutomationTests` requested a
+nonexistent commandlet; the corrected `UnrealEditor-Cmd` invocation without
+that flag passed. The module loads at `PostConfigInit` because UE5.8 rejects
+project global shader registration after shader types initialize.
 
-Next action: keep SceneCapture A/B as the validated fallback and decide whether
-to authorize a narrowly scoped Engine-level renderer feasibility patch at the
-deferred renderer composition boundary. Do not start Step 2 or Step 3,
-recursion > 1, full temporal/Lumen fidelity or physics work from this
-checkpoint.
-Do not start Step 2 or Step 3, recursion > 1, full temporal/Lumen fidelity or
-physics work from this checkpoint.
+Next action: manual PIE on `/Game/House/L_Interior_LivingKitchen` with
+`RendererBackend=CustomRenderPassCompositionSpike`, `RecursionDepth=1`, then
+compare frontal/vertical/near/partial-offscreen and bright↔dark views. Check
+parallax, ellipse edge, portal-outside contamination, support-wall/depth
+occlusion, exposure/tone-map behavior and crossing frame pops. Record as
+`MANUAL VISUAL ACCEPTANCE REQUIRED`; do not claim SUCCESS from 17/17. If the
+visual path is useful, the next feasibility decision is the minimal
+renderer-private depth-stencil/scissor hook, not a SceneCapture brightness
+hack. Do not start Step 2 or Step 3, recursion > 1, full temporal/Lumen
+fidelity or physics work from this checkpoint.
 
 Rollback checkpoint, 2026-09-13 14:22: the uncommitted portal files were reconstructed from the session history immediately before the 14:22 MCP capture rather than using `git reset --hard`, which would have discarded the earlier portal and presentation work. The map-owned pair and generated assets were rebuilt and saved. UE 5.8's HDR RenderTarget contract was preserved with a Linear Color sampler, and stale disconnected material expressions were removed so `M_InteriorPortal` compiles instead of falling back to the default shader. Final MCP viewport evidence is `Saved/PortalRollback1422FinalViewport.png`; PIE was stopped after capture. The final editor viewport shows both animated portal rings with no checkerboard/default-material surface.
 

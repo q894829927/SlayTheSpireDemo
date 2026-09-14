@@ -436,6 +436,15 @@ bool FInteriorPortalRendererBackendTest::RunTest(const FString& Parameters)
 		AInteriorPortalSystem::UsesMainViewStencil(System->RendererBackend));
 	TestFalse(TEXT("CustomRenderPass selection does not use SceneCapture"),
 		AInteriorPortalSystem::UsesSceneCapture(System->RendererBackend));
+	System->RendererBackend = EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike;
+	TestTrue(TEXT("CustomRenderPass composition spike can be explicitly selected"),
+		AInteriorPortalSystem::UsesCustomRenderPass(System->RendererBackend));
+	TestTrue(TEXT("Composition spike is distinguished from the separate CRP proof target"),
+		AInteriorPortalSystem::UsesCustomRenderPassComposition(System->RendererBackend));
+	TestFalse(TEXT("Composition spike is not SceneCapture"),
+		AInteriorPortalSystem::UsesSceneCapture(System->RendererBackend));
+	TestFalse(TEXT("Composition spike is not MainView stencil"),
+		AInteriorPortalSystem::UsesMainViewStencil(System->RendererBackend));
 	System->CaptureColorMode = EInteriorPortalCaptureColorMode::FinalColorHDR;
 	TestTrue(TEXT("CaptureColorMode remains independently configurable"),
 		AInteriorPortalSystem::GetCaptureSourceForColorMode(System->CaptureColorMode) == SCS_FinalColorHDR);
@@ -452,6 +461,38 @@ bool FInteriorPortalRendererBackendTest::RunTest(const FString& Parameters)
 			EInteriorPortalRendererBackend::SceneCapture,
 			EInteriorPortalRendererBackend::SceneCapture));
 	World->DestroyWorld(false);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalCompositionBoundaryContractTest,
+	"SlayTheSpireDemo.Interior.Portals.CompositionBoundaryContract", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FInteriorPortalCompositionBoundaryContractTest::RunTest(const FString& Parameters)
+{
+	TestTrue(TEXT("A valid one-layer request with an imported CRP target can enter the composition gate"),
+		InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+			true, true, true, true, true, 1));
+	TestFalse(TEXT("Composition gate rejects an absent CRP target identity"),
+		InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+			true, true, true, true, false, 1));
+	TestFalse(TEXT("Composition gate rejects an unlinked pair"),
+		InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+			false, true, true, true, true, 1));
+	TestFalse(TEXT("Composition gate rejects a portal outside the view"),
+		InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+			true, false, true, true, true, 1));
+	TestFalse(TEXT("Composition gate rejects recursion beyond the one-layer spike"),
+		InteriorPortalRenderer::CanSubmitCustomRenderPassCompositionRequest(
+			true, true, true, true, true, 2));
+	TestTrue(TEXT("Composition backend switch invalidates renderer history"),
+		AInteriorPortalSystem::RequiresRendererHistoryReset(
+			EInteriorPortalRendererBackend::CustomRenderPassSpike,
+			EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike));
+	TestTrue(TEXT("Returning from composition to SceneCapture invalidates renderer history"),
+		AInteriorPortalSystem::RequiresRendererHistoryReset(
+			EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike,
+			EInteriorPortalRendererBackend::SceneCapture));
+	TestTrue(TEXT("The composition contract keeps the player as final exposure authority"),
+		FInteriorPortalRenderRequest().bPlayerExposureAuthority);
 	return true;
 }
 
