@@ -3,6 +3,7 @@
 #include "InteriorPortalCameraManager.h"
 #include "InteriorPortalFullSceneViewSubsystem.h"
 #include "Components/InputComponent.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
 #include "InputCoreTypes.h"
 
