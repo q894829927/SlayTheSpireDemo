@@ -180,6 +180,15 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 		return;
 	}
 
+	// STEP 1B.5 creates a standalone transformed FSceneViewFamily and renders it
+	// into the portal HDR target. The same world-scoped extension can see that
+	// family too, so never feed the portal target back into its own secondary
+	// render. Composition belongs only to the ordinary player/main view family.
+	if (InView.Family && InView.Family->bAdditionalViewFamily)
+	{
+		return;
+	}
+
 	const FInteriorPortalRenderRequest Request = GetPublishedRequest();
 	if (PortalCompositionDiagnosticsEnabled())
 	{
