@@ -26,6 +26,7 @@
 namespace InteriorPortalVisualGPU
 {
 	constexpr int32 SettleFrames = 6;
+	constexpr double CaptureTimeoutSeconds = 10.0;
 	constexpr double ApertureInteriorSignalMin = 0.008;
 	constexpr double ApertureExteriorDeltaMax = 0.040;
 	constexpr double FixedExposureColorMaeMax = 0.180;
@@ -77,12 +78,9 @@ namespace InteriorPortalVisualGPU
 		const double RadiusSquared = Ellipse.SquaredLength();
 		if (Region == EPixelRegion::InnerAperture)
 		{
-			// Stay well inside the shader's feathered edge and the physical portal rim.
 			return RadiusSquared <= 0.36;
 		}
 
-		// The current feasibility shader is allowed to touch only the analytic ellipse.
-		// Bounding-rectangle corners outside the ellipse must remain main-view pixels.
 		return RadiusSquared >= 1.25 && RadiusSquared <= 1.95;
 	}
 
@@ -183,11 +181,6 @@ namespace InteriorPortalVisualGPU
 		{
 		}
 
-		virtual ~FPortalCompositionGPUValidationCommand() override
-		{
-			RemoveScreenshotDelegate();
-		}
-
 		virtual bool Update() override
 		{
 			if (bFinished)
@@ -221,40 +214,38 @@ namespace InteriorPortalVisualGPU
 
 			case EStage::WaitBaselineA:
 				if (!WaitComplete()) { return false; }
-				if (!BeginScreenshot(TEXT("BaselineA"), BoundsA)) { return false; }
+				if (!BeginCapture(TEXT("BaselineA"), BoundsA)) { return false; }
 				Stage = EStage::CaptureBaselineA;
 				return false;
 
 			case EStage::CaptureBaselineA:
-				if (!PollScreenshot()) { return false; }
+				if (!PollCapture()) { return false; }
 				ApplyPose(PoseA, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
 				SetStage(EStage::WaitCompositionA, SettleFrames);
 				return false;
 
 			case EStage::WaitCompositionA:
 				if (!WaitComplete()) { return false; }
-				if (!BeginScreenshot(TEXT("CompositionA"), BoundsA)) { return false; }
+				if (!BeginCapture(TEXT("CompositionA"), BoundsA)) { return false; }
 				Stage = EStage::CaptureCompositionA;
 				return false;
 
 			case EStage::CaptureCompositionA:
-				if (!PollScreenshot()) { return false; }
+				if (!PollCapture()) { return false; }
 				ApplyPose(DirectA, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
 				SetStage(EStage::WaitDirectA, SettleFrames);
 				return false;
 
 			case EStage::WaitDirectA:
 				if (!WaitComplete()) { return false; }
-				if (!BeginScreenshot(TEXT("DirectA"), BoundsA)) { return false; }
+				if (!BeginCapture(TEXT("DirectA"), BoundsA)) { return false; }
 				Stage = EStage::CaptureDirectA;
 				return false;
 
 			case EStage::CaptureDirectA:
-				if (!PollScreenshot()) { return false; }
-				// Deliberately submit the new pose and request its screenshot in the same
-				// latent update. This catches a CRP target that is sampled one frame late.
+				if (!PollCapture()) { return false; }
 				ApplyPose(PoseB, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
-				if (!BeginScreenshot(TEXT("PortalBFirst"), BoundsB))
+				if (!BeginCapture(TEXT("PortalBFirst"), BoundsB))
 				{
 					Stage = EStage::BeginPortalBFirst;
 					return false;
@@ -263,35 +254,35 @@ namespace InteriorPortalVisualGPU
 				return false;
 
 			case EStage::BeginPortalBFirst:
-				if (!BeginScreenshot(TEXT("PortalBFirst"), BoundsB)) { return false; }
+				if (!BeginCapture(TEXT("PortalBFirst"), BoundsB)) { return false; }
 				Stage = EStage::CapturePortalBFirst;
 				return false;
 
 			case EStage::CapturePortalBFirst:
-				if (!PollScreenshot()) { return false; }
+				if (!PollCapture()) { return false; }
 				SetStage(EStage::WaitPortalBSettled, SettleFrames);
 				return false;
 
 			case EStage::WaitPortalBSettled:
 				if (!WaitComplete()) { return false; }
-				if (!BeginScreenshot(TEXT("PortalBSettled"), BoundsB)) { return false; }
+				if (!BeginCapture(TEXT("PortalBSettled"), BoundsB)) { return false; }
 				Stage = EStage::CapturePortalBSettled;
 				return false;
 
 			case EStage::CapturePortalBSettled:
-				if (!PollScreenshot()) { return false; }
+				if (!PollCapture()) { return false; }
 				ApplyPose(DirectB, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
 				SetStage(EStage::WaitDirectB, SettleFrames);
 				return false;
 
 			case EStage::WaitDirectB:
 				if (!WaitComplete()) { return false; }
-				if (!BeginScreenshot(TEXT("DirectB"), BoundsB)) { return false; }
+				if (!BeginCapture(TEXT("DirectB"), BoundsB)) { return false; }
 				Stage = EStage::CaptureDirectB;
 				return false;
 
 			case EStage::CaptureDirectB:
-				if (!PollScreenshot()) { return false; }
+				if (!PollCapture()) { return false; }
 				AnalyzeSamples();
 				CleanupFixture();
 				bFinished = true;
@@ -394,7 +385,6 @@ namespace InteriorPortalVisualGPU
 			ApplyPose(PoseA, EInteriorPortalRendererBackend::CustomRenderPassSpike);
 			if (!ComputeProjectedBounds(PoseA, BoundsA))
 			{
-				// If the authored orange endpoint is malformed, try the blue endpoint before failing.
 				Swap(Entry, Exit);
 				const FTransform AlternateEntryFrame = Entry->GetLogicalFrame();
 				const FTransform AlternateExitFrame = Exit->GetLogicalFrame();
@@ -415,6 +405,7 @@ namespace InteriorPortalVisualGPU
 
 			OutputDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AutomationReports/PortalVisualGPU"));
 			IFileManager::Get().MakeDirectory(*OutputDirectory, true);
+			IFileManager::Get().Delete(*FPaths::Combine(OutputDirectory, TEXT("metrics.json")), false, true);
 			bFixtureSetup = true;
 			return true;
 		}
@@ -430,9 +421,6 @@ namespace InteriorPortalVisualGPU
 			CameraActor->SetActorTransform(CameraTransform);
 			Player->SetViewTarget(CameraActor.Get());
 			Player->PlayerCameraManager->UpdateCamera(0.0f);
-			// Submit from the exact camera cache used for this validation stage. The normal
-			// game path will also tick, but this explicit call makes the first-frame probe
-			// test the current request instead of waiting for a later Automation tick.
 			System->RenderViews(Player.Get());
 		}
 
@@ -475,70 +463,80 @@ namespace InteriorPortalVisualGPU
 			return GFrameCounter >= TargetFrame;
 		}
 
-		bool BeginScreenshot(const FName SampleName,
+		bool BeginCapture(const FName SampleName,
 			const InteriorPortalMath::FPortalScreenBounds& Bounds)
 		{
-			if (bScreenshotRequested || FScreenshotRequest::IsScreenshotRequested()
-				|| !GEngine || !GEngine->GameViewport)
+			if (bCapturePending || !GEngine || !GEngine->GameViewport || !GEngine->GameViewport->Viewport)
 			{
 				return false;
 			}
 
 			PendingSampleName = SampleName;
 			PendingBounds = Bounds;
-			bScreenshotCaptured = false;
-			ScreenshotRequestTime = FPlatformTime::Seconds();
-			ScreenshotHandle = FScreenshotRequest::OnScreenshotCaptured().AddRaw(
-				this, &FPortalCompositionGPUValidationCommand::OnScreenshotCaptured);
-			bScreenshotRequested = true;
+			CaptureRequestTime = FPlatformTime::Seconds();
+			CaptureRequestedFrame = GFrameCounter;
+			bCapturePending = true;
 
-			const FString OutputPath = FPaths::Combine(OutputDirectory,
-				FString::Printf(TEXT("%s.png"), *SampleName.ToString()));
-			FScreenshotRequest::RequestScreenshot(OutputPath, false, false, false, FIntRect(), true);
+			// Keep the human-readable PNG artifact path, but do not use the screenshot
+			// delegate as the source of Automation evidence. UnrealEditor-Cmd with
+			// -RenderOffscreen writes the screenshot while not broadcasting
+			// FScreenshotRequest::OnScreenshotCaptured, which caused false 10s timeouts.
+			if (!FScreenshotRequest::IsScreenshotRequested())
+			{
+				const FString OutputPath = FPaths::Combine(OutputDirectory,
+					FString::Printf(TEXT("%s.png"), *SampleName.ToString()));
+				IFileManager::Get().Delete(*OutputPath, false, true);
+				FScreenshotRequest::RequestScreenshot(OutputPath, false, false, false, FIntRect(), true);
+			}
 			return true;
 		}
 
-		bool PollScreenshot()
+		bool PollCapture()
 		{
-			if (bScreenshotCaptured)
+			if (!bCapturePending)
 			{
-				RemoveScreenshotDelegate();
-				bScreenshotRequested = false;
-				bScreenshotCaptured = false;
 				return true;
 			}
-			if (bScreenshotRequested && FPlatformTime::Seconds() - ScreenshotRequestTime > 10.0)
+
+			// Read only after at least one renderer frame had an opportunity to consume
+			// the pose/request. This preserves PortalBFirst as a genuine first-frame
+			// synchronization probe instead of reading the previous back buffer.
+			if (GFrameCounter <= CaptureRequestedFrame)
 			{
-				Test->AddError(FString::Printf(TEXT("Timed out capturing Portal GPU sample '%s'."),
+				return false;
+			}
+
+			FViewport* Viewport = GEngine && GEngine->GameViewport
+				? GEngine->GameViewport->Viewport : nullptr;
+			if (Viewport)
+			{
+				const FIntPoint Size = Viewport->GetSizeXY();
+				TArray<FColor> Bitmap;
+				if (Size.X > 0 && Size.Y > 0 && Viewport->ReadPixels(Bitmap)
+					&& Bitmap.Num() == Size.X * Size.Y)
+				{
+					FVisualSample Sample;
+					Sample.Width = Size.X;
+					Sample.Height = Size.Y;
+					Sample.Pixels = MoveTemp(Bitmap);
+					Sample.Bounds = PendingBounds;
+					Sample.RequestedFrame = CaptureRequestedFrame;
+					Sample.CapturedFrame = GFrameCounter;
+					Samples.Add(PendingSampleName, MoveTemp(Sample));
+					bCapturePending = false;
+					return true;
+				}
+			}
+
+			if (FPlatformTime::Seconds() - CaptureRequestTime > CaptureTimeoutSeconds)
+			{
+				Test->AddError(FString::Printf(
+					TEXT("Timed out reading Portal GPU sample '%s' from the game viewport."),
 					*PendingSampleName.ToString()));
-				RemoveScreenshotDelegate();
-				bScreenshotRequested = false;
-				bScreenshotCaptured = false;
+				bCapturePending = false;
 				return true;
 			}
 			return false;
-		}
-
-		void OnScreenshotCaptured(const int32 SizeX, const int32 SizeY, const TArray<FColor>& Bitmap)
-		{
-			FVisualSample Sample;
-			Sample.Width = SizeX;
-			Sample.Height = SizeY;
-			Sample.Pixels = Bitmap;
-			Sample.Bounds = PendingBounds;
-			Sample.RequestedFrame = ScreenshotRequestedFrame;
-			Sample.CapturedFrame = GFrameCounter;
-			Samples.Add(PendingSampleName, MoveTemp(Sample));
-			bScreenshotCaptured = true;
-		}
-
-		void RemoveScreenshotDelegate()
-		{
-			if (ScreenshotHandle.IsValid())
-			{
-				FScreenshotRequest::OnScreenshotCaptured().Remove(ScreenshotHandle);
-				ScreenshotHandle = FDelegateHandle();
-			}
 		}
 
 		const FVisualSample* FindSample(const FName Name) const
@@ -558,7 +556,7 @@ namespace InteriorPortalVisualGPU
 				|| !BaselineA->IsValid() || !CompositionA->IsValid() || !DirectASample->IsValid()
 				|| !PortalBFirst->IsValid() || !PortalBSettled->IsValid() || !DirectBSample->IsValid())
 			{
-				Test->AddError(TEXT("Portal GPU validation did not capture all six valid viewport samples."));
+				Test->AddError(TEXT("Portal GPU validation did not read all six valid viewport samples."));
 				return;
 			}
 
@@ -657,7 +655,6 @@ namespace InteriorPortalVisualGPU
 			{
 				return;
 			}
-			RemoveScreenshotDelegate();
 			if (bSavedEyeAdaptation && EyeAdaptationCVar)
 			{
 				EyeAdaptationCVar->Set(SavedEyeAdaptationQuality, ECVF_SetByCode);
@@ -693,6 +690,7 @@ namespace InteriorPortalVisualGPU
 			{
 				CameraActor->Destroy();
 			}
+			bCapturePending = false;
 			bCleaned = true;
 		}
 
@@ -741,11 +739,9 @@ namespace InteriorPortalVisualGPU
 		TMap<FName, FVisualSample> Samples;
 		FName PendingSampleName;
 		InteriorPortalMath::FPortalScreenBounds PendingBounds;
-		FDelegateHandle ScreenshotHandle;
-		bool bScreenshotRequested = false;
-		bool bScreenshotCaptured = false;
-		double ScreenshotRequestTime = 0.0;
-		uint64 ScreenshotRequestedFrame = 0;
+		bool bCapturePending = false;
+		double CaptureRequestTime = 0.0;
+		uint64 CaptureRequestedFrame = 0;
 	};
 }
 
@@ -777,8 +773,6 @@ bool FInteriorPortalCompositionGPUVisualTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	// Start ordinary PIE (not SIE), run the GPU/readback probe, then leave the
-	// user's editor map untouched. Manual visual acceptance remains a separate gate.
 	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
 	ADD_LATENT_AUTOMATION_COMMAND(InteriorPortalVisualGPU::FPortalCompositionGPUValidationCommand(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
