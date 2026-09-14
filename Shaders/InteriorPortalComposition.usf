@@ -9,6 +9,7 @@ SamplerState PortalSampler;
 SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
 float4 PortalBounds;
+float CompositionDebugMode;
 
 void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutColor : SV_Target0)
 {
@@ -23,6 +24,8 @@ void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutCo
 	const float ApertureMask = 1.0 - smoothstep(0.94, 1.0, EllipseDistance);
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
-	const float4 PortalColor = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+	const float4 PortalColor = CompositionDebugMode >= 0.5
+		? float4(1.0, 0.0, 1.0, 1.0)
+		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
 	OutColor = lerp(MainColor, PortalColor, saturate(ApertureMask));
 }
