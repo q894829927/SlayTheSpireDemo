@@ -18,6 +18,7 @@ public class SlayTheSpireDemoTests : ModuleRules
 			"RenderCore",
 			"RHI",
 			"UMG",
+			"UnrealEd",
 			"SlayTheSpireDemo"
 		});
 
