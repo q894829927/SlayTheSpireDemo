@@ -1,10 +1,10 @@
 # Interior Portal — Current Execution Plan
 
-Date: **2026-09-14**
+Date: **2026-09-15**
 
 Branch reviewed: **`portal/full-fidelity-p1`**
 
-Review baseline HEAD: **`81ffb09af1945ed8f695c934bcfacd67ab29f835`**
+Review / diagnostic baseline HEAD: **`85f3685220ac9a8852ab0ab590c970459a7a16ca`**
 
 Status:
 
@@ -15,8 +15,9 @@ SCENECAPTURE RETAINED AS FALLBACK / COMPARISON PATH /
 STEP 1A — A/B BASELINE + HISTORY DIAGNOSTICS IMPLEMENTED /
 STEP 1B.2 — PUBLIC CUSTOM RENDER PASS SPIKE PARTIAL /
 STEP 1B.3 — MAIN SCENECOLOR COMPOSITION BOUNDARY PARTIAL /
-VISUAL CEILING TEST STILL OPEN /
-STENCIL / MAIN-VIEW RENDERER FEASIBILITY AUTHORIZED /
+STEP 1B.4 — BASECOLOR CRP DIAGNOSTIC PASSED /
+CURRENT DEPTHANDBASEPASS LIT SCENECOLOR CEILING CONFIRMED /
+FULL TRANSFORMED SUB-VIEW / RENDERER-PRIVATE SPIKE NEXT /
 FULL PHYSICS DEFERRED UNTIL CORE SEAL
 ```
 
@@ -210,6 +211,62 @@ replacement, but a renderer-private hook is still required to bind the main
 depth-stencil/stencil aperture, apply true portal geometry/scissor and provide
 depth-continuous occlusion around the CRP view. No Engine source was modified.
 
+### 1.4 STEP 1B.4 BaseColor CRP diagnostic — 2026-09-15
+
+**Result: `BASECOLOR PATH PASS / CURRENT DEPTHANDBASEPASS LIT PATH INSUFFICIENT`.**
+
+Commits `8b0b39d7703cf7b4e564405ddc9849f522a10963` and
+`85f3685220ac9a8852ab0ab590c970459a7a16ca` add a bounded diagnostic without
+changing the virtual camera, projection, RenderTarget ownership or BeforeDOF
+composition architecture:
+
+```text
+portal.CompositionDebugMode 0 -> SceneColorNoAlpha through normal aperture
+portal.CompositionDebugMode 1 -> magenta portal aperture
+portal.CompositionDebugMode 2 -> full-screen magenta
+portal.CompositionDebugMode 3 -> BaseColor CRP through normal aperture
+```
+
+Mode 3 keeps `FCustomRenderPassBase::ERenderMode::DepthAndBasePass` but changes
+the requested output from `SceneColorNoAlpha` to `BaseColor`. The composition
+shader explicitly routes Mode 3 through the ordinary `PortalTexture` sampling
+and analytic aperture mask rather than the Mode 1/2 magenta paths.
+
+The user-supplied 2026-09-15 Mode 3 `CompositionA.png` contains coherent
+unlit/base-pass material information inside the portal: a gray floor/lower
+surface, an olive-green band, a center character with multiple material colors
+and a right-side object with a blue/cyan material region. The main view outside
+the aperture remains the normal lit scene. This is manual visual evidence that
+the transformed view reaches target-space geometry and that BasePass -> CRP
+output -> RenderTarget -> PortalTexture -> aperture composition is alive for
+the tested view.
+
+This result rules out the following as the primary explanation for the earlier
+black Mode 0 portal in the same path:
+
+```text
+all target geometry being clipped away
+a completely dead transformed virtual view
+an entirely unwritten portal RenderTarget
+PortalTexture always sampling an empty target
+the analytic aperture composition being wholly disconnected
+```
+
+It does **not** prove the complete transformed-camera edge/grazing/parallax
+matrix, main depth/stencil continuity, true scissor, deferred lighting,
+shadows, Lumen GI/reflections, translucency/fog/decals, motion vectors,
+TAA/TSR, exposure parity or recursion.
+
+The important renderer boundary is now narrower: the current
+`DepthAndBasePass` CRP configuration can produce meaningful BaseColor but its
+`SceneColorNoAlpha` result is not a usable fully lit HDR portal view. Continue
+Step 1 at the renderer level rather than treating this black result as a
+portal-transform/RT/aperture bug or adding brightness/material workarounds.
+
+Detailed evidence and claim boundaries are recorded in
+[`InteriorPortalCRPBaseColorDiagnostic.md`](InteriorPortalCRPBaseColorDiagnostic.md).
+Keep Mode 3 as a retained layer diagnostic for future renderer work.
+
 ---
 
 ## 2. Architecture contracts
@@ -336,24 +393,38 @@ Use the same portal pair, same player pose, same destination region and same fra
 
 SceneCapture remains eligible as the Core production renderer only if it passes the same acceptance matrix as the MainView candidate. If it cannot, freeze it as fallback/debug behavior rather than continuing unbounded material/exposure workarounds.
 
-## 1B. Stencil / MainView feasibility spike
+## 1B. Full transformed sub-view / Stencil / MainView feasibility spike
+
+STEP 1B.4 closes the current `DepthAndBasePass + SceneColorNoAlpha` CRP result as
+a candidate for the required fully lit portal image. Do not keep extending that
+exact path with output-mode or brightness hacks. Preserve its BaseColor Mode 3
+as a diagnostic while moving the next feasibility proof to a renderer path that
+actually executes the required lit scene stages.
 
 Build one narrow proof:
 
 ```text
 one portal pair
 one recursion level
-main-view / SceneView based transformed virtual camera
-portal aperture written to stencil/depth
+full transformed SceneView/sub-view virtual camera
+portal aperture written to stencil/depth where the chosen path supports it
 exit-plane clipping
 projected portal bounds / scissor
-render only inside the legal aperture
+render only inside the legal aperture where feasible
+produce a genuinely lit HDR portal result
 single final player exposure / tone-map path
 ```
+
+The first spike should keep `RecursionDepth=1` and avoid coupling recursion,
+full temporal history and every render feature into the initial proof. Reuse
+the existing transform/projection, portal target ownership and pre-tonemap
+composition boundary where they remain valid; change the producer of the
+portal lit image, not the already-proven aperture consumer without cause.
 
 The spike only proves feasibility. It must answer:
 
 - can a transformed Portal view be rendered into the main frame without a separate final-color composite domain?
+- can the selected renderer path produce the required fully lit HDR portal result rather than BasePass-only content?
 - can depth/stencil preserve ordinary occlusion and prevent support-wall leakage?
 - can current projection/parallax and clip-plane contracts be preserved?
 - can a portal-bounded viewport/frustum be derived robustly?
@@ -620,10 +691,10 @@ FULL PHYSICS FIDELITY — SEALED FOR DOCUMENTED SUPPORTED CATEGORIES
 
 ```text
 STEP 1
-    SceneCapture A/B ceiling test
-    + single-layer Stencil/MainView feasibility spike
-    + portal-bounded frustum/scissor + virtual-history contract
-    -> compare Renderer Candidates
+    SceneCapture A/B retained as fallback/comparison
+    + CRP transformed-geometry/BaseColor diagnostic COMPLETE
+    -> one-layer full transformed sub-view / renderer-private lit spike
+    -> depth/stencil/scissor + portal-bounded rendering
     -> full renderer matrix
     -> freeze production renderer
 
