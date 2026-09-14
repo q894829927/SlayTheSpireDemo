@@ -1,3 +1,4 @@
+#include "/Engine/Private/Common.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
 Texture2D SceneColorTexture;
