@@ -4,12 +4,21 @@ Date: **2026-09-15**
 
 Branch: **`portal/full-fidelity-p1`**
 
-Implementation commit: **`a2204a3e307b5bef627289ffccbb094ef9c744ed`**
+Implementation commits:
+
+```text
+a2204a3e307b5bef627289ffccbb094ef9c744ed
+portal: add full view-family lit renderer spike
+
+d3eb17c0c61522868634084d55d34fbff18c4dd1
+portal: harden full view-family spike lifetime
+```
 
 Status:
 
 ```text
 IMPLEMENTED /
+UE 5.8 PUBLIC API STATIC AUDIT PASSED /
 NOT YET BUILT OR RUN /
 USER VALIDATION REQUIRED
 ```
@@ -18,6 +27,7 @@ Related evidence:
 
 - `docs/InteriorPortalCRPBaseColorDiagnostic.md`
 - `docs/InteriorPortalCurrentExecutionPlan.md`
+- `docs/InteriorPortalFullViewFamilySpikeValidation.md`
 - `Source/SlayTheSpireDemo/Interior/InteriorPortalFullViewFamilySpike.cpp`
 
 ---
@@ -69,9 +79,41 @@ solving temporal/exposure parity.
 
 The renderer target is `PF_FloatRGBA / RTF_RGBA16f`.
 
+The view-state lifetime was explicitly hardened after the first implementation:
+`FSceneViewStateReference` is declared before the `FSceneViewFamilyContext`, so
+it remains alive until the view family and its owned `FSceneView` instances are
+destroyed. This avoids leaving a view-family-owned view with a dangling
+`SceneViewStateInterface` during scope teardown.
+
 ---
 
-## 3. How to run
+## 3. UE 5.8 public API static audit
+
+Before asking for the local build, the implementation was checked against the
+UE 5.8 public API documentation. The following interfaces used by this spike are
+publicly documented in 5.8:
+
+```text
+FSceneViewInitOptions::ViewLocation / ViewRotation
+FSceneView::GlobalClippingPlane
+FSceneView::StartFinalPostprocessSettings
+FSceneView::OverridePostProcessSettings
+FSceneView::EndFinalPostprocessSettings
+FSceneViewFamily::SceneCaptureSource
+FSceneViewFamily::ConstructionValues::SetAdditionalViewFamily
+IRendererModule::BeginRenderingViewFamily
+FImageUtils::GetRenderTargetImage
+FImageUtils::SaveImageByExtension
+```
+
+This is a **source/API plausibility check**, not compilation evidence. The actual
+project build remains the first acceptance gate because renderer integration can
+still fail on include/module details, feature-level assumptions or engine-side
+runtime constraints that API documentation alone cannot prove.
+
+---
+
+## 4. How to run
 
 First sync and build the branch normally. Then run the map in PIE/Game with both
 portals placed and linked. Make sure at least one portal aperture is visible in
@@ -101,7 +143,7 @@ succeeded.
 
 ---
 
-## 4. What counts as a positive result
+## 5. What counts as a positive result
 
 The first gate passes if the exported image contains coherent target-space
 geometry **with real lighting information**, for example:
@@ -130,7 +172,7 @@ stencil/depth/scissor and temporal/exposure parity.
 
 ---
 
-## 5. What this spike does not prove
+## 6. What this spike does not prove
 
 Even if the exported image is lit, do not claim any of the following yet:
 
@@ -154,7 +196,7 @@ Portal renderer.
 
 ---
 
-## 6. Failure split
+## 7. Failure split
 
 If the command writes a coherent lit image:
 
