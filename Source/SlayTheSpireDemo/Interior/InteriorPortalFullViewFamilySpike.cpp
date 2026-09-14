@@ -79,7 +79,7 @@ namespace
 		{
 			if (IsValid(Primitive) && Primitive->IsRegistered())
 			{
-				ViewInitOptions.HiddenPrimitives.Add(Primitive->ComponentId);
+				ViewInitOptions.HiddenPrimitives.Add(Primitive->GetPrimitiveSceneId());
 			}
 		}
 	}
