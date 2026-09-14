@@ -263,7 +263,10 @@ namespace InteriorPortalVisualGPU
 
 			case EStage::CaptureCompositionA:
 				if (!PollCapture()) { return false; }
-				ApplyPose(DirectA, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
+				// Direct reference captures must not run the composition backend: doing so
+				// can compose another visible portal into the supposed ground-truth image.
+				// Switching backends also disables/clears the main-view extension request.
+				ApplyPose(DirectA, EInteriorPortalRendererBackend::CustomRenderPassSpike);
 				SetStage(EStage::WaitDirectA, SettleFrames);
 				return false;
 
@@ -302,7 +305,9 @@ namespace InteriorPortalVisualGPU
 
 			case EStage::CapturePortalBSettled:
 				if (!PollCapture()) { return false; }
-				ApplyPose(DirectB, EInteriorPortalRendererBackend::CustomRenderPassCompositionSpike);
+				// Keep the second direct reference free of portal composition for the
+				// same reason as DirectA.
+				ApplyPose(DirectB, EInteriorPortalRendererBackend::CustomRenderPassSpike);
 				SetStage(EStage::WaitDirectB, SettleFrames);
 				return false;
 
