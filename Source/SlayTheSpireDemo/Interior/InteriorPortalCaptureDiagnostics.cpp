@@ -17,7 +17,7 @@ namespace
 	TAutoConsoleVariable<int32> CVarPortalCaptureFrameDiagnostics(
 		TEXT("portal.CaptureFrameDiagnostics"),
 		0,
-		TEXT("When non-zero, log the SceneCapture depth-0 update contract and capture transform every game frame.\n")
+		TEXT("When non-zero, log the SceneCapture depth-0 update contract, capture transform, and native exit clip-plane contract every game frame.\n")
 		TEXT("Use this only for short Portal diagnostics; it intentionally produces one line per endpoint per frame."),
 		ECVF_Default);
 
@@ -118,8 +118,25 @@ namespace
 			const bool bDepth0CaptureRequired = bDirectVisible;
 			const bool bRecursiveDepth1Visible = bDirectVisible && bFirstVirtualSeesEntry;
 
+			const FTransform ExitFrame = Exit->GetLogicalFrame();
+			const FVector ExpectedClipNormal = ExitFrame.GetUnitAxis(EAxis::X).GetSafeNormal();
+			const FVector ExpectedClipBase = ExitFrame.GetLocation()
+				+ ExpectedClipNormal * PortalSystem->ClipPlaneBias;
+			const double VirtualCameraPlaneDistance = FVector::DotProduct(
+				ExpectedDepth0.GetLocation() - ExpectedClipBase, ExpectedClipNormal);
+			const bool bNativeClipMode = PortalSystem->RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
+			const bool bCaptureClipEnabled = bHasCapture && Capture->bEnableClipPlane;
+			const bool bCaptureClipBaseMatches = bHasCapture
+				&& Capture->ClipPlaneBase.Equals(ExpectedClipBase, 0.1f);
+			const FVector CaptureClipNormal = bHasCapture
+				? Capture->ClipPlaneNormal.GetSafeNormal() : FVector::ZeroVector;
+			const bool bCaptureClipNormalMatches = bHasCapture
+				&& FVector::DotProduct(CaptureClipNormal, ExpectedClipNormal) > 0.9999f;
+			const bool bNativeClipConfigMatchesExpected = bNativeClipMode
+				&& bCaptureClipEnabled && bCaptureClipBaseMatches && bCaptureClipNormalMatches;
+
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalCaptureDiag Frame=%llu Entry=%s PlayerPitch=%.3f VirtualPitch=%.3f DirectVisible=%d Depth0CaptureRequired=%d RecursiveDepth1Visible=%d CaptureTransformMatchesExpected=%d CapturePitch=%.3f RecursionDepth=%d ClipMode=%s"),
+				TEXT("PortalCaptureDiag Frame=%llu Entry=%s PlayerPitch=%.3f VirtualPitch=%.3f DirectVisible=%d Depth0CaptureRequired=%d RecursiveDepth1Visible=%d CaptureTransformMatchesExpected=%d CapturePitch=%.3f RecursionDepth=%d ClipMode=%s ClipPlaneEnabled=%d NativeClipConfigMatchesExpected=%d CameraPlaneDistance=%.3f ExpectedClipBase=(%.2f,%.2f,%.2f) ExpectedClipNormal=(%.4f,%.4f,%.4f) CaptureClipBase=(%.2f,%.2f,%.2f) CaptureClipNormal=(%.4f,%.4f,%.4f)"),
 				GFrameCounter,
 				Entry == PortalSystem->BluePortal ? TEXT("Blue") : TEXT("Orange"),
 				POV.Rotation.Pitch,
@@ -130,8 +147,16 @@ namespace
 				bCaptureTransformMatchesExpected ? 1 : 0,
 				bHasCapture ? CaptureTransform.Rotator().Pitch : 0.0f,
 				PortalSystem->RecursionDepth,
-				PortalSystem->RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane
-					? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"));
+				bNativeClipMode ? TEXT("NativeClipPlane") : TEXT("ObliqueFallbackKnownBroken"),
+				bCaptureClipEnabled ? 1 : 0,
+				bNativeClipConfigMatchesExpected ? 1 : 0,
+				VirtualCameraPlaneDistance,
+				ExpectedClipBase.X, ExpectedClipBase.Y, ExpectedClipBase.Z,
+				ExpectedClipNormal.X, ExpectedClipNormal.Y, ExpectedClipNormal.Z,
+				bHasCapture ? Capture->ClipPlaneBase.X : 0.0,
+				bHasCapture ? Capture->ClipPlaneBase.Y : 0.0,
+				bHasCapture ? Capture->ClipPlaneBase.Z : 0.0,
+				CaptureClipNormal.X, CaptureClipNormal.Y, CaptureClipNormal.Z);
 		}
 	}
 
