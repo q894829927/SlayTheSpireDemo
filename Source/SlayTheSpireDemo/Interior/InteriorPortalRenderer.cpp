@@ -17,12 +17,19 @@ namespace
 	TAutoConsoleVariable<int32> CVarPortalCompositionDebugMode(
 		TEXT("portal.CompositionDebugMode"),
 		0,
-		TEXT("STEP 1B.3 composition diagnostic. 0=normal portal texture, 1=solid magenta inside the analytic aperture."),
+		TEXT("STEP 1B.3 composition diagnostic. 0=normal SceneColor CRP, 1=solid magenta aperture, 2=full-screen magenta, 3=BaseColor CRP sampled through aperture."),
 		ECVF_RenderThreadSafe);
 
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
+	}
+
+	FCustomRenderPassBase::ERenderOutput PortalCustomRenderOutput()
+	{
+		return CVarPortalCompositionDebugMode.GetValueOnAnyThread() == 3
+			? FCustomRenderPassBase::ERenderOutput::BaseColor
+			: FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha;
 	}
 }
 
@@ -57,14 +64,15 @@ FInteriorPortalCustomRenderPass::FInteriorPortalCustomRenderPass(
 	: FCustomRenderPassBase(
 		InDebugName,
 		FCustomRenderPassBase::ERenderMode::DepthAndBasePass,
-		FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha,
+		PortalCustomRenderOutput(),
 		InRenderTargetSize)
 	, RenderTargetResource(InRenderTarget)
 {
-	// The output is an HDR scene-color target. Asking the engine to include
-	// translucency documents the exact pass contract; it does not imply that
-	// reflections or Lumen temporal history are included by this public API.
-	bSceneColorWithTranslucent = true;
+	// The SceneColor output is an HDR feasibility target. In debug mode 3 the
+	// same transformed CRP writes BaseColor instead, isolating geometry/material
+	// rendering from the lighting stages that DepthAndBasePass does not execute.
+	bSceneColorWithTranslucent = PortalCustomRenderOutput()
+		== FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha;
 }
 
 void FInteriorPortalCustomRenderPass::OnPreRender(FRDGBuilder& GraphBuilder)
