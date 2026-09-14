@@ -22,28 +22,34 @@ docs(portal): update full view-family spike audit
 
 9eda3aa84a487b3037aa74aaf2d156bfaede50db
 portal: fix primitive id access in full view spike
+
+7f08c23429dba76158bc3749e349010095ffdd18
+portal: load renderer module explicitly for full view spike
 ```
 
 Validation state:
 
 ```text
 UE 5.8 PUBLIC API STATIC AUDIT PASS
-FIRST REAL BUILD ATTEMPT: FAILED AT HiddenPrimitives COMPONENT ID ACCESS
-THAT COMPILE ERROR IS FIXED IN 9eda3aa84a487b3037aa74aaf2d156bfaede50db
+REAL BUILD ATTEMPT 1: FAILED AT HiddenPrimitives COMPONENT ID ACCESS
+FIXED IN 9eda3aa84a487b3037aa74aaf2d156bfaede50db
+REAL BUILD ATTEMPT 2: FAILED BECAUSE GetRendererModule() IS NOT A DECLARED SYMBOL
+FIXED IN 7f08c23429dba76158bc3749e349010095ffdd18
 BUILD RERUN REQUIRED
 SPIKE NOT YET RUN
 NO VISUAL PASS CLAIMED
 ```
 
-The first real UE 5.8 compile found this source-level mismatch:
+## Compile correction 1 — primitive renderer identity
+
+The first real UE 5.8 compile found:
 
 ```text
 InteriorPortalFullViewFamilySpike.cpp(82,53):
 error C2039: 'ComponentId' is not a member of 'UPrimitiveComponent'
 ```
 
-The spike had attempted to populate `FSceneViewInitOptions::HiddenPrimitives`
-with a non-public/nonexistent member:
+The spike had attempted:
 
 ```cpp
 ViewInitOptions.HiddenPrimitives.Add(Primitive->ComponentId);
@@ -56,28 +62,44 @@ UE 5.8 exposes the renderer identity through the public
 ViewInitOptions.HiddenPrimitives.Add(Primitive->GetPrimitiveSceneId());
 ```
 
-This is a narrow compile/API correction only. It does not change the transformed
-view, clipping, renderer entry point, target format or claim boundary.
+## Compile correction 2 — renderer module access
+
+The next real UE 5.8 compile reached the renderer submission point and found:
+
+```text
+InteriorPortalFullViewFamilySpike.cpp(320,3):
+error C3861: 'GetRendererModule': identifier not found
+```
+
+`RendererInterface.h` exposes the `IRendererModule` interface, but this project
+cannot rely on a global `GetRendererModule()` helper. The Renderer module is
+already a private dependency of `SlayTheSpireDemo`, so the spike now acquires the
+module explicitly through Unreal's normal module manager path:
+
+```cpp
+IRendererModule& RendererModule =
+    FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
+RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
+```
+
+`Modules/ModuleManager.h` was added accordingly. This correction changes only
+module lookup; it does not change the transformed view, clipping plane,
+`FSceneViewFamily`, render target, readback or renderer-feasibility claim.
 
 The earlier static audit confirmed that the UE 5.8 public API documents the
-principal interfaces used by the spike (`FSceneViewInitOptions` view transform
-members, `FSceneView::GlobalClippingPlane`, post-process setup methods,
-`FSceneViewFamily` capture-source/additional-family fields,
-`IRendererModule::BeginRenderingViewFamily`, and `FImageUtils` readback/save).
-The build must continue to be treated as the actual authority for any remaining
-signature/member differences in the installed UE 5.8 tree.
+principal interfaces used by the spike. The installed UE 5.8 build remains the
+authority for exact symbols and signatures, so compilation is being advanced
+one real error at a time rather than changing renderer architecture speculatively.
 
 Required next action:
 
-1. Pull commit `9eda3aa84a487b3037aa74aaf2d156bfaede50db` or later.
-2. Regenerate UE 5.8 project files if needed.
-3. Compile `SlayTheSpireDemoEditor Win64 Development` again.
-4. If another compiler error appears, stop and capture the first relevant error
-   block rather than changing renderer architecture speculatively.
-5. If the build passes, run `/Game/House/L_Interior_LivingKitchen` in PIE/Game.
-6. Place/link both portals and face one visible aperture.
-7. Execute `portal.RunFullViewFamilySpike`.
-8. Inspect:
+1. Pull commit `7f08c23429dba76158bc3749e349010095ffdd18` or later.
+2. Compile `SlayTheSpireDemoEditor Win64 Development` again.
+3. If another compiler error appears, capture the first relevant error block.
+4. If the build passes, run `/Game/House/L_Interior_LivingKitchen` in PIE/Game.
+5. Place/link both portals and face one visible aperture.
+6. Execute `portal.RunFullViewFamilySpike`.
+7. Inspect:
 
 ```text
 Saved/AutomationReports/PortalFullViewFamilySpike.png
