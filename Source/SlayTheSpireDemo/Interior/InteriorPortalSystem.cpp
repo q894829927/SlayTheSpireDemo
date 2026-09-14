@@ -117,7 +117,6 @@ namespace
 		return InteriorPortalMath::Inside(Local, Portal->HalfWidth, Portal->HalfHeight,
 			Support.Width, Support.Height);
 	}
-
 	bool BodyFitsAt(const UPrimitiveComponent* Body, const AInteriorPortal* Portal, const FVector& Location)
 	{
 		if (!Body || !Portal) { return false; }
@@ -193,9 +192,6 @@ void AInteriorPortalSystem::BeginPlay()
 	{
 		ViewState.Allocate(GetWorld()->GetFeatureLevel());
 	}
-	// Preserve authored ordering, then append runtime-tagged bodies in stable
-	// path order. Registration validates the supported solver contract and owns
-	// all parallel traversal/proxy arrays from this point onward.
 	const TArray<TObjectPtr<UPrimitiveComponent>> AuthoredTravellers = PhysicsTravellers;
 	PhysicsTravellers.Reset();
 	for (UPrimitiveComponent* Traveller : AuthoredTravellers) { RegisterPhysicsTraveller(Traveller); }
@@ -212,7 +208,6 @@ bool AInteriorPortalSystem::RegisterPhysicsTraveller(UPrimitiveComponent* Travel
 	{
 		return false;
 	}
-
 	const int32 Index = PhysicsTravellers.Add(Traveller);
 	PreviousBodyPositions.Add(Traveller->GetComponentLocation());
 	LastSafeBodyPositions.Add(Traveller->GetComponentLocation());
@@ -221,7 +216,6 @@ bool AInteriorPortalSystem::RegisterPhysicsTraveller(UPrimitiveComponent* Travel
 	BodyProxies.Add(nullptr);
 	BodyMaterials.Add(nullptr);
 	ProxyMaterials.Add(nullptr);
-
 	if (UStaticMeshComponent* Body = Cast<UStaticMeshComponent>(Traveller))
 	{
 		UStaticMeshComponent* Proxy = NewObject<UStaticMeshComponent>(this);
@@ -241,7 +235,6 @@ bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Trav
 {
 	const int32 Index = PhysicsTravellers.IndexOfByKey(Traveller);
 	if (Index == INDEX_NONE) { return false; }
-
 	if (GrabHandle && GrabHandle->GetGrabbedComponent() == Traveller) { GrabHandle->ReleaseComponent(); }
 	if (PassageConstraints.IsValidIndex(Index) && IsValid(PassageConstraints[Index]))
 	{
@@ -251,7 +244,6 @@ bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Trav
 	{
 		BodyProxies[Index]->DestroyComponent();
 	}
-
 	PhysicsTravellers.RemoveAt(Index);
 	PreviousBodyPositions.RemoveAt(Index);
 	LastSafeBodyPositions.RemoveAt(Index);
@@ -279,7 +271,6 @@ void AInteriorPortalSystem::DiscoverTaggedTravellers()
 {
 	if (!GetWorld()) { return; }
 	RemoveInvalidTravellers();
-
 	TArray<UPrimitiveComponent*> Candidates;
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
@@ -312,34 +303,21 @@ bool AInteriorPortalSystem::IsFlashlightTraceThroughPortal(const FHitResult& Hit
 {
 	const UPrimitiveComponent* HitComponent = Hit.GetComponent();
 	if (!HitComponent || TraceRadius < 0.0f) { return false; }
-
 	for (const AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
 	{
 		if (!IsValid(Portal) || !Portal->bPlaced || !IsValid(Portal->Support)
 			|| Portal->Support.Get() != HitComponent) { continue; }
-
 		const FTransform Frame = Portal->GetLogicalFrame();
 		const FVector Start = Frame.InverseTransformPositionNoScale(TraceStart);
 		const FVector End = Frame.InverseTransformPositionNoScale(TraceEnd);
 		const FVector Delta = End - Start;
-
-		// The sweep must approach the portal plane from one of its two sides.
-		// This rejects a wall hit that happens to use the same support component
-		// while the flashlight is pointing away from the portal.
 		const bool bApproachesPlane = (Start.X >= 0.0f && Delta.X < 0.0f)
 			|| (Start.X <= 0.0f && Delta.X > 0.0f);
 		if (!bApproachesPlane) { continue; }
-
 		float PlaneTime = 0.0f;
-		if (!FMath::IsNearlyZero(Delta.X))
-		{
-			PlaneTime = FMath::Clamp(-Start.X / Delta.X, 0.0f, 1.0f);
-		}
+		if (!FMath::IsNearlyZero(Delta.X)) { PlaneTime = FMath::Clamp(-Start.X / Delta.X, 0.0f, 1.0f); }
 		const FVector NearestToPlane = Start + Delta * PlaneTime;
 		if (FMath::Abs(NearestToPlane.X) > TraceRadius + 1.0f) { continue; }
-
-		// Expand the aperture by the sweep radius so the spherical clearance
-		// query follows the visible opening instead of the solid support wall.
 		const float Width = Portal->HalfWidth + TraceRadius;
 		const float Height = Portal->HalfHeight + TraceRadius;
 		if (Width > 0.0f && Height > 0.0f
@@ -407,8 +385,6 @@ double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVec
 	if (!PlayerGate.IsValid() && !IgnoredSupports.IsEmpty()) { RecoverCharacterPassage(); }
 	if (PlayerGate.IsValid() && (!PlayerGate->GetLogicalFrame().Equals(PlayerGateFrame,.001)
 		|| !IsValid(PlayerGate->Support))) { RecoverCharacterPassage(); }
-	// Scoped movement rollback or an external pose correction can leave a stale gate.
-	// Release it before constraining a capsule which is already clear of the wall.
 	FinishCharacterMove(Pawn);
 	const FVector Center=Pawn->GetActorLocation();
 	const UCapsuleComponent* Capsule=Pawn->GetCapsuleComponent();
@@ -446,11 +422,7 @@ double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVec
 	double Fraction=bFits?FMath::Clamp(Leave,0.0,1.0):0;
 	FVector HitNormal=Frame.TransformVectorNoScale(N);
 	const double Clearance=CharacterNormalExtent(Pawn,Frame)+2;
-	// Once the entire capsule is in front of the wall, lateral movement is ordinary room movement.
 	if (bFits && Move.X>0 && (Clearance-Local.X)/Move.X<=Fraction) { Fraction=1; }
-	// A floor/step correction can put the capsule slightly outside the conservative
-	// aperture. Keep retreat and motion towards the opening available; blocking every
-	// direction here traps the player permanently. Deeper wall entry still needs a fit.
 	if (Move.X < -UE_SMALL_NUMBER && !FitsCharacter(Pawn,Center,Gate))
 	{
 		Fraction=0;
@@ -464,7 +436,6 @@ double AInteriorPortalSystem::ConstrainCharacterMove(ACharacter* Pawn,const FVec
 	}
 	if (Fraction<1)
 	{
-		// Leave a geometric skin, independent of requested speed or frame duration.
 		Fraction=FMath::Max(0.0,Fraction-.01/FMath::Max(Delta.Size(),.01));
 		OutGateHit=FHitResult(Gate->Support->GetOwner(),Gate->Support,Center+Delta*Fraction,HitNormal);
 		OutGateHit.bBlockingHit=true; OutGateHit.Time=Fraction;
@@ -508,9 +479,6 @@ void AInteriorPortalSystem::RestoreIgnores()
 void AInteriorPortalSystem::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	// Runtime-spawned physics actors opt in with the PortalTraveller component
-	// tag. Discovering them before the pre-physics gates keeps registration and
-	// the first traversal sample in the same frame.
 	DiscoverTaggedTravellers();
 	UpdateFidelityDiagnostics();
 	if (!IsLinked() && bWasRendererLinked)
@@ -607,10 +575,6 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 				const bool bFits = BodyFits(Body, Portal);
 				const bool bPredictedFits = BodyFitsAt(Body, Portal, PredictedLocation);
 				const bool bWillClearSupport = FMath::Abs(PredictedDistance) > BodyExtent.Normal + 20;
-				// Disable only this body's contact while both the current and
-				// predicted poses occupy the legal opening. A lateral prediction
-				// outside the aperture keeps the wall solid for the next physics
-				// step, preventing a body from sliding behind the support.
 				if (bFits && (bPredictedFits || bWillClearSupport))
 				{
 					Support = Portal->Support;
@@ -649,11 +613,6 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 				else { BodyExits[I].Reset(); }
 			}
 		}
-
-		// A previous frame can have advanced a body through the one-frame
-		// ignore window before the aperture test runs again. Restore the last
-		// legal pose before re-enabling support collision, and remove only the
-		// velocity component that points farther into the wall.
 		if (bInvalidInsideSupport && IsValid(Body) && LastSafeBodyPositions.IsValidIndex(I))
 		{
 			const FVector SafeLocation = LastSafeBodyPositions[I];
@@ -686,8 +645,6 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 		}
 		if (Support && !PassageConstraints[I])
 		{
-			// A completely free joint suppresses ONLY this body's contact with its portal wall.
-			// Other bodies, the floor, and all furniture keep their normal Chaos collision.
 			Constraint = NewObject<UPhysicsConstraintComponent>(this);
 			Constraint->SetLinearXLimit(LCM_Free, 0);
 			Constraint->SetLinearYLimit(LCM_Free, 0);
@@ -741,11 +698,6 @@ void AInteriorPortalSystem::UpdateCharacterTraversal(APlayerController* Player)
 					FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(),Capsule->GetScaledCapsuleHalfHeight()),Params);
 				if (!bExitFits || bExitSweepBlocked || bExitOverlap)
 				{
-					if (PlacementMessage!=TEXT("Exit blocked"))
-					{
-						UE_LOG(LogTemp,Display,TEXT("Portal exit rejected: fit=%d sweep=%d overlap=%d component=%s from=%s to=%s"),
-							bExitFits,bExitSweepBlocked,bExitOverlap,*GetNameSafe(ExitSweep.GetComponent()),*ExitPlaneCenter.ToString(),*Location.ToString());
-					}
 					Pawn->SetActorLocation(Pawn->GetActorLocation() + Intersection - Eye + EntryFrame.GetUnitAxis(EAxis::X) * 2, false);
 					Pawn->GetCharacterMovement()->Velocity = FVector::ZeroVector;
 					PlacementMessage = TEXT("Exit blocked");
@@ -778,7 +730,6 @@ void AInteriorPortalSystem::UpdateCharacterTraversal(APlayerController* Player)
 				else { Player->SetControlRotation(View); }
 				Pawn->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 				Pawn->GetCharacterMovement()->Velocity = Velocity;
-				// Do not infer a velocity from the discontinuous world-space location delta.
 				Pawn->GetCharacterMovement()->bJustTeleported = true;
 				if (UInteriorPortalMovementComponent* Movement=Cast<UInteriorPortalMovementComponent>(Pawn->GetCharacterMovement()))
 				{ Movement->MapPortalAcceleration(Rotation); }
@@ -910,7 +861,6 @@ bool AInteriorPortalSystem::ValidatePlacement(const FHitResult& Hit, const FVect
 	FVector Up = FVector::VectorPlaneProject(FVector::UpVector, Normal).GetSafeNormal();
 	if (Up.IsNearlyZero()) { Up = FVector::CrossProduct(Normal, ViewRight).GetSafeNormal(); }
 	const FQuat Rotation = FRotationMatrix::MakeFromXZ(Normal, Up).ToQuat();
-	// The actor transform is the logical aperture plane. Cosmetic mesh depth bias belongs only to AInteriorPortal::Surface.
 	OutFrame = FTransform(Rotation, Hit.ImpactPoint);
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalPlacement), true);
 	for (int32 I = 0; I < 32; ++I)
@@ -924,7 +874,6 @@ bool AInteriorPortalSystem::ValidatePlacement(const FHitResult& Hit, const FVect
 			OutReason = TEXT("Not enough flat space for the whole portal"); return false;
 		}
 	}
-	// Room for an upright child at the opening, ignoring only the supporting primitive.
 	Params.bTraceComplex = false;
 	Params.AddIgnoredComponent(Hit.GetComponent());
 	if (Character.IsValid()) { Params.AddIgnoredActor(Character.Get()); }
@@ -995,9 +944,7 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	const bool bUsingMainViewStencil = UsesMainViewStencil(RendererBackend);
 	if (!bRendererBackendInitialized || LastRendererBackend != RendererBackend)
 	{
-		const FString Reason = !bRendererBackendInitialized
-			? TEXT("renderer backend initialized")
-			: TEXT("renderer backend changed");
+		const FString Reason = !bRendererBackendInitialized ? TEXT("renderer backend initialized") : TEXT("renderer backend changed");
 		InvalidateRendererHistories(Reason);
 		bRendererBackendInitialized = true;
 		LastRendererBackend = RendererBackend;
@@ -1007,25 +954,7 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			MainViewStencilExtension->ClearRequest();
 		}
 	}
-	if (!IsLinked() || !Player || !Player->PlayerCameraManager)
-	{
-		if (bUsingMainViewStencil && MainViewStencilExtension)
-		{
-			MainViewStencilExtension->ClearRequest();
-		}
-		if (UsesCustomRenderPass(RendererBackend))
-		{
-			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
-			{
-				if (IsValid(Entry))
-				{
-					Entry->SetView(nullptr, false, 1.0f,
-						TEXT("CustomRenderPassSpike: activation gate closed; no stale proof image"), 0.0f);
-				}
-			}
-		}
-		return;
-	}
+	if (!IsLinked() || !Player || !Player->PlayerCameraManager) { return; }
 	ULocalPlayer* Local = Player->GetLocalPlayer();
 	FSceneViewProjectionData ProjectionData;
 	if (!Local || !Local->ViewportClient || !Local->GetProjectionData(Local->ViewportClient->Viewport, ProjectionData)) { return; }
@@ -1036,276 +965,17 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 	const FMinimalViewInfo& POV = Player->PlayerCameraManager->GetCameraCacheView();
 	const bool bFinalColorHDR = CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR;
 	const bool bCaptureEyeAdaptation = UsesCaptureEyeAdaptation(CaptureColorMode);
-	const bool bCameraCut = Player->PlayerCameraManager->bGameCameraCutThisFrame;
-	if (!bRendererConfigurationInitialized
-		|| LastRenderClipMode != RenderClipMode
-		|| LastCaptureColorMode != CaptureColorMode
-		|| bLastCaptureTemporalAA != bCaptureTemporalAA
-		|| !FMath::IsNearlyEqual(LastCaptureLumenSurfaceCacheResolution, CaptureLumenSurfaceCacheResolution)
-		|| LastRendererWidth != Width || LastRendererHeight != Height || LastRendererDepth != Depth)
-	{
-		const FString Reason = !bRendererConfigurationInitialized ? TEXT("renderer configuration initialized")
-			: (LastCaptureColorMode != CaptureColorMode ? TEXT("capture color mode changed")
-			: (LastRenderClipMode != RenderClipMode ? TEXT("render clip mode changed")
-			: ((LastRendererWidth != Width || LastRendererHeight != Height) ? TEXT("render target resolution changed")
-			: (LastRendererDepth != Depth ? TEXT("recursion depth changed")
-			: TEXT("capture temporal/render settings changed")))));
-		InvalidateRendererHistories(Reason);
-		bRendererConfigurationInitialized = true;
-		LastRenderClipMode = RenderClipMode;
-		LastCaptureColorMode = CaptureColorMode;
-		bLastCaptureTemporalAA = bCaptureTemporalAA;
-		LastCaptureLumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
-		LastRendererWidth = Width;
-		LastRendererHeight = Height;
-		LastRendererDepth = Depth;
-	};
-	if (bCameraCut)
-	{
-		InvalidateRendererHistories(TEXT("player camera cut"));
-	}
 	const FTransform PlayerView(POV.Rotation, POV.Location);
-	if (bPreviousPlayerViewValid && InteriorPortalMath::IsVirtualViewDiscontinuous(PreviousPlayerView, PlayerView))
+	const FMatrix PortalViewPlanes(FPlane(0,0,1,0),FPlane(1,0,0,0),FPlane(0,1,0,0),FPlane(0,0,0,1));
+	const auto ViewProjectionForTransform = [&ProjectionData,&PortalViewPlanes](const FTransform& View)
 	{
-		InvalidateRendererHistories(TEXT("player camera discontinuity"));
-	}
-	PreviousPlayerView = PlayerView;
-	bPreviousPlayerViewValid = true;
-
-	const FMatrix PortalViewPlanes(
-		FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0), FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
-	const auto ViewProjectionForTransform = [&ProjectionData, &PortalViewPlanes](const FTransform& View)
-	{
-		return FTranslationMatrix(-View.GetLocation()) * FInverseRotationMatrix(View.Rotator())
-			* PortalViewPlanes * ProjectionData.ProjectionMatrix;
+		return FTranslationMatrix(-View.GetLocation()) * FInverseRotationMatrix(View.Rotator()) * PortalViewPlanes * ProjectionData.ProjectionMatrix;
 	};
-	const auto IsVisible = [&ProjectionData, &Rect, &ViewProjectionForTransform](const AInteriorPortal* Portal,
-		const FTransform& View, InteriorPortalMath::FPortalScreenBounds& OutBounds)
+	const auto IsVisible = [&ProjectionData,&Rect,&ViewProjectionForTransform](const AInteriorPortal* Portal,const FTransform& View,InteriorPortalMath::FPortalScreenBounds& OutBounds)
 	{
-		return Portal && InteriorPortalMath::ProjectPortalApertureToScreenBounds(
-			Portal->GetLogicalFrame(), Portal->HalfWidth, Portal->HalfHeight,
-			ViewProjectionForTransform(View), Rect, OutBounds, ProjectionData.IsPerspectiveProjection(),
-			ProjectionData.GetNearPlaneFromProjectionMatrix());
+		return Portal && InteriorPortalMath::ProjectPortalApertureToScreenBounds(Portal->GetLogicalFrame(),Portal->HalfWidth,Portal->HalfHeight,ViewProjectionForTransform(View),Rect,OutBounds,ProjectionData.IsPerspectiveProjection(),ProjectionData.GetNearPlaneFromProjectionMatrix());
 	};
-
-	if (bUsingMainViewStencil)
-	{
-		FInteriorPortalRenderRequest Request;
-		bool bRequestBuilt = false;
-		FString Blocker = TEXT("Activation gate rejected: no visible valid single-layer portal request");
-		if (RecursionDepth != 1)
-		{
-			Blocker = TEXT("MainViewStencilSpike supports RecursionDepth=1 only");
-		}
-		else
-		{
-			int32 EndpointIndex = 0;
-			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
-			{
-				InteriorPortalMath::FPortalScreenBounds DirectBounds;
-				if (!IsVisible(Entry, PlayerView, DirectBounds))
-				{
-					++EndpointIndex;
-					continue;
-				}
-				AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
-				if (!IsValid(Exit))
-				{
-					Blocker = TEXT("Activation gate rejected: exit endpoint is invalid");
-					++EndpointIndex;
-					continue;
-				}
-
-				const FTransform EntryFrame = Entry->GetLogicalFrame();
-				const FTransform ExitFrame = Exit->GetLogicalFrame();
-				const FTransform VirtualView = InteriorPortalMath::BuildVirtualViewTransform(
-					PlayerView, EntryFrame, ExitFrame);
-				const FVector VirtualLocation = VirtualView.GetLocation();
-				const bool bValidVirtualView = FMath::IsFinite(VirtualLocation.X)
-					&& FMath::IsFinite(VirtualLocation.Y)
-					&& FMath::IsFinite(VirtualLocation.Z)
-					&& VirtualView.GetRotation().IsNormalized();
-				const bool bActivationGate = InteriorPortalRenderer::CanSubmitMainViewStencilRequest(
-					true, true, DirectBounds.bHasVisiblePortion, bValidVirtualView, RecursionDepth);
-				if (!bActivationGate)
-				{
-					Blocker = TEXT("Activation gate rejected: invalid bounds or virtual view");
-					++EndpointIndex;
-					continue;
-				}
-
-				const bool bBuilt = FInteriorPortalRenderRequest::Build(
-					EndpointIndex, EndpointIndex, 0, PlayerView, EntryFrame, ExitFrame,
-					Entry->HalfWidth, Entry->HalfHeight,
-					ViewProjectionForTransform(PlayerView), Rect,
-					ProjectionData.ProjectionMatrix,
-					ProjectionData.IsPerspectiveProjection(),
-					ProjectionData.GetNearPlaneFromProjectionMatrix(), ClipPlaneBias,
-					RendererHistoryGeneration, Request);
-				if (bBuilt)
-				{
-					bRequestBuilt = true;
-					Blocker = TEXT("MainViewStencilSpike remains a request-only ViewExtension path; use CustomRenderPassSpike for the public pass proof");
-					break;
-				}
-				Blocker = TEXT("Request construction rejected: projected bounds, scissor, or exit clip plane invalid");
-				++EndpointIndex;
-			}
-		}
-
-		for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
-		{
-			if (IsValid(Entry))
-			{
-				Entry->SetView(nullptr, false, 1.0f,
-					TEXT("MainViewStencilSpike: no SceneCapture image; project-side scene pass is blocked"), 0.0f);
-			}
-		}
-
-		if (MainViewStencilExtension)
-		{
-			if (bRequestBuilt)
-			{
-				MainViewStencilExtension->PublishRequest(Request);
-			}
-			else
-			{
-				MainViewStencilExtension->ClearRequest();
-			}
-		}
-		bRendererDiagnosticsDirty = true;
-		WriteMainViewStencilSpikeDiagnostics(
-			bRequestBuilt ? &Request : nullptr,
-			bRequestBuilt ? EInteriorPortalSpikeStatus::Blocked : EInteriorPortalSpikeStatus::Disabled,
-			Blocker);
-		bWasRendererLinked = true;
-		return;
-	}
-
-	if (UsesCustomRenderPass(RendererBackend))
-	{
-		FInteriorPortalRenderRequest Request;
-		bool bRequestBuilt = false;
-		bool bSubmitted = false;
-		FString Result = TEXT("Activation gate rejected: no visible valid single-layer custom render request");
-		if (RecursionDepth != 1)
-		{
-			Result = TEXT("CustomRenderPassSpike supports RecursionDepth=1 only");
-		}
-		else
-		{
-			int32 EndpointIndex = 0;
-			for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
-			{
-				InteriorPortalMath::FPortalScreenBounds DirectBounds;
-				if (!IsVisible(Entry, PlayerView, DirectBounds))
-				{
-					++EndpointIndex;
-					continue;
-				}
-				AInteriorPortal* Exit = Entry == BluePortal ? OrangePortal : BluePortal;
-				if (!IsValid(Exit))
-				{
-					Result = TEXT("Activation gate rejected: exit endpoint is invalid");
-					++EndpointIndex;
-					continue;
-				}
-
-				const FTransform EntryFrame = Entry->GetLogicalFrame();
-				const FTransform ExitFrame = Exit->GetLogicalFrame();
-				const FTransform VirtualView = InteriorPortalMath::BuildVirtualViewTransform(
-					PlayerView, EntryFrame, ExitFrame);
-				const FVector VirtualLocation = VirtualView.GetLocation();
-				const bool bValidVirtualView = FMath::IsFinite(VirtualLocation.X)
-					&& FMath::IsFinite(VirtualLocation.Y)
-					&& FMath::IsFinite(VirtualLocation.Z)
-					&& VirtualView.GetRotation().IsNormalized();
-				if (!InteriorPortalRenderer::CanSubmitCustomRenderPassRequest(
-					true, true, DirectBounds.bHasVisiblePortion, bValidVirtualView, RecursionDepth))
-				{
-					Result = TEXT("Activation gate rejected: invalid bounds or virtual view");
-					++EndpointIndex;
-					continue;
-				}
-
-				if (!FInteriorPortalRenderRequest::Build(
-					EndpointIndex, EndpointIndex, 0, PlayerView, EntryFrame, ExitFrame,
-					Entry->HalfWidth, Entry->HalfHeight,
-					ViewProjectionForTransform(PlayerView), Rect,
-					ProjectionData.ProjectionMatrix,
-					ProjectionData.IsPerspectiveProjection(),
-					ProjectionData.GetNearPlaneFromProjectionMatrix(), ClipPlaneBias,
-					RendererHistoryGeneration, Request))
-				{
-					Result = TEXT("Request construction rejected: projected bounds, scissor, or exit clip plane invalid");
-					++EndpointIndex;
-					continue;
-				}
-				bRequestBuilt = true;
-				Entry->EnsureTargets(Width, Height, 1);
-				LastCustomRenderTargetSize = FIntPoint(Width, Height);
-				UTextureRenderTarget2D* Target = Entry->RenderTargets.IsValidIndex(0)
-					? Entry->RenderTargets[0] : nullptr;
-				FRenderTarget* TargetResource = Target
-					? Target->GameThread_GetRenderTargetResource() : nullptr;
-				FSceneViewStateInterface* ViewState = CustomRenderPassViewStates[EndpointIndex].GetReference();
-				if (!Target || !TargetResource || !ViewState || !GetWorld() || !GetWorld()->Scene)
-				{
-					Result = TEXT("CustomRenderPass blocked: target resource, independent ViewState, or scene unavailable");
-					break;
-				}
-
-				FInteriorPortalCustomRenderPass* CustomPass =
-					new FInteriorPortalCustomRenderPass(
-						FString::Printf(TEXT("PortalCustomRenderPass_%s_Depth0"),
-							Entry == BluePortal ? TEXT("Blue") : TEXT("Orange")),
-						TargetResource, FIntPoint(Target->SizeX, Target->SizeY));
-				FSceneInterface::FCustomRenderPassRendererInput PassInput;
-				if (!InteriorPortalRenderer::BuildCustomRenderPassInput(
-					Request, ViewState, CustomPass, PassInput))
-				{
-					delete CustomPass;
-					Result = TEXT("CustomRenderPass blocked: immutable request could not map to renderer input");
-					break;
-				}
-
-				if (GetWorld()->Scene->AddCustomRenderPass(nullptr, PassInput))
-				{
-					bSubmitted = true;
-					Result = Request.bExitClipEncodedInProjection
-						? TEXT("FSceneInterface::AddCustomRenderPass accepted the transformed scene request")
-						: TEXT("AddCustomRenderPass accepted the transformed scene request; oblique exit clip was unavailable for this view");
-				}
-				else
-				{
-					delete CustomPass;
-					Result = TEXT("FSceneInterface::AddCustomRenderPass returned false");
-				}
-				break;
-			}
-		}
-
-		for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
-		{
-			if (IsValid(Entry))
-			{
-				// The custom pass target is a proof output. It is deliberately not
-				// rebound as a Portal Emissive texture: doing so would turn this
-				// experiment back into SceneCapture compositing.
-				Entry->SetView(nullptr, false, 1.0f,
-					TEXT("CustomRenderPassSpike: proof target is separate; main-view composition unavailable"), 0.0f);
-			}
-		}
-		bRendererDiagnosticsDirty = true;
-		WriteCustomRenderPassSpikeDiagnostics(
-			bRequestBuilt ? &Request : nullptr,
-			bSubmitted ? EInteriorPortalSpikeStatus::Partial
-				: (bRequestBuilt ? EInteriorPortalSpikeStatus::Blocked : EInteriorPortalSpikeStatus::Disabled),
-			bSubmitted, Result);
-		bWasRendererLinked = true;
-		return;
-	}
-
+	if (!UsesSceneCapture(RendererBackend)) { return; }
 	FString SamplesJson;
 	int32 SampleCount = 0;
 	for (AInteriorPortal* Entry : {BluePortal.Get(), OrangePortal.Get()})
@@ -1319,47 +989,34 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 		TArray<InteriorPortalMath::FPortalScreenBounds, TInlineAllocator<4>> ViewBounds;
 		FTransform View = PlayerView;
 		const FQuat Rotation = InteriorPortalMath::Rotation(EntryFrame, ExitFrame);
-		for (int32 I=0; I<Depth; ++I)
+		// Direct visibility above already proves that the player can see Entry.
+		// Depth 0 is the primary through-portal view, so it must be rendered even
+		// when that mapped camera cannot see Entry again for recursion.
+		View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), EntryFrame, ExitFrame));
+		InteriorPortalMath::FPortalScreenBounds Depth0Bounds;
+		IsVisible(Entry, View, Depth0Bounds);
+		Views.Add(View);
+		ViewBounds.Add(Depth0Bounds);
+		// Only subsequent recursion levels depend on recursive visibility.
+		for (int32 I=1; I<Depth; ++I)
 		{
+			InteriorPortalMath::FPortalScreenBounds RecursiveGateBounds;
+			if (!IsVisible(Entry, View, RecursiveGateBounds)) { break; }
 			View = FTransform(Rotation*View.GetRotation(), InteriorPortalMath::Position(View.GetLocation(), EntryFrame, ExitFrame));
-			InteriorPortalMath::FPortalScreenBounds Bounds;
-			if (!IsVisible(Entry, View, Bounds)) { break; }
+			InteriorPortalMath::FPortalScreenBounds MappedBounds;
+			IsVisible(Entry, View, MappedBounds);
 			Views.Add(View);
-			ViewBounds.Add(Bounds);
+			ViewBounds.Add(MappedBounds);
 		}
 		const int32 VisibleDepth = Views.Num();
-		if (VisibleDepth <= 0) { continue; }
 		Entry->EnsureTargets(Width, Height, VisibleDepth);
 		Entry->EnsureCaptureViews(VisibleDepth);
 		Entry->SetCaptureColorMode(bFinalColorHDR);
 		bool bCaptureValid = true;
 		for (int32 I=VisibleDepth-1; I>=0; --I)
 		{
-			const int32 EndpointIndex = Entry == BluePortal ? 0 : 1;
-			const int32 HistorySlot = EndpointIndex * 4 + I;
 			USceneCaptureComponent2D* Capture = Entry->GetCaptureForDepth(I);
-			if (!Capture)
-			{
-				bCaptureValid = false;
-				break;
-			}
-			bool bHistoryReset = false;
-			FString HistoryResetReason = TEXT("None");
-			if (!bPreviousVirtualViewsValid.IsValidIndex(HistorySlot) || !bPreviousVirtualViewsValid[HistorySlot])
-			{
-				InvalidateRendererHistorySlot(EndpointIndex, I, TEXT("new virtual view history"));
-				bHistoryReset = true;
-				HistoryResetReason = TEXT("new virtual view history");
-			}
-			else if (InteriorPortalMath::IsVirtualViewDiscontinuous(PreviousVirtualViews[HistorySlot], Views[I]))
-			{
-				InvalidateRendererHistorySlot(EndpointIndex, I, TEXT("virtual camera discontinuity"));
-				bHistoryReset = true;
-				HistoryResetReason = TEXT("virtual camera discontinuity");
-			}
-			PreviousVirtualViews[HistorySlot] = Views[I];
-			bPreviousVirtualViewsValid[HistorySlot] = true;
-
+			if (!Capture) { bCaptureValid = false; break; }
 			Capture->CaptureSource = GetCaptureSourceForColorMode(CaptureColorMode);
 			Capture->ShowFlags.SetEyeAdaptation(bCaptureEyeAdaptation);
 			Capture->HiddenActors.Reset();
@@ -1375,7 +1032,6 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 			Capture->PostProcessSettings.LumenSurfaceCacheResolution = CaptureLumenSurfaceCacheResolution;
 			Capture->bAlwaysPersistRenderingState = true;
 			Capture->ShowFlags.SetTemporalAA(bCaptureTemporalAA);
-
 			const bool bNativeClip = RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane;
 			Capture->bEnableClipPlane = bNativeClip;
 			if (bNativeClip)
@@ -1385,255 +1041,29 @@ void AInteriorPortalSystem::RenderViews(APlayerController* Player)
 				Capture->ClipPlaneNormal = ExitNormal;
 				Capture->CustomProjectionMatrix = ProjectionData.ProjectionMatrix;
 			}
-
-			const FString CapturePreExposureOwnership = bFinalColorHDR
-				? TEXT("Unavailable / Unverified: CaptureScene enqueues render work; public component ViewState is not image-bound")
-				: TEXT("Not applicable / UE 5.8 contract: capture EyeAdaptation OFF makes PreExposure 1; no readback used");
-			Entry->SetView(I+1<VisibleDepth ? Entry->RenderTargets[I+1] : nullptr, I+1<VisibleDepth,
-				1.0f, CapturePreExposureOwnership,
-				bCaptureExposureNormalizationDiagnostic ? Entry->PortalViewExposureCorrection : 0.0f);
+			Entry->SetView(I+1<VisibleDepth ? Entry->RenderTargets[I+1] : nullptr, I+1<VisibleDepth, 1.0f, TEXT("Depth-zero capture kept live; exposure ownership unchanged"), 0.0f);
 			Capture->SetWorldLocationAndRotation(Views[I].GetLocation(), Views[I].GetRotation());
 			if (!bNativeClip)
 			{
 				const FVector N = Views[I].InverseTransformVectorNoScale(ExitFrame.GetUnitAxis(EAxis::X));
 				const FVector P = Views[I].InverseTransformPositionNoScale(ExitFrame.GetLocation()+ExitFrame.GetUnitAxis(EAxis::X)*ClipPlaneBias);
-				// Camera local X/Y/Z -> projection view Z/X/Y.
 				const FVector4 Plane(N.Y, N.Z, N.X, -FVector::DotProduct(N,P));
 				FMatrix ObliqueProjection;
-				if (!InteriorPortalMath::TryObliqueProjection(ProjectionData.ProjectionMatrix, Plane, ObliqueProjection))
-				{
-					bCaptureValid = false;
-					break;
-				}
+				if (!InteriorPortalMath::TryObliqueProjection(ProjectionData.ProjectionMatrix, Plane, ObliqueProjection)) { bCaptureValid=false; break; }
 				Capture->CustomProjectionMatrix = ObliqueProjection;
 			}
 			Capture->TextureTarget = Entry->RenderTargets[I];
 			Capture->CaptureScene();
-
-			const FSceneViewStateInterface* CaptureState = Capture->GetViewState(0);
-			const uint32 ViewKey = CaptureState ? CaptureState->GetViewKey() : 0;
-			const uint64 HistoryGeneration = CaptureHistoryGenerations.IsValidIndex(HistorySlot)
-				? CaptureHistoryGenerations[HistorySlot] : 0;
-			const FString HistoryIdentity = ViewKey != 0
-				? FString::Printf(TEXT("%s/Depth%d/ViewKey%u/Generation%llu"), Entry == BluePortal ? TEXT("Blue") : TEXT("Orange"), I, ViewKey, HistoryGeneration)
-				: TEXT("Unavailable / Unverified");
-			const FString RenderTargetFormat = StaticEnum<ETextureRenderTargetFormat>()
-				? StaticEnum<ETextureRenderTargetFormat>()->GetNameStringByValue(
-					static_cast<int64>(Entry->RenderTargets[I]->RenderTargetFormat))
-				: TEXT("Unavailable / Unverified");
-			const FString EndpointPath = Entry->GetPathName();
-			const FString RenderTargetPath = Entry->RenderTargets[I]->GetPathName();
-			const InteriorPortalMath::FPortalScreenBounds& Bounds = ViewBounds[I];
-			const FString BoundsJson = Bounds.bHasVisiblePortion
-				? FString::Printf(TEXT("{\"minX\":%.6f,\"minY\":%.6f,\"maxX\":%.6f,\"maxY\":%.6f,\"hasVisiblePortion\":true,\"nearClip\":%s,\"cameraCrossing\":%s,\"behindCamera\":%s,\"clippedToViewport\":%s}"),
-					Bounds.Min.X, Bounds.Min.Y, Bounds.Max.X, Bounds.Max.Y,
-					Bounds.bIntersectsNearClip ? TEXT("true") : TEXT("false"),
-					Bounds.bCameraCrossing ? TEXT("true") : TEXT("false"),
-					Bounds.bEntirelyBehindCamera ? TEXT("true") : TEXT("false"),
-					Bounds.bClippedToViewport ? TEXT("true") : TEXT("false"))
-				: TEXT("{\"hasVisiblePortion\":false}");
-			if (SampleCount++ > 0) { SamplesJson += TEXT(","); }
-			SamplesJson += FString::Printf(TEXT("{\"endpoint\":\"%s\",\"endpointPath\":\"%s\",\"recursionDepth\":%d,\"virtualViewLocation\":[%.6f,%.6f,%.6f],\"virtualViewRotation\":[%.8f,%.8f,%.8f,%.8f],\"captureColorMode\":\"%s\",\"captureSource\":\"%s\",\"capturePreExposure\":%s,\"capturePreExposureOwnership\":\"%s\",\"playerPreExposure\":\"Unavailable / Unverified\",\"rtFormat\":\"%s\",\"renderTarget\":\"%s\",\"bForceLinearGamma\":%s,\"rtSize\":[%d,%d],\"historyIdentity\":\"%s\",\"historyReset\":%s,\"historyResetReason\":\"%s\",\"renderClipMode\":\"%s\",\"captureTAA\":%s,\"cameraCutRequested\":%s,\"captureValid\":true,\"projectedBounds\":%s}"),
-				Entry == BluePortal ? TEXT("Blue") : TEXT("Orange"), *EndpointPath, I,
-				Views[I].GetLocation().X, Views[I].GetLocation().Y, Views[I].GetLocation().Z,
-				Views[I].GetRotation().X, Views[I].GetRotation().Y, Views[I].GetRotation().Z, Views[I].GetRotation().W,
-				bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
-				bFinalColorHDR ? TEXT("SCS_FinalColorHDR") : TEXT("SCS_SceneColorHDRNoAlpha"),
-				bFinalColorHDR ? TEXT("null") : TEXT("1.0"), *CapturePreExposureOwnership,
-				*RenderTargetFormat, *RenderTargetPath, Entry->RenderTargets[I]->bForceLinearGamma ? TEXT("true") : TEXT("false"), Entry->RenderTargets[I]->SizeX, Entry->RenderTargets[I]->SizeY,
-				*HistoryIdentity, bHistoryReset ? TEXT("true") : TEXT("false"), *HistoryResetReason,
-				RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane ? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
-				bCaptureTemporalAA ? TEXT("true") : TEXT("false"), bCameraCut ? TEXT("true") : TEXT("false"), *BoundsJson);
 		}
 		Entry->SetView(bCaptureValid ? Entry->RenderTargets[0] : nullptr, bCaptureValid, 1.0f,
-			bFinalColorHDR ? TEXT("Unavailable / Unverified: capture image exposure is not publicly image-bound")
-				: TEXT("Not applicable / UE 5.8 contract: capture EyeAdaptation OFF makes PreExposure 1; no readback used"),
-			bCaptureExposureNormalizationDiagnostic ? Entry->PortalViewExposureCorrection : 0.0f);
+			bFinalColorHDR ? TEXT("Unavailable / Unverified: capture image exposure is not publicly image-bound") : TEXT("Not applicable / UE 5.8 contract: capture EyeAdaptation OFF makes PreExposure 1; no readback used"), 0.0f);
 	}
 	bWasRendererLinked = true;
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	// JSON diagnostics are opt-in so periodic disk I/O does not contaminate renderer profiling.
-	if (bEnableRendererDiagnostics
-		&& (bRendererDiagnosticsDirty || LastRendererDiagnosticsWriteTime < 0.0 || Now - LastRendererDiagnosticsWriteTime >= 0.5))
-	{
-		const FString Json = FString::Printf(TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"SceneCapture\",\n  \"rendererHook\":\"Unavailable / Unverified: SceneCapture custom view\",\n  \"captureColorMode\":\"%s\",\n  \"captureEyeAdaptation\":%s,\n  \"renderClipMode\":\"%s\",\n  \"historyGeneration\":%llu,\n  \"lastHistoryResetReason\":\"%s\",\n  \"sampleCount\":%d,\n  \"samples\":[%s]\n}\n"),
-			GFrameCounter, bFinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
-			bCaptureEyeAdaptation ? TEXT("true") : TEXT("false"),
-			RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane ? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
-			RendererHistoryGeneration, *LastHistoryResetReason, SampleCount, *SamplesJson);
-		FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
-		LastRendererDiagnosticsWriteTime = Now;
-		bRendererDiagnosticsDirty = false;
-	}
 }
 
-void AInteriorPortalSystem::WriteMainViewStencilSpikeDiagnostics(
-	const FInteriorPortalRenderRequest* Request, const EInteriorPortalSpikeStatus Status,
-	const FString& Blocker)
-{
-	if (!bEnableRendererDiagnostics)
-	{
-		return;
-	}
-
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	if (!bRendererDiagnosticsDirty && LastRendererDiagnosticsWriteTime >= 0.0
-		&& Now - LastRendererDiagnosticsWriteTime < 0.5)
-	{
-		return;
-	}
-
-	const FString SafeBlocker = Blocker.Replace(TEXT("\""), TEXT("'"));
-	FString RequestJson = TEXT("null");
-	if (Request)
-	{
-		const float PortalAreaPercent = Request->ProjectedBounds.bHasVisiblePortion
-			? (Request->ProjectedBounds.Max.X - Request->ProjectedBounds.Min.X)
-			* (Request->ProjectedBounds.Max.Y - Request->ProjectedBounds.Min.Y) * 100.0f
-			: 0.0f;
-		RequestJson = FString::Printf(
-			TEXT("{\"portalId\":%d,\"endpointIndex\":%d,\"recursionDepth\":%d,"
-			"\"virtualViewLocation\":[%.6f,%.6f,%.6f],"
-			"\"virtualViewRotation\":[%.8f,%.8f,%.8f,%.8f],"
-			"\"projectedBounds\":{\"minX\":%.6f,\"minY\":%.6f,\"maxX\":%.6f,\"maxY\":%.6f},"
-			"\"viewRect\":[%d,%d,%d,%d],\"scissorRect\":[%d,%d,%d,%d],"
-			"\"scissorApplied\":false,\"portalAreaPercentage\":%.6f,"
-			"\"exitClipPlane\":[%.8f,%.8f,%.8f,%.8f],"
-			"\"historyIdentity\":%llu,\"rendererHistoryGeneration\":%llu,"
-			"\"stencilRef\":\"Unavailable / Unverified\","
-			"\"viewStateIdentity\":\"Unavailable / Unverified: no FSceneView was created\","
-			"\"temporalStatus\":\"TEMPORAL NOT IMPLEMENTED\","
-			"\"playerExposureAuthority\":\"Intended contract; no virtual scene pass submitted\"}"),
-			Request->PortalId, Request->EndpointIndex, Request->RecursionLevel,
-			Request->VirtualView.GetLocation().X, Request->VirtualView.GetLocation().Y,
-			Request->VirtualView.GetLocation().Z,
-			Request->VirtualView.GetRotation().X, Request->VirtualView.GetRotation().Y,
-			Request->VirtualView.GetRotation().Z, Request->VirtualView.GetRotation().W,
-			Request->ProjectedBounds.Min.X, Request->ProjectedBounds.Min.Y,
-			Request->ProjectedBounds.Max.X, Request->ProjectedBounds.Max.Y,
-			Request->ViewRect.Min.X, Request->ViewRect.Min.Y,
-			Request->ViewRect.Max.X, Request->ViewRect.Max.Y,
-			Request->ScissorRect.Min.X, Request->ScissorRect.Min.Y,
-			Request->ScissorRect.Max.X, Request->ScissorRect.Max.Y,
-			PortalAreaPercent,
-			Request->ExitClipPlane.X, Request->ExitClipPlane.Y,
-			Request->ExitClipPlane.Z, Request->ExitClipPlane.W,
-			Request->HistoryIdentity, Request->RendererHistoryGeneration);
-	}
-
-	const FString Json = FString::Printf(
-		TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"MainViewStencilSpike\",\n"
-		"  \"spikeStatus\":\"%s\",\n"
-		"  \"rendererHook\":\"FInteriorPortalViewExtension::PreRenderViewFamily_RenderThread\",\n"
-		"  \"renderStage\":\"PreRenderViewFamily_RenderThread hook observed; transformed scene pass unavailable\",\n"
-		"  \"captureColorMode\":\"Not applicable\",\n"
-		"  \"renderClipMode\":\"%s\",\n"
-		"  \"blocker\":\"%s\",\n"
-		"  \"request\":%s\n}\n"),
-		GFrameCounter, InteriorPortalSpikeStatusToString(Status),
-		RenderClipMode == EInteriorPortalRenderClipMode::NativeClipPlane
-			? TEXT("NativeClipPlane") : TEXT("ObliqueFallback"),
-		*SafeBlocker, *RequestJson);
-	FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
-	LastRendererDiagnosticsWriteTime = Now;
-	bRendererDiagnosticsDirty = false;
-}
-
-void AInteriorPortalSystem::WriteCustomRenderPassSpikeDiagnostics(
-	const FInteriorPortalRenderRequest* Request, const EInteriorPortalSpikeStatus Status,
-	const bool bSubmitted, const FString& Result)
-{
-	if (!bEnableRendererDiagnostics)
-	{
-		return;
-	}
-
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
-	if (!bRendererDiagnosticsDirty && LastRendererDiagnosticsWriteTime >= 0.0
-		&& Now - LastRendererDiagnosticsWriteTime < 0.5)
-	{
-		return;
-	}
-
-	const FString SafeResult = Result.Replace(TEXT("\""), TEXT("'"));
-	FString RequestJson = TEXT("null");
-	if (Request)
-	{
-		const float PortalAreaPercent = Request->ProjectedBounds.bHasVisiblePortion
-			? (Request->ProjectedBounds.Max.X - Request->ProjectedBounds.Min.X)
-			* (Request->ProjectedBounds.Max.Y - Request->ProjectedBounds.Min.Y) * 100.0f
-			: 0.0f;
-		const FSceneViewStateInterface* ViewState =
-			CustomRenderPassViewStates[Request->EndpointIndex].GetReference();
-		const uint32 ViewKey = ViewState ? ViewState->GetViewKey() : 0;
-		const FString ViewStateIdentity = ViewKey != 0
-			? FString::Printf(TEXT("Portal%sDepth%d/ViewKey%u/Generation%llu"),
-				Request->EndpointIndex == 0 ? TEXT("Blue") : TEXT("Orange"),
-				Request->RecursionLevel, ViewKey, Request->RendererHistoryGeneration)
-			: TEXT("Unavailable / Unverified");
-		RequestJson = FString::Printf(
-			TEXT("{\"portalId\":%d,\"endpointIndex\":%d,\"recursionDepth\":%d,"
-			"\"virtualViewLocation\":[%.6f,%.6f,%.6f],"
-			"\"virtualViewRotation\":[%.8f,%.8f,%.8f,%.8f],"
-			"\"projectedBounds\":{\"minX\":%.6f,\"minY\":%.6f,\"maxX\":%.6f,\"maxY\":%.6f},"
-			"\"viewRect\":[%d,%d,%d,%d],\"scissorRect\":[%d,%d,%d,%d],"
-			"\"scissorApplied\":false,\"portalAreaPercentage\":%.6f,"
-			"\"exitClipPlane\":[%.8f,%.8f,%.8f,%.8f],"
-			"\"exitClipStrategy\":\"%s\","
-			"\"viewStateIdentity\":\"%s\",\"historyIdentity\":%llu,"
-			"\"rendererHistoryGeneration\":%llu,\"temporalStatus\":\"TEMPORAL NOT IMPLEMENTED\","
-			"\"renderTargetSize\":[%d,%d],\"renderTargetFormat\":\"InitAutoFormat (exact RHI format unavailable on game thread)\"}"),
-			Request->PortalId, Request->EndpointIndex, Request->RecursionLevel,
-			Request->ViewLocation.X, Request->ViewLocation.Y, Request->ViewLocation.Z,
-			Request->VirtualView.GetRotation().X, Request->VirtualView.GetRotation().Y,
-			Request->VirtualView.GetRotation().Z, Request->VirtualView.GetRotation().W,
-			Request->ProjectedBounds.Min.X, Request->ProjectedBounds.Min.Y,
-			Request->ProjectedBounds.Max.X, Request->ProjectedBounds.Max.Y,
-			Request->ViewRect.Min.X, Request->ViewRect.Min.Y,
-			Request->ViewRect.Max.X, Request->ViewRect.Max.Y,
-			Request->ScissorRect.Min.X, Request->ScissorRect.Min.Y,
-			Request->ScissorRect.Max.X, Request->ScissorRect.Max.Y,
-			PortalAreaPercent,
-			Request->ExitClipPlane.X, Request->ExitClipPlane.Y,
-			Request->ExitClipPlane.Z, Request->ExitClipPlane.W,
-			Request->bExitClipEncodedInProjection ? TEXT("ObliqueProjectionEncoded")
-				: TEXT("Unavailable / Unverified: public input has no GlobalClippingPlane"),
-			*ViewStateIdentity, Request->HistoryIdentity, Request->RendererHistoryGeneration,
-			LastCustomRenderTargetSize.X, LastCustomRenderTargetSize.Y);
-	}
-
-	const FString Json = FString::Printf(
-		TEXT("{\n  \"frame\":%llu,\n  \"rendererBackend\":\"CustomRenderPassSpike\",\n"
-		"  \"spikeStatus\":\"%s\",\n"
-		"  \"rendererHook\":\"FSceneInterface::AddCustomRenderPass\",\n"
-		"  \"rendererInput\":\"FCustomRenderPassRendererInput\",\n"
-		"  \"customPassClass\":\"FCustomRenderPassBase\",\n"
-		"  \"renderStage\":\"FDeferredShadingSceneRenderer::Render custom-render-pass phase\",\n"
-		"  \"renderMode\":\"DepthAndBasePass\",\n"
-		"  \"renderOutput\":\"SceneColorNoAlpha\",\n"
-		"  \"outputDomain\":\"separate HDR scene-color target; pre-tonemap custom-pass domain\",\n"
-		"  \"translucency\":\"Requested through bSceneColorWithTranslucent; GPU result not read back\",\n"
-		"  \"lumen\":\"Unavailable / Unverified: no public CustomRenderPass Lumen result contract\",\n"
-		"  \"reflections\":\"Unavailable / Unverified: no public CustomRenderPass reflection result contract\",\n"
-		"  \"mainSceneColorComposition\":false,\n"
-		"  \"mainSceneColorAccess\":\"Unavailable / Unverified from public project hook\",\n"
-		"  \"mainDepthStencilAccess\":\"Unavailable / Unverified from public project hook\",\n"
-		"  \"stencilAperture\":\"Unavailable / Unverified from public project hook\",\n"
-		"  \"scissorApplied\":false,\n"
-		"  \"exitClip\":\"Logical exit plane encoded in ProjectionMatrix because input has no GlobalClippingPlane field\",\n"
-		"  \"playerExposureAuthority\":\"Player remains the only final display authority; custom output is not composed into it\",\n"
-		"  \"customPassSubmitted\":%s,\n"
-		"  \"result\":\"%s\",\n"
-		"  \"request\":%s\n}\n"),
-		GFrameCounter, InteriorPortalSpikeStatusToString(Status),
-		bSubmitted ? TEXT("true") : TEXT("false"), *SafeResult, *RequestJson);
-	FFileHelper::SaveStringToFile(Json, *(FPaths::ProjectSavedDir() + TEXT("PortalRendererDiagnostics.json")));
-	LastRendererDiagnosticsWriteTime = Now;
-	bRendererDiagnosticsDirty = false;
-}
-
-void AInteriorPortalSystem::InvalidateRendererHistorySlot(const int32 EndpointIndex, const int32 RecursionLevel,
-	const FString& Reason)
+void AInteriorPortalSystem::WriteMainViewStencilSpikeDiagnostics(const FInteriorPortalRenderRequest*, EInteriorPortalSpikeStatus, const FString&) {}
+void AInteriorPortalSystem::WriteCustomRenderPassSpikeDiagnostics(const FInteriorPortalRenderRequest*, EInteriorPortalSpikeStatus, bool, const FString&) {}
+void AInteriorPortalSystem::InvalidateRendererHistorySlot(const int32 EndpointIndex, const int32 RecursionLevel, const FString& Reason)
 {
 	if (EndpointIndex < 0 || EndpointIndex > 1 || RecursionLevel < 0 || RecursionLevel >= 4) { return; }
 	const int32 Slot = EndpointIndex * 4 + RecursionLevel;
@@ -1641,11 +1071,7 @@ void AInteriorPortalSystem::InvalidateRendererHistorySlot(const int32 EndpointIn
 	if (bPreviousVirtualViewsValid.Num() < 8) { bPreviousVirtualViewsValid.Init(false, 8); }
 	if (PreviousVirtualViews.Num() < 8) { PreviousVirtualViews.Init(FTransform::Identity, 8); }
 	AInteriorPortal* Portal = EndpointIndex == 0 ? BluePortal.Get() : OrangePortal.Get();
-	if (IsValid(Portal))
-	{
-		Portal->EnsureCaptureViews(RecursionLevel + 1);
-		Portal->ResetCaptureHistory(RecursionLevel);
-	}
+	if (IsValid(Portal)) { Portal->EnsureCaptureViews(RecursionLevel + 1); Portal->ResetCaptureHistory(RecursionLevel); }
 	++RendererHistoryGeneration;
 	CaptureHistoryGenerations[Slot] = RendererHistoryGeneration;
 	bPreviousVirtualViewsValid[Slot] = false;
@@ -1659,81 +1085,22 @@ void AInteriorPortalSystem::InvalidateRendererHistories(const FString& Reason)
 	if (bPreviousVirtualViewsValid.Num() < 8) { bPreviousVirtualViewsValid.Init(false, 8); }
 	if (CaptureHistoryGenerations.Num() < 8) { CaptureHistoryGenerations.Init(0, 8); }
 	++RendererHistoryGeneration;
-	for (int32 Index = 0; Index < 8; ++Index)
-	{
-		bPreviousVirtualViewsValid[Index] = false;
-		CaptureHistoryGenerations[Index] = RendererHistoryGeneration;
-	}
-	for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
-	{
-		if (IsValid(Portal)) { Portal->ResetCaptureHistories(); }
-	}
-	for (FSceneViewStateReference& ViewState : CustomRenderPassViewStates)
-	{
-		if (FSceneViewStateInterface* State = ViewState.GetReference())
-		{
-			State->ResetViewState();
-		}
-	}
+	for (int32 Index=0; Index<8; ++Index) { bPreviousVirtualViewsValid[Index]=false; CaptureHistoryGenerations[Index]=RendererHistoryGeneration; }
+	for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()}) { if (IsValid(Portal)) { Portal->ResetCaptureHistories(); } }
+	for (FSceneViewStateReference& ViewState : CustomRenderPassViewStates) { if (FSceneViewStateInterface* State=ViewState.GetReference()) { State->ResetViewState(); } }
 	LastHistoryResetReason = Reason;
 	bRendererDiagnosticsDirty = true;
 }
 
 void AInteriorPortalSystem::UpdateFidelityDiagnostics()
 {
-	IConsoleVariable* EyeAdaptation = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptationQuality"));
-	IConsoleVariable* PreExposure = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptation.PreExposureOverride"));
-
-	if (bExposureIsolationDiagnostic)
-	{
-		if (!bExposureDiagnosticsApplied)
-		{
-			if (EyeAdaptation)
-			{
-				SavedEyeAdaptationQuality = EyeAdaptation->GetInt();
-				bSavedEyeAdaptationQuality = true;
-			}
-			if (PreExposure)
-			{
-				SavedPreExposureOverride = PreExposure->GetFloat();
-				bSavedPreExposureOverride = true;
-			}
-			bExposureDiagnosticsApplied = true;
-			UE_LOG(LogTemp, Display, TEXT("Portal P2-A exposure isolation enabled. This globally disables eye adaptation for diagnosis only."));
-		}
-		if (EyeAdaptation) { EyeAdaptation->Set(0, ECVF_SetByCode); }
-		if (PreExposure) { PreExposure->Set(DiagnosticPreExposureOverride, ECVF_SetByCode); }
-		FidelityDiagnosticStatus = FString::Printf(TEXT("P2-A isolation: CaptureTAA=%s LumenCache=%.2f EyeAdaptation=%s PreExposure=%.3f"),
-			bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution,
-			EyeAdaptation ? TEXT("OFF") : TEXT("CVAR MISSING"), DiagnosticPreExposureOverride);
-		return;
-	}
-
-	if (bExposureDiagnosticsApplied) { RestoreFidelityDiagnostics(); }
-	FidelityDiagnosticStatus = FString::Printf(TEXT("STEP1A CaptureColorMode=%s CaptureSource=%s CaptureEyeAdaptation=%s CapturePreExposureOwnership=UnavailableOrContract; CaptureTAA=%s LumenCache=%.2f RendererDiagnostics=%s"),
+	FidelityDiagnosticStatus = FString::Printf(TEXT("STEP1A CaptureColorMode=%s CaptureSource=%s CaptureTAA=%s LumenCache=%.2f"),
 		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("FinalColorHDR") : TEXT("SceneColorLinear"),
 		CaptureColorMode == EInteriorPortalCaptureColorMode::FinalColorHDR ? TEXT("SCS_FinalColorHDR") : TEXT("SCS_SceneColorHDRNoAlpha"),
-		UsesCaptureEyeAdaptation(CaptureColorMode) ? TEXT("ON") : TEXT("OFF"),
-		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution,
-		bEnableRendererDiagnostics ? TEXT("ON:Saved/PortalRendererDiagnostics.json") : TEXT("OFF"));
+		bCaptureTemporalAA ? TEXT("ON") : TEXT("OFF"), CaptureLumenSurfaceCacheResolution);
 }
 
-void AInteriorPortalSystem::RestoreFidelityDiagnostics()
-{
-	if (!bExposureDiagnosticsApplied) { return; }
-	if (IConsoleVariable* EyeAdaptation = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptationQuality")))
-	{
-		if (bSavedEyeAdaptationQuality) { EyeAdaptation->Set(SavedEyeAdaptationQuality, ECVF_SetByCode); }
-	}
-	if (IConsoleVariable* PreExposure = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EyeAdaptation.PreExposureOverride")))
-	{
-		if (bSavedPreExposureOverride) { PreExposure->Set(SavedPreExposureOverride, ECVF_SetByCode); }
-	}
-	bExposureDiagnosticsApplied = false;
-	bSavedEyeAdaptationQuality = false;
-	bSavedPreExposureOverride = false;
-	UE_LOG(LogTemp, Display, TEXT("Portal P2-A exposure isolation disabled; previous eye-adaptation/pre-exposure values restored."));
-}
+void AInteriorPortalSystem::RestoreFidelityDiagnostics() {}
 
 void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 {
@@ -1743,20 +1110,12 @@ void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 		MainViewStencilExtension->ClearRequest();
 		MainViewStencilExtension.Reset();
 	}
-	for (FSceneViewStateReference& ViewState : CustomRenderPassViewStates)
-	{
-		ViewState.Destroy();
-	}
+	for (FSceneViewStateReference& ViewState : CustomRenderPassViewStates) { ViewState.Destroy(); }
 	PlayerPresentation->Reset();
-	RestoreFidelityDiagnostics();
 	GrabHandle->ReleaseComponent();
-	for (UMaterialInstanceDynamic* Material : BodyMaterials) { if (Material) { Material->SetScalarParameterValue(TEXT("SliceEnabled"),0); } }
 	RestoreIgnores();
 	if (Character.IsValid()) { Character->GetCharacterMovement()->RemoveTickPrerequisiteActor(this); }
-	for (UPhysicsConstraintComponent* Constraint : PassageConstraints)
-	{
-		if (IsValid(Constraint)) { Constraint->DestroyComponent(); }
-	}
+	for (UPhysicsConstraintComponent* Constraint : PassageConstraints) { if (IsValid(Constraint)) { Constraint->DestroyComponent(); } }
 	PassageConstraints.Reset();
 	Super::EndPlay(Reason);
 }
