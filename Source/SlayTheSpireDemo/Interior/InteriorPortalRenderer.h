@@ -224,10 +224,10 @@ namespace InteriorPortalRenderer
 	inline bool BuildCustomRenderPassInput(
 		const FInteriorPortalRenderRequest& Request,
 		FSceneViewStateInterface* ViewState,
-		FCustomRenderPassBase* CustomRenderPass,
+		FInteriorPortalCustomRenderPass* CustomRenderPass,
 		FSceneInterface::FCustomRenderPassRendererInput& OutInput)
 	{
-		if (!Request.IsValid() || !ViewState || !CustomRenderPass)
+		if (!Request.IsValid() || !CustomRenderPass)
 		{
 			return false;
 		}
@@ -235,7 +235,16 @@ namespace InteriorPortalRenderer
 		OutInput.ViewLocation = Request.ViewLocation;
 		OutInput.ViewRotationMatrix = Request.ViewRotationMatrix;
 		OutInput.ProjectionMatrix = Request.ProjectionMatrix;
-		OutInput.ViewStateInterface = ViewState;
+		// UE 5.8 validates that every FViewInfo assembled into one renderer owns a
+		// unique ViewState. A target-backed public CRP can be queued into a renderer
+		// alongside more than one view, and reusing our persistent endpoint state
+		// triggers SceneRendering.cpp's UniqueViewStates assertion before any GPU
+		// evidence is produced. The current STEP 1B.2/1B.3 CRP is only a spatial/
+		// HDR feasibility pass (DepthAndBasePass, no temporal post-process), so keep
+		// target-backed submissions intentionally stateless. A promoted renderer
+		// candidate must reintroduce independently owned temporal histories with an
+		// in-flight-safe lifetime model rather than sharing one state pointer.
+		OutInput.ViewStateInterface = CustomRenderPass->HasRenderTarget() ? nullptr : ViewState;
 		OutInput.bIsSceneCapture = false;
 		OutInput.bUseMainViewFamilyShowFlags = true;
 		OutInput.CustomRenderPass = CustomRenderPass;
