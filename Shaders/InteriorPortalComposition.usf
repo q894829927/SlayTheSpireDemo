@@ -13,6 +13,15 @@ float CompositionDebugMode;
 
 void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutColor : SV_Target0)
 {
+	// Debug mode 2 deliberately bypasses every portal-specific input. If this
+	// does not make the full post-process output magenta, the BeforeDOF pass
+	// result is not being adopted by the downstream SceneColor chain.
+	if (CompositionDebugMode >= 1.5)
+	{
+		OutColor = float4(1.0, 0.0, 1.0, 1.0);
+		return;
+	}
+
 	const float2 ViewportUV = (UVAndScreenPos.zw - Output_ViewportMin) * Output_ViewportSizeInverse;
 	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
 	const float2 SceneUV = UVAndScreenPos.xy;
