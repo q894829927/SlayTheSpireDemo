@@ -1,9 +1,24 @@
 #include "InteriorPortalRenderer.h"
 #include "GlobalShader.h"
+#include "HAL/IConsoleManager.h"
 #include "RenderGraphBuilder.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
 #include "ScreenPass.h"
 #include "UnrealClient.h"
+
+namespace
+{
+	TAutoConsoleVariable<int32> CVarPortalCompositionDiagnostics(
+		TEXT("portal.CompositionDiagnostics"),
+		0,
+		TEXT("Emit STEP 1B.3 public composition subscription/execution diagnostics. 0=off, 1=on."),
+		ECVF_Default);
+
+	bool PortalCompositionDiagnosticsEnabled()
+	{
+		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
+	}
+}
 
 namespace InteriorPortalRenderer
 {
@@ -145,14 +160,40 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 	FPostProcessingPassDelegateArray& InOutPassCallbacks,
 	const bool bIsPassEnabled)
 {
-	if (!bEnabled || !bIsPassEnabled || Pass != ISceneViewExtension::EPostProcessingPass::BeforeDOF)
+	if (Pass != ISceneViewExtension::EPostProcessingPass::BeforeDOF)
 	{
 		return;
 	}
 
 	const FInteriorPortalRenderRequest Request = GetPublishedRequest();
+	if (PortalCompositionDiagnosticsEnabled())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition Subscribe Frame=%llu Enabled=%d BeforeDOFEnabled=%d RequestValid=%d HasTarget=%d PortalId=%d Endpoint=%d"),
+			GFrameCounter,
+			bEnabled ? 1 : 0,
+			bIsPassEnabled ? 1 : 0,
+			Request.IsValid() ? 1 : 0,
+			Request.PortalRenderTarget ? 1 : 0,
+			Request.PortalId,
+			Request.EndpointIndex);
+	}
+
+	// bIsPassEnabled describes whether the built-in pass is otherwise needed.
+	// The portal extension itself is allowed to attach work to this extension
+	// slot, so do not suppress registration merely because native DOF is off.
+	if (!bEnabled)
+	{
+		return;
+	}
 	if (!Request.IsValid() || !Request.PortalRenderTarget)
 	{
+		if (PortalCompositionDiagnosticsEnabled())
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("PortalComposition Skip Frame=%llu Reason=InvalidRequestOrTarget"),
+				GFrameCounter);
+		}
 		return;
 	}
 
@@ -162,6 +203,18 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 		[Request](FRDGBuilder& GraphBuilder, const FSceneView& View,
 			const FPostProcessMaterialInputs& Inputs)
 		{
+			if (PortalCompositionDiagnosticsEnabled())
+			{
+				UE_LOG(LogTemp, Display,
+					TEXT("PortalComposition Execute Frame=%llu PortalId=%d Endpoint=%d Bounds=(%.4f,%.4f)-(%.4f,%.4f)"),
+					GFrameCounter,
+					Request.PortalId,
+					Request.EndpointIndex,
+					Request.ProjectedBounds.Min.X,
+					Request.ProjectedBounds.Min.Y,
+					Request.ProjectedBounds.Max.X,
+					Request.ProjectedBounds.Max.Y);
+			}
 			return FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 				GraphBuilder, View, Inputs, Request);
 		}));
@@ -177,12 +230,26 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	FScreenPassTexture SceneColor = FScreenPassTexture::CopyFromSlice(GraphBuilder, SceneColorSlice);
 	if (!SceneColor.IsValid() || !Request.PortalRenderTarget)
 	{
+		if (PortalCompositionDiagnosticsEnabled())
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("PortalComposition ComposeSkip Frame=%llu SceneColorValid=%d HasTarget=%d"),
+				GFrameCounter,
+				SceneColor.IsValid() ? 1 : 0,
+				Request.PortalRenderTarget ? 1 : 0);
+		}
 		return SceneColor;
 	}
 
 	FRDGTextureRef PortalTexture = Request.PortalRenderTarget->GetRenderTargetTexture(GraphBuilder);
 	if (!PortalTexture)
 	{
+		if (PortalCompositionDiagnosticsEnabled())
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("PortalComposition ComposeSkip Frame=%llu Reason=PortalTextureUnavailable"),
+				GFrameCounter);
+		}
 		return SceneColor;
 	}
 	GraphBuilder.UseInternalAccessMode(PortalTexture);
@@ -195,6 +262,17 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	// player's constrained view rect may have a non-zero origin, so it must not
 	// be reused as the portal texture viewport.
 	const FScreenPassTextureViewport PortalViewport(PortalTexture);
+
+	if (PortalCompositionDiagnosticsEnabled())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d"),
+			GFrameCounter,
+			SceneColor.ViewRect.Width(),
+			SceneColor.ViewRect.Height(),
+			PortalTexture->Desc.Extent.X,
+			PortalTexture->Desc.Extent.Y);
+	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
 		GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalCompositionParameters>();
@@ -222,5 +300,13 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		PixelShader,
 		PassParameters);
 
+	if (PortalCompositionDiagnosticsEnabled())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d"),
+			GFrameCounter,
+			Request.PortalId,
+			Request.EndpointIndex);
+	}
 	return Output;
 }
