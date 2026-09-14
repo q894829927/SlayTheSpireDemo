@@ -11,7 +11,10 @@ SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
 float4 PortalBounds;
 float CompositionDebugMode;
 
-void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutColor : SV_Target0)
+void MainPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
 {
 	// Debug mode 2 deliberately bypasses every portal-specific input. If this
 	// does not make the full post-process output magenta, the BeforeDOF pass
@@ -22,7 +25,13 @@ void MainPS(in noperspective float4 UVAndScreenPos : TEXCOORD0, out float4 OutCo
 		return;
 	}
 
-	const float2 ViewportUV = (UVAndScreenPos.zw - Output_ViewportMin) * Output_ViewportSizeInverse;
+	// PortalBounds is authored in the constrained output view rectangle's
+	// normalized [0,1] domain. SV_Position is the unambiguous pixel coordinate
+	// of this draw, so normalize it against the same Output viewport. Do not use
+	// UVAndScreenPos.zw here: those screen-pass payload components are not the
+	// contract that PortalBounds was projected into and can diverge when the
+	// editor/game view occupies only a sub-rect of the render target.
+	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
 	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
 	const float2 SceneUV = UVAndScreenPos.xy;
 
