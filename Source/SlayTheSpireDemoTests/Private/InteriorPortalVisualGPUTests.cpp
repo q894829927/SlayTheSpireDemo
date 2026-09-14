@@ -48,17 +48,21 @@ namespace InteriorPortalVisualGPU
 		int32 Height = 0;
 		TArray<FColor> Pixels;
 		InteriorPortalMath::FPortalScreenBounds Bounds;
+		FIntRect ViewRect;
 		uint64 RequestedFrame = 0;
 		uint64 CapturedFrame = 0;
 
 		bool IsValid() const
 		{
 			return Width > 0 && Height > 0 && Pixels.Num() == Width * Height
-				&& Bounds.bHasVisiblePortion;
+				&& Bounds.bHasVisiblePortion
+				&& ViewRect.Width() > 0 && ViewRect.Height() > 0
+				&& ViewRect.Min.X >= 0 && ViewRect.Min.Y >= 0
+				&& ViewRect.Max.X <= Width && ViewRect.Max.Y <= Height;
 		}
 	};
 
-	static bool IsPixelInRegion(const FVector2D& UV,
+	static bool IsPixelInRegion(const FVector2D& ViewUV,
 		const InteriorPortalMath::FPortalScreenBounds& Bounds, const EPixelRegion Region)
 	{
 		const FVector2D Center = 0.5 * (Bounds.Min + Bounds.Max);
@@ -68,13 +72,13 @@ namespace InteriorPortalVisualGPU
 			return false;
 		}
 
-		if (UV.X < Bounds.Min.X || UV.X > Bounds.Max.X
-			|| UV.Y < Bounds.Min.Y || UV.Y > Bounds.Max.Y)
+		if (ViewUV.X < Bounds.Min.X || ViewUV.X > Bounds.Max.X
+			|| ViewUV.Y < Bounds.Min.Y || ViewUV.Y > Bounds.Max.Y)
 		{
 			return false;
 		}
 
-		const FVector2D Ellipse((UV.X - Center.X) / Radius.X, (UV.Y - Center.Y) / Radius.Y);
+		const FVector2D Ellipse((ViewUV.X - Center.X) / Radius.X, (ViewUV.Y - Center.Y) / Radius.Y);
 		const double RadiusSquared = Ellipse.SquaredLength();
 		if (Region == EPixelRegion::InnerAperture)
 		{
@@ -82,6 +86,36 @@ namespace InteriorPortalVisualGPU
 		}
 
 		return RadiusSquared >= 1.25 && RadiusSquared <= 1.95;
+	}
+
+	static bool AreRasterDomainsCompatible(const FVisualSample& A, const FVisualSample& B)
+	{
+		return A.IsValid() && B.IsValid()
+			&& A.Width == B.Width && A.Height == B.Height
+			&& A.ViewRect.Min == B.ViewRect.Min && A.ViewRect.Max == B.ViewRect.Max;
+	}
+
+	static bool BuildSamplePixelRect(const FVisualSample& Sample,
+		const InteriorPortalMath::FPortalScreenBounds& Bounds, FIntRect& OutPixelRect)
+	{
+		if (!Sample.IsValid()
+			|| !InteriorPortalMath::ScreenBoundsToPixelRect(Bounds, Sample.ViewRect, OutPixelRect))
+		{
+			return false;
+		}
+
+		OutPixelRect.Min.X = FMath::Clamp(OutPixelRect.Min.X, 0, Sample.Width);
+		OutPixelRect.Min.Y = FMath::Clamp(OutPixelRect.Min.Y, 0, Sample.Height);
+		OutPixelRect.Max.X = FMath::Clamp(OutPixelRect.Max.X, 0, Sample.Width);
+		OutPixelRect.Max.Y = FMath::Clamp(OutPixelRect.Max.Y, 0, Sample.Height);
+		return OutPixelRect.Width() > 0 && OutPixelRect.Height() > 0;
+	}
+
+	static FVector2D PixelToViewUV(const FVisualSample& Sample, const int32 X, const int32 Y)
+	{
+		return FVector2D(
+			float((double(X) + 0.5 - double(Sample.ViewRect.Min.X)) / double(Sample.ViewRect.Width())),
+			float((double(Y) + 0.5 - double(Sample.ViewRect.Min.Y)) / double(Sample.ViewRect.Height())));
 	}
 
 	static FLinearColor LinearFromScreenshot(const FColor& Color)
@@ -93,23 +127,24 @@ namespace InteriorPortalVisualGPU
 		const InteriorPortalMath::FPortalScreenBounds& Bounds, const EPixelRegion Region, int32& OutCount)
 	{
 		OutCount = 0;
-		if (!A.IsValid() || !B.IsValid() || A.Width != B.Width || A.Height != B.Height)
+		if (!AreRasterDomainsCompatible(A, B))
 		{
 			return 1.0;
 		}
 
-		const int32 MinX = FMath::Clamp(FMath::FloorToInt(Bounds.Min.X * A.Width), 0, A.Width - 1);
-		const int32 MaxX = FMath::Clamp(FMath::CeilToInt(Bounds.Max.X * A.Width), 0, A.Width - 1);
-		const int32 MinY = FMath::Clamp(FMath::FloorToInt(Bounds.Min.Y * A.Height), 0, A.Height - 1);
-		const int32 MaxY = FMath::Clamp(FMath::CeilToInt(Bounds.Max.Y * A.Height), 0, A.Height - 1);
+		FIntRect PixelRect;
+		if (!BuildSamplePixelRect(A, Bounds, PixelRect))
+		{
+			return 1.0;
+		}
 
 		double Sum = 0.0;
-		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		for (int32 Y = PixelRect.Min.Y; Y < PixelRect.Max.Y; ++Y)
 		{
-			for (int32 X = MinX; X <= MaxX; ++X)
+			for (int32 X = PixelRect.Min.X; X < PixelRect.Max.X; ++X)
 			{
-				const FVector2D UV((X + 0.5) / double(A.Width), (Y + 0.5) / double(A.Height));
-				if (!IsPixelInRegion(UV, Bounds, Region))
+				const FVector2D ViewUV = PixelToViewUV(A, X, Y);
+				if (!IsPixelInRegion(ViewUV, Bounds, Region))
 				{
 					continue;
 				}
@@ -127,23 +162,19 @@ namespace InteriorPortalVisualGPU
 		const InteriorPortalMath::FPortalScreenBounds& Bounds, int32& OutCount)
 	{
 		OutCount = 0;
-		if (!Sample.IsValid())
+		FIntRect PixelRect;
+		if (!BuildSamplePixelRect(Sample, Bounds, PixelRect))
 		{
 			return 0.0;
 		}
 
-		const int32 MinX = FMath::Clamp(FMath::FloorToInt(Bounds.Min.X * Sample.Width), 0, Sample.Width - 1);
-		const int32 MaxX = FMath::Clamp(FMath::CeilToInt(Bounds.Max.X * Sample.Width), 0, Sample.Width - 1);
-		const int32 MinY = FMath::Clamp(FMath::FloorToInt(Bounds.Min.Y * Sample.Height), 0, Sample.Height - 1);
-		const int32 MaxY = FMath::Clamp(FMath::CeilToInt(Bounds.Max.Y * Sample.Height), 0, Sample.Height - 1);
-
 		double Sum = 0.0;
-		for (int32 Y = MinY; Y <= MaxY; ++Y)
+		for (int32 Y = PixelRect.Min.Y; Y < PixelRect.Max.Y; ++Y)
 		{
-			for (int32 X = MinX; X <= MaxX; ++X)
+			for (int32 X = PixelRect.Min.X; X < PixelRect.Max.X; ++X)
 			{
-				const FVector2D UV((X + 0.5) / double(Sample.Width), (Y + 0.5) / double(Sample.Height));
-				if (!IsPixelInRegion(UV, Bounds, EPixelRegion::InnerAperture))
+				const FVector2D ViewUV = PixelToViewUV(Sample, X, Y);
+				if (!IsPixelInRegion(ViewUV, Bounds, EPixelRegion::InnerAperture))
 				{
 					continue;
 				}
@@ -452,6 +483,26 @@ namespace InteriorPortalVisualGPU
 				ProjectionData.GetNearPlaneFromProjectionMatrix());
 		}
 
+		bool GetCurrentViewRect(FIntRect& OutViewRect) const
+		{
+			OutViewRect = FIntRect();
+			if (!Player.IsValid())
+			{
+				return false;
+			}
+
+			ULocalPlayer* LocalPlayer = Player->GetLocalPlayer();
+			FSceneViewProjectionData ProjectionData;
+			if (!LocalPlayer || !LocalPlayer->ViewportClient || !LocalPlayer->ViewportClient->Viewport
+				|| !LocalPlayer->GetProjectionData(LocalPlayer->ViewportClient->Viewport, ProjectionData))
+			{
+				return false;
+			}
+
+			OutViewRect = ProjectionData.GetConstrainedViewRect();
+			return OutViewRect.Width() > 0 && OutViewRect.Height() > 0;
+		}
+
 		void SetStage(const EStage NewStage, const int32 FramesToWait)
 		{
 			Stage = NewStage;
@@ -471,8 +522,15 @@ namespace InteriorPortalVisualGPU
 				return false;
 			}
 
+			FIntRect CurrentViewRect;
+			if (!GetCurrentViewRect(CurrentViewRect))
+			{
+				return false;
+			}
+
 			PendingSampleName = SampleName;
 			PendingBounds = Bounds;
+			PendingViewRect = CurrentViewRect;
 			CaptureRequestTime = FPlatformTime::Seconds();
 			CaptureRequestedFrame = GFrameCounter;
 			bCapturePending = true;
@@ -520,6 +578,7 @@ namespace InteriorPortalVisualGPU
 					Sample.Height = Size.Y;
 					Sample.Pixels = MoveTemp(Bitmap);
 					Sample.Bounds = PendingBounds;
+					Sample.ViewRect = PendingViewRect;
 					Sample.RequestedFrame = CaptureRequestedFrame;
 					Sample.CapturedFrame = GFrameCounter;
 					Samples.Add(PendingSampleName, MoveTemp(Sample));
@@ -630,14 +689,20 @@ namespace InteriorPortalVisualGPU
 			}
 
 			Test->AddInfo(FString::Printf(
-				TEXT("PortalVisualGPU apertureInside=%.4f apertureOutside=%.4f parityMaeA=%.4f parityMaeB=%.4f lumRelA=%.4f lumRelB=%.4f poseSeparation=%.4f firstToCurrent=%.4f firstToPrevious=%.4f firstVsSettled=%.4f"),
+				TEXT("PortalVisualGPU viewport=%dx%d viewRect=(%d,%d)-(%d,%d) apertureInside=%.4f apertureOutside=%.4f parityMaeA=%.4f parityMaeB=%.4f lumRelA=%.4f lumRelB=%.4f poseSeparation=%.4f firstToCurrent=%.4f firstToPrevious=%.4f firstVsSettled=%.4f"),
+				CompositionA->Width, CompositionA->Height,
+				CompositionA->ViewRect.Min.X, CompositionA->ViewRect.Min.Y,
+				CompositionA->ViewRect.Max.X, CompositionA->ViewRect.Max.Y,
 				ApertureInsideSignal, ApertureOutsideDelta, ParityMaeA, ParityMaeB,
 				LuminanceRelativeA, LuminanceRelativeB, PoseSeparation,
 				FirstToCurrent, FirstToPrevious, FirstVsSettled));
 
 			const FString Json = FString::Printf(
-				TEXT("{\n  \"map\": \"%s\",\n  \"fixedExposure\": true,\n  \"aperture\": {\"insideSignal\": %.6f, \"outsideDelta\": %.6f, \"pass\": %s},\n  \"parity\": {\"maeA\": %.6f, \"maeB\": %.6f, \"luminanceRelativeA\": %.6f, \"luminanceRelativeB\": %.6f, \"pass\": %s},\n  \"synchronization\": {\"poseSeparation\": %.6f, \"firstToCurrent\": %.6f, \"firstToPrevious\": %.6f, \"firstVsSettled\": %.6f, \"conclusive\": %s, \"pass\": %s}\n}\n"),
+				TEXT("{\n  \"map\": \"%s\",\n  \"fixedExposure\": true,\n  \"rasterDomain\": {\"viewportSize\": [%d, %d], \"viewRectMin\": [%d, %d], \"viewRectSize\": [%d, %d]},\n  \"aperture\": {\"insideSignal\": %.6f, \"outsideDelta\": %.6f, \"pass\": %s},\n  \"parity\": {\"maeA\": %.6f, \"maeB\": %.6f, \"luminanceRelativeA\": %.6f, \"luminanceRelativeB\": %.6f, \"pass\": %s},\n  \"synchronization\": {\"poseSeparation\": %.6f, \"firstToCurrent\": %.6f, \"firstToPrevious\": %.6f, \"firstVsSettled\": %.6f, \"conclusive\": %s, \"pass\": %s}\n}\n"),
 				TargetMap,
+				CompositionA->Width, CompositionA->Height,
+				CompositionA->ViewRect.Min.X, CompositionA->ViewRect.Min.Y,
+				CompositionA->ViewRect.Width(), CompositionA->ViewRect.Height(),
 				ApertureInsideSignal, ApertureOutsideDelta,
 				(bApertureSignalPass && bApertureOutsidePass) ? TEXT("true") : TEXT("false"),
 				ParityMaeA, ParityMaeB, LuminanceRelativeA, LuminanceRelativeB,
@@ -739,6 +804,7 @@ namespace InteriorPortalVisualGPU
 		TMap<FName, FVisualSample> Samples;
 		FName PendingSampleName;
 		InteriorPortalMath::FPortalScreenBounds PendingBounds;
+		FIntRect PendingViewRect;
 		bool bCapturePending = false;
 		double CaptureRequestTime = 0.0;
 		uint64 CaptureRequestedFrame = 0;
