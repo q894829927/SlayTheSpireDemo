@@ -109,9 +109,6 @@ FInteriorPortalCustomRenderPass::FInteriorPortalCustomRenderPass(
 		InRenderTargetSize)
 	, RenderTargetResource(InRenderTarget)
 {
-	// The SceneColor output is an HDR feasibility target. In debug mode 3 the
-	// same transformed CRP writes BaseColor instead, isolating geometry/material
-	// rendering from the lighting stages that DepthAndBasePass does not execute.
 	bSceneColorWithTranslucent = PortalCustomRenderOutput()
 		== FCustomRenderPassBase::ERenderOutput::SceneColorNoAlpha;
 }
@@ -185,18 +182,12 @@ bool FInteriorPortalViewExtension::IsActiveThisFrame_Internal(
 
 void FInteriorPortalViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
-	// This is the supported game-thread entry point before the renderer creates
-	// its private FSceneRenderer. The request is copied already; no UObject is
-	// read from a render-thread callback.
 	(void)InViewFamily;
 }
 
 void FInteriorPortalViewExtension::PreRenderViewFamily_RenderThread(
 	FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily)
 {
-	// Deliberately no-op. UE 5.8 exposes this RDG hook, but it does not expose
-	// the renderer-private full-scene sub-view and stencil aperture pass needed
-	// to turn PublishedRequest into a real main-frame portal render.
 	(void)GraphBuilder;
 	(void)InViewFamily;
 }
@@ -204,8 +195,6 @@ void FInteriorPortalViewExtension::PreRenderViewFamily_RenderThread(
 void FInteriorPortalViewExtension::PostRenderViewFamily_RenderThread(
 	FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily)
 {
-	// Deliberately no-op. A post-scene hook cannot retroactively render a
-	// transformed scene view into the main SceneColor domain through a stencil.
 	(void)GraphBuilder;
 	(void)InViewFamily;
 }
@@ -221,10 +210,6 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 		return;
 	}
 
-	// STEP 1B.5 creates a standalone transformed FSceneViewFamily and renders it
-	// into the portal HDR target. The same world-scoped extension can see that
-	// family too, so never feed the portal target back into its own secondary
-	// render. Composition belongs only to the ordinary player/main view family.
 	if (InView.Family && InView.Family->bAdditionalViewFamily)
 	{
 		return;
@@ -244,9 +229,6 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 			Request.EndpointIndex);
 	}
 
-	// bIsPassEnabled describes whether the built-in pass is otherwise needed.
-	// The portal extension itself is allowed to attach work to this extension
-	// slot, so do not suppress registration merely because native DOF is off.
 	if (!bEnabled)
 	{
 		return;
@@ -262,8 +244,6 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 		return;
 	}
 
-	// Capture the immutable request by value. The callback runs on the render
-	// thread and must not read the PortalSystem or any mutable UObject state.
 	InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
 		[Request](FRDGBuilder& GraphBuilder, const FSceneView& View,
 			const FPostProcessMaterialInputs& Inputs)
@@ -323,9 +303,6 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		GraphBuilder, SceneColor, ERenderTargetLoadAction::ELoad,
 		TEXT("InteriorPortalBeforeDOFComposition"));
 	const FScreenPassTextureViewport OutputViewport(Output);
-	// The CRP writes the external target from (0,0) at its own extent. The
-	// player's constrained view rect may have a non-zero origin, so it must not
-	// be reused as the portal texture viewport.
 	const FScreenPassTextureViewport PortalViewport(PortalTexture);
 	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
 
@@ -382,8 +359,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalTexture = PortalTexture;
 	PassParameters->PortalSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	PassParameters->SceneTextures = CreateSceneTextureShaderParameters(
-		GraphBuilder, InView, ESceneTextureSetupMode::SceneDepth);
+	// The post-process callback already owns the scene-texture uniform buffer for
+	// this exact main view / RDG graph. Reuse it instead of creating a second
+	// SceneTextures binding from the view, which can trip RDG/render-thread
+	// validation when this callback is entered after the standalone secondary
+	// family has been submitted.
+	PassParameters->SceneTextures = Inputs.SceneTextures;
 	PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	PassParameters->Portal = GetScreenPassTextureViewportParameters(PortalViewport);
 	PassParameters->PortalBounds = FVector4f(
