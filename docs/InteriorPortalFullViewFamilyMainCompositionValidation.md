@@ -6,7 +6,8 @@ State:
 
 ```text
 STEP 1B.6 BEFORE-DOF HDR EXTRACTION = PASS
-STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = IMPLEMENTED / RUNTIME RERUN REQUIRED
+STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = PASS
+STEP 1B.8 SECONDARY->MAIN PRE-EXPOSURE REBASE = NEXT
 ```
 
 Implementation commits:
@@ -81,9 +82,10 @@ This is a build-structure correction only. It does not alter the virtual camera,
 BeforeDOF extraction, HDR target, clipping plane, main composition, or renderer
 claim boundary.
 
-## Runtime correction — extraction extension was not attached to the manual family
+## Runtime correction — extraction extension was not attached to the standalone family
 
-The first successful STEP 1B.7 command run produced:
+The first STEP 1B.7 runtime attempt completed the secondary full renderer but
+reported:
 
 ```text
 status = BEFOREDOF_EXTRACTION_FAILED
@@ -91,35 +93,80 @@ beforeDOFCallbackExecuted = false
 mainCompositionArmed = false
 ```
 
-The secondary full renderer itself completed. The failure was specific to the
-BeforeDOF callback registration for the manually constructed additional view
-family.
+The temporary extraction extension had been created through
+`FSceneViewExtensions::NewExtension`, but unlike the already proven STEP 1B.6
+path it had not been explicitly appended to the manually constructed
+`ViewFamily.ViewExtensions` array. Because this is a standalone additional view
+family, the newly created extension was not automatically part of that family.
 
-STEP 1B.6 had explicitly attached its temporary extraction extension to the
-standalone family:
+The fix explicitly attaches the extension to the family before renderer
+submission.
 
-```cpp
-ViewFamily.ViewExtensions.Add(ExtractionExtension);
+## Runtime result — static main-view composition passed
+
+The rerun after the attachment fix reports:
+
+```text
+status = MAIN_COMPOSITION_ARMED
+targetSize = 1749 x 879
+beforeDOFCallbackExecuted = true
+mainCompositionArmed = true
 ```
 
-The initial STEP 1B.7 implementation created the same style of extension through
-`FSceneViewExtensions::NewExtension`, but omitted the equivalent explicit family
-attachment. A manually constructed `FSceneViewFamilyContext` does not
-retroactively gather a newly created extension, so the renderer never subscribed
-that extension to the secondary family's BeforeDOF pass.
+The ordinary player-view diagnostics also repeatedly reached:
 
-The code now performs the explicit attachment before the view is submitted:
-
-```cpp
-if (ExtractionExtension.IsValid())
-{
-    ViewFamily.ViewExtensions.Add(ExtractionExtension.ToSharedRef());
-}
+```text
+PortalComposition Subscribe
+PortalComposition Execute
+PortalComposition ComposeReady
+PortalComposition DrawQueued
 ```
 
-This correction does not change the transformed camera, clip plane, HDR target,
-lighting path, or main composition shader. It only restores the same extension
-ownership contract that already passed in STEP 1B.6.
+The visible portal aperture contains transformed target-space content from the
+full secondary renderer. Therefore the complete static chain is now proven:
+
+```text
+full transformed secondary FSceneViewFamily
+    -> secondary BeforeDOF lit HDR SceneColor extraction
+    -> persistent portal RGBA16F target
+    -> player/main BeforeDOF analytic aperture composition
+    -> main frame continues through final post process
+```
+
+This is a STEP 1B.7 PASS for composition feasibility.
+
+The screenshot is still visibly over-exposed inside the portal while the main
+scene remains normally exposed. This is now a domain mismatch rather than a
+missing renderer/composition path. Do not add arbitrary brightness, gamma, or
+tone-map compensation.
+
+## Architectural consequence — STEP 1B.8
+
+UE pre-exposure scales SceneColor before later post processing. A portal texture
+captured from one view must be converted from the secondary view's pre-exposed
+domain into the main view's pre-exposed domain before RGB composition.
+
+The required relation is:
+
+```text
+PortalRGB_in_main_domain = PortalRGB_from_secondary
+                         * MainPreExposure / SecondaryPreExposure
+```
+
+The next spike should therefore:
+
+1. measure the secondary full view's current PreExposure from its independent
+   `FSceneViewStateInterface` after the renderer submission;
+2. read the main player's current PreExposure from the main `FSceneView` state in
+   the BeforeDOF composition callback;
+3. log both values and the ratio;
+4. apply only that ratio to portal RGB before the analytic aperture blend;
+5. keep the main SceneColor alpha unchanged;
+6. leave the old CRP/BaseColor debug modes unscaled so prior diagnostics remain
+   interpretable.
+
+This is an exposure-domain conversion, not an artistic brightness correction.
+The player/main view remains the only final exposure + tone-map authority.
 
 ## Controlled setup
 
@@ -152,47 +199,18 @@ Run:
 portal.RunFullViewFamilyMainCompositionSpike
 ```
 
-Expected report:
-
-```text
-Saved/AutomationReports/PortalFullViewFamilyMainCompositionSpike.json
-```
-
-Expected JSON gate:
-
-```text
-status = MAIN_COMPOSITION_ARMED
-beforeDOFCallbackExecuted = true
-mainCompositionArmed = true
-```
-
-With composition diagnostics enabled, subsequent main-frame logs should include
-`PortalComposition Subscribe`, `PortalComposition Execute`, `ComposeReady` and
-`DrawQueued` for the ordinary player view.
-
 When finished, run:
 
 ```text
 portal.ClearFullViewFamilyMainCompositionSpike
 ```
 
-## Visual acceptance for this gate
-
-PASS requires the visible aperture to contain the transformed target-space image
-from the full renderer and for that content to participate in the main player's
-post-process/exposure chain. This gate does not require perfect brightness parity.
-A brightness mismatch is diagnostic evidence for the next pre-exposure ownership
-step, not a reason to add an arbitrary multiplier.
-
-Important: STEP 1B.6 showed that extracted SceneColor alpha is not a stable portal
-opacity signal. The composition shader now blends only RGB through the analytic
-aperture and preserves the main SceneColor alpha.
+## Claim boundary
 
 Still out of scope:
 
 ```text
 per-frame full secondary producer
-secondary/main pre-exposure parity
 TAA/TSR and motion-vector history
 main depth/stencil continuity
 portal-bounded renderer scissor
@@ -201,7 +219,3 @@ full Lumen/translucency/fog acceptance
 production GPU cost
 Core Portal Fidelity Seal
 ```
-
-If the portal content is present but too bright/dark after main tonemapping, the
-next task is to measure secondary vs main pre-exposure and rebase secondary
-SceneColor into the main view's pre-exposed domain before composition.
