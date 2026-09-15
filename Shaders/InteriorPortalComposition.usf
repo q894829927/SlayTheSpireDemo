@@ -84,17 +84,22 @@ void MainPS(
 		ApertureMask = (1.0 - smoothstep(0.94, 1.0, EllipseDistance)) * BoundsMask;
 	}
 
-	// STEP 1B.12D-B proof switch. When enabled, the color shader deliberately
-	// stops enforcing the ellipse. The draw must remain portal-shaped only because
-	// the same BeforeDOF pass is gated by the real main-stencil CF_Equal test.
-	// Projective math above is still evaluated so depth ordering remains valid for
-	// pixels that survive the hardware stencil test.
+	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
+
+	// STEP 1B.12D-B proof switch. Do NOT sample the portal HDR texture or run
+	// portal-depth logic here. The purpose of this mode is only to prove that the
+	// surrounding draw is physically constrained by the main-stencil CF_Equal
+	// test. Tinting the already-pre-exposed main SceneColor keeps the scene's
+	// luminance distribution bounded, so a failed stencil test becomes an obvious
+	// full-screen cyan tint instead of poisoning eye adaptation with arbitrary
+	// portal HDR samples.
 	if (StencilBypassShaderAperture > 0.5)
 	{
-		ApertureMask = 1.0;
+		const float3 SafeStencilProofColor = MainColor.rgb * float3(0.25, 1.0, 1.0);
+		OutColor = float4(SafeStencilProofColor, MainColor.a);
+		return;
 	}
 
-	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
 	float4 PortalColor = (CompositionDebugMode >= 0.5 && CompositionDebugMode < 1.5)
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
