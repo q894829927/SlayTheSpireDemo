@@ -65,6 +65,7 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
 		SHADER_PARAMETER(float, ProjectiveApertureEnabled)
+		SHADER_PARAMETER(float, ProjectiveNearClipW)
 		SHADER_PARAMETER(float, CompositionDebugMode)
 		SHADER_PARAMETER(float, PortalExposureScale)
 		RENDER_TARGET_BINDING_SLOTS()
@@ -327,7 +328,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClip=%d Crossing=%d ViewportClip=%d"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClipW=%.9g NearClip=%d Crossing=%d ViewportClip=%d"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
@@ -341,6 +342,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			bUseProjectiveAperture ? 1 : 0,
 			Request.ProjectiveAperture.bValid ? 1 : 0,
 			Request.ProjectiveAperture.DeterminantQuality,
+			Request.ProjectiveNearClipW,
 			Request.ProjectedBounds.bIntersectsNearClip ? 1 : 0,
 			Request.ProjectedBounds.bCameraCrossing ? 1 : 0,
 			Request.ProjectedBounds.bClippedToViewport ? 1 : 0);
@@ -363,6 +365,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
 	PassParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
 	PassParameters->ProjectiveApertureEnabled = bUseProjectiveAperture ? 1.0f : 0.0f;
+	PassParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->PortalExposureScale = PortalExposureScale;
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
