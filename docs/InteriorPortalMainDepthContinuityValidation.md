@@ -13,17 +13,18 @@ STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = PASS
 STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = PASS
 STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = PASS
 STEP 1B.11A PROJECTIVE APERTURE / GRAZING / VIEWPORT CLIP = PASS
-STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = RUNTIME BINDING PASS / VISUAL OCCLUSION VALIDATION PENDING
+STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = PASS
+NEXT = STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW DEPTH REMAP PROOF
 ```
 
 ## Why this gate exists
 
-The accepted portal path currently composes a secondary full-renderer HDR image
-into the player's BeforeDOF SceneColor. Until this step the composition mask was
-purely geometric: if a pixel was inside the projected aperture, portal RGB won.
-That means a real main-view object located between the player camera and the
-physical entry portal could be overwritten by the portal image even though the
-main scene depth says that object is closer.
+The accepted portal path composes a secondary full-renderer HDR image into the
+player's BeforeDOF SceneColor. Before this step the composition mask was purely
+geometric: if a pixel was inside the projected aperture, portal RGB won. That
+meant a real main-view object located between the player camera and the physical
+entry portal could be overwritten by the portal image even though the main scene
+depth said that object was closer.
 
 STEP 1B.12A is the first bounded depth-continuity gate. It does **not** claim
 that remote portal depth has been injected into the main SceneDepth buffer.
@@ -33,7 +34,7 @@ portal plane.
 
 ## Exact portal-plane depth
 
-STEP 1B.11A already computes an inverse planar homography:
+STEP 1B.11A computes an inverse planar homography:
 
 ```text
 H^-1 * [screenU, screenV, 1] = [u, v, 1] / clipW
@@ -60,7 +61,7 @@ portalDeviceZ =
 
 ## Main SceneDepth contract
 
-The current implementation intentionally avoids reflecting the whole deferred
+The implementation intentionally avoids reflecting the whole deferred
 SceneTextures uniform buffer into the custom screen shader. That path produced
 D3D12 uniform-buffer slot failures in the SceneViewExtension callback.
 
@@ -92,31 +93,12 @@ not a visual depth offset and must not be tuned to hide unrelated renderer bugs.
 
 ## Runtime controls
 
-The new switch is deliberately off by default so the already accepted RGB-only
-path remains available for A/B testing:
-
 ```text
-portal.DepthAwareComposition 0   # retained RGB-only path
+portal.DepthAwareComposition 0   # retained RGB-only comparison path
 portal.DepthAwareComposition 1   # STEP 1B.12A main-depth gate
+portal.ProjectiveAperture 1      # required by exact portal-plane depth mapping
+portal.CompositionDebugMode 4    # green=open, red=main foreground occluder
 ```
-
-`portal.ProjectiveAperture 1` is required because exact portal-plane device
-Z comes from the accepted projective mapping.
-
-Composition debug mode 4 visualizes the gate:
-
-```text
-portal.CompositionDebugMode 4
-```
-
-Inside the physical aperture:
-
-```text
-green = main depth is at/behind the portal plane; portal may be visible
-red   = real main-scene geometry is in front of the portal plane; main wins
-```
-
-Outside the aperture the ordinary main SceneColor remains visible.
 
 `portal.CompositionDiagnostics 1` records:
 
@@ -127,7 +109,7 @@ DepthTextureValid=...
 DepthEpsilonCm=...
 ```
 
-A normal depth-enabled frame should show:
+A normal depth-enabled frame reports:
 
 ```text
 Projective=1
@@ -139,7 +121,7 @@ DepthAware=1
 
 ## Runtime evidence — 2026-09-15
 
-The earlier shader bring-up exposed two binding failures and both were resolved:
+The shader bring-up exposed two binding failures and both were resolved:
 
 ```text
 1. SceneTextures uniform-buffer slot was not guaranteed in this callback.
@@ -148,9 +130,7 @@ The earlier shader bring-up exposed two binding failures and both were resolved:
 ```
 
 After binding SceneDepth as a direct RDG texture and explicitly binding
-`InView.ViewUniformBuffer`, the user reran the accepted full-view-family TSR
-producer with depth diagnostics enabled. Repeated main-view BeforeDOF frames now
-report:
+`InView.ViewUniformBuffer`, repeated main-view BeforeDOF frames reported:
 
 ```text
 DebugMode=4
@@ -162,114 +142,71 @@ DepthTextureValid=1
 DepthEpsilonCm=2.0000
 ```
 
-Example measured frames 2767-2773 used a 1557x733 main SceneColor, a 1920x904
-portal target, valid projective quality around 0.055-0.058, and a main
-PreExposure around 0.00149-0.00152. No D3D12 missing-uniform-buffer fatal was
-reported for these frames.
+Measured frames 2767-2773 used a 1557x733 main SceneColor, a 1920x904 portal
+target, valid projective quality around 0.055-0.058, and a main PreExposure
+around 0.00149-0.00152. A later stationary sequence at frames 2900-2913
+repeatedly preserved the same contract without D3D12 uniform-buffer failures.
 
-A later stationary sequence at frames 2900-2913 repeatedly preserved the same
-contract with `Projective=1`, `ProjectiveValid=1`, `DepthAware=1`,
-`DepthRequested=1`, and `DepthTextureValid=1` on every logged frame.
-
-This is sufficient to accept the **shader/resource binding and runtime depth
-read path**. It is not yet sufficient to accept the full 1B.12A visual
-foreground-occlusion behavior because the required world-space opaque occluder
-A/B evidence has not yet been supplied.
-
-## Validation procedure
-
-Use the accepted TSR producer:
+Visual validation then used a real opaque world-space object placed between the
+player camera and the physical portal plane. In composition debug mode 4:
 
 ```text
-RendererBackend = SceneCapture
-portal.ProjectiveAperture 1
-portal.DepthOcclusionEpsilonCm 2.0
-portal.CompositionDiagnostics 1
-portal.FullViewFamilyTSRDiagnostics 1
-portal.FullViewFamilyTSRPrimaryFraction 0.67
-portal.StartFullViewFamilyTSRSpike
+open aperture region                 -> green
+foreground world-space object overlap -> red
+first-person foreground geometry      -> red where its main depth wins
 ```
 
-First verify the diagnostic mask:
+This demonstrates that the main SceneDepth comparison follows real foreground
+silhouettes instead of blindly replacing the aperture with portal RGB.
+
+During camera motion with the main view using TSR (`r.AntiAliasingMethod=4`),
+the red/green debug visualization could briefly appear almost fully red. This was
+isolated by temporarily setting:
 
 ```text
-portal.DepthAwareComposition 1
-portal.CompositionDebugMode 4
+r.AntiAliasingMethod 0
 ```
 
-Put a **world-space opaque object** between the player camera and part of the
-portal aperture. Prefer a movable cube/character/world prop. Do not use only a
-HUD element; a first-person weapon can also be rendered in a special foreground
-path and is not the strongest proof of ordinary SceneDepth behavior.
+With main-view AA/TSR disabled, the transient full-red event disappeared. The
+secondary portal TSR producer remained active. Therefore the transient red frame
+was a temporal-history artifact of feeding synthetic red/green diagnostic color
+into the main view's later TSR reconstruction, not evidence that the raw
+SceneDepth classifier had classified the whole aperture as foreground.
 
-Expected mode-4 result:
+This debug-only artifact is not a failure of the normal depth-aware composition
+contract. Restore the project's normal main-view AA mode after the diagnostic
+is complete.
 
-1. Open aperture pixels are green.
-2. The portion covered by the real foreground object is red.
-3. Moving the object across the aperture moves the red region with its real
-   silhouette/depth.
-4. The portal host wall/rim does not turn the entire aperture red merely because
-   it is coplanar or nearly coplanar.
+## PASS result
 
-Then return to normal color:
+STEP 1B.12A is accepted because:
 
-```text
-portal.CompositionDebugMode 0
-```
-
-Do a fixed-camera A/B while the world object overlaps the aperture:
-
-```text
-portal.DepthAwareComposition 0
-# old behavior: portal RGB can overwrite the foreground object inside aperture
-
-portal.DepthAwareComposition 1
-# expected: foreground object remains visible where it is physically in front
-```
-
-Keep the player/camera and object stationary while toggling the CVar so this is
-a true depth-gate A/B rather than a different camera sample.
-
-Finally stop the producer:
-
-```text
-portal.StopFullViewFamilyTSRSpike
-```
-
-## PASS criteria
-
-PASS requires all of the following:
-
-1. Project compiles and the shader runs without View/SceneTextures uniform-buffer
-   binding errors. **RUNTIME PASS**.
-2. `ComposeReady` reports `Projective=1`, `ProjectiveValid=1`,
-   `DepthRequested=1`, `DepthTextureValid=1`, `DepthAware=1`. **RUNTIME PASS**.
-3. Debug mode 4 shows a stable green aperture where unobstructed. **PENDING VISUAL EVIDENCE**.
-4. A real opaque world object between camera and portal produces a red region
-   matching the object's actual foreground overlap. **PENDING VISUAL EVIDENCE**.
-5. In normal mode with `DepthAwareComposition=1`, that foreground object is no
-   longer overwritten by portal RGB. **PENDING VISUAL EVIDENCE**.
-6. `DepthAwareComposition=0` reproduces the previous accepted RGB-only path.
-   **PENDING A/B EVIDENCE**.
-7. No NaN/Inf, renderer assertion, RDG validation failure or stale secondary
-   target appears while moving camera/object across the aperture. **PARTIAL;
-   current logged depth-enabled frames are stable, motion/occluder pass pending**.
+1. The shader runs without the earlier View/SceneTextures uniform-buffer
+   failures.
+2. `Projective=1`, `ProjectiveValid=1`, `DepthRequested=1`,
+   `DepthTextureValid=1`, and `DepthAware=1` are observed continuously.
+3. Debug mode 4 shows the unobstructed aperture as depth-visible and real
+   foreground world geometry as foreground-occluded with the expected
+   silhouette.
+4. The transient full-red motion artifact disappears when main-view TSR is
+   disabled, isolating it to diagnostic-color temporal reconstruction rather
+   than the underlying main-depth comparison.
+5. No NaN/Inf, RDG validation failure, renderer assertion, or stale portal
+   target was observed in the accepted depth-enabled path.
 
 ## What this proves
 
-Once the remaining visual checks pass, project-side public renderer APIs are
-sufficient for this bounded contract:
+Project-side public renderer APIs are sufficient for this bounded contract:
 
 ```text
 main SceneDepth read
     + exact physical entry-plane device depth
     + projective aperture
-    -> correct preservation of main-view foreground occluders
+    -> preserve real main-view foreground occluders
 ```
 
-The current evidence already proves the main SceneDepth texture can be bound and
-consumed by this custom BeforeDOF screen pass without the earlier D3D12/View
-uniform-buffer failures.
+This removes one major source of the portal looking like an RGB card pasted over
+the real scene.
 
 ## What this does NOT prove
 
@@ -286,15 +223,15 @@ true main depth-stencil aperture ownership
 remote-object depth continuity
 ```
 
-The next gate after 1B.12A remains:
+The next gate is:
 
 ```text
 STEP 1B.12B — SECONDARY DEPTH TRANSPORT + MAIN-VIEW DEPTH REMAP PROOF
 ```
 
-That stage should extract the secondary view depth owned by the same full
-secondary renderer sample, remap it through the portal transform into main-view
-depth, and establish whether project-side RDG can safely propagate that depth
+That stage should extract secondary depth belonging to the same full secondary
+renderer sample, remap it through the portal transform into the main-view depth
+domain, and establish whether project-side RDG can safely propagate that depth
 far enough for downstream effects. If a true main depth-stencil write cannot be
 made safely through public APIs, that result becomes the explicit renderer-
 private escalation point rather than being hidden by another RGB workaround.
