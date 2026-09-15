@@ -1,4 +1,4 @@
-# Interior Portal — STEP 1B.14C Secondary EyeAdaptation A/B
+# Interior Portal — STEP 1B.14C / 1B.14D Exposure Parity
 
 Date: **2026-09-16**
 
@@ -8,8 +8,10 @@ State:
 STEP 1B.14C SECONDARY EYEADAPTATION A/B
 = STATIC EXPOSURE ROOT CAUSE CONFIRMED
 = PRODUCTION PROMOTION COMPLETE
-= DYNAMIC / GRAZING VALIDATION FAILED
-= NEXT GATE: EXPOSURE AUTHORITY ACROSS SECONDARY CAMERA CUTS
+
+STEP 1B.14D EXPOSURE AUTHORITY DECOUPLING
+= IMPLEMENTED
+= USER BUILD / DYNAMIC PIE EVIDENCE REQUIRED
 ```
 
 ## Why this gate exists
@@ -28,10 +30,9 @@ secondary EyeAdaptation = false
 
 Changing `r.EyeAdaptation.CachedLightingPreExposure` from 4 to 8 did not materially
 improve the dark secondary, and globally forcing `r.EyeAdaptation.PreExposureOverride=1`
-only darkened the real main view rather than fixing the secondary image. Therefore the
-next controlled test was secondary EyeAdaptation ownership itself.
+only darkened the real main view rather than fixing the secondary image.
 
-## Implementation
+## STEP 1B.14C — static EyeAdaptation result
 
 Isolation source:
 
@@ -39,125 +40,41 @@ Isolation source:
 Source/SlayTheSpireDemo/Interior/InteriorPortalSecondaryEyeAdaptationSpike.cpp
 ```
 
-CVars:
+CVars / commands:
 
 ```text
 portal.SecondaryEyeAdaptation 0/1
 portal.SecondaryEyeAdaptationDiagnostics 0/1
-```
-
-Commands:
-
-```text
 portal.StartSecondaryEyeAdaptationSpike
 portal.DumpSecondaryEyeAdaptationSpike
 portal.StopSecondaryEyeAdaptationSpike
 ```
 
-Report:
+Policy 0 kept the persistent secondary pre-exposure at 1.0 and the transformed view
+was severely dark. Policy 1 kept AA, Lumen GI/reflections and indirect-lighting
+intensity unchanged while secondary pre-exposure converged to approximately
+0.00145 and the static transformed view became normally exposed.
 
-```text
-Saved/AutomationReports/PortalSecondaryEyeAdaptationSpike.json
-```
-
-The spike keeps the accepted transformed full `FSceneViewFamily`, persistent
-`FSceneViewState`, TSR, Lumen GI/reflections, clipping plane, post-TSR/pre-tonemap
-HDR extraction and pre-exposure rebase structure, but makes the secondary
-`EyeAdaptation` show flag controllable.
-
-The secondary Tonemap extraction callback directly records:
-
-```text
-secondary PreExposure
-AutoExposureMethod
-AA method
-SceneRect
-DynamicGI
-Reflection
-IndirectLightingIntensity
-```
-
-This avoids relying on a global extension being automatically attached to the manual
-additional view family.
-
-## Runtime evidence — static A/B
-
-### Policy 0 — legacy forced EyeAdaptation off
-
-The secondary remained severely dark and its persistent pre-exposure stayed pinned at:
-
-```text
-Policy=0
-PreExposure=1
-AA=4
-DynamicGI=1
-Reflection=1
-IndirectLightingIntensity=1
-```
-
-This remained stable for hundreds of frames.
-
-### Policy 1 — EyeAdaptation enabled
-
-With no changes to AA, Lumen GI, reflections or indirect-lighting intensity, the
-secondary exposure state rapidly converged away from 1.0:
-
-```text
-Frame ~60:  PreExposure ~= 0.001468
-Frame ~120: PreExposure ~= 0.001460
-steady:     PreExposure ~= 0.001457
-AA=4
-DynamicGI=1
-Reflection=1
-IndirectLightingIntensity=1
-```
-
-The full-screen transformed secondary changed from near-black to normally exposed,
-and the normal portal aperture likewise stopped exhibiting the prior near-black
-interior while the isolation producer remained stable.
-
-## Initial root-cause conclusion
-
-The dominant static visual-parity defect was caused by the production TSR secondary
-family forcibly disabling EyeAdaptation:
+The static production defect was therefore the forced:
 
 ```cpp
 ShowFlags.SetEyeAdaptation(false);
 ```
 
-That forced the persistent secondary exposure state to remain at pre-exposure 1.0,
-while the real game view operated around ~0.0015–0.0018 in the same scene. The later
-RGB pre-exposure rebase was numerically correct but could not make renderer-internal
-lighting/history behavior equivalent after the secondary view had already rendered in
-the wrong exposure policy.
-
-## Production promotion
-
-The static fix was promoted into:
-
-```text
-Source/SlayTheSpireDemo/Interior/InteriorPortalFullViewFamilyTSRSpike.cpp
-```
-
-Production no longer forces EyeAdaptation off. Instead, the secondary family inherits
-the EyeAdaptation show flag from the real game viewport, while MotionBlur and DOF
-remain disabled so the main view remains owner of those final presentation effects.
-
-Promotion commit:
+Production was changed to inherit the real game viewport EyeAdaptation show flag:
 
 ```text
 118a9b426847c4f098d2cb79ca850446ffae822f
 portal: inherit main eye adaptation in TSR producer
 ```
 
-## Integrated dynamic validation — failure refinement
+## Dynamic validation — remaining failure
 
-The full production chain was then exercised while rotating obliquely and backing away
-from the portal. The portal can become dark again even though the static view initially
-converges correctly.
+The full production chain was then exercised while rotating obliquely and backing away.
+The portal can become dark again after initially converging correctly.
 
-The decisive telemetry is not a loss of TSR or depth transport. Instead, the secondary
-camera-cut count increases as visibility / selected endpoint changes:
+Telemetry shows the secondary camera-cut count increasing and the selected endpoint
+changing while this motion occurs:
 
 ```text
 Frame 1409: Endpoint=0 CameraCuts=1
@@ -166,60 +83,184 @@ Frame 1599: Endpoint=1 CameraCuts=4
 Frame 1660: Endpoint=0 CameraCuts=5
 ```
 
-The production producer currently owns one secondary `FSceneViewStateReference`, and
-its camera-cut policy explicitly cuts when the visible endpoint changes. Frames that
-leave the visible set also invalidate the same temporal history. With EyeAdaptation now
-owned by that same secondary view state, these cut / re-entry events can restart the
-secondary exposure history and recreate the near-black warm-up state that was observed
-at the start of Policy=1.
-
-Therefore the refined root cause is:
+The production producer owns a single secondary `FSceneViewStateReference`. That state
+was simultaneously acting as:
 
 ```text
-static mismatch:
-  EyeAdaptation forcibly disabled -> fixed
-
-dynamic mismatch:
-  secondary TSR/Lumen temporal cuts and secondary exposure history share one owner
-  -> oblique / retreat visibility changes can reset exposure together with TSR history
+TSR / velocity / Lumen temporal history owner
+EyeAdaptation / exposure history owner
 ```
 
-## Next gate — 1B.14D Exposure authority decoupling
+This coupling is unsafe for a portal. The secondary temporal state must still be cut on
+real discontinuities, endpoint changes and visibility re-entry, but those portal-local
+cuts must not reset the player's exposure authority.
 
-Do not remove required TSR camera cuts merely to keep exposure alive. Endpoint changes,
-re-entry after visibility loss and true portal-frame discontinuities still require
-safe temporal invalidation.
+## STEP 1B.14D — main-view exposure authority spike
 
-The next implementation must separate the two responsibilities:
+Source:
 
 ```text
-Secondary temporal ViewState
-  owns TSR / velocity / Lumen temporal history
-  may still camera-cut when required
-
-Exposure authority
-  must remain continuous across those secondary-only cuts
-  should be sourced from the player-main exposure state rather than a portal-local
-  independently resetting adaptation history
+Source/SlayTheSpireDemo/Interior/InteriorPortalExposureAuthoritySpike.cpp
 ```
 
-UE 5.8 exposes `FSceneViewInitOptions::ExposureSceneViewStateInterface`, which is the
-preferred public integration point to test for this separation while preserving the
-secondary `SceneViewStateInterface` for TSR/history ownership.
-
-A successful 1B.14D run must keep the portal exposure stable when:
+Implementation commit:
 
 ```text
-rotating to a grazing angle
-backing away
-briefly leaving / re-entering the visible set
-switching the selected visible endpoint
+0b97b322206501e90a6cce111689553bb947c6ba
+portal: add main-view exposure authority spike
 ```
 
-while retaining the accepted camera-cut semantics required by TSR.
+UE 5.8 exposes two separate view-state inputs in `FSceneViewInitOptions`:
+
+```text
+SceneViewStateInterface
+ExposureSceneViewStateInterface
+```
+
+The spike uses that split deliberately:
+
+```text
+SceneViewStateInterface
+  = persistent secondary state
+  = owns TSR / velocity / Lumen temporal history
+  = keeps the accepted camera-cut policy
+
+ExposureSceneViewStateInterface
+  = captured real player-main ViewState when Policy=1
+  = remains independent of secondary endpoint/re-entry cuts
+```
+
+A world scene-view extension captures only non-additional main views and records the
+player-main ViewState plus its current pre-exposure. The manual transformed secondary
+family is never allowed to replace that capture because it is an additional view
+family.
+
+CVars:
+
+```text
+portal.SecondaryExposureAuthority 0/1
+portal.SecondaryExposureAuthorityDiagnostics 0/1
+```
+
+Commands:
+
+```text
+portal.StartExposureAuthoritySpike
+portal.DumpExposureAuthoritySpike
+portal.StopExposureAuthoritySpike
+```
+
+Report:
+
+```text
+Saved/AutomationReports/PortalExposureAuthoritySpike.json
+```
+
+Periodic telemetry records:
+
+```text
+Policy
+MainAuthorityActive
+MainCaptureFrame
+MainPreExposure
+SceneColorPreExposure
+SecondaryTemporalPreExposure
+Endpoint
+CameraCut / CameraCuts
+CutReason
+```
+
+The important proof is that with Policy=1, `SceneColorPreExposure` should track the
+captured player-main exposure even when the secondary temporal state camera-cuts or the
+selected endpoint changes. `SecondaryTemporalPreExposure` is allowed to reset because
+it is no longer the exposure authority.
+
+## Runtime procedure
+
+Use a fresh PIE session. Restore exposure diagnostics first:
+
+```text
+r.EyeAdaptation.PreExposureOverride 0
+r.EyeAdaptation.CachedLightingPreExposure 4
+r.AntiAliasingMethod 4
+```
+
+Disable other secondary producers, then isolate color/exposure from the already proven
+depth/stencil stages:
+
+```text
+portal.StopFullViewFamilyTSRSpike
+portal.StopSecondaryEyeAdaptationSpike
+portal.StopVisualParityReference
+
+portal.CompositionDebugMode 0
+portal.ProjectiveAperture 1
+portal.DepthAwareComposition 0
+portal.SecondaryDepthRemap 0
+portal.MainDepthPropagation 0
+portal.StencilGatedComposition 0
+portal.BoundedMainPassScissor 0
+
+portal.FullViewFamilyTSRPrimaryFraction 0.67
+portal.SecondaryExposureAuthority 1
+portal.SecondaryExposureAuthorityDiagnostics 1
+portal.StartExposureAuthoritySpike
+```
+
+Wait several seconds. Confirm telemetry contains:
+
+```text
+Policy=1
+MainAuthorityActive=1
+MainPreExposure ~= SceneColorPreExposure
+```
+
+Then deliberately reproduce the previous failure:
+
+```text
+rotate to a grazing portal angle
+back away until the portal is small
+briefly let it leave/re-enter the visible set
+move so endpoint selection can change if possible
+```
+
+CameraCuts are allowed and expected. The portal must not become near-black merely due
+to those cuts.
+
+Finally:
+
+```text
+portal.DumpExposureAuthoritySpike
+portal.StopExposureAuthoritySpike
+```
+
+## Decision rule
+
+```text
+PASS:
+  MainAuthorityActive=1
+  MainPreExposure and SceneColorPreExposure remain aligned
+  CameraCuts may increase
+  portal exposure remains stable while grazing / retreating / re-entering
+
+FAIL-A:
+  MainAuthorityActive=0
+  -> main ViewState capture/lifetime is not reaching the producer
+
+FAIL-B:
+  MainAuthorityActive=1 and exposure values remain aligned, but portal still goes dark
+  -> exposure is no longer the cause; inspect visibility selection / clip plane / target freshness
+
+FAIL-C:
+  assigning the main exposure state visibly perturbs the real main-view exposure
+  -> do not promote; use a dedicated persistent exposure state seeded from main instead
+```
+
+Do not remove required TSR camera cuts merely to keep brightness stable, and do not use
+portal-local brightness/gamma/exposure compensation as a substitute.
 
 ## Acceptance boundary
 
-`STEP 1B.14C` remains accepted only as the proof that enabling EyeAdaptation fixes the
-static secondary exposure defect. The integrated production visual-parity seal is NOT
-accepted yet because exposure is still coupled to secondary camera-cut lifetime.
+`STEP 1B.14C` is accepted only for the static EyeAdaptation defect. The integrated
+production visual-parity seal remains open until 1B.14D proves exposure remains stable
+across the dynamic portal camera-cut / visibility lifecycle.
