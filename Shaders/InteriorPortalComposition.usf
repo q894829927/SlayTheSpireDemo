@@ -6,6 +6,8 @@ SamplerState SceneColorSampler;
 Texture2D PortalTexture;
 SamplerState PortalSampler;
 Texture2D MainSceneDepthTexture;
+Texture2D SecondaryDepthTexture;
+SamplerState SecondaryDepthSampler;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
@@ -17,6 +19,7 @@ float4 PortalClipZRow;
 float ProjectiveApertureEnabled;
 float ProjectiveNearClipW;
 float DepthAwareCompositionEnabled;
+float SecondaryDepthRemapEnabled;
 float DepthOcclusionEpsilonCm;
 float CompositionDebugMode;
 float PortalExposureScale;
@@ -26,29 +29,16 @@ void MainPS(
 	float4 SvPosition : SV_POSITION,
 	out float4 OutColor : SV_Target0)
 {
-	// Debug mode 2 deliberately bypasses every portal-specific input. If this
-	// does not make the full post-process output magenta, the BeforeDOF pass
-	// result is not being adopted by the downstream SceneColor chain. Mode 3
-	// instead samples the diagnostic BaseColor CRP through the normal aperture.
 	if (CompositionDebugMode >= 1.5 && CompositionDebugMode < 2.5)
 	{
 		OutColor = float4(1.0, 0.0, 1.0, 1.0);
 		return;
 	}
 
-	// PortalBounds and the inverse homography are authored in the constrained
-	// output view rectangle's normalized [0,1] domain. SV_Position is the
-	// unambiguous pixel coordinate of this draw, so normalize it against the same
-	// Output viewport. Do not use UVAndScreenPos.zw here: those screen-pass
-	// payload components are not the projection contract used by the portal math.
 	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
 	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
 	const float2 SceneUV = UVAndScreenPos.xy;
 
-	// The conservative projected rectangle remains a cheap safety bound. It is
-	// not the aperture shape: a planar ellipse becomes a projective conic at
-	// oblique angles and cannot be represented by an axis-aligned ellipse in its
-	// bounding box.
 	const float BoundsMask =
 		step(PortalBounds.x, ViewportUV.x)
 		* step(PortalBounds.y, ViewportUV.y)
@@ -66,11 +56,6 @@ void MainPS(
 			dot(ScreenToPortalRow1.xyz, ScreenPoint),
 			dot(ScreenToPortalRow2.xyz, ScreenPoint));
 
-		// H^-1 * [screenUV,1] = [u,v,1] / clipW. Therefore z has the
-		// sign of forward clip depth and its reciprocal is the original clip W.
-		// Reject rays parallel to/behind the portal plane and, for perspective
-		// views, reject intersections before the main near plane exactly rather
-		// than relying only on the conservative bounding rectangle.
 		if (PortalHomogeneous.z > 1.0e-8)
 		{
 			const float ClipW = rcp(PortalHomogeneous.z);
@@ -79,8 +64,6 @@ void MainPS(
 			{
 				const float2 PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
 				const float EllipseDistance = dot(PortalLocal, PortalLocal);
-				// Derivative-based coverage keeps the physical ellipse edge stable when
-				// it collapses to only a few pixels at a grazing angle.
 				const float EdgeWidth = max(fwidth(EllipseDistance) * 1.25, 1.0e-4);
 				ApertureMask = 1.0 - smoothstep(
 					1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
@@ -91,7 +74,6 @@ void MainPS(
 	}
 	else
 	{
-		// Retained comparison/fallback path for an exactly singular homography.
 		const float2 PortalCenter = 0.5 * (PortalBounds.xy + PortalBounds.zw);
 		const float2 PortalRadius = max(
 			0.5 * (PortalBounds.zw - PortalBounds.xy), float2(1e-5, 1e-5));
@@ -105,33 +87,32 @@ void MainPS(
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
 
-	// STEP 1B.12A: depth-aware composition is intentionally a main-depth gate,
-	// not a claim that portal depth has been injected into the main depth buffer.
-	// For a projective aperture, H^-1*[screenUV,1] gives [u,v,1]/clipW. The
-	// stored ClipZ row therefore reconstructs the physical entry-plane device Z
-	// exactly at the same pixel. Preserve main SceneColor when real main-scene
-	// geometry is closer than that portal plane. A small world-space epsilon lets
-	// the coplanar host wall/rim coexist with the aperture without becoming an
-	// artistic brightness or depth offset.
+	float PortalPlaneDeviceZ = 0.0;
+	float PortalPlaneDepthCm = 0.0;
+	bool bPortalPlaneDepthValid = false;
+	if (ProjectiveApertureEnabled > 0.5 && bProjectiveIntersectionValid)
+	{
+		PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+		PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+		bPortalPlaneDepthValid = true;
+	}
+
+	// STEP 1B.12A: preserve real main-view foreground geometry in front of the
+	// physical portal plane. This is only a read/compare gate; it does not mutate
+	// the renderer's main SceneDepth attachment.
 	float ForegroundOcclusionMask = 0.0;
 	if (DepthAwareCompositionEnabled > 0.5
-		&& ProjectiveApertureEnabled > 0.5
-		&& bProjectiveIntersectionValid
+		&& bPortalPlaneDepthValid
 		&& ApertureMask > 0.0)
 	{
-		const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
 		const int2 ScenePixel = int2(SvPosition.xy);
 		const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
-		const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
 		ForegroundOcclusionMask =
 			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < PortalPlaneDepthCm)
 			? 1.0 : 0.0;
 	}
 
-	// Debug mode 4 visualizes the bounded STEP 1B.12A contract without changing
-	// the secondary renderer: green means the portal aperture is depth-visible;
-	// red means main-scene geometry in front of the physical entry plane wins.
 	if (CompositionDebugMode >= 3.5 && CompositionDebugMode < 4.5)
 	{
 		const float3 DiagnosticColor = lerp(
@@ -144,21 +125,60 @@ void MainPS(
 		return;
 	}
 
-	// STEP 1B.8: only normal full-renderer composition participates in the
-	// secondary->main pre-exposure domain conversion. Diagnostic modes remain
-	// unscaled so the established magenta/BaseColor probes keep their original
-	// interpretation.
+	// STEP 1B.12B: the portal transform is rigid (rotation + translation) and the
+	// secondary camera is exactly that same rigid transform applied to the main
+	// camera. Therefore an exit-side point transformed back through the inverse
+	// portal has identical camera-relative coordinates. With the same projection
+	// matrix, its secondary device Z is already the exact conceptual main-view
+	// device Z. No artistic offset or distance reconstruction is required.
+	//
+	// The transported surface is current-frame primary-resolution SceneDepth,
+	// point-resampled to the display-size R32F target. It is deliberately NOT
+	// claimed to be TSR-reconstructed depth.
+	float SecondaryDeviceZ = 0.0;
+	float SecondaryDepthCm = 0.0;
+	bool bSecondaryDepthValid = false;
+	bool bSecondaryDepthBehindPortal = false;
+	if (SecondaryDepthRemapEnabled > 0.5
+		&& bPortalPlaneDepthValid
+		&& ApertureMask > 0.0)
+	{
+		SecondaryDeviceZ = Texture2DSampleLevel(
+			SecondaryDepthTexture, SecondaryDepthSampler, PortalUV, 0.0).r;
+		bSecondaryDepthValid = SecondaryDeviceZ > 1.0e-7 && SecondaryDeviceZ <= 1.0001;
+		if (bSecondaryDepthValid)
+		{
+			SecondaryDepthCm = ConvertFromDeviceZ(saturate(SecondaryDeviceZ));
+			bSecondaryDepthBehindPortal =
+				SecondaryDepthCm + max(DepthOcclusionEpsilonCm, 0.0) >= PortalPlaneDepthCm;
+		}
+	}
+
+	// Debug mode 5:
+	// cyan    = valid transported remote geometry at/behind portal plane;
+	// magenta = valid transported depth that maps in front of portal plane;
+	// yellow  = no rasterized remote depth (sky/background/transport miss).
+	if (CompositionDebugMode >= 4.5 && CompositionDebugMode < 5.5)
+	{
+		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
+		if (bSecondaryDepthValid)
+		{
+			DiagnosticColor = bSecondaryDepthBehindPortal
+				? float3(0.0, 1.0, 1.0)
+				: float3(1.0, 0.0, 1.0);
+		}
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
 	if (CompositionDebugMode < 0.5)
 	{
 		PortalColor.rgb *= PortalExposureScale;
 	}
 
 	const float DepthVisibleApertureMask = ApertureMask * (1.0 - ForegroundOcclusionMask);
-
-	// The extracted full-renderer HDR SceneColor does not provide a stable
-	// opacity contract in alpha. Aperture ownership is analytic/projective, so
-	// blend RGB only and preserve the main view's SceneColor alpha for downstream
-	// post processing.
 	OutColor = float4(
 		lerp(MainColor.rgb, PortalColor.rgb, saturate(DepthVisibleApertureMask)),
 		MainColor.a);
