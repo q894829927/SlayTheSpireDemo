@@ -18,6 +18,8 @@ namespace InteriorPortalProjectiveAperture
 		FVector4f Row0 = FVector4f(1, 0, 0, 0);
 		FVector4f Row1 = FVector4f(0, 1, 0, 0);
 		FVector4f Row2 = FVector4f(0, 0, 1, 0);
+		/** clipZ(u,v)=ClipZRow.x*u+ClipZRow.y*v+ClipZRow.z before perspective divide. */
+		FVector4f ClipZRow = FVector4f(0, 0, 0, 0);
 		float DeterminantQuality = 0.0f;
 		bool bValid = false;
 	};
@@ -115,9 +117,17 @@ namespace InteriorPortalProjectiveAperture
 			float((A * E - B * D) * InvDeterminant),
 			0.0f);
 
+		// H^-1 * [screenUV,1] is [u,v,1] / clipW. Device Z for the
+		// physical portal plane can therefore be evaluated without reconstructing
+		// world position:
+		//   deviceZ = Du.z*(u/clipW) + Dv.z*(v/clipW) + center.z*(1/clipW)
+		OutMapping.ClipZRow = FVector4f(
+			float(Du.Z), float(Dv.Z), float(ClipCenter.Z), 0.0f);
+
 		OutMapping.bValid = IsFiniteRow(OutMapping.Row0)
 			&& IsFiniteRow(OutMapping.Row1)
-			&& IsFiniteRow(OutMapping.Row2);
+			&& IsFiniteRow(OutMapping.Row2)
+			&& IsFiniteRow(OutMapping.ClipZRow);
 		return OutMapping.bValid;
 	}
 }
