@@ -15,7 +15,7 @@ STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = PASS
 STEP 1B.11A PROJECTIVE APERTURE / GRAZING / VIEWPORT CLIP = PASS
 STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = PASS
 STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW REMAP = PASS
-STEP 1B.12C-A MAIN SCENEDEPTH WRITE FEASIBILITY = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.12C-A MAIN SCENEDEPTH WRITE FEASIBILITY = PASS
 ```
 
 ## Goal
@@ -122,7 +122,7 @@ With:
 portal.CompositionDiagnostics 1
 ```
 
-`PortalComposition ComposeReady` now reports:
+`PortalComposition ComposeReady` reports:
 
 ```text
 MainDepthPropagationRequested=...
@@ -149,6 +149,55 @@ The draw log also appends:
 ```text
 MainDepthPropagation=1
 ```
+
+## Runtime evidence — 2026-09-15
+
+The user built and ran 1B.12C-A successfully. Repeated frames reported:
+
+```text
+Projective=1
+ProjectiveValid=1
+DepthAware=1
+DepthTextureValid=1
+SecondaryDepthRequested=1
+SecondaryDepthTextureValid=1
+SecondaryDepthRemap=1
+MainDepthPropagationRequested=1
+MainDepthTargetable=1
+MainDepthPropagation=1
+CandidateExtent=1544x712
+```
+
+This proves the current main SceneDepth resource is depth-stencil targetable at
+this public SceneViewExtension / RDG point and that the explicit depth-write pass
+is actually active, rather than merely requested.
+
+Mode 6 visual evidence showed:
+
+```text
+cyan   over ordinary remote opaque geometry
+yellow over the already-classified sky/background region
+green  over preserved real main-view foreground depth
+no large persistent red write-failure region
+```
+
+Normal `CompositionDebugMode 0` remained visually usable with
+`portal.MainDepthPropagation 1`, so enabling the depth mutation did not
+immediately regress the accepted portal color path.
+
+During motion with main TSR enabled, the diagnostic colors could temporarily
+smear or shift toward cyan depending on movement direction. The user repeated the
+same motion with:
+
+```text
+r.AntiAliasingMethod 0
+```
+
+and reported that the diagnostic colors were stable while moving. Therefore the
+motion-dependent color transient is classified as main-view TSR history acting on
+the artificial BeforeDOF debug colors, not an instability in the underlying
+SceneDepth write/classification. This is the same bounded diagnostic limitation
+already isolated in 1B.12A.
 
 ## Validation procedure
 
@@ -196,6 +245,20 @@ Expected:
 5. no D3D12 fatal, RDG validation failure, render-target compatibility assertion,
    or resource lifetime crash occurs.
 
+For raw diagnostic classification under movement, temporarily disabling main-view
+AA is allowed because the debug colors are authored BeforeDOF and otherwise pass
+through TSR history reconstruction:
+
+```text
+r.AntiAliasingMethod 0
+```
+
+Restore after the diagnostic check:
+
+```text
+r.AntiAliasingMethod 4
+```
+
 Then return to normal color while keeping propagation enabled:
 
 ```text
@@ -218,17 +281,20 @@ portal.StopFullViewFamilyTSRSpike
 
 PASS requires all of the following:
 
-1. C++ and shaders compile successfully.
+1. C++ and shaders compile successfully. **PASS**.
 2. `ComposeReady` reports `MainDepthTargetable=1` and
-   `MainDepthPropagation=1` while enabled.
-3. Debug mode 6 shows cyan on ordinary remote opaque geometry.
-4. Known sky/background remains yellow rather than being assigned fake depth.
-5. A real main-view foreground occluder remains green / preserved.
-6. Large persistent red regions do not occur.
+   `MainDepthPropagation=1` while enabled. **PASS**.
+3. Debug mode 6 shows cyan on ordinary remote opaque geometry. **PASS**.
+4. Known sky/background remains yellow rather than being assigned fake depth. **PASS**.
+5. A real main-view foreground occluder remains green / preserved. **PASS**.
+6. Large persistent red regions do not occur. **PASS in supplied visual run**.
 7. No render-thread assertion, RDG validation failure, D3D12 depth-target error,
-   NaN/Inf, or resource-lifetime crash occurs while moving.
+   NaN/Inf, or resource-lifetime crash occurs while moving. **PASS in supplied run**.
 8. Normal mode with propagation enabled does not regress accepted portal RGB or
-   1B.12A foreground occlusion.
+   1B.12A foreground occlusion. **PASS in supplied normal-color evidence**.
+9. Movement-dependent debug-color changes disappear with main-view AA disabled,
+   proving the observed transient is TSR history on diagnostic color rather than
+   unstable propagated depth. **PASS**.
 
 ## What PASS proves
 
@@ -263,11 +329,10 @@ Core Portal Fidelity Seal
 
 ## Next gate after PASS
 
-If 1B.12C-A passes, validate a real downstream depth consumer next. The preferred
-next bounded proof is depth-of-field / fog behavior using the mutated main
-SceneDepth. Stencil ownership can then be added as a separate 1B.12C-B gate if a
-later pass needs explicit aperture identity.
+The next bounded proof is a **real downstream depth consumer validation**. Prefer
+DOF / fog first because they consume depth after the current BeforeDOF insertion
+point and can directly reveal whether the mutated main SceneDepth is observed
+outside the diagnostic shader itself.
 
-If the current main SceneDepth cannot legally be rebound for write from this
-public SceneViewExtension/RDG point, record that as the renderer-private
-escalation boundary rather than replacing it with another RGB workaround.
+Stencil ownership remains a separate gate. Add it only if a downstream pass or
+later recursion architecture actually needs explicit portal-aperture identity.
