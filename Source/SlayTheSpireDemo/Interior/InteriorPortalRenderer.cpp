@@ -11,6 +11,8 @@
 
 namespace
 {
+	constexpr uint8 PortalCompositionStencilBit = 0x40;
+
 	TAutoConsoleVariable<int32> CVarPortalCompositionDiagnostics(
 		TEXT("portal.CompositionDiagnostics"),
 		0,
@@ -65,6 +67,18 @@ namespace
 		TEXT("STEP 1B.12C-A feasibility switch. 1=write validated transported remote depth into the current main SceneDepth inside the projective aperture after preserving real foreground occluders. 0=do not mutate main SceneDepth."),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarPortalStencilGatedComposition(
+		TEXT("portal.StencilGatedComposition"),
+		0,
+		TEXT("STEP 1B.12D-B bounded proof. 1=clear/mark main stencil bit 0x40 and gate normal BeforeDOF portal composition with a real CF_Equal test in the same RDG chain."),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarPortalStencilCompositionBypassShaderAperture(
+		TEXT("portal.StencilCompositionBypassShaderAperture"),
+		0,
+		TEXT("STEP 1B.12D-B proof switch. Effective only when portal.StencilGatedComposition=1. 1=force the color shader aperture mask to full coverage so only the hardware stencil test can confine portal RGB."),
+		ECVF_RenderThreadSafe);
+
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
@@ -104,6 +118,7 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(float, DepthOcclusionEpsilonCm)
 		SHADER_PARAMETER(float, CompositionDebugMode)
 		SHADER_PARAMETER(float, PortalExposureScale)
+		SHADER_PARAMETER(float, StencilBypassShaderAperture)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -162,6 +177,41 @@ namespace InteriorPortalRenderer
 
 	IMPLEMENT_SHADER_TYPE(, FInteriorPortalDepthWritePS,
 		TEXT("/Project/InteriorPortalDepthPropagation.usf"), TEXT("WriteDepthPS"), SF_Pixel);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalStencilClearParameters, )
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
+
+	class FInteriorPortalStencilClearPS : public FGlobalShader
+	{
+	public:
+		DECLARE_SHADER_TYPE(FInteriorPortalStencilClearPS, Global);
+		SHADER_USE_PARAMETER_STRUCT(FInteriorPortalStencilClearPS, FGlobalShader);
+		using FParameters = FInteriorPortalStencilClearParameters;
+	};
+
+	IMPLEMENT_SHADER_TYPE(, FInteriorPortalStencilClearPS,
+		TEXT("/Project/InteriorPortalStencilComposition.usf"), TEXT("ClearStencilPS"), SF_Pixel);
+
+	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalStencilMarkParameters, )
+		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow0)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
+		SHADER_PARAMETER(float, ProjectiveNearClipW)
+		RENDER_TARGET_BINDING_SLOTS()
+	END_SHADER_PARAMETER_STRUCT()
+
+	class FInteriorPortalStencilMarkPS : public FGlobalShader
+	{
+	public:
+		DECLARE_SHADER_TYPE(FInteriorPortalStencilMarkPS, Global);
+		SHADER_USE_PARAMETER_STRUCT(FInteriorPortalStencilMarkPS, FGlobalShader);
+		using FParameters = FInteriorPortalStencilMarkParameters;
+	};
+
+	IMPLEMENT_SHADER_TYPE(, FInteriorPortalStencilMarkPS,
+		TEXT("/Project/InteriorPortalStencilComposition.usf"), TEXT("MarkAperturePS"), SF_Pixel);
 }
 
 FInteriorPortalCustomRenderPass::FInteriorPortalCustomRenderPass(
@@ -383,6 +433,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const bool bUseProjectiveAperture =
 		CVarPortalProjectiveAperture.GetValueOnRenderThread() != 0
 		&& Request.ProjectiveAperture.bValid;
+	const bool bStencilCompositionRequested =
+		CVarPortalStencilGatedComposition.GetValueOnRenderThread() != 0;
 	const bool bMainDepthPropagationRequested =
 		CVarPortalMainDepthPropagation.GetValueOnRenderThread() != 0
 		|| (CompositionDebugMode >= 6 && CompositionDebugMode < 7);
@@ -399,7 +451,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 
 	FRDGTextureRef MainSceneDepthTexture = SceneColor.Texture;
 	bool bMainSceneDepthValid = false;
-	if (bDepthAwareRequested)
+	if (bDepthAwareRequested || bStencilCompositionRequested)
 	{
 		const TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer =
 			CreateSceneTextureUniformBuffer(
@@ -437,6 +489,15 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const bool bMainDepthTargetable =
 		bMainSceneDepthValid
 		&& EnumHasAnyFlags(MainSceneDepthTexture->Desc.Flags, TexCreate_DepthStencilTargetable);
+	const bool bMainDepthStencilTargetable =
+		bMainDepthTargetable && MainSceneDepthTexture->Desc.Format == PF_DepthStencil;
+	const bool bUseStencilComposition =
+		bStencilCompositionRequested
+		&& bUseProjectiveAperture
+		&& bMainDepthStencilTargetable;
+	const bool bBypassShaderAperture =
+		bUseStencilComposition
+		&& CVarPortalStencilCompositionBypassShaderAperture.GetValueOnRenderThread() != 0;
 	const bool bUseMainDepthPropagation =
 		bMainDepthPropagationRequested
 		&& bUseProjectiveAperture
@@ -525,6 +586,84 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			EScreenPassDrawFlags::None);
 	}
 
+	if (bUseStencilComposition)
+	{
+		const FScreenPassTextureViewport MainDepthViewport(
+			MainSceneDepthTexture, SceneColor.ViewRect);
+		TShaderMapRef<FScreenPassVS> VertexShader(GetGlobalShaderMap(InView.GetFeatureLevel()));
+
+		InteriorPortalRenderer::FInteriorPortalStencilClearParameters* ClearParameters =
+			GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalStencilClearParameters>();
+		ClearParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+			MainSceneDepthTexture,
+			ERenderTargetLoadAction::ELoad,
+			ERenderTargetLoadAction::ELoad,
+			FExclusiveDepthStencil::DepthNop_StencilWrite);
+		TShaderMapRef<InteriorPortalRenderer::FInteriorPortalStencilClearPS> ClearPixelShader(
+			GetGlobalShaderMap(InView.GetFeatureLevel()));
+		FRHIDepthStencilState* ClearStencilState =
+			TStaticDepthStencilState<
+				false, CF_Always,
+				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				PortalCompositionStencilBit, PortalCompositionStencilBit>::GetRHI();
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("InteriorPortal::ClearCompositionStencilBit"),
+			InView,
+			MainDepthViewport,
+			MainDepthViewport,
+			FScreenPassPipelineState(
+				VertexShader, ClearPixelShader,
+				TStaticBlendState<>::GetRHI(), ClearStencilState),
+			ClearParameters,
+			EScreenPassDrawFlags::None,
+			[ClearPixelShader, ClearParameters](FRHICommandList& RHICmdList)
+			{
+				SetShaderParameters(
+					RHICmdList, ClearPixelShader, ClearPixelShader.GetPixelShader(), *ClearParameters);
+				RHICmdList.SetStencilRef(0);
+			});
+
+		InteriorPortalRenderer::FInteriorPortalStencilMarkParameters* MarkParameters =
+			GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalStencilMarkParameters>();
+		MarkParameters->Output = GetScreenPassTextureViewportParameters(MainDepthViewport);
+		MarkParameters->ScreenToPortalRow0 = Request.ProjectiveAperture.Row0;
+		MarkParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
+		MarkParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
+		MarkParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
+		MarkParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+			MainSceneDepthTexture,
+			ERenderTargetLoadAction::ELoad,
+			ERenderTargetLoadAction::ELoad,
+			FExclusiveDepthStencil::DepthNop_StencilWrite);
+		TShaderMapRef<InteriorPortalRenderer::FInteriorPortalStencilMarkPS> MarkPixelShader(
+			GetGlobalShaderMap(InView.GetFeatureLevel()));
+		FRHIDepthStencilState* MarkStencilState =
+			TStaticDepthStencilState<
+				false, CF_Always,
+				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
+				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				PortalCompositionStencilBit, PortalCompositionStencilBit>::GetRHI();
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("InteriorPortal::MarkCompositionStencil Endpoint=%d", Request.EndpointIndex),
+			InView,
+			MainDepthViewport,
+			MainDepthViewport,
+			FScreenPassPipelineState(
+				VertexShader, MarkPixelShader,
+				TStaticBlendState<>::GetRHI(), MarkStencilState),
+			MarkParameters,
+			EScreenPassDrawFlags::None,
+			[MarkPixelShader, MarkParameters](FRHICommandList& RHICmdList)
+			{
+				SetShaderParameters(
+					RHICmdList, MarkPixelShader, MarkPixelShader.GetPixelShader(), *MarkParameters);
+				RHICmdList.SetStencilRef(PortalCompositionStencilBit);
+			});
+	}
+
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
@@ -560,6 +699,15 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			PropagatedDepthCandidateTexture ? PropagatedDepthCandidateTexture->Desc.Extent.X : 0,
 			PropagatedDepthCandidateTexture ? PropagatedDepthCandidateTexture->Desc.Extent.Y : 0,
 			DepthOcclusionEpsilonCm);
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x BypassShaderAperture=%d"),
+			GFrameCounter,
+			bStencilCompositionRequested ? 1 : 0,
+			bUseStencilComposition ? 1 : 0,
+			bMainDepthStencilTargetable ? 1 : 0,
+			bMainSceneDepthValid ? int32(MainSceneDepthTexture->Desc.Format) : -1,
+			PortalCompositionStencilBit,
+			bBypassShaderAperture ? 1 : 0);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -592,28 +740,66 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->DepthOcclusionEpsilonCm = DepthOcclusionEpsilonCm;
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->PortalExposureScale = PortalExposureScale;
+	PassParameters->StencilBypassShaderAperture = bBypassShaderAperture ? 1.0f : 0.0f;
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	TShaderMapRef<InteriorPortalRenderer::FInteriorPortalCompositionPS> PixelShader(
 		GetGlobalShaderMap(InView.GetFeatureLevel()));
-	AddDrawScreenPass(
-		GraphBuilder,
-		RDG_EVENT_NAME("InteriorPortal::BeforeDOFComposition"),
-		InView,
-		OutputViewport,
-		OutputViewport,
-		PixelShader,
-		PassParameters);
+	if (bUseStencilComposition)
+	{
+		PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+			MainSceneDepthTexture,
+			ERenderTargetLoadAction::ELoad,
+			ERenderTargetLoadAction::ELoad,
+			FExclusiveDepthStencil::DepthNop_StencilRead);
+		TShaderMapRef<FScreenPassVS> VertexShader(GetGlobalShaderMap(InView.GetFeatureLevel()));
+		FRHIDepthStencilState* StencilTestState =
+			TStaticDepthStencilState<
+				false, CF_Always,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
+				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				PortalCompositionStencilBit, 0x00>::GetRHI();
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("InteriorPortal::BeforeDOFStencilGatedComposition"),
+			InView,
+			OutputViewport,
+			OutputViewport,
+			FScreenPassPipelineState(
+				VertexShader, PixelShader,
+				TStaticBlendState<>::GetRHI(), StencilTestState),
+			PassParameters,
+			EScreenPassDrawFlags::None,
+			[PixelShader, PassParameters](FRHICommandList& RHICmdList)
+			{
+				SetShaderParameters(
+					RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+				RHICmdList.SetStencilRef(PortalCompositionStencilBit);
+			});
+	}
+	else
+	{
+		AddDrawScreenPass(
+			GraphBuilder,
+			RDG_EVENT_NAME("InteriorPortal::BeforeDOFComposition"),
+			InView,
+			OutputViewport,
+			OutputViewport,
+			PixelShader,
+			PassParameters);
+	}
 
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d DebugMode=%d MainDepthPropagation=%d"),
+			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d DebugMode=%d MainDepthPropagation=%d StencilGate=%d BypassShaderAperture=%d"),
 			GFrameCounter,
 			Request.PortalId,
 			Request.EndpointIndex,
 			CompositionDebugMode,
-			bUseMainDepthPropagation ? 1 : 0);
+			bUseMainDepthPropagation ? 1 : 0,
+			bUseStencilComposition ? 1 : 0,
+			bBypassShaderAperture ? 1 : 0);
 	}
 	return Output;
 }
