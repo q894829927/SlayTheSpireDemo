@@ -6,8 +6,9 @@ State:
 
 ```text
 STEP 1B.14B MAIN-VS-SECONDARY VIEW DIAGNOSTICS
-= IMPLEMENTED
-= USER BUILD / PIE EVIDENCE REQUIRED
+= RUNTIME CLASSIFIED
+= MAIN EXPOSURE POLICY MISMATCH CONFIRMED
+= CACHED-LIGHTING PREEXPOSURE RANGE A/B DID NOT MATERIALLY IMPROVE THE DARK SECONDARY
 ```
 
 ## Why this gate exists
@@ -79,73 +80,85 @@ Reflection = forced Lumen
 This makes the deliberate `EyeAdaptation=false` difference a first-class candidate
 for the dark-secondary mismatch. The diagnostic does not yet change that policy.
 
-## Runtime procedure
+## Runtime evidence — 2026-09-16
 
-Close Unreal Editor and rebuild because this step adds a C++ translation unit.
-
-Start PIE and establish the accepted secondary producer:
+The real main-view Tonemap callback stabilized at approximately:
 
 ```text
-r.AntiAliasingMethod 4
-portal.FullViewFamilyTSRPrimaryFraction 0.67
-portal.StartFullViewFamilyTSRSpike
+Main PreExposure ~= 0.00173 .. 0.00176
+AA = TSR (4)
+AutoExposureMethod = 0
+ExposureBias = 0
+DynamicGI = Lumen
+Reflection = Lumen
+IndirectLightingIntensity = 1
 ```
 
-Then start the diagnostic:
+The saved report recorded:
 
 ```text
-portal.StartViewParityDiagnostics
+mainTonemapFrames = 1324
+secondaryTonemapFramesObservedByDiagnosticExtension = 0
+main.preExposure = 0.00173180806
+secondaryProducerPolicy.eyeAdaptation = false
+secondaryProducerPolicy.measuredPreExposureCVar = 1
+preExposureRebaseEnabled = true
+mainToSecondaryPreExposureScale = 0.00173180806
 ```
 
-Leave the camera fixed for roughly 2–3 seconds, then:
+This confirms a large policy difference between the real main view and the manually
+constructed secondary family. The existing RGB rebase correctly maps the two
+pre-exposure domains numerically, but it does not prove that renderer-internal
+lighting/history/cache behavior is equivalent when the secondary view is rendered
+with EyeAdaptation disabled and pre-exposure 1.
+
+A follow-up A/B changed:
 
 ```text
-portal.DumpViewParityDiagnostics
+r.EyeAdaptation.CachedLightingPreExposure 4 -> 8
 ```
 
-Expected main-view periodic log:
+with a fixed camera. The two portal images were visually almost unchanged: the
+secondary interior remained substantially darker than the real scene. Therefore the
+cached-lighting supported-range setting is not accepted as the primary fix for this
+mismatch. Do not promote `8` as a project workaround from this experiment.
+
+## Next isolation
+
+Before changing the secondary renderer, run a diagnostic main-view pre-exposure
+alignment test:
 
 ```text
-PortalViewParity Main Tonemap ...
-PreExposure=...
-AA=...
-ExposureBias=...
-AutoExposureMethod=...
-DynamicGI=...
-Reflection=...
-IndirectLightingIntensity=...
+r.EyeAdaptation.PreExposureOverride 0
 ```
 
-Expected summary log:
+capture baseline, then at the same camera:
 
 ```text
-PortalViewParity Report ...
-MainPreExposure=...
-SecondaryProducerPreExposure=...
-Rebase=1
-RebaseScale=...
-SecondaryPolicyEyeAdaptation=0
+r.EyeAdaptation.PreExposureOverride 1
 ```
 
-If the secondary additional family also receives the extension, a separate
-`PortalViewParity Secondary Tonemap ...` line appears and
-`secondaryObservedFrames > 0` is recorded. Its absence is not a failure of this
-gate because the manual full-view family historically requires explicit extension
-attachment.
+This temporarily moves the real main view into the same pre-exposure domain already
+used by the current secondary producer. It is a diagnostic override only, not a
+production fix. If the portal/real-scene mismatch changes materially, implement a
+controlled secondary EyeAdaptation ownership A/B next. If it does not, move directly
+to additional-view-family / Lumen construction and lighting-history parity.
+
+Restore after the A/B:
+
+```text
+r.EyeAdaptation.PreExposureOverride 0
+```
 
 ## Decision rule
 
-The first follow-up will be selected from the evidence:
-
 ```text
-A. Main exposure/post-process state materially differs from the configured secondary policy
-   -> implement a controlled policy A/B, starting with secondary EyeAdaptation ownership.
+A. PreExposureOverride=1 materially reduces the mismatch
+   -> implement secondary EyeAdaptation / pre-exposure ownership A/B in the producer.
 
-B. Exposure/post-process state is effectively equivalent but the secondary remains dark
-   -> inspect Lumen/view-family construction and lighting-cache ownership next.
-
-C. Static state matches but mismatch is motion-only
-   -> inspect velocity / TSR / screen-space history next.
+B. PreExposureOverride=1 does not materially reduce the mismatch
+   -> exposure-domain mapping is not the main visual defect; inspect the manually
+      constructed additional FSceneViewFamily and Lumen/history ownership next.
 ```
 
 Do not use arbitrary brightness, gamma, exposure compensation or portal-local gain as
@@ -155,9 +168,13 @@ a fix.
 
 ```text
 portal.StopViewParityDiagnostics
+r.EyeAdaptation.PreExposureOverride 0
 ```
 
 ## Acceptance boundary
 
-This step is diagnostic only. It does not claim visual parity. PASS means the runtime
-telemetry identifies which view-family/exposure policy should be A/B tested next.
+This step remains diagnostic. It does not claim visual parity. The runtime evidence
+has already rejected portal-only aperture/depth/stencil/scissor causes and has now
+also rejected `r.EyeAdaptation.CachedLightingPreExposure 8` as a meaningful visual
+fix. The next gate must distinguish exposure-domain ownership from additional-family
+Lumen/view construction.
