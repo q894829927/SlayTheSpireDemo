@@ -6,7 +6,7 @@ State:
 
 ```text
 STEP 1B.6 BEFORE-DOF HDR EXTRACTION = PASS
-STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = IMPLEMENTED / BUILD RERUN REQUIRED
+STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = IMPLEMENTED / RUNTIME RERUN REQUIRED
 ```
 
 Implementation commits:
@@ -29,6 +29,9 @@ portal: isolate BeforeDOF spike unity symbols
 
 39481858e26e40898abb3ed93e17d62d67d48e04
 portal: isolate main composition spike unity symbols
+
+bd627497d62d5df207ac597f143e56f0faf045b5
+portal: attach 1B.7 extraction extension to standalone view family
 ```
 
 ## Purpose
@@ -77,6 +80,46 @@ InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 This is a build-structure correction only. It does not alter the virtual camera,
 BeforeDOF extraction, HDR target, clipping plane, main composition, or renderer
 claim boundary.
+
+## Runtime correction — extraction extension was not attached to the manual family
+
+The first successful STEP 1B.7 command run produced:
+
+```text
+status = BEFOREDOF_EXTRACTION_FAILED
+beforeDOFCallbackExecuted = false
+mainCompositionArmed = false
+```
+
+The secondary full renderer itself completed. The failure was specific to the
+BeforeDOF callback registration for the manually constructed additional view
+family.
+
+STEP 1B.6 had explicitly attached its temporary extraction extension to the
+standalone family:
+
+```cpp
+ViewFamily.ViewExtensions.Add(ExtractionExtension);
+```
+
+The initial STEP 1B.7 implementation created the same style of extension through
+`FSceneViewExtensions::NewExtension`, but omitted the equivalent explicit family
+attachment. A manually constructed `FSceneViewFamilyContext` does not
+retroactively gather a newly created extension, so the renderer never subscribed
+that extension to the secondary family's BeforeDOF pass.
+
+The code now performs the explicit attachment before the view is submitted:
+
+```cpp
+if (ExtractionExtension.IsValid())
+{
+    ViewFamily.ViewExtensions.Add(ExtractionExtension.ToSharedRef());
+}
+```
+
+This correction does not change the transformed camera, clip plane, HDR target,
+lighting path, or main composition shader. It only restores the same extension
+ownership contract that already passed in STEP 1B.6.
 
 ## Controlled setup
 
