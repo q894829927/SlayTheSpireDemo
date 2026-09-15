@@ -605,7 +605,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			TStaticDepthStencilState<
 				false, CF_Always,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 				PortalCompositionStencilBit, PortalCompositionStencilBit>::GetRHI();
 		AddDrawScreenPass(
 			GraphBuilder,
@@ -643,7 +643,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			TStaticDepthStencilState<
 				false, CF_Always,
 				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Always, SO_Keep, SO_Keep, SO_Replace,
 				PortalCompositionStencilBit, PortalCompositionStencilBit>::GetRHI();
 		AddDrawScreenPass(
 			GraphBuilder,
@@ -757,7 +757,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			TStaticDepthStencilState<
 				false, CF_Always,
 				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
-				false, CF_Always, SO_Keep, SO_Keep, SO_Keep,
+				true, CF_Equal, SO_Keep, SO_Keep, SO_Keep,
 				PortalCompositionStencilBit, 0x00>::GetRHI();
 		AddDrawScreenPass(
 			GraphBuilder,
