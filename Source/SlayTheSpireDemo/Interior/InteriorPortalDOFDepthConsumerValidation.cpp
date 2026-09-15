@@ -89,7 +89,11 @@ namespace InteriorPortalDOFDepthConsumerValidationPrivate
 			GLastFocalDistanceCm.Store(InView.FinalPostProcessSettings.DepthOfFieldFocalDistance);
 			GLastFstop.Store(InView.FinalPostProcessSettings.DepthOfFieldFstop);
 			GLastSensorWidthMm.Store(InView.FinalPostProcessSettings.DepthOfFieldSensorWidth);
-			const uint64 SetupCount = GSetupViewFrames.FetchAdd(1) + 1;
+			// UE 5.8 TAtomic does not expose FetchAdd. SetupView owns this counter on the
+			// game thread, so an explicit Load/Store increment preserves the diagnostic
+			// contract without relying on an unavailable atomic RMW helper.
+			const uint64 SetupCount = GSetupViewFrames.Load() + 1;
+			GSetupViewFrames.Store(SetupCount);
 			if (CVarDOFDiagnostics.GetValueOnGameThread() != 0
 				&& (SetupCount == 1 || (SetupCount % 60) == 0))
 			{
@@ -149,7 +153,10 @@ namespace InteriorPortalDOFDepthConsumerValidationPrivate
 						return SceneColor;
 					}
 
-					const uint64 AfterCount = GAfterDOFFrames.FetchAdd(1) + 1;
+					// The AfterDOF callback owns this counter on the render thread; keep the
+					// increment explicit for UE 5.8's TAtomic API.
+					const uint64 AfterCount = GAfterDOFFrames.Load() + 1;
+					GAfterDOFFrames.Store(AfterCount);
 					GLastAfterDOFFrame.Store(GFrameCounter);
 					GLastAfterDOFPassEnabled.Store(bIsPassEnabled);
 					if (CVarDOFDiagnostics.GetValueOnRenderThread() != 0
