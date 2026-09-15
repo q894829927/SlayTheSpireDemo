@@ -6,7 +6,7 @@ State:
 
 ```text
 STEP 1B.6 BEFORE-DOF HDR EXTRACTION = PASS
-STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = IMPLEMENTED / BUILD RERUN REQUIRED
 ```
 
 Implementation commits:
@@ -20,6 +20,15 @@ portal: preserve main alpha during HDR composition
 
 2997842ab593ddc236182280ea5ba4cc115dd269
 portal: add full-view main composition spike
+
+ebaf72defd7a52efb0825ea2d5fbbc0568841b3f
+portal: isolate full view spike unity symbols
+
+e833e9bff0003a6328ea01d8fe25e42229ad021c
+portal: isolate BeforeDOF spike unity symbols
+
+39481858e26e40898abb3ed93e17d62d67d48e04
+portal: isolate main composition spike unity symbols
 ```
 
 ## Purpose
@@ -37,6 +46,37 @@ Can the validated secondary pre-tonemap HDR SceneColor survive composition into
 main pre-tonemap SceneColor and then receive the player's normal final exposure /
 tonemap as part of the main frame?
 ```
+
+## Compile correction — Unity Build helper collision
+
+The first build after adding the STEP 1B.7 source failed with `C2084`, followed by
+`C2440` / `C2264` cascade errors. UnrealBuildTool had grouped multiple portal spike
+`.cpp` files into the same generated Unity translation unit. Each spike used an
+unnamed namespace and repeated helper names such as:
+
+```text
+FindPortalSpikeWorld
+FindPortalSystem
+IsFiniteTransform
+HidePortalPrimitives
+```
+
+Multiple unnamed-namespace declarations in one translation unit denote the same
+internal namespace, so those helpers became duplicate definitions once UBT
+combined the files.
+
+The fix does **not** disable Unity Build globally. Each spike source now owns a
+file-unique named private namespace:
+
+```text
+InteriorPortalFullViewFamilySpikePrivate
+InteriorPortalFullViewFamilyBeforeDOFSpikePrivate
+InteriorPortalFullViewFamilyMainCompositionSpikePrivate
+```
+
+This is a build-structure correction only. It does not alter the virtual camera,
+BeforeDOF extraction, HDR target, clipping plane, main composition, or renderer
+claim boundary.
 
 ## Controlled setup
 
