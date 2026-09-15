@@ -20,6 +20,18 @@ namespace
 		TEXT("STEP 1B.3 composition diagnostic. 0=normal SceneColor CRP, 1=solid magenta aperture, 2=full-screen magenta, 3=BaseColor CRP sampled through aperture."),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarPortalPreExposureRebase(
+		TEXT("portal.PreExposureRebase"),
+		0,
+		TEXT("STEP 1B.8 diagnostic. Rebase portal HDR from the secondary pre-exposed SceneColor domain into the main view domain before BeforeDOF composition."),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<float> CVarPortalSecondaryPreExposure(
+		TEXT("portal.SecondaryPreExposure"),
+		1.0f,
+		TEXT("STEP 1B.8 measured pre-exposure of the standalone transformed secondary view. Set by the spike, not an artistic brightness control."),
+		ECVF_RenderThreadSafe);
+
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
@@ -44,6 +56,7 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
 		SHADER_PARAMETER(FVector4f, PortalBounds)
 		SHADER_PARAMETER(float, CompositionDebugMode)
+		SHADER_PARAMETER(float, PortalExposureScale)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -288,16 +301,30 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const FScreenPassTextureViewport PortalViewport(PortalTexture);
 	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
 
+	const bool bRebasePreExposure = CVarPortalPreExposureRebase.GetValueOnRenderThread() != 0;
+	const float SecondaryPreExposure = FMath::Max(
+		CVarPortalSecondaryPreExposure.GetValueOnRenderThread(), UE_SMALL_NUMBER);
+	const float MainPreExposure = InView.State
+		? FMath::Max(InView.State->GetPreExposure(), UE_SMALL_NUMBER)
+		: 1.0f;
+	const float PortalExposureScale = bRebasePreExposure
+		? MainPreExposure / SecondaryPreExposure
+		: 1.0f;
+
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
 			PortalTexture->Desc.Extent.X,
 			PortalTexture->Desc.Extent.Y,
-			CompositionDebugMode);
+			CompositionDebugMode,
+			bRebasePreExposure ? 1 : 0,
+			MainPreExposure,
+			SecondaryPreExposure,
+			PortalExposureScale);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -314,6 +341,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
 		Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y);
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
+	PassParameters->PortalExposureScale = PortalExposureScale;
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	TShaderMapRef<InteriorPortalRenderer::FInteriorPortalCompositionPS> PixelShader(
