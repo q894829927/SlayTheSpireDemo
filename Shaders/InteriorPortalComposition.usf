@@ -1,11 +1,11 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/ScreenPass.ush"
-#include "/Engine/Private/SceneTexturesCommon.ush"
 
 Texture2D SceneColorTexture;
 SamplerState SceneColorSampler;
 Texture2D PortalTexture;
 SamplerState PortalSampler;
+Texture2D MainSceneDepthTexture;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
@@ -121,7 +121,7 @@ void MainPS(
 	{
 		const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
 		const int2 ScenePixel = int2(SvPosition.xy);
-		const float MainDeviceZ = SceneTexturesStruct_SceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+		const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 		const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
 		ForegroundOcclusionMask =
