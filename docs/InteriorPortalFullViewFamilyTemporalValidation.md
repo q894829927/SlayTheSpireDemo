@@ -10,7 +10,8 @@ STEP 1B.6 BEFORE-DOF HDR EXTRACTION = PASS
 STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = PASS
 STEP 1B.8 SECONDARY->MAIN PRE-EXPOSURE REBASE = PASS
 STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = PASS
-STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = PASS
+STEP 1B.10B TSR / TEMPORAL JITTER + SCREEN-PERCENTAGE CONTRACT = NEXT
 ```
 
 Implementation commit:
@@ -165,6 +166,66 @@ CutReason=continuous history
 If `CameraCut=1` repeats every ordinary frame, the gate fails even if the picture
 looks acceptable; temporal history would not actually be accumulating.
 
+## Runtime evidence — 2026-09-15
+
+Observed run:
+
+```text
+framesSubmitted = 990
+framesSkipped = 12
+lastExtractionFrame = 2899
+lastEndpointIndex = 0
+targetSize = 888 x 720
+secondaryPreExposure = 1
+temporalAAEnabled = true
+temporalHistoryValid = true
+cameraCutCount = 4
+continuousHistoryFrames = 986
+lastCameraCut = false
+lastCameraCutReason = continuous history
+```
+
+The first submitted frame correctly reported:
+
+```text
+TemporalAA=1
+CameraCut=1
+CameraCuts=1
+ContinuousHistoryFrames=0
+CutReason=history invalid / first visible frame
+```
+
+By submitted frame 60 the same persistent view state reported:
+
+```text
+TemporalAA=1
+CameraCut=0
+CameraCuts=1
+ContinuousHistoryFrames=59
+CutReason=continuous history
+```
+
+Periodic telemetry remained on `CameraCut=0` throughout ordinary continuous
+movement, while `ContinuousHistoryFrames` increased to 956 by submitted frame
+960. The final report ended with 986 continuous-history frames out of 990
+submitted frames. The four total cuts therefore remain sparse structural resets,
+not an accidental every-frame reset. The run also completed without renderer
+assertion/resource-lifetime failure, and the main BeforeDOF compositor continued
+to execute while temporal history accumulated.
+
+The twelve skipped frames are compatible with temporary periods in which no
+eligible visible portal frame was submitted. The available log does not identify
+every individual cut reason, so this validation does not claim which exact
+structural condition caused each of the three post-initial cuts; it only proves
+that ordinary submitted frames overwhelmingly reused history rather than cutting
+it every frame.
+
+Result:
+
+```text
+STEP 1B.10A = PASS
+```
+
 ## Visual acceptance
 
 PASS requires:
@@ -178,9 +239,9 @@ PASS requires:
 6. the portal does not inherit stale history after an intentional structural
    discontinuity such as portal replacement or endpoint switch.
 
-This gate does not require TSR yet and does not claim perfect final temporal
-quality. It proves that secondary temporal history has a correct owner/reset
-policy on the full-renderer path.
+The runtime telemetry proves items 1–4 at feasibility level and shows sparse,
+policy-driven resets rather than per-frame resets. Full visual artifact acceptance
+remains part of the next temporal-quality pass together with TSR.
 
 ## Next gate after PASS
 
