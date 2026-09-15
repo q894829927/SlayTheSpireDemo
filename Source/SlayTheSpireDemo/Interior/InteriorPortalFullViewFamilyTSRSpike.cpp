@@ -741,7 +741,11 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
 				: FEngineShowFlags(ESFIM_Game);
-			ShowFlags.SetEyeAdaptation(false);
+			// Keep the secondary exposure policy in parity with the real game viewport.
+			// STEP 1B.14C proved that forcing EyeAdaptation off pins the persistent
+			// secondary pre-exposure at 1.0 and severely darkens indirect lighting.
+			// The copied viewport ShowFlags already carry the authoritative project
+			// EyeAdaptation state, so do not override it here.
 			ShowFlags.SetMotionBlur(false);
 			ShowFlags.SetDepthOfField(false);
 			ShowFlags.SetTemporalAA(true);
