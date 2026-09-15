@@ -39,10 +39,14 @@ FIXED IN 9eda3aa84a487b3037aa74aaf2d156bfaede50db
 REAL BUILD ATTEMPT 2: FAILED BECAUSE GetRendererModule() IS NOT A DECLARED SYMBOL
 FIXED IN 7f08c23429dba76158bc3749e349010095ffdd18
 REAL BUILD ATTEMPT 3: BUILD PASSED FAR ENOUGH TO RUN THE COMMAND
-RUNTIME ATTEMPT 1: ASSERTED IN SceneRendering.cpp BECAUSE ScreenPercentageInterface WAS NULL
+RUNTIME ATTEMPT 1: ASSERTED BECAUSE ScreenPercentageInterface WAS NULL
 FIXED IN 6d16b7e29f6e512ab8afb1ee58755188d04eb8ce
-BUILD + RUNTIME RERUN REQUIRED
-NO VISUAL PASS CLAIMED
+RUNTIME ATTEMPT 2: OUTPUT_WRITTEN
+STANDALONE FULL VIEW-FAMILY RENDERER SUBMISSION PASS
+TRANSFORMED TARGET-SPACE GEOMETRY VISIBLE
+FINAL OUTPUT EXPOSURE / DISPLAY DOMAIN NOT ACCEPTED
+PRE-TONEMAP INTEGRATION STILL REQUIRED
+NO CORE PORTAL FIDELITY SEAL CLAIMED
 ```
 
 ## Compile correction 1 — primitive renderer identity
@@ -76,20 +80,13 @@ InteriorPortalFullViewFamilySpike.cpp(320,3):
 error C3861: 'GetRendererModule': identifier not found
 ```
 
-`RendererInterface.h` exposes the `IRendererModule` interface, but this project
-cannot rely on a global `GetRendererModule()` helper. The Renderer module is
-already a private dependency of `SlayTheSpireDemo`, so the spike now acquires the
-module explicitly through Unreal's normal module manager path:
+The spike now acquires the Renderer module explicitly:
 
 ```cpp
 IRendererModule& RendererModule =
     FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 ```
-
-`Modules/ModuleManager.h` was added accordingly. This correction changes only
-module lookup; it does not change the transformed view, clipping plane,
-`FSceneViewFamily`, render target, readback or renderer-feasibility claim.
 
 ## Runtime correction 1 — required screen-percentage interface
 
@@ -100,39 +97,22 @@ Assertion failed: InViewFamily->ScreenPercentageInterface
 SceneRendering.cpp:3046
 ```
 
-The standalone `FSceneViewFamilyContext` was constructed directly and therefore
-never passed through the normal `UGameViewportClient` setup that installs an
-`ISceneViewFamilyScreenPercentage` implementation. Turning the
-`ScreenPercentage` show flag off is not sufficient; the UE 5.8 renderer still
-requires a non-null interface before `BeginRenderingViewFamily` proceeds.
-
-The spike now includes `LegacyScreenPercentageDriver.h` and installs the default
-engine implementation explicitly:
+The standalone `FSceneViewFamilyContext` does not pass through the normal
+`UGameViewportClient` setup, so the spike now installs the engine's legacy
+screen-percentage driver explicitly:
 
 ```cpp
 ViewFamily.SetScreenPercentageInterface(
     new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
 ```
 
-The spike continues to set `ShowFlags.SetScreenPercentage(false)`. With the
-legacy driver present, that means the resolution fraction remains 1.0 while the
-renderer contract is satisfied. This is a view-family setup correction only; it
-does not alter the portal transform, global clip plane, Lit view mode, target
-format or renderer-feasibility claim.
+`ShowFlags.SetScreenPercentage(false)` remains in place, so this satisfies the
+renderer contract without enabling dynamic resolution.
 
-The installed UE 5.8 build remains the authority for exact symbols, runtime
-assertions and renderer contracts. Validation is being advanced one real failure
-at a time rather than changing renderer architecture speculatively.
+## Runtime result 2 — full view-family output written
 
-Required next action:
-
-1. Pull commit `6d16b7e29f6e512ab8afb1ee58755188d04eb8ce` or later.
-2. Compile `SlayTheSpireDemoEditor Win64 Development` again.
-3. Run `/Game/House/L_Interior_LivingKitchen` in PIE/Game.
-4. Place/link both portals and face one visible aperture.
-5. Execute `portal.RunFullViewFamilySpike`.
-6. If another assertion/crash occurs, capture the assertion text and top of stack.
-7. If it succeeds, inspect:
+After the screen-percentage fix, `portal.RunFullViewFamilySpike` completed and
+wrote all three requested artifacts:
 
 ```text
 Saved/AutomationReports/PortalFullViewFamilySpike.png
@@ -140,8 +120,84 @@ Saved/AutomationReports/PortalFullViewFamilySpike.exr
 Saved/AutomationReports/PortalFullViewFamilySpike.json
 ```
 
-A visibly lit transformed image advances the work to integration with the
-existing pre-tonemap aperture composition boundary. Another runtime renderer
-contract failure must be recorded before escalating to the renderer-private hook.
+The JSON reports:
 
-See `docs/InteriorPortalFullViewFamilySpike.md` for the complete claim boundary.
+```text
+status = OUTPUT_WRITTEN
+sceneViewIsSceneCapture = false
+rendererPath = IRendererModule::BeginRenderingViewFamily + standalone FSceneViewFamilyContext
+renderTargetFormat = PF_FloatRGBA / RTF_RGBA16f
+targetSize = 1742 x 874
+endpointIndex = 0
+```
+
+The submitted transformed view was finite and produced coherent target-space
+geometry. The output is visibly different from the earlier flat BaseColor CRP
+proof: object faces and large surfaces contain smooth intensity/color variation
+rather than only flat material-ID-like regions. Therefore the standalone full
+`FSceneViewFamily` path has crossed the important feasibility boundary that the
+`DepthAndBasePass` CRP could not cross: it can drive the normal scene renderer
+from the portal virtual camera and produce non-empty processed scene output.
+
+This result is recorded as:
+
+```text
+FULL VIEW-FAMILY RENDERER SUBMISSION = PASS
+TRANSFORMED GEOMETRY / PROCESSED SCENE OUTPUT = PASS
+FULL LIGHTING / LUMEN FEATURE MATRIX = NOT YET SEALED
+EXPOSURE / DISPLAY PARITY = FAIL / UNACCEPTED FOR THIS OUTPUT
+```
+
+### Exposure-domain evidence
+
+The exported PNG is heavily blown out. Inspection of the uploaded EXR confirms
+that this is not merely an 8-bit PNG conversion artifact: the float EXR is
+already bounded at approximately 1.0, with a large majority of pixels sitting
+at or near the upper limit. The image therefore represents a final/display-like
+output whose exposure / post-process state is not suitable for direct use as the
+portal's pre-tonemap HDR source.
+
+This is consistent with the spike's original limitation: EyeAdaptation was
+deliberately disabled and the one-shot secondary ViewState has no established
+player exposure history. The result must **not** be interpreted as a valid
+exposure-matched production portal image.
+
+### Architectural consequence
+
+Do not fix the blown-out result with arbitrary brightness multipliers. The next
+renderer task is to preserve the successful full transformed `FSceneViewFamily`
+producer while changing the extraction boundary:
+
+```text
+full transformed secondary FSceneViewFamily
+    -> normal deferred / lighting renderer
+    -> capture secondary SceneColor at a pre-tonemap post-process boundary
+    -> write that lit HDR SceneColor into the existing portal HDR target
+    -> reuse existing main-view BeforeDOF analytic aperture composition
+    -> let the player/main view remain the final exposure + tone-map authority
+```
+
+The existing `FInteriorPortalViewExtension` already subscribes to `BeforeDOF`
+for main-view composition and intentionally skips `bAdditionalViewFamily`
+secondary views. The next spike should add a separate, explicit secondary-family
+capture path rather than removing that guard blindly or feeding the portal target
+back into itself.
+
+Still not proven by this result:
+
+```text
+exact direct-light / shadow acceptance across the full matrix
+Lumen GI/reflection parity
+translucency/fog/decal parity
+main depth/stencil continuity
+portal-bounded scissor
+TAA/TSR + motion-vector history
+exposure parity
+recursion >= 2
+production GPU cost
+Core Portal Fidelity Seal
+```
+
+The installed UE 5.8 build remains the authority for exact runtime renderer
+contracts. The next implementation should stay narrow: one transformed secondary
+view, one portal, one frame, pre-tonemap SceneColor extraction only.
