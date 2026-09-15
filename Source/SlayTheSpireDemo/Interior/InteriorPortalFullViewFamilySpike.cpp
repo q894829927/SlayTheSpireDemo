@@ -26,7 +26,7 @@
 #include "SceneView.h"
 #include "UObject/StrongObjectPtr.h"
 
-namespace
+namespace InteriorPortalFullViewFamilySpikePrivate
 {
 	UWorld* FindPortalSpikeWorld()
 	{
@@ -259,15 +259,11 @@ namespace
 		FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 			? GEngine->GameViewport->EngineShowFlags
 			: FEngineShowFlags(ESFIM_Game);
-		// Keep the first proof spatial + lighting focused. Temporal/exposure parity
-		// are separate gates after the full renderer path is proven to produce lit data.
 		ShowFlags.SetEyeAdaptation(false);
 		ShowFlags.SetMotionBlur(false);
 		ShowFlags.SetTemporalAA(false);
 		ShowFlags.SetScreenPercentage(false);
 
-		// The view state must outlive the view family because FSceneView retains a
-		// pointer to it until FSceneViewFamilyContext destroys its owned views.
 		FSceneViewStateReference ViewState;
 		ViewState.Allocate(World->GetFeatureLevel());
 
@@ -280,11 +276,6 @@ namespace
 		ViewFamily.EngineShowFlags = ShowFlags;
 		ViewFamily.SceneCaptureSource = SCS_FinalColorHDR;
 		ViewFamily.ViewMode = VMI_Lit;
-		// GameViewportClient normally installs a screen-percentage driver before
-		// submitting a view family. A manually constructed standalone family must
-		// do the same even when ScreenPercentage is disabled; the legacy driver
-		// returns a 1.0 resolution fraction for that case and satisfies the
-		// renderer's required ScreenPercentageInterface contract.
 		ViewFamily.SetScreenPercentageInterface(
 			new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
 
@@ -296,9 +287,6 @@ namespace
 		ViewInitOptions.ViewLocation = Request.ViewLocation;
 		ViewInitOptions.ViewRotation = Request.VirtualView.Rotator();
 		ViewInitOptions.ViewRotationMatrix = Request.ViewRotationMatrix;
-		// Use the ordinary player projection here and let the FSceneView carry the
-		// real logical exit GlobalClippingPlane. This deliberately differs from the
-		// CRP's oblique-projection fallback and tests the full-view renderer contract.
 		ViewInitOptions.ProjectionMatrix = ProjectionData.ProjectionMatrix;
 		ViewInitOptions.FOV = POV.FOV;
 		ViewInitOptions.DesiredFOV = POV.FOV;
@@ -329,10 +317,6 @@ namespace
 		IRendererModule& RendererModule =
 			FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 		RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
-
-		// This is intentionally a blocking, one-shot diagnostic. It is not the
-		// production per-frame path. The flush makes the exported evidence belong
-		// to the exact transformed view submitted above.
 		FlushRenderingCommands();
 
 		const FString ReportDirectory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("AutomationReports"));
