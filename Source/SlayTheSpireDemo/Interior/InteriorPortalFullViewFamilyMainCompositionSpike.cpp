@@ -32,6 +32,18 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 {
 	TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> GFullViewFamilyMainCompositionExtension;
 
+	void SetPreExposureRebaseCVars(const bool bEnabled, const float SecondaryPreExposure = 1.0f)
+	{
+		if (IConsoleVariable* Secondary = IConsoleManager::Get().FindConsoleVariable(TEXT("portal.SecondaryPreExposure")))
+		{
+			Secondary->Set(FMath::Max(SecondaryPreExposure, UE_SMALL_NUMBER), ECVF_SetByCode);
+		}
+		if (IConsoleVariable* Rebase = IConsoleManager::Get().FindConsoleVariable(TEXT("portal.PreExposureRebase")))
+		{
+			Rebase->Set(bEnabled ? 1 : 0, ECVF_SetByCode);
+		}
+	}
+
 	class FPortalMainCompositionExtractionExtension final : public FWorldSceneViewExtension
 	{
 	public:
@@ -45,6 +57,11 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 		bool WasExecuted() const
 		{
 			return bExecuted.Load();
+		}
+
+		float GetSecondaryPreExposure() const
+		{
+			return SecondaryPreExposure.Load();
 		}
 
 		virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override
@@ -93,6 +110,11 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 						return SceneColor;
 					}
 
+					const float MeasuredPreExposure = View.State
+						? FMath::Max(View.State->GetPreExposure(), UE_SMALL_NUMBER)
+						: 1.0f;
+					SecondaryPreExposure.Store(MeasuredPreExposure);
+
 					FRDGTextureRef ExtractionTexture =
 						ExtractionTarget->GetRenderTargetTexture(GraphBuilder);
 					if (!ExtractionTexture)
@@ -128,6 +150,7 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 	private:
 		FRenderTarget* ExtractionTarget = nullptr;
 		TAtomic<bool> bExecuted { false };
+		TAtomic<float> SecondaryPreExposure { 1.0f };
 	};
 
 	UWorld* FindPortalSpikeWorld()
@@ -212,11 +235,11 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 			TEXT("{\n")
 			TEXT("  \"status\":\"%s\",\n")
 			TEXT("  \"detail\":\"%s\",\n")
-			TEXT("  \"rendererPath\":\"full transformed FSceneViewFamily -> secondary BeforeDOF HDR target -> main BeforeDOF aperture composition\",\n")
+			TEXT("  \"rendererPath\":\"full transformed FSceneViewFamily -> secondary BeforeDOF HDR target -> pre-exposure rebase -> main BeforeDOF aperture composition\",\n")
 			TEXT("  \"targetSize\":[%d,%d],\n")
 			TEXT("  \"beforeDOFCallbackExecuted\":%s,\n")
 			TEXT("  \"mainCompositionArmed\":%s,\n")
-			TEXT("  \"claimBoundary\":\"One-shot static main-view composition feasibility only; no per-frame producer, exposure parity, temporal, stencil/depth or recursion acceptance claim\",\n")
+			TEXT("  \"claimBoundary\":\"Static secondary-to-main pre-exposure domain conversion feasibility only; no per-frame producer, temporal, stencil/depth or recursion acceptance claim\",\n")
 			TEXT("  \"request\":%s\n")
 			TEXT("}\n"),
 			*Status.ReplaceCharWithEscapedChar(),
@@ -242,6 +265,7 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 			FlushRenderingCommands();
 			GFullViewFamilyMainCompositionExtension.Reset();
 		}
+		SetPreExposureRebaseCVars(false, 1.0f);
 		UE_LOG(LogTemp, Display, TEXT("PortalFullViewFamilyMainCompositionSpike: cleared."));
 	}
 
@@ -423,10 +447,6 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 			new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
 		if (ExtractionExtension.IsValid())
 		{
-			// A manually constructed additional view family does not gather newly
-			// created global extensions automatically. STEP 1B.6 explicitly attached
-			// its extraction extension; 1B.7 must do the same or the BeforeDOF
-			// subscription never reaches this standalone secondary family.
 			ViewFamily.ViewExtensions.Add(ExtractionExtension.ToSharedRef());
 		}
 
@@ -474,6 +494,7 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 			&& ExtractionExtension->WasExecuted();
 		if (!bBeforeDOFExecuted)
 		{
+			SetPreExposureRebaseCVars(false, 1.0f);
 			WriteMainCompositionResult(
 				TEXT("BEFOREDOF_EXTRACTION_FAILED"),
 				TEXT("Secondary full renderer completed but the BeforeDOF extraction callback did not execute"),
@@ -481,32 +502,40 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 			return;
 		}
 
+		const float SecondaryPreExposure = FMath::Max(
+			ExtractionExtension->GetSecondaryPreExposure(), UE_SMALL_NUMBER);
+
 		ClearPortalFullViewFamilyMainCompositionSpike();
+		SetPreExposureRebaseCVars(true, SecondaryPreExposure);
 		Request.PortalRenderTarget = PortalTargetResource;
 		GFullViewFamilyMainCompositionExtension =
 			FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
 		GFullViewFamilyMainCompositionExtension->SetEnabled(true);
 		GFullViewFamilyMainCompositionExtension->PublishRequest(Request);
 
+		const FString Detail = FString::Printf(
+			TEXT("Static full-renderer BeforeDOF HDR portal texture ready; measured SecondaryPreExposure=%.9g. Main-view BeforeDOF compositor is armed with STEP 1B.8 dynamic MainPreExposure/SecondaryPreExposure rebasing. Keep the camera still; clear with portal.ClearFullViewFamilyMainCompositionSpike."),
+			SecondaryPreExposure);
 		WriteMainCompositionResult(
-			TEXT("MAIN_COMPOSITION_ARMED"),
-			TEXT("A static full-renderer BeforeDOF HDR portal texture is ready and the dedicated main-view BeforeDOF aperture compositor is armed. Keep the camera still for this one-shot proof; use portal.ClearFullViewFamilyMainCompositionSpike when finished."),
+			TEXT("PREEXPOSURE_COMPOSITION_ARMED"),
+			Detail,
 			&Request, TargetSize, true, true);
 
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalFullViewFamilyMainCompositionSpike: armed endpoint=%d bounds=(%.4f,%.4f)-(%.4f,%.4f). Keep camera still; clear with portal.ClearFullViewFamilyMainCompositionSpike."),
+			TEXT("PortalFullViewFamilyMainCompositionSpike: STEP 1B.8 armed endpoint=%d SecondaryPreExposure=%.9g bounds=(%.4f,%.4f)-(%.4f,%.4f). Keep camera still; clear with portal.ClearFullViewFamilyMainCompositionSpike."),
 			EndpointIndex,
+			SecondaryPreExposure,
 			Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
 			Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y);
 	}
 
 	FAutoConsoleCommand GRunPortalFullViewFamilyMainCompositionSpike(
 		TEXT("portal.RunFullViewFamilyMainCompositionSpike"),
-		TEXT("Render one transformed full secondary view, extract BeforeDOF HDR SceneColor into the endpoint target, then arm the existing main-view BeforeDOF aperture compositor. Keep camera still; one-shot static proof."),
+		TEXT("Render one transformed full secondary view, extract BeforeDOF HDR SceneColor, measure its PreExposure, and arm main BeforeDOF composition with secondary-to-main pre-exposure rebasing. Keep camera still; one-shot static proof."),
 		FConsoleCommandDelegate::CreateStatic(&RunPortalFullViewFamilyMainCompositionSpike));
 
 	FAutoConsoleCommand GClearPortalFullViewFamilyMainCompositionSpike(
 		TEXT("portal.ClearFullViewFamilyMainCompositionSpike"),
-		TEXT("Disable and release the one-shot full-view main composition proof."),
+		TEXT("Disable and release the one-shot full-view main composition proof and reset pre-exposure rebasing."),
 		FConsoleCommandDelegate::CreateStatic(&ClearPortalFullViewFamilyMainCompositionSpike));
 }
