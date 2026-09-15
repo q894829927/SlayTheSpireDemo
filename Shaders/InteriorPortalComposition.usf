@@ -86,6 +86,23 @@ void MainPS(
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
 
+	// STEP 1B.14A visual-parity isolation. Show the transformed secondary
+	// post-TSR/pre-tonemap HDR image as a full-screen main-view input while keeping
+	// the already accepted PreExposure rebase. The C++ validation command disables
+	// stencil/scissor/depth gates before selecting mode 7, so this image isolates
+	// the secondary full-renderer color path from all portal-aperture integration.
+	// If this reference itself looks wrong, the remaining mismatch is upstream in
+	// the secondary view family / post-process ownership. If it looks correct while
+	// the normal portal does not, the defect is in portal-only composition/boundary
+	// behavior rather than Lumen/TSR color production.
+	if (CompositionDebugMode >= 6.5 && CompositionDebugMode < 7.5)
+	{
+		float4 PortalReference = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+		PortalReference.rgb *= PortalExposureScale;
+		OutColor = float4(PortalReference.rgb, MainColor.a);
+		return;
+	}
+
 	// STEP 1B.12D-B proof switch. Do NOT sample the portal HDR texture or run
 	// portal-depth logic here. The purpose of this mode is only to prove that the
 	// surrounding draw is physically constrained by the main-stencil CF_Equal
