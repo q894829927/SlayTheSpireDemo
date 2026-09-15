@@ -23,6 +23,7 @@
 #include "RenderingThread.h"
 #include "RHIStaticStates.h"
 #include "SceneManagement.h"
+#include "SceneRenderTargetParameters.h"
 #include "SceneView.h"
 #include "SceneViewExtension.h"
 #include "ScreenPass.h"
@@ -38,7 +39,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 	TAutoConsoleVariable<int32> CVarTSRDiagnostics(
 		TEXT("portal.FullViewFamilyTSRDiagnostics"),
 		0,
-		TEXT("STEP 1B.10B diagnostics. 0=quiet, 1=periodic TSR/screen-percentage/jitter telemetry."),
+		TEXT("STEP 1B.10B/1B.12B diagnostics. 0=quiet, 1=periodic TSR/screen-percentage/jitter/depth-transport telemetry."),
 		ECVF_Default);
 
 	TAtomic<uint64> GLastExtractionFrame { 0 };
@@ -49,6 +50,11 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 	TAtomic<float> GLastTemporalJitterX { 0.0f };
 	TAtomic<float> GLastTemporalJitterY { 0.0f };
 	TAtomic<bool> GTemporalJitterObserved { false };
+	TAtomic<uint64> GLastDepthExtractionFrame { 0 };
+	TAtomic<int32> GDepthSourceWidth { 0 };
+	TAtomic<int32> GDepthSourceHeight { 0 };
+	TAtomic<int32> GDepthTargetWidth { 0 };
+	TAtomic<int32> GDepthTargetHeight { 0 };
 
 	void SetPreExposureRebaseCVars(const bool bEnabled, const float SecondaryPreExposure = 1.0f)
 	{
@@ -66,9 +72,15 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 	{
 	public:
 		FPortalTSRExtractionExtension(
-			const FAutoRegister& AutoRegister, UWorld* InWorld, FRenderTarget* InExtractionTarget)
+			const FAutoRegister& AutoRegister,
+			UWorld* InWorld,
+			FRenderTarget* InExtractionTarget,
+			FRenderTarget* InDepthExtractionTarget,
+			const FIntPoint& InExpectedDepthSourceSize)
 			: FWorldSceneViewExtension(AutoRegister, InWorld)
 			, ExtractionTarget(InExtractionTarget)
+			, DepthExtractionTarget(InDepthExtractionTarget)
+			, ExpectedDepthSourceSize(InExpectedDepthSourceSize)
 		{
 		}
 
@@ -162,6 +174,54 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
 					GLastExtractionFrame.Store(GFrameCounter);
+
+					// STEP 1B.12B: transport the same secondary view's current SceneDepth
+					// alongside its post-TSR color. SceneDepth is not itself TSR-reconstructed;
+					// it remains a current-frame primary-resolution depth surface. Resample it
+					// with point filtering into a full-output R32F target so the main-view
+					// composition proof can address color and depth with the same normalized UV.
+					if (DepthExtractionTarget)
+					{
+						const TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer =
+							CreateSceneTextureUniformBuffer(
+								GraphBuilder, View, ESceneTextureSetupMode::SceneDepth);
+						if (SceneTextureUniformBuffer)
+						{
+							const FSceneTextureUniformParameters* SceneTextureContents =
+								SceneTextureUniformBuffer->GetContents();
+							FRDGTextureRef SceneDepthTexture = SceneTextureContents
+								? SceneTextureContents->SceneDepthTexture : nullptr;
+							FRDGTextureRef DepthExtractionTexture =
+								DepthExtractionTarget->GetRenderTargetTexture(GraphBuilder);
+							if (SceneDepthTexture && DepthExtractionTexture)
+							{
+								const FIntPoint AvailableDepthExtent = SceneDepthTexture->Desc.Extent;
+								const FIntPoint SourceSize(
+									FMath::Clamp(ExpectedDepthSourceSize.X, 1, AvailableDepthExtent.X),
+									FMath::Clamp(ExpectedDepthSourceSize.Y, 1, AvailableDepthExtent.Y));
+								GDepthSourceWidth.Store(SourceSize.X);
+								GDepthSourceHeight.Store(SourceSize.Y);
+								GDepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
+								GDepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
+
+								GraphBuilder.UseInternalAccessMode(DepthExtractionTexture);
+								AddDrawTexturePass(
+									GraphBuilder,
+									View,
+									SceneDepthTexture,
+									DepthExtractionTexture,
+									FIntPoint::ZeroValue,
+									SourceSize,
+									FIntPoint::ZeroValue,
+									DepthExtractionTexture->Desc.Extent,
+									TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+								GraphBuilder.UseExternalAccessMode(
+									DepthExtractionTexture, ERHIAccess::SRVMask);
+								GLastDepthExtractionFrame.Store(GFrameCounter);
+							}
+						}
+					}
+
 					return SceneColor;
 				}));
 		}
@@ -176,6 +236,8 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 
 	private:
 		FRenderTarget* ExtractionTarget = nullptr;
+		FRenderTarget* DepthExtractionTarget = nullptr;
+		FIntPoint ExpectedDepthSourceSize = FIntPoint::ZeroValue;
 	};
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -259,8 +321,6 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				return false;
 			}
 
-			// Keep the validated 1B.9/1B.10A producer intact and stop it before the
-			// independent TSR spike takes ownership of the same endpoint target.
 			if (GEngine)
 			{
 				GEngine->Exec(World, TEXT("portal.StopFullViewFamilyRealtimeSpike"));
@@ -282,6 +342,11 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			GLastTemporalJitterX.Store(0.0f);
 			GLastTemporalJitterY.Store(0.0f);
 			GTemporalJitterObserved.Store(false);
+			GLastDepthExtractionFrame.Store(0);
+			GDepthSourceWidth.Store(0);
+			GDepthSourceHeight.Store(0);
+			GDepthTargetWidth.Store(0);
+			GDepthTargetHeight.Store(0);
 			SetPreExposureRebaseCVars(true, 1.0f);
 			InvalidateTemporalHistory(TEXT("producer start"));
 
@@ -291,7 +356,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			Status = TEXT("RUNNING_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalTSRSpike: started. PrimaryFraction=%.3f ExtractionPass=Tonemap."),
+				TEXT("PortalTSRSpike: started. PrimaryFraction=%.3f ExtractionPass=Tonemap DepthTransport=R32F."),
 				PrimaryResolutionFraction);
 			return true;
 		}
@@ -319,18 +384,22 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			CompositionExtension.Reset();
 			SecondaryViewState.Destroy();
 			ReleaseFinalScratch();
+			ReleaseSecondaryDepthTarget();
 			SetPreExposureRebaseCVars(false, 1.0f);
 			ActiveWorld.Reset();
 			bRunning = false;
 			Status = TEXT("STOPPED");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalTSRSpike: stopped. Submitted=%llu Skipped=%llu CameraCuts=%llu ContinuousHistoryFrames=%llu JitterObserved=%d."),
+				TEXT("PortalTSRSpike: stopped. Submitted=%llu Skipped=%llu CameraCuts=%llu ContinuousHistoryFrames=%llu JitterObserved=%d DepthFrame=%llu DepthSource=%dx%d DepthTarget=%dx%d."),
 				FramesSubmitted,
 				FramesSkipped,
 				CameraCutCount,
 				ContinuousHistoryFrames,
-				GTemporalJitterObserved.Load() ? 1 : 0);
+				GTemporalJitterObserved.Load() ? 1 : 0,
+				GLastDepthExtractionFrame.Load(),
+				GDepthSourceWidth.Load(), GDepthSourceHeight.Load(),
+				GDepthTargetWidth.Load(), GDepthTargetHeight.Load());
 		}
 
 		bool IsRunning() const
@@ -342,7 +411,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 		{
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalTSRSpike: report written. Submitted=%llu Skipped=%llu LastExtractionFrame=%llu CameraCuts=%llu ContinuousHistoryFrames=%llu Input=%dx%d ObservedAA=%d Jitter=(%.9g,%.9g) JitterObserved=%d"),
+				TEXT("PortalTSRSpike: report written. Submitted=%llu Skipped=%llu LastExtractionFrame=%llu CameraCuts=%llu ContinuousHistoryFrames=%llu Input=%dx%d ObservedAA=%d Jitter=(%.9g,%.9g) JitterObserved=%d DepthFrame=%llu DepthSource=%dx%d DepthTarget=%dx%d"),
 				FramesSubmitted,
 				FramesSkipped,
 				GLastExtractionFrame.Load(),
@@ -353,7 +422,10 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				GObservedAAMethod.Load(),
 				GLastTemporalJitterX.Load(),
 				GLastTemporalJitterY.Load(),
-				GTemporalJitterObserved.Load() ? 1 : 0);
+				GTemporalJitterObserved.Load() ? 1 : 0,
+				GLastDepthExtractionFrame.Load(),
+				GDepthSourceWidth.Load(), GDepthSourceHeight.Load(),
+				GDepthTargetWidth.Load(), GDepthTargetHeight.Load());
 		}
 
 	private:
@@ -434,6 +506,51 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				FinalScratch = nullptr;
 			}
 			FinalScratchSize = FIntPoint::ZeroValue;
+		}
+
+		bool EnsureSecondaryDepthTarget(UWorld* World, const FIntPoint TargetSize)
+		{
+			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0)
+			{
+				return false;
+			}
+			if (SecondaryDepthTarget && SecondaryDepthTargetSize == TargetSize)
+			{
+				return true;
+			}
+
+			if (SecondaryDepthTarget)
+			{
+				FlushRenderingCommands();
+				ReleaseSecondaryDepthTarget();
+			}
+
+			SecondaryDepthTarget = NewObject<UTextureRenderTarget2D>(
+				GetTransientPackage(), NAME_None, RF_Transient);
+			if (!SecondaryDepthTarget)
+			{
+				return false;
+			}
+			SecondaryDepthTarget->AddToRoot();
+			SecondaryDepthTarget->RenderTargetFormat = RTF_R32f;
+			SecondaryDepthTarget->ClearColor = FLinearColor::Black;
+			SecondaryDepthTarget->bForceLinearGamma = true;
+			SecondaryDepthTarget->bAutoGenerateMips = false;
+			SecondaryDepthTarget->InitCustomFormat(
+				TargetSize.X, TargetSize.Y, PF_R32_FLOAT, true);
+			SecondaryDepthTarget->UpdateResourceImmediate(true);
+			SecondaryDepthTargetSize = TargetSize;
+			return SecondaryDepthTarget->GameThread_GetRenderTargetResource() != nullptr;
+		}
+
+		void ReleaseSecondaryDepthTarget()
+		{
+			if (SecondaryDepthTarget)
+			{
+				SecondaryDepthTarget->RemoveFromRoot();
+				SecondaryDepthTarget = nullptr;
+			}
+			SecondaryDepthTargetSize = FIntPoint::ZeroValue;
 		}
 
 		bool DetermineCameraCut(
@@ -585,6 +702,9 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			const int32 Height = FMath::Max(144,
 				FMath::RoundToInt(Width * double(PlayerRect.Height()) / double(PlayerRect.Width())));
 			const FIntPoint TargetSize(Width, Height);
+			const FIntPoint ExpectedPrimarySize(
+				FMath::Max(1, FMath::RoundToInt(TargetSize.X * PrimaryResolutionFraction)),
+				FMath::Max(1, FMath::RoundToInt(TargetSize.Y * PrimaryResolutionFraction)));
 
 			if (LastTargetSize != FIntPoint::ZeroValue && LastTargetSize != TargetSize)
 			{
@@ -597,22 +717,26 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				? Entry->RenderTargets[0] : nullptr;
 			FRenderTarget* PortalTargetResource = PortalTarget
 				? PortalTarget->GameThread_GetRenderTargetResource() : nullptr;
-			if (!PortalTarget || !PortalTargetResource || !EnsureFinalScratch(World, TargetSize))
+			if (!PortalTarget || !PortalTargetResource
+				|| !EnsureFinalScratch(World, TargetSize)
+				|| !EnsureSecondaryDepthTarget(World, TargetSize))
 			{
-				SkipFrame(TEXT("RENDER_TARGET_UNAVAILABLE"), TEXT("portal/scratch render target unavailable"));
+				SkipFrame(TEXT("RENDER_TARGET_UNAVAILABLE"), TEXT("portal/color/depth scratch render target unavailable"));
 				return;
 			}
 
 			FRenderTarget* FinalScratchResource = FinalScratch->GameThread_GetRenderTargetResource();
-			if (!FinalScratchResource || !World->Scene)
+			FRenderTarget* SecondaryDepthTargetResource =
+				SecondaryDepthTarget->GameThread_GetRenderTargetResource();
+			if (!FinalScratchResource || !SecondaryDepthTargetResource || !World->Scene)
 			{
-				SkipFrame(TEXT("SCENE_OR_SCRATCH_UNAVAILABLE"), TEXT("scene or scratch resource unavailable"));
+				SkipFrame(TEXT("SCENE_OR_SCRATCH_UNAVAILABLE"), TEXT("scene/color/depth scratch resource unavailable"));
 				return;
 			}
 
 			TSharedRef<FPortalTSRExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
 				FSceneViewExtensions::NewExtension<FPortalTSRExtractionExtension>(
-					World, PortalTargetResource);
+					World, PortalTargetResource, SecondaryDepthTargetResource, ExpectedPrimarySize);
 
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
@@ -687,6 +811,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
 			Request.PortalRenderTarget = PortalTargetResource;
+			Request.PortalDepthRenderTarget = SecondaryDepthTargetResource;
 			CompositionExtension->PublishRequest(Request);
 
 			++FramesSubmitted;
@@ -702,17 +827,13 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			if (CVarTSRDiagnostics.GetValueOnGameThread() != 0
 				&& (FramesSubmitted == 1 || (FramesSubmitted % 60) == 0))
 			{
-				const int32 ExpectedPrimaryWidth = FMath::Max(
-					1, FMath::RoundToInt(TargetSize.X * PrimaryResolutionFraction));
-				const int32 ExpectedPrimaryHeight = FMath::Max(
-					1, FMath::RoundToInt(TargetSize.Y * PrimaryResolutionFraction));
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalTSRSpike Frame=%llu Submitted=%llu Endpoint=%d PrimaryFraction=%.3f ExpectedPrimary=%dx%d Output=%dx%d ExtractionInput=%dx%d ObservedAA=%d Jitter=(%.9g,%.9g) JitterObserved=%d CameraCut=%d CameraCuts=%llu ContinuousHistoryFrames=%llu CutReason=%s"),
+					TEXT("PortalTSRSpike Frame=%llu Submitted=%llu Endpoint=%d PrimaryFraction=%.3f ExpectedPrimary=%dx%d Output=%dx%d ExtractionInput=%dx%d ObservedAA=%d Jitter=(%.9g,%.9g) JitterObserved=%d CameraCut=%d CameraCuts=%llu ContinuousHistoryFrames=%llu DepthFrame=%llu DepthSource=%dx%d DepthTarget=%dx%d CutReason=%s"),
 					GFrameCounter,
 					FramesSubmitted,
 					EndpointIndex,
 					PrimaryResolutionFraction,
-					ExpectedPrimaryWidth, ExpectedPrimaryHeight,
+					ExpectedPrimarySize.X, ExpectedPrimarySize.Y,
 					TargetSize.X, TargetSize.Y,
 					GExtractionInputWidth.Load(), GExtractionInputHeight.Load(),
 					GObservedAAMethod.Load(),
@@ -721,6 +842,9 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 					bCameraCut ? 1 : 0,
 					CameraCutCount,
 					ContinuousHistoryFrames,
+					GLastDepthExtractionFrame.Load(),
+					GDepthSourceWidth.Load(), GDepthSourceHeight.Load(),
+					GDepthTargetWidth.Load(), GDepthTargetHeight.Load(),
 					*CameraCutReason);
 			}
 		}
@@ -738,12 +862,16 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				TEXT("  \"framesSubmitted\":%llu,\n")
 				TEXT("  \"framesSkipped\":%llu,\n")
 				TEXT("  \"lastExtractionFrame\":%llu,\n")
+				TEXT("  \"lastDepthExtractionFrame\":%llu,\n")
 				TEXT("  \"lastEndpointIndex\":%d,\n")
 				TEXT("  \"targetSize\":[%d,%d],\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"expectedPrimarySize\":[%d,%d],\n")
 				TEXT("  \"extractionPass\":\"Tonemap (post-TSR / pre-tonemap linear HDR)\",\n")
 				TEXT("  \"extractionInputSize\":[%d,%d],\n")
+				TEXT("  \"secondaryDepthSourceSize\":[%d,%d],\n")
+				TEXT("  \"secondaryDepthTargetSize\":[%d,%d],\n")
+				TEXT("  \"secondaryDepthFormat\":\"R32F device Z, point-resampled current-frame primary SceneDepth\",\n")
 				TEXT("  \"observedAAMethod\":%d,\n")
 				TEXT("  \"temporalJitterObserved\":%s,\n")
 				TEXT("  \"lastTemporalJitter\":[%.9g,%.9g],\n")
@@ -756,17 +884,20 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				TEXT("  \"playerLocation\":[%.6f,%.6f,%.6f],\n")
 				TEXT("  \"virtualLocation\":[%.6f,%.6f,%.6f],\n")
 				TEXT("  \"projectedBounds\":[%.6f,%.6f,%.6f,%.6f],\n")
-				TEXT("  \"claimBoundary\":\"STEP 1B.10B fixed-fraction TSR, temporal-jitter and post-TSR linear-HDR extraction feasibility only; no dynamic resolution, recursion, main depth/stencil continuity or production performance acceptance claim\"\n")
+				TEXT("  \"claimBoundary\":\"STEP 1B.10B color TSR remains accepted; STEP 1B.12B adds current-frame secondary device-depth transport/remap feasibility only. The depth surface is not TSR-reconstructed and is not yet written into main SceneDepth.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				FramesSubmitted,
 				FramesSkipped,
 				GLastExtractionFrame.Load(),
+				GLastDepthExtractionFrame.Load(),
 				LastEndpointIndex,
 				LastTargetSize.X, LastTargetSize.Y,
 				PrimaryResolutionFraction,
 				ExpectedPrimaryWidth, ExpectedPrimaryHeight,
 				GExtractionInputWidth.Load(), GExtractionInputHeight.Load(),
+				GDepthSourceWidth.Load(), GDepthSourceHeight.Load(),
+				GDepthTargetWidth.Load(), GDepthTargetHeight.Load(),
 				GObservedAAMethod.Load(),
 				GTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
 				GLastTemporalJitterX.Load(), GLastTemporalJitterY.Load(),
@@ -797,6 +928,8 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 		FSceneViewStateReference SecondaryViewState;
 		UTextureRenderTarget2D* FinalScratch = nullptr;
 		FIntPoint FinalScratchSize = FIntPoint::ZeroValue;
+		UTextureRenderTarget2D* SecondaryDepthTarget = nullptr;
+		FIntPoint SecondaryDepthTargetSize = FIntPoint::ZeroValue;
 		uint64 FramesSubmitted = 0;
 		uint64 FramesSkipped = 0;
 		uint64 CameraCutCount = 0;
@@ -866,16 +999,16 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 
 	FAutoConsoleCommand GStartTSRSpikeCommand(
 		TEXT("portal.StartFullViewFamilyTSRSpike"),
-		TEXT("Start STEP 1B.10B fixed-fraction TSR/post-temporal extraction spike. Requires RendererBackend=SceneCapture."),
+		TEXT("Start STEP 1B.10B/1B.12B TSR color + secondary-depth transport spike. Requires RendererBackend=SceneCapture."),
 		FConsoleCommandDelegate::CreateStatic(&StartTSRSpike));
 
 	FAutoConsoleCommand GStopTSRSpikeCommand(
 		TEXT("portal.StopFullViewFamilyTSRSpike"),
-		TEXT("Stop STEP 1B.10B TSR spike and release persistent resources."),
+		TEXT("Stop STEP 1B.10B/1B.12B TSR/depth spike and release persistent resources."),
 		FConsoleCommandDelegate::CreateStatic(&StopTSRSpike));
 
 	FAutoConsoleCommand GDumpTSRSpikeCommand(
 		TEXT("portal.DumpFullViewFamilyTSRSpike"),
-		TEXT("Write STEP 1B.10B TSR/screen-percentage/jitter telemetry to Saved/AutomationReports."),
+		TEXT("Write TSR/screen-percentage/jitter/secondary-depth telemetry to Saved/AutomationReports."),
 		FConsoleCommandDelegate::CreateStatic(&DumpTSRSpike));
 }
