@@ -4,6 +4,7 @@
 #include "RenderGraphBuilder.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
 #include "SceneRenderTargetParameters.h"
+#include "SceneView.h"
 #include "ScreenPass.h"
 #include "UnrealClient.h"
 
@@ -67,6 +68,7 @@ namespace
 namespace InteriorPortalRenderer
 {
 	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalCompositionParameters, )
+		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PortalTexture)
@@ -381,6 +383,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
 		GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalCompositionParameters>();
+	PassParameters->View = InView.ViewUniformBuffer;
 	PassParameters->SceneColorTexture = SceneColor.Texture;
 	PassParameters->SceneColorSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
