@@ -10,6 +10,7 @@ SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
 float4 PortalBounds;
 float CompositionDebugMode;
+float PortalExposureScale;
 
 void MainPS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
@@ -43,9 +44,18 @@ void MainPS(
 	const float ApertureMask = 1.0 - smoothstep(0.94, 1.0, EllipseDistance);
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
-	const float4 PortalColor = (CompositionDebugMode >= 0.5 && CompositionDebugMode < 1.5)
+	float4 PortalColor = (CompositionDebugMode >= 0.5 && CompositionDebugMode < 1.5)
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+
+	// STEP 1B.8: only normal full-renderer composition participates in the
+	// secondary->main pre-exposure domain conversion. Diagnostic modes remain
+	// unscaled so the established magenta/BaseColor probes keep their original
+	// interpretation.
+	if (CompositionDebugMode < 0.5)
+	{
+		PortalColor.rgb *= PortalExposureScale;
+	}
 
 	// The extracted full-renderer BeforeDOF SceneColor does not provide a stable
 	// opacity contract in alpha. Aperture ownership is analytic, so blend RGB only
