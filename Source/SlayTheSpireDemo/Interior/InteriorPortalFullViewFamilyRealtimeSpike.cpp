@@ -32,7 +32,13 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 	TAutoConsoleVariable<int32> CVarRealtimeSpikeDiagnostics(
 		TEXT("portal.FullViewFamilyRealtimeDiagnostics"),
 		0,
-		TEXT("STEP 1B.9 diagnostics. 0=quiet, 1=log periodic per-frame full-view producer state."),
+		TEXT("STEP 1B.9/1B.10 diagnostics. 0=quiet, 1=log periodic per-frame full-view producer state."),
+		ECVF_Default);
+
+	TAutoConsoleVariable<int32> CVarRealtimeTemporalAA(
+		TEXT("portal.FullViewFamilyTemporalAA"),
+		0,
+		TEXT("STEP 1B.10A temporal spike. 0=STEP 1B.9 no-AA path, 1=persistent-view-state Temporal AA with explicit camera-cut policy."),
 		ECVF_Default);
 
 	TAtomic<uint64> GLastExtractionFrame { 0 };
@@ -156,12 +162,19 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			&& Transform.GetRotation().IsNormalized();
 	}
 
+	bool PortalFrameChanged(const FTransform& A, const FTransform& B)
+	{
+		return !A.GetLocation().Equals(B.GetLocation(), 0.01)
+			|| !A.GetRotation().Equals(B.GetRotation(), 1.0e-5);
+	}
+
 	void HidePortalPrimitives(const AInteriorPortal* Portal, FSceneViewInitOptions& ViewInitOptions)
 	{
 		if (!IsValid(Portal))
 		{
 			return;
 		}
+
 		TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents;
 		Portal->GetComponents(PrimitiveComponents);
 		for (const UPrimitiveComponent* Primitive : PrimitiveComponents)
@@ -221,27 +234,29 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				return false;
 			}
 
-			// Remove the previous one-shot 1B.7/1B.8 compositor if it is still armed.
 			if (GEngine)
 			{
 				GEngine->Exec(World, TEXT("portal.ClearFullViewFamilyMainCompositionSpike"));
 			}
 
 			ActiveWorld = World;
+			bTemporalAAEnabled = CVarRealtimeTemporalAA.GetValueOnGameThread() != 0;
 			SecondaryViewState.Allocate(World->GetFeatureLevel());
 			CompositionExtension = FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
 			CompositionExtension->SetEnabled(true);
 			GMeasuredSecondaryPreExposure.Store(1.0f);
 			GLastExtractionFrame.Store(0);
 			SetPreExposureRebaseCVars(true, 1.0f);
+			InvalidateTemporalHistory(TEXT("producer start"));
 
 			WorldPostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddRaw(
 				this, &FRealtimePortalProducer::OnWorldPostActorTick);
 			bRunning = true;
-			Status = TEXT("RUNNING");
+			Status = bTemporalAAEnabled ? TEXT("RUNNING_TEMPORAL_TAA") : TEXT("RUNNING");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalRealtimeSpike: started. Move/look normally; stop with portal.StopFullViewFamilyRealtimeSpike."));
+				TEXT("PortalRealtimeSpike: started. TemporalAA=%d. Move/look normally; stop with portal.StopFullViewFamilyRealtimeSpike."),
+				bTemporalAAEnabled ? 1 : 0);
 			return true;
 		}
 
@@ -264,7 +279,6 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				CompositionExtension->ClearRequest();
 			}
 
-			// Stop is allowed to block. Per-frame submission itself never flushes.
 			FlushRenderingCommands();
 			CompositionExtension.Reset();
 			SecondaryViewState.Destroy();
@@ -274,7 +288,12 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			bRunning = false;
 			Status = TEXT("STOPPED");
 			WriteReport();
-			UE_LOG(LogTemp, Display, TEXT("PortalRealtimeSpike: stopped."));
+			UE_LOG(LogTemp, Display,
+				TEXT("PortalRealtimeSpike: stopped. TemporalAA=%d Submitted=%llu CameraCuts=%llu ContinuousHistoryFrames=%llu."),
+				bTemporalAAEnabled ? 1 : 0,
+				FramesSubmitted,
+				CameraCutCount,
+				ContinuousHistoryFrames);
 		}
 
 		bool IsRunning() const
@@ -286,8 +305,15 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 		{
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalRealtimeSpike: report written. Submitted=%llu Skipped=%llu LastExtractionFrame=%llu"),
-				FramesSubmitted, FramesSkipped, GLastExtractionFrame.Load());
+				TEXT("PortalRealtimeSpike: report written. Submitted=%llu Skipped=%llu LastExtractionFrame=%llu TemporalAA=%d CameraCuts=%llu ContinuousHistoryFrames=%llu LastCameraCut=%d Reason=%s"),
+				FramesSubmitted,
+				FramesSkipped,
+				GLastExtractionFrame.Load(),
+				bTemporalAAEnabled ? 1 : 0,
+				CameraCutCount,
+				ContinuousHistoryFrames,
+				bLastCameraCut ? 1 : 0,
+				*LastCameraCutReason);
 		}
 
 	private:
@@ -308,16 +334,24 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			{
 				return;
 			}
-
 			SubmitFrame(World);
 		}
 
-		void ClearPublishedRequest()
+		void InvalidateTemporalHistory(const FString& Reason)
 		{
+			bTemporalHistoryValid = false;
+			LastCameraCutReason = Reason;
+		}
+
+		void SkipFrame(const FString& InStatus, const FString& HistoryReason)
+		{
+			++FramesSkipped;
+			Status = InStatus;
 			if (CompositionExtension)
 			{
 				CompositionExtension->ClearRequest();
 			}
+			InvalidateTemporalHistory(HistoryReason);
 		}
 
 		bool EnsureFinalScratch(UWorld* World, const FIntPoint TargetSize)
@@ -331,8 +365,6 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				return true;
 			}
 
-			// Resolution changes are rare and may invalidate resources referenced by
-			// an earlier queued secondary frame, so synchronize only on resize.
 			if (FinalScratch)
 			{
 				FlushRenderingCommands();
@@ -364,6 +396,76 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			FinalScratchSize = FIntPoint::ZeroValue;
 		}
 
+		bool DetermineCameraCut(
+			const int32 EndpointIndex,
+			const FIntPoint TargetSize,
+			const FTransform& EntryFrame,
+			const FTransform& ExitFrame,
+			FString& OutReason) const
+		{
+			if (!bTemporalAAEnabled)
+			{
+				OutReason = TEXT("Temporal AA disabled");
+				return true;
+			}
+			if (!bTemporalHistoryValid)
+			{
+				OutReason = TEXT("history invalid / first visible frame");
+				return true;
+			}
+			if (LastHistoryEndpointIndex != EndpointIndex)
+			{
+				OutReason = TEXT("visible endpoint changed");
+				return true;
+			}
+			if (LastHistoryTargetSize != TargetSize)
+			{
+				OutReason = TEXT("render target size changed");
+				return true;
+			}
+			if (PortalFrameChanged(LastHistoryEntryFrame, EntryFrame)
+				|| PortalFrameChanged(LastHistoryExitFrame, ExitFrame))
+			{
+				OutReason = TEXT("portal logical frame changed");
+				return true;
+			}
+			OutReason = TEXT("continuous history");
+			return false;
+		}
+
+		void CommitTemporalHistory(
+			const int32 EndpointIndex,
+			const FIntPoint TargetSize,
+			const FTransform& EntryFrame,
+			const FTransform& ExitFrame,
+			const bool bCameraCut,
+			const FString& CameraCutReason)
+		{
+			bLastCameraCut = bCameraCut;
+			LastCameraCutReason = CameraCutReason;
+
+			if (!bTemporalAAEnabled)
+			{
+				bTemporalHistoryValid = false;
+				return;
+			}
+
+			if (bCameraCut)
+			{
+				++CameraCutCount;
+			}
+			else
+			{
+				++ContinuousHistoryFrames;
+			}
+
+			bTemporalHistoryValid = true;
+			LastHistoryEndpointIndex = EndpointIndex;
+			LastHistoryTargetSize = TargetSize;
+			LastHistoryEntryFrame = EntryFrame;
+			LastHistoryExitFrame = ExitFrame;
+		}
+
 		void SubmitFrame(UWorld* World)
 		{
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
@@ -372,9 +474,7 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				|| PortalSystem->RendererBackend != EInteriorPortalRendererBackend::SceneCapture
 				|| !PortalSystem->IsLinked())
 			{
-				++FramesSkipped;
-				Status = TEXT("WAITING_FOR_LINKED_SCENECAPTURE_PORTALS");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("WAITING_FOR_LINKED_SCENECAPTURE_PORTALS"), TEXT("portal pair/player/backend unavailable"));
 				return;
 			}
 
@@ -383,18 +483,14 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			if (!LocalPlayer || !LocalPlayer->ViewportClient || !LocalPlayer->ViewportClient->Viewport
 				|| !LocalPlayer->GetProjectionData(LocalPlayer->ViewportClient->Viewport, ProjectionData))
 			{
-				++FramesSkipped;
-				Status = TEXT("WAITING_FOR_PROJECTION_DATA");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("WAITING_FOR_PROJECTION_DATA"), TEXT("projection data unavailable"));
 				return;
 			}
 
 			const FIntRect PlayerRect = ProjectionData.GetConstrainedViewRect();
 			if (PlayerRect.Width() <= 0 || PlayerRect.Height() <= 0)
 			{
-				++FramesSkipped;
-				Status = TEXT("WAITING_FOR_VIEW_RECT");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("WAITING_FOR_VIEW_RECT"), TEXT("view rect unavailable"));
 				return;
 			}
 
@@ -434,16 +530,16 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 
 			if (!IsValid(Entry) || !IsValid(Exit) || EndpointIndex == INDEX_NONE)
 			{
-				++FramesSkipped;
-				Status = TEXT("NO_VISIBLE_PORTAL");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("NO_VISIBLE_PORTAL"), TEXT("portal left the visible set"));
 				return;
 			}
 
+			const FTransform EntryFrame = Entry->GetLogicalFrame();
+			const FTransform ExitFrame = Exit->GetLogicalFrame();
 			FInteriorPortalRenderRequest Request;
 			if (!FInteriorPortalRenderRequest::Build(
 				EndpointIndex, EndpointIndex, 0,
-				PlayerView, Entry->GetLogicalFrame(), Exit->GetLogicalFrame(),
+				PlayerView, EntryFrame, ExitFrame,
 				Entry->HalfWidth, Entry->HalfHeight,
 				PlayerViewProjection, PlayerRect,
 				ProjectionData.ProjectionMatrix,
@@ -453,9 +549,7 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				1, Request)
 				|| !Request.IsValid() || !IsFiniteTransform(Request.VirtualView))
 			{
-				++FramesSkipped;
-				Status = TEXT("REQUEST_BUILD_FAILED");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("REQUEST_BUILD_FAILED"), TEXT("portal request build failed"));
 				return;
 			}
 
@@ -466,10 +560,10 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 
 			if (LastTargetSize != FIntPoint::ZeroValue && LastTargetSize != TargetSize)
 			{
-				// The endpoint target can also be referenced by an earlier main frame.
-				// Synchronize only on viewport resize before allowing EnsureTargets to recreate it.
 				FlushRenderingCommands();
+				InvalidateTemporalHistory(TEXT("viewport / target resize"));
 			}
+
 			Entry->EnsureTargets(Width, Height, 1);
 			UTextureRenderTarget2D* PortalTarget = Entry->RenderTargets.IsValidIndex(0)
 				? Entry->RenderTargets[0] : nullptr;
@@ -477,18 +571,14 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				? PortalTarget->GameThread_GetRenderTargetResource() : nullptr;
 			if (!PortalTarget || !PortalTargetResource || !EnsureFinalScratch(World, TargetSize))
 			{
-				++FramesSkipped;
-				Status = TEXT("RENDER_TARGET_UNAVAILABLE");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("RENDER_TARGET_UNAVAILABLE"), TEXT("portal/scratch render target unavailable"));
 				return;
 			}
 
 			FRenderTarget* FinalScratchResource = FinalScratch->GameThread_GetRenderTargetResource();
 			if (!FinalScratchResource || !World->Scene)
 			{
-				++FramesSkipped;
-				Status = TEXT("SCENE_OR_SCRATCH_UNAVAILABLE");
-				ClearPublishedRequest();
+				SkipFrame(TEXT("SCENE_OR_SCRATCH_UNAVAILABLE"), TEXT("scene or scratch resource unavailable"));
 				return;
 			}
 
@@ -501,7 +591,7 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				: FEngineShowFlags(ESFIM_Game);
 			ShowFlags.SetEyeAdaptation(false);
 			ShowFlags.SetMotionBlur(false);
-			ShowFlags.SetTemporalAA(false);
+			ShowFlags.SetTemporalAA(bTemporalAAEnabled);
 			ShowFlags.SetScreenPercentage(false);
 
 			FSceneViewFamilyContext ViewFamily(
@@ -513,9 +603,12 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			ViewFamily.EngineShowFlags = ShowFlags;
 			ViewFamily.SceneCaptureSource = SCS_FinalColorHDR;
 			ViewFamily.ViewMode = VMI_Lit;
-			ViewFamily.SetScreenPercentageInterface(
-				new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
+			ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
 			ViewFamily.ViewExtensions.Add(ExtractionExtension);
+
+			FString CameraCutReason;
+			const bool bCameraCut = DetermineCameraCut(
+				EndpointIndex, TargetSize, EntryFrame, ExitFrame, CameraCutReason);
 
 			FSceneViewInitOptions ViewInitOptions;
 			ViewInitOptions.ViewFamily = &ViewFamily;
@@ -539,17 +632,15 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			ViewFamily.Views.Add(SceneView);
 			SceneView->bIsGameView = true;
 			SceneView->bIsSceneCapture = false;
-			// Temporal acceptance is intentionally deferred. Treat every secondary
-			// frame as a camera cut so stale history cannot masquerade as tracking success.
-			SceneView->bCameraCut = true;
-			SceneView->AntiAliasingMethod = EAntiAliasingMethod::AAM_None;
+			SceneView->bCameraCut = bCameraCut;
+			SceneView->AntiAliasingMethod = bTemporalAAEnabled
+				? EAntiAliasingMethod::AAM_TemporalAA
+				: EAntiAliasingMethod::AAM_None;
 			SceneView->GlobalClippingPlane = Request.ExitClipPlane;
 			SceneView->StartFinalPostprocessSettings(Request.ViewLocation);
-			SceneView->OverridePostProcessSettings(
-				POV.PostProcessSettings, POV.PostProcessBlendWeight, true);
+			SceneView->OverridePostProcessSettings(POV.PostProcessSettings, POV.PostProcessBlendWeight, true);
 			SceneView->FinalPostProcessSettings.bOverride_DynamicGlobalIlluminationMethod = true;
-			SceneView->FinalPostProcessSettings.DynamicGlobalIlluminationMethod =
-				EDynamicGlobalIlluminationMethod::Lumen;
+			SceneView->FinalPostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
 			SceneView->FinalPostProcessSettings.bOverride_ReflectionMethod = true;
 			SceneView->FinalPostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
 			SceneView->EndFinalPostprocessSettings(ViewInitOptions);
@@ -564,26 +655,24 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
-			// The render command above is deliberately not flushed here. It is queued
-			// before the ordinary main viewport renderer, so the secondary extraction
-			// reaches the external portal target before the main BeforeDOF compositor
-			// consumes that target, while the game thread remains asynchronous.
 			Request.PortalRenderTarget = PortalTargetResource;
 			CompositionExtension->PublishRequest(Request);
 
 			++FramesSubmitted;
-			Status = TEXT("RUNNING");
+			Status = bTemporalAAEnabled ? TEXT("RUNNING_TEMPORAL_TAA") : TEXT("RUNNING");
 			LastTargetSize = TargetSize;
 			LastEndpointIndex = EndpointIndex;
 			LastPlayerView = PlayerView;
 			LastVirtualView = Request.VirtualView;
 			LastBounds = Request.ProjectedBounds;
+			CommitTemporalHistory(
+				EndpointIndex, TargetSize, EntryFrame, ExitFrame, bCameraCut, CameraCutReason);
 
 			if (CVarRealtimeSpikeDiagnostics.GetValueOnGameThread() != 0
 				&& (FramesSubmitted == 1 || (FramesSubmitted % 60) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalRealtimeSpike Frame=%llu Submitted=%llu Endpoint=%d Player=(%.1f,%.1f,%.1f) Virtual=(%.1f,%.1f,%.1f) Bounds=(%.4f,%.4f)-(%.4f,%.4f) SecondaryPreExposure=%.9g LastExtractionFrame=%llu"),
+					TEXT("PortalRealtimeSpike Frame=%llu Submitted=%llu Endpoint=%d Player=(%.1f,%.1f,%.1f) Virtual=(%.1f,%.1f,%.1f) Bounds=(%.4f,%.4f)-(%.4f,%.4f) SecondaryPreExposure=%.9g LastExtractionFrame=%llu TemporalAA=%d CameraCut=%d CameraCuts=%llu ContinuousHistoryFrames=%llu CutReason=%s"),
 					GFrameCounter,
 					FramesSubmitted,
 					EndpointIndex,
@@ -592,7 +681,12 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 					Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
 					Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y,
 					SecondaryPreExposure,
-					GLastExtractionFrame.Load());
+					GLastExtractionFrame.Load(),
+					bTemporalAAEnabled ? 1 : 0,
+					bCameraCut ? 1 : 0,
+					CameraCutCount,
+					ContinuousHistoryFrames,
+					*CameraCutReason);
 			}
 		}
 
@@ -607,10 +701,16 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				TEXT("  \"lastEndpointIndex\":%d,\n")
 				TEXT("  \"targetSize\":[%d,%d],\n")
 				TEXT("  \"secondaryPreExposure\":%.9g,\n")
+				TEXT("  \"temporalAAEnabled\":%s,\n")
+				TEXT("  \"temporalHistoryValid\":%s,\n")
+				TEXT("  \"cameraCutCount\":%llu,\n")
+				TEXT("  \"continuousHistoryFrames\":%llu,\n")
+				TEXT("  \"lastCameraCut\":%s,\n")
+				TEXT("  \"lastCameraCutReason\":\"%s\",\n")
 				TEXT("  \"playerLocation\":[%.6f,%.6f,%.6f],\n")
 				TEXT("  \"virtualLocation\":[%.6f,%.6f,%.6f],\n")
 				TEXT("  \"projectedBounds\":[%.6f,%.6f,%.6f,%.6f],\n")
-				TEXT("  \"claimBoundary\":\"STEP 1B.9 per-frame single-visible-portal full-view producer tracking only; no temporal AA/TSR, recursion, depth/stencil continuity or production performance acceptance claim\"\n")
+				TEXT("  \"claimBoundary\":\"STEP 1B.10A persistent secondary TAA-history and camera-cut policy feasibility only; no TSR, recursion, main depth/stencil continuity or production performance acceptance claim\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				FramesSubmitted,
@@ -619,6 +719,12 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				LastEndpointIndex,
 				LastTargetSize.X, LastTargetSize.Y,
 				GMeasuredSecondaryPreExposure.Load(),
+				bTemporalAAEnabled ? TEXT("true") : TEXT("false"),
+				bTemporalHistoryValid ? TEXT("true") : TEXT("false"),
+				CameraCutCount,
+				ContinuousHistoryFrames,
+				bLastCameraCut ? TEXT("true") : TEXT("false"),
+				*LastCameraCutReason.ReplaceCharWithEscapedChar(),
 				LastPlayerView.GetLocation().X, LastPlayerView.GetLocation().Y, LastPlayerView.GetLocation().Z,
 				LastVirtualView.GetLocation().X, LastVirtualView.GetLocation().Y, LastVirtualView.GetLocation().Z,
 				LastBounds.Min.X, LastBounds.Min.Y, LastBounds.Max.X, LastBounds.Max.Y);
@@ -631,6 +737,9 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 		}
 
 		bool bRunning = false;
+		bool bTemporalAAEnabled = false;
+		bool bTemporalHistoryValid = false;
+		bool bLastCameraCut = true;
 		TWeakObjectPtr<UWorld> ActiveWorld;
 		FDelegateHandle WorldPostActorTickHandle;
 		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> CompositionExtension;
@@ -639,12 +748,19 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 		FIntPoint FinalScratchSize = FIntPoint::ZeroValue;
 		uint64 FramesSubmitted = 0;
 		uint64 FramesSkipped = 0;
+		uint64 CameraCutCount = 0;
+		uint64 ContinuousHistoryFrames = 0;
 		FString Status = TEXT("STOPPED");
+		FString LastCameraCutReason = TEXT("not started");
 		FIntPoint LastTargetSize = FIntPoint::ZeroValue;
 		int32 LastEndpointIndex = INDEX_NONE;
 		FTransform LastPlayerView = FTransform::Identity;
 		FTransform LastVirtualView = FTransform::Identity;
 		InteriorPortalMath::FPortalScreenBounds LastBounds;
+		int32 LastHistoryEndpointIndex = INDEX_NONE;
+		FIntPoint LastHistoryTargetSize = FIntPoint::ZeroValue;
+		FTransform LastHistoryEntryFrame = FTransform::Identity;
+		FTransform LastHistoryExitFrame = FTransform::Identity;
 	};
 
 	TUniquePtr<FRealtimePortalProducer> GRealtimeProducer;
@@ -699,16 +815,16 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 
 	FAutoConsoleCommand GStartRealtimeSpikeCommand(
 		TEXT("portal.StartFullViewFamilyRealtimeSpike"),
-		TEXT("Start STEP 1B.9 per-frame transformed full-view producer. Requires RendererBackend=SceneCapture."),
+		TEXT("Start STEP 1B.9/1B.10 per-frame transformed full-view producer. Set portal.FullViewFamilyTemporalAA before start. Requires RendererBackend=SceneCapture."),
 		FConsoleCommandDelegate::CreateStatic(&StartRealtimeSpike));
 
 	FAutoConsoleCommand GStopRealtimeSpikeCommand(
 		TEXT("portal.StopFullViewFamilyRealtimeSpike"),
-		TEXT("Stop STEP 1B.9 per-frame transformed full-view producer and release its persistent resources."),
+		TEXT("Stop the per-frame transformed full-view producer and release persistent resources."),
 		FConsoleCommandDelegate::CreateStatic(&StopRealtimeSpike));
 
 	FAutoConsoleCommand GDumpRealtimeSpikeCommand(
 		TEXT("portal.DumpFullViewFamilyRealtimeSpike"),
-		TEXT("Write the current STEP 1B.9 per-frame producer state to Saved/AutomationReports."),
+		TEXT("Write the current per-frame producer/temporal state to Saved/AutomationReports."),
 		FConsoleCommandDelegate::CreateStatic(&DumpRealtimeSpike));
 }
