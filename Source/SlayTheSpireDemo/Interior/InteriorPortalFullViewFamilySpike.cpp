@@ -16,6 +16,7 @@
 #include "HAL/IConsoleManager.h"
 #include "ImageCore.h"
 #include "ImageUtils.h"
+#include "LegacyScreenPercentageDriver.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
@@ -279,6 +280,13 @@ namespace
 		ViewFamily.EngineShowFlags = ShowFlags;
 		ViewFamily.SceneCaptureSource = SCS_FinalColorHDR;
 		ViewFamily.ViewMode = VMI_Lit;
+		// GameViewportClient normally installs a screen-percentage driver before
+		// submitting a view family. A manually constructed standalone family must
+		// do the same even when ScreenPercentage is disabled; the legacy driver
+		// returns a 1.0 resolution fraction for that case and satisfies the
+		// renderer's required ScreenPercentageInterface contract.
+		ViewFamily.SetScreenPercentageInterface(
+			new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
 
 		FSceneViewInitOptions ViewInitOptions;
 		ViewInitOptions.ViewFamily = &ViewFamily;
