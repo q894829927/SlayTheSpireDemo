@@ -8,7 +8,8 @@ State:
 STEP 1B.12D-A MAIN STENCIL APERTURE IDENTITY
 = REAL STENCIL WRITE/READ REACHED
 = AFTER-DOF COLOR PROOF CONTAMINATES EXPOSURE
-= POST-TONEMAP ISOLATION RETEST IMPLEMENTED / NOT YET BUILT OR RUN
+= POST-TONEMAP EXPOSURE-SAFE PROOF = PASS
+= ZERO-VISIBLE STENCIL LIFETIME RETEST STILL REQUIRED
 ```
 
 ## Why this retest exists
@@ -23,15 +24,22 @@ bit 0x40 is written for visible apertures
 real downstream CF_Equal stencil testing executes
 ```
 
-However, the second user retest still produced a nearly white / strongly clipped main image after enabling the `AfterDOF` cyan overlay. Runtime telemetry showed the overlay callback running with a rapidly changing very small main pre-exposure (roughly 0.0017 down to 0.00019). This means the visual proof itself is not exposure-neutral enough to be used as the acceptance surface.
+The original `AfterDOF` cyan overlay produced a nearly white / strongly clipped
+main image. Runtime telemetry showed that proof running in the pre-tonemap HDR
+exposure domain, so the stencil resource path was separated from visualization.
 
-The stencil resource path is therefore separated from the visualization path. The existing validator remains the stencil writer, with its debug overlay disabled. A new independent extension visualizes the already-written stencil identity only at the real `Tonemap` post-processing callback.
+The existing validator remains the stencil writer with:
 
-UE 5.8's `SubscribeToPostProcessingPass` callback is an after-pass event. Using `EPostProcessingPass::Tonemap` therefore moves the cyan proof out of the pre-tonemap HDR / eye-adaptation input domain.
+```text
+portal.StencilIdentityDebug 0
+```
+
+and this independent extension visualizes the already-written identity only at
+the real `Tonemap` post-processing callback.
 
 ## Implementation
 
-New source:
+Source:
 
 ```text
 Source/SlayTheSpireDemo/Interior/InteriorPortalStencilTonemapValidation.cpp
@@ -45,7 +53,8 @@ It does not recompute portal geometry and does not write stencil. It only:
 4. draws display-domain cyan where the stencil test passes;
 5. skips additional secondary view families.
 
-It deliberately reuses `StencilOverlayPS` with `OverlayPreExposure=1.0`, because this callback is after Tonemap and should author display-domain diagnostic color rather than pre-exposed HDR color.
+It reuses `StencilOverlayPS` with `OverlayPreExposure=1.0`, because this callback is
+after Tonemap and therefore authors display-domain diagnostic color.
 
 ## Controls
 
@@ -68,11 +77,66 @@ Report:
 Saved/AutomationReports/PortalStencilTonemapValidation.json
 ```
 
-## Validation procedure
+## Runtime acceptance evidence
 
-Close Unreal Editor and rebuild because this retest adds a new compiled source file.
+The user reran the proof with the original writer active, bit isolation enabled,
+and the legacy `AfterDOF` overlay disabled.
 
-The original stencil writer must remain active, but its exposure-contaminating `AfterDOF` debug overlay must be disabled:
+The writer repeatedly reported:
+
+```text
+VisibleApertures=1
+StencilTargetable=1
+Isolated=1
+```
+
+The Tonemap proof repeatedly reported:
+
+```text
+PortalStencilTonemapProof Tonemap ...
+PassEnabled=1
+StencilTargetable=1
+StencilBit=0x40
+SceneRect=2278x1061
+```
+
+Final Tonemap report evidence:
+
+```text
+Frames=472
+Targetable=1
+TonemapEnabled=1
+SceneRect=2278x1061
+```
+
+The user explicitly reported that this run **did not turn the scene white / blow
+out exposure**. Therefore the post-tonemap proof successfully removes the
+exposure-feedback failure of the old `AfterDOF` visualization.
+
+This establishes:
+
+```text
+main stencil identity write
+    -> stencil survives downstream
+    -> real hardware CF_Equal test at Tonemap
+    -> exposure-safe display-domain diagnostic path
+```
+
+It does **not** by itself close the whole 1B.12D-A gate because the same run also
+reached `VisibleApertures=0`, exposing a separate zero-visible lifetime concern in
+the writer. That concern is fixed in commit:
+
+```text
+3391df2b63d5bcc9ba1c90ef3afaf32e1c42de9c
+portal: clear stencil identity on zero-visible frames
+```
+
+A final retest must prove that zero-visible frames continue to run the isolate
+clear and do not leave stale / ghost cyan identity.
+
+## Final zero-visible retest
+
+Keep the original writer active with:
 
 ```text
 portal.StencilIdentityIsolateBit 1
@@ -81,37 +145,26 @@ portal.StencilIdentityDebug 0
 portal.StartStencilIdentityValidation
 ```
 
-Wait until the original validator reports:
-
-```text
-PortalStencilIdentity BeforeDOF ... VisibleApertures=1 ... StencilTargetable=1 ... Isolated=1
-```
-
-Then start the new post-tonemap proof:
+Start this Tonemap proof:
 
 ```text
 portal.StencilIdentityTonemapDiagnostics 1
 portal.StartStencilIdentityTonemapValidation
 ```
 
-Expected periodic evidence:
+Face a portal, then move/turn until no portal is visible. Required writer evidence:
 
 ```text
-PortalStencilTonemapProof Tonemap ... PassEnabled=1 ... StencilTargetable=1 StencilBit=0x40
+PortalStencilIdentity BeforeDOF ...
+VisibleApertures=0
+Isolated=1
+ZeroVisibleClear=1
+ZeroVisibleClears=N
 ```
 
-Expected visual result:
-
-```text
-normal scene exposure remains stable
-visible portal aperture = solid cyan
-unrelated wall/floor/weapon/HUD = not cyan
-cyan follows oblique/projective aperture while moving
-```
-
-If the post-tonemap proof is confined to the portal while the rest of the scene remains normally exposed, then 1B.12D-A may be accepted as a bounded main-stencil aperture-identity feasibility proof.
-
-If the post-tonemap proof still covers unrelated scene regions while bit isolation is active, the failure is a real stencil marking/test problem rather than an exposure-domain artifact and must be fixed before production promotion.
+`ZeroVisibleClears` must continue increasing while no portal is visible. The
+post-tonemap proof must show no stale / ghost cyan during that interval. Turning
+back toward the portal must restore current aperture identity normally.
 
 Finish with:
 
@@ -124,4 +177,9 @@ portal.StopStencilIdentityValidation
 
 ## Claim boundary
 
-A PASS proves only that the project can create an isolated aperture identity in current main stencil and verify it with a real hardware stencil test downstream of Tonemap. It still does not reserve `0x40` engine-wide, make normal portal composition stencil-gated, rebuild HZB, integrate SSR/Lumen screen traces, accept recursion, or accept production performance.
+The post-tonemap proof PASS establishes only that the project can read the already
+written main-stencil identity with a real hardware test downstream of Tonemap
+without feeding main exposure. It does not reserve `0x40` engine-wide, make normal
+portal composition stencil-gated, rebuild HZB, integrate SSR/Lumen screen traces,
+accept recursion, or accept production performance. Full 1B.12D-A acceptance still
+requires the zero-visible lifetime retest documented above.
