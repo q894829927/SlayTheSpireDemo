@@ -25,6 +25,9 @@ portal: fix primitive id access in full view spike
 
 7f08c23429dba76158bc3749e349010095ffdd18
 portal: load renderer module explicitly for full view spike
+
+6d16b7e29f6e512ab8afb1ee58755188d04eb8ce
+portal: install screen percentage driver for full view spike
 ```
 
 Validation state:
@@ -35,8 +38,10 @@ REAL BUILD ATTEMPT 1: FAILED AT HiddenPrimitives COMPONENT ID ACCESS
 FIXED IN 9eda3aa84a487b3037aa74aaf2d156bfaede50db
 REAL BUILD ATTEMPT 2: FAILED BECAUSE GetRendererModule() IS NOT A DECLARED SYMBOL
 FIXED IN 7f08c23429dba76158bc3749e349010095ffdd18
-BUILD RERUN REQUIRED
-SPIKE NOT YET RUN
+REAL BUILD ATTEMPT 3: BUILD PASSED FAR ENOUGH TO RUN THE COMMAND
+RUNTIME ATTEMPT 1: ASSERTED IN SceneRendering.cpp BECAUSE ScreenPercentageInterface WAS NULL
+FIXED IN 6d16b7e29f6e512ab8afb1ee58755188d04eb8ce
+BUILD + RUNTIME RERUN REQUIRED
 NO VISUAL PASS CLAIMED
 ```
 
@@ -86,20 +91,48 @@ RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 module lookup; it does not change the transformed view, clipping plane,
 `FSceneViewFamily`, render target, readback or renderer-feasibility claim.
 
-The earlier static audit confirmed that the UE 5.8 public API documents the
-principal interfaces used by the spike. The installed UE 5.8 build remains the
-authority for exact symbols and signatures, so compilation is being advanced
-one real error at a time rather than changing renderer architecture speculatively.
+## Runtime correction 1 — required screen-percentage interface
+
+The first command execution reached the renderer and then asserted:
+
+```text
+Assertion failed: InViewFamily->ScreenPercentageInterface
+SceneRendering.cpp:3046
+```
+
+The standalone `FSceneViewFamilyContext` was constructed directly and therefore
+never passed through the normal `UGameViewportClient` setup that installs an
+`ISceneViewFamilyScreenPercentage` implementation. Turning the
+`ScreenPercentage` show flag off is not sufficient; the UE 5.8 renderer still
+requires a non-null interface before `BeginRenderingViewFamily` proceeds.
+
+The spike now includes `LegacyScreenPercentageDriver.h` and installs the default
+engine implementation explicitly:
+
+```cpp
+ViewFamily.SetScreenPercentageInterface(
+    new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
+```
+
+The spike continues to set `ShowFlags.SetScreenPercentage(false)`. With the
+legacy driver present, that means the resolution fraction remains 1.0 while the
+renderer contract is satisfied. This is a view-family setup correction only; it
+does not alter the portal transform, global clip plane, Lit view mode, target
+format or renderer-feasibility claim.
+
+The installed UE 5.8 build remains the authority for exact symbols, runtime
+assertions and renderer contracts. Validation is being advanced one real failure
+at a time rather than changing renderer architecture speculatively.
 
 Required next action:
 
-1. Pull commit `7f08c23429dba76158bc3749e349010095ffdd18` or later.
+1. Pull commit `6d16b7e29f6e512ab8afb1ee58755188d04eb8ce` or later.
 2. Compile `SlayTheSpireDemoEditor Win64 Development` again.
-3. If another compiler error appears, capture the first relevant error block.
-4. If the build passes, run `/Game/House/L_Interior_LivingKitchen` in PIE/Game.
-5. Place/link both portals and face one visible aperture.
-6. Execute `portal.RunFullViewFamilySpike`.
-7. Inspect:
+3. Run `/Game/House/L_Interior_LivingKitchen` in PIE/Game.
+4. Place/link both portals and face one visible aperture.
+5. Execute `portal.RunFullViewFamilySpike`.
+6. If another assertion/crash occurs, capture the assertion text and top of stack.
+7. If it succeeds, inspect:
 
 ```text
 Saved/AutomationReports/PortalFullViewFamilySpike.png
@@ -108,7 +141,7 @@ Saved/AutomationReports/PortalFullViewFamilySpike.json
 ```
 
 A visibly lit transformed image advances the work to integration with the
-existing pre-tonemap aperture composition boundary. Compile/API failure or a
-black output must be recorded before escalating to the renderer-private hook.
+existing pre-tonemap aperture composition boundary. Another runtime renderer
+contract failure must be recorded before escalating to the renderer-private hook.
 
 See `docs/InteriorPortalFullViewFamilySpike.md` for the complete claim boundary.
