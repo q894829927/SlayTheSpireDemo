@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalProjectiveAperture.h"
 #include "Math/RotationMatrix.h"
 #include "Rendering/CustomRenderPass.h"
 #include "SceneInterface.h"
@@ -37,6 +38,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	FMatrix ViewRotationMatrix = FMatrix::Identity;
 	FMatrix ProjectionMatrix = FMatrix::Identity;
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
+	/** Exact inverse planar projection for the authored elliptical aperture. */
+	InteriorPortalProjectiveAperture::FScreenToPortalMapping ProjectiveAperture;
 	FIntRect ViewRect;
 	FIntRect ScissorRect;
 	FPlane ExitClipPlane = FPlane(FVector::ForwardVector, 0.0f);
@@ -121,6 +124,12 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 			OutRequest.bExitClipEncodedInProjection = true;
 		}
 		OutRequest.ProjectedBounds = Bounds;
+		// The conservative bounds remain the culling/scissor contract. Composition
+		// itself uses the exact planar inverse homography when it is non-singular,
+		// so an oblique portal no longer becomes an axis-aligned ellipse in its box.
+		InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
+			InEntryFrame, HalfWidth, HalfHeight, PortalViewProjection,
+			OutRequest.ProjectiveAperture);
 		OutRequest.ViewRect = InViewRect;
 		OutRequest.ScissorRect = ScissorRect;
 		OutRequest.ExitClipPlane = ExitClipPlane;
