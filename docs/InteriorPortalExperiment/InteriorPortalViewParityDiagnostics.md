@@ -1,4 +1,4 @@
-# Interior Portal — STEP 1B.14B Main-vs-Secondary View Diagnostics
+# Interior Portal — STEP 1B.14B/1B.14C View/Exposure Parity Diagnostics
 
 Date: **2026-09-16**
 
@@ -6,23 +6,21 @@ State:
 
 ```text
 STEP 1B.14B MAIN-VS-SECONDARY VIEW DIAGNOSTICS
-= RUNTIME CLASSIFIED
-= GLOBAL PRE-EXPOSURE OVERRIDE DOES NOT FIX THE SECONDARY
-= NEXT: CONTROLLED SECONDARY EYE-ADAPTATION A/B
+= PASS / ROOT-CAUSE CLASSIFIED
+
+STEP 1B.14C SECONDARY EYE ADAPTATION A/B
+= PASS / EYE ADAPTATION REQUIRED FOR VISUAL PARITY
 ```
 
-## Why this gate exists
+## Why these gates exist
 
-STEP 1B.14A classified the remaining one-layer visual mismatch as **Outcome B**:
-the full-screen transformed secondary reference is already too dark even when
-portal-only aperture, stencil, bounded main-pass scissor, main depth propagation,
-depth-aware composition and secondary depth remap are disabled.
+STEP 1B.14A proved the remaining single-layer visual mismatch is upstream of portal-only aperture/stencil/depth/scissor composition: the transformed secondary full-screen reference itself was too dark.
 
-Therefore the remaining mismatch is upstream of portal composition.
+The next gates therefore compared the real main-view exposure state against the manually constructed additional `FSceneViewFamily`, then A/B tested the secondary view's EyeAdaptation policy directly.
 
-## Runtime evidence
+## 1B.14B runtime evidence
 
-The real main-view Tonemap callback stabilized at approximately:
+The real main-view Tonemap callback stabilized approximately at:
 
 ```text
 Main PreExposure ~= 0.00173 .. 0.00176
@@ -34,132 +32,124 @@ Reflection = Lumen
 IndirectLightingIntensity = 1
 ```
 
-The saved report recorded:
+The secondary producer policy at that point was:
 
 ```text
-mainTonemapFrames = 1324
-secondaryTonemapFramesObservedByDiagnosticExtension = 0
-main.preExposure = 0.00173180806
-secondaryProducerPolicy.eyeAdaptation = false
-secondaryProducerPolicy.measuredPreExposureCVar = 1
-preExposureRebaseEnabled = true
-mainToSecondaryPreExposureScale = 0.00173180806
+EyeAdaptation = false
+Secondary PreExposure = 1
+MotionBlur = false
+DepthOfField = false
+TemporalAA = true
+ScreenPercentage = true
+Dynamic GI = forced Lumen
+Reflection = forced Lumen
 ```
 
-The existing RGB rebase correctly converts the numeric pre-exposure domains, but
-that alone does not prove renderer-internal Lumen / lighting-cache / temporal-history
-behavior was produced under an equivalent exposure policy.
-
-## Cached-lighting pre-exposure A/B
-
-A fixed-camera comparison changed:
+Two preliminary A/B tests were rejected as primary fixes:
 
 ```text
 r.EyeAdaptation.CachedLightingPreExposure 4 -> 8
 ```
 
-Result: no material improvement in the dark secondary view. Do not promote `8` as a
-project workaround from this experiment.
-
-## Global pre-exposure override A/B
-
-A second fixed-camera comparison changed:
+produced almost no meaningful visual improvement, and
 
 ```text
 r.EyeAdaptation.PreExposureOverride 0 -> 1
 ```
 
-Observed result:
+only darkened the main scene globally; it did not repair the secondary renderer.
+
+Therefore the mismatch was not accepted as a simple cached-lighting range problem or a simple final RGB pre-exposure conversion error.
+
+## 1B.14C implementation
+
+Source:
 
 ```text
-Override=0:
-  main view is normally exposed
-  portal secondary remains substantially too dark
-
-Override=1:
-  the whole main scene becomes dramatically darker
-  portal secondary remains comparably dark
+Source/SlayTheSpireDemo/Interior/InteriorPortalSecondaryEyeAdaptationSpike.cpp
 ```
 
-The apparent relative similarity under override 1 comes from darkening the real main
-view, not from repairing the secondary renderer. Therefore the remaining visual defect
-is not fixed by forcing the global pre-exposure domain and `PreExposureOverride=1`
-must not be used as a production workaround.
-
-## Current highest-confidence candidate
-
-The largest deliberate producer-side divergence now remaining is:
-
-```text
-Main view:
-  normal game EyeAdaptation / exposure ownership
-
-Secondary additional view family:
-  ShowFlags.SetEyeAdaptation(false)
-  persistent independent ViewState
-  Lumen GI / reflections
-  TSR
-  post-TSR pre-tonemap extraction
-```
-
-A post-hoc `MainPreExposure / SecondaryPreExposure` RGB multiply cannot guarantee
-that exposure-dependent renderer histories or Lumen/cached-lighting state were
-produced under equivalent conditions.
-
-## Next gate — controlled secondary EyeAdaptation A/B
-
-Modify the full-view TSR producer to expose:
+Controls:
 
 ```text
 portal.SecondaryEyeAdaptation 0/1
+portal.SecondaryEyeAdaptationDiagnostics 1
+portal.StartSecondaryEyeAdaptationSpike
+portal.DumpSecondaryEyeAdaptationSpike
+portal.StopSecondaryEyeAdaptationSpike
 ```
 
-and replace the hard-coded:
+The A/B changes only the secondary additional-family EyeAdaptation policy while preserving the transformed full `FSceneViewFamily`, persistent secondary `FSceneViewState`, TSR, Lumen GI/reflection, clip plane, post-TSR/pre-tonemap HDR extraction and pre-exposure rebase.
 
-```cpp
-ShowFlags.SetEyeAdaptation(false);
-```
+## 1B.14C runtime evidence — 2026-09-16
 
-with the controlled value. Also record directly from the secondary Tonemap extraction
-callback:
+### Policy 0 — legacy secondary EyeAdaptation off
+
+Observed over hundreds of frames:
 
 ```text
-Secondary PreExposure
-Secondary AutoExposureMethod
-Secondary DynamicGI
-Secondary Reflection
+Policy=0
+PreExposure=1
+AutoExposureMethod=0
+AA=4
+DynamicGI=1
+Reflection=1
+IndirectLightingIntensity=1
 ```
 
-This direct callback is authoritative because it is already explicitly attached to
-the manually constructed additional view family.
+The full-screen transformed secondary reference remained severely underexposed / nearly black.
 
-A/B procedure:
+### Policy 1 — secondary EyeAdaptation on
+
+Observed:
 
 ```text
-0 = current baseline
-1 = secondary participates in normal EyeAdaptation/exposure ownership
+Policy=1
+Frame 1:   PreExposure=1
+Frame 60:  PreExposure=0.00139418803
+Frame 120: PreExposure=0.00138348085
+Frame 180: PreExposure=0.00138009491
+Frame 240: PreExposure=0.00137879699
+Frame 300: PreExposure=0.00137867441
+Frame 360: PreExposure=0.00137837441
+Frame 420: PreExposure=0.00137848745
+Frame 480: PreExposure=0.00137784705
+AutoExposureMethod=0
+AA=4
+DynamicGI=1
+Reflection=1
+IndirectLightingIntensity=1
 ```
 
-If `1` materially restores the secondary lighting/GI while retaining TSR stability,
-make it the production direction and rerun the full-screen visual parity reference.
-If it does not, move next to additional-view-family / Lumen lighting-history ownership.
+The secondary view brightened dramatically and visually returned to the expected lit scene instead of the legacy near-black result.
 
-## Do not do
+This is decisive evidence that the remaining dark-portal mismatch is caused primarily by the manually constructed secondary view running with EyeAdaptation disabled / pre-exposure fixed at 1, not by portal aperture, stencil, depth propagation, main-pass scissor, cached-lighting range, or final composition gain.
 
-Do not use arbitrary brightness, gamma, exposure compensation, portal-local gain,
-`r.EyeAdaptation.CachedLightingPreExposure=8`, or
-`r.EyeAdaptation.PreExposureOverride=1` as a production fix.
+The exact secondary pre-exposure does not have to equal the main-view value because the transformed virtual camera can legitimately observe a different luminance distribution. The accepted requirement is that the secondary view owns a valid exposure history and the existing main/secondary pre-exposure rebase converts between domains during composition.
 
-## Cleanup
+## Next gate
+
+Promote the successful exposure policy into the real `InteriorPortalFullViewFamilyTSRSpike.cpp` producer:
 
 ```text
-r.EyeAdaptation.PreExposureOverride 0
-r.EyeAdaptation.CachedLightingPreExposure 4
-portal.StopViewParityDiagnostics
+Secondary EyeAdaptation = enabled
+persistent SecondaryViewState continues to own exposure history
+post-TSR/pre-tonemap extraction remains unchanged
+portal.SecondaryPreExposure continues to use measured secondary pre-exposure
+existing RGB rebase remains enabled
 ```
+
+Before declaring final visual parity, run one normal-aperture integration check with the successful policy (not the full-screen reference):
+
+```text
+1. Keep SecondaryEyeAdaptation=1 spike running.
+2. Stop portal.StartVisualParityReference.
+3. Observe the normal portal aperture at the same camera.
+4. Compare interior brightness/GI/material response against the directly viewed destination scene.
+```
+
+If that matches, integrate the policy into the accepted production TSR producer and perform a final static + motion parity validation.
 
 ## Acceptance boundary
 
-This diagnostic stage has completed its classification purpose, but single-layer
-visual parity is still **NOT PASS**. The next implementation gate is the controlled
-secondary EyeAdaptation A/B.
+`1B.14C` proves the core exposure ownership defect. It does not yet claim the production TSR producer has been updated, and it does not yet claim final static/motion visual parity. No arbitrary brightness, gamma, exposure compensation, or portal-local gain should be introduced.
