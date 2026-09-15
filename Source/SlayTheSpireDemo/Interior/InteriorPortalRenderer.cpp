@@ -3,6 +3,7 @@
 #include "HAL/IConsoleManager.h"
 #include "RenderGraphBuilder.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
+#include "SceneRenderTargetParameters.h"
 #include "ScreenPass.h"
 #include "UnrealClient.h"
 
@@ -17,7 +18,7 @@ namespace
 	TAutoConsoleVariable<int32> CVarPortalCompositionDebugMode(
 		TEXT("portal.CompositionDebugMode"),
 		0,
-		TEXT("STEP 1B.3 composition diagnostic. 0=normal SceneColor CRP, 1=solid magenta aperture, 2=full-screen magenta, 3=BaseColor CRP sampled through aperture."),
+		TEXT("Portal composition diagnostic. 0=normal, 1=solid magenta aperture, 2=full-screen magenta, 3=BaseColor CRP, 4=STEP 1B.12A main-depth visibility (green=open, red=foreground occluded)."),
 		ECVF_RenderThreadSafe);
 
 	TAutoConsoleVariable<int32> CVarPortalPreExposureRebase(
@@ -36,6 +37,18 @@ namespace
 		TEXT("portal.ProjectiveAperture"),
 		1,
 		TEXT("STEP 1B.11A aperture hardening. 1=map main-view pixels back to the portal plane with the exact inverse homography; 0=retained axis-aligned bounds-ellipse comparison path."),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarPortalDepthAwareComposition(
+		TEXT("portal.DepthAwareComposition"),
+		0,
+		TEXT("STEP 1B.12A bounded depth-continuity spike. 1=preserve main SceneColor where main SceneDepth is in front of the physical entry portal plane; 0=retained RGB-only composition."),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<float> CVarPortalDepthOcclusionEpsilonCm(
+		TEXT("portal.DepthOcclusionEpsilonCm"),
+		2.0f,
+		TEXT("STEP 1B.12A world-space depth comparison tolerance in cm. This is a coplanar host-wall/rim tolerance, not an artistic portal-depth offset."),
 		ECVF_RenderThreadSafe);
 
 	bool PortalCompositionDiagnosticsEnabled()
@@ -58,14 +71,18 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PortalTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PortalSampler)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
 		SHADER_PARAMETER(FVector4f, PortalBounds)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow0)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
+		SHADER_PARAMETER(FVector4f, PortalClipZRow)
 		SHADER_PARAMETER(float, ProjectiveApertureEnabled)
 		SHADER_PARAMETER(float, ProjectiveNearClipW)
+		SHADER_PARAMETER(float, DepthAwareCompositionEnabled)
+		SHADER_PARAMETER(float, DepthOcclusionEpsilonCm)
 		SHADER_PARAMETER(float, CompositionDebugMode)
 		SHADER_PARAMETER(float, PortalExposureScale)
 		RENDER_TARGET_BINDING_SLOTS()
@@ -324,11 +341,17 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const bool bUseProjectiveAperture =
 		CVarPortalProjectiveAperture.GetValueOnRenderThread() != 0
 		&& Request.ProjectiveAperture.bValid;
+	const bool bDepthAwareRequested =
+		CVarPortalDepthAwareComposition.GetValueOnRenderThread() != 0
+		|| (CompositionDebugMode >= 4 && CompositionDebugMode < 5);
+	const bool bUseDepthAwareComposition = bDepthAwareRequested && bUseProjectiveAperture;
+	const float DepthOcclusionEpsilonCm = FMath::Max(
+		CVarPortalDepthOcclusionEpsilonCm.GetValueOnRenderThread(), 0.0f);
 
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClipW=%.9g NearClip=%d Crossing=%d ViewportClip=%d"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClipW=%.9g NearClip=%d Crossing=%d ViewportClip=%d DepthAware=%d DepthRequested=%d DepthEpsilonCm=%.4f"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
@@ -345,7 +368,10 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			Request.ProjectiveNearClipW,
 			Request.ProjectedBounds.bIntersectsNearClip ? 1 : 0,
 			Request.ProjectedBounds.bCameraCrossing ? 1 : 0,
-			Request.ProjectedBounds.bClippedToViewport ? 1 : 0);
+			Request.ProjectedBounds.bClippedToViewport ? 1 : 0,
+			bUseDepthAwareComposition ? 1 : 0,
+			bDepthAwareRequested ? 1 : 0,
+			DepthOcclusionEpsilonCm);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -356,6 +382,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalTexture = PortalTexture;
 	PassParameters->PortalSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+	PassParameters->SceneTextures = CreateSceneTextureShaderParameters(
+		GraphBuilder, InView, ESceneTextureSetupMode::SceneDepth);
 	PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	PassParameters->Portal = GetScreenPassTextureViewportParameters(PortalViewport);
 	PassParameters->PortalBounds = FVector4f(
@@ -364,8 +392,11 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->ScreenToPortalRow0 = Request.ProjectiveAperture.Row0;
 	PassParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
 	PassParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
+	PassParameters->PortalClipZRow = Request.ProjectiveAperture.ClipZRow;
 	PassParameters->ProjectiveApertureEnabled = bUseProjectiveAperture ? 1.0f : 0.0f;
 	PassParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
+	PassParameters->DepthAwareCompositionEnabled = bUseDepthAwareComposition ? 1.0f : 0.0f;
+	PassParameters->DepthOcclusionEpsilonCm = DepthOcclusionEpsilonCm;
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->PortalExposureScale = PortalExposureScale;
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
