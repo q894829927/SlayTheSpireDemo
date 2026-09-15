@@ -5,6 +5,15 @@ SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 float4 ScreenToPortalRow0;
 float4 ScreenToPortalRow1;
 float4 ScreenToPortalRow2;
+float OverlayPreExposure;
+
+// STEP 1B.12D-A isolation pass. Color/depth are untouched; the C++
+// depth-stencil state clears only the bounded feasibility bit (0x40).
+void ClearStencilPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION)
+{
+}
 
 // STEP 1B.12D-A: rasterize the exact projective portal aperture into main
 // stencil. Color/depth are untouched; the C++ depth-stencil state performs the
@@ -34,13 +43,15 @@ void MarkAperturePS(
 	}
 }
 
-// STEP 1B.12D-A verification overlay. The shader itself is deliberately dumb:
-// the C++ pipeline uses a real stencil CF_Equal test. Therefore every cyan pixel
-// is evidence that the selected main-stencil bit actually survived and matched.
+// STEP 1B.12D-A verification overlay. The shader itself deliberately does not
+// recompute the aperture. The C++ pipeline uses a real stencil CF_Equal test.
+// AfterDOF SceneColor is still in the main pre-exposed HDR domain, so emit the
+// diagnostic cyan scaled by main pre-exposure instead of raw 1.0 HDR energy.
 void StencilOverlayPS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
 	float4 SvPosition : SV_POSITION,
 	out float4 OutColor : SV_Target0)
 {
-	OutColor = float4(0.0, 1.0, 1.0, 1.0);
+	const float P = max(OverlayPreExposure, 1.0e-6);
+	OutColor = float4(0.0, P, P, 1.0);
 }
