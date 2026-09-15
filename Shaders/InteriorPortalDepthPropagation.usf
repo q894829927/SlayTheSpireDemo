@@ -1,0 +1,105 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
+Texture2D MainSceneDepthTexture;
+Texture2D SecondaryDepthTexture;
+SamplerState SecondaryDepthSampler;
+
+SCREEN_PASS_TEXTURE_VIEWPORT(Output)
+SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
+float4 PortalBounds;
+float4 ScreenToPortalRow0;
+float4 ScreenToPortalRow1;
+float4 ScreenToPortalRow2;
+float4 PortalClipZRow;
+float ProjectiveNearClipW;
+float DepthOcclusionEpsilonCm;
+
+void BuildCandidatePS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float OutCandidateDepth : SV_Target0)
+{
+	OutCandidateDepth = 0.0;
+
+	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
+	const float BoundsMask =
+		step(PortalBounds.x, ViewportUV.x)
+		* step(PortalBounds.y, ViewportUV.y)
+		* step(ViewportUV.x, PortalBounds.z)
+		* step(ViewportUV.y, PortalBounds.w);
+	if (BoundsMask < 0.5)
+	{
+		return;
+	}
+
+	const float3 ScreenPoint = float3(ViewportUV, 1.0);
+	const float3 PortalHomogeneous = float3(
+		dot(ScreenToPortalRow0.xyz, ScreenPoint),
+		dot(ScreenToPortalRow1.xyz, ScreenPoint),
+		dot(ScreenToPortalRow2.xyz, ScreenPoint));
+	if (PortalHomogeneous.z <= 1.0e-8)
+	{
+		return;
+	}
+
+	const float ClipW = rcp(PortalHomogeneous.z);
+	if (ProjectiveNearClipW > 0.0 && ClipW < ProjectiveNearClipW)
+	{
+		return;
+	}
+
+	const float2 PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
+	if (dot(PortalLocal, PortalLocal) > 1.0)
+	{
+		return;
+	}
+
+	const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+	const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+	const int2 ScenePixel = int2(SvPosition.xy);
+	const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+	const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
+	const float EpsilonCm = max(DepthOcclusionEpsilonCm, 0.0);
+
+	// Preserve real main-view foreground geometry exactly as accepted in 1B.12A.
+	if (MainDepthCm + EpsilonCm < PortalPlaneDepthCm)
+	{
+		return;
+	}
+
+	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
+	const float SecondaryDeviceZ = Texture2DSampleLevel(
+		SecondaryDepthTexture, SecondaryDepthSampler, PortalUV, 0.0).r;
+	if (!(SecondaryDeviceZ > 1.0e-7 && SecondaryDeviceZ <= 1.0001))
+	{
+		return;
+	}
+
+	const float SecondaryDepthCm = ConvertFromDeviceZ(saturate(SecondaryDeviceZ));
+	if (SecondaryDepthCm + EpsilonCm < PortalPlaneDepthCm)
+	{
+		return;
+	}
+
+	// STEP 1B.12B established that the rigid portal transform plus identical
+	// projection makes secondary device Z the exact conceptual main-view device Z.
+	OutCandidateDepth = saturate(SecondaryDeviceZ);
+}
+
+Texture2D PropagatedDepthTexture;
+SCREEN_PASS_TEXTURE_VIEWPORT(DepthOutput)
+
+void WriteDepthPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float OutDepth : SV_Depth)
+{
+	const int2 Pixel = int2(SvPosition.xy);
+	const float CandidateDepth = PropagatedDepthTexture.Load(int3(Pixel, 0)).r;
+	if (!(CandidateDepth > 1.0e-7 && CandidateDepth <= 1.0001))
+	{
+		discard;
+	}
+	OutDepth = saturate(CandidateDepth);
+}
