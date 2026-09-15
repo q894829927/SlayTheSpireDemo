@@ -2,6 +2,7 @@
 #include "GlobalShader.h"
 #include "HAL/IConsoleManager.h"
 #include "RenderGraphBuilder.h"
+#include "RenderGraphUtils.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
 #include "RHIStaticStates.h"
 #include "SceneRenderTargetParameters.h"
@@ -504,6 +505,16 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		&& bMainSceneDepthValid
 		&& bSecondaryDepthTextureValid
 		&& bMainDepthTargetable;
+	const bool bStencilOutputPrefill =
+		bUseStencilComposition && Output.Texture != SceneColor.Texture;
+	if (bStencilOutputPrefill)
+	{
+		// CreateFromInput allocates an output matching SceneColor; it does not copy
+		// the input pixels. A hardware stencil test makes the composition draw sparse,
+		// so rejected pixels would otherwise keep undefined HDR data. Prefill the
+		// output explicitly so stencil-rejected pixels preserve the exact main color.
+		AddCopyTexturePass(GraphBuilder, SceneColor.Texture, Output.Texture);
+	}
 
 	FRDGTextureRef PropagatedDepthCandidateTexture = nullptr;
 	if (bUseMainDepthPropagation)
@@ -702,7 +713,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			PropagatedDepthCandidateTexture ? PropagatedDepthCandidateTexture->Desc.Extent.Y : 0,
 			DepthOcclusionEpsilonCm);
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x PipelineStencilRef=0x%02x BypassShaderAperture=%d ProofMode=%s"),
+			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x PipelineStencilRef=0x%02x BypassShaderAperture=%d ProofMode=%s OutputPrefilled=%d"),
 			GFrameCounter,
 			bStencilCompositionRequested ? 1 : 0,
 			bUseStencilComposition ? 1 : 0,
@@ -711,7 +722,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			PortalCompositionStencilBit,
 			bUseStencilComposition ? PortalCompositionStencilBit : 0,
 			bBypassShaderAperture ? 1 : 0,
-			bBypassShaderAperture ? TEXT("SafeMainColorTint") : TEXT("NormalPortalRGB"));
+			bBypassShaderAperture ? TEXT("SafeMainColorTint") : TEXT("NormalPortalRGB"),
+			bStencilOutputPrefill ? 1 : 0);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
