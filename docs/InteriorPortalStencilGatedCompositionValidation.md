@@ -6,9 +6,12 @@ State:
 
 ```text
 STEP 1B.12D-B SAME-BEFOREDOF STENCIL-GATED NORMAL COMPOSITION
-= FIRST RUNTIME REACHED
-= BYPASS PROOF FAILED WITH ONE-SIDED STENCIL STATE
-= TWO-SIDED STENCIL FIX IMPLEMENTED / RETEST REQUIRED
+= RUNTIME REACHED
+= BYPASS PROOF STILL FAILS
+= TWO-SIDED STENCIL STATE IMPLEMENTED
+= EXPLICIT SCREEN-PASS STENCIL REF IMPLEMENTED
+= EXPOSURE-SAFE PROOF MODE IMPLEMENTED
+= RETEST REQUIRED
 ```
 
 ## Goal
@@ -49,49 +52,25 @@ The bounded feasibility bit remains:
 
 This is still validation ownership only, not a permanent engine-wide reservation.
 
-When `portal.StencilGatedComposition=1`, the normal compositor does the following
-inside the same `BeforeDOF` callback:
+When `portal.StencilGatedComposition=1`, the normal compositor performs in one
+`BeforeDOF` callback:
 
 ```text
 1. obtain current main SceneDepth
 2. require PF_DepthStencil + DepthStencilTargetable
 3. clear only stencil bit 0x40 across the active main view
-4. rasterize the current request's exact projective ellipse into 0x40
-   - same inverse planar homography
-   - same near-plane ClipW rejection
+4. rasterize the exact projective portal ellipse into 0x40
 5. preserve the accepted main-depth propagation path
-6. bind the same SceneDepth as stencil read for normal portal color composition
-7. submit normal portal RGB with hardware CF_Equal, read mask 0x40, ref 0x40
+6. bind the same SceneDepth as stencil read for normal composition
+7. draw with hardware CF_Equal, read mask 0x40, ref 0x40
 ```
 
-Normal mode still keeps the shader aperture mask for its soft edge and existing
-projective/depth logic. The hardware stencil therefore acts as an additional hard
-outer gate.
+Normal mode keeps the accepted shader aperture mask for its soft edge and depth
+logic. The stencil path is an additional hard outer gate.
 
-## Decisive proof switch
+## Runtime failure evidence
 
-`portal.StencilCompositionBypassShaderAperture=1` is effective only while the
-hardware stencil composition gate is active.
-
-It deliberately changes the composition shader's aperture mask to full coverage:
-
-```text
-ApertureMask = 1
-```
-
-but does not disable projective intersection/depth calculations. Therefore:
-
-```text
-if hardware stencil is NOT working:
-    portal RGB tends toward full-screen composition
-
-if hardware stencil IS working:
-    portal RGB remains confined to the exact stencil-marked portal aperture
-```
-
-## First runtime result
-
-The first user run reached the intended code path and repeatedly reported:
+The user repeatedly reached:
 
 ```text
 Requested=1
@@ -99,58 +78,120 @@ Active=1
 StencilTargetable=1
 Format=11
 StencilBit=0x40
-BypassShaderAperture=1
 MainDepthPropagation=1
 ```
 
-However, with the shader aperture deliberately bypassed, the main image became
-strongly full-screen / overexposed instead of remaining portal-shaped. This is a
-valid **FAIL** for the hardware-gate proof: the normal composition draw was not
-actually being confined by the expected stencil comparison.
+but enabling the bypass proof still produced large full-screen / corrupted-looking
+HDR changes instead of a portal-confined result.
 
-The main render target/depth-stencil binding and `StencilRef=0x40` were already
-present, so the next issue was narrowed to the depth-stencil face state used by
-`AddDrawScreenPass`.
+The second run after enabling both front and back stencil faces still failed. This
+means the one-sided state was a valid hardening change but was **not sufficient**
+to close the gate.
 
-## Root-cause hardening
+The strange white / pink / neon-green presentation is not treated as source-asset
+corruption. The old bypass proof disabled the shader aperture and then sampled the
+secondary HDR portal texture across the full screen. If the hardware stencil test
+did not confine that draw, arbitrary portal HDR values changed the main luminance
+histogram and drove Eye Adaptation / PreExposure to extreme values. The visual
+explosion was therefore a consequence of the intentionally unsafe proof surface,
+not a valid normal portal presentation.
 
-UE 5.8 `TStaticDepthStencilState` carries independent front-face and back-face
-stencil enable/test/op fields. The initial proof enabled stencil only for the
-front face while leaving back-face stencil disabled.
+## Hardening after the second failure
 
-A screen-pass triangle/quad must not depend on a particular winding for stencil
-correctness. Therefore commit:
+### 1. Explicit `FScreenPassPipelineState::StencilRef`
+
+The previous code relied on `RHICmdList.SetStencilRef(...)` inside the screen-pass
+setup lambda while the `FScreenPassPipelineState` itself retained its default
+stencil reference.
+
+The hardened path now encodes the reference directly in every relevant screen-pass
+pipeline state:
+
+```text
+clear pipeline ref = 0x00
+mark pipeline ref  = 0x40
+test pipeline ref  = 0x40
+```
+
+The dynamic `SetStencilRef` calls remain as redundant guards. Diagnostics now print:
+
+```text
+PipelineStencilRef=0x40
+```
+
+for the active composition gate.
+
+Source commit:
+
+```text
+0169f42be9d05f416b54326d41f0d9b5008899cb
+portal: harden screen-pass stencil refs
+```
+
+### 2. Exposure-safe bypass proof
+
+The old proof did this:
+
+```text
+ApertureMask = 1
+sample portal HDR across the full screen
+```
+
+That made a failed stencil test catastrophically perturb Eye Adaptation.
+
+The new proof does **not** sample the portal texture or secondary depth at all. It
+uses the same full-screen composition draw and the same hardware stencil state,
+but emits a bounded cyan tint derived from the already-pre-exposed main SceneColor:
+
+```text
+SafeProof = MainColor * (0.25, 1.0, 1.0)
+```
+
+Therefore:
+
+```text
+if stencil works:
+    only the portal aperture becomes cyan-tinted
+
+if stencil fails:
+    the whole screen becomes cyan-tinted
+```
+
+Either outcome is obvious, but neither path feeds arbitrary portal HDR energy into
+Eye Adaptation.
+
+Shader commit:
+
+```text
+ca00c2231b6d0d7f04c4b9630a8600e067fb8b8b
+portal: make stencil bypass proof exposure-safe
+```
+
+## Existing two-sided hardening
+
+Commit:
 
 ```text
 829b2cac4afc643d7e8c58dd9fbecd0e9c6cfef5
 portal: make stencil composition state two-sided
 ```
 
-changes all three same-BeforeDOF stencil states to explicit two-sided behavior:
+keeps all three stencil states independent of screen-pass winding:
 
 ```text
-clear:
-    front = enabled, ALWAYS, REPLACE
-    back  = enabled, ALWAYS, REPLACE
-
-mark:
-    front = enabled, ALWAYS, REPLACE
-    back  = enabled, ALWAYS, REPLACE
-
-test:
-    front = enabled, EQUAL, KEEP
-    back  = enabled, EQUAL, KEEP
+clear: front/back = ALWAYS + REPLACE
+mark:  front/back = ALWAYS + REPLACE
+test:  front/back = EQUAL + KEEP
 ```
 
-Masks remain bounded to bit `0x40`; the test path still uses write mask `0x00`.
+Masks remain bounded to `0x40`; the composition test uses write mask `0x00`.
 
 ## Important isolation rule
 
-Do not run the old standalone stencil validators during this test. They also
-manipulate/read bit `0x40`, and their ordering relative to the normal compositor is
-not the contract being tested.
+Do not run the old standalone stencil validators during this test. They manipulate
+the same validation bit `0x40` and are outside this gate's ordering contract.
 
-Before testing, stop them if necessary:
+Before testing, stop them if needed:
 
 ```text
 portal.StopStencilIdentityTonemapValidation
@@ -161,7 +202,7 @@ portal.StopStencilIdentityValidation
 
 Close Unreal Editor, pull the branch and rebuild the editor target.
 
-Enter PIE with a linked portal visible and establish the accepted full portal path:
+Enter PIE with a linked portal visible and establish the accepted portal path:
 
 ```text
 r.AntiAliasingMethod 4
@@ -174,7 +215,7 @@ portal.FullViewFamilyTSRPrimaryFraction 0.67
 portal.StartFullViewFamilyTSRSpike
 ```
 
-Enable diagnostics and the new gate:
+Enable the gate in normal mode:
 
 ```text
 portal.CompositionDiagnostics 1
@@ -182,36 +223,46 @@ portal.StencilGatedComposition 1
 portal.StencilCompositionBypassShaderAperture 0
 ```
 
-Expected log:
+Expected diagnostics:
 
 ```text
-PortalComposition StencilGate ...
 Requested=1
 Active=1
 StencilTargetable=1
 Format=11
 StencilBit=0x40
+PipelineStencilRef=0x40
 BypassShaderAperture=0
+ProofMode=NormalPortalRGB
 ```
 
-The portal should look like the accepted normal composition.
+The portal should match the previously accepted normal presentation.
 
-Then, without moving the camera, run:
+Then, without moving the camera:
 
 ```text
 portal.StencilCompositionBypassShaderAperture 1
 ```
 
-Expected visual result after the two-sided fix:
+Expected diagnostics:
 
 ```text
-portal RGB remains confined to the physical/projective portal aperture
-wall / floor / weapon / HUD do not become portal RGB
-main scene exposure stays unchanged
-real foreground occluders still remain in front of the portal
+PipelineStencilRef=0x40
+BypassShaderAperture=1
+ProofMode=SafeMainColorTint
 ```
 
-A slightly harder edge is acceptable in this proof because stencil is binary.
+Expected visual result:
+
+```text
+only the exact portal aperture is cyan-tinted
+wall / floor / weapon / HUD remain unchanged
+no full-screen white / pink / neon HDR blowout
+main exposure remains stable
+```
+
+If the whole screen is cyan-tinted, the hardware stencil test still is not
+confining the draw. That is now a clean stencil failure without exposure noise.
 
 ## Failure interpretation
 
@@ -221,26 +272,26 @@ Fail if any of the following occurs:
 Active=0 while Requested=1
 StencilTargetable=0
 format is not PF_DepthStencil
-bypass=1 still causes full-screen or rectangular portal RGB
-foreground occlusion regresses
-main depth propagation stops working
+PipelineStencilRef is not 0x40
+safe proof tints the whole screen
+normal mode regresses foreground occlusion or main-depth propagation
 RDG / D3D12 depth-stencil validation error
 shader compilation failure
 ```
 
-If the two-sided retest still fails, do not alter exposure or shader aperture. The
-next diagnostic should verify actual stencil contents immediately after the mark
-pass in the same BeforeDOF render-resolution domain.
+If the safe proof still fails after this hardening, the next diagnostic must inspect
+actual stencil contents immediately after the mark pass in the same BeforeDOF
+render-resolution domain. Do not change exposure, gamma, TSR or portal brightness.
 
 ## PASS criteria
 
 1. C++ and Global Shaders compile.
 2. `Requested=1 Active=1 StencilTargetable=1 Format=11` is sustained.
-3. Normal `BypassShaderAperture=0` presentation matches the accepted portal path.
-4. `BypassShaderAperture=1` still confines portal RGB to the exact portal aperture.
-5. No unrelated screen region receives portal RGB.
-6. Accepted main foreground occlusion remains correct.
-7. Accepted main-depth propagation remains enabled without stencil corruption.
+3. `PipelineStencilRef=0x40` is reported for the active composition test.
+4. Normal `BypassShaderAperture=0` presentation matches the accepted portal path.
+5. Safe proof mode tints only the exact portal aperture.
+6. No unrelated screen region is modified by the proof.
+7. Accepted foreground occlusion and main-depth propagation remain intact.
 8. No exposure, render-thread, RDG or D3D12 failure occurs.
 
 ## What PASS proves
@@ -248,7 +299,7 @@ pass in the same BeforeDOF render-resolution domain.
 ```text
 same BeforeDOF main depth/stencil resource
     -> exact projective stencil mark
-    -> normal portal composition
+    -> normal portal composition draw
     -> real hardware CF_Equal aperture gate
 ```
 
