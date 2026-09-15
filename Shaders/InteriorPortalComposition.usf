@@ -1,5 +1,6 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/ScreenPass.ush"
+#include "/Engine/Private/SceneTexturesCommon.ush"
 
 Texture2D SceneColorTexture;
 SamplerState SceneColorSampler;
@@ -12,8 +13,11 @@ float4 PortalBounds;
 float4 ScreenToPortalRow0;
 float4 ScreenToPortalRow1;
 float4 ScreenToPortalRow2;
+float4 PortalClipZRow;
 float ProjectiveApertureEnabled;
 float ProjectiveNearClipW;
+float DepthAwareCompositionEnabled;
+float DepthOcclusionEpsilonCm;
 float CompositionDebugMode;
 float PortalExposureScale;
 
@@ -52,10 +56,12 @@ void MainPS(
 		* step(ViewportUV.y, PortalBounds.w);
 
 	float ApertureMask = 0.0;
+	float3 PortalHomogeneous = float3(0.0, 0.0, 0.0);
+	bool bProjectiveIntersectionValid = false;
 	if (ProjectiveApertureEnabled > 0.5)
 	{
 		const float3 ScreenPoint = float3(ViewportUV, 1.0);
-		const float3 PortalHomogeneous = float3(
+		PortalHomogeneous = float3(
 			dot(ScreenToPortalRow0.xyz, ScreenPoint),
 			dot(ScreenToPortalRow1.xyz, ScreenPoint),
 			dot(ScreenToPortalRow2.xyz, ScreenPoint));
@@ -78,6 +84,7 @@ void MainPS(
 				const float EdgeWidth = max(fwidth(EllipseDistance) * 1.25, 1.0e-4);
 				ApertureMask = 1.0 - smoothstep(
 					1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
+				bProjectiveIntersectionValid = true;
 			}
 		}
 		ApertureMask *= BoundsMask;
@@ -98,6 +105,45 @@ void MainPS(
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
 
+	// STEP 1B.12A: depth-aware composition is intentionally a main-depth gate,
+	// not a claim that portal depth has been injected into the main depth buffer.
+	// For a projective aperture, H^-1*[screenUV,1] gives [u,v,1]/clipW. The
+	// stored ClipZ row therefore reconstructs the physical entry-plane device Z
+	// exactly at the same pixel. Preserve main SceneColor when real main-scene
+	// geometry is closer than that portal plane. A small world-space epsilon lets
+	// the coplanar host wall/rim coexist with the aperture without becoming an
+	// artistic brightness or depth offset.
+	float ForegroundOcclusionMask = 0.0;
+	if (DepthAwareCompositionEnabled > 0.5
+		&& ProjectiveApertureEnabled > 0.5
+		&& bProjectiveIntersectionValid
+		&& ApertureMask > 0.0)
+	{
+		const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+		const int2 ScenePixel = int2(SvPosition.xy);
+		const float MainDeviceZ = SceneTexturesStruct_SceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
+		const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+		ForegroundOcclusionMask =
+			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < PortalPlaneDepthCm)
+			? 1.0 : 0.0;
+	}
+
+	// Debug mode 4 visualizes the bounded STEP 1B.12A contract without changing
+	// the secondary renderer: green means the portal aperture is depth-visible;
+	// red means main-scene geometry in front of the physical entry plane wins.
+	if (CompositionDebugMode >= 3.5 && CompositionDebugMode < 4.5)
+	{
+		const float3 DiagnosticColor = lerp(
+			float3(0.0, 1.0, 0.0),
+			float3(1.0, 0.0, 0.0),
+			ForegroundOcclusionMask);
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
 	// STEP 1B.8: only normal full-renderer composition participates in the
 	// secondary->main pre-exposure domain conversion. Diagnostic modes remain
 	// unscaled so the established magenta/BaseColor probes keep their original
@@ -107,11 +153,13 @@ void MainPS(
 		PortalColor.rgb *= PortalExposureScale;
 	}
 
+	const float DepthVisibleApertureMask = ApertureMask * (1.0 - ForegroundOcclusionMask);
+
 	// The extracted full-renderer HDR SceneColor does not provide a stable
 	// opacity contract in alpha. Aperture ownership is analytic/projective, so
 	// blend RGB only and preserve the main view's SceneColor alpha for downstream
 	// post processing.
 	OutColor = float4(
-		lerp(MainColor.rgb, PortalColor.rgb, saturate(ApertureMask)),
+		lerp(MainColor.rgb, PortalColor.rgb, saturate(DepthVisibleApertureMask)),
 		MainColor.a);
 }
