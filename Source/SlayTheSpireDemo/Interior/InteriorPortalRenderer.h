@@ -23,8 +23,9 @@ struct FPostProcessingInputs;
  * STEP 1B.2 extends this description with the exact matrices consumed by
  * UE 5.8's public FCustomRenderPassRendererInput. The custom-pass backend
  * submits this snapshot to the main renderer. The optional render-target
- * resource is a copied external-resource identity used only by the explicit
- * composition spike; it is never a UObject or mutable Actor reference.
+ * resources are copied external-resource identities used only by the explicit
+ * composition/depth-transport spikes; they are never UObjects or mutable Actor
+ * references.
  */
 struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 {
@@ -48,8 +49,10 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	bool bExitClipEncodedInProjection = false;
 	uint64 HistoryIdentity = 0;
 	uint64 RendererHistoryGeneration = 0;
-	/** External CRP output resource consumed by the same-frame BeforeDOF proof. */
+	/** External full-renderer HDR output consumed by the same-frame BeforeDOF proof. */
 	FRenderTarget* PortalRenderTarget = nullptr;
+	/** STEP 1B.12B external R32F device-depth transport target from the same secondary view. */
+	FRenderTarget* PortalDepthRenderTarget = nullptr;
 	bool bEnabled = false;
 	/** The intended contract is one player-main-view exposure/tone-map owner. */
 	bool bPlayerExposureAuthority = true;
