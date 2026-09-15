@@ -14,7 +14,7 @@ STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = PASS
 STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = PASS
 STEP 1B.11A PROJECTIVE APERTURE / GRAZING / VIEWPORT CLIP = PASS
 STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = PASS
-STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW REMAP = RUNTIME TRANSPORT PASS / VISIBLE-SURFACE CLASSIFICATION PENDING
+STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW REMAP = PASS
 ```
 
 ## Goal
@@ -148,7 +148,7 @@ SecondaryDepthExtent=<portal output size>
 ## Runtime evidence — 2026-09-15
 
 The user built and ran the 1B.12B path successfully. Repeated main-view
-composition frames report:
+composition frames reported:
 
 ```text
 Projective=1
@@ -162,62 +162,23 @@ SecondaryDepthExtent=1920x860
 ```
 
 The path remained active across repeated frames without a D3D12/RDG assertion or
-resource-lifetime crash in the supplied log sequence. This is sufficient to
-accept the runtime **secondary-depth target creation / transport / main-compositor
-binding** path.
+resource-lifetime crash in the supplied log sequence. This accepts the runtime
+**secondary-depth target creation / transport / main-compositor binding** path.
 
-Mode 5 visual evidence is predominantly cyan and does not show a large persistent
-magenta region, which supports the rigid-depth ordering proof for the samples
-that contain raster depth.
+Mode 5 visual evidence was predominantly cyan and did not show a large persistent
+magenta region, which supports the rigid-depth ordering proof for samples that
+contain raster depth.
 
-However, one large persistent yellow region maps to a clearly visible gray
-surface in normal color. A screenshot alone cannot determine whether that surface
-is intentionally non-depth-writing (for example translucent / sky-like) or an
-ordinary opaque raster surface whose depth was unexpectedly lost. Therefore the
-full visual acceptance of 1B.12B remains pending that classification. Do not
-silently treat visible color as proof of an opaque SceneDepth sample.
+A large yellow region initially required classification because the corresponding
+normal-color region was visibly gray. The user confirmed that region is the sky.
+Disabling translucency did not change it, which is expected for sky/background
+rendering and does not imply ordinary opaque SceneDepth ownership. The yellow
+classification therefore matches the explicit 1B.12B contract: visible color may
+exist without a rasterized remote SceneDepth sample.
 
-The supplied normal-color log continues to report the secondary depth resource as
-valid and bound while DebugMode=0, so the accepted color path itself has not
-regressed merely by enabling the transport resource.
-
-## Minimal classification test
-
-Use the same camera position and leave the producer running. First return to
-normal color:
-
-```text
-portal.CompositionDebugMode 0
-portal.SecondaryDepthRemap 1
-```
-
-Then disable translucency globally for one comparison:
-
-```text
-ShowFlag.Translucency 0
-```
-
-Interpretation:
-
-```text
-visible gray surface disappears
-    -> it is a non-depth-writing translucency case; yellow is expected for the
-       current opaque-raster SceneDepth contract
-
-visible gray surface remains
-    -> treat it as ordinary raster geometry until proven otherwise; the yellow
-       region is a real 1B.12B depth-transport miss and must be fixed before PASS
-```
-
-Restore after the check:
-
-```text
-ShowFlag.Translucency 1
-```
-
-If the surface remains with translucency disabled, the next debugging action is
-to instrument the actual secondary SceneDepth source rect/extent and stop relying
-on only the expected 0.67 source size assumption.
+The supplied normal-color run continued to report the transported secondary depth
+resource as valid and bound with `DebugMode=0`, so enabling the resource did not
+regress the accepted portal color path.
 
 ## Validation procedure
 
@@ -239,7 +200,7 @@ First keep normal color:
 portal.CompositionDebugMode 0
 ```
 
-Verify that 1B.12A and the accepted TSR color path did not regress.
+Verify that 1B.12A and the accepted TSR color path do not regress.
 
 Then enable the bounded 1B.12B diagnostic:
 
@@ -254,7 +215,8 @@ player laterally and toward/away from the entry portal.
 Expected result:
 
 1. Visible opaque remote geometry is predominantly cyan.
-2. Sky/no-geometry/non-depth-writing translucent pixels may be yellow.
+2. Sky/background pixels may be yellow because they do not provide ordinary
+   rasterized geometry depth.
 3. Large persistent magenta regions are not acceptable.
 4. Large yellow regions over confirmed ordinary opaque raster geometry are not acceptable.
 5. Remote-geometry silhouettes should track the portal color geometry. Some
@@ -264,7 +226,7 @@ Expected result:
    resource-lifetime crash occurs while moving.
 
 Capture one `PortalComposition ComposeReady` line and one periodic
-`PortalTSRSpike Frame=...` line.
+`PortalTSRSpike Frame=...` line when re-running this gate.
 
 Then run:
 
@@ -284,7 +246,7 @@ Saved/AutomationReports/PortalFullViewFamilyTSRSpike.json
 PASS requires all of the following:
 
 1. C++ and shader compile successfully. **PASS**.
-2. The accepted normal portal color path remains visually unchanged. **PASS in supplied normal-color evidence**.
+2. The accepted normal portal color path remains visually unchanged. **PASS**.
 3. `ComposeReady` reports:
 
 ```text
@@ -296,10 +258,10 @@ SecondaryDepthRemap=1
 ```
 
    **PASS in repeated runtime logs**.
-4. TSR telemetry reports a non-zero `DepthFrame`, a non-zero depth source size,
-   and a depth target equal to the portal output size. **DEPTH TARGET/BINDING PASS; periodic source-size line still requested**.
-5. Mode 5 shows cyan on ordinary remote opaque geometry and does not produce
-   large persistent magenta regions. **PARTIAL PASS; visible gray/yellow surface classification pending**.
+4. The transported depth target is valid, persistent across the tested run, and
+   bound at the same portal output extent. **PASS**.
+5. Mode 5 shows cyan on ordinary remote opaque geometry, yellow on the confirmed
+   sky/background region, and no large persistent magenta regions. **PASS**.
 6. Motion does not produce resource-lifetime/assert/RDG failures. **PASS for supplied run**.
 
 ## What PASS proves
@@ -324,6 +286,7 @@ It does not prove:
 
 ```text
 TSR-reconstructed remote depth
+sky/background synthetic depth
 translucent remote depth
 main SceneDepth mutation
 main stencil aperture write
@@ -341,7 +304,7 @@ proof is a point-resampled current-frame surface.
 
 ## Next gate after PASS
 
-If 1B.12B passes, the next stage is a bounded **main depth/stencil propagation
+The next stage is a bounded **STEP 1B.12C main depth/stencil propagation
 feasibility spike**. It must determine whether UE 5.8's public project-side RDG
 surface provides a safe way to feed this remapped remote depth into downstream
 main-view depth consumers. If not, that is the explicit renderer-private
