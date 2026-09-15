@@ -32,6 +32,12 @@ namespace
 		TEXT("STEP 1B.8 measured pre-exposure of the standalone transformed secondary view. Set by the spike, not an artistic brightness control."),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarPortalProjectiveAperture(
+		TEXT("portal.ProjectiveAperture"),
+		1,
+		TEXT("STEP 1B.11A aperture hardening. 1=map main-view pixels back to the portal plane with the exact inverse homography; 0=retained axis-aligned bounds-ellipse comparison path."),
+		ECVF_RenderThreadSafe);
+
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
@@ -55,6 +61,10 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
 		SHADER_PARAMETER(FVector4f, PortalBounds)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow0)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
+		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
+		SHADER_PARAMETER(float, ProjectiveApertureEnabled)
 		SHADER_PARAMETER(float, CompositionDebugMode)
 		SHADER_PARAMETER(float, PortalExposureScale)
 		RENDER_TARGET_BINDING_SLOTS()
@@ -310,11 +320,14 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const float PortalExposureScale = bRebasePreExposure
 		? MainPreExposure / SecondaryPreExposure
 		: 1.0f;
+	const bool bUseProjectiveAperture =
+		CVarPortalProjectiveAperture.GetValueOnRenderThread() != 0
+		&& Request.ProjectiveAperture.bValid;
 
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClip=%d Crossing=%d ViewportClip=%d"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
@@ -324,7 +337,13 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			bRebasePreExposure ? 1 : 0,
 			MainPreExposure,
 			SecondaryPreExposure,
-			PortalExposureScale);
+			PortalExposureScale,
+			bUseProjectiveAperture ? 1 : 0,
+			Request.ProjectiveAperture.bValid ? 1 : 0,
+			Request.ProjectiveAperture.DeterminantQuality,
+			Request.ProjectedBounds.bIntersectsNearClip ? 1 : 0,
+			Request.ProjectedBounds.bCameraCrossing ? 1 : 0,
+			Request.ProjectedBounds.bClippedToViewport ? 1 : 0);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -340,6 +359,10 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalBounds = FVector4f(
 		Request.ProjectedBounds.Min.X, Request.ProjectedBounds.Min.Y,
 		Request.ProjectedBounds.Max.X, Request.ProjectedBounds.Max.Y);
+	PassParameters->ScreenToPortalRow0 = Request.ProjectiveAperture.Row0;
+	PassParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
+	PassParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
+	PassParameters->ProjectiveApertureEnabled = bUseProjectiveAperture ? 1.0f : 0.0f;
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->PortalExposureScale = PortalExposureScale;
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
