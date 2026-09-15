@@ -40,6 +40,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
 	/** Exact inverse planar projection for the authored elliptical aperture. */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ProjectiveAperture;
+	/** Perspective clip-W threshold used to reject aperture pixels before the main near plane. 0 disables it. */
+	float ProjectiveNearClipW = 0.0f;
 	FIntRect ViewRect;
 	FIntRect ScissorRect;
 	FPlane ExitClipPlane = FPlane(FVector::ForwardVector, 0.0f);
@@ -130,6 +132,9 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
 			InEntryFrame, HalfWidth, HalfHeight, PortalViewProjection,
 			OutRequest.ProjectiveAperture);
+		OutRequest.ProjectiveNearClipW = bPerspectiveProjection
+			? float(FMath::Max(0.001, NearClip))
+			: 0.0f;
 		OutRequest.ViewRect = InViewRect;
 		OutRequest.ScissorRect = ScissorRect;
 		OutRequest.ExitClipPlane = ExitClipPlane;
