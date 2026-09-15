@@ -20,6 +20,7 @@ float ProjectiveApertureEnabled;
 float ProjectiveNearClipW;
 float DepthAwareCompositionEnabled;
 float SecondaryDepthRemapEnabled;
+float MainDepthPropagationEnabled;
 float DepthOcclusionEpsilonCm;
 float CompositionDebugMode;
 float PortalExposureScale;
@@ -166,6 +167,38 @@ void MainPS(
 			DiagnosticColor = bSecondaryDepthBehindPortal
 				? float3(0.0, 1.0, 1.0)
 				: float3(1.0, 0.0, 1.0);
+		}
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
+	// STEP 1B.12C-A verification runs after the explicit depth-write pass queued
+	// by the compositor. It re-reads the actual main SceneDepth resource:
+	// cyan   = propagated main depth matches transported secondary depth;
+	// green  = a real main-view foreground occluder was correctly preserved;
+	// yellow = no remote raster depth (for example sky/background);
+	// red    = a valid remote depth exists but the main depth resource does not
+	//          contain that propagated value.
+	if (CompositionDebugMode >= 5.5 && CompositionDebugMode < 6.5)
+	{
+		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
+		if (ForegroundOcclusionMask > 0.5)
+		{
+			DiagnosticColor = float3(0.0, 1.0, 0.0);
+		}
+		else if (bSecondaryDepthValid)
+		{
+			const int2 ScenePixel = int2(SvPosition.xy);
+			const float PropagatedMainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+			const float PropagatedMainDepthCm = ConvertFromDeviceZ(PropagatedMainDeviceZ);
+			const float VerifyToleranceCm = max(2.0 * max(DepthOcclusionEpsilonCm, 0.0), 1.0);
+			const bool bDepthMatches =
+				abs(PropagatedMainDepthCm - SecondaryDepthCm) <= VerifyToleranceCm;
+			DiagnosticColor = MainDepthPropagationEnabled > 0.5 && bDepthMatches
+				? float3(0.0, 1.0, 1.0)
+				: float3(1.0, 0.0, 0.0);
 		}
 		OutColor = float4(
 			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
