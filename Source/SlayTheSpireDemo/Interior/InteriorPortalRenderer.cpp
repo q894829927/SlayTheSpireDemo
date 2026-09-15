@@ -359,12 +359,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalTexture = PortalTexture;
 	PassParameters->PortalSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	// The post-process callback already owns the scene-texture uniform buffer for
-	// this exact main view / RDG graph. Reuse it instead of creating a second
-	// SceneTextures binding from the view, which can trip RDG/render-thread
-	// validation when this callback is entered after the standalone secondary
-	// family has been submitted.
-	PassParameters->SceneTextures = Inputs.SceneTextures;
+	// Inputs.SceneTextures is not guaranteed to carry a bound deferred scene
+	// texture uniform buffer for a SceneViewExtension callback. Bind the exact
+	// current main view's already-created scene texture parameters instead; this
+	// keeps the SceneDepth uniform buffer valid even when the depth CVar is off,
+	// because the shader parameter layout still contains the uniform-buffer slot.
+	PassParameters->SceneTextures = GetSceneTextureShaderParameters(InView);
 	PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	PassParameters->Portal = GetScreenPassTextureViewportParameters(PortalViewport);
 	PassParameters->PortalBounds = FVector4f(
