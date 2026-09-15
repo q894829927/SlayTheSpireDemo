@@ -9,7 +9,8 @@ STEP 1B.5 FULL TRANSFORMED VIEW-FAMILY = PASS
 STEP 1B.6 BEFORE-DOF HDR EXTRACTION = PASS
 STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = PASS
 STEP 1B.8 SECONDARY->MAIN PRE-EXPOSURE REBASE = PASS
-STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = PASS
+STEP 1B.10 PERSISTENT TEMPORAL HISTORY / CAMERA-CUT POLICY = NEXT
 ```
 
 Implementation commit:
@@ -144,6 +145,38 @@ PortalComposition DrawQueued
 
 The `Bounds` values and virtual camera location should change as the player looks/moves. `LastExtractionFrame` should continue advancing rather than freezing at the frame on which the spike started.
 
+## Runtime result — PASS
+
+The controlled rerun completed without recurring assertion, stale-target crash, or per-frame game-thread flush. After ordinary movement and look input, the final report recorded:
+
+```text
+status = STOPPED
+framesSubmitted = 1210
+framesSkipped = 0
+lastExtractionFrame = 3590
+lastEndpointIndex = 0
+targetSize = 1419 x 882
+secondaryPreExposure = 1
+playerLocation = (1100.111606, 720.645600, 120.150001)
+virtualLocation = (1963.354417, 1000.111621, 120.150001)
+projectedBounds = (0.206271, 0.143670) - (0.419089, 1.000000)
+```
+
+Main-view diagnostics continued to execute on consecutive frames with valid requests and targets:
+
+```text
+PortalComposition Subscribe
+PortalComposition Execute
+PortalComposition ComposeReady
+PortalComposition DrawQueued
+```
+
+The observed `MainPreExposure` remained around `0.00158`, `SecondaryPreExposure` remained `1.0`, and the applied `ExposureScale` matched `MainPreExposure / SecondaryPreExposure` on consecutive frames.
+
+The visible portal content and projected aperture changed with camera movement, while the report shows 1210 successfully submitted secondary frames and zero skipped frames. `lastExtractionFrame = 3590` proves that the BeforeDOF extraction callback continued advancing long after startup rather than remaining at the initial frame.
+
+Therefore STEP 1B.9 passes the realtime producer tracking gate.
+
 ## Acceptance
 
 PASS requires all of the following:
@@ -156,16 +189,35 @@ PASS requires all of the following:
 6. no per-frame game-thread `FlushRenderingCommands()` is required;
 7. no recurring assertion, resource lifetime crash, or stale-target use is observed during ordinary movement.
 
-This gate does not require good performance yet. It does require that the architecture remain asynchronous on ordinary frames.
+All seven conditions were satisfied by the controlled run above.
+
+## Architectural consequence — STEP 1B.10
+
+The next gate is no longer spatial tracking. The realtime producer already owns a persistent secondary `FSceneViewStateReference`, but STEP 1B.9 deliberately forces every secondary frame to:
+
+```text
+bCameraCut = true
+AntiAliasingMethod = AAM_None
+TemporalAA show flag = off
+```
+
+STEP 1B.10 should therefore validate temporal ownership and history continuity in this order:
+
+1. keep the persistent secondary `FSceneViewStateReference` alive across frames;
+2. change `bCameraCut` from always-true to a deterministic cut policy driven by first frame, endpoint changes, renderer-history invalidation and genuine discontinuities;
+3. enable the project's intended temporal AA path for the secondary view;
+4. preserve the existing transformed camera, clipping, BeforeDOF extraction and pre-exposure rebase unchanged;
+5. verify that history converges while stationary and remains stable during ordinary camera motion;
+6. explicitly reset history after portal relocation, endpoint switch, resolution change or teleport discontinuity;
+7. defer recursion and depth/stencil continuity until temporal history is proven.
 
 ## Claim boundary
 
 Still out of scope:
 
 ```text
-secondary TAA/TSR history
-secondary motion vectors
-camera-cut/history acceptance
+secondary TAA/TSR acceptance
+secondary motion-vector acceptance
 perfect Lumen temporal convergence
 main depth/stencil continuity
 portal-bounded secondary renderer scissor
@@ -174,5 +226,3 @@ recursion >= 2
 production GPU cost
 Core Portal Fidelity Seal
 ```
-
-If this gate passes, the next work item is persistent temporal history / camera-cut policy for the full secondary view, followed by motion vectors and TAA/TSR rather than adding recursion immediately.
