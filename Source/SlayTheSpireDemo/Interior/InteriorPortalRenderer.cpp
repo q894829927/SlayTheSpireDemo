@@ -76,7 +76,7 @@ namespace
 	TAutoConsoleVariable<int32> CVarPortalStencilCompositionBypassShaderAperture(
 		TEXT("portal.StencilCompositionBypassShaderAperture"),
 		0,
-		TEXT("STEP 1B.12D-B proof switch. Effective only when portal.StencilGatedComposition=1. 1=force the color shader aperture mask to full coverage so only the hardware stencil test can confine portal RGB."),
+		TEXT("STEP 1B.12D-B proof switch. Effective only when portal.StencilGatedComposition=1. 1=skip portal HDR/depth sampling and emit an exposure-safe cyan tint from main SceneColor; only the hardware stencil test may confine the draw."),
 		ECVF_RenderThreadSafe);
 
 	bool PortalCompositionDiagnosticsEnabled()
@@ -615,7 +615,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			MainDepthViewport,
 			FScreenPassPipelineState(
 				VertexShader, ClearPixelShader,
-				TStaticBlendState<>::GetRHI(), ClearStencilState),
+				TStaticBlendState<>::GetRHI(), ClearStencilState,
+				0),
 			ClearParameters,
 			EScreenPassDrawFlags::None,
 			[ClearPixelShader, ClearParameters](FRHICommandList& RHICmdList)
@@ -653,7 +654,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			MainDepthViewport,
 			FScreenPassPipelineState(
 				VertexShader, MarkPixelShader,
-				TStaticBlendState<>::GetRHI(), MarkStencilState),
+				TStaticBlendState<>::GetRHI(), MarkStencilState,
+				PortalCompositionStencilBit),
 			MarkParameters,
 			EScreenPassDrawFlags::None,
 			[MarkPixelShader, MarkParameters](FRHICommandList& RHICmdList)
@@ -700,14 +702,16 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			PropagatedDepthCandidateTexture ? PropagatedDepthCandidateTexture->Desc.Extent.Y : 0,
 			DepthOcclusionEpsilonCm);
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x BypassShaderAperture=%d"),
+			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x PipelineStencilRef=0x%02x BypassShaderAperture=%d ProofMode=%s"),
 			GFrameCounter,
 			bStencilCompositionRequested ? 1 : 0,
 			bUseStencilComposition ? 1 : 0,
 			bMainDepthStencilTargetable ? 1 : 0,
 			bMainSceneDepthValid ? int32(MainSceneDepthTexture->Desc.Format) : -1,
 			PortalCompositionStencilBit,
-			bBypassShaderAperture ? 1 : 0);
+			bUseStencilComposition ? PortalCompositionStencilBit : 0,
+			bBypassShaderAperture ? 1 : 0,
+			bBypassShaderAperture ? TEXT("SafeMainColorTint") : TEXT("NormalPortalRGB"));
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -767,7 +771,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			OutputViewport,
 			FScreenPassPipelineState(
 				VertexShader, PixelShader,
-				TStaticBlendState<>::GetRHI(), StencilTestState),
+				TStaticBlendState<>::GetRHI(), StencilTestState,
+				PortalCompositionStencilBit),
 			PassParameters,
 			EScreenPassDrawFlags::None,
 			[PixelShader, PassParameters](FRHICommandList& RHICmdList)
