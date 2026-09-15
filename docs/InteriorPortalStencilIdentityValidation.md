@@ -18,29 +18,21 @@ STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW REMAP = PASS
 STEP 1B.12C-A MAIN SCENEDEPTH WRITE FEASIBILITY = PASS
 STEP 1B.12C-B REAL MAIN DOF DEPTH CONSUMER = PASS
 STEP 1B.12D-A MAIN STENCIL APERTURE IDENTITY
-= MAIN STENCIL WRITE/READ REACHED
-= POST-TONEMAP EXPOSURE-SAFE PROOF REACHED
-= ZERO-VISIBLE LIFETIME FIX IMPLEMENTED / RETEST REQUIRED
+= MAIN STENCIL WRITE/READ = PASS
+= POST-TONEMAP EXPOSURE-SAFE HARDWARE PROOF = PASS
+= ZERO-VISIBLE STENCIL LIFETIME = PASS
+= FINAL STATIC VISIBLE-APERTURE CONFINEMENT SCREENSHOT REQUIRED
 ```
 
 ## Goal
 
-The accepted portal path already has exact projective aperture math, transported
-remote depth, a legal main SceneDepth write and a real downstream DOF consumer.
-The aperture is still identified primarily by shader-side projective math.
+Prove that project-side public RDG code can assign the linked physical portal
+aperture an explicit identity in the **current main depth/stencil attachment** and
+verify that identity downstream with a real hardware stencil comparison rather
+than by recomputing the projective mask in the proof shader.
 
-1B.12D-A asks:
-
-```text
-Can project-side public RDG code assign the linked physical portal apertures an
-explicit identity in THE CURRENT MAIN depth/stencil attachment, then prove that
-identity with a real hardware stencil comparison rather than by resampling the
-projective mask in a color shader?
-```
-
-This is a bounded stencil-feasibility gate. It does **not** yet make normal portal
-composition depend on stencil and does not claim a permanent engine-wide
-stencil-bit reservation.
+This remains a bounded feasibility gate. It does not reserve a production stencil
+bit engine-wide and normal portal composition does not yet depend on stencil.
 
 ## Implementation
 
@@ -55,254 +47,248 @@ Exposure-safe downstream proof:
 
 ```text
 Source/SlayTheSpireDemo/Interior/InteriorPortalStencilTonemapValidation.cpp
-docs/InteriorPortalStencilTonemapValidation.md
 ```
 
-On the main player view only, `SetupView` snapshots linked portal logical frames,
-rejects apertures that are not potentially visible, and builds the same exact
-inverse planar homography already accepted by 1B.11A. Additional secondary view
-families are ignored.
+Zero-visible test helper:
 
-At `BeforeDOF` the writer obtains the current main `SceneDepth` and requires:
+```text
+Source/SlayTheSpireDemo/Interior/InteriorPortalStencilZeroVisibleTest.cpp
+```
+
+The writer runs only on the real main player view. `SetupView` snapshots linked
+portal logical frames, filters potentially visible endpoints and builds the same
+exact inverse planar homography already accepted by 1B.11A.
+
+At `BeforeDOF`, current main `SceneDepth` must satisfy:
 
 ```text
 Format == PF_DepthStencil
 TexCreate_DepthStencilTargetable
 ```
 
-With validation isolation enabled, bit `0x40` is cleared with a masked stencil
-replace while preserving all other stencil bits. Every valid visible linked
-aperture is then rasterized with the exact projective ellipse and writes only:
-
-```text
-Depth write  = OFF
-Depth test   = ALWAYS
-Stencil test = ALWAYS
-Stencil op   = REPLACE on pass
-Read mask    = 0x40
-Write mask   = 0x40
-Stencil ref  = 0x40
-```
-
-The identity is therefore physically stored in the current main depth/stencil
-target rather than a sidecar texture.
-
-## Bit-allocation boundary
-
-The feasibility spike uses:
+Validation uses bounded bit:
 
 ```text
 PortalStencilBit = 0x40
 ```
 
-`0x40` is **not** production-owned. Isolation is validation-only and does not
-constitute an engine-wide reservation or collision policy.
+With `portal.StencilIdentityIsolateBit 1`, every active main-view `BeforeDOF`
+frame clears **only bit 0x40** while preserving all other stencil bits. Then each
+visible aperture is rasterized with the exact projective ellipse and writes:
 
-## Exposure-safe hardware stencil proof
+```text
+Depth write   = OFF
+Depth test    = ALWAYS
+Stencil test  = ALWAYS
+Stencil op    = REPLACE
+Read mask     = 0x40
+Write mask    = 0x40
+Stencil ref   = 0x40
+```
 
-The original `AfterDOF` color overlay reached the real stencil resource but fed
-pre-tonemap HDR / exposure state and could wash out the main view. That visual
-proof was therefore separated from the writer.
+The identity therefore exists in the real main depth/stencil target, not in a
+sidecar mask texture.
 
-The accepted proof path keeps:
+## Downstream hardware proof
+
+The old `AfterDOF` cyan overlay was rejected as an acceptance surface because it
+fed the pre-tonemap HDR/exposure chain and could wash the scene white.
+
+The accepted proof keeps:
 
 ```text
 portal.StencilIdentityDebug 0
 ```
 
-and runs the independent Tonemap validator. It does not recompute portal geometry
-or write stencil. At the real Tonemap callback it binds current main SceneDepth as
-`StencilRead` and uses:
+and uses the independent Tonemap validator. It does not recompute the aperture and
+does not write stencil. At the real Tonemap callback it binds current main
+`SceneDepth` as `StencilRead` and uses:
 
 ```text
-Stencil test = EQUAL
-Read mask    = 0x40
-Stencil ref  = 0x40
+Stencil test  = EQUAL
+Read mask     = 0x40
+Stencil ref   = 0x40
 Stencil write = OFF
 ```
 
-The cyan proof is authored after Tonemap, so it cannot feed main eye adaptation.
-
-## Runtime evidence so far
-
-The second runtime retest established the exposure-safe downstream path.
-The writer repeatedly reported:
+The user reran this path and explicitly reported that the main scene no longer
+blew out / turned white. Sustained logs reported:
 
 ```text
-VisibleApertures=1
-StencilTargetable=1
-Isolated=1
-```
-
-The independent Tonemap proof repeatedly reported:
-
-```text
+PortalStencilTonemapProof Tonemap ...
 PassEnabled=1
 StencilTargetable=1
 StencilBit=0x40
-SceneRect=2278x1061
 ```
 
-The user explicitly reported that this retest **did not blow out / turn the scene
-white**. The Tonemap validator completed 472 proof frames with targetable stencil
-and the real Tonemap callback enabled.
+Therefore the exposure-safe downstream hardware stencil test is accepted.
 
-The writer's final report for that run recorded:
+## Zero-visible lifecycle defect and fix
 
-```text
-SetupView=1519
-Writes=623
-Overlays=0
-VisibleApertures=0
-Targetable=1
-AfterDOFEnabled=0
-Isolated=1
-```
+The original writer skipped its `BeforeDOF` callback when no visible aperture
+snapshot existed. That could leave a stale `0x40` mark from the previous frame.
 
-This is strong evidence that the main-stencil write path and a real downstream
-hardware stencil read are both reachable without the previous exposure failure.
-
-## Zero-visible lifetime defect found
-
-The same run exposed a lifecycle edge case:
-
-```text
-SetupView ... VisibleApertures=0
-```
-
-The previous writer registered its `BeforeDOF` callback only when at least one
-snapshot existed. Therefore a zero-visible frame skipped the isolate clear. A
-`0x40` mark from a previous visible frame could theoretically survive and become a
-stale / ghost portal identity.
-
-That is a real code defect even without a manual ghost repro.
-
-## Zero-visible lifetime fix
-
-Commit:
+Fix commit:
 
 ```text
 3391df2b63d5bcc9ba1c90ef3afaf32e1c42de9c
 portal: clear stencil identity on zero-visible frames
 ```
 
-The writer now always registers its active main-view `BeforeDOF` callback.
-When isolation is enabled:
+The writer now follows:
 
 ```text
 every active main-view BeforeDOF frame
     -> clear only stencil bit 0x40
-    -> if VisibleApertures > 0: mark current apertures
-    -> if VisibleApertures == 0: stop after clear
+    -> VisibleApertures > 0: mark current aperture(s)
+    -> VisibleApertures == 0: stop after clear
 ```
 
-New telemetry:
+Telemetry:
 
 ```text
 ZeroVisibleClear=0/1
 ZeroVisibleClears=<count>
+zeroVisibleClearFrames=<report field>
 ```
 
-and report field:
+## Zero-visible runtime acceptance evidence
+
+The final user run proved the lifecycle fix under sustained runtime.
+Before the explicit helper was even started, the view naturally reached:
 
 ```text
-zeroVisibleClearFrames
+VisibleApertures=0
+ZeroVisibleClear=1
+ZeroVisibleClears=3
 ```
 
-This makes the zero-visible lifetime contract directly observable instead of
-requiring visual inference.
+After `portal.BeginStencilZeroVisibleTest`, both endpoints were temporarily forced
+unplaced and the writer repeatedly reported zero-visible clears:
 
-## Validation procedure after zero-visible fix
+```text
+ZeroVisibleClears=60
+ZeroVisibleClears=120
+ZeroVisibleClears=180
+...
+ZeroVisibleClears=1080
+```
 
-Close Unreal Editor, pull and rebuild. Enter PIE and keep the legacy `AfterDOF`
-overlay disabled:
+The final report recorded:
+
+```text
+SetupView=2296
+Writes=1691
+Overlays=0
+ZeroVisibleClears=1511
+VisibleApertures=0
+Targetable=1
+AfterDOFEnabled=0
+Isolated=1
+```
+
+The independent Tonemap proof remained active throughout and completed:
+
+```text
+Frames=1690
+Targetable=1
+TonemapEnabled=1
+SceneRect=2283x1065
+```
+
+This accepts the zero-visible lifetime contract: the bounded stencil bit is
+actively cleared on frames with no visible portal and cannot remain stale merely
+because the aperture snapshot is empty.
+
+After `portal.EndStencilZeroVisibleTest`, the helper restored endpoint placement
+with `Blue=1 Orange=1`. The subsequent `VisibleApertures=0` lines are not evidence
+of restoration failure: this counter means *currently visible in the current
+view*, and the same run had already naturally entered zero-visible state before
+the helper began.
+
+## Remaining acceptance item
+
+Only one visual acceptance item remains before declaring the whole 1B.12D-A gate
+PASS:
+
+```text
+while one portal is visible and the post-tonemap proof is running,
+cyan must be confined to the exact projective portal aperture;
+wall / floor / weapon / HUD must remain non-cyan.
+```
+
+No movement is required. A single static screenshot is sufficient because the
+projective/grazing geometry itself was already accepted in 1B.11A and the
+zero-visible lifetime has now been independently accepted by telemetry.
+
+Minimal final visual procedure:
 
 ```text
 portal.StencilIdentityIsolateBit 1
 portal.StencilIdentityDiagnostics 1
 portal.StencilIdentityDebug 0
 portal.StartStencilIdentityValidation
-```
 
-Start the exposure-safe downstream proof:
-
-```text
 portal.StencilIdentityTonemapDiagnostics 1
 portal.StartStencilIdentityTonemapValidation
 ```
 
-When returning input focus to PIE, click the game viewport after entering console
-commands. The validators do not intentionally modify input mode or pause the game.
-
-Face a portal first, then turn until all portals are outside the view. Required
-zero-visible evidence is now a `BeforeDOF` line, not only a `SetupView` line:
+Take one screenshot with a visible portal. Expected:
 
 ```text
-PortalStencilIdentity BeforeDOF ... VisibleApertures=0 ... Isolated=1 ZeroVisibleClear=1 ZeroVisibleClears=N
+portal aperture = cyan
+unrelated scene = normal color
+no whole-screen exposure shift
 ```
 
-Keep the camera away from the portal for several frames and confirm
-`ZeroVisibleClears` continues increasing. Turn back to the portal and confirm
-`VisibleApertures=1` returns and the post-tonemap proof follows the aperture.
-
-Finish with:
+Then stop:
 
 ```text
-portal.DumpStencilIdentityTonemapValidation
 portal.StopStencilIdentityTonemapValidation
-portal.DumpStencilIdentityValidation
 portal.StopStencilIdentityValidation
 ```
 
 ## PASS criteria
 
-PASS requires all of the following:
+1. Main SceneDepth is stencil-targetable.
+2. Visible aperture frames isolate and write bit `0x40`.
+3. Real downstream Tonemap `CF_Equal` stencil testing executes.
+4. Tonemap proof does not alter main exposure.
+5. Zero-visible frames execute the isolate clear and `ZeroVisibleClears` rises.
+6. No stale bit survives solely because `VisibleApertures=0`.
+7. Static Tonemap proof cyan is confined to the actual portal aperture.
+8. No RDG / D3D12 / resource-lifetime failure occurs.
 
-1. C++ and shaders compile successfully.
-2. Visible portal frames repeatedly report `StencilTargetable=1` and `Isolated=1`.
-3. The real Tonemap proof repeatedly executes with `PassEnabled=1` and
-   `StencilTargetable=1` without changing main scene exposure.
-4. The proof is confined to the actual projective portal aperture(s), including
-   oblique viewing angles.
-5. Zero-visible frames still execute `BeforeDOF` isolation and report
-   `ZeroVisibleClear=1` with an increasing `ZeroVisibleClears` count.
-6. No stale cyan / ghost aperture remains when `VisibleApertures=0`.
-7. Returning the portal to view restores the current aperture identity normally.
-8. No render-thread/RDG/D3D12/resource-lifetime failure occurs while moving.
+Items 1–6 and 8 are accepted. Item 7 is the only remaining evidence request.
 
-## What PASS proves
-
-A PASS proves the bounded chain:
+## What PASS will prove
 
 ```text
-linked visible portal logical aperture
+linked portal aperture
     -> exact projective rasterization
-    -> per-frame isolated masked write into current main stencil bit
-    -> zero-visible frame cleanup
+    -> isolated masked write into current main stencil
+    -> zero-visible per-frame cleanup
     -> stencil survives downstream
-    -> hardware CF_Equal stencil test after Tonemap
-    -> exposure-safe visible aperture identity
+    -> real hardware CF_Equal test after Tonemap
+    -> exposure-safe explicit aperture identity
 ```
 
-## What PASS does NOT prove
-
-It does not yet prove:
+## What PASS will not prove
 
 ```text
 permanent conflict-free engine-wide ownership of bit 0x40
 normal portal composition gated by stencil
-stencil-aware HZB / occlusion hierarchy rebuild
+stencil-aware HZB rebuild
 SSR / Lumen screen-trace integration
 translucent remote depth
 recursion >= 2
-multiple simultaneous visible portal histories
+multiple simultaneously visible portal histories
 portal-bounded resource/scissor performance acceptance
 Core Portal Fidelity Seal
 ```
 
 ## Next gate after PASS
 
-After 1B.12D-A is accepted, promote the stencil identity from diagnostic-only to a
-bounded normal composition gate. Then move to portal-scissored / bounded resource
-hardening. Do not start recursion before aperture identity and bounded rendering
-are stable.
+Promote the accepted stencil identity from diagnostic-only to a **bounded normal
+portal composition gate**, default-off behind a validation CVar first. After that,
+move to portal-scissored / bounded resource hardening. Recursion remains later.
