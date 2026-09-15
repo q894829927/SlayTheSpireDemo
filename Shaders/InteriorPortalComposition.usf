@@ -24,6 +24,7 @@ float MainDepthPropagationEnabled;
 float DepthOcclusionEpsilonCm;
 float CompositionDebugMode;
 float PortalExposureScale;
+float StencilBypassShaderAperture;
 
 void MainPS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
@@ -81,6 +82,16 @@ void MainPS(
 		const float2 EllipsePosition = (ViewportUV - PortalCenter) / PortalRadius;
 		const float EllipseDistance = dot(EllipsePosition, EllipsePosition);
 		ApertureMask = (1.0 - smoothstep(0.94, 1.0, EllipseDistance)) * BoundsMask;
+	}
+
+	// STEP 1B.12D-B proof switch. When enabled, the color shader deliberately
+	// stops enforcing the ellipse. The draw must remain portal-shaped only because
+	// the same BeforeDOF pass is gated by the real main-stencil CF_Equal test.
+	// Projective math above is still evaluated so depth ordering remains valid for
+	// pixels that survive the hardware stencil test.
+	if (StencilBypassShaderAperture > 0.5)
+	{
+		ApertureMask = 1.0;
 	}
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
