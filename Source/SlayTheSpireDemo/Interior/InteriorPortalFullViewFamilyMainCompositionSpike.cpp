@@ -421,6 +421,14 @@ namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 		ViewFamily.ViewMode = VMI_Lit;
 		ViewFamily.SetScreenPercentageInterface(
 			new FLegacyScreenPercentageDriver(ViewFamily, 1.0f));
+		if (ExtractionExtension.IsValid())
+		{
+			// A manually constructed additional view family does not gather newly
+			// created global extensions automatically. STEP 1B.6 explicitly attached
+			// its extraction extension; 1B.7 must do the same or the BeforeDOF
+			// subscription never reaches this standalone secondary family.
+			ViewFamily.ViewExtensions.Add(ExtractionExtension.ToSharedRef());
+		}
 
 		FSceneViewInitOptions ViewInitOptions;
 		ViewInitOptions.ViewFamily = &ViewFamily;
