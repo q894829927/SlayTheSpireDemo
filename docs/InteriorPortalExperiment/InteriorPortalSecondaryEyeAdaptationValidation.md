@@ -6,9 +6,10 @@ State:
 
 ```text
 STEP 1B.14C SECONDARY EYEADAPTATION A/B
-= PASS
-= ROOT CAUSE CONFIRMED
-= PROMOTED INTO MAIN TSR PRODUCER
+= STATIC EXPOSURE ROOT CAUSE CONFIRMED
+= PRODUCTION PROMOTION COMPLETE
+= DYNAMIC / GRAZING VALIDATION FAILED
+= NEXT GATE: EXPOSURE AUTHORITY ACROSS SECONDARY CAMERA CUTS
 ```
 
 ## Why this gate exists
@@ -79,7 +80,7 @@ IndirectLightingIntensity
 This avoids relying on a global extension being automatically attached to the manual
 additional view family.
 
-## Runtime evidence — 2026-09-16
+## Runtime evidence — static A/B
 
 ### Policy 0 — legacy forced EyeAdaptation off
 
@@ -113,37 +114,12 @@ IndirectLightingIntensity=1
 
 The full-screen transformed secondary changed from near-black to normally exposed,
 and the normal portal aperture likewise stopped exhibiting the prior near-black
-interior. Re-applying normal composition controls such as:
+interior while the isolation producer remained stable.
 
-```text
-portal.CompositionDebugMode 0
-portal.ProjectiveAperture 1
-portal.StencilCompositionBypassShaderAperture 0
-```
+## Initial root-cause conclusion
 
-produced essentially no additional visual change, which is expected: those controls
-were not the source of the exposure defect.
-
-The runtime dump while the A/B producer remained active recorded approximately:
-
-```text
-Policy=1
-Submitted=1756
-Skipped=0
-ExtractionFrames=1756
-PreExposure=0.00145737
-AutoExposureMethod=0
-AA=4
-SceneRect=1920x900
-DynamicGI=1
-Reflection=1
-IndirectLightingIntensity=1
-```
-
-## Root-cause conclusion
-
-The dominant single-layer visual-parity defect was caused by the production TSR
-secondary family forcibly disabling EyeAdaptation:
+The dominant static visual-parity defect was caused by the production TSR secondary
+family forcibly disabling EyeAdaptation:
 
 ```cpp
 ShowFlags.SetEyeAdaptation(false);
@@ -157,7 +133,7 @@ the wrong exposure policy.
 
 ## Production promotion
 
-The accepted fix was promoted into:
+The static fix was promoted into:
 
 ```text
 Source/SlayTheSpireDemo/Interior/InteriorPortalFullViewFamilyTSRSpike.cpp
@@ -174,39 +150,76 @@ Promotion commit:
 portal: inherit main eye adaptation in TSR producer
 ```
 
-## Final validation still required
+## Integrated dynamic validation — failure refinement
 
-The production TSR producer now needs one final PIE validation with the accepted full
-feature chain enabled:
+The full production chain was then exercised while rotating obliquely and backing away
+from the portal. The portal can become dark again even though the static view initially
+converges correctly.
 
-```text
-portal.StartFullViewFamilyTSRSpike
-portal.ProjectiveAperture 1
-portal.DepthAwareComposition 1
-portal.SecondaryDepthRemap 1
-portal.MainDepthPropagation 1
-portal.StencilGatedComposition 1
-portal.StencilCompositionBypassShaderAperture 0
-portal.BoundedMainPassScissor 1
-```
-
-Validate at minimum:
+The decisive telemetry is not a loss of TSR or depth transport. Instead, the secondary
+camera-cut count increases as visibility / selected endpoint changes:
 
 ```text
-static camera
-camera translation / rotation
-oblique portal view
-partial viewport clipping
-foreground weapon occlusion
-portal approach / close range
+Frame 1409: Endpoint=0 CameraCuts=1
+Frame 1469: Endpoint=0 CameraCuts=3
+Frame 1599: Endpoint=1 CameraCuts=4
+Frame 1660: Endpoint=0 CameraCuts=5
 ```
 
-The portal interior should remain exposure-consistent and should not regress the
-already accepted TSR/history/depth/stencil/scissor behavior.
+The production producer currently owns one secondary `FSceneViewStateReference`, and
+its camera-cut policy explicitly cuts when the visible endpoint changes. Frames that
+leave the visible set also invalidate the same temporal history. With EyeAdaptation now
+owned by that same secondary view state, these cut / re-entry events can restart the
+secondary exposure history and recreate the near-black warm-up state that was observed
+at the start of Policy=1.
+
+Therefore the refined root cause is:
+
+```text
+static mismatch:
+  EyeAdaptation forcibly disabled -> fixed
+
+dynamic mismatch:
+  secondary TSR/Lumen temporal cuts and secondary exposure history share one owner
+  -> oblique / retreat visibility changes can reset exposure together with TSR history
+```
+
+## Next gate — 1B.14D Exposure authority decoupling
+
+Do not remove required TSR camera cuts merely to keep exposure alive. Endpoint changes,
+re-entry after visibility loss and true portal-frame discontinuities still require
+safe temporal invalidation.
+
+The next implementation must separate the two responsibilities:
+
+```text
+Secondary temporal ViewState
+  owns TSR / velocity / Lumen temporal history
+  may still camera-cut when required
+
+Exposure authority
+  must remain continuous across those secondary-only cuts
+  should be sourced from the player-main exposure state rather than a portal-local
+  independently resetting adaptation history
+```
+
+UE 5.8 exposes `FSceneViewInitOptions::ExposureSceneViewStateInterface`, which is the
+preferred public integration point to test for this separation while preserving the
+secondary `SceneViewStateInterface` for TSR/history ownership.
+
+A successful 1B.14D run must keep the portal exposure stable when:
+
+```text
+rotating to a grazing angle
+backing away
+briefly leaving / re-entering the visible set
+switching the selected visible endpoint
+```
+
+while retaining the accepted camera-cut semantics required by TSR.
 
 ## Acceptance boundary
 
-`STEP 1B.14C = PASS` establishes the dominant dark-secondary root cause and promotes
-the corrected exposure-policy ownership into the main TSR producer. It does not yet
-claim the final production visual-parity seal until the integrated full-chain PIE
-validation passes.
+`STEP 1B.14C` remains accepted only as the proof that enabling EyeAdaptation fixes the
+static secondary exposure defect. The integrated production visual-parity seal is NOT
+accepted yet because exposure is still coupled to secondary camera-cut lifetime.
