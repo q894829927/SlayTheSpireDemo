@@ -13,7 +13,7 @@ STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = PASS
 STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = PASS
 STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = PASS
 STEP 1B.11A PROJECTIVE APERTURE / GRAZING / VIEWPORT CLIP = PASS
-STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = RUNTIME BINDING PASS / VISUAL OCCLUSION VALIDATION PENDING
 ```
 
 ## Why this gate exists
@@ -55,15 +55,24 @@ portalDeviceZ =
   + Center.z * (1 / clipW)
 ```
 
-`InteriorPortalProjectiveAperture::FScreenToPortalMapping` now carries this
+`InteriorPortalProjectiveAperture::FScreenToPortalMapping` carries this
 `ClipZRow` next to the inverse homography rows.
 
 ## Main SceneDepth contract
 
-The BeforeDOF global shader now binds UE's public
-`FSceneTextureShaderParameters` with `ESceneTextureSetupMode::SceneDepth`.
-For aperture pixels it reads the real main SceneDepth, converts both the main
-sample and physical portal-plane device depth to world-space depth, and applies:
+The current implementation intentionally avoids reflecting the whole deferred
+SceneTextures uniform buffer into the custom screen shader. That path produced
+D3D12 uniform-buffer slot failures in the SceneViewExtension callback.
+
+Instead, when the depth gate is requested, project code creates the current main
+view's SceneDepth-only scene-texture parameters, extracts the RDG SceneDepth
+texture, and binds that texture directly as `MainSceneDepthTexture`. The shader
+also declares and binds the current `FSceneView` View uniform buffer because
+`ConvertFromDeviceZ()` depends on it.
+
+For aperture pixels the shader reads the real main SceneDepth, converts both the
+main sample and physical portal-plane device depth to world-space depth, and
+applies:
 
 ```text
 mainDepthCm + epsilon < portalPlaneDepthCm
@@ -109,11 +118,12 @@ red   = real main-scene geometry is in front of the portal plane; main wins
 
 Outside the aperture the ordinary main SceneColor remains visible.
 
-`portal.CompositionDiagnostics 1` now records:
+`portal.CompositionDiagnostics 1` records:
 
 ```text
 DepthAware=...
 DepthRequested=...
+DepthTextureValid=...
 DepthEpsilonCm=...
 ```
 
@@ -123,8 +133,48 @@ A normal depth-enabled frame should show:
 Projective=1
 ProjectiveValid=1
 DepthRequested=1
+DepthTextureValid=1
 DepthAware=1
 ```
+
+## Runtime evidence — 2026-09-15
+
+The earlier shader bring-up exposed two binding failures and both were resolved:
+
+```text
+1. SceneTextures uniform-buffer slot was not guaranteed in this callback.
+2. ConvertFromDeviceZ() reflected the View uniform buffer, but the shader
+   parameter struct initially did not declare/bind View.
+```
+
+After binding SceneDepth as a direct RDG texture and explicitly binding
+`InView.ViewUniformBuffer`, the user reran the accepted full-view-family TSR
+producer with depth diagnostics enabled. Repeated main-view BeforeDOF frames now
+report:
+
+```text
+DebugMode=4
+Projective=1
+ProjectiveValid=1
+DepthAware=1
+DepthRequested=1
+DepthTextureValid=1
+DepthEpsilonCm=2.0000
+```
+
+Example measured frames 2767-2773 used a 1557x733 main SceneColor, a 1920x904
+portal target, valid projective quality around 0.055-0.058, and a main
+PreExposure around 0.00149-0.00152. No D3D12 missing-uniform-buffer fatal was
+reported for these frames.
+
+A later stationary sequence at frames 2900-2913 repeatedly preserved the same
+contract with `Projective=1`, `ProjectiveValid=1`, `DepthAware=1`,
+`DepthRequested=1`, and `DepthTextureValid=1` on every logged frame.
+
+This is sufficient to accept the **shader/resource binding and runtime depth
+read path**. It is not yet sufficient to accept the full 1B.12A visual
+foreground-occlusion behavior because the required world-space opaque occluder
+A/B evidence has not yet been supplied.
 
 ## Validation procedure
 
@@ -190,23 +240,25 @@ portal.StopFullViewFamilyTSRSpike
 
 PASS requires all of the following:
 
-1. Project compiles and the shader compiles without SceneTextures uniform-buffer
-   binding errors.
+1. Project compiles and the shader runs without View/SceneTextures uniform-buffer
+   binding errors. **RUNTIME PASS**.
 2. `ComposeReady` reports `Projective=1`, `ProjectiveValid=1`,
-   `DepthRequested=1`, `DepthAware=1`.
-3. Debug mode 4 shows a stable green aperture where unobstructed.
+   `DepthRequested=1`, `DepthTextureValid=1`, `DepthAware=1`. **RUNTIME PASS**.
+3. Debug mode 4 shows a stable green aperture where unobstructed. **PENDING VISUAL EVIDENCE**.
 4. A real opaque world object between camera and portal produces a red region
-   matching the object's actual foreground overlap.
+   matching the object's actual foreground overlap. **PENDING VISUAL EVIDENCE**.
 5. In normal mode with `DepthAwareComposition=1`, that foreground object is no
-   longer overwritten by portal RGB.
+   longer overwritten by portal RGB. **PENDING VISUAL EVIDENCE**.
 6. `DepthAwareComposition=0` reproduces the previous accepted RGB-only path.
+   **PENDING A/B EVIDENCE**.
 7. No NaN/Inf, renderer assertion, RDG validation failure or stale secondary
-   target appears while moving camera/object across the aperture.
+   target appears while moving camera/object across the aperture. **PARTIAL;
+   current logged depth-enabled frames are stable, motion/occluder pass pending**.
 
 ## What this proves
 
-If PASS, project-side public renderer APIs are sufficient for this bounded
-contract:
+Once the remaining visual checks pass, project-side public renderer APIs are
+sufficient for this bounded contract:
 
 ```text
 main SceneDepth read
@@ -215,8 +267,9 @@ main SceneDepth read
     -> correct preservation of main-view foreground occluders
 ```
 
-This removes one major source of the portal looking like an RGB card pasted over
-the real scene.
+The current evidence already proves the main SceneDepth texture can be bound and
+consumed by this custom BeforeDOF screen pass without the earlier D3D12/View
+uniform-buffer failures.
 
 ## What this does NOT prove
 
@@ -233,12 +286,7 @@ true main depth-stencil aperture ownership
 remote-object depth continuity
 ```
 
-The public post-process scene-texture contract exposes readable main SceneDepth
-(and CustomDepth/CustomStencil when requested), but this is not the same as a
-safe public binding for mutating the renderer's main depth-stencil attachment.
-
-The next gate after 1B.12A is therefore deliberately narrower than "finish all
-stencil" in one jump:
+The next gate after 1B.12A remains:
 
 ```text
 STEP 1B.12B — SECONDARY DEPTH TRANSPORT + MAIN-VIEW DEPTH REMAP PROOF
