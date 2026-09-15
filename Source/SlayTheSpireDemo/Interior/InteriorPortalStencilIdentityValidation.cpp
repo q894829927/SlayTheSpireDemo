@@ -46,7 +46,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 	TAutoConsoleVariable<int32> CVarStencilIdentityIsolateBit(
 		TEXT("portal.StencilIdentityIsolateBit"),
 		1,
-		TEXT("STEP 1B.12D-A validation only. 1=clear only stencil bit 0x40 across the current main view immediately before marking visible portal apertures. This prevents stale/pre-existing 0x40 values from contaminating the proof. Not a production ownership policy."),
+		TEXT("STEP 1B.12D-A validation only. 1=clear only stencil bit 0x40 across the current main view every BeforeDOF frame, including frames with zero visible portals, before marking any visible portal apertures. This prevents stale/pre-existing 0x40 values from contaminating the proof. Not a production ownership policy."),
 		ECVF_RenderThreadSafe);
 
 	struct FPortalApertureSnapshot
@@ -110,6 +110,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 	TAtomic<uint64> GSetupViewFrames { 0 };
 	TAtomic<uint64> GStencilWriteFrames { 0 };
 	TAtomic<uint64> GStencilOverlayFrames { 0 };
+	TAtomic<uint64> GZeroVisibleClearFrames { 0 };
 	TAtomic<int32> GLastApertureCount { 0 };
 	TAtomic<bool> GLastStencilTargetable { false };
 	TAtomic<bool> GLastAfterDOFPassEnabled { false };
@@ -286,11 +287,10 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 			if (Pass == ISceneViewExtension::EPostProcessingPass::BeforeDOF)
 			{
 				const TArray<FPortalApertureSnapshot> SnapshotCopy = GetSnapshots();
-				if (SnapshotCopy.IsEmpty())
-				{
-					return;
-				}
 
+				// Always register the BeforeDOF callback while validation is active. The
+				// isolate pass must still run when no portal is visible; otherwise a
+				// 0x40 mark from the previous frame can survive and create a ghost portal.
 				InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
 					[SnapshotCopy](FRDGBuilder& GraphBuilder, const FSceneView& View,
 						const FPostProcessMaterialInputs& Inputs)
@@ -369,6 +369,12 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 										RHICmdList, ClearPixelShader, ClearPixelShader.GetPixelShader(), *ClearParameters);
 									RHICmdList.SetStencilRef(0);
 								});
+
+							if (SnapshotCopy.IsEmpty())
+							{
+								const uint64 ZeroVisibleClearCount = GZeroVisibleClearFrames.Load() + 1;
+								GZeroVisibleClearFrames.Store(ZeroVisibleClearCount);
+							}
 						}
 
 						TShaderMapRef<FPortalStencilMarkPS> PixelShader(
@@ -419,10 +425,12 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 							&& (WriteCount == 1 || (WriteCount % 60) == 0))
 						{
 							UE_LOG(LogTemp, Display,
-								TEXT("PortalStencilIdentity BeforeDOF Frame=%llu Count=%llu VisibleApertures=%d StencilTargetable=1 Format=%d StencilBit=0x%02x Isolated=%d"),
+								TEXT("PortalStencilIdentity BeforeDOF Frame=%llu Count=%llu VisibleApertures=%d StencilTargetable=1 Format=%d StencilBit=0x%02x Isolated=%d ZeroVisibleClear=%d ZeroVisibleClears=%llu"),
 								GFrameCounter, WriteCount, SnapshotCopy.Num(),
 								int32(SceneDepthTexture->Desc.Format), PortalStencilBit,
-								bIsolateBit ? 1 : 0);
+								bIsolateBit ? 1 : 0,
+								(bIsolateBit && SnapshotCopy.IsEmpty()) ? 1 : 0,
+								GZeroVisibleClearFrames.Load());
 						}
 						return SceneColor;
 					}));
@@ -577,6 +585,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 		GSetupViewFrames.Store(0);
 		GStencilWriteFrames.Store(0);
 		GStencilOverlayFrames.Store(0);
+		GZeroVisibleClearFrames.Store(0);
 		GLastApertureCount.Store(0);
 		GLastStencilTargetable.Store(false);
 		GLastAfterDOFPassEnabled.Store(false);
@@ -587,11 +596,12 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 	void WriteReport(const TCHAR* Status)
 	{
 		const FString Json = FString::Printf(
-			TEXT("{\n  \"status\": \"%s\",\n  \"setupViewFrames\": %llu,\n  \"stencilWriteFrames\": %llu,\n  \"stencilOverlayFrames\": %llu,\n  \"lastVisibleApertureCount\": %d,\n  \"lastStencilTargetable\": %s,\n  \"lastAfterDOFPassEnabled\": %s,\n  \"bitIsolationEnabled\": %s,\n  \"overlayPreExposure\": %.9g,\n  \"stencilBit\": 64,\n  \"claimBoundary\": \"STEP 1B.12D-A bounded validation only: visible linked apertures are written into main stencil bit 0x40 after isolating that bit for the proof, and a real CF_Equal AfterDOF stencil test visualizes identity. This does not reserve 0x40 engine-wide or define a production collision policy.\"\n}\n"),
+			TEXT("{\n  \"status\": \"%s\",\n  \"setupViewFrames\": %llu,\n  \"stencilWriteFrames\": %llu,\n  \"stencilOverlayFrames\": %llu,\n  \"zeroVisibleClearFrames\": %llu,\n  \"lastVisibleApertureCount\": %d,\n  \"lastStencilTargetable\": %s,\n  \"lastAfterDOFPassEnabled\": %s,\n  \"bitIsolationEnabled\": %s,\n  \"overlayPreExposure\": %.9g,\n  \"stencilBit\": 64,\n  \"claimBoundary\": \"STEP 1B.12D-A bounded validation only: stencil bit 0x40 is isolated every active main-view BeforeDOF frame, including zero-visible frames, then visible linked apertures are marked and downstream hardware stencil tests can verify identity. This does not reserve 0x40 engine-wide or define a production collision policy.\"\n}\n"),
 			Status,
 			GSetupViewFrames.Load(),
 			GStencilWriteFrames.Load(),
 			GStencilOverlayFrames.Load(),
+			GZeroVisibleClearFrames.Load(),
 			GLastApertureCount.Load(),
 			GLastStencilTargetable.Load() ? TEXT("true") : TEXT("false"),
 			GLastAfterDOFPassEnabled.Load() ? TEXT("true") : TEXT("false"),
@@ -603,11 +613,12 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 		const FString ReportPath = ReportDir / TEXT("PortalStencilIdentityValidation.json");
 		FFileHelper::SaveStringToFile(Json, *ReportPath);
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalStencilIdentity: report written to %s SetupView=%llu Writes=%llu Overlays=%llu VisibleApertures=%d Targetable=%d AfterDOFEnabled=%d Isolated=%d OverlayPreExposure=%.9g"),
+			TEXT("PortalStencilIdentity: report written to %s SetupView=%llu Writes=%llu Overlays=%llu ZeroVisibleClears=%llu VisibleApertures=%d Targetable=%d AfterDOFEnabled=%d Isolated=%d OverlayPreExposure=%.9g"),
 			*ReportPath,
 			GSetupViewFrames.Load(),
 			GStencilWriteFrames.Load(),
 			GStencilOverlayFrames.Load(),
+			GZeroVisibleClearFrames.Load(),
 			GLastApertureCount.Load(),
 			GLastStencilTargetable.Load() ? 1 : 0,
 			GLastAfterDOFPassEnabled.Load() ? 1 : 0,
@@ -635,7 +646,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 		GStencilIdentityExtension =
 			FSceneViewExtensions::NewExtension<FPortalStencilIdentityExtension>(LocalWorld);
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalStencilIdentity: started. Main stencil feasibility bit=0x%02x DebugOverlay=%d IsolateBit=%d. The debug overlay is pre-exposure aware and only visible linked apertures are marked."),
+			TEXT("PortalStencilIdentity: started. Main stencil feasibility bit=0x%02x DebugOverlay=%d IsolateBit=%d. Bit isolation runs every active main-view BeforeDOF frame, including zero-visible frames; only visible linked apertures are then marked."),
 			PortalStencilBit,
 			CVarStencilIdentityDebug.GetValueOnGameThread(),
 			CVarStencilIdentityIsolateBit.GetValueOnGameThread());
@@ -660,9 +671,10 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 		FlushRenderingCommands();
 		GStencilIdentityExtension.Reset();
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalStencilIdentity: stopped. Writes=%llu Overlays=%llu VisibleApertures=%d Targetable=%d Isolated=%d."),
+			TEXT("PortalStencilIdentity: stopped. Writes=%llu Overlays=%llu ZeroVisibleClears=%llu VisibleApertures=%d Targetable=%d Isolated=%d."),
 			GStencilWriteFrames.Load(),
 			GStencilOverlayFrames.Load(),
+			GZeroVisibleClearFrames.Load(),
 			GLastApertureCount.Load(),
 			GLastStencilTargetable.Load() ? 1 : 0,
 			GLastBitIsolated.Load() ? 1 : 0);
@@ -670,7 +682,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 
 	FAutoConsoleCommand GStartStencilIdentityValidationCommand(
 		TEXT("portal.StartStencilIdentityValidation"),
-		TEXT("STEP 1B.12D-A: isolate stencil bit 0x40 for the bounded proof, write visible linked portal apertures, and optionally visualize the real stencil test as pre-exposure-correct cyan AfterDOF."),
+		TEXT("STEP 1B.12D-A: isolate stencil bit 0x40 every active main-view BeforeDOF frame, including zero-visible frames, then write visible linked portal apertures; optional legacy AfterDOF visualization remains diagnostic only."),
 		FConsoleCommandDelegate::CreateStatic(&StartStencilIdentityValidation));
 
 	FAutoConsoleCommand GDumpStencilIdentityValidationCommand(
