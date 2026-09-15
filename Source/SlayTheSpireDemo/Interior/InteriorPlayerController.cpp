@@ -1,7 +1,9 @@
 #include "InteriorPlayerController.h"
 #include "InteriorPortalSystem.h"
 #include "InteriorPortalCameraManager.h"
+#include "InteriorPortalFullSceneViewSubsystem.h"
 #include "Components/InputComponent.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
 #include "InputCoreTypes.h"
 
@@ -56,10 +58,33 @@ void AInteriorPlayerController::ClearPortals()
 void AInteriorPlayerController::UpdateCameraManager(float DeltaSeconds)
 {
 	if (IsValid(PortalSystem)) { PortalSystem->UpdateTraversal(this); }
-	// Roll recovers after floor/wall transitions while preserving the mapped view at the crossing.
-	FRotator View = GetControlRotation();
-	View.Roll = FMath::FInterpTo(FRotator::NormalizeAxis(View.Roll), 0, DeltaSeconds, 3);
-	SetControlRotation(View);
+	if (PortalCamera.bActive) { SetControlRotation(PortalCamera.Orientation.Rotator()); }
 	Super::UpdateCameraManager(DeltaSeconds);
-	if (IsValid(PortalSystem)) { PortalSystem->RenderViews(this); }
+	if (IsValid(PortalSystem))
+	{
+		PortalSystem->RenderViews(this);
+		if (UWorld* World = GetWorld())
+		{
+			if (UInteriorPortalFullSceneViewSubsystem* FullSceneView = World->GetSubsystem<UInteriorPortalFullSceneViewSubsystem>())
+			{
+				FullSceneView->Render(this, PortalSystem);
+			}
+		}
+	}
+}
+
+void AInteriorPlayerController::ApplyPortalView(const FQuat& Mapping)
+{
+	PortalCamera.Transfer(Mapping,GetControlRotation().Quaternion());
+	SetControlRotation(PortalCamera.Orientation.Rotator());
+}
+
+void AInteriorPlayerController::UpdateRotation(float DeltaSeconds)
+{
+	if (!PortalCamera.bActive) { Super::UpdateRotation(DeltaSeconds); return; }
+	PortalCamera.ApplyInput(RotationInput);
+	// Recovery starts only after the whole capsule clears; transfer-frame roll is preserved.
+	if (!IsValid(PortalSystem) || !PortalSystem->IsPlayerClearingPortal()) { PortalCamera.RecoverHorizon(DeltaSeconds); }
+	SetControlRotation(PortalCamera.Orientation.Rotator());
+	if (APawn* ControlledPawn=GetPawn()) { ControlledPawn->FaceRotation(FRotator(0,GetControlRotation().Yaw,0),DeltaSeconds); }
 }

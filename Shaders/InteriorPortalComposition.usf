@@ -1,0 +1,251 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
+Texture2D SceneColorTexture;
+SamplerState SceneColorSampler;
+Texture2D PortalTexture;
+SamplerState PortalSampler;
+Texture2D MainSceneDepthTexture;
+Texture2D SecondaryDepthTexture;
+SamplerState SecondaryDepthSampler;
+
+SCREEN_PASS_TEXTURE_VIEWPORT(Output)
+SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
+float4 PortalBounds;
+float4 ScreenToPortalRow0;
+float4 ScreenToPortalRow1;
+float4 ScreenToPortalRow2;
+float4 PortalClipZRow;
+float ProjectiveApertureEnabled;
+float ProjectiveNearClipW;
+float DepthAwareCompositionEnabled;
+float SecondaryDepthRemapEnabled;
+float MainDepthPropagationEnabled;
+float DepthOcclusionEpsilonCm;
+float CompositionDebugMode;
+float PortalExposureScale;
+float StencilBypassShaderAperture;
+
+void MainPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	if (CompositionDebugMode >= 1.5 && CompositionDebugMode < 2.5)
+	{
+		OutColor = float4(1.0, 0.0, 1.0, 1.0);
+		return;
+	}
+
+	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
+	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
+	const float2 SceneUV = UVAndScreenPos.xy;
+
+	const float BoundsMask =
+		step(PortalBounds.x, ViewportUV.x)
+		* step(PortalBounds.y, ViewportUV.y)
+		* step(ViewportUV.x, PortalBounds.z)
+		* step(ViewportUV.y, PortalBounds.w);
+
+	float ApertureMask = 0.0;
+	float3 PortalHomogeneous = float3(0.0, 0.0, 0.0);
+	bool bProjectiveIntersectionValid = false;
+	if (ProjectiveApertureEnabled > 0.5)
+	{
+		const float3 ScreenPoint = float3(ViewportUV, 1.0);
+		PortalHomogeneous = float3(
+			dot(ScreenToPortalRow0.xyz, ScreenPoint),
+			dot(ScreenToPortalRow1.xyz, ScreenPoint),
+			dot(ScreenToPortalRow2.xyz, ScreenPoint));
+
+		if (PortalHomogeneous.z > 1.0e-8)
+		{
+			const float ClipW = rcp(PortalHomogeneous.z);
+			const bool bPastNearPlane = ProjectiveNearClipW <= 0.0 || ClipW >= ProjectiveNearClipW;
+			if (bPastNearPlane)
+			{
+				const float2 PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
+				const float EllipseDistance = dot(PortalLocal, PortalLocal);
+				const float EdgeWidth = max(fwidth(EllipseDistance) * 1.25, 1.0e-4);
+				ApertureMask = 1.0 - smoothstep(
+					1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
+				bProjectiveIntersectionValid = true;
+			}
+		}
+		ApertureMask *= BoundsMask;
+	}
+	else
+	{
+		const float2 PortalCenter = 0.5 * (PortalBounds.xy + PortalBounds.zw);
+		const float2 PortalRadius = max(
+			0.5 * (PortalBounds.zw - PortalBounds.xy), float2(1e-5, 1e-5));
+		const float2 EllipsePosition = (ViewportUV - PortalCenter) / PortalRadius;
+		const float EllipseDistance = dot(EllipsePosition, EllipsePosition);
+		ApertureMask = (1.0 - smoothstep(0.94, 1.0, EllipseDistance)) * BoundsMask;
+	}
+
+	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
+
+	// STEP 1B.14A visual-parity isolation. Show the transformed secondary
+	// post-TSR/pre-tonemap HDR image as a full-screen main-view input while keeping
+	// the already accepted PreExposure rebase. The C++ validation command disables
+	// stencil/scissor/depth gates before selecting mode 7, so this image isolates
+	// the secondary full-renderer color path from all portal-aperture integration.
+	// If this reference itself looks wrong, the remaining mismatch is upstream in
+	// the secondary view family / post-process ownership. If it looks correct while
+	// the normal portal does not, the defect is in portal-only composition/boundary
+	// behavior rather than Lumen/TSR color production.
+	if (CompositionDebugMode >= 6.5 && CompositionDebugMode < 7.5)
+	{
+		float4 PortalReference = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+		PortalReference.rgb *= PortalExposureScale;
+		OutColor = float4(PortalReference.rgb, MainColor.a);
+		return;
+	}
+
+	// STEP 1B.12D-B proof switch. Do NOT sample the portal HDR texture or run
+	// portal-depth logic here. The purpose of this mode is only to prove that the
+	// surrounding draw is physically constrained by the main-stencil CF_Equal
+	// test. Tinting the already-pre-exposed main SceneColor keeps the scene's
+	// luminance distribution bounded, so a failed stencil test becomes an obvious
+	// full-screen cyan tint instead of poisoning eye adaptation with arbitrary
+	// portal HDR samples.
+	if (StencilBypassShaderAperture > 0.5)
+	{
+		const float3 SafeStencilProofColor = MainColor.rgb * float3(0.25, 1.0, 1.0);
+		OutColor = float4(SafeStencilProofColor, MainColor.a);
+		return;
+	}
+
+	float4 PortalColor = (CompositionDebugMode >= 0.5 && CompositionDebugMode < 1.5)
+		? float4(1.0, 0.0, 1.0, 1.0)
+		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
+
+	float PortalPlaneDeviceZ = 0.0;
+	float PortalPlaneDepthCm = 0.0;
+	bool bPortalPlaneDepthValid = false;
+	if (ProjectiveApertureEnabled > 0.5 && bProjectiveIntersectionValid)
+	{
+		PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+		PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+		bPortalPlaneDepthValid = true;
+	}
+
+	// STEP 1B.12A: preserve real main-view foreground geometry in front of the
+	// physical portal plane. This is only a read/compare gate; it does not mutate
+	// the renderer's main SceneDepth attachment.
+	float ForegroundOcclusionMask = 0.0;
+	if (DepthAwareCompositionEnabled > 0.5
+		&& bPortalPlaneDepthValid
+		&& ApertureMask > 0.0)
+	{
+		const int2 ScenePixel = int2(SvPosition.xy);
+		const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
+		ForegroundOcclusionMask =
+			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < PortalPlaneDepthCm)
+			? 1.0 : 0.0;
+	}
+
+	if (CompositionDebugMode >= 3.5 && CompositionDebugMode < 4.5)
+	{
+		const float3 DiagnosticColor = lerp(
+			float3(0.0, 1.0, 0.0),
+			float3(1.0, 0.0, 0.0),
+			ForegroundOcclusionMask);
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
+	// STEP 1B.12B: the portal transform is rigid (rotation + translation) and the
+	// secondary camera is exactly that same rigid transform applied to the main
+	// camera. Therefore an exit-side point transformed back through the inverse
+	// portal has identical camera-relative coordinates. With the same projection
+	// matrix, its secondary device Z is already the exact conceptual main-view
+	// device Z. No artistic offset or distance reconstruction is required.
+	//
+	// The transported surface is current-frame primary-resolution SceneDepth,
+	// point-resampled to the display-size R32F target. It is deliberately NOT
+	// claimed to be TSR-reconstructed depth.
+	float SecondaryDeviceZ = 0.0;
+	float SecondaryDepthCm = 0.0;
+	bool bSecondaryDepthValid = false;
+	bool bSecondaryDepthBehindPortal = false;
+	if (SecondaryDepthRemapEnabled > 0.5
+		&& bPortalPlaneDepthValid
+		&& ApertureMask > 0.0)
+	{
+		SecondaryDeviceZ = Texture2DSampleLevel(
+			SecondaryDepthTexture, SecondaryDepthSampler, PortalUV, 0.0).r;
+		bSecondaryDepthValid = SecondaryDeviceZ > 1.0e-7 && SecondaryDeviceZ <= 1.0001;
+		if (bSecondaryDepthValid)
+		{
+			SecondaryDepthCm = ConvertFromDeviceZ(saturate(SecondaryDeviceZ));
+			bSecondaryDepthBehindPortal =
+				SecondaryDepthCm + max(DepthOcclusionEpsilonCm, 0.0) >= PortalPlaneDepthCm;
+		}
+	}
+
+	// Debug mode 5:
+	// cyan    = valid transported remote geometry at/behind portal plane;
+	// magenta = valid transported depth that maps in front of portal plane;
+	// yellow  = no rasterized remote depth (sky/background/transport miss).
+	if (CompositionDebugMode >= 4.5 && CompositionDebugMode < 5.5)
+	{
+		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
+		if (bSecondaryDepthValid)
+		{
+			DiagnosticColor = bSecondaryDepthBehindPortal
+				? float3(0.0, 1.0, 1.0)
+				: float3(1.0, 0.0, 1.0);
+		}
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
+	// STEP 1B.12C-A verification runs after the explicit depth-write pass queued
+	// by the compositor. It re-reads the actual main SceneDepth resource:
+	// cyan   = propagated main depth matches transported secondary depth;
+	// green  = a real main-view foreground occluder was correctly preserved;
+	// yellow = no remote raster depth (for example sky/background);
+	// red    = a valid remote depth exists but the main depth resource does not
+	//          contain that propagated value.
+	if (CompositionDebugMode >= 5.5 && CompositionDebugMode < 6.5)
+	{
+		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
+		if (ForegroundOcclusionMask > 0.5)
+		{
+			DiagnosticColor = float3(0.0, 1.0, 0.0);
+		}
+		else if (bSecondaryDepthValid)
+		{
+			const int2 ScenePixel = int2(SvPosition.xy);
+			const float PropagatedMainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
+			const float PropagatedMainDepthCm = ConvertFromDeviceZ(PropagatedMainDeviceZ);
+			const float VerifyToleranceCm = max(2.0 * max(DepthOcclusionEpsilonCm, 0.0), 1.0);
+			const bool bDepthMatches =
+				abs(PropagatedMainDepthCm - SecondaryDepthCm) <= VerifyToleranceCm;
+			DiagnosticColor = MainDepthPropagationEnabled > 0.5 && bDepthMatches
+				? float3(0.0, 1.0, 1.0)
+				: float3(1.0, 0.0, 0.0);
+		}
+		OutColor = float4(
+			lerp(MainColor.rgb, DiagnosticColor, saturate(ApertureMask)),
+			MainColor.a);
+		return;
+	}
+
+	if (CompositionDebugMode < 0.5)
+	{
+		PortalColor.rgb *= PortalExposureScale;
+	}
+
+	const float DepthVisibleApertureMask = ApertureMask * (1.0 - ForegroundOcclusionMask);
+	OutColor = float4(
+		lerp(MainColor.rgb, PortalColor.rgb, saturate(DepthVisibleApertureMask)),
+		MainColor.a);
+}
