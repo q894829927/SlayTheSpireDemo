@@ -31,7 +31,7 @@
 #include "UnrealClient.h"
 #include "UObject/StrongObjectPtr.h"
 
-namespace
+namespace InteriorPortalFullViewFamilyBeforeDOFSpikePrivate
 {
 	class FPortalBeforeDOFExtractionExtension final : public FWorldSceneViewExtension
 	{
