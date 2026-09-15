@@ -16,7 +16,7 @@ STEP 1B.11A PROJECTIVE APERTURE / GRAZING / VIEWPORT CLIP = PASS
 STEP 1B.12A MAIN SCENEDEPTH FOREGROUND OCCLUSION = PASS
 STEP 1B.12B SECONDARY DEPTH TRANSPORT + MAIN-VIEW REMAP = PASS
 STEP 1B.12C-A MAIN SCENEDEPTH WRITE FEASIBILITY = PASS
-STEP 1B.12C-B REAL MAIN DOF DEPTH CONSUMER = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.12C-B REAL MAIN DOF DEPTH CONSUMER = PASS
 ```
 
 ## Goal
@@ -25,7 +25,7 @@ STEP 1B.12C-B REAL MAIN DOF DEPTH CONSUMER = IMPLEMENTED / NOT YET BUILT OR RUN
 remote device depth into the current main SceneDepth attachment while preserving
 real main-view foreground geometry.
 
-1B.12C-B now asks a stronger question:
+1B.12C-B asks a stronger question:
 
 ```text
 Does a real downstream UE post-process pass consume that mutated main SceneDepth
@@ -144,6 +144,51 @@ fstop
 sensorWidthMm
 ```
 
+## Runtime evidence — 2026-09-15
+
+The user built the validation harness after the UE 5.8 `TAtomic` counter API fix
+and ran it successfully with the controlled main-view DOF configuration:
+
+```text
+FocalDistanceCm=150.000
+Fstop=1.200
+SensorWidthMm=36.000
+```
+
+The real downstream callback repeatedly executed with the DOF pass enabled. The
+supplied log sequence included:
+
+```text
+PortalDOFValidation AfterDOF Frame=1267 Count=480 PassEnabled=1 ...
+PortalDOFValidation AfterDOF Frame=1327 Count=540 PassEnabled=1 ...
+PortalDOFValidation AfterDOF Frame=1387 Count=600 PassEnabled=1 ...
+PortalDOFValidation AfterDOF Frame=1447 Count=660 PassEnabled=1 ...
+```
+
+A normal-color OFF/ON screenshot pair did not make the depth-consumer difference
+obvious enough by blur alone, so validation was escalated to UE's built-in
+`Visualize Depth of Field` layer view while keeping the camera fixed.
+
+The fixed-camera DOF-layer A/B was decisive:
+
+```text
+MainDepthPropagation = 0
+    portal aperture remained predominantly dark / focus-plane classified,
+    consistent with the physical entry/host depth still being consumed.
+
+MainDepthPropagation = 1
+    the same portal aperture changed to the far-DOF blue classification over
+    the remote opaque region while the rest of the main scene retained its
+    expected layer classification.
+```
+
+This is direct downstream evidence that the DOF depth classifier is reading the
+propagated portal-interior depth rather than treating the aperture as one flat
+physical entry-plane surface.
+
+No render-thread, RDG, D3D12 or resource-lifetime failure was reported during the
+accepted run.
+
 ## Validation procedure
 
 Close Unreal Editor before rebuilding because this adds a new compiled source
@@ -201,18 +246,10 @@ portal.MainDepthPropagation 1
 
 Wait several frames and capture again.
 
-Expected:
-
-1. Portal color/geometry remains the same accepted scene content.
-2. Blur/focus distribution inside the aperture changes according to remote
-   geometry depth when propagation is enabled.
-3. Remote opaque surfaces at different depths should not all behave as one flat
-   portal-plane depth surface.
-4. Main foreground geometry that physically blocks the portal still obeys its own
-   main depth and remains spatially coherent.
-5. The sky/background may not provide transported raster depth and is not used as
-   proof either way.
-6. No D3D12/RDG/assert/resource-lifetime failure occurs.
+For ambiguous blur-only comparisons, enable UE's built-in DOF layer visualization
+and repeat the same fixed-camera A/B. The accepted run used this escalation and
+showed the portal interior changing from physical-entry-depth classification to
+remote far-depth classification when propagation was enabled.
 
 Then run:
 
@@ -221,7 +258,7 @@ portal.DumpDOFDepthConsumerValidation
 portal.StopDOFDepthConsumerValidation
 ```
 
-Restore any temporary quality setting afterward if desired.
+Restore any temporary quality or visualization setting afterward if desired.
 
 ## PASS criteria
 
@@ -237,6 +274,9 @@ PASS requires all of the following:
    portal-plane depth.
 5. Normal portal composition and real foreground occlusion do not regress.
 6. No render-thread/RDG/D3D12/resource-lifetime failure occurs.
+
+The 2026-09-15 run satisfies these criteria. `Visualize Depth of Field` provided
+the decisive A/B proof for criterion 4.
 
 ## What PASS proves
 
@@ -273,6 +313,7 @@ Core Portal Fidelity Seal
 
 ## Next gate after PASS
 
-After DOF acceptance, validate another downstream depth-dependent effect only if
-it materially changes fidelity. Then harden aperture identity/stencil ownership
-and portal-bounded resource/scissor behavior before recursion.
+Do not keep tuning the DOF proof. The next renderer gate is aperture identity /
+stencil ownership, followed by portal-bounded resource/scissor hardening. A
+second downstream effect such as fog is optional unless later evidence shows it
+adds information beyond the accepted DOF proof. Recursion remains later.
