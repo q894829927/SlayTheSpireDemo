@@ -71,7 +71,7 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PortalTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PortalSampler)
-		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MainSceneDepthTexture)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Portal)
 		SHADER_PARAMETER(FVector4f, PortalBounds)
@@ -321,14 +321,41 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const bool bDepthAwareRequested =
 		CVarPortalDepthAwareComposition.GetValueOnRenderThread() != 0
 		|| (CompositionDebugMode >= 4 && CompositionDebugMode < 5);
-	const bool bUseDepthAwareComposition = bDepthAwareRequested && bUseProjectiveAperture;
 	const float DepthOcclusionEpsilonCm = FMath::Max(
 		CVarPortalDepthOcclusionEpsilonCm.GetValueOnRenderThread(), 0.0f);
+
+	// Do not bind the full SceneTextures uniform buffer into this custom screen
+	// shader. D3D12 requires every reflected uniform-buffer slot to be populated,
+	// and SceneViewExtension callbacks do not guarantee that FSceneTextureShaderParameters
+	// contains a bindable deferred buffer. Instead, create the current main view's
+	// SceneDepth RDG parameters only when the depth gate is requested, extract the
+	// texture from the RDG uniform buffer's contents, and bind that texture directly.
+	FRDGTextureRef MainSceneDepthTexture = SceneColor.Texture;
+	bool bMainSceneDepthValid = false;
+	if (bDepthAwareRequested)
+	{
+		const TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer =
+			CreateSceneTextureUniformBuffer(
+				GraphBuilder, InView, ESceneTextureSetupMode::SceneDepth);
+		if (SceneTextureUniformBuffer)
+		{
+			const FSceneTextureUniformParameters* SceneTextureContents =
+				SceneTextureUniformBuffer->GetContents();
+			if (SceneTextureContents && SceneTextureContents->SceneDepthTexture)
+			{
+				MainSceneDepthTexture = SceneTextureContents->SceneDepthTexture;
+				bMainSceneDepthValid = true;
+			}
+		}
+	}
+
+	const bool bUseDepthAwareComposition =
+		bDepthAwareRequested && bUseProjectiveAperture && bMainSceneDepthValid;
 
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClipW=%.9g NearClip=%d Crossing=%d ViewportClip=%d DepthAware=%d DepthRequested=%d DepthEpsilonCm=%.4f"),
+			TEXT("PortalComposition ComposeReady Frame=%llu SceneRect=%dx%d PortalExtent=%dx%d DebugMode=%d Rebase=%d MainPreExposure=%.9g SecondaryPreExposure=%.9g ExposureScale=%.9g Projective=%d ProjectiveValid=%d ProjectiveQuality=%.9g NearClipW=%.9g NearClip=%d Crossing=%d ViewportClip=%d DepthAware=%d DepthRequested=%d DepthTextureValid=%d DepthEpsilonCm=%.4f"),
 			GFrameCounter,
 			SceneColor.ViewRect.Width(),
 			SceneColor.ViewRect.Height(),
@@ -348,6 +375,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			Request.ProjectedBounds.bClippedToViewport ? 1 : 0,
 			bUseDepthAwareComposition ? 1 : 0,
 			bDepthAwareRequested ? 1 : 0,
+			bMainSceneDepthValid ? 1 : 0,
 			DepthOcclusionEpsilonCm);
 	}
 
@@ -359,12 +387,7 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalTexture = PortalTexture;
 	PassParameters->PortalSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-	// Inputs.SceneTextures is not guaranteed to carry a bound deferred scene
-	// texture uniform buffer for a SceneViewExtension callback. Bind the exact
-	// current main view's already-created scene texture parameters instead; this
-	// keeps the SceneDepth uniform buffer valid even when the depth CVar is off,
-	// because the shader parameter layout still contains the uniform-buffer slot.
-	PassParameters->SceneTextures = GetSceneTextureShaderParameters(InView);
+	PassParameters->MainSceneDepthTexture = MainSceneDepthTexture;
 	PassParameters->Output = GetScreenPassTextureViewportParameters(OutputViewport);
 	PassParameters->Portal = GetScreenPassTextureViewportParameters(PortalViewport);
 	PassParameters->PortalBounds = FVector4f(
