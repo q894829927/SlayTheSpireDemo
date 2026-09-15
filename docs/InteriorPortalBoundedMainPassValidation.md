@@ -49,6 +49,13 @@ Source:
 Source/SlayTheSpireDemo/Interior/InteriorPortalRenderer.cpp
 ```
 
+Source commit:
+
+```text
+9379484428b18023564fc92af81512382597b076
+portal: bound main portal passes to projected scissor
+```
+
 Controls:
 
 ```text
