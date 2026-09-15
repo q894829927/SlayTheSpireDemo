@@ -11,7 +11,8 @@ STEP 1B.7 STATIC MAIN-VIEW COMPOSITION = PASS
 STEP 1B.8 SECONDARY->MAIN PRE-EXPOSURE REBASE = PASS
 STEP 1B.9 PER-FRAME FULL SECONDARY PRODUCER = PASS
 STEP 1B.10A PERSISTENT SECONDARY TAA HISTORY = PASS
-STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = IMPLEMENTED / NOT YET BUILT OR RUN
+STEP 1B.10B TSR / TEMPORAL JITTER / SCREEN PERCENTAGE = PASS
+NEXT = NEAR / GRAZING CLIPPING HARDENING
 ```
 
 Implementation commit:
@@ -179,6 +180,73 @@ alignment/rounding can differ slightly from a naive multiplication, so the gate
 does not require exact equality to that approximation. The important observable
 is that the post-TSR extraction returns to full output size.
 
+## Runtime evidence — 2026-09-15
+
+Observed final report:
+
+```text
+status = STOPPED
+framesSubmitted = 1458
+framesSkipped = 0
+lastExtractionFrame = 3045
+lastEndpointIndex = 0
+targetSize = 890 x 939
+primaryResolutionFraction = 0.67
+expectedPrimarySize = 596 x 629
+extractionPass = Tonemap (post-TSR / pre-tonemap linear HDR)
+extractionInputSize = 890 x 939
+observedAAMethod = 4
+temporalJitterObserved = true
+lastTemporalJitter = (0.00125628139, -0.000176366928)
+secondaryPreExposure = 1
+temporalHistoryValid = true
+cameraCutCount = 3
+continuousHistoryFrames = 1455
+lastCameraCut = false
+lastCameraCutReason = continuous history
+```
+
+Periodic runtime telemetry remained consistent with the report. Representative
+frames showed:
+
+```text
+Submitted=1020  PrimaryFraction=0.670  ExpectedPrimary=596x629
+Output=890x939  ExtractionInput=890x939  ObservedAA=4
+Jitter=(-0.00125628139,0.000176366739)  JitterObserved=1
+CameraCut=0  CameraCuts=3  ContinuousHistoryFrames=1017
+CutReason=continuous history
+```
+
+and later:
+
+```text
+Submitted=1380  PrimaryFraction=0.670  ExpectedPrimary=596x629
+Output=890x939  ExtractionInput=890x939  ObservedAA=4
+Jitter=(0.000837520929,0.00123456796)  JitterObserved=1
+CameraCut=0  CameraCuts=3  ContinuousHistoryFrames=1377
+CutReason=continuous history
+```
+
+The runtime therefore proves all four central 1B.10B contracts simultaneously:
+
+```text
+requested primary fraction < 1.0
+actual render-thread AA method = TSR
+non-zero temporal jitter is present
+post-TSR extraction is restored to full output resolution
+```
+
+History continuity also remained healthy: only three camera cuts occurred across
+1458 submitted frames, while 1455 frames reused continuous history. No frame was
+skipped in the final run.
+
+Result:
+
+```text
+STEP 1B.10B = PASS
+TEMPORAL HISTORY + FIXED-FRACTION TSR FEASIBILITY = ACCEPTED
+```
+
 ## Failure interpretation
 
 ```text
@@ -200,10 +268,15 @@ history cuts every frame
 
 ## Next gate after PASS
 
-After 1B.10B passes, temporal history and fixed-fraction TSR are considered
-feasible on the transformed full-view path. The next renderer work should move to
-near/grazing clipping hardening and then main depth/stencil continuity. Dynamic
-resolution and production GPU/VRAM budgets remain a later performance gate.
+Temporal history and fixed-fraction TSR are now accepted on the transformed
+full-view path. The next renderer work moves to **near/grazing clipping
+hardening**: validate the transformed camera very close to the portal plane,
+large oblique viewing angles, clip-plane sign/bias stability, portal bounds near
+the viewport edges, and crossing-adjacent frames without introducing depth or
+stencil changes yet.
+
+Main depth/stencil continuity follows after clipping is stable. Dynamic
+resolution and production GPU/VRAM budgets remain later performance gates.
 
 ## Claim boundary
 
