@@ -46,5 +46,11 @@ void MainPS(
 	const float4 PortalColor = (CompositionDebugMode >= 0.5 && CompositionDebugMode < 1.5)
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
-	OutColor = lerp(MainColor, PortalColor, saturate(ApertureMask));
+
+	// The extracted full-renderer BeforeDOF SceneColor does not provide a stable
+	// opacity contract in alpha. Aperture ownership is analytic, so blend RGB only
+	// and preserve the main view's SceneColor alpha for downstream post processing.
+	OutColor = float4(
+		lerp(MainColor.rgb, PortalColor.rgb, saturate(ApertureMask)),
+		MainColor.a);
 }
