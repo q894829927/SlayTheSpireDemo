@@ -28,7 +28,7 @@
 #include "ScreenPass.h"
 #include "UObject/StrongObjectPtr.h"
 
-namespace
+namespace InteriorPortalFullViewFamilyMainCompositionSpikePrivate
 {
 	TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> GFullViewFamilyMainCompositionExtension;
 
@@ -360,8 +360,6 @@ namespace
 			FMath::RoundToInt(Width * double(PlayerRect.Height()) / double(PlayerRect.Width())));
 		const FIntPoint TargetSize(Width, Height);
 
-		// RenderTargets[0] is persistent on the endpoint and becomes the static
-		// pre-tonemap portal texture consumed by the main-view composition proof.
 		Entry->EnsureTargets(Width, Height, 1);
 		UTextureRenderTarget2D* PortalTarget = Entry->RenderTargets.IsValidIndex(0)
 			? Entry->RenderTargets[0] : nullptr;
