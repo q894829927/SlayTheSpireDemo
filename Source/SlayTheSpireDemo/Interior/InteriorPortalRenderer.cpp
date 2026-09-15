@@ -80,9 +80,54 @@ namespace
 		TEXT("STEP 1B.12D-B proof switch. Effective only when portal.StencilGatedComposition=1. 1=skip portal HDR/depth sampling and emit an exposure-safe cyan tint from main SceneColor; only the hardware stencil test may confine the draw."),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarPortalBoundedMainPassScissor(
+		TEXT("portal.BoundedMainPassScissor"),
+		0,
+		TEXT("STEP 1B.13A bounded-work proof. 1=restrict portal candidate/depth-write/stencil-mark/color passes to the conservative projected portal rectangle; 0=retain full main-view raster rectangles."),
+		ECVF_RenderThreadSafe);
+
+	TAutoConsoleVariable<int32> CVarPortalBoundedMainPassPaddingPixels(
+		TEXT("portal.BoundedMainPassPaddingPixels"),
+		4,
+		TEXT("STEP 1B.13A extra main-render pixels around the conservative projected portal rectangle. Clamped to [0,64]."),
+		ECVF_RenderThreadSafe);
+
 	bool PortalCompositionDiagnosticsEnabled()
 	{
 		return CVarPortalCompositionDiagnostics.GetValueOnAnyThread() != 0;
+	}
+
+	FIntRect BuildBoundedPortalPassRect(
+		const InteriorPortalMath::FPortalScreenBounds& Bounds,
+		const FIntRect& ViewRect,
+		const int32 PaddingPixels)
+	{
+		if (!Bounds.bHasVisiblePortion || ViewRect.Width() <= 0 || ViewRect.Height() <= 0)
+		{
+			return ViewRect;
+		}
+
+		const float MinU = FMath::Clamp(Bounds.Min.X, 0.0f, 1.0f);
+		const float MinV = FMath::Clamp(Bounds.Min.Y, 0.0f, 1.0f);
+		const float MaxU = FMath::Clamp(Bounds.Max.X, 0.0f, 1.0f);
+		const float MaxV = FMath::Clamp(Bounds.Max.Y, 0.0f, 1.0f);
+		const int32 SafePadding = FMath::Clamp(PaddingPixels, 0, 64);
+
+		FIntRect Result(
+			ViewRect.Min.X + FMath::FloorToInt(MinU * ViewRect.Width()) - SafePadding,
+			ViewRect.Min.Y + FMath::FloorToInt(MinV * ViewRect.Height()) - SafePadding,
+			ViewRect.Min.X + FMath::CeilToInt(MaxU * ViewRect.Width()) + SafePadding,
+			ViewRect.Min.Y + FMath::CeilToInt(MaxV * ViewRect.Height()) + SafePadding);
+
+		Result.Min.X = FMath::Clamp(Result.Min.X, ViewRect.Min.X, ViewRect.Max.X);
+		Result.Min.Y = FMath::Clamp(Result.Min.Y, ViewRect.Min.Y, ViewRect.Max.Y);
+		Result.Max.X = FMath::Clamp(Result.Max.X, ViewRect.Min.X, ViewRect.Max.X);
+		Result.Max.Y = FMath::Clamp(Result.Max.Y, ViewRect.Min.Y, ViewRect.Max.Y);
+		if (Result.Width() <= 0 || Result.Height() <= 0)
+		{
+			return ViewRect;
+		}
+		return Result;
 	}
 
 	FCustomRenderPassBase::ERenderOutput PortalCustomRenderOutput()
@@ -505,14 +550,36 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		&& bMainSceneDepthValid
 		&& bSecondaryDepthTextureValid
 		&& bMainDepthTargetable;
-	const bool bStencilOutputPrefill =
-		bUseStencilComposition && Output.Texture != SceneColor.Texture;
-	if (bStencilOutputPrefill)
+	const bool bBoundedMainPassRequested =
+		CVarPortalBoundedMainPassScissor.GetValueOnRenderThread() != 0;
+	const int32 BoundedMainPassPaddingPixels = FMath::Clamp(
+		CVarPortalBoundedMainPassPaddingPixels.GetValueOnRenderThread(), 0, 64);
+	const bool bFullScreenDebug = CompositionDebugMode >= 1.5 && CompositionDebugMode < 2.5;
+	// The stencil bypass proof must remain full-view so it cannot be accidentally
+	// "proven" by the CPU rectangle. Only the real CF_Equal test may confine it.
+	const bool bUseBoundedMainPassScissor =
+		bBoundedMainPassRequested
+		&& bUseProjectiveAperture
+		&& !bBypassShaderAperture
+		&& !bFullScreenDebug;
+	const FIntRect PortalPassRect = bUseBoundedMainPassScissor
+		? BuildBoundedPortalPassRect(
+			Request.ProjectedBounds, SceneColor.ViewRect, BoundedMainPassPaddingPixels)
+		: SceneColor.ViewRect;
+	const FScreenPassTextureViewport OutputPassViewport(Output.Texture, PortalPassRect);
+	const FScreenPassTextureViewport SceneColorPassViewport(SceneColor.Texture, PortalPassRect);
+	const int64 FullMainPassPixels = int64(SceneColor.ViewRect.Width()) * int64(SceneColor.ViewRect.Height());
+	const int64 BoundedMainPassPixels = int64(PortalPassRect.Width()) * int64(PortalPassRect.Height());
+	const double BoundedMainPassCoverage = FullMainPassPixels > 0
+		? double(BoundedMainPassPixels) / double(FullMainPassPixels)
+		: 1.0;
+	const bool bSparseOutput = bUseStencilComposition || bUseBoundedMainPassScissor;
+	const bool bOutputPrefilled = bSparseOutput && Output.Texture != SceneColor.Texture;
+	if (bOutputPrefilled)
 	{
-		// CreateFromInput allocates an output matching SceneColor; it does not copy
-		// the input pixels. A hardware stencil test makes the composition draw sparse,
-		// so rejected pixels would otherwise keep undefined HDR data. Prefill the
-		// output explicitly so stencil-rejected pixels preserve the exact main color.
+		// Sparse raster work must preserve the incoming main color outside the
+		// portal rectangle / stencil coverage. CreateFromInput allocates but does
+		// not populate the new post-process output texture.
 		AddCopyTexturePass(GraphBuilder, SceneColor.Texture, Output.Texture);
 	}
 
@@ -535,6 +602,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			SceneColor.ViewRect,
 			ERenderTargetLoadAction::EClear);
 		const FScreenPassTextureViewport CandidateViewport(CandidateOutput);
+		const FScreenPassTextureViewport CandidatePassViewport(
+			PropagatedDepthCandidateTexture, PortalPassRect);
 
 		InteriorPortalRenderer::FInteriorPortalDepthCandidateParameters* CandidateParameters =
 			GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalDepthCandidateParameters>();
@@ -562,14 +631,16 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			GraphBuilder,
 			RDG_EVENT_NAME("InteriorPortal::BuildMainDepthPropagationCandidate"),
 			InView,
-			CandidateViewport,
-			OutputViewport,
+			CandidatePassViewport,
+			SceneColorPassViewport,
 			CandidatePixelShader,
 			CandidateParameters,
 			EScreenPassDrawFlags::None);
 
 		const FScreenPassTextureViewport MainDepthViewport(
 			MainSceneDepthTexture, SceneColor.ViewRect);
+		const FScreenPassTextureViewport MainDepthPassViewport(
+			MainSceneDepthTexture, PortalPassRect);
 		InteriorPortalRenderer::FInteriorPortalDepthWriteParameters* DepthWriteParameters =
 			GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalDepthWriteParameters>();
 		DepthWriteParameters->PropagatedDepthTexture = PropagatedDepthCandidateTexture;
@@ -587,8 +658,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			GraphBuilder,
 			RDG_EVENT_NAME("InteriorPortal::WriteMainSceneDepth"),
 			InView,
-			MainDepthViewport,
-			CandidateViewport,
+			MainDepthPassViewport,
+			CandidatePassViewport,
 			VertexShader,
 			DepthWritePixelShader,
 			TStaticBlendState<>::GetRHI(),
@@ -601,6 +672,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	{
 		const FScreenPassTextureViewport MainDepthViewport(
 			MainSceneDepthTexture, SceneColor.ViewRect);
+		const FScreenPassTextureViewport MainDepthPassViewport(
+			MainSceneDepthTexture, PortalPassRect);
 		TShaderMapRef<FScreenPassVS> VertexShader(GetGlobalShaderMap(InView.GetFeatureLevel()));
 
 		InteriorPortalRenderer::FInteriorPortalStencilClearParameters* ClearParameters =
@@ -661,8 +734,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			GraphBuilder,
 			RDG_EVENT_NAME("InteriorPortal::MarkCompositionStencil Endpoint=%d", Request.EndpointIndex),
 			InView,
-			MainDepthViewport,
-			MainDepthViewport,
+			MainDepthPassViewport,
+			MainDepthPassViewport,
 			FScreenPassPipelineState(
 				VertexShader, MarkPixelShader,
 				TStaticBlendState<>::GetRHI(), MarkStencilState,
@@ -723,7 +796,17 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			bUseStencilComposition ? PortalCompositionStencilBit : 0,
 			bBypassShaderAperture ? 1 : 0,
 			bBypassShaderAperture ? TEXT("SafeMainColorTint") : TEXT("NormalPortalRGB"),
-			bStencilOutputPrefill ? 1 : 0);
+			bOutputPrefilled ? 1 : 0);
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition BoundedPass Frame=%llu Requested=%d Active=%d Rect=(%d,%d)-(%d,%d) Pixels=%lld/%lld Coverage=%.6f Padding=%d"),
+			GFrameCounter,
+			bBoundedMainPassRequested ? 1 : 0,
+			bUseBoundedMainPassScissor ? 1 : 0,
+			PortalPassRect.Min.X, PortalPassRect.Min.Y,
+			PortalPassRect.Max.X, PortalPassRect.Max.Y,
+			BoundedMainPassPixels, FullMainPassPixels,
+			BoundedMainPassCoverage,
+			BoundedMainPassPaddingPixels);
 	}
 
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
@@ -779,8 +862,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			GraphBuilder,
 			RDG_EVENT_NAME("InteriorPortal::BeforeDOFStencilGatedComposition"),
 			InView,
-			OutputViewport,
-			OutputViewport,
+			OutputPassViewport,
+			SceneColorPassViewport,
 			FScreenPassPipelineState(
 				VertexShader, PixelShader,
 				TStaticBlendState<>::GetRHI(), StencilTestState,
@@ -800,8 +883,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			GraphBuilder,
 			RDG_EVENT_NAME("InteriorPortal::BeforeDOFComposition"),
 			InView,
-			OutputViewport,
-			OutputViewport,
+			OutputPassViewport,
+			SceneColorPassViewport,
 			PixelShader,
 			PassParameters);
 	}
@@ -809,14 +892,15 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	if (PortalCompositionDiagnosticsEnabled())
 	{
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d DebugMode=%d MainDepthPropagation=%d StencilGate=%d BypassShaderAperture=%d"),
+			TEXT("PortalComposition DrawQueued Frame=%llu PortalId=%d Endpoint=%d DebugMode=%d MainDepthPropagation=%d StencilGate=%d BypassShaderAperture=%d BoundedScissor=%d"),
 			GFrameCounter,
 			Request.PortalId,
 			Request.EndpointIndex,
 			CompositionDebugMode,
 			bUseMainDepthPropagation ? 1 : 0,
 			bUseStencilComposition ? 1 : 0,
-			bBypassShaderAperture ? 1 : 0);
+			bBypassShaderAperture ? 1 : 0,
+			bUseBoundedMainPassScissor ? 1 : 0);
 	}
 	return Output;
 }
