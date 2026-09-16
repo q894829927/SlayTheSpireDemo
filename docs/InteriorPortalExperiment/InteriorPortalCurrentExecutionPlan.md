@@ -1,5 +1,23 @@
 # Interior Portal — Current Execution Plan
 
+> **HISTORICAL EXECUTION RECORD — SUPERSEDED FOR CURRENT WORK**
+>
+> The sequencing/status language below records the Portal development state as of 2026-09-15 and is retained as historical engineering evidence. It is **not** the current resume/execution authority, even where older text below says otherwise.
+>
+> Current authorized Portal work is defined by:
+>
+> ```text
+> docs/PortalPerformanceVRAMP1Plan.md
+> ```
+>
+> Current functional closure evidence is:
+>
+> ```text
+> docs/InteriorPortalExperiment/InteriorPortalFullFidelityProductionRegression.md
+> ```
+>
+> Resume new Portal work from those documents. Do not resume STEP 1B.x experiments from this historical record unless a new reproduced regression explicitly reopens them.
+
 Date: **2026-09-15**
 
 Branch reviewed: **`portal/full-fidelity-p1`**
@@ -168,7 +186,7 @@ The project-side composition hook is
 `ISceneViewExtension::SubscribeToPostProcessingPass` for
 `EPostProcessingPass::BeforeDOF`. UE 5.8 invokes the delegate from the normal
 post-processing chain with `FPostProcessMaterialInputs`; the delegate reads
-`EPostProcessMaterialInput::SceneColor`, imports the external CRP target using
+`EPostProcessMaterialInput::SceneColor`, imports the CRP HDR target using
 `FRenderTarget::GetRenderTargetTexture`, and returns a new RDG screen-pass
 SceneColor. This is before player eye adaptation/local exposure, color grading
 and tonemap, so the player remains the only final display-domain authority.
