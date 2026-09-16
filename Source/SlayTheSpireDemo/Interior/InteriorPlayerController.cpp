@@ -134,6 +134,12 @@ void AInteriorPlayerController::UpdateCameraManager(float DeltaSeconds)
 			}
 		}
 	}
+	else
+	{
+		// Runtime destruction/replacement of the system must not leave endpoint
+		// ViewStates or transient render targets alive until controller teardown.
+		SetFullFidelityRendererActive(false);
+	}
 }
 
 void AInteriorPlayerController::ApplyPortalView(const FQuat& Mapping)
