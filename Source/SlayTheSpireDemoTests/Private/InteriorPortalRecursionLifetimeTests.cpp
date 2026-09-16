@@ -26,44 +26,47 @@ bool FInteriorPortalRecursionLifetimeModelTest::RunTest(const FString& Parameter
 	TestFalse(TEXT("Allocated lifetime may not submit at or above RequestedDepth"), OldLifetime.CanSubmit(4, 4));
 	TestTrue(TEXT("Allocated lifetime can become active"), OldLifetime.MarkActive());
 
-	const FPublicationToken InitialActiveToken = OldLifetime.CapturePublicationToken();
-	TestTrue(TEXT("Active publication token is valid"), InitialActiveToken.IsValid());
-	TestTrue(TEXT("Current active token may publish"), OldLifetime.CanPublish(InitialActiveToken));
+	const FPublicationToken ActiveToken = OldLifetime.CapturePublicationToken();
+	const uint64 ActivePackedIdentity = OldLifetime.GetPackedPublicationIdentity();
+	TestTrue(TEXT("Active publication token is valid"), ActiveToken.IsValid());
+	TestTrue(TEXT("Active packed publication identity is valid"), ActivePackedIdentity != 0);
+	TestTrue(TEXT("Current active token may publish"), OldLifetime.CanPublish(ActiveToken));
+	TestTrue(TEXT("Current packed identity may publish"), OldLifetime.CanPublishPacked(ActivePackedIdentity));
 
 	const uint64 StableId = OldLifetime.LifetimeId;
 	TestTrue(TEXT("Repeated active transition is stable"), OldLifetime.MarkActive());
 	TestEqual(TEXT("Stable active lifetime preserves identity"), OldLifetime.LifetimeId, StableId);
 
-	FPublicationToken VisibilityRetiredToken;
-	TestTrue(TEXT("Active lifetime can advance publication generation for visibility retirement"),
-		OldLifetime.AdvancePublicationGeneration(VisibilityRetiredToken));
-	TestTrue(TEXT("Visibility retirement captures the previous publication token"),
-		VisibilityRetiredToken == InitialActiveToken);
-	TestEqual(TEXT("Visibility retirement preserves resource state"),
+	const FPublicationToken VisibilityRetiredPublication = OldLifetime.AdvancePublicationGeneration();
+	TestTrue(TEXT("Visibility retirement captures prior publication"), VisibilityRetiredPublication == ActiveToken);
+	TestEqual(TEXT("Visibility retirement preserves lifetime id"), OldLifetime.LifetimeId, StableId);
+	TestEqual(TEXT("Visibility retirement preserves ACTIVE resource state"),
 		static_cast<int32>(OldLifetime.State), static_cast<int32>(EResourceState::Active));
-	TestEqual(TEXT("Visibility retirement preserves lifetime identity"), OldLifetime.LifetimeId, StableId);
-	TestFalse(TEXT("Superseded visibility token can no longer publish"),
-		OldLifetime.CanPublish(VisibilityRetiredToken));
-	TestTrue(TEXT("Superseded visibility token is eligible for ordered publication clear"),
-		OldLifetime.IsSupersededPublication(VisibilityRetiredToken));
-	const FPublicationToken CurrentActiveToken = OldLifetime.CapturePublicationToken();
-	TestTrue(TEXT("Current generation remains publishable after visibility retirement"),
-		OldLifetime.CanPublish(CurrentActiveToken));
-	TestFalse(TEXT("Current generation is not superseded"),
-		OldLifetime.IsSupersededPublication(CurrentActiveToken));
+	TestFalse(TEXT("Old visibility token can no longer publish"), OldLifetime.CanPublish(ActiveToken));
+	TestFalse(TEXT("Old packed visibility identity can no longer publish"),
+		OldLifetime.CanPublishPacked(ActivePackedIdentity));
+	TestTrue(TEXT("Old packed visibility identity is eligible for publication retirement"),
+		OldLifetime.ShouldRetirePackedPublication(ActivePackedIdentity));
+	const FPublicationToken CurrentVisibilityToken = OldLifetime.CapturePublicationToken();
+	const uint64 CurrentPackedIdentity = OldLifetime.GetPackedPublicationIdentity();
+	TestTrue(TEXT("Current token remains publishable after visibility retirement"),
+		OldLifetime.CanPublish(CurrentVisibilityToken));
+	TestTrue(TEXT("Current packed identity remains publishable after visibility retirement"),
+		OldLifetime.CanPublishPacked(CurrentPackedIdentity));
 
 	FPublicationToken RetiredPublication;
-	TestTrue(TEXT("Active lifetime can begin persistent resource retirement"),
-		OldLifetime.BeginRetirement(RetiredPublication));
-	TestTrue(TEXT("Persistent retirement captures the current active publication"),
-		RetiredPublication == CurrentActiveToken);
+	TestTrue(TEXT("Active lifetime can begin retirement"), OldLifetime.BeginRetirement(RetiredPublication));
+	TestTrue(TEXT("Resource retirement captures current publication"),
+		RetiredPublication == CurrentVisibilityToken);
 	TestEqual(TEXT("Retiring lifetime reports RETIRING"),
 		static_cast<int32>(OldLifetime.State), static_cast<int32>(EResourceState::Retiring));
 	TestFalse(TEXT("Retiring lifetime receives no new submissions"), OldLifetime.CanSubmit(0, 4));
 	TestFalse(TEXT("Retiring lifetime cannot publish its stale active token"),
-		OldLifetime.CanPublish(CurrentActiveToken));
+		OldLifetime.CanPublish(CurrentVisibilityToken));
 	TestTrue(TEXT("Retiring lifetime recognizes its older publication for ordered retirement"),
-		OldLifetime.ShouldRetirePublication(CurrentActiveToken));
+		OldLifetime.ShouldRetirePublication(CurrentVisibilityToken));
+	TestTrue(TEXT("Retiring lifetime recognizes its packed older publication"),
+		OldLifetime.ShouldRetirePackedPublication(CurrentPackedIdentity));
 
 	FLifetime NewLifetime;
 	const uint64 NewId = IdSource.Allocate();
@@ -71,24 +74,31 @@ bool FInteriorPortalRecursionLifetimeModelTest::RunTest(const FString& Parameter
 	TestTrue(TEXT("New slot accepts rebuilt lifetime"), NewLifetime.BeginAllocated(NewId));
 	TestTrue(TEXT("Rebuilt lifetime can become active"), NewLifetime.MarkActive());
 	const FPublicationToken NewToken = NewLifetime.CapturePublicationToken();
+	const uint64 NewPackedIdentity = NewLifetime.GetPackedPublicationIdentity();
 	TestTrue(TEXT("New lifetime publishes only its own token"), NewLifetime.CanPublish(NewToken));
-	TestFalse(TEXT("Old extraction token cannot publish into rebuilt lifetime"),
-		NewLifetime.CanPublish(CurrentActiveToken));
-	TestFalse(TEXT("Old visibility-retirement token cannot target rebuilt lifetime"),
-		NewLifetime.IsSupersededPublication(VisibilityRetiredToken));
-	TestFalse(TEXT("Old persistent-retirement token cannot target rebuilt lifetime"),
-		NewLifetime.ShouldRetirePublication(CurrentActiveToken));
+	TestTrue(TEXT("New lifetime publishes only its own packed identity"),
+		NewLifetime.CanPublishPacked(NewPackedIdentity));
+	TestFalse(TEXT("Old extraction token cannot publish into rebuilt lifetime"), NewLifetime.CanPublish(ActiveToken));
+	TestFalse(TEXT("Old packed extraction identity cannot publish into rebuilt lifetime"),
+		NewLifetime.CanPublishPacked(ActivePackedIdentity));
+	TestFalse(TEXT("Old retirement token cannot target rebuilt lifetime"),
+		NewLifetime.ShouldRetirePublication(ActiveToken));
+	TestFalse(TEXT("Old packed retirement identity cannot target rebuilt lifetime"),
+		NewLifetime.ShouldRetirePackedPublication(ActivePackedIdentity));
+	TestTrue(TEXT("Packed identity changes across rebuilt lifetime"),
+		NewPackedIdentity != ActivePackedIdentity);
 
 	TestTrue(TEXT("Retiring old lifetime can become reclaimable"), OldLifetime.MarkReclaimable());
 	TestEqual(TEXT("Old lifetime reports RECLAIMABLE"),
 		static_cast<int32>(OldLifetime.State), static_cast<int32>(EResourceState::Reclaimable));
 	TestTrue(TEXT("Old publication remains identifiable while reclaimable"),
-		OldLifetime.ShouldRetirePublication(CurrentActiveToken));
+		OldLifetime.ShouldRetirePublication(CurrentVisibilityToken));
 	TestTrue(TEXT("Reclaimable lifetime can return to unallocated"), OldLifetime.ResetUnallocated());
 	TestEqual(TEXT("Reset lifetime reports UNALLOCATED"),
 		static_cast<int32>(OldLifetime.State), static_cast<int32>(EResourceState::Unallocated));
 	TestEqual(TEXT("Reset lifetime clears identity"), OldLifetime.LifetimeId, uint64(0));
 	TestEqual(TEXT("Reset lifetime clears publication generation"), OldLifetime.PublicationGeneration, uint64(0));
+	TestEqual(TEXT("Reset lifetime clears packed identity"), OldLifetime.GetPackedPublicationIdentity(), uint64(0));
 
 	return true;
 }
