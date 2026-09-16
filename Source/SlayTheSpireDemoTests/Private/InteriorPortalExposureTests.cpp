@@ -42,16 +42,23 @@ bool FPortalColorSampleExposureTest::RunTest(const FString& Parameters)
 	AfterCut.PreExposure = 1.0f;
 	AfterReentry.PreExposure = 0.0008f;
 	const float Radiance = 100.0f;
+	const float MainPreExposure = 0.002f;
+	const float ExpectedMainSceneColor = Radiance * MainPreExposure;
+	constexpr float ExposureInvariantTolerance = 1.0e-6f;
 	for (const FColorSample* Sample : {&BeforeCut, &AfterCut, &AfterReentry})
 	{
 		TestTrue(TEXT("Extracted color has a valid exposure domain"),
-			Sample->TryGetExposureScale(0.002f, Scale));
+			Sample->TryGetExposureScale(MainPreExposure, Scale));
+		const float RebasingResult = Radiance * Sample->PreExposure * Scale;
 		TestTrue(TEXT("Exposure reset does not change the same radiance in main SceneColor"),
-			FMath::IsNearlyEqual(Radiance * Sample->PreExposure * Scale, 0.2f));
+			FMath::IsNearlyEqual(
+				RebasingResult,
+				ExpectedMainSceneColor,
+				ExposureInvariantTolerance));
 	}
 	FColorSample Missing(4);
 	TestFalse(TEXT("A failed next extraction does not borrow the previous exposure"),
-		Missing.TryGetExposureScale(0.002f, Scale));
+		Missing.TryGetExposureScale(MainPreExposure, Scale));
 	TestFalse(TEXT("Invalid main exposure cannot generate a visible sample"),
 		BeforeCut.TryGetExposureScale(0.0f, Scale));
 	return true;
