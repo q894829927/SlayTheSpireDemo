@@ -40,8 +40,16 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	FMatrix ViewRotationMatrix = FMatrix::Identity;
 	FMatrix ProjectionMatrix = FMatrix::Identity;
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
-	/** Exact inverse planar projection for the authored elliptical aperture. */
+	/** Exact inverse planar projection for the authored logical elliptical aperture. */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ProjectiveAperture;
+	/**
+	 * Exact main-view mapping for the cosmetic entry surface used only as the
+	 * foreground-depth reference. The visible surface can be biased slightly in
+	 * front of the logical traversal plane; treating that surface as a real
+	 * foreground occluder causes grazing-angle flashes back to the spiral material.
+	 * Remote-depth ordering and traversal remain anchored to ProjectiveAperture.
+	 */
+	InteriorPortalProjectiveAperture::FScreenToPortalMapping ForegroundDepthReference;
 	/** Perspective clip-W threshold used to reject aperture pixels before the main near plane. 0 disables it. */
 	float ProjectiveNearClipW = 0.0f;
 	FIntRect ViewRect;
