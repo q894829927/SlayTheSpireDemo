@@ -1,12 +1,12 @@
 # Interior Portal Offscreen Publication Retirement
 
-Status: IMPLEMENTED / USER PIE VALIDATION REQUIRED
+Status: **PASS / USER PIE ACCEPTED (2026-09-16)**
 
 ## Symptom
 
-With the FullFidelity renderer active, a portal can render correctly while visible and recursive rendering can also be correct, yet a fast camera turn that moves the portal out of the viewport can expose the portal's default spiral material for a frame.
+With the FullFidelity renderer active, a portal could render correctly while visible and recursive rendering could also be correct, yet a fast camera turn that moved the portal out of the viewport could expose the portal's default spiral material for a frame.
 
-The important reproduction detail is speed: slow camera motion may not reproduce it, while a rapid visible -> offscreen transition does.
+The important reproduction detail was speed: slow camera motion might not reproduce it, while a rapid visible -> offscreen transition did.
 
 ## Root cause
 
@@ -14,20 +14,20 @@ This was not a projective-aperture failure and not a recursion failure.
 
 `FMultiVisibleProducer::SubmitVisibleEndpoints()` evaluates endpoint visibility on the game thread from the current player camera. Before this fix, `HideLayer()` synchronously called `ClearRequest()` when an endpoint left the visible recursion set.
 
-The render thread may still be processing a previously queued main/parent view family in which that portal was visible. Synchronous game-thread clearing therefore created an ownership gap:
+The render thread could still be processing a previously queued main/parent view family in which that portal was visible. Synchronous game-thread clearing therefore created an ownership gap:
 
-1. previous player view is already queued and still contains the portal surface,
-2. current game-thread visibility becomes false,
-3. `ClearRequest()` immediately removes the completed FullFidelity publication,
-4. the older queued view reaches BeforeDOF and finds no portal request,
-5. the physical portal surface remains rasterized,
-6. the default spiral fallback becomes visible for that frame.
+1. previous player view was already queued and still contained the portal surface,
+2. current game-thread visibility became false,
+3. `ClearRequest()` immediately removed the completed FullFidelity publication,
+4. the older queued view reached BeforeDOF and found no portal request,
+5. the physical portal surface remained rasterized,
+6. the default spiral fallback became visible for that frame.
 
-This explains why the regression is strongly correlated with fast camera motion rather than with a particular grazing angle.
+This explains why the regression was strongly correlated with fast camera motion rather than with a particular grazing angle.
 
 ## Root fix
 
-Publication retirement is now ordered on the render queue rather than performed synchronously from visibility code.
+Publication retirement is ordered on the render queue rather than performed synchronously from visibility code.
 
 When a visible layer becomes hidden:
 
@@ -61,66 +61,40 @@ Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
 
 The logical portal center, normal, width axis, height axis and inverse half-extents remain the analytic data produced by `Build()`.
 
-## Expected invariants
+## Runtime acceptance
+
+User PIE validation after commit `b943ecc52a6f49cc7ddc5faf6494007a5096df92` reported the previously reproducible fast-camera regression as resolved.
+
+Accepted behavior:
+
+```text
+visible portal
+ -> rapid camera turn
+ -> portal fully leaves viewport
+ -> rapid return
+```
+
+No longer exposes the default spiral fallback during the transition.
+
+Recursive FullFidelity rendering remained functional; the user had already confirmed that `RecursionDepth=2` can show the nested portal before physically crossing.
+
+## Accepted invariants
 
 During a visible -> offscreen transition:
 
-- an already queued visible view must retain its matching completed publication,
-- an offscreen future view must not receive a stale publication,
-- an old extraction callback must not republish after retirement generation advances,
-- a newly visible generation must survive an older queued retirement command,
-- no default spiral frame should appear merely because the game-thread visibility result changed before the render thread consumed the prior view.
+- an already queued visible view retains its matching completed publication,
+- an offscreen future view does not receive a stale publication,
+- an old extraction callback cannot republish after retirement generation advances,
+- a newly visible generation survives an older queued retirement command,
+- no default spiral frame appears merely because the game-thread visibility result changed before the render thread consumed the prior view.
 
-## USER ACTION REQUIRED
-
-Build the current `portal/full-fidelity-p1` branch, then run PIE with the normal automatic FullFidelity lifecycle.
-
-Recommended setup:
+## Gate result
 
 ```text
-RecursionDepth = 2
-portal.MultiVisibleDiagnostics 1
-portal.CompositionDiagnostics 1
+FAST VISIBLE -> OFFSCREEN SPIRAL FLASH = PASS
+FAST OFFSCREEN -> VISIBLE RETURN = PASS
+RECURSIVE PUBLICATION RETIREMENT REGRESSION = NOT OBSERVED
+PUBLICATION RETIREMENT MODEL = ACCEPTED
 ```
 
-### Test A — fast visible -> offscreen
-
-1. Start from a clearly visible portal with remote scene rendered correctly.
-2. Rapidly rotate the camera until the portal completely leaves the viewport.
-3. Repeat left/right at least 20 times.
-4. Include several transitions starting near a grazing/slanted view.
-
-PASS:
-
-- no one-frame default spiral exposure,
-- no black aperture flash,
-- no stale portal image appearing elsewhere on screen.
-
-### Test B — fast offscreen -> visible
-
-1. Keep the portal just outside the viewport.
-2. Snap the camera back so it becomes visible.
-3. Repeat at least 20 times.
-
-PASS:
-
-- no default spiral warm-up frame before FullFidelity composition,
-- no old exposure-domain frame,
-- recursive image returns normally when `RecursionDepth >= 2`.
-
-### Test C — recursion unchanged
-
-With `RecursionDepth = 2`, verify a portal visible inside the level-0 remote scene remains visible after this lifetime change.
-
-PASS:
-
-- recursion remains visible without crossing first,
-- `portal.DumpFullFidelityRenderer` reports level-1 submitted/completed work when the recursive portal is actually visible.
-
-## Failure routing
-
-If the default spiral still appears only during fast visible/offscreen transitions, capture `portal.CompositionDiagnostics 1` logs around the failing frames. The relevant distinction is now:
-
-- `Subscribe RequestValid=0` while the portal surface is still visibly rasterized: publication retirement ordering is still wrong,
-- `RequestValid=1` and `ComposeReady/DrawQueued` but spiral still wins: investigate surface/main-depth ordering rather than publication lifetime,
-- recursive level disappears while level 0 remains correct: investigate recursive publication retirement separately.
+Keep this transition in focused visual regression coverage whenever request ownership, visibility culling, recursion publication, or render-thread scheduling changes.
