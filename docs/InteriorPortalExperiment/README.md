@@ -4,8 +4,9 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md) — **current focused gate**: grazing pixel ownership is moved from an ill-conditioned inverse screen homography to analytic world ray/portal-plane intersection; the promoted FullFidelity producer now consumes `RecursionDepth` with independent endpoint x level ViewState/depth/FColorSample and deepest-to-shallowest BeforeDOF composition. Local build + PIE validation is required.
-- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — previous intermediate diagnosis that separated cosmetic Surface depth from the logical traversal plane. Useful evidence, but it did not remove inverse-homography degeneration and is superseded by the root-fix gate above.
+- [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md) — **current focused regression gate**: a fast visible -> offscreen transition exposed the spiral because game-thread visibility synchronously cleared a publication that an older queued render-thread view still needed. Publications now retire in render-queue order with generation checks; the same change also preserves analytic aperture geometry instead of accidentally rebuilding it as a homography. Local build + fast pan PIE validation is required.
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md) — grazing pixel ownership is moved from an ill-conditioned inverse screen homography to analytic world ray/portal-plane intersection; the promoted FullFidelity producer now consumes `RecursionDepth` with independent endpoint x level ViewState/depth/FColorSample and deepest-to-shallowest BeforeDOF composition. Recursion depth 2 has now been observed by the user to render recursively before crossing; keep it in regression coverage.
+- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — previous intermediate diagnosis that separated cosmetic Surface depth from the logical traversal plane. Useful evidence, but it did not remove inverse-homography degeneration and is superseded by the root-fix gates above.
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — STEP 1B.14D-MV gate: MV-B dual-visible correctness is PASS; the automatic/exclusive FullFidelity lifecycle has been observed in PIE, and the prior 161 MB video-memory over-budget warning was not reproduced with legacy SceneCapture excluded.
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — STEP 1B.14D-C **PASS for one visible portal**: static and dynamic TSR/exposure/composition parity accepted, including slant, leave-return and crossing.
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
@@ -33,6 +34,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md)
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 - [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
+- [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md)
 
 ## Aperture, depth and downstream consumers
 
@@ -61,6 +63,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 - [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md)
 - [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
+- [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md)
 - [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md)
 
 ## Folder policy
