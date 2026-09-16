@@ -31,6 +31,70 @@ float CompositionDebugMode;
 float PortalExposureScale;
 float StencilBypassShaderAperture;
 
+// Production full-fidelity aperture ownership is evaluated as the original
+// geometric question: intersect the current main-view ray with the world-space
+// portal plane, then test the authored ellipse in that plane. This remains
+// well-conditioned as the projected portal collapses toward a line. The exact
+// parallel case simply has no forward ray/plane intersection.
+bool IntersectAnalyticPortalPlane(
+	float2 ScreenSpacePos,
+	float PlaneBias,
+	out float2 PortalLocal,
+	out float DeviceZ,
+	out float LinearDepthCm)
+{
+	PortalLocal = float2(0.0, 0.0);
+	DeviceZ = 0.0;
+	LinearDepthCm = 0.0;
+	if (ForegroundDepthReferenceEnabled <= 0.5)
+	{
+		return false;
+	}
+
+	const float3 PortalCenterWorld = ForegroundScreenToPortalRow0.xyz;
+	const float InvHalfWidth = ForegroundScreenToPortalRow0.w;
+	const float3 PortalNormal = normalize(ForegroundScreenToPortalRow1.xyz);
+	const float InvHalfHeight = ForegroundScreenToPortalRow1.w;
+	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
+	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
+
+	// UE5 LWC view matrices operate in translated world. Move the project-owned
+	// portal geometry into that same frame before the intersection.
+	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
+	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
+	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
+	const float3 RayDirection = mul(float4(ScreenSpacePos, 1.0, 0.0), View.ScreenToTranslatedWorld).xyz;
+	const float Denominator = dot(RayDirection, PortalNormal);
+
+	// No angular threshold or fallback image: a genuinely parallel ray has no
+	// finite portal-plane hit. Near-parallel rays remain valid and continuous.
+	if (abs(Denominator) <= 1.0e-8)
+	{
+		return false;
+	}
+
+	const float RayT = dot(PlaneCenter - RayOrigin, PortalNormal) / Denominator;
+	if (!(RayT > 0.0))
+	{
+		return false;
+	}
+
+	const float3 HitTranslatedWorld = RayOrigin + RayDirection * RayT;
+	const float3 Relative = HitTranslatedWorld - PlaneCenter;
+	PortalLocal = float2(
+		dot(Relative, PortalAxisY) * InvHalfWidth,
+		dot(Relative, PortalAxisZ) * InvHalfHeight);
+
+	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
+	if (abs(Clip.w) <= 1.0e-8)
+	{
+		return false;
+	}
+	DeviceZ = saturate(Clip.z / Clip.w);
+	LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
+	return FMath::IsFinite(LinearDepthCm) && LinearDepthCm > 0.0;
+}
+
 void MainPS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
 	float4 SvPosition : SV_POSITION,
@@ -45,6 +109,7 @@ void MainPS(
 	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
 	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
 	const float2 SceneUV = UVAndScreenPos.xy;
+	const float2 ScreenSpacePos = UVAndScreenPos.zw;
 
 	const float BoundsMask =
 		step(PortalBounds.x, ViewportUV.x)
@@ -53,16 +118,35 @@ void MainPS(
 		* step(ViewportUV.y, PortalBounds.w);
 
 	float ApertureMask = 0.0;
-	float3 PortalHomogeneous = float3(0.0, 0.0, 0.0);
-	bool bProjectiveIntersectionValid = false;
-	if (ProjectiveApertureEnabled > 0.5)
+	float PortalPlaneDeviceZ = 0.0;
+	float PortalPlaneDepthCm = 0.0;
+	bool bPortalPlaneDepthValid = false;
+	float2 AnalyticPortalLocal = float2(0.0, 0.0);
+
+	// Production path: exact world ray/plane ownership. The old inverse
+	// homography remains below only as a compatibility fallback for historical
+	// diagnostics that do not provide analytic geometry.
+	if (ProjectiveApertureEnabled > 0.5 && ForegroundDepthReferenceEnabled > 0.5)
+	{
+		bPortalPlaneDepthValid = IntersectAnalyticPortalPlane(
+			ScreenSpacePos, 0.0,
+			AnalyticPortalLocal, PortalPlaneDeviceZ, PortalPlaneDepthCm);
+		if (bPortalPlaneDepthValid)
+		{
+			const float EllipseDistance = dot(AnalyticPortalLocal, AnalyticPortalLocal);
+			const float EdgeWidth = max(fwidth(EllipseDistance) * 1.25, 1.0e-4);
+			ApertureMask = 1.0 - smoothstep(
+				1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
+		}
+		ApertureMask *= BoundsMask;
+	}
+	else if (ProjectiveApertureEnabled > 0.5)
 	{
 		const float3 ScreenPoint = float3(ViewportUV, 1.0);
-		PortalHomogeneous = float3(
+		const float3 PortalHomogeneous = float3(
 			dot(ScreenToPortalRow0.xyz, ScreenPoint),
 			dot(ScreenToPortalRow1.xyz, ScreenPoint),
 			dot(ScreenToPortalRow2.xyz, ScreenPoint));
-
 		if (PortalHomogeneous.z > 1.0e-8)
 		{
 			const float ClipW = rcp(PortalHomogeneous.z);
@@ -74,7 +158,9 @@ void MainPS(
 				const float EdgeWidth = max(fwidth(EllipseDistance) * 1.25, 1.0e-4);
 				ApertureMask = 1.0 - smoothstep(
 					1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
-				bProjectiveIntersectionValid = true;
+				PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+				PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+				bPortalPlaneDepthValid = true;
 			}
 		}
 		ApertureMask *= BoundsMask;
@@ -91,15 +177,6 @@ void MainPS(
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
 
-	// STEP 1B.14A visual-parity isolation. Show the transformed secondary
-	// post-TSR/pre-tonemap HDR image as a full-screen main-view input while keeping
-	// the already accepted PreExposure rebase. The C++ validation command disables
-	// stencil/scissor/depth gates before selecting mode 7, so this image isolates
-	// the secondary full-renderer color path from all portal-aperture integration.
-	// If this reference itself looks wrong, the remaining mismatch is upstream in
-	// the secondary view family / post-process ownership. If it looks correct while
-	// the normal portal does not, the defect is in portal-only composition/boundary
-	// behavior rather than Lumen/TSR color production.
 	if (CompositionDebugMode >= 6.5 && CompositionDebugMode < 7.5)
 	{
 		float4 PortalReference = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
@@ -108,13 +185,6 @@ void MainPS(
 		return;
 	}
 
-	// STEP 1B.12D-B proof switch. Do NOT sample the portal HDR texture or run
-	// portal-depth logic here. The purpose of this mode is only to prove that the
-	// surrounding draw is physically constrained by the main-stencil CF_Equal
-	// test. Tinting the already-pre-exposed main SceneColor keeps the scene's
-	// luminance distribution bounded, so a failed stencil test becomes an obvious
-	// full-screen cyan tint instead of poisoning eye adaptation with arbitrary
-	// portal HDR samples.
 	if (StencilBypassShaderAperture > 0.5)
 	{
 		const float3 SafeStencilProofColor = MainColor.rgb * float3(0.25, 1.0, 1.0);
@@ -126,48 +196,27 @@ void MainPS(
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
 
-	float PortalPlaneDeviceZ = 0.0;
-	float PortalPlaneDepthCm = 0.0;
-	bool bPortalPlaneDepthValid = false;
-	if (ProjectiveApertureEnabled > 0.5 && bProjectiveIntersectionValid)
-	{
-		PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
-		PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
-		bPortalPlaneDepthValid = true;
-	}
-
-	// The logical portal plane is still authoritative for aperture/traversal and
-	// remote-depth ordering. Foreground occlusion, however, must compare against
-	// the actual cosmetic portal surface when that surface is biased toward the
-	// player. Otherwise the surface's own SceneDepth becomes increasingly closer
-	// than the logical plane at grazing incidence and exposes the fallback spiral.
+	// Main foreground depth compares to the physical cosmetic surface, not the
+	// logical traversal plane. Both depths now come from the same analytic ray,
+	// so the portal's own biased surface cannot oscillate into foreground status
+	// as incidence approaches 90 degrees.
 	float ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 	bool bForegroundReferenceDepthValid = bPortalPlaneDepthValid;
 	if (ForegroundDepthReferenceEnabled > 0.5 && bPortalPlaneDepthValid)
 	{
-		const float3 ScreenPoint = float3(ViewportUV, 1.0);
-		const float3 ForegroundHomogeneous = float3(
-			dot(ForegroundScreenToPortalRow0.xyz, ScreenPoint),
-			dot(ForegroundScreenToPortalRow1.xyz, ScreenPoint),
-			dot(ForegroundScreenToPortalRow2.xyz, ScreenPoint));
-		if (ForegroundHomogeneous.z > 1.0e-8)
+		float2 IgnoredLocal;
+		float ForegroundDeviceZ;
+		float ForegroundDepthCm;
+		const float SurfaceBias = ForegroundScreenToPortalRow2.w;
+		if (IntersectAnalyticPortalPlane(
+			ScreenSpacePos, SurfaceBias,
+			IgnoredLocal, ForegroundDeviceZ, ForegroundDepthCm))
 		{
-			const float ForegroundClipW = rcp(ForegroundHomogeneous.z);
-			const bool bForegroundPastNearPlane =
-				ProjectiveNearClipW <= 0.0 || ForegroundClipW >= ProjectiveNearClipW;
-			if (bForegroundPastNearPlane)
-			{
-				const float ForegroundDeviceZ = saturate(
-					dot(ForegroundPortalClipZRow.xyz, ForegroundHomogeneous));
-				ForegroundReferenceDepthCm = ConvertFromDeviceZ(ForegroundDeviceZ);
-				bForegroundReferenceDepthValid = true;
-			}
+			ForegroundReferenceDepthCm = ForegroundDepthCm;
+			bForegroundReferenceDepthValid = true;
 		}
 	}
 
-	// STEP 1B.12A: preserve real main-view foreground geometry in front of the
-	// physical portal presentation surface. This is only a read/compare gate; it
-	// does not mutate the renderer's main SceneDepth attachment.
 	float ForegroundOcclusionMask = 0.0;
 	if (DepthAwareCompositionEnabled > 0.5
 		&& bForegroundReferenceDepthValid
@@ -193,16 +242,6 @@ void MainPS(
 		return;
 	}
 
-	// STEP 1B.12B: the portal transform is rigid (rotation + translation) and the
-	// secondary camera is exactly that same rigid transform applied to the main
-	// camera. Therefore an exit-side point transformed back through the inverse
-	// portal has identical camera-relative coordinates. With the same projection
-	// matrix, its secondary device Z is already the exact conceptual main-view
-	// device Z. No artistic offset or distance reconstruction is required.
-	//
-	// The transported surface is current-frame primary-resolution SceneDepth,
-	// point-resampled to the display-size R32F target. It is deliberately NOT
-	// claimed to be TSR-reconstructed depth.
 	float SecondaryDeviceZ = 0.0;
 	float SecondaryDepthCm = 0.0;
 	bool bSecondaryDepthValid = false;
@@ -222,10 +261,6 @@ void MainPS(
 		}
 	}
 
-	// Debug mode 5:
-	// cyan    = valid transported remote geometry at/behind portal plane;
-	// magenta = valid transported depth that maps in front of portal plane;
-	// yellow  = no rasterized remote depth (sky/background/transport miss).
 	if (CompositionDebugMode >= 4.5 && CompositionDebugMode < 5.5)
 	{
 		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
@@ -241,13 +276,6 @@ void MainPS(
 		return;
 	}
 
-	// STEP 1B.12C-A verification runs after the explicit depth-write pass queued
-	// by the compositor. It re-reads the actual main SceneDepth resource:
-	// cyan   = propagated main depth matches transported secondary depth;
-	// green  = a real main-view foreground occluder was correctly preserved;
-	// yellow = no remote raster depth (for example sky/background);
-	// red    = a valid remote depth exists but the main depth resource does not
-	//          contain that propagated value.
 	if (CompositionDebugMode >= 5.5 && CompositionDebugMode < 6.5)
 	{
 		float3 DiagnosticColor = float3(1.0, 1.0, 0.0);
