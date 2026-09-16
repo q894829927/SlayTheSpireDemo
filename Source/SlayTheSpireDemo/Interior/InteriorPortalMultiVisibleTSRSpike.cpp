@@ -829,6 +829,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return false;
 			}
 
+			// The visible portal surface is deliberately biased toward the entry side
+			// to avoid host-surface Z fighting. Main SceneDepth therefore sees that
+			// surface slightly before the logical traversal plane. At grazing angles
+			// the line-of-sight depth gap is amplified and the accepted depth-aware
+			// compositor can otherwise classify the portal's own spiral surface as a
+			// foreground occluder. Keep logical aperture/remote-depth math unchanged,
+			// but use the actual cosmetic surface plane for the foreground reference.
+			FTransform ForegroundDepthFrame = EntryFrame;
+			ForegroundDepthFrame.AddToTranslation(
+				EntryFrame.GetUnitAxis(EAxis::X) * Entry->SurfaceVisualBias);
+			InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
+				ForegroundDepthFrame,
+				Entry->HalfWidth,
+				Entry->HalfHeight,
+				PlayerViewProjection,
+				Request.ForegroundDepthReference);
+
 			if (!EnsureDepthTarget(State, World, TargetSize))
 			{
 				++State.FramesSkipped;
