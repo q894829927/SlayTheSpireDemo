@@ -20,6 +20,58 @@ float ForegroundDepthReferenceEnabled;
 float ProjectiveNearClipW;
 float DepthOcclusionEpsilonCm;
 
+bool IntersectAnalyticPortalPlane(
+	float2 ScreenSpacePos,
+	float PlaneBias,
+	out float2 PortalLocal,
+	out float DeviceZ,
+	out float LinearDepthCm)
+{
+	PortalLocal = float2(0.0, 0.0);
+	DeviceZ = 0.0;
+	LinearDepthCm = 0.0;
+	if (ForegroundDepthReferenceEnabled <= 0.5)
+	{
+		return false;
+	}
+
+	const float3 PortalCenterWorld = ForegroundScreenToPortalRow0.xyz;
+	const float InvHalfWidth = ForegroundScreenToPortalRow0.w;
+	const float3 PortalNormal = normalize(ForegroundScreenToPortalRow1.xyz);
+	const float InvHalfHeight = ForegroundScreenToPortalRow1.w;
+	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
+	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
+	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
+	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
+	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
+	const float3 RayDirection = mul(float4(ScreenSpacePos, 1.0, 0.0), View.ScreenToTranslatedWorld).xyz;
+	const float Denominator = dot(RayDirection, PortalNormal);
+	if (abs(Denominator) <= 1.0e-8)
+	{
+		return false;
+	}
+
+	const float RayT = dot(PlaneCenter - RayOrigin, PortalNormal) / Denominator;
+	if (!(RayT > 0.0))
+	{
+		return false;
+	}
+
+	const float3 HitTranslatedWorld = RayOrigin + RayDirection * RayT;
+	const float3 Relative = HitTranslatedWorld - PlaneCenter;
+	PortalLocal = float2(
+		dot(Relative, PortalAxisY) * InvHalfWidth,
+		dot(Relative, PortalAxisZ) * InvHalfHeight);
+	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
+	if (abs(Clip.w) <= 1.0e-8)
+	{
+		return false;
+	}
+	DeviceZ = saturate(Clip.z / Clip.w);
+	LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
+	return isfinite(LinearDepthCm) && LinearDepthCm > 0.0;
+}
+
 void BuildCandidatePS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
 	float4 SvPosition : SV_POSITION,
@@ -38,56 +90,65 @@ void BuildCandidatePS(
 		return;
 	}
 
-	const float3 ScreenPoint = float3(ViewportUV, 1.0);
-	const float3 PortalHomogeneous = float3(
-		dot(ScreenToPortalRow0.xyz, ScreenPoint),
-		dot(ScreenToPortalRow1.xyz, ScreenPoint),
-		dot(ScreenToPortalRow2.xyz, ScreenPoint));
-	if (PortalHomogeneous.z <= 1.0e-8)
-	{
-		return;
-	}
+	float PortalPlaneDepthCm = 0.0;
+	float ForegroundReferenceDepthCm = 0.0;
+	float2 PortalLocal = float2(0.0, 0.0);
 
-	const float ClipW = rcp(PortalHomogeneous.z);
-	if (ProjectiveNearClipW > 0.0 && ClipW < ProjectiveNearClipW)
-	{
-		return;
-	}
-
-	const float2 PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
-	if (dot(PortalLocal, PortalLocal) > 1.0)
-	{
-		return;
-	}
-
-	const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
-	const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
-	float ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 	if (ForegroundDepthReferenceEnabled > 0.5)
 	{
-		const float3 ForegroundHomogeneous = float3(
-			dot(ForegroundScreenToPortalRow0.xyz, ScreenPoint),
-			dot(ForegroundScreenToPortalRow1.xyz, ScreenPoint),
-			dot(ForegroundScreenToPortalRow2.xyz, ScreenPoint));
-		if (ForegroundHomogeneous.z > 1.0e-8)
+		float PortalDeviceZ;
+		if (!IntersectAnalyticPortalPlane(
+			UVAndScreenPos.zw, 0.0,
+			PortalLocal, PortalDeviceZ, PortalPlaneDepthCm))
 		{
-			const float ForegroundClipW = rcp(ForegroundHomogeneous.z);
-			if (ProjectiveNearClipW <= 0.0 || ForegroundClipW >= ProjectiveNearClipW)
-			{
-				const float ForegroundDeviceZ = saturate(
-					dot(ForegroundPortalClipZRow.xyz, ForegroundHomogeneous));
-				ForegroundReferenceDepthCm = ConvertFromDeviceZ(ForegroundDeviceZ);
-			}
+			return;
 		}
+		if (dot(PortalLocal, PortalLocal) > 1.0)
+		{
+			return;
+		}
+
+		float2 IgnoredLocal;
+		float ForegroundDeviceZ;
+		ForegroundReferenceDepthCm = PortalPlaneDepthCm;
+		IntersectAnalyticPortalPlane(
+			UVAndScreenPos.zw,
+			ForegroundScreenToPortalRow2.w,
+			IgnoredLocal,
+			ForegroundDeviceZ,
+			ForegroundReferenceDepthCm);
+	}
+	else
+	{
+		// Historical inverse-homography fallback for old diagnostics.
+		const float3 ScreenPoint = float3(ViewportUV, 1.0);
+		const float3 PortalHomogeneous = float3(
+			dot(ScreenToPortalRow0.xyz, ScreenPoint),
+			dot(ScreenToPortalRow1.xyz, ScreenPoint),
+			dot(ScreenToPortalRow2.xyz, ScreenPoint));
+		if (PortalHomogeneous.z <= 1.0e-8)
+		{
+			return;
+		}
+		const float ClipW = rcp(PortalHomogeneous.z);
+		if (ProjectiveNearClipW > 0.0 && ClipW < ProjectiveNearClipW)
+		{
+			return;
+		}
+		PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
+		if (dot(PortalLocal, PortalLocal) > 1.0)
+		{
+			return;
+		}
+		const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
+		PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+		ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 	}
 
 	const int2 ScenePixel = int2(SvPosition.xy);
 	const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 	const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 	const float EpsilonCm = max(DepthOcclusionEpsilonCm, 0.0);
-
-	// Preserve real main-view foreground geometry relative to the actual visible
-	// entry surface. The logical plane remains authoritative for remote depth.
 	if (MainDepthCm + EpsilonCm < ForegroundReferenceDepthCm)
 	{
 		return;
@@ -107,8 +168,6 @@ void BuildCandidatePS(
 		return;
 	}
 
-	// STEP 1B.12B established that the rigid portal transform plus identical
-	// projection makes secondary device Z the exact conceptual main-view device Z.
 	OutCandidateDepth = saturate(SecondaryDeviceZ);
 }
 
