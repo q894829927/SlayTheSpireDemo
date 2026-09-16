@@ -9,8 +9,10 @@ STEP 1B.14D-C SINGLE-VISIBLE PRODUCTION TSR PARITY = PASS
 MV-A ENDPOINT-OWNED PRODUCER = IMPLEMENTED
 MV-B DUAL-VISIBLE RUNTIME VALIDATION = PASS
 MV-C-A STABLE FULL-FIDELITY CONTROL SURFACE = IMPLEMENTED
-MV-C-B EXCLUSIVE SYSTEM LIFECYCLE INTEGRATION = IMPLEMENTED / USER BUILD + PIE REQUIRED
-MV-D VRAM / PERFORMANCE = REQUIRED FOLLOW-UP
+MV-C-B EXCLUSIVE SYSTEM LIFECYCLE INTEGRATION = PASS
+MV-C CLEAN VRAM BASELINE = PRIOR 161 MB OVER-BUDGET WARNING NOT REPRODUCED
+CURRENT FOCUSED FOLLOW-UP = GRAZING FOREGROUND-DEPTH REGRESSION
+MV-D BOUNDED SECONDARY WORK = DEFERRED UNLESS CLEAN EXCLUSIVE PROFILE REQUIRES IT
 ```
 
 ## Closed user-visible defect
@@ -143,18 +145,20 @@ ONE-BLACK-PORTAL DISPLAY REGRESSION = CLOSED
 
 ## VRAM finding from MV-B
 
-The accepted dual-visible screenshot also reports:
+The original MV-B screenshot reported:
 
 ```text
 Video memory has been exhausted (161.059 MB over budget)
 Expect extremely poor performance.
 ```
 
-During MV-C-B source audit an additional production issue was found: the accepted MV-B validation was started while `RendererBackend=SceneCapture`. The new endpoint-owned producer was therefore running while `AInteriorPortalSystem::RenderViews()` could still execute the legacy SceneCapture renderer from `AInteriorPlayerController::UpdateCameraManager()`.
+Source audit then found that the accepted MV-B validation had been started while `RendererBackend=SceneCapture`, so the endpoint-owned producer could run while `AInteriorPortalSystem::RenderViews()` still executed the legacy SceneCapture renderer from `AInteriorPlayerController::UpdateCameraManager()`.
 
-That means the 161.059 MB figure is **not yet a clean measurement of the promoted renderer by itself**. It may include duplicate renderer work. MV-C-B therefore makes the two paths explicitly mutually exclusive before MV-D profiling.
+MV-C-B made the two renderer paths explicitly mutually exclusive. In the subsequent automatic FullFidelity PIE run, the user reported that the prior video-memory warning was gone. Therefore the 161.059 MB measurement is classified as a contaminated dual-renderer measurement, not a clean FullFidelity budget result.
 
-Do not fix memory pressure by sharing endpoint temporal ownership. Blue and Orange must retain independent ViewStates, exact FColorSamples and persistent target identities.
+This does **not** prove final production performance. It means MV-D is no longer an emergency correctness follow-up. Bounded secondary rendering should resume only from a clean exclusive-renderer profile if performance or memory still justifies it.
+
+Do not reduce memory by sharing endpoint temporal ownership. Blue and Orange must retain independent ViewStates, exact FColorSamples and persistent target identities.
 
 ## MV-C-A — stable full-fidelity control surface
 
@@ -175,7 +179,7 @@ portal.StopFullFidelityRenderer
 
 The historical `portal.StartMultiVisibleTSRSpike` remains available for A/B validation.
 
-## MV-C-B — exclusive lifecycle integration
+## MV-C-B — exclusive lifecycle integration — PASS
 
 Implementation commits:
 
@@ -192,7 +196,7 @@ portal: make full-fidelity renderer exclusive with legacy capture
 
 ### Lifecycle switch
 
-`AInteriorPortalSystem` now exposes:
+`AInteriorPortalSystem` exposes:
 
 ```text
 bUseFullFidelityRenderer = true
@@ -211,7 +215,7 @@ RendererBackend == SceneCapture
 
 ### Mutual exclusion
 
-The important production change is not merely automatic command execution. While the full-fidelity renderer is active, `UpdateCameraManager()` now:
+While the full-fidelity renderer is active, `UpdateCameraManager()`:
 
 ```text
 keeps PortalSystem->UpdateTraversal(this)
@@ -220,82 +224,47 @@ DOES NOT call PortalSystem->RenderViews(this)
 DOES NOT invoke UInteriorPortalFullSceneViewSubsystem::Render(...)
 ```
 
-Therefore the legacy recursive SceneCapture renderer and older FullSceneView experiment cannot run alongside the accepted endpoint-owned TSR renderer.
+Therefore the legacy recursive SceneCapture renderer and older FullSceneView experiment cannot run alongside the endpoint-owned TSR renderer.
 
-If `bUseFullFidelityRenderer` is disabled or `RendererBackend` is changed away from SceneCapture, the controller stops the full-fidelity renderer and immediately returns to the existing legacy/backend-specific `RenderViews()` path.
+If `bUseFullFidelityRenderer` is disabled or `RendererBackend` is changed away from SceneCapture, the controller stops the full-fidelity renderer and returns to the existing legacy/backend-specific `RenderViews()` path.
 
-Controller `EndPlay` also stops the lifecycle-owned renderer, so its endpoint ViewStates/depth targets/final scratch are released on PIE/world teardown.
+Controller `EndPlay` also stops the lifecycle-owned renderer, so endpoint ViewStates/depth targets/final scratch are released on PIE/world teardown.
 
-### Why the promotion switch is separate from RendererBackend
+### Runtime acceptance — 2026-09-16
 
-The project already serializes `EInteriorPortalRendererBackend::SceneCapture` in maps and uses that enum for several historical feasibility paths. Adding a new enum value now would require map/default migration and edits across those paths.
-
-The dedicated `bUseFullFidelityRenderer` switch gives the promoted renderer exclusive ownership while preserving an immediate fallback:
+A subsequent PIE run required no manual start command and logged:
 
 ```text
-true  -> endpoint-owned full-fidelity renderer
-false -> existing SceneCapture fallback
-```
-
-This is intentionally a production-promotion boundary, not another rendering implementation.
-
-## USER ACTION REQUIRED — MV-C-B validation
-
-Rebuild the latest branch, then launch PIE.
-
-**Do not enter any renderer start command.** The first acceptance condition is that the renderer starts automatically.
-
-Expected startup log:
-
-```text
-PortalMultiVisible: START...
+PortalMultiVisible: START. Endpoints=2 PrimaryFraction=0.670 SharedFinalScratch=1 PerEndpointViewState=1 PerEndpointDepth=1.
 PortalFullFidelityRenderer: START requested through endpoint-owned multi-visible TSR path.
 PortalFullFidelityRenderer: lifecycle START from InteriorPlayerController; legacy RenderViews bypassed.
 ```
 
-Then verify:
+The user again observed both portals rendering and reported that the prior VRAM over-budget warning had disappeared. The renderer dump still reported the dual-visible endpoint masks as submitted/published.
+
+Classification:
 
 ```text
-single Blue visible -> renders
-single Orange visible -> renders
-both visible -> both render continuously
-both -> one -> both -> returning endpoint is clean
-strong slant / approach-retreat -> normal
-cross / look back -> normal
+AUTO LIFECYCLE START = PASS
+LEGACY RENDERVIEWS BYPASS = PASS
+DUAL-VISIBLE OUTPUT = PASS
+CLEANER EXCLUSIVE VRAM BASELINE = PASS / PRIOR WARNING NOT REPRODUCED
+MV-C-B = PASS
 ```
 
-For endpoint telemetry, only the dump command is needed:
+## Current focused follow-up
+
+Promoting the accepted main-foreground depth policy exposed a separate grazing-angle regression where the biased physical portal Surface could be mistaken for foreground and reveal its default spiral material. That regression is tracked in:
 
 ```text
-portal.DumpFullFidelityRenderer
+docs/InteriorPortalExperiment/InteriorPortalGrazingForegroundDepthRegression.md
 ```
 
-Expected dual-visible state remains:
+It is not a rollback of MV-B/MV-C endpoint ownership. Keep the accepted automatic lifecycle and dual-visible producer while fixing the depth-reference split.
 
-```text
-VisibleCount=2
-VisibleMask=0x03
-SubmittedMask=0x03
-PublishedMask=0x03
-```
+## MV-D — conditional bounded secondary work
 
-Also record the new `Video memory has been exhausted (... MB over budget)` number, or report that the warning no longer appears. This new number is the first meaningful memory baseline with legacy SceneCapture excluded.
-
-Reject MV-C-B if any of the following occur:
-
-```text
-renderer requires a manual start command
-legacy SceneCapture and full-fidelity both execute
-one portal returns to black
-endpoint history/exposure swaps
-PIE teardown leaves the renderer running
-```
-
-## MV-D — required VRAM / bounded secondary work
-
-After MV-C-B runtime acceptance, use the exclusive-renderer memory result to decide the exact optimization size.
-
-If memory remains over budget, continue with the previously deferred STEP 1B.13B class of work:
+If a later clean exclusive-renderer profile still shows unacceptable memory or GPU cost, continue with the deferred STEP 1B.13B class of work:
 
 ```text
 1. measure persistent allocations attributable to each secondary TSR view
@@ -315,17 +284,22 @@ For the original visible defect "two portals on screen but one becomes black":
 SOLVED / MV-B PASS
 ```
 
-For production promotion:
+For production lifecycle ownership:
 
 ```text
-MV-C-B implementation = DONE
-MV-C-B build + focused PIE regression = REQUIRED
+MV-C-B = PASS
 ```
 
-For production-ready performance:
+For current correctness:
 
 ```text
-MV-D VRAM / bounded secondary rendering = REQUIRED IF EXCLUSIVE RENDERER REMAINS OVER BUDGET
+GRAZING FOREGROUND-DEPTH REGRESSION = USER BUILD + PIE VALIDATION REQUIRED
 ```
 
-Portal-on-portal recursion >= 2 remains a later feature gate and is not required to close the current top-level display inconsistency.
+For production performance:
+
+```text
+MV-D = CONDITIONAL ON CLEAN EXCLUSIVE PROFILE
+```
+
+Portal-on-portal recursion >= 2 remains a later feature gate and is not required to close the current top-level display consistency work.
