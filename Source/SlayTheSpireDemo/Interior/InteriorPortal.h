@@ -64,6 +64,8 @@ public:
 	void SetCaptureColorMode(bool bFinalColorHDR);
 	void RefreshAppearance();
 	void EnsureTargets(int32 Width, int32 Height, int32 Depth);
+	/** FullFidelity projected-bounds path: resize only one recursion level without forcing every level to the same extent. */
+	void EnsureTargetForLevel(int32 RecursionLevel, int32 Width, int32 Height);
 	void EnsureCaptureViews(int32 Depth);
 	USceneCaptureComponent2D* GetCaptureForDepth(int32 RecursionLevel) const;
 	void ResetCaptureHistory(int32 RecursionLevel);
