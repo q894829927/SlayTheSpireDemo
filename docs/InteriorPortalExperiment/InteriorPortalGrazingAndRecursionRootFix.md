@@ -6,9 +6,10 @@ State:
 
 ```text
 GRAZING SPIRAL REGRESSION = ROOT CAUSE CLASSIFIED
-ANALYTIC RAY/PLANE APERTURE = IMPLEMENTED / USER BUILD + PIE REQUIRED
-FULL-FIDELITY RECURSION 1..4 = IMPLEMENTED / USER BUILD + PIE REQUIRED
+ANALYTIC RAY/PLANE APERTURE = IMPLEMENTED / CURRENT PIE BEHAVIOR ACCEPTED
+FULL-FIDELITY RECURSION 1..4 = PASS FOR RECURSIONDEPTH=2 USER PIE
 LEGACY MATERIAL FEEDBACK AS RECURSION = NOT USED
+OFFSCREEN PUBLICATION RETIREMENT = PASS (SEE InteriorPortalOffscreenPublicationRetirement.md)
 ```
 
 ## 1. Runtime evidence that ruled out the renderer pipeline
@@ -86,6 +87,8 @@ There is no inverse homography in the production pixel ownership decision. A tru
 
 The historical inverse homography remains only for old diagnostics/stencil compatibility while those paths are migrated separately.
 
+During the later offscreen-lifetime investigation an implementation inconsistency was also removed: the producer had accidentally rebuilt `ForegroundDepthReference` with the legacy homography after `Build()` created the analytic representation. It now preserves the analytic center/basis/extents and updates only `Row2.W = SurfaceVisualBias`.
+
 ## 4. Why RecursionDepth=2 previously did nothing in FullFidelity
 
 `AInteriorPortalSystem::RecursionDepth` belonged to the legacy SceneCapture renderer. That renderer explicitly:
@@ -153,73 +156,38 @@ SlayTheSpireDemo.Interior.Portals.FullFidelity.RecursiveRenderRequest
 
 These cover the CPU-side immutable geometry/recursion request contract. They do not replace PIE visual validation.
 
-## 7. USER ACTION REQUIRED
+## 7. PIE acceptance
 
-Build the current branch first. No GitHub CI currently proves this C++/shader change.
-
-Then run PIE with normal automatic FullFidelity startup; do not manually start a second renderer.
-
-### Grazing gate
-
-Reproduce the exact former failure:
-
-```text
-normal view
- -> increasingly oblique
- -> almost edge-on
- -> hold near the old spiral-flash angle for 10 seconds
- -> oscillate slowly across that angle
-```
-
-PASS requires no alternating remote-image / default-spiral frames.
-
-### RecursionDepth=2 gate
-
-Set:
+User PIE validation confirmed the important recursion behavior:
 
 ```text
 RecursionDepth = 2
+main view
+ -> level 0 remote portal view
+ -> nested level 1 portal visible
 ```
 
-Arrange the pair so the entry portal is visible inside its level-0 remote view. PASS requires:
+The nested portal is visible without requiring the player to physically cross first. This closes the original FullFidelity recursion gap for the tested depth-2 case.
+
+A subsequent fast visible/offscreen regression exposed a separate publication-lifetime race. That issue was fixed with render-thread-ordered request retirement and is recorded as PASS in `InteriorPortalOffscreenPublicationRetirement.md`.
+
+Current accepted behavior includes:
+
+- FullFidelity recursion visible before crossing at depth 2,
+- dual-visible endpoint rendering remains functional,
+- rapid visible -> offscreen transitions no longer expose the fallback spiral,
+- analytic aperture representation remains intact in the producer instead of being overwritten by the legacy homography.
+
+## 8. Remaining validation boundary
+
+The architecture supports recursion levels 1..4, but only the requested `RecursionDepth=2` path has explicit user PIE acceptance in this gate. Depth 3/4 remain supported-by-code rather than separately visually certified.
+
+Keep focused regression coverage for:
 
 ```text
-main -> level 0 portal view -> nested level 1 portal view
-```
-
-without physically crossing first.
-
-Dump:
-
-```text
-portal.DumpFullFidelityRenderer
-```
-
-Expected report includes:
-
-```text
-RecursionDepth=2
-E0Depth=2 and/or E1Depth=2 when that endpoint's nested portal is geometrically visible
-PortalMultiVisible Recursive Endpoint=<n> Level=1 Submitted>0 ExtractFrame>0 Pre>0 Completed>0
-```
-
-A requested depth of 2 does not force a second render if the recursive entry aperture is genuinely outside the parent secondary view; `VisibleDepth` is visibility-gated just like the legacy recursion path.
-
-## 8. Failure routing
-
-```text
-grazing still exposes spiral
- -> inspect analytic ray-plane shader / physical surface coverage; do not tune determinant or epsilon
-
-RecursionDepth=2 but E*Depth stays 1
- -> request-chain visibility/build problem
-
-E*Depth=2 and Level=1 completes, but nested portal absent
- -> child BeforeDOF targeting/scheduling problem
-
-nested portal visible but wrong brightness
- -> child FColorSample -> parent PreExposure rebase problem
-
-nested portal temporal ghost/cut
- -> per-level ViewState/history reset problem
+near-grazing / almost edge-on viewing
+fast visible <-> offscreen transitions
+RecursionDepth=2 nested portal visibility
+Blue + Orange simultaneously visible
+crossing and looking back
 ```
