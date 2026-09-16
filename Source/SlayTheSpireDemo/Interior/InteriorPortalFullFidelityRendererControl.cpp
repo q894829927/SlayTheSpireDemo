@@ -1,3 +1,6 @@
+#include "InteriorPortalFullFidelityRendererControl.h"
+
+#include "InteriorPortalSystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
@@ -59,7 +62,7 @@ namespace InteriorPortalFullFidelityRendererControlPrivate
 
 		GCompositionPolicy.bApplied = true;
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalFullFidelityRenderer: composition policy ProjectiveAperture=1 DepthAwareComposition=1; real main-view foreground depth wins in front of the entry plane."));
+			TEXT("PortalFullFidelityRenderer: production composition policy active (analytic aperture + main-depth foreground preservation)."));
 	}
 
 	void RestoreFullFidelityCompositionPolicy()
@@ -91,64 +94,89 @@ namespace InteriorPortalFullFidelityRendererControlPrivate
 		GCompositionPolicy = FCompositionPolicyState();
 	}
 
-	void StartFullFidelityRenderer()
+	void StartFromConsole()
 	{
-		UWorld* World = FindPlayableWorld();
+		InteriorPortalFullFidelityRenderer::Start(FindPlayableWorld());
+	}
+
+	void StopFromConsole()
+	{
+		InteriorPortalFullFidelityRenderer::Stop(FindPlayableWorld());
+	}
+
+	void DumpFromConsole()
+	{
+		InteriorPortalFullFidelityRenderer::Dump(FindPlayableWorld());
+	}
+}
+
+namespace InteriorPortalFullFidelityRenderer
+{
+	bool ShouldOwnRendering(const AInteriorPortalSystem* PortalSystem)
+	{
+		return IsValid(PortalSystem)
+			&& PortalSystem->bUseFullFidelityRenderer
+			&& AInteriorPortalSystem::UsesSceneCapture(PortalSystem->RendererBackend);
+	}
+
+	bool Start(UWorld* World)
+	{
 		if (!World || !GEngine)
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalFullFidelityRenderer: PIE/Game world unavailable."));
-			return;
+			return false;
 		}
 
-		// The accepted projective aperture plus main SceneDepth foreground gate is
-		// part of the production full-fidelity contract. Without it, first-person
-		// geometry (for example the flashlight/portal gun) can be overwritten by
-		// portal RGB even while it is physically in front of the entry plane.
-		ApplyFullFidelityCompositionPolicy();
+		// Composition policy belongs to the production control surface, not to the
+		// player controller. This keeps gameplay code independent from diagnostic CVars.
+		InteriorPortalFullFidelityRendererControlPrivate::ApplyFullFidelityCompositionPolicy();
 
-		// The endpoint-owned multi-visible TSR path is the accepted renderer
-		// correctness candidate. Keep this control surface stable while the
-		// underlying validation command remains available for historical A/B.
+		// Compatibility seam: the accepted endpoint x recursion backend still lives
+		// in the historical MultiVisibleTSRSpike translation unit. Keep its command
+		// as a backend alias for this cleanup step; normal gameplay no longer invokes
+		// any console command directly. A later mechanical extraction can replace
+		// this seam without touching controller ownership or renderer policy.
 		GEngine->Exec(World, TEXT("portal.StartMultiVisibleTSRSpike"));
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalFullFidelityRenderer: START requested through endpoint-owned multi-visible TSR path."));
+			TEXT("PortalFullFidelityRenderer: START through stable native lifecycle control."));
+		return true;
 	}
 
-	void StopFullFidelityRenderer()
+	void Stop(UWorld* World)
 	{
-		UWorld* World = FindPlayableWorld();
 		if (World && GEngine)
 		{
 			GEngine->Exec(World, TEXT("portal.StopMultiVisibleTSRSpike"));
-			UE_LOG(LogTemp, Display, TEXT("PortalFullFidelityRenderer: STOP."));
+			UE_LOG(LogTemp, Display, TEXT("PortalFullFidelityRenderer: STOP through stable native lifecycle control."));
 		}
-		RestoreFullFidelityCompositionPolicy();
+		InteriorPortalFullFidelityRendererControlPrivate::RestoreFullFidelityCompositionPolicy();
 	}
 
-	void DumpFullFidelityRenderer()
+	void Dump(UWorld* World)
 	{
-		UWorld* World = FindPlayableWorld();
 		if (!World || !GEngine)
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalFullFidelityRenderer: PIE/Game world unavailable."));
 			return;
 		}
-
 		GEngine->Exec(World, TEXT("portal.DumpMultiVisibleTSRSpike"));
 	}
+}
 
+namespace InteriorPortalFullFidelityRendererControlPrivate
+{
 	FAutoConsoleCommand GStartFullFidelityRendererCommand(
 		TEXT("portal.StartFullFidelityRenderer"),
-		TEXT("Start the accepted endpoint-owned full-fidelity portal renderer candidate."),
-		FConsoleCommandDelegate::CreateStatic(&StartFullFidelityRenderer));
+		TEXT("Start the accepted endpoint-owned FullFidelity portal renderer."),
+		FConsoleCommandDelegate::CreateStatic(&StartFromConsole));
 
 	FAutoConsoleCommand GStopFullFidelityRendererCommand(
 		TEXT("portal.StopFullFidelityRenderer"),
-		TEXT("Stop the endpoint-owned full-fidelity portal renderer candidate."),
-		FConsoleCommandDelegate::CreateStatic(&StopFullFidelityRenderer));
+		TEXT("Stop the accepted endpoint-owned FullFidelity portal renderer."),
+		FConsoleCommandDelegate::CreateStatic(&StopFromConsole));
 
 	FAutoConsoleCommand GDumpFullFidelityRendererCommand(
 		TEXT("portal.DumpFullFidelityRenderer"),
-		TEXT("Dump endpoint-aware full-fidelity portal renderer telemetry."),
-		FConsoleCommandDelegate::CreateStatic(&DumpFullFidelityRenderer));
+		TEXT("Dump endpoint/recursion-aware FullFidelity renderer telemetry."),
+		FConsoleCommandDelegate::CreateStatic(&DumpFromConsole));
 }
