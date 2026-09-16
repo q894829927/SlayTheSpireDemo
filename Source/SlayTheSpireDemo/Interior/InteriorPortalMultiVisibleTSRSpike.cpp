@@ -1266,8 +1266,11 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 					FIntRect CropRect;
 					FMatrix CroppedProjection;
+					FVector4f CropUvBounds;
 					if (!InteriorPortalProjectedBounds::ExpandAndClampRect(
 							Request.ScissorRect, ParentViewRect, CropPadding, CropRect)
+						|| !InteriorPortalProjectedBounds::PixelRectToNormalizedBounds(
+							CropRect, ParentViewRect, CropUvBounds)
 						|| !InteriorPortalProjectedBounds::BuildCroppedProjection(
 							ParentProjection, ParentViewRect, CropRect, CroppedProjection))
 					{
@@ -1282,6 +1285,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					}
 
 					Request.ScissorRect = CropRect;
+					// Historical inverse-homography rows consume xyz only. Projected-bounds
+					// rendering uses their otherwise-zero W components to transport the
+					// parent-view crop rectangle to the composition shader without changing
+					// the public render-request ABI or legacy full-view requests.
+					Request.ProjectiveAperture.Row0.W = CropUvBounds.X;
+					Request.ProjectiveAperture.Row1.W = CropUvBounds.Y;
+					Request.ProjectiveAperture.Row2.W = CropUvBounds.Z;
+					Request.ProjectiveAperture.ClipZRow.W = CropUvBounds.W;
 					if (Request.ForegroundDepthReference.bValid)
 					{
 						Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
