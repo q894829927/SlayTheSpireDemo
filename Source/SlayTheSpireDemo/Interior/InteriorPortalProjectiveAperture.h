@@ -11,12 +11,10 @@
  * screen space with a 3x3 homography; the inverse rows below map normalized
  * constrained-view UV back to homogeneous portal-local (u,v,w).
  *
- * NOTE: FScreenToPortalMapping is also used as a compact immutable transport
- * container for the production analytic ray/plane aperture geometry. In that
- * mode BuildAnalyticRayPlaneGeometry packs world-space plane/basis data into
- * the rows explicitly documented below. This keeps the accepted request ABI
- * stable while removing inverse-homography math from the production pixel
- * ownership decision.
+ * FScreenToPortalMapping is also used as an immutable transport container for
+ * production analytic ray/plane geometry. bAnalyticRayPlane distinguishes the
+ * two layouts explicitly so the historical inverse-homography diagnostics can
+ * remain intact while production composition stops depending on H^-1.
  */
 namespace InteriorPortalProjectiveAperture
 {
@@ -29,6 +27,7 @@ namespace InteriorPortalProjectiveAperture
 		FVector4f ClipZRow = FVector4f(0, 0, 0, 0);
 		float DeterminantQuality = 0.0f;
 		bool bValid = false;
+		bool bAnalyticRayPlane = false;
 	};
 
 	inline bool IsFiniteRow(const FVector4f& Row)
@@ -42,11 +41,10 @@ namespace InteriorPortalProjectiveAperture
 	/**
 	 * Build screen-UV -> normalized portal-local inverse homography.
 	 *
-	 * Screen UV uses the same normalized constrained-view convention as
-	 * FPortalScreenBounds: X left->right, Y top->bottom, both [0,1].
-	 *
-	 * The normalized determinant guards the exact edge-on/camera-in-plane
-	 * singularity without imposing an arbitrary world-space angle threshold.
+	 * If OutMapping already carries analytic geometry, this call is the existing
+	 * full-fidelity producer applying its cosmetic SurfaceVisualBias. Preserve the
+	 * logical plane/basis and update only that signed bias instead of overwriting
+	 * the analytic representation with another inverse homography.
 	 */
 	inline bool BuildScreenToPortalMapping(
 		const FTransform& ApertureFrame,
@@ -55,6 +53,20 @@ namespace InteriorPortalProjectiveAperture
 		const FMatrix& ViewProjectionMatrix,
 		FScreenToPortalMapping& OutMapping)
 	{
+		if (OutMapping.bAnalyticRayPlane && OutMapping.bValid)
+		{
+			const FVector LogicalCenter(OutMapping.Row0.X, OutMapping.Row0.Y, OutMapping.Row0.Z);
+			const FVector Normal(OutMapping.Row1.X, OutMapping.Row1.Y, OutMapping.Row1.Z);
+			const double SurfaceBias = FVector::DotProduct(
+				ApertureFrame.GetLocation() - LogicalCenter, Normal);
+			if (!FMath::IsFinite(SurfaceBias))
+			{
+				return false;
+			}
+			OutMapping.Row2.W = float(SurfaceBias);
+			return true;
+		}
+
 		OutMapping = FScreenToPortalMapping();
 		if (HalfWidth <= UE_SMALL_NUMBER || HalfHeight <= UE_SMALL_NUMBER)
 		{
@@ -71,10 +83,6 @@ namespace InteriorPortalProjectiveAperture
 		const FVector4 Du = ClipWidth - ClipCenter;
 		const FVector4 Dv = ClipHeight - ClipCenter;
 
-		// H maps [u v 1]^T to homogeneous normalized screen UV:
-		// Xh = 0.5 * (clip.x + clip.w)
-		// Yh = 0.5 * (clip.w - clip.y)
-		// Wh = clip.w
 		const double A = 0.5 * (double(Du.X) + double(Du.W));
 		const double B = 0.5 * (double(Dv.X) + double(Dv.W));
 		const double C = 0.5 * (double(ClipCenter.X) + double(ClipCenter.W));
@@ -123,11 +131,6 @@ namespace InteriorPortalProjectiveAperture
 			float((B * G - A * H) * InvDeterminant),
 			float((A * E - B * D) * InvDeterminant),
 			0.0f);
-
-		// H^-1 * [screenUV,1] is [u,v,1] / clipW. Device Z for the
-		// physical portal plane can therefore be evaluated without reconstructing
-		// world position:
-		//   deviceZ = Du.z*(u/clipW) + Dv.z*(v/clipW) + center.z*(1/clipW)
 		OutMapping.ClipZRow = FVector4f(
 			float(Du.Z), float(Dv.Z), float(ClipCenter.Z), 0.0f);
 
@@ -143,7 +146,7 @@ namespace InteriorPortalProjectiveAperture
 	 * No screen-space matrix inversion is performed, so the representation stays
 	 * well-defined as the portal approaches an edge-on projection.
 	 *
-	 * Packed layout (consumed by the production composition/depth shaders):
+	 * Packed layout consumed by production composition/depth shaders:
 	 *   Row0.xyz = logical portal center, Row0.w = 1 / HalfWidth
 	 *   Row1.xyz = logical portal normal(+X), Row1.w = 1 / HalfHeight
 	 *   Row2.xyz = logical portal width axis(+Y), Row2.w = cosmetic surface bias
@@ -167,18 +170,16 @@ namespace InteriorPortalProjectiveAperture
 		const FVector Normal = ApertureFrame.GetUnitAxis(EAxis::X);
 		const FVector AxisY = ApertureFrame.GetUnitAxis(EAxis::Y);
 		const FVector AxisZ = ApertureFrame.GetUnitAxis(EAxis::Z);
-		OutGeometry.Row0 = FVector4f(
-			FVector3f(Center), float(1.0 / HalfWidth));
-		OutGeometry.Row1 = FVector4f(
-			FVector3f(Normal), float(1.0 / HalfHeight));
-		OutGeometry.Row2 = FVector4f(
-			FVector3f(AxisY), float(SurfaceVisualBias));
+		OutGeometry.Row0 = FVector4f(FVector3f(Center), float(1.0 / HalfWidth));
+		OutGeometry.Row1 = FVector4f(FVector3f(Normal), float(1.0 / HalfHeight));
+		OutGeometry.Row2 = FVector4f(FVector3f(AxisY), float(SurfaceVisualBias));
 		OutGeometry.ClipZRow = FVector4f(FVector3f(AxisZ), 0.0f);
 		OutGeometry.DeterminantQuality = 1.0f;
 		OutGeometry.bValid = IsFiniteRow(OutGeometry.Row0)
 			&& IsFiniteRow(OutGeometry.Row1)
 			&& IsFiniteRow(OutGeometry.Row2)
 			&& IsFiniteRow(OutGeometry.ClipZRow);
+		OutGeometry.bAnalyticRayPlane = OutGeometry.bValid;
 		return OutGeometry.bValid;
 	}
 }
