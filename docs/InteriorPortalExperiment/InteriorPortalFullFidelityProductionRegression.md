@@ -7,20 +7,21 @@ State:
 ```text
 FULLFIDELITY VISUAL CORRECTNESS GATES = ACCEPTED IN PIE
 NATIVE PLAYER LIFECYCLE OWNERSHIP = IMPLEMENTED
-CONSOLE COMMANDS = OPERATOR/DIAGNOSTIC ALIASES ONLY AT PLAYER LIFECYCLE
-HISTORICAL MULTIVISIBLE BACKEND COMMAND SEAM = RETAINED TEMPORARILY
+NATIVE FULLFIDELITY BACKEND SEAM = IMPLEMENTED
+CONSOLE COMMANDS = OPERATOR/DIAGNOSTIC ALIASES ONLY
+HISTORICAL MULTIVISIBLE COMMAND DISPATCH IN NORMAL CONTROL FLOW = REMOVED
 FOCUSED AUTOMATION:
   FullFidelity = PASS (user local UE5.8 run)
   MainViewOwnership = PASS (user local UE5.8 run)
-  ColorSampleExposure = NUMERIC TEST TOLERANCE FIX COMMITTED / RERUN REQUIRED
-FOCUSED PIE REGRESSION = USER ACTION REQUIRED
+  ColorSampleExposure = PASS (user local UE5.8 rerun after float-stable test fix)
+FINAL NATIVE-SEAM BUILD + SHORT PIE SMOKE = USER ACTION REQUIRED
 ```
 
 ## 1. Cleanup boundary
 
 The accepted renderer behavior is not being redesigned in this step. The goal is to remove experimental control-flow coupling from normal gameplay while preserving historical diagnostics for A/B and regression work.
 
-Before this cleanup the normal player lifecycle did this:
+The old lifecycle used console-command dispatch in normal gameplay:
 
 ```text
 AInteriorPlayerController
@@ -30,21 +31,19 @@ AInteriorPlayerController
  -> accepted endpoint x recursion renderer
 ```
 
-The player controller therefore depended on command registration and command strings even though FullFidelity had already been accepted as the normal renderer path.
-
-The new lifecycle is:
+The production-facing lifecycle is now:
 
 ```text
 AInteriorPlayerController
  -> InteriorPortalFullFidelityRenderer::ShouldOwnRendering(...)
  -> InteriorPortalFullFidelityRenderer::Start/Stop(World)
- -> production composition policy
- -> accepted endpoint x recursion backend
+ -> InteriorPortalFullFidelityBackend::Start/Stop()
+ -> accepted endpoint x recursion renderer
 ```
 
-`portal.StartFullFidelityRenderer`, `portal.StopFullFidelityRenderer`, and `portal.DumpFullFidelityRenderer` remain as operator aliases. They are no longer called by `AInteriorPlayerController`.
+No normal player/render lifecycle code requires a portal console command string.
 
-The historical backend still lives in `InteriorPortalMultiVisibleTSRSpike.cpp`, and the stable control currently retains one internal command-dispatch seam to that translation unit. That seam is deliberately documented rather than hidden: removing it is a later mechanical backend-export cleanup and must not be mixed with renderer-correctness changes.
+`portal.StartFullFidelityRenderer`, `portal.StopFullFidelityRenderer`, `portal.DumpFullFidelityRenderer`, and the older `portal.*MultiVisibleTSRSpike` commands remain only as operator/diagnostic aliases. The renderer implementation is still physically located in the historical `InteriorPortalMultiVisibleTSRSpike.cpp` translation unit; that filename is not a runtime dependency and may be renamed later as a purely mechanical cleanup.
 
 ## 2. Production invariants already accepted
 
@@ -63,9 +62,7 @@ The current renderer must retain all of the following:
 
 ## 3. Focused automated regression
 
-Per `AGENTS.md`, this C++ lifecycle change requires one editor build and the smallest relevant Automation set.
-
-Run:
+Per `AGENTS.md`, this C++ lifecycle cleanup used the smallest relevant Automation set:
 
 ```text
 Automation RunTests SlayTheSpireDemo.Interior.Portals.FullFidelity
@@ -78,11 +75,10 @@ Observed locally by the user on 2026-09-16:
 ```text
 SlayTheSpireDemo.Interior.Portals.FullFidelity       PASS
 SlayTheSpireDemo.Interior.Portals.MainViewOwnership PASS
-SlayTheSpireDemo.Interior.Portals.ColorSampleExposure
-    initial run FAIL at the radiance-invariance assertion
+SlayTheSpireDemo.Interior.Portals.ColorSampleExposure PASS
 ```
 
-The `ColorSampleExposure` failure was classified as a test-numerics issue rather than a production exposure regression. The production contract remains:
+The first `ColorSampleExposure` run exposed only a test-numerics defect. Production exposure logic was not changed. The accepted contract remains:
 
 ```text
 ExposureScale = MainPreExposure / SecondaryPreExposure
@@ -90,40 +86,33 @@ RebasedSceneColor = Radiance * SecondaryPreExposure * ExposureScale
                   = Radiance * MainPreExposure
 ```
 
-For the exercised float values, the mathematically identical result can evaluate to approximately `0.20000002` instead of exactly `0.2`. The test previously relied on `FMath::IsNearlyEqual` without an explicit tolerance. It now uses a documented `1e-6` tolerance around the same invariant. Production `FColorSample::TryGetExposureScale()` was not changed. Rerun `ColorSampleExposure` after pulling the fix.
+The test now uses an explicit `1e-6` float tolerance for that invariant and passed on rerun.
 
-The FullFidelity prefix currently includes the focused analytic-aperture and recursive-request contract tests.
+The FullFidelity prefix also covers the analytic-aperture and recursive-request contracts.
 
-Do not rerun unrelated battle/card suites for this renderer-only cleanup unless the build or focused tests expose a shared-module failure.
+## 4. Final native-seam smoke
 
-## 4. Focused PIE regression
+The final cleanup after the 3/3 Automation pass replaced the remaining stable-control -> `StartMultiVisibleTSRSpike` command dispatch with `InteriorPortalFullFidelityBackend` native calls. No renderer math, exposure logic, aperture ownership, recursion scheduling, or publication retirement logic changed.
+
+Because this is still a C++ link/control-flow change, do one editor build and one short PIE smoke before calling the production cleanup fully closed.
 
 Start PIE normally. Do **not** call any Start command.
 
-Expected startup evidence includes the FullFidelity lifecycle START log and the endpoint-owned renderer START log.
-
-Run one compact sequence:
-
-1. look through one portal normally,
-2. put Blue and Orange in the same viewport,
-3. use a strong grazing angle,
-4. overlap the portal with the first-person flashlight while the flashlight remains physically in front,
-5. with `RecursionDepth=2`, confirm the nested portal is visible before crossing,
-6. rapidly snap the camera visible -> offscreen -> visible at least 10 times,
-7. cross once and look back through the portal.
-
-PASS requires:
+Expected startup evidence includes:
 
 ```text
-no black aperture
-no default-spiral flash except the intentional recursion-limit surface
-no one-visible/one-black dual-portal failure
-no foreground flashlight being overwritten while in front of the portal plane
-nested level-1 portal visible when geometrically in view
-no stale-frame flash on offscreen return
-no exposure pop specific to crossing
-no video-memory exhausted warning caused by parallel legacy SceneCapture
+PortalFullFidelityRenderer: START through native lifecycle and backend APIs.
+PortalMultiVisible: START. ...
 ```
+
+A short smoke is sufficient:
+
+1. one portal renders normally,
+2. Blue and Orange can both appear in the viewport,
+3. `RecursionDepth=2` still shows the nested portal,
+4. one strong grazing angle remains stable,
+5. one rapid visible -> offscreen -> visible snap does not expose the spiral,
+6. no video-memory exhausted warning appears.
 
 Finally run:
 
@@ -131,25 +120,22 @@ Finally run:
 portal.DumpFullFidelityRenderer
 ```
 
-For a dual-visible RecursionDepth=2 framing, the report should show the applicable endpoint bits published and level-1 submitted/completed work when the nested portal is actually visible.
+The command itself is only a diagnostic alias; the renderer must already be running before it is entered.
 
 ## 5. USER ACTION REQUIRED
 
-Pull the latest branch and rerun only:
+Pull the latest branch, rebuild the UE5.8 editor target, then perform the short PIE smoke above.
 
-```text
-Automation RunTests SlayTheSpireDemo.Interior.Portals.ColorSampleExposure
-```
+The three focused Automation groups are already accepted and do not need to be rerun solely because the final backend seam removed command-string dispatch. If the build exposes a shared/link failure, fix that first; if PIE shows a visual regression, reopen only the reproduced subsystem.
 
-If that passes, the focused Automation gate is fully green. Then run the compact PIE regression above.
-
-This document must not be marked fully PASS solely because the source was committed. GitHub currently has no CI check proving the local UE5.8 C++/shader build.
+GitHub currently has no CI check proving this final local C++ link step.
 
 ## 6. After PASS
 
-Once this regression passes, the renderer can be treated as closed for the current single-pair FullFidelity scope. Remaining cleanup should be mechanical rather than visual:
+After the native-seam build + short PIE smoke passes, treat the renderer as closed for the current single-pair FullFidelity scope.
 
-- export the endpoint x recursion backend as a native service and remove the last internal `StartMultiVisibleTSRSpike` command-dispatch seam,
-- optionally rename the historical `*Spike.cpp` implementation file after the native service boundary exists,
+Remaining work is optional/mechanical:
+
+- optionally rename `InteriorPortalMultiVisibleTSRSpike.cpp` to a production-oriented filename,
 - retain old spike/diagnostic commands only where they still provide useful A/B evidence,
 - do not reopen exposure, aperture, recursion, or visibility algorithms without a new reproduced failure.
