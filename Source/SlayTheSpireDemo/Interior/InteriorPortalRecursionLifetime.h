@@ -79,6 +79,8 @@ namespace InteriorPortalRecursionLifetime
 
 	struct FLifetime
 	{
+		static constexpr uint64 PackedComponentMask = 0xffffffffull;
+
 		uint64 LifetimeId = 0;
 		uint64 PublicationGeneration = 0;
 		EResourceState State = EResourceState::Unallocated;
@@ -86,6 +88,7 @@ namespace InteriorPortalRecursionLifetime
 		bool BeginAllocated(const uint64 NewLifetimeId)
 		{
 			if (NewLifetimeId == 0
+				|| NewLifetimeId > PackedComponentMask
 				|| (State != EResourceState::Unallocated
 					&& State != EResourceState::Reclaimable))
 			{
@@ -108,20 +111,16 @@ namespace InteriorPortalRecursionLifetime
 			return true;
 		}
 
-		// Visibility/publication retirement is deliberately separate from persistent
-		// resource retirement. A layer may leave the visible recursion set, advance
-		// its publication generation and retire the old publication while keeping the
-		// same reusable lifetime and ViewState/RT ownership.
-		bool AdvancePublicationGeneration(FPublicationToken& OutSupersededPublication)
+		FPublicationToken AdvancePublicationGeneration()
 		{
-			if (!IsReusable())
+			const FPublicationToken Previous = CapturePublicationToken();
+			if (!IsReusable() || !Previous.IsValid())
 			{
-				return false;
+				return FPublicationToken();
 			}
 
-			OutSupersededPublication = CapturePublicationToken();
-			IncrementPublicationGeneration();
-			return true;
+			AdvancePublicationGenerationInternal();
+			return Previous;
 		}
 
 		bool BeginRetirement(FPublicationToken& OutRetiredPublication)
@@ -132,7 +131,7 @@ namespace InteriorPortalRecursionLifetime
 			}
 
 			OutRetiredPublication = CapturePublicationToken();
-			IncrementPublicationGeneration();
+			AdvancePublicationGenerationInternal();
 			State = EResourceState::Retiring;
 			return true;
 		}
@@ -178,6 +177,17 @@ namespace InteriorPortalRecursionLifetime
 			return FPublicationToken { LifetimeId, PublicationGeneration };
 		}
 
+		uint64 GetPackedPublicationIdentity() const
+		{
+			if (LifetimeId == 0 || PublicationGeneration == 0
+				|| LifetimeId > PackedComponentMask
+				|| PublicationGeneration > PackedComponentMask)
+			{
+				return 0;
+			}
+			return (LifetimeId << 32) | PublicationGeneration;
+		}
+
 		bool CanPublish(const FPublicationToken& Token) const
 		{
 			return IsReusable()
@@ -186,28 +196,39 @@ namespace InteriorPortalRecursionLifetime
 				&& Token.PublicationGeneration == PublicationGeneration;
 		}
 
-		// Used by queue-ordered publication retirement for both short visibility
-		// changes and persistent resource retirement. The lifetime identity must
-		// match, and only an older generation is eligible for clearing.
-		bool IsSupersededPublication(const FPublicationToken& PublishedToken) const
+		bool CanPublishPacked(const uint64 PackedIdentity) const
 		{
-			return PublishedToken.IsValid()
-				&& PublishedToken.LifetimeId == LifetimeId
-				&& PublishedToken.PublicationGeneration < PublicationGeneration;
+			return IsReusable()
+				&& PackedIdentity != 0
+				&& PackedIdentity == GetPackedPublicationIdentity();
 		}
 
 		bool ShouldRetirePublication(const FPublicationToken& PublishedToken) const
 		{
 			return (State == EResourceState::Retiring
 					|| State == EResourceState::Reclaimable)
-				&& IsSupersededPublication(PublishedToken);
+				&& PublishedToken.IsValid()
+				&& PublishedToken.LifetimeId == LifetimeId
+				&& PublishedToken.PublicationGeneration < PublicationGeneration;
+		}
+
+		bool ShouldRetirePackedPublication(const uint64 PublishedIdentity) const
+		{
+			if (PublishedIdentity == 0 || LifetimeId == 0)
+			{
+				return false;
+			}
+			const uint64 PublishedLifetimeId = PublishedIdentity >> 32;
+			const uint64 PublishedGeneration = PublishedIdentity & PackedComponentMask;
+			return PublishedLifetimeId == LifetimeId
+				&& PublishedGeneration < PublicationGeneration;
 		}
 
 	private:
-		void IncrementPublicationGeneration()
+		void AdvancePublicationGenerationInternal()
 		{
 			++PublicationGeneration;
-			if (PublicationGeneration == 0)
+			if (PublicationGeneration == 0 || PublicationGeneration > PackedComponentMask)
 			{
 				PublicationGeneration = 1;
 			}
