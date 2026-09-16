@@ -641,7 +641,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
-					const FLayerState& Layer = *Endpoint.Layers[Level];
+					FLayerState& Layer = *Endpoint.Layers[Level];
 					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
 					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
@@ -1422,7 +1422,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
-					const FLayerState& Layer = *Endpoint.Layers[Level];
+					 FLayerState& Layer = *Endpoint.Layers[Level];
 					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
 					const bool bColorAllocated = IsValid(ColorTarget);
