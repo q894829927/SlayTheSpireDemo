@@ -50,13 +50,13 @@ bool FInteriorPortalProjectedBoundsCropTest::RunTest(const FString& Parameters)
 
 	const FIntPoint HalfTarget = ComputeAlignedTargetSize(
 		CenterCrop, ParentRect, FIntPoint(1000, 500));
-	TestEqual(TEXT("Half-width crop keeps aligned projected width"), HalfTarget.X, 504);
-	TestEqual(TEXT("Half-height crop keeps aligned projected height"), HalfTarget.Y, 256);
+	TestEqual(TEXT("Half-width crop uses 32-pixel bucket"), HalfTarget.X, 512);
+	TestEqual(TEXT("Half-height crop uses 32-pixel bucket"), HalfTarget.Y, 256);
 
 	const FIntPoint ScaledTarget = ComputeAlignedTargetSize(
 		FIntRect(0, 0, 1280, 720), FIntRect(0, 0, 2560, 1440), FIntPoint(1920, 1080));
 	TestEqual(TEXT("Display-to-render density scales crop width"), ScaledTarget.X, 960);
-	TestEqual(TEXT("Display-to-render density scales crop height"), ScaledTarget.Y, 544);
+	TestEqual(TEXT("Display-to-render density enters next bucket"), ScaledTarget.Y, 544);
 
 	return true;
 }
