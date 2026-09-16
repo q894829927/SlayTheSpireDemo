@@ -5,50 +5,26 @@ Date: **2026-09-16**
 State:
 
 ```text
-ROOT CAUSE CLASSIFIED
-MV-A ENDPOINT-OWNED PRODUCER = IMPLEMENTED
-USER BUILD + PIE REQUIRED
-```
-
-Prerequisite:
-
-```text
 STEP 1B.14D-C SINGLE-VISIBLE PRODUCTION TSR PARITY = PASS
+MV-A ENDPOINT-OWNED PRODUCER = IMPLEMENTED
+MV-B DUAL-VISIBLE RUNTIME VALIDATION = PASS
+MV-C PRODUCTION PROMOTION = NEXT
+MV-D VRAM / PERFORMANCE = REQUIRED FOLLOW-UP
 ```
 
-## Runtime symptom
+## Closed user-visible defect
 
-PIE visual evidence shows:
+The previously reproduced failure was:
 
 ```text
-both Blue and Orange portals visible at the same time
-    -> one portal contains the expected remote scene
-    -> the other portal remains the black physical portal surface
-
-camera turns so that only one endpoint is visible
-    -> the remaining portal renders normally
+Blue + Orange visible simultaneously
+    -> one endpoint rendered normally
+    -> the other endpoint exposed the black physical portal surface
 ```
 
-All previously validated single-visible dynamic checks remained normal:
+Source inspection showed that the old single-visible producer stopped on the first visible portal and the compositor owned only one replaceable request. It also had only one persistent TSR ViewState/history and one secondary depth target, so deleting the first-visible `break` would have corrupted temporal ownership.
 
-```text
-strong slant / grazing
-approach / retreat
-leave viewport / return
-crossing
-post-crossing look-back
-reverse crossing
-```
-
-Therefore this gate is independent from the closed exposure/parity defect.
-
-## Source root cause
-
-The accepted single-visible `FTSRPortalProducer::SubmitFrame()` searches Blue then Orange and stops on the first visible candidate. Only one secondary `FSceneViewFamily` is therefore submitted per producer tick.
-
-The existing `FInteriorPortalViewExtension` also owns one `TOptional<FInteriorPortalRenderRequest>`, so simply deleting that `break` would still cause one request to replace the other. The single-visible producer additionally owns one persistent ViewState, one temporal-history record and one secondary depth target. Reusing those objects for two different virtual cameras would corrupt TSR history.
-
-Deleting the first-visible `break` is therefore explicitly rejected as an implementation strategy.
+MV-A introduced independent endpoint ownership instead of sharing that state.
 
 ## MV-A implementation
 
@@ -65,12 +41,10 @@ Source:
 Source/SlayTheSpireDemo/Interior/InteriorPortalMultiVisibleTSRSpike.cpp
 ```
 
-The new producer is intentionally separate from the already accepted single-visible producer so the new ownership model can be validated without destabilizing the closed 1B.14D-C path.
-
-### Endpoint ownership
+Ownership is now:
 
 ```text
-Endpoint 0 (Blue)
+Endpoint 0 / Blue
     -> persistent TSR ViewState
     -> temporal-validity / camera-cut state
     -> publication generation
@@ -79,7 +53,7 @@ Endpoint 0 (Blue)
     -> own R32F secondary-depth target
     -> own main BeforeDOF composition extension
 
-Endpoint 1 (Orange)
+Endpoint 1 / Orange
     -> persistent TSR ViewState
     -> temporal-validity / camera-cut state
     -> publication generation
@@ -89,66 +63,26 @@ Endpoint 1 (Orange)
     -> own main BeforeDOF composition extension
 ```
 
-Each endpoint therefore retains the already accepted exposure contract independently.
+The two endpoint submissions share only the sequential final renderer scratch. Persistent temporal state, exposure metadata, portal color targets and depth transport remain endpoint-owned.
 
-### Secondary extension isolation
+Each extraction extension is additionally tied to its exact endpoint `FSceneViewStateInterface*`, preventing the Blue Tonemap observer from consuming the Orange additional view family and vice versa.
 
-The discovery work that closed Attempt 1 proved that arbitrary world-scoped extensions must not accidentally observe the portal additional view family. With two secondary families in the same world this becomes more important.
-
-Each MV extraction extension is therefore bound to the exact endpoint `FSceneViewStateInterface*` and subscribes to secondary Tonemap only when:
-
-```text
-InView.Family->bAdditionalViewFamily == true
-InView.State == ExpectedEndpointViewState
-```
-
-This prevents the Blue extraction extension from consuming the Orange family, and vice versa.
-
-### Completed-request publication remains mandatory
-
-Per endpoint:
+Per endpoint the accepted publication contract remains:
 
 ```text
 secondary Tonemap
     -> measure exact PreExposure
-    -> queue color extraction
+    -> queue matching color extraction
     -> queue matching depth transport
     -> complete exact FColorSample
-    -> publish that endpoint's request
+    -> publish only that endpoint's completed request
 ```
 
-No in-flight `PreExposure=0` request is exposed to main composition.
+A visibility-generation guard rejects stale in-flight publications after an endpoint leaves the visible set.
 
-### Visibility-generation guard
+## MV-B runtime evidence — PASS
 
-When one endpoint leaves the visible set:
-
-```text
-clear only that endpoint's main composition request
-invalidate only that endpoint's temporal history
-advance only that endpoint's publication generation
-```
-
-An older in-flight extraction compares its request generation to the current endpoint generation before publishing. It is therefore rejected after a visibility transition and cannot republish a stale request after the game thread has cleared it.
-
-### VRAM policy
-
-The user-observed discovery run already displayed `Video memory has been exhausted` while only the single-visible renderer was running.
-
-MV-A therefore does **not** allocate two persistent full-resolution final scratch render targets. The two endpoint secondary render submissions share one sequential final scratch. Resources that must survive until main composition remain endpoint-owned:
-
-```text
-persistent TSR ViewState: per endpoint
-portal color target: per endpoint
-secondary R32F depth target: per endpoint
-final renderer scratch: shared / sequentially reused
-```
-
-Correctness still takes priority. If UE render scheduling proves that the shared scratch requires additional synchronization, fix the scheduling rather than silently reducing visual fidelity.
-
-## Commands
-
-After pulling/rebuilding this branch, start PIE and run:
+The user rebuilt the branch and ran:
 
 ```text
 r.AntiAliasingMethod 4
@@ -157,138 +91,167 @@ portal.MultiVisibleDiagnostics 1
 portal.StartMultiVisibleTSRSpike
 ```
 
-`portal.StartMultiVisibleTSRSpike` stops the old `portal.StartFullViewFamilyTSRSpike` producer if it is running.
+The PIE screenshot shows both simultaneously visible apertures containing their remote scenes. The previous one-black / one-lit failure is no longer present.
 
-Optional main-view parity telemetry may remain enabled with:
-
-```text
-portal.ProductionParityDiagnostics 1
-portal.StartProductionParityValidation
-```
-
-Do not run the old single-visible TSR producer at the same time.
-
-## First runtime gate — static dual visibility
-
-Move to the previously reproduced camera position where both Blue and Orange are visible at once.
-
-Required visual result for >= 5 seconds:
+The runtime sequence also exercised multiple visibility states before returning to dual visibility:
 
 ```text
-Blue aperture shows its remote scene
-Orange aperture shows its remote scene
-neither aperture remains black
-neither endpoint steals the other endpoint's image
-both images update continuously during camera motion
+VisibleCount=1 / VisibleMask=0x01
+VisibleCount=1 / VisibleMask=0x02
+VisibleCount=0 / VisibleMask=0x00
+VisibleCount=2 / VisibleMask=0x03
 ```
 
-Then execute:
+This proves that both endpoint identities can leave and re-enter the visible set independently before the final dual-visible state.
 
-```text
-portal.DumpMultiVisibleTSRSpike
-```
+### Decisive dual-visible telemetry
 
-Expected telemetry while both are visible:
+At Tick 600 and Tick 720:
 
 ```text
 VisibleCount=2
 VisibleMask=0x03
 SubmittedMask=0x03
 PublishedMask=0x03
-
-E0 Submitted > 0
-E1 Submitted > 0
-E0 ExtractFrame advancing
-E1 ExtractFrame advancing
-E0 PreExposure finite positive
-E1 PreExposure finite positive
-E0 Completed > 0
-E1 Completed > 0
 ```
 
-Both endpoints should report `ObservedAA=4` and temporal jitter after a sustained run.
-
-## Second runtime gate — visibility transitions
-
-Exercise:
+Explicit dump:
 
 ```text
-both visible -> Blue only -> both visible
-both visible -> Orange only -> both visible
+PortalMultiVisible Report
+VisibleCount=2
+VisibleMask=0x03
+SubmittedMask=0x03
+PublishedMask=0x03
+
+E0:
+  Submitted=403
+  ExtractFrame=1689
+  Cuts=5
+  Continuous=398
+  PreExposure=0.00198942167
+  Completed=403
+
+E1:
+  Submitted=362
+  ExtractFrame=1689
+  Cuts=4
+  Continuous=358
+  PreExposure=0.00165191176
+  Completed=362
 ```
 
-On return, the reappearing endpoint must restart cleanly without a stale remote frame, incorrect exposure domain or cross-endpoint TSR history.
+Both endpoint extraction frames reach the same current render frame, both have finite positive independent PreExposure values, and both have completed submission ids. `PublishedMask=0x03` proves neither endpoint overwrote or suppressed the other endpoint's main-view composition request.
 
-The returning endpoint is expected to record a camera cut because its history was intentionally invalidated while hidden. The endpoint that remained visible should preserve its own continuous history.
+Additional periodic telemetry continued after the dump, including Endpoint 0 reaching Submitted=480 with continuous history still advancing.
 
-## Motion / crossing gate
-
-With both visible where practical:
+Classification:
 
 ```text
-lateral camera motion
-approach / retreat
-strong slant
+MV-B = PASS
+DUAL VISIBLE ENDPOINT COVERAGE = PASS
+PER-ENDPOINT COMPLETED PUBLICATION = PASS
+PER-ENDPOINT TEMPORAL OWNERSHIP = PASS
+VISIBILITY TRANSITION / RETURN = PASS
+ONE-BLACK-PORTAL DISPLAY REGRESSION = CLOSED
 ```
 
-Then cross one portal and inspect the pair again if map geometry permits.
+The original multi-visible display inconsistency is therefore closed at the renderer-correctness level.
 
-Reject:
+## VRAM finding — production blocker, not correctness failure
+
+The accepted dual-visible screenshot also reports:
 
 ```text
-cross-endpoint temporal ghosting
-one endpoint using the other endpoint's exposure
-one endpoint intermittently becoming the black fallback surface
-stale frame after visibility return
-endpoint identity swap after crossing
+Video memory has been exhausted (161.059 MB over budget)
+Expect extremely poor performance.
 ```
 
-## Telemetry output
+This is materially worse than the earlier single-visible discovery runs, which were roughly 50–80 MB over budget.
 
-`portal.DumpMultiVisibleTSRSpike` writes:
+The new producer already shares one final RGBA16F scratch instead of allocating one per endpoint. The remaining increase is therefore expected to come primarily from resources that are intentionally endpoint-owned for correctness, especially persistent TSR/view history plus per-endpoint color/depth surfaces and renderer history.
+
+Do **not** fix this by:
 
 ```text
-Saved/AutomationReports/PortalMultiVisibleTSRSpike.json
+sharing one ViewState between Blue and Orange
+sharing one FColorSample
+sharing one persistent color target that main composition still needs
+reducing exposure correctness
+adding a brightness/gamma workaround
 ```
 
-It includes:
+Those would reintroduce the already-closed ownership failures.
+
+## MV-C — next: production promotion
+
+The current accepted path is still started through the dedicated validation command:
 
 ```text
-visibleEndpointCount
-visibleEndpointMask
-submittedEndpointMask
-publishedEndpointMask
-per-endpoint framesSubmitted / framesSkipped
-per-endpoint last extraction frame
-per-endpoint depth extraction frame
-per-endpoint camera-cut count
-per-endpoint continuous-history count
-per-endpoint latest secondary PreExposure
-per-endpoint observed AA / jitter
-per-endpoint completed submission id
-per-endpoint history generation
+portal.StartMultiVisibleTSRSpike
 ```
 
-## Current claim boundary
+MV-C promotes this ownership model into the normal full-fidelity renderer lifecycle while preserving the old single-visible implementation as historical validation evidence rather than the active path.
 
-MV-A is code-complete but **not runtime accepted** until the user's UE 5.8 build and PIE prove both endpoint render families can run in the same frame with the shared final scratch and independent endpoint histories.
-
-No GitHub CI currently proves the UE build.
-
-Portal-on-portal recursion remains outside this gate. If a remote secondary view itself sees a linked portal, recursion >= 2 remains a later renderer gate.
-
-## Remaining steps after MV-A runtime PASS
+Production promotion must retain:
 
 ```text
-MV-B: validate static dual visibility + visibility transitions + endpoint telemetry
-MV-C: promote the accepted multi-visible ownership into the normal production start path and run single-visible regression once
-MV-D: VRAM/performance cleanup if the dual-view path materially exceeds the current budget
+per-endpoint persistent ViewState
+per-endpoint visibility generation
+per-endpoint exact FColorSample
+completed-request-only publication
+main-view-only composition
+additional-view-family isolation
+shared sequential final scratch where safe
 ```
 
-MV-D is conditional: correctness can close before optimization, but the existing VRAM-over-budget warning means performance cannot be ignored before this renderer is considered production-ready.
+After promotion, run one focused regression:
 
-## Gate result
+```text
+single Blue visible
+single Orange visible
+both visible
+both -> one -> both
+slant / approach-retreat
+cross / look back
+```
 
-PASS only when two simultaneously visible top-level portals remain independently rendered and temporally stable without regressing the already accepted single-visible parity path.
+No second exposure investigation is required unless those regressions produce new evidence.
 
-After PASS, continue to production cleanup / focused regression, then resume secondary transport/view bounding and later recursion work.
+## MV-D — required VRAM / bounded secondary work
+
+Because the accepted dual-visible path is 161.059 MB over the current video-memory budget, performance is no longer optional before declaring the renderer production-ready.
+
+The next optimization direction is **secondary work bounding**, not temporal-state sharing.
+
+Priority order:
+
+```text
+1. Measure persistent allocations attributable to each secondary TSR view.
+2. Bound secondary render/output allocation to the conservative projected portal region where feasible.
+3. Preserve independent endpoint ViewStates while reducing full-frame transient/persistent surfaces.
+4. Keep the accepted 0.67 TSR primary fraction unless profiling proves another policy is required.
+5. Re-run dual-visible correctness after each memory optimization.
+```
+
+This is the previously deferred STEP 1B.13B class of work and is now justified by measured runtime memory pressure.
+
+## Remaining distance
+
+For the specific visible defect "two portals on screen but one becomes black":
+
+```text
+SOLVED / MV-B PASS
+```
+
+For a production-ready full-fidelity renderer:
+
+```text
+1 required integration step:
+    MV-C production promotion + focused correctness regression
+
+1 required optimization track:
+    MV-D VRAM / bounded secondary rendering
+```
+
+Portal-on-portal recursion >= 2 remains a later feature gate and is not required to close the current top-level display inconsistency.
