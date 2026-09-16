@@ -2,6 +2,7 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalRecursionLifetime.h"
 
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasTypes.h"
@@ -131,12 +132,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FSceneViewStateReference ViewState;
 		UTextureRenderTarget2D* SecondaryDepthTarget = nullptr;
 		FIntPoint SecondaryDepthTargetSize = FIntPoint::ZeroValue;
+		InteriorPortalRecursionLifetime::FLifetime Lifetime;
 
 		bool bHistoryValid = false;
 		bool bVisibleLastTick = false;
 		bool bLastCameraCut = true;
-		uint64 HistoryGeneration = 1;
-		TAtomic<uint64> ActivePublicationGeneration { 1 };
+		uint64 HistoryGeneration = 0;
+		TAtomic<uint64> ActivePublicationGeneration { 0 };
 		FIntPoint LastTargetSize = FIntPoint::ZeroValue;
 		FTransform LastEntryFrame = FTransform::Identity;
 		FTransform LastExitFrame = FTransform::Identity;
@@ -447,8 +449,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					LayerState->LastExtractionFrame.Store(GFrameCounter);
 					LayerState->LastCompletedSubmission.Store(ColorSample->Submission);
 
-					if (LayerState->ActivePublicationGeneration.Load()
-						== CompletedRequest.RendererHistoryGeneration)
+					if (LayerState->Lifetime.CanPublishPacked(
+						CompletedRequest.RendererHistoryGeneration))
 					{
 						if (MainPublisher)
 						{
@@ -522,6 +524,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					Layer.ViewState.Allocate(World->GetFeatureLevel());
 					ResetLayer(Layer);
+					check(Layer.Lifetime.BeginAllocated(LifetimeIdSource.Allocate()));
+					SyncPublicationIdentity(Layer);
 				}
 				Endpoint.MainCompositionExtension =
 					FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
@@ -599,6 +603,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					Layer.ViewState.Destroy();
 					ReleaseDepthTarget(Layer);
+					ResetLifetimeAfterSynchronousTeardown(Layer);
 				}
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
@@ -624,7 +629,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible P1A1 Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				TEXT("PortalMultiVisible P1A2 Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
 				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
 				FinalScratchSize.X, FinalScratchSize.Y);
 
@@ -633,7 +638,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible P1A1 Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
+					TEXT("PortalMultiVisible P1A2 Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask);
@@ -646,15 +651,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
 					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
 					const bool bColorAllocated = IsValid(ColorTarget);
-					const bool bOwned = bViewStateAllocated || bDepthAllocated || bColorAllocated;
-					const bool bSubmittedThisFrame = (Endpoint.LastSubmittedLayerMask & (1 << Level)) != 0;
-					const TCHAR* ResourceState = bSubmittedThisFrame
-						? TEXT("ACTIVE_INFERRED")
-						: (bOwned ? TEXT("ALLOCATED_INFERRED") : TEXT("UNALLOCATED_INFERRED"));
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible P1A1 E%dL%d State=%s Lifetime=NOT_IMPLEMENTED HistoryGen=%llu ActivePubGen=%llu ViewState=%d Color=%d[%dx%d RTF=%d] Depth=%d[%dx%d RTF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
-						EndpointIndex, Level, ResourceState,
-						Layer.HistoryGeneration, Layer.ActivePublicationGeneration.Load(),
+						TEXT("PortalMultiVisible P1A2 E%dL%d State=%s Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu ViewState=%d Color=%d[%dx%d RTF=%d] Depth=%d[%dx%d RTF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
+						EndpointIndex, Level,
+						InteriorPortalRecursionLifetime::ToString(Layer.Lifetime.State),
+						Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
+						Layer.HistoryGeneration,
 						bViewStateAllocated ? 1 : 0,
 						bColorAllocated ? 1 : 0,
 						bColorAllocated ? ColorTarget->SizeX : 0,
@@ -802,13 +804,20 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 		}
 
+		void SyncPublicationIdentity(FLayerState& Layer)
+		{
+			const uint64 PackedIdentity = Layer.Lifetime.GetPackedPublicationIdentity();
+			Layer.HistoryGeneration = PackedIdentity;
+			Layer.ActivePublicationGeneration.Store(PackedIdentity);
+		}
+
 		void ResetLayer(FLayerState& Layer)
 		{
 			Layer.bHistoryValid = false;
 			Layer.bVisibleLastTick = false;
 			Layer.bLastCameraCut = true;
-			Layer.HistoryGeneration = 1;
-			Layer.ActivePublicationGeneration.Store(1);
+			Layer.HistoryGeneration = 0;
+			Layer.ActivePublicationGeneration.Store(0);
 			Layer.LastTargetSize = FIntPoint::ZeroValue;
 			Layer.LastEntryFrame = FTransform::Identity;
 			Layer.LastExitFrame = FTransform::Identity;
@@ -836,12 +845,30 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void AdvancePublicationGeneration(FLayerState& Layer)
 		{
-			++Layer.HistoryGeneration;
-			if (Layer.HistoryGeneration == 0)
+			const InteriorPortalRecursionLifetime::FPublicationToken Previous =
+				Layer.Lifetime.AdvancePublicationGeneration();
+			if (Previous.IsValid())
 			{
-				Layer.HistoryGeneration = 1;
+				SyncPublicationIdentity(Layer);
 			}
-			Layer.ActivePublicationGeneration.Store(Layer.HistoryGeneration);
+		}
+
+		void ResetLifetimeAfterSynchronousTeardown(FLayerState& Layer)
+		{
+			if (Layer.Lifetime.IsReusable())
+			{
+				InteriorPortalRecursionLifetime::FPublicationToken RetiredPublication;
+				Layer.Lifetime.BeginRetirement(RetiredPublication);
+			}
+			if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Retiring)
+			{
+				Layer.Lifetime.MarkReclaimable();
+			}
+			if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Reclaimable)
+			{
+				Layer.Lifetime.ResetUnallocated();
+			}
+			SyncPublicationIdentity(Layer);
 		}
 
 		void HideLayer(FEndpointState& Endpoint, const int32 Level, const TCHAR* Reason)
@@ -863,8 +890,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			// publication synchronously here creates a one-frame ownership hole: that
 			// already-queued view still rasterizes the portal surface but no longer has
 			// a BeforeDOF portal request, exposing the spiral fallback. Retire the old
-			// generation in render-queue order instead. A newly visible generation is
-			// never cleared because its request generation is >= ActiveGeneration.
+			// publication identity in render-queue order instead. A newly visible
+			// identity is never cleared because its packed identity is >= ActiveGeneration.
 			if (Level == 0)
 			{
 				const TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> Publisher =
@@ -1158,7 +1185,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 				const int32 VisibleDepth = Requests.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
-				Endpoint.LastEffectiveDepth = VisibleDepth; // P1B is not implemented in P1A-1.
+				Endpoint.LastEffectiveDepth = VisibleDepth; // P1B is not implemented in P1A-2.
 				if (VisibleDepth <= 0)
 				{
 					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
@@ -1229,6 +1256,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			FLayerState& Layer = *Endpoint.Layers[Level];
 			Layer.LastSubmissionFailureReason = TEXT("NONE");
+			if (!Layer.Lifetime.CanSubmit(Level, LastRequestedRecursionDepth))
+			{
+				++Layer.FramesSkipped;
+				Layer.LastSubmissionFailureReason = TEXT("LIFETIME_NOT_SUBMITTABLE");
+				return false;
+			}
 			if (!IsValid(Entry) || !IsValid(Exit) || !World->Scene
 				|| !Endpoint.MainCompositionExtension
 				|| !Entry->RenderTargets.IsValidIndex(Level))
@@ -1364,6 +1397,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
+			Layer.Lifetime.MarkActive();
 			++Layer.FramesSubmitted;
 			CommitHistory(
 				Layer, TargetSize, Request.EntryFrame, Request.ExitFrame,
@@ -1373,10 +1407,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (Layer.FramesSubmitted == 1 || (Layer.FramesSubmitted % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Endpoint=%d Level=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Generation=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
+					TEXT("PortalMultiVisible Endpoint=%d Level=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
 					EndpointIndex, Level, Layer.FramesSubmitted,
 					bCameraCut ? 1 : 0, Layer.CameraCutCount,
-					Layer.ContinuousHistoryFrames, Layer.HistoryGeneration,
+					Layer.ContinuousHistoryFrames,
+					Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
+					Layer.HistoryGeneration,
 					Layer.SecondaryPreExposure.Load(),
 					Layer.LastExtractionFrame.Load(),
 					Layer.LastCompletedSubmission.Load());
@@ -1414,6 +1450,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
 				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
 				int32 OwnedLayerMask = 0;
+				int32 ActiveLayerMask = 0;
+				int32 RetiringLayerMask = 0;
+				int32 ReclaimableLayerMask = 0;
 				int32 ViewStateCount = 0;
 				int32 ColorTargetCount = 0;
 				int32 DepthTargetCount = 0;
@@ -1422,7 +1461,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
-					 FLayerState& Layer = *Endpoint.Layers[Level];
+					FLayerState& Layer = *Endpoint.Layers[Level];
 					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
 					const bool bColorAllocated = IsValid(ColorTarget);
@@ -1435,6 +1474,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					{
 						OwnedLayerMask |= (1 << Level);
 					}
+					if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Active)
+					{
+						ActiveLayerMask |= (1 << Level);
+					}
+					else if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Retiring)
+					{
+						RetiringLayerMask |= (1 << Level);
+					}
+					else if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Reclaimable)
+					{
+						ReclaimableLayerMask |= (1 << Level);
+					}
 					ViewStateCount += bViewStateAllocated ? 1 : 0;
 					ColorTargetCount += bColorAllocated ? 1 : 0;
 					DepthTargetCount += bDepthAllocated ? 1 : 0;
@@ -1442,15 +1493,15 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const uint64 DepthBytes = EstimateTargetBytes(Layer.SecondaryDepthTarget);
 					EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
 
-					const TCHAR* ResourceState = bSubmitted
-						? TEXT("ACTIVE_INFERRED")
-						: (bOwned ? TEXT("ALLOCATED_INFERRED") : TEXT("UNALLOCATED_INFERRED"));
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\"resourceState\":\"%s\",\"resourceStateAuthority\":\"INFERRED_P1A1\",\"retirementStateStatus\":\"NOT_IMPLEMENTED\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGeneration\":%llu,\"activePublicationGeneration\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"lifetimeIdStatus\":\"IMPLEMENTED\",\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"resourceStateAuthority\":\"IMPLEMENTED_P1A2\",\"retirementStateStatus\":\"IMPLEMENTED_MODEL\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGenerationCompat\":%llu,\"activePublicationGenerationCompat\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
 						Level,
-						ResourceState,
+						Layer.Lifetime.LifetimeId,
+						Layer.Lifetime.PublicationGeneration,
+						Layer.Lifetime.GetPackedPublicationIdentity(),
+						InteriorPortalRecursionLifetime::ToString(Layer.Lifetime.State),
 						bAttempted ? TEXT("true") : TEXT("false"),
 						bSubmitted ? TEXT("true") : TEXT("false"),
 						bPublished ? TEXT("true") : TEXT("false"),
@@ -1487,11 +1538,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"activeLayerMask\":%d,\"retiringLayerMask\":0,\"retiringLayerMaskAuthority\":\"NOT_IMPLEMENTED\",\"reclaimableLayerMask\":0,\"reclaimableLayerMaskAuthority\":\"NOT_IMPLEMENTED\",\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
-					OwnedLayerMask, Endpoint.LastSubmittedLayerMask,
+					OwnedLayerMask, CountSetBits(OwnedLayerMask),
+					ActiveLayerMask, CountSetBits(ActiveLayerMask),
+					RetiringLayerMask, CountSetBits(RetiringLayerMask),
+					ReclaimableLayerMask, CountSetBits(ReclaimableLayerMask),
 					ViewStateCount, ColorTargetCount, DepthTargetCount,
 					EndpointExplicitTargetBytes, *LayersJson,
 					EndpointIndex + 1 < EndpointCount ? TEXT(",") : TEXT(""));
@@ -1500,12 +1554,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityResourceBaseline.P1A1.v1\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityResourceLifetime.P1A2.v1\",\n")
 				TEXT("  \"status\":\"%s\",\n")
-				TEXT("  \"diagnosticScope\":\"P1A-1 observation only; allocation/reclaim semantics unchanged\",\n")
-				TEXT("  \"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\n")
-				TEXT("  \"retirementStateStatus\":\"NOT_IMPLEMENTED\",\n")
-				TEXT("  \"resourceStateAuthority\":\"INFERRED_P1A1\",\n")
+				TEXT("  \"diagnosticScope\":\"P1A-2 lifetime identity/state wiring; allocation/reclaim semantics unchanged\",\n")
+				TEXT("  \"lifetimeIdStatus\":\"IMPLEMENTED\",\n")
+				TEXT("  \"retirementStateStatus\":\"IMPLEMENTED_MODEL_NOT_YET_DRIVING_RUNTIME_RECLAIM\",\n")
+				TEXT("  \"resourceStateAuthority\":\"IMPLEMENTED_P1A2\",\n")
 				TEXT("  \"requestedDepth\":%d,\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"visibleEndpointCount\":%d,\n")
@@ -1515,7 +1569,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"Portal-owned counters prove logical ownership and explicit target estimates only. They do not prove that the same number of bytes has already returned to the global RHI/GPU memory budget.\"\n")
+				TEXT("  \"claimBoundary\":\"P1A-2 reports real producer lifetime identity/state. RETIRING/RECLAIMABLE are modeled but configured-depth reclaim is not wired until later P1A steps; Portal-owned counters still do not prove RHI bytes returned.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				LastRequestedRecursionDepth,
@@ -1540,6 +1594,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		float PrimaryResolutionFraction = 0.67f;
 		TWeakObjectPtr<UWorld> ActiveWorld;
 		FDelegateHandle WorldPostActorTickHandle;
+		InteriorPortalRecursionLifetime::FLifetimeIdSource LifetimeIdSource;
 		TUniquePtr<FEndpointState> Endpoints[EndpointCount];
 		UTextureRenderTarget2D* FinalScratch = nullptr;
 		FIntPoint FinalScratchSize = FIntPoint::ZeroValue;
