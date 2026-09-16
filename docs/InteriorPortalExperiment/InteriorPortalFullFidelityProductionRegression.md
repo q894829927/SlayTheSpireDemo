@@ -6,10 +6,14 @@ State:
 
 ```text
 FULLFIDELITY VISUAL CORRECTNESS GATES = ACCEPTED IN PIE
-NATIVE PLAYER LIFECYCLE OWNERSHIP = IMPLEMENTED / LOCAL BUILD REQUIRED
+NATIVE PLAYER LIFECYCLE OWNERSHIP = IMPLEMENTED
 CONSOLE COMMANDS = OPERATOR/DIAGNOSTIC ALIASES ONLY AT PLAYER LIFECYCLE
 HISTORICAL MULTIVISIBLE BACKEND COMMAND SEAM = RETAINED TEMPORARILY
-FOCUSED PRODUCTION REGRESSION = USER ACTION REQUIRED
+FOCUSED AUTOMATION:
+  FullFidelity = PASS (user local UE5.8 run)
+  MainViewOwnership = PASS (user local UE5.8 run)
+  ColorSampleExposure = NUMERIC TEST TOLERANCE FIX COMMITTED / RERUN REQUIRED
+FOCUSED PIE REGRESSION = USER ACTION REQUIRED
 ```
 
 ## 1. Cleanup boundary
@@ -69,6 +73,25 @@ Automation RunTests SlayTheSpireDemo.Interior.Portals.MainViewOwnership
 Automation RunTests SlayTheSpireDemo.Interior.Portals.ColorSampleExposure
 ```
 
+Observed locally by the user on 2026-09-16:
+
+```text
+SlayTheSpireDemo.Interior.Portals.FullFidelity       PASS
+SlayTheSpireDemo.Interior.Portals.MainViewOwnership PASS
+SlayTheSpireDemo.Interior.Portals.ColorSampleExposure
+    initial run FAIL at the radiance-invariance assertion
+```
+
+The `ColorSampleExposure` failure was classified as a test-numerics issue rather than a production exposure regression. The production contract remains:
+
+```text
+ExposureScale = MainPreExposure / SecondaryPreExposure
+RebasedSceneColor = Radiance * SecondaryPreExposure * ExposureScale
+                  = Radiance * MainPreExposure
+```
+
+For the exercised float values, the mathematically identical result can evaluate to approximately `0.20000002` instead of exactly `0.2`. The test previously relied on `FMath::IsNearlyEqual` without an explicit tolerance. It now uses a documented `1e-6` tolerance around the same invariant. Production `FColorSample::TryGetExposureScale()` was not changed. Rerun `ColorSampleExposure` after pulling the fix.
+
 The FullFidelity prefix currently includes the focused analytic-aperture and recursive-request contract tests.
 
 Do not rerun unrelated battle/card suites for this renderer-only cleanup unless the build or focused tests expose a shared-module failure.
@@ -112,9 +135,15 @@ For a dual-visible RecursionDepth=2 framing, the report should show the applicab
 
 ## 5. USER ACTION REQUIRED
 
-Generate project files if needed, build the UE5.8 editor target, then run the focused Automation and compact PIE sequence above.
+Pull the latest branch and rerun only:
 
-This document must not be marked PASS solely because the source was committed. GitHub currently has no CI check proving the local UE5.8 C++/shader build.
+```text
+Automation RunTests SlayTheSpireDemo.Interior.Portals.ColorSampleExposure
+```
+
+If that passes, the focused Automation gate is fully green. Then run the compact PIE regression above.
+
+This document must not be marked fully PASS solely because the source was committed. GitHub currently has no CI check proving the local UE5.8 C++/shader build.
 
 ## 6. After PASS
 
