@@ -12,6 +12,11 @@ float4 ScreenToPortalRow0;
 float4 ScreenToPortalRow1;
 float4 ScreenToPortalRow2;
 float4 PortalClipZRow;
+float4 ForegroundScreenToPortalRow0;
+float4 ForegroundScreenToPortalRow1;
+float4 ForegroundScreenToPortalRow2;
+float4 ForegroundPortalClipZRow;
+float ForegroundDepthReferenceEnabled;
 float ProjectiveNearClipW;
 float DepthOcclusionEpsilonCm;
 
@@ -57,13 +62,33 @@ void BuildCandidatePS(
 
 	const float PortalPlaneDeviceZ = saturate(dot(PortalClipZRow.xyz, PortalHomogeneous));
 	const float PortalPlaneDepthCm = ConvertFromDeviceZ(PortalPlaneDeviceZ);
+	float ForegroundReferenceDepthCm = PortalPlaneDepthCm;
+	if (ForegroundDepthReferenceEnabled > 0.5)
+	{
+		const float3 ForegroundHomogeneous = float3(
+			dot(ForegroundScreenToPortalRow0.xyz, ScreenPoint),
+			dot(ForegroundScreenToPortalRow1.xyz, ScreenPoint),
+			dot(ForegroundScreenToPortalRow2.xyz, ScreenPoint));
+		if (ForegroundHomogeneous.z > 1.0e-8)
+		{
+			const float ForegroundClipW = rcp(ForegroundHomogeneous.z);
+			if (ProjectiveNearClipW <= 0.0 || ForegroundClipW >= ProjectiveNearClipW)
+			{
+				const float ForegroundDeviceZ = saturate(
+					dot(ForegroundPortalClipZRow.xyz, ForegroundHomogeneous));
+				ForegroundReferenceDepthCm = ConvertFromDeviceZ(ForegroundDeviceZ);
+			}
+		}
+	}
+
 	const int2 ScenePixel = int2(SvPosition.xy);
 	const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 	const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 	const float EpsilonCm = max(DepthOcclusionEpsilonCm, 0.0);
 
-	// Preserve real main-view foreground geometry exactly as accepted in 1B.12A.
-	if (MainDepthCm + EpsilonCm < PortalPlaneDepthCm)
+	// Preserve real main-view foreground geometry relative to the actual visible
+	// entry surface. The logical plane remains authoritative for remote depth.
+	if (MainDepthCm + EpsilonCm < ForegroundReferenceDepthCm)
 	{
 		return;
 	}
