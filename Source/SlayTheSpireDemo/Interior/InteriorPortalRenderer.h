@@ -16,18 +16,6 @@ struct FScreenPassTexture;
 struct FPostProcessMaterialInputs;
 struct FPostProcessingInputs;
 
-/**
- * Immutable game-thread snapshot for a future main-view portal pass.
- *
- * This type deliberately contains no Actor, Component, RenderTarget or other
- * mutable UObject reference. It is safe to copy into a renderer-side queue.
- * STEP 1B.2 extends this description with the exact matrices consumed by
- * UE 5.8's public FCustomRenderPassRendererInput. The custom-pass backend
- * submits this snapshot to the main renderer. The optional render-target
- * resources are copied external-resource identities used only by the explicit
- * composition/depth-transport spikes; they are never UObjects or mutable Actor
- * references.
- */
 struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 {
 	int32 PortalId = INDEX_NONE;
@@ -42,13 +30,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
 	/** Historical inverse homography retained for diagnostics/stencil compatibility. */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ProjectiveAperture;
-	/**
-	 * Production analytic aperture geometry. The full-fidelity pixel compositor
-	 * consumes this as a world-space ray/plane contract, not as H^-1. The existing
-	 * producer updates only its cosmetic surface bias after Build().
-	 */
+	/** Production analytic ray/plane aperture geometry plus cosmetic-surface bias. */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ForegroundDepthReference;
-	/** Perspective clip-W threshold used to reject aperture pixels before the main near plane. 0 disables it. */
 	float ProjectiveNearClipW = 0.0f;
 	FIntRect ViewRect;
 	FIntRect ScissorRect;
@@ -56,14 +39,10 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	bool bExitClipEncodedInProjection = false;
 	uint64 HistoryIdentity = 0;
 	uint64 RendererHistoryGeneration = 0;
-	/** External full-renderer HDR output consumed by the same-frame BeforeDOF proof. */
 	FRenderTarget* PortalRenderTarget = nullptr;
-	/** STEP 1B.12B external R32F device-depth transport target from the same secondary view. */
 	FRenderTarget* PortalDepthRenderTarget = nullptr;
-	/** Render-thread-only metadata for this exact HDR submission, when supplied. */
 	TSharedPtr<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 	bool bEnabled = false;
-	/** The intended contract is one player-main-view exposure/tone-map owner. */
 	bool bPlayerExposureAuthority = true;
 
 	static uint64 MakeHistoryIdentity(int32 InEndpointIndex, int32 InRecursionLevel,
@@ -123,9 +102,7 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		OutRequest.ViewRotationMatrix = FInverseRotationMatrix(
 			OutRequest.VirtualView.Rotator()) * PortalViewPlanes;
 		OutRequest.ProjectionMatrix = InProjectionMatrix;
-		// FCustomRenderPassRendererInput has no GlobalClippingPlane field. Encode
-		// the logical exit plane in the public projection matrix so the actual
-		// custom-pass FSceneView still receives a deterministic clip contract.
+
 		const FVector ExitNormal = InExitFrame.GetUnitAxis(EAxis::X);
 		const FVector ExitPoint = InExitFrame.GetLocation() + ExitNormal * ClipPlaneBias;
 		const FVector ViewPlaneNormal = OutRequest.VirtualView.InverseTransformVectorNoScale(ExitNormal);
@@ -140,12 +117,9 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		}
 		OutRequest.ProjectedBounds = Bounds;
 
-		// Historical H^-1 remains available to old diagnostic/stencil paths.
 		InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
 			InEntryFrame, HalfWidth, HalfHeight, PortalViewProjection,
 			OutRequest.ProjectiveAperture);
-		// Production full-fidelity composition uses a ray/plane representation so
-		// grazing incidence never depends on inverting a collapsing screen homography.
 		InteriorPortalProjectiveAperture::BuildAnalyticRayPlaneGeometry(
 			InEntryFrame, HalfWidth, HalfHeight, 0.0,
 			OutRequest.ForegroundDepthReference);
@@ -177,13 +151,6 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	}
 };
 
-/**
- * Project-side implementation of UE 5.8's public custom render-pass
- * contract. It intentionally writes to an existing external render target.
- * The separate composition spike consumes that target through the public
- * BeforeDOF post-process delegate; it does not claim public main-stencil or
- * depth-continuity access.
- */
 class SLAYTHESPIREDEMO_API FInteriorPortalCustomRenderPass final : public FCustomRenderPassBase
 {
 public:
@@ -193,7 +160,6 @@ public:
 	FInteriorPortalCustomRenderPass& operator=(const FInteriorPortalCustomRenderPass&) = delete;
 
 	IMPLEMENT_CUSTOM_RENDER_PASS(FInteriorPortalCustomRenderPass)
-
 	bool HasRenderTarget() const { return RenderTargetResource != nullptr; }
 
 protected:
@@ -204,7 +170,6 @@ private:
 	FRenderTarget* RenderTargetResource = nullptr;
 };
 
-/** State of the project-side feasibility spike, not visual acceptance. */
 enum class EInteriorPortalSpikeStatus : uint8
 {
 	Disabled,
@@ -229,7 +194,6 @@ inline const TCHAR* InteriorPortalSpikeStatusToString(EInteriorPortalSpikeStatus
 
 namespace InteriorPortalRenderer
 {
-	/** Activation gate for the one-pair, one-layer feasibility request. */
 	inline bool CanSubmitMainViewStencilRequest(bool bPairLinked, bool bPortalVisible,
 		bool bValidBounds, bool bValidVirtualView, int32 RequestedRecursionDepth)
 	{
@@ -267,15 +231,6 @@ namespace InteriorPortalRenderer
 		OutInput.ViewLocation = Request.ViewLocation;
 		OutInput.ViewRotationMatrix = Request.ViewRotationMatrix;
 		OutInput.ProjectionMatrix = Request.ProjectionMatrix;
-		// UE 5.8 validates that every FViewInfo assembled into one renderer owns a
-		// unique ViewState. A target-backed public CRP can be queued into a renderer
-		// alongside more than one view, and reusing our persistent endpoint state
-		// triggers SceneRendering.cpp's UniqueViewStates assertion before any GPU
-		// evidence is produced. The current STEP 1B.2/1B.3 CRP is only a spatial/
-		// HDR feasibility pass (DepthAndBasePass, no temporal post-process), so keep
-		// target-backed submissions intentionally stateless. A promoted renderer
-		// candidate must reintroduce independently owned temporal histories with an
-		// in-flight-safe lifetime model rather than sharing one state pointer.
 		OutInput.ViewStateInterface = CustomRenderPass->HasRenderTarget() ? nullptr : ViewState;
 		OutInput.bIsSceneCapture = false;
 		OutInput.bUseMainViewFamilyShowFlags = true;
@@ -284,13 +239,6 @@ namespace InteriorPortalRenderer
 	}
 }
 
-/**
- * Project-side UE 5.8 renderer extension used to establish the integration
- * boundary. It owns copied request data and registers at the real main-view
- * extension lifecycle. The composition spike subscribes at BeforeDOF and
- * returns a new main SceneColor texture; it does not issue a post-tonemap
- * composite or read mutable UObject state on the render thread.
- */
 class SLAYTHESPIREDEMO_API FInteriorPortalViewExtension final : public FWorldSceneViewExtension
 {
 public:
@@ -314,15 +262,20 @@ public:
 		FPostProcessingPassDelegateArray& InOutPassCallbacks,
 		bool bIsPassEnabled) override;
 
-protected:
-	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
-
-private:
+	/**
+	 * Shared production compositor entry point. Recursive full-fidelity view
+	 * extensions call the same function for an exact parent secondary ViewState;
+	 * top-level composition still reaches it through the normal main-view hook.
+	 */
 	static FScreenPassTexture ComposePortalIntoSceneColor(
 		FRDGBuilder& GraphBuilder, const FSceneView& InView,
 		const FPostProcessMaterialInputs& Inputs,
 		const FInteriorPortalRenderRequest& Request);
 
+protected:
+	virtual bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
+
+private:
 	bool bEnabled = false;
 	mutable FCriticalSection RequestMutex;
 	TOptional<FInteriorPortalRenderRequest> PublishedRequest;
