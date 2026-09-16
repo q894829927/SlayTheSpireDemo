@@ -156,7 +156,12 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
 		SHADER_PARAMETER(FVector4f, PortalClipZRow)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow0)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow1)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow2)
+		SHADER_PARAMETER(FVector4f, ForegroundPortalClipZRow)
 		SHADER_PARAMETER(float, ProjectiveApertureEnabled)
+		SHADER_PARAMETER(float, ForegroundDepthReferenceEnabled)
 		SHADER_PARAMETER(float, ProjectiveNearClipW)
 		SHADER_PARAMETER(float, DepthAwareCompositionEnabled)
 		SHADER_PARAMETER(float, SecondaryDepthRemapEnabled)
@@ -191,6 +196,11 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow1)
 		SHADER_PARAMETER(FVector4f, ScreenToPortalRow2)
 		SHADER_PARAMETER(FVector4f, PortalClipZRow)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow0)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow1)
+		SHADER_PARAMETER(FVector4f, ForegroundScreenToPortalRow2)
+		SHADER_PARAMETER(FVector4f, ForegroundPortalClipZRow)
+		SHADER_PARAMETER(float, ForegroundDepthReferenceEnabled)
 		SHADER_PARAMETER(float, ProjectiveNearClipW)
 		SHADER_PARAMETER(float, DepthOcclusionEpsilonCm)
 		RENDER_TARGET_BINDING_SLOTS()
@@ -491,6 +501,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const bool bUseProjectiveAperture =
 		CVarPortalProjectiveAperture.GetValueOnRenderThread() != 0
 		&& Request.ProjectiveAperture.bValid;
+	const bool bUseForegroundDepthReference =
+		bUseProjectiveAperture && Request.ForegroundDepthReference.bValid;
+	const InteriorPortalProjectiveAperture::FScreenToPortalMapping& ForegroundDepthReference =
+		bUseForegroundDepthReference
+			? Request.ForegroundDepthReference
+			: Request.ProjectiveAperture;
 	const bool bStencilCompositionRequested =
 		CVarPortalStencilGatedComposition.GetValueOnRenderThread() != 0;
 	const bool bMainDepthPropagationRequested =
@@ -633,6 +649,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		CandidateParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
 		CandidateParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
 		CandidateParameters->PortalClipZRow = Request.ProjectiveAperture.ClipZRow;
+		CandidateParameters->ForegroundScreenToPortalRow0 = ForegroundDepthReference.Row0;
+		CandidateParameters->ForegroundScreenToPortalRow1 = ForegroundDepthReference.Row1;
+		CandidateParameters->ForegroundScreenToPortalRow2 = ForegroundDepthReference.Row2;
+		CandidateParameters->ForegroundPortalClipZRow = ForegroundDepthReference.ClipZRow;
+		CandidateParameters->ForegroundDepthReferenceEnabled =
+			bUseForegroundDepthReference ? 1.0f : 0.0f;
 		CandidateParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
 		CandidateParameters->DepthOcclusionEpsilonCm = DepthOcclusionEpsilonCm;
 		CandidateParameters->RenderTargets[0] = CandidateOutput.GetRenderTargetBinding();
@@ -798,6 +820,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			PropagatedDepthCandidateTexture ? PropagatedDepthCandidateTexture->Desc.Extent.Y : 0,
 			DepthOcclusionEpsilonCm);
 		UE_LOG(LogTemp, Display,
+			TEXT("PortalComposition ForegroundDepthRef Frame=%llu Active=%d Valid=%d Quality=%.9g"),
+			GFrameCounter,
+			bUseForegroundDepthReference ? 1 : 0,
+			Request.ForegroundDepthReference.bValid ? 1 : 0,
+			Request.ForegroundDepthReference.DeterminantQuality);
+		UE_LOG(LogTemp, Display,
 			TEXT("PortalComposition StencilGate Frame=%llu Requested=%d Active=%d StencilTargetable=%d Format=%d StencilBit=0x%02x PipelineStencilRef=0x%02x BypassShaderAperture=%d ProofMode=%s OutputPrefilled=%d"),
 			GFrameCounter,
 			bStencilCompositionRequested ? 1 : 0,
@@ -843,7 +871,12 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->ScreenToPortalRow1 = Request.ProjectiveAperture.Row1;
 	PassParameters->ScreenToPortalRow2 = Request.ProjectiveAperture.Row2;
 	PassParameters->PortalClipZRow = Request.ProjectiveAperture.ClipZRow;
+	PassParameters->ForegroundScreenToPortalRow0 = ForegroundDepthReference.Row0;
+	PassParameters->ForegroundScreenToPortalRow1 = ForegroundDepthReference.Row1;
+	PassParameters->ForegroundScreenToPortalRow2 = ForegroundDepthReference.Row2;
+	PassParameters->ForegroundPortalClipZRow = ForegroundDepthReference.ClipZRow;
 	PassParameters->ProjectiveApertureEnabled = bUseProjectiveAperture ? 1.0f : 0.0f;
+	PassParameters->ForegroundDepthReferenceEnabled = bUseForegroundDepthReference ? 1.0f : 0.0f;
 	PassParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
 	PassParameters->DepthAwareCompositionEnabled = bUseDepthAwareComposition ? 1.0f : 0.0f;
 	PassParameters->SecondaryDepthRemapEnabled = bUseSecondaryDepthRemap ? 1.0f : 0.0f;
