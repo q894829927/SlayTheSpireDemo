@@ -1,14 +1,14 @@
 # STEP 1B.14D-B — Late-Latched Main Tonemap PreExposure Bridge
 
-Status: IMPLEMENTED / NOT YET BUILT OR RUN
+Status: **LEGACY DIAGNOSTIC / SUPERSEDED FOR NORMAL PRODUCTION VALIDATION**
 
-The previous exposure-authority experiment captured the player-main view state during `SetupView`, but runtime data showed `GetPreExposure()` remained `1.0` there while the real main-view Tonemap callback reported about `0.00205–0.00208` in the same run.
+## Historical purpose
 
-This step adds a narrow diagnostic bridge. It captures the real main-view PreExposure at Tonemap, stores it as a late-latched scalar, then publishes the latest completed value to `portal.SecondaryPreExposure` on the following game-thread post-actor tick while keeping `portal.PreExposureRebase=1`.
+The original exposure-authority experiment captured the player-main view state during `SetupView`, but runtime data showed `GetPreExposure()` remained `1.0` there while the real main-view Tonemap callback reported about `0.00205–0.00208` in the same run.
 
-It does not change the accepted TSR history policy, clipping, depth propagation, stencil composition, or aperture math.
+This bridge was added as a narrow diagnostic experiment. It captures the real main-view PreExposure at Tonemap, stores it as a late-latched scalar, then publishes the latest completed value to `portal.SecondaryPreExposure` on the following game-thread tick while keeping `portal.PreExposureRebase=1`.
 
-Commands:
+Commands remain available for historical A/B diagnosis:
 
 ```text
 portal.LateLatchedPreExposureDiagnostics 1
@@ -17,21 +17,55 @@ portal.DumpLateLatchedPreExposureBridge
 portal.StopLateLatchedPreExposureBridge
 ```
 
-Start the portal producer first, then start this bridge.
+## Why this is no longer the production direction
 
-Expected telemetry:
+Current branch HEAD has a stronger ownership contract than this bridge:
 
 ```text
-PortalLateLatch MainTonemap ... PreExposure=0.002...
-PortalLateLatch Publish ... Before=1 Published=0.002... Rebase=1
+secondary render submission
+    -> owns one FColorSample
+    -> secondary Tonemap extraction writes that exact sample's PreExposure
+    -> the same FInteriorPortalRenderRequest carries that sample to main composition
+    -> composition computes MainPreExposure / Sample.PreExposure
+    -> an unextracted sample is rejected instead of borrowing old CVar metadata
 ```
 
-If the portal remains stable while the bridge is running, the next action is to move this late-latched exposure value into the production TSR producer and remove the temporary bridge. If it does not, the next investigation moves to secondary view-family ownership, endpoint selection, clipping, or Lumen history.
+This removes the architectural ambiguity that motivated the late-latched CVar path. A value published on a later game-thread tick cannot prove that it belongs to the exact HDR image currently stored in the portal target; `FColorSample` can.
 
-Remaining work should not be described as a fixed one-or-two-step task. Current bounded estimate from this point is 3 gates minimum, 3–4 likely, and up to 5 if endpoint/clipping or Lumen history also needs correction:
+The bridge therefore must **not** be used as the normal fix for portal brightness and must not be started during the production parity acceptance pass unless a future regression specifically requires historical comparison.
 
-1. `1B.14D-B` late-latched exposure bridge A/B — current step.
-2. `1B.14D-C` dynamic slant / retreat / leave-and-return validation.
-3. `1B.14E` production merge plus full depth/stencil/TSR regression.
-4. Optional endpoint/clip-plane correction if still required.
-5. Optional Lumen/additional-view history correction if still required.
+## Current production exposure contract
+
+The accepted direction is:
+
+```text
+secondary full FSceneViewFamily keeps EyeAdaptation enabled
+persistent secondary ViewState owns its exposure history
+post-TSR / pre-tonemap extraction measures the secondary image's own PreExposure
+that exact image carries its exact FColorSample metadata
+main player view remains the final exposure / local-exposure / grading / tonemap authority
+composition rebases only between the two measured pre-exposure domains
+```
+
+No portal-local artistic brightness multiplier, gamma correction or `EyeAdaptationInverse` workaround is part of this contract.
+
+## Current next gate
+
+Use:
+
+```text
+docs/InteriorPortalExperiment/InteriorPortalProductionParityValidation.md
+```
+
+The active sequence is now:
+
+```text
+1B.14D-C production TSR dynamic parity validation
+    -> static / slant / retreat / leave-and-return / crossing
+    -> render-thread main-vs-secondary exposure telemetry
+    -> one focused manual PIE visual gate
+
+1B.14E production merge / cleanup + affected regression
+```
+
+If 1B.14D-C telemetry is coherent but the portal is still visually wrong, investigate the classified renderer subsystem (for example Lumen/additional-family history or temporal ownership) rather than re-enabling this bridge as a permanent correction.
