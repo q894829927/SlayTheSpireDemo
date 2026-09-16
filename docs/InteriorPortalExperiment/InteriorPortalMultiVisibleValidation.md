@@ -8,7 +8,8 @@ State:
 STEP 1B.14D-C SINGLE-VISIBLE PRODUCTION TSR PARITY = PASS
 MV-A ENDPOINT-OWNED PRODUCER = IMPLEMENTED
 MV-B DUAL-VISIBLE RUNTIME VALIDATION = PASS
-MV-C PRODUCTION PROMOTION = NEXT
+MV-C-A STABLE FULL-FIDELITY CONTROL SURFACE = IMPLEMENTED
+MV-C-B SYSTEM LIFECYCLE INTEGRATION = NEXT
 MV-D VRAM / PERFORMANCE = REQUIRED FOLLOW-UP
 ```
 
@@ -183,17 +184,36 @@ adding a brightness/gamma workaround
 
 Those would reintroduce the already-closed ownership failures.
 
-## MV-C — next: production promotion
+## MV-C-A — stable full-fidelity control surface
 
-The current accepted path is still started through the dedicated validation command:
+Commit:
 
 ```text
-portal.StartMultiVisibleTSRSpike
+7ec91507a10cb5e8c67c7d2e6aaaf621dc5132b7
+portal: add full-fidelity renderer control surface
 ```
 
-MV-C promotes this ownership model into the normal full-fidelity renderer lifecycle while preserving the old single-visible implementation as historical validation evidence rather than the active path.
+Source:
 
-Production promotion must retain:
+```text
+Source/SlayTheSpireDemo/Interior/InteriorPortalFullFidelityRendererControl.cpp
+```
+
+Stable control commands now front the accepted multi-visible implementation:
+
+```text
+portal.StartFullFidelityRenderer
+portal.DumpFullFidelityRenderer
+portal.StopFullFidelityRenderer
+```
+
+These commands deliberately delegate to the already validated endpoint-owned multi-visible TSR implementation rather than duplicating renderer logic. The historical `portal.StartMultiVisibleTSRSpike` command remains available for A/B validation.
+
+This is only the first half of production promotion. The renderer still needs to be tied to the normal `AInteriorPortalSystem` renderer lifecycle rather than requiring an explicit console start.
+
+## MV-C-B — next: system lifecycle integration
+
+Production lifecycle integration must retain:
 
 ```text
 per-endpoint persistent ViewState
@@ -205,7 +225,7 @@ additional-view-family isolation
 shared sequential final scratch where safe
 ```
 
-After promotion, run one focused regression:
+After lifecycle integration, run one focused regression:
 
 ```text
 single Blue visible
@@ -247,8 +267,8 @@ SOLVED / MV-B PASS
 For a production-ready full-fidelity renderer:
 
 ```text
-1 required integration step:
-    MV-C production promotion + focused correctness regression
+1 remaining integration sub-step:
+    MV-C-B system lifecycle integration + focused correctness regression
 
 1 required optimization track:
     MV-D VRAM / bounded secondary rendering
