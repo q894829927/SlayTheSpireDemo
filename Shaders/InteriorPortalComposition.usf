@@ -31,11 +31,6 @@ float CompositionDebugMode;
 float PortalExposureScale;
 float StencilBypassShaderAperture;
 
-// Production full-fidelity aperture ownership is evaluated as the original
-// geometric question: intersect the current main-view ray with the world-space
-// portal plane, then test the authored ellipse in that plane. This remains
-// well-conditioned as the projected portal collapses toward a line. The exact
-// parallel case simply has no forward ray/plane intersection.
 bool IntersectAnalyticPortalPlane(
 	float2 ScreenSpacePos,
 	float PlaneBias,
@@ -57,7 +52,6 @@ bool IntersectAnalyticPortalPlane(
 	const float InvHalfHeight = ForegroundScreenToPortalRow1.w;
 	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
 	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
-
 	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
 	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
 	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
@@ -81,7 +75,8 @@ bool IntersectAnalyticPortalPlane(
 		dot(Relative, PortalAxisZ) * InvHalfHeight);
 
 	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
-	if (abs(Clip.w) <= 1.0e-8)
+	if (abs(Clip.w) <= 1.0e-8
+		|| (ProjectiveNearClipW > 0.0 && Clip.w < ProjectiveNearClipW))
 	{
 		return false;
 	}
@@ -130,7 +125,8 @@ void MainPS(
 			ApertureMask = 1.0 - smoothstep(
 				1.0 - EdgeWidth, 1.0 + EdgeWidth, EllipseDistance);
 		}
-		ApertureMask *= BoundsMask;
+		// ProjectedBounds is conservative culling/scissor metadata only. The
+		// analytic world-space intersection is the pixel-ownership authority.
 	}
 	else if (ProjectiveApertureEnabled > 0.5)
 	{
