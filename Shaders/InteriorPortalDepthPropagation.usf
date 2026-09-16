@@ -63,7 +63,8 @@ bool IntersectAnalyticPortalPlane(
 		dot(Relative, PortalAxisY) * InvHalfWidth,
 		dot(Relative, PortalAxisZ) * InvHalfHeight);
 	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
-	if (abs(Clip.w) <= 1.0e-8)
+	if (abs(Clip.w) <= 1.0e-8
+		|| (ProjectiveNearClipW > 0.0 && Clip.w < ProjectiveNearClipW))
 	{
 		return false;
 	}
