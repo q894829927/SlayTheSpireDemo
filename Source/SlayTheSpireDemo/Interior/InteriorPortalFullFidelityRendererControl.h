@@ -4,6 +4,7 @@
 
 class AInteriorPortalSystem;
 class UWorld;
+enum class EInteriorPortalRendererBackend : uint8;
 
 /**
  * Stable production-facing control surface for the accepted FullFidelity portal renderer.
@@ -13,6 +14,11 @@ class UWorld;
  */
 namespace InteriorPortalFullFidelityRenderer
 {
+	/** Pure ownership rule used by focused Automation. */
+	SLAYTHESPIREDEMO_API bool ShouldOwnRendering(
+		bool bUseFullFidelityRenderer,
+		EInteriorPortalRendererBackend RendererBackend);
+
 	/** True when this portal-system configuration delegates remote rendering to FullFidelity. */
 	SLAYTHESPIREDEMO_API bool ShouldOwnRendering(const AInteriorPortalSystem* PortalSystem);
 
