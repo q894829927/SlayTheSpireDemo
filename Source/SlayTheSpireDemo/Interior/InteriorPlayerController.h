@@ -29,10 +29,13 @@ public:
 
 private:
 	FInteriorPortalCameraState PortalCamera;
+	bool bFullFidelityRendererActive = false;
 	void FireOrangePortal();
 	void TogglePortalGun();
 	void ClearPortals();
+	void SetFullFidelityRendererActive(bool bEnable);
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 };
