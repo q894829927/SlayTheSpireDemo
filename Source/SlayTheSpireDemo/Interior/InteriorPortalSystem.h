@@ -83,9 +83,17 @@ public:
 	/** Explicit SceneCapture A/B path. SceneColorLinear is the default production candidate because the player view remains the final exposure owner. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
 	EInteriorPortalCaptureColorMode CaptureColorMode = EInteriorPortalCaptureColorMode::SceneColorLinear;
-	/** STEP 1B is explicit opt-in. SceneCapture remains the default and production fallback. */
+	/** STEP 1B is explicit opt-in. SceneCapture remains the serialized fallback backend. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
 	EInteriorPortalRendererBackend RendererBackend = EInteriorPortalRendererBackend::SceneCapture;
+	/**
+	 * Production-promotion switch for the endpoint-owned full-fidelity renderer.
+	 * When enabled with RendererBackend=SceneCapture, the local player controller bypasses
+	 * legacy SceneCapture RenderViews and runs the accepted multi-visible TSR renderer instead.
+	 * Disabling this switch restores the serialized SceneCapture fallback without changing maps.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering")
+	bool bUseFullFidelityRenderer = true;
 	/** Small logical-plane offset used only for capture clipping, never for traversal or visual-surface placement. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Portals|Rendering", meta=(ClampMin="0.0", ClampMax="5.0"))
 	float ClipPlaneBias = 0.5f;
@@ -122,6 +130,8 @@ public:
 	double ConstrainCharacterMove(ACharacter* Pawn, const FVector& Delta, FHitResult& OutGateHit);
 	void FinishCharacterMove(ACharacter* Pawn);
 	bool IsPlayerClearingPortal() const;
+	/** Presentation-only read used by the full-fidelity controller path; gameplay authority remains here. */
+	AInteriorPortal* GetPlayerGate() const { return PlayerGate.Get(); }
 	UFUNCTION(BlueprintCallable, Category="Portals")
 	bool FirePortal(APlayerController* Player, bool bOrange);
 	UFUNCTION(BlueprintCallable, Category="Portals")
