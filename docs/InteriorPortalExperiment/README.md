@@ -4,15 +4,16 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md) — **current focused regression gate**: a fast visible -> offscreen transition exposed the spiral because game-thread visibility synchronously cleared a publication that an older queued render-thread view still needed. Publications now retire in render-queue order with generation checks; the same change also preserves analytic aperture geometry instead of accidentally rebuilding it as a homography. Local build + fast pan PIE validation is required.
-- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md) — grazing pixel ownership is moved from an ill-conditioned inverse screen homography to analytic world ray/portal-plane intersection; the promoted FullFidelity producer now consumes `RecursionDepth` with independent endpoint x level ViewState/depth/FColorSample and deepest-to-shallowest BeforeDOF composition. Recursion depth 2 has now been observed by the user to render recursively before crossing; keep it in regression coverage.
-- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — previous intermediate diagnosis that separated cosmetic Surface depth from the logical traversal plane. Useful evidence, but it did not remove inverse-homography degeneration and is superseded by the root-fix gates above.
-- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — STEP 1B.14D-MV gate: MV-B dual-visible correctness is PASS; the automatic/exclusive FullFidelity lifecycle has been observed in PIE, and the prior 161 MB video-memory over-budget warning was not reproduced with legacy SceneCapture excluded.
+- [InteriorPortalFullFidelityProductionRegression.md](InteriorPortalFullFidelityProductionRegression.md) — **current focused gate**: accepted FullFidelity behavior is being closed as a production path. Player lifecycle ownership now enters through a native API instead of console-command dispatch; run the focused FullFidelity/MainViewOwnership/ColorSampleExposure Automation set plus one compact PIE regression before marking the current renderer scope closed.
+- [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md) — **PASS in user PIE**: fast visible -> offscreen transitions no longer expose the default spiral after publication retirement was ordered on the render queue with generation checks.
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md) — analytic world ray/portal-plane aperture and FullFidelity recursion are implemented; the user has accepted current grazing behavior and confirmed `RecursionDepth=2` renders a nested portal before crossing.
+- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — previous intermediate diagnosis that separated cosmetic Surface depth from the logical traversal plane. Useful evidence, but superseded by the analytic root fix.
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — STEP 1B.14D-MV gate: dual-visible correctness and automatic/exclusive FullFidelity lifecycle are accepted; the prior 161 MB video-memory over-budget warning disappeared once legacy SceneCapture was excluded.
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — STEP 1B.14D-C **PASS for one visible portal**: static and dynamic TSR/exposure/composition parity accepted, including slant, leave-return and crossing.
-- [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
+- [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and accepted EyeAdaptation root-cause classification.
 - [InteriorPortalVisualParityIsolation.md](InteriorPortalVisualParityIsolation.md) — STEP 1B.14A visual-parity classification; Outcome B accepted.
 - [InteriorPortalLateLatchedPreExposureBridge.md](InteriorPortalLateLatchedPreExposureBridge.md) — legacy diagnostic only; superseded for normal production validation by exact per-submission color metadata.
-- [InteriorPortalCurrentExecutionPlan.md](InteriorPortalCurrentExecutionPlan.md) — original execution-order authority; its early renderer baseline predates the later 1B.5–1B.14 implementation evidence, so use the newer gate documents above for the current renderer closure state.
+- [InteriorPortalCurrentExecutionPlan.md](InteriorPortalCurrentExecutionPlan.md) — original execution-order authority; its early renderer baseline predates later 1B.5–1B.14 evidence, so use the newer gate documents above for current renderer closure state.
 - [InteriorPortalFullFidelityImplementationPlan.md](InteriorPortalFullFidelityImplementationPlan.md) — full renderer implementation plan and acceptance boundaries.
 - [InteriorPortalObservedIssues.md](InteriorPortalObservedIssues.md) — observed defects and evidence.
 - [InteriorPortals.md](InteriorPortals.md) — general portal feature notes.
@@ -35,6 +36,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 - [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
 - [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md)
+- [InteriorPortalFullFidelityProductionRegression.md](InteriorPortalFullFidelityProductionRegression.md)
 
 ## Aperture, depth and downstream consumers
 
@@ -64,6 +66,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md)
 - [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
 - [InteriorPortalOffscreenPublicationRetirement.md](InteriorPortalOffscreenPublicationRetirement.md)
+- [InteriorPortalFullFidelityProductionRegression.md](InteriorPortalFullFidelityProductionRegression.md)
 - [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md)
 
 ## Folder policy
