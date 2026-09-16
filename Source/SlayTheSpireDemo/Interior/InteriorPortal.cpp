@@ -128,6 +128,30 @@ void AInteriorPortal::EnsureTargets(int32 Width, int32 Height, int32 Depth)
 	}
 }
 
+void AInteriorPortal::EnsureTargetForLevel(const int32 RecursionLevel, const int32 Width, const int32 Height)
+{
+	if (RecursionLevel < 0 || Width <= 0 || Height <= 0)
+	{
+		return;
+	}
+
+	while (RenderTargets.Num() <= RecursionLevel)
+	{
+		UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(this);
+		Target->ClearColor = FLinearColor::Black;
+		Target->bForceLinearGamma = true;
+		Target->bAutoGenerateMips = false;
+		Target->InitAutoFormat(Width, Height);
+		RenderTargets.Add(Target);
+	}
+
+	UTextureRenderTarget2D* Target = RenderTargets[RecursionLevel];
+	if (Target && (Target->SizeX != Width || Target->SizeY != Height))
+	{
+		Target->ResizeTarget(Width, Height);
+	}
+}
+
 void AInteriorPortal::EnsureCaptureViews(const int32 Depth)
 {
 	const int32 SafeDepth = FMath::Clamp(Depth, 1, 4);
