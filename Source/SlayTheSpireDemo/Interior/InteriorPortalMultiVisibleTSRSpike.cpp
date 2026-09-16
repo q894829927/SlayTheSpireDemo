@@ -1369,13 +1369,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					ExpectedPrimarySize, Request.ColorSample.ToSharedRef(),
 					MainPublisher, RecursivePublisher, Request);
 
-			const bool bReducedDeepLayer = Level >= 2;
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
 				: FEngineShowFlags(ESFIM_Game);
 			ShowFlags.SetMotionBlur(false);
 			ShowFlags.SetDepthOfField(false);
-			ShowFlags.SetTemporalAA(!bReducedDeepLayer);
+			ShowFlags.SetTemporalAA(true);
 			ShowFlags.SetScreenPercentage(true);
 
 			FSceneViewFamilyContext ViewFamily(
@@ -1425,23 +1424,17 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			SceneView->bIsGameView = true;
 			SceneView->bIsSceneCapture = false;
 			SceneView->bCameraCut = bCameraCut;
-			SceneView->bAllowTemporalJitter = !bReducedDeepLayer;
-			SceneView->AntiAliasingMethod = bReducedDeepLayer
-				? EAntiAliasingMethod::AAM_FXAA
-				: EAntiAliasingMethod::AAM_TSR;
+			SceneView->bAllowTemporalJitter = true;
+			SceneView->AntiAliasingMethod = EAntiAliasingMethod::AAM_TSR;
 			SceneView->SetupAntiAliasingMethod();
 			SceneView->GlobalClippingPlane = Request.ExitClipPlane;
 			SceneView->StartFinalPostprocessSettings(Request.ViewLocation);
 			SceneView->OverridePostProcessSettings(
 				POV.PostProcessSettings, POV.PostProcessBlendWeight, true);
 			SceneView->FinalPostProcessSettings.bOverride_DynamicGlobalIlluminationMethod = true;
-			SceneView->FinalPostProcessSettings.DynamicGlobalIlluminationMethod = bReducedDeepLayer
-				? EDynamicGlobalIlluminationMethod::None
-				: EDynamicGlobalIlluminationMethod::Lumen;
+			SceneView->FinalPostProcessSettings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::Lumen;
 			SceneView->FinalPostProcessSettings.bOverride_ReflectionMethod = true;
-			SceneView->FinalPostProcessSettings.ReflectionMethod = bReducedDeepLayer
-				? EReflectionMethod::None
-				: EReflectionMethod::Lumen;
+			SceneView->FinalPostProcessSettings.ReflectionMethod = EReflectionMethod::Lumen;
 			SceneView->EndFinalPostprocessSettings(ViewInitOptions);
 
 			FCanvas Canvas(
