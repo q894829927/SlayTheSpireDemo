@@ -4,8 +4,9 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — **current focused regression gate**: after promoting main-foreground depth preservation into FullFidelity, the biased default spiral Surface could be mistaken for a real foreground occluder at grazing angles. The fix separates the cosmetic Surface depth reference from the logical traversal/remote-depth plane and now needs one local build + short PIE grazing test.
-- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — STEP 1B.14D-MV gate: MV-B dual-visible correctness is PASS; the automatic/exclusive FullFidelity lifecycle has now been observed in PIE, and the prior 161 MB video-memory over-budget warning was not reproduced with legacy SceneCapture excluded. Keep dual-visible coverage in focused regressions.
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md) — **current focused gate**: grazing pixel ownership is moved from an ill-conditioned inverse screen homography to analytic world ray/portal-plane intersection; the promoted FullFidelity producer now consumes `RecursionDepth` with independent endpoint x level ViewState/depth/FColorSample and deepest-to-shallowest BeforeDOF composition. Local build + PIE validation is required.
+- [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md) — previous intermediate diagnosis that separated cosmetic Surface depth from the logical traversal plane. Useful evidence, but it did not remove inverse-homography degeneration and is superseded by the root-fix gate above.
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — STEP 1B.14D-MV gate: MV-B dual-visible correctness is PASS; the automatic/exclusive FullFidelity lifecycle has been observed in PIE, and the prior 161 MB video-memory over-budget warning was not reproduced with legacy SceneCapture excluded.
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — STEP 1B.14D-C **PASS for one visible portal**: static and dynamic TSR/exposure/composition parity accepted, including slant, leave-return and crossing.
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
 - [InteriorPortalVisualParityIsolation.md](InteriorPortalVisualParityIsolation.md) — STEP 1B.14A visual-parity classification; Outcome B accepted.
@@ -31,6 +32,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalFullViewFamilyTSRValidation.md](InteriorPortalFullViewFamilyTSRValidation.md)
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md)
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
 
 ## Aperture, depth and downstream consumers
 
@@ -40,6 +42,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalMainDepthPropagationValidation.md](InteriorPortalMainDepthPropagationValidation.md)
 - [InteriorPortalDOFDepthConsumerValidation.md](InteriorPortalDOFDepthConsumerValidation.md)
 - [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md)
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
 
 ## Stencil and bounded composition
 
@@ -57,6 +60,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md)
 - [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 - [InteriorPortalGrazingForegroundDepthRegression.md](InteriorPortalGrazingForegroundDepthRegression.md)
+- [InteriorPortalGrazingAndRecursionRootFix.md](InteriorPortalGrazingAndRecursionRootFix.md)
 - [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md)
 
 ## Folder policy
