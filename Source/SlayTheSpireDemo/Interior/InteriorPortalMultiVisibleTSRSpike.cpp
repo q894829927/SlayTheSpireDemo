@@ -32,11 +32,12 @@
 namespace InteriorPortalMultiVisibleTSRPrivate
 {
 	constexpr int32 EndpointCount = 2;
+	constexpr int32 MaxRecursionDepth = 4;
 
 	TAutoConsoleVariable<int32> CVarMultiVisibleDiagnostics(
 		TEXT("portal.MultiVisibleDiagnostics"),
 		0,
-		TEXT("STEP 1B.14D-MV endpoint-aware multi-visible TSR diagnostics. 0=quiet, 1=periodic telemetry."),
+		TEXT("Endpoint/recursion-aware full-fidelity TSR diagnostics. 0=quiet, 1=periodic telemetry."),
 		ECVF_Default);
 
 	float ReadPrimaryFraction()
@@ -70,7 +71,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			return;
 		}
-
 		TInlineComponentArray<UPrimitiveComponent*> PrimitiveComponents;
 		Portal->GetComponents(PrimitiveComponents);
 		for (const UPrimitiveComponent* Primitive : PrimitiveComponents)
@@ -112,16 +112,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		return nullptr;
 	}
 
-	struct FEndpointState
+	FMatrix BuildViewProjection(const FTransform& View, const FMatrix& ProjectionMatrix)
 	{
-		explicit FEndpointState(const int32 InEndpointIndex)
-			: EndpointIndex(InEndpointIndex)
-		{
-		}
+		const FMatrix PortalViewPlanes(
+			FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0),
+			FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
+		return FTranslationMatrix(-View.GetLocation())
+			* FInverseRotationMatrix(View.Rotator())
+			* PortalViewPlanes
+			* ProjectionMatrix;
+	}
 
-		int32 EndpointIndex = INDEX_NONE;
+	struct FLayerState
+	{
+		explicit FLayerState(const int32 InLevel) : Level(InLevel) {}
+
+		int32 Level = 0;
 		FSceneViewStateReference ViewState;
-		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> CompositionExtension;
 		UTextureRenderTarget2D* SecondaryDepthTarget = nullptr;
 		FIntPoint SecondaryDepthTargetSize = FIntPoint::ZeroValue;
 
@@ -139,7 +146,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		uint64 FramesSkipped = 0;
 		uint64 CameraCutCount = 0;
 		uint64 ContinuousHistoryFrames = 0;
-
 		TAtomic<uint64> LastExtractionFrame { 0 };
 		TAtomic<uint64> LastDepthExtractionFrame { 0 };
 		TAtomic<uint64> LastCompletedSubmission { 0 };
@@ -156,28 +162,161 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TAtomic<int32> DepthTargetHeight { 0 };
 	};
 
-	class FEndpointExtractionExtension final : public FWorldSceneViewExtension
+	class FRecursiveCompositionExtension final : public FWorldSceneViewExtension
 	{
 	public:
-		FEndpointExtractionExtension(
+		FRecursiveCompositionExtension(
 			const FAutoRegister& AutoRegister,
 			UWorld* InWorld,
-			FEndpointState* InEndpointState,
+			FSceneViewStateInterface* InExpectedParentViewState)
+			: FWorldSceneViewExtension(AutoRegister, InWorld)
+			, ExpectedParentViewState(InExpectedParentViewState)
+		{
+		}
+
+		void SetEnabled(const bool bInEnabled)
+		{
+			bEnabled = bInEnabled;
+			if (!bEnabled)
+			{
+				ClearRequest();
+			}
+		}
+
+		void PublishRequest(const FInteriorPortalRenderRequest& Request)
+		{
+			FScopeLock Lock(&RequestMutex);
+			PublishedRequest = Request;
+		}
+
+		void ClearRequest()
+		{
+			FScopeLock Lock(&RequestMutex);
+			PublishedRequest.Reset();
+		}
+
+		bool HasPublishedRequest() const
+		{
+			FScopeLock Lock(&RequestMutex);
+			return PublishedRequest.IsSet();
+		}
+
+		FInteriorPortalRenderRequest GetPublishedRequest() const
+		{
+			FScopeLock Lock(&RequestMutex);
+			return PublishedRequest.IsSet()
+				? PublishedRequest.GetValue()
+				: FInteriorPortalRenderRequest();
+		}
+
+		virtual void BeginRenderViewFamily(FSceneViewFamily& InViewFamily) override
+		{
+			(void)InViewFamily;
+		}
+
+		virtual void PreRenderViewFamily_RenderThread(
+			FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily) override
+		{
+			(void)GraphBuilder;
+			(void)InViewFamily;
+		}
+
+		virtual void PostRenderViewFamily_RenderThread(
+			FRDGBuilder& GraphBuilder, FSceneViewFamily& InViewFamily) override
+		{
+			(void)GraphBuilder;
+			(void)InViewFamily;
+		}
+
+		virtual void SubscribeToPostProcessingPass(
+			ISceneViewExtension::EPostProcessingPass Pass,
+			const FSceneView& InView,
+			FPostProcessingPassDelegateArray& InOutPassCallbacks,
+			bool bIsPassEnabled) override
+		{
+			(void)bIsPassEnabled;
+			if (!bEnabled
+				|| Pass != ISceneViewExtension::EPostProcessingPass::BeforeDOF
+				|| !InView.Family
+				|| !InView.Family->bAdditionalViewFamily
+				|| InView.State != ExpectedParentViewState)
+			{
+				return;
+			}
+
+			const FInteriorPortalRenderRequest Request = GetPublishedRequest();
+			if (!Request.IsValid() || !Request.PortalRenderTarget)
+			{
+				return;
+			}
+
+			InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
+				[Request](FRDGBuilder& GraphBuilder, const FSceneView& View,
+					const FPostProcessMaterialInputs& Inputs)
+				{
+					return FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
+						GraphBuilder, View, Inputs, Request);
+				}));
+		}
+
+	protected:
+		virtual bool IsActiveThisFrame_Internal(
+			const FSceneViewExtensionContext& Context) const override
+		{
+			return bEnabled
+				&& ExpectedParentViewState != nullptr
+				&& FWorldSceneViewExtension::IsActiveThisFrame_Internal(Context);
+		}
+
+	private:
+		FSceneViewStateInterface* ExpectedParentViewState = nullptr;
+		bool bEnabled = true;
+		mutable FCriticalSection RequestMutex;
+		TOptional<FInteriorPortalRenderRequest> PublishedRequest;
+	};
+
+	struct FEndpointState
+	{
+		explicit FEndpointState(const int32 InEndpointIndex)
+			: EndpointIndex(InEndpointIndex)
+		{
+			for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+			{
+				Layers[Level] = MakeUnique<FLayerState>(Level);
+			}
+		}
+
+		int32 EndpointIndex = INDEX_NONE;
+		TUniquePtr<FLayerState> Layers[MaxRecursionDepth];
+		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainCompositionExtension;
+		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursiveCompositionExtensions[MaxRecursionDepth];
+		int32 LastVisibleDepth = 0;
+	};
+
+	class FLayerExtractionExtension final : public FWorldSceneViewExtension
+	{
+	public:
+		FLayerExtractionExtension(
+			const FAutoRegister& AutoRegister,
+			UWorld* InWorld,
+			FLayerState* InLayerState,
 			FSceneViewStateInterface* InExpectedViewState,
 			FRenderTarget* InExtractionTarget,
 			FRenderTarget* InDepthExtractionTarget,
 			const FIntPoint& InExpectedDepthSourceSize,
 			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample,
-			TSharedRef<FInteriorPortalViewExtension, ESPMode::ThreadSafe> InCompositionExtension,
+			TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> InMainPublisher,
+			TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> InRecursivePublisher,
 			const FInteriorPortalRenderRequest& InCompletedRequest)
 			: FWorldSceneViewExtension(AutoRegister, InWorld)
-			, EndpointState(InEndpointState)
+			, LayerState(InLayerState)
 			, ExpectedViewState(InExpectedViewState)
 			, ExtractionTarget(InExtractionTarget)
 			, DepthExtractionTarget(InDepthExtractionTarget)
 			, ExpectedDepthSourceSize(InExpectedDepthSourceSize)
 			, ColorSample(InColorSample)
-			, CompositionExtension(InCompositionExtension)
+			, MainPublisher(MoveTemp(InMainPublisher))
+			, RecursivePublisher(MoveTemp(InRecursivePublisher))
 			, CompletedRequest(InCompletedRequest)
 		{
 		}
@@ -209,7 +348,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			(void)bIsPassEnabled;
 			if (Pass != ISceneViewExtension::EPostProcessingPass::Tonemap
-				|| !EndpointState
+				|| !LayerState
 				|| !InView.Family
 				|| !InView.Family->bAdditionalViewFamily
 				|| InView.State != ExpectedViewState
@@ -226,7 +365,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
 					FScreenPassTexture SceneColor =
 						FScreenPassTexture::CopyFromSlice(GraphBuilder, SceneColorSlice);
-					if (!SceneColor.IsValid() || !EndpointState || !ExtractionTarget)
+					if (!SceneColor.IsValid() || !LayerState || !ExtractionTarget)
 					{
 						return SceneColor;
 					}
@@ -234,18 +373,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const float MeasuredPreExposure = View.State
 						? FMath::Max(View.State->GetPreExposure(), UE_SMALL_NUMBER)
 						: 1.0f;
-					EndpointState->SecondaryPreExposure.Store(MeasuredPreExposure);
-					EndpointState->ObservedAAMethod.Store(static_cast<int32>(View.AntiAliasingMethod));
-					EndpointState->ExtractionInputWidth.Store(SceneColor.ViewRect.Width());
-					EndpointState->ExtractionInputHeight.Store(SceneColor.ViewRect.Height());
+					LayerState->SecondaryPreExposure.Store(MeasuredPreExposure);
+					LayerState->ObservedAAMethod.Store(static_cast<int32>(View.AntiAliasingMethod));
+					LayerState->ExtractionInputWidth.Store(SceneColor.ViewRect.Width());
+					LayerState->ExtractionInputHeight.Store(SceneColor.ViewRect.Height());
 
 					const FVector2D TemporalJitter = View.ViewMatrices.GetTemporalAAJitter();
-					EndpointState->LastTemporalJitterX.Store(static_cast<float>(TemporalJitter.X));
-					EndpointState->LastTemporalJitterY.Store(static_cast<float>(TemporalJitter.Y));
+					LayerState->LastTemporalJitterX.Store(static_cast<float>(TemporalJitter.X));
+					LayerState->LastTemporalJitterY.Store(static_cast<float>(TemporalJitter.Y));
 					if (FMath::Abs(TemporalJitter.X) > 1.0e-8
 						|| FMath::Abs(TemporalJitter.Y) > 1.0e-8)
 					{
-						EndpointState->bTemporalJitterObserved.Store(true);
+						LayerState->bTemporalJitterObserved.Store(true);
 					}
 
 					FRDGTextureRef ExtractionTexture =
@@ -254,17 +393,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					{
 						return SceneColor;
 					}
-
 					GraphBuilder.UseInternalAccessMode(ExtractionTexture);
 					AddDrawTexturePass(
-						GraphBuilder,
-						View,
-						SceneColor.Texture,
-						ExtractionTexture,
-						SceneColor.ViewRect.Min,
-						SceneColor.ViewRect.Size(),
-						FIntPoint::ZeroValue,
-						ExtractionTexture->Desc.Extent,
+						GraphBuilder, View,
+						SceneColor.Texture, ExtractionTexture,
+						SceneColor.ViewRect.Min, SceneColor.ViewRect.Size(),
+						FIntPoint::ZeroValue, ExtractionTexture->Desc.Extent,
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
 
@@ -287,42 +421,40 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 								const FIntPoint SourceSize(
 									FMath::Clamp(ExpectedDepthSourceSize.X, 1, AvailableDepthExtent.X),
 									FMath::Clamp(ExpectedDepthSourceSize.Y, 1, AvailableDepthExtent.Y));
-								EndpointState->DepthSourceWidth.Store(SourceSize.X);
-								EndpointState->DepthSourceHeight.Store(SourceSize.Y);
-								EndpointState->DepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
-								EndpointState->DepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
-
+								LayerState->DepthSourceWidth.Store(SourceSize.X);
+								LayerState->DepthSourceHeight.Store(SourceSize.Y);
+								LayerState->DepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
+								LayerState->DepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
 								GraphBuilder.UseInternalAccessMode(DepthExtractionTexture);
 								AddDrawTexturePass(
-									GraphBuilder,
-									View,
-									SceneDepthTexture,
-									DepthExtractionTexture,
-									FIntPoint::ZeroValue,
-									SourceSize,
-									FIntPoint::ZeroValue,
-									DepthExtractionTexture->Desc.Extent,
+									GraphBuilder, View,
+									SceneDepthTexture, DepthExtractionTexture,
+									FIntPoint::ZeroValue, SourceSize,
+									FIntPoint::ZeroValue, DepthExtractionTexture->Desc.Extent,
 									TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 								GraphBuilder.UseExternalAccessMode(
 									DepthExtractionTexture, ERHIAccess::SRVMask);
-								EndpointState->LastDepthExtractionFrame.Store(GFrameCounter);
+								LayerState->LastDepthExtractionFrame.Store(GFrameCounter);
 							}
 						}
 					}
 
 					ColorSample->PreExposure = MeasuredPreExposure;
-					EndpointState->LastExtractionFrame.Store(GFrameCounter);
-					EndpointState->LastCompletedSubmission.Store(ColorSample->Submission);
+					LayerState->LastExtractionFrame.Store(GFrameCounter);
+					LayerState->LastCompletedSubmission.Store(ColorSample->Submission);
 
-					// Visibility changes advance this generation on the game thread. An old
-					// in-flight secondary render is therefore not allowed to republish a stale
-					// request after its endpoint has left the visible set.
-					if (EndpointState->ActivePublicationGeneration.Load()
+					if (LayerState->ActivePublicationGeneration.Load()
 						== CompletedRequest.RendererHistoryGeneration)
 					{
-						CompositionExtension->PublishRequest(CompletedRequest);
+						if (MainPublisher)
+						{
+							MainPublisher->PublishRequest(CompletedRequest);
+						}
+						else if (RecursivePublisher)
+						{
+							RecursivePublisher->PublishRequest(CompletedRequest);
+						}
 					}
-
 					return SceneColor;
 				}));
 		}
@@ -331,19 +463,20 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		virtual bool IsActiveThisFrame_Internal(
 			const FSceneViewExtensionContext& Context) const override
 		{
-			return EndpointState != nullptr
+			return LayerState != nullptr
 				&& ExtractionTarget != nullptr
 				&& FWorldSceneViewExtension::IsActiveThisFrame_Internal(Context);
 		}
 
 	private:
-		FEndpointState* EndpointState = nullptr;
+		FLayerState* LayerState = nullptr;
 		FSceneViewStateInterface* ExpectedViewState = nullptr;
 		FRenderTarget* ExtractionTarget = nullptr;
 		FRenderTarget* DepthExtractionTarget = nullptr;
 		FIntPoint ExpectedDepthSourceSize = FIntPoint::ZeroValue;
 		TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
-		TSharedRef<FInteriorPortalViewExtension, ESPMode::ThreadSafe> CompositionExtension;
+		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainPublisher;
+		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursivePublisher;
 		FInteriorPortalRenderRequest CompletedRequest;
 	};
 
@@ -364,7 +497,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				return false;
 			}
-
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
 			if (!PortalSystem || PortalSystem->RendererBackend != EInteriorPortalRendererBackend::SceneCapture)
 			{
@@ -384,20 +516,34 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			PrimaryResolutionFraction = ReadPrimaryFraction();
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				FEndpointState& State = *Endpoints[EndpointIndex];
-				State.ViewState.Allocate(World->GetFeatureLevel());
-				State.CompositionExtension = FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
-				State.CompositionExtension->SetEnabled(true);
-				ResetEndpoint(State);
+				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+				{
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					Layer.ViewState.Allocate(World->GetFeatureLevel());
+					ResetLayer(Layer);
+				}
+				Endpoint.MainCompositionExtension =
+					FSceneViewExtensions::NewExtension<FInteriorPortalViewExtension>(World);
+				Endpoint.MainCompositionExtension->SetEnabled(true);
+				for (int32 ChildLevel = 1; ChildLevel < MaxRecursionDepth; ++ChildLevel)
+				{
+					Endpoint.RecursiveCompositionExtensions[ChildLevel] =
+						FSceneViewExtensions::NewExtension<FRecursiveCompositionExtension>(
+							World,
+							Endpoint.Layers[ChildLevel - 1]->ViewState.GetReference());
+					Endpoint.RecursiveCompositionExtensions[ChildLevel]->SetEnabled(true);
+				}
+				Endpoint.LastVisibleDepth = 0;
 			}
 
 			WorldPostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddRaw(
 				this, &FMultiVisibleProducer::OnWorldPostActorTick);
 			bRunning = true;
-			Status = TEXT("RUNNING_MULTI_VISIBLE_TSR");
+			Status = TEXT("RUNNING_RECURSIVE_MULTI_VISIBLE_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible: START. Endpoints=2 PrimaryFraction=%.3f SharedFinalScratch=1 PerEndpointViewState=1 PerEndpointDepth=1."),
+				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f SharedFinalScratch=1 PerEndpointPerLevelViewState=1 PerEndpointPerLevelDepth=1."),
 				PrimaryResolutionFraction);
 			return true;
 		}
@@ -408,7 +554,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				return;
 			}
-
 			if (WorldPostActorTickHandle.IsValid())
 			{
 				FWorldDelegates::OnWorldPostActorTick.Remove(WorldPostActorTickHandle);
@@ -417,26 +562,43 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				FEndpointState& State = *Endpoints[EndpointIndex];
-				AdvancePublicationGeneration(State);
-				if (State.CompositionExtension)
+				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				if (Endpoint.MainCompositionExtension)
 				{
-					State.CompositionExtension->SetEnabled(false);
-					State.CompositionExtension->ClearRequest();
+					Endpoint.MainCompositionExtension->SetEnabled(false);
+					Endpoint.MainCompositionExtension->ClearRequest();
+				}
+				for (int32 Level = 1; Level < MaxRecursionDepth; ++Level)
+				{
+					if (Endpoint.RecursiveCompositionExtensions[Level])
+					{
+						Endpoint.RecursiveCompositionExtensions[Level]->SetEnabled(false);
+						Endpoint.RecursiveCompositionExtensions[Level]->ClearRequest();
+					}
+				}
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+				{
+					AdvancePublicationGeneration(*Endpoint.Layers[Level]);
 				}
 			}
 
 			FlushRenderingCommands();
-
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				FEndpointState& State = *Endpoints[EndpointIndex];
-				State.CompositionExtension.Reset();
-				State.ViewState.Destroy();
-				ReleaseDepthTarget(State);
+				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				Endpoint.MainCompositionExtension.Reset();
+				for (int32 Level = 1; Level < MaxRecursionDepth; ++Level)
+				{
+					Endpoint.RecursiveCompositionExtensions[Level].Reset();
+				}
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+				{
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					Layer.ViewState.Destroy();
+					ReleaseDepthTarget(Layer);
+				}
 			}
 			ReleaseFinalScratch();
-
 			ActiveWorld.Reset();
 			bRunning = false;
 			Status = TEXT("STOPPED");
@@ -446,24 +608,42 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				LastVisibleMask, LastSubmittedMask);
 		}
 
-		bool IsRunning() const
-		{
-			return bRunning;
-		}
+		bool IsRunning() const { return bRunning; }
 
 		void DumpReport() const
 		{
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible Report VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu] E1[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu]"),
+				TEXT("PortalMultiVisible Report RecursionDepth=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Depth=%d E1Depth=%d E0L0[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu] E1L0[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu]"),
+				LastRequestedRecursionDepth,
 				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
-				Endpoints[0]->FramesSubmitted, Endpoints[0]->LastExtractionFrame.Load(),
-				Endpoints[0]->CameraCutCount, Endpoints[0]->ContinuousHistoryFrames,
-				Endpoints[0]->SecondaryPreExposure.Load(), Endpoints[0]->LastCompletedSubmission.Load(),
-				Endpoints[1]->FramesSubmitted, Endpoints[1]->LastExtractionFrame.Load(),
-				Endpoints[1]->CameraCutCount, Endpoints[1]->ContinuousHistoryFrames,
-				Endpoints[1]->SecondaryPreExposure.Load(), Endpoints[1]->LastCompletedSubmission.Load());
+				Endpoints[0]->LastVisibleDepth, Endpoints[1]->LastVisibleDepth,
+				Endpoints[0]->Layers[0]->FramesSubmitted,
+				Endpoints[0]->Layers[0]->LastExtractionFrame.Load(),
+				Endpoints[0]->Layers[0]->CameraCutCount,
+				Endpoints[0]->Layers[0]->ContinuousHistoryFrames,
+				Endpoints[0]->Layers[0]->SecondaryPreExposure.Load(),
+				Endpoints[0]->Layers[0]->LastCompletedSubmission.Load(),
+				Endpoints[1]->Layers[0]->FramesSubmitted,
+				Endpoints[1]->Layers[0]->LastExtractionFrame.Load(),
+				Endpoints[1]->Layers[0]->CameraCutCount,
+				Endpoints[1]->Layers[0]->ContinuousHistoryFrames,
+				Endpoints[1]->Layers[0]->SecondaryPreExposure.Load(),
+				Endpoints[1]->Layers[0]->LastCompletedSubmission.Load());
+			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
+			{
+				for (int32 Level = 1; Level < Endpoints[EndpointIndex]->LastVisibleDepth; ++Level)
+				{
+					const FLayerState& Layer = *Endpoints[EndpointIndex]->Layers[Level];
+					UE_LOG(LogTemp, Display,
+						TEXT("PortalMultiVisible Recursive Endpoint=%d Level=%d Submitted=%llu ExtractFrame=%llu Pre=%.9g Completed=%llu Cuts=%llu Continuous=%llu"),
+						EndpointIndex, Level,
+						Layer.FramesSubmitted, Layer.LastExtractionFrame.Load(),
+						Layer.SecondaryPreExposure.Load(), Layer.LastCompletedSubmission.Load(),
+						Layer.CameraCutCount, Layer.ContinuousHistoryFrames);
+				}
+			}
 		}
 
 	private:
@@ -485,67 +665,73 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				Stop();
 				return;
 			}
-			if (World != ActiveWorld.Get())
+			if (World == ActiveWorld.Get())
 			{
-				return;
+				SubmitVisibleEndpoints(World);
 			}
-			SubmitVisibleEndpoints(World);
 		}
 
-		void ResetEndpoint(FEndpointState& State)
+		void ResetLayer(FLayerState& Layer)
 		{
-			State.bHistoryValid = false;
-			State.bVisibleLastTick = false;
-			State.bLastCameraCut = true;
-			State.HistoryGeneration = 1;
-			State.ActivePublicationGeneration.Store(1);
-			State.LastTargetSize = FIntPoint::ZeroValue;
-			State.LastEntryFrame = FTransform::Identity;
-			State.LastExitFrame = FTransform::Identity;
-			State.LastCameraCutReason = TEXT("producer start");
-			State.FramesSubmitted = 0;
-			State.FramesSkipped = 0;
-			State.CameraCutCount = 0;
-			State.ContinuousHistoryFrames = 0;
-			State.LastExtractionFrame.Store(0);
-			State.LastDepthExtractionFrame.Store(0);
-			State.LastCompletedSubmission.Store(0);
-			State.SecondaryPreExposure.Store(1.0f);
-			State.ObservedAAMethod.Store(-1);
-			State.LastTemporalJitterX.Store(0.0f);
-			State.LastTemporalJitterY.Store(0.0f);
-			State.bTemporalJitterObserved.Store(false);
-			State.ExtractionInputWidth.Store(0);
-			State.ExtractionInputHeight.Store(0);
-			State.DepthSourceWidth.Store(0);
-			State.DepthSourceHeight.Store(0);
-			State.DepthTargetWidth.Store(0);
-			State.DepthTargetHeight.Store(0);
+			Layer.bHistoryValid = false;
+			Layer.bVisibleLastTick = false;
+			Layer.bLastCameraCut = true;
+			Layer.HistoryGeneration = 1;
+			Layer.ActivePublicationGeneration.Store(1);
+			Layer.LastTargetSize = FIntPoint::ZeroValue;
+			Layer.LastEntryFrame = FTransform::Identity;
+			Layer.LastExitFrame = FTransform::Identity;
+			Layer.LastCameraCutReason = TEXT("producer start");
+			Layer.FramesSubmitted = 0;
+			Layer.FramesSkipped = 0;
+			Layer.CameraCutCount = 0;
+			Layer.ContinuousHistoryFrames = 0;
+			Layer.LastExtractionFrame.Store(0);
+			Layer.LastDepthExtractionFrame.Store(0);
+			Layer.LastCompletedSubmission.Store(0);
+			Layer.SecondaryPreExposure.Store(1.0f);
+			Layer.ObservedAAMethod.Store(-1);
+			Layer.LastTemporalJitterX.Store(0.0f);
+			Layer.LastTemporalJitterY.Store(0.0f);
+			Layer.bTemporalJitterObserved.Store(false);
+			Layer.ExtractionInputWidth.Store(0);
+			Layer.ExtractionInputHeight.Store(0);
+			Layer.DepthSourceWidth.Store(0);
+			Layer.DepthSourceHeight.Store(0);
+			Layer.DepthTargetWidth.Store(0);
+			Layer.DepthTargetHeight.Store(0);
 		}
 
-		void AdvancePublicationGeneration(FEndpointState& State)
+		void AdvancePublicationGeneration(FLayerState& Layer)
 		{
-			++State.HistoryGeneration;
-			if (State.HistoryGeneration == 0)
+			++Layer.HistoryGeneration;
+			if (Layer.HistoryGeneration == 0)
 			{
-				State.HistoryGeneration = 1;
+				Layer.HistoryGeneration = 1;
 			}
-			State.ActivePublicationGeneration.Store(State.HistoryGeneration);
+			Layer.ActivePublicationGeneration.Store(Layer.HistoryGeneration);
 		}
 
-		void HideEndpoint(FEndpointState& State, const TCHAR* Reason)
+		void HideLayer(FEndpointState& Endpoint, const int32 Level, const TCHAR* Reason)
 		{
-			if (!State.bVisibleLastTick)
+			FLayerState& Layer = *Endpoint.Layers[Level];
+			if (Layer.bVisibleLastTick)
 			{
-				return;
+				Layer.bVisibleLastTick = false;
+				Layer.bHistoryValid = false;
+				Layer.LastCameraCutReason = Reason;
+				AdvancePublicationGeneration(Layer);
 			}
-			State.bVisibleLastTick = false;
-			State.bHistoryValid = false;
-			State.LastCameraCutReason = Reason;
-			AdvancePublicationGeneration(State);
-			if (State.CompositionExtension)
+			if (Level == 0)
 			{
-				State.CompositionExtension->ClearRequest();
+				if (Endpoint.MainCompositionExtension)
+				{
+					Endpoint.MainCompositionExtension->ClearRequest();
+				}
+			}
+			else if (Endpoint.RecursiveCompositionExtensions[Level])
+			{
+				Endpoint.RecursiveCompositionExtensions[Level]->ClearRequest();
 			}
 		}
 
@@ -589,99 +775,99 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FinalScratchSize = FIntPoint::ZeroValue;
 		}
 
-		bool EnsureDepthTarget(FEndpointState& State, UWorld* World, const FIntPoint TargetSize)
+		bool EnsureDepthTarget(FLayerState& Layer, UWorld* World, const FIntPoint TargetSize)
 		{
 			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0)
 			{
 				return false;
 			}
-			if (State.SecondaryDepthTarget && State.SecondaryDepthTargetSize == TargetSize)
+			if (Layer.SecondaryDepthTarget && Layer.SecondaryDepthTargetSize == TargetSize)
 			{
 				return true;
 			}
-			if (State.SecondaryDepthTarget)
+			if (Layer.SecondaryDepthTarget)
 			{
 				FlushRenderingCommands();
-				ReleaseDepthTarget(State);
+				ReleaseDepthTarget(Layer);
 			}
-			State.SecondaryDepthTarget = NewObject<UTextureRenderTarget2D>(
+			Layer.SecondaryDepthTarget = NewObject<UTextureRenderTarget2D>(
 				GetTransientPackage(), NAME_None, RF_Transient);
-			if (!State.SecondaryDepthTarget)
+			if (!Layer.SecondaryDepthTarget)
 			{
 				return false;
 			}
-			State.SecondaryDepthTarget->AddToRoot();
-			State.SecondaryDepthTarget->RenderTargetFormat = RTF_R32f;
-			State.SecondaryDepthTarget->ClearColor = FLinearColor::Black;
-			State.SecondaryDepthTarget->bForceLinearGamma = true;
-			State.SecondaryDepthTarget->bAutoGenerateMips = false;
-			State.SecondaryDepthTarget->InitCustomFormat(
+			Layer.SecondaryDepthTarget->AddToRoot();
+			Layer.SecondaryDepthTarget->RenderTargetFormat = RTF_R32f;
+			Layer.SecondaryDepthTarget->ClearColor = FLinearColor::Black;
+			Layer.SecondaryDepthTarget->bForceLinearGamma = true;
+			Layer.SecondaryDepthTarget->bAutoGenerateMips = false;
+			Layer.SecondaryDepthTarget->InitCustomFormat(
 				TargetSize.X, TargetSize.Y, PF_R32_FLOAT, true);
-			State.SecondaryDepthTarget->UpdateResourceImmediate(true);
-			State.SecondaryDepthTargetSize = TargetSize;
-			return State.SecondaryDepthTarget->GameThread_GetRenderTargetResource() != nullptr;
+			Layer.SecondaryDepthTarget->UpdateResourceImmediate(true);
+			Layer.SecondaryDepthTargetSize = TargetSize;
+			return Layer.SecondaryDepthTarget->GameThread_GetRenderTargetResource() != nullptr;
 		}
 
-		void ReleaseDepthTarget(FEndpointState& State)
+		void ReleaseDepthTarget(FLayerState& Layer)
 		{
-			if (State.SecondaryDepthTarget)
+			if (Layer.SecondaryDepthTarget)
 			{
-				State.SecondaryDepthTarget->RemoveFromRoot();
-				State.SecondaryDepthTarget = nullptr;
+				Layer.SecondaryDepthTarget->RemoveFromRoot();
+				Layer.SecondaryDepthTarget = nullptr;
 			}
-			State.SecondaryDepthTargetSize = FIntPoint::ZeroValue;
+			Layer.SecondaryDepthTargetSize = FIntPoint::ZeroValue;
 		}
 
 		bool DetermineCameraCut(
-			const FEndpointState& State,
+			const FLayerState& Layer,
 			const FIntPoint TargetSize,
 			const FTransform& EntryFrame,
 			const FTransform& ExitFrame,
 			FString& OutReason) const
 		{
-			if (!State.bHistoryValid)
+			if (!Layer.bHistoryValid)
 			{
 				OutReason = TEXT("history invalid / first visible frame");
 				return true;
 			}
-			if (State.LastTargetSize != TargetSize)
+			if (Layer.LastTargetSize != TargetSize)
 			{
 				OutReason = TEXT("render target size changed");
 				return true;
 			}
-			if (PortalFrameChanged(State.LastEntryFrame, EntryFrame)
-				|| PortalFrameChanged(State.LastExitFrame, ExitFrame))
+			if (PortalFrameChanged(Layer.LastEntryFrame, EntryFrame)
+				|| PortalFrameChanged(Layer.LastExitFrame, ExitFrame))
 			{
 				OutReason = TEXT("portal logical frame changed");
 				return true;
 			}
-			OutReason = TEXT("continuous endpoint history");
+			OutReason = TEXT("continuous endpoint recursion history");
 			return false;
 		}
 
 		void CommitHistory(
-			FEndpointState& State,
+			FLayerState& Layer,
 			const FIntPoint TargetSize,
 			const FTransform& EntryFrame,
 			const FTransform& ExitFrame,
 			const bool bCameraCut,
 			const FString& CameraCutReason)
 		{
-			State.bLastCameraCut = bCameraCut;
-			State.LastCameraCutReason = CameraCutReason;
+			Layer.bLastCameraCut = bCameraCut;
+			Layer.LastCameraCutReason = CameraCutReason;
 			if (bCameraCut)
 			{
-				++State.CameraCutCount;
+				++Layer.CameraCutCount;
 			}
 			else
 			{
-				++State.ContinuousHistoryFrames;
+				++Layer.ContinuousHistoryFrames;
 			}
-			State.bHistoryValid = true;
-			State.bVisibleLastTick = true;
-			State.LastTargetSize = TargetSize;
-			State.LastEntryFrame = EntryFrame;
-			State.LastExitFrame = ExitFrame;
+			Layer.bHistoryValid = true;
+			Layer.bVisibleLastTick = true;
+			Layer.LastTargetSize = TargetSize;
+			Layer.LastEntryFrame = EntryFrame;
+			Layer.LastExitFrame = ExitFrame;
 		}
 
 		void SubmitVisibleEndpoints(UWorld* World)
@@ -694,7 +880,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 				{
-					HideEndpoint(*Endpoints[EndpointIndex], TEXT("portal pair/player/backend unavailable"));
+					FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+					{
+						HideLayer(Endpoint, Level, TEXT("portal pair/player/backend unavailable"));
+					}
+					Endpoint.LastVisibleDepth = 0;
 				}
 				LastVisibleMask = 0;
 				LastSubmittedMask = 0;
@@ -717,15 +908,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 			const FMinimalViewInfo& POV = Player->PlayerCameraManager->GetCameraCacheView();
 			const FTransform PlayerView(POV.Rotation, POV.Location);
-			const FMatrix PortalViewPlanes(
-				FPlane(0, 0, 1, 0), FPlane(1, 0, 0, 0),
-				FPlane(0, 1, 0, 0), FPlane(0, 0, 0, 1));
-			const FMatrix PlayerViewProjection =
-				FTranslationMatrix(-PlayerView.GetLocation())
-				* FInverseRotationMatrix(PlayerView.Rotator())
-				* PortalViewPlanes
-				* ProjectionData.ProjectionMatrix;
-
 			const int32 Width = FMath::Clamp(PlayerRect.Width(), 256, 1920);
 			const int32 Height = FMath::Max(144,
 				FMath::RoundToInt(Width * double(PlayerRect.Height()) / double(PlayerRect.Width())));
@@ -739,6 +921,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return;
 			}
 
+			LastRequestedRecursionDepth = FMath::Clamp(
+				PortalSystem->RecursionDepth, 1, MaxRecursionDepth);
 			int32 VisibleMask = 0;
 			int32 SubmittedMask = 0;
 			AInteriorPortal* Candidates[EndpointCount] = {
@@ -747,29 +931,88 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				FEndpointState& State = *Endpoints[EndpointIndex];
+				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				AInteriorPortal* Entry = Candidates[EndpointIndex];
 				AInteriorPortal* Exit = Candidates[1 - EndpointIndex];
-				InteriorPortalMath::FPortalScreenBounds CandidateBounds;
-				const bool bVisible = IsValid(Entry)
-					&& IsValid(Exit)
-					&& InteriorPortalMath::ProjectPortalApertureToScreenBounds(
-						Entry->GetLogicalFrame(), Entry->HalfWidth, Entry->HalfHeight,
-						PlayerViewProjection, PlayerRect, CandidateBounds,
-						ProjectionData.IsPerspectiveProjection(),
-						ProjectionData.GetNearPlaneFromProjectionMatrix());
-
-				if (!bVisible)
+				if (!IsValid(Entry) || !IsValid(Exit))
 				{
-					HideEndpoint(State, TEXT("endpoint left visible set"));
+					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+					{
+						HideLayer(Endpoint, Level, TEXT("endpoint unavailable"));
+					}
+					Endpoint.LastVisibleDepth = 0;
+					continue;
+				}
+
+				TArray<FInteriorPortalRenderRequest, TInlineAllocator<MaxRecursionDepth>> Requests;
+				FTransform ParentView = PlayerView;
+				for (int32 Level = 0; Level < LastRequestedRecursionDepth; ++Level)
+				{
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					const FMatrix ParentViewProjection = BuildViewProjection(
+						ParentView, ProjectionData.ProjectionMatrix);
+					FInteriorPortalRenderRequest Request;
+					if (!FInteriorPortalRenderRequest::Build(
+						EndpointIndex, EndpointIndex, Level,
+						ParentView, Entry->GetLogicalFrame(), Exit->GetLogicalFrame(),
+						Entry->HalfWidth, Entry->HalfHeight,
+						ParentViewProjection, PlayerRect,
+						ProjectionData.ProjectionMatrix,
+						ProjectionData.IsPerspectiveProjection(),
+						ProjectionData.GetNearPlaneFromProjectionMatrix(),
+						PortalSystem->ClipPlaneBias,
+						Layer.HistoryGeneration, Request)
+						|| !Request.IsValid() || !IsFiniteTransform(Request.VirtualView))
+					{
+						break;
+					}
+
+					// Update only the cosmetic-surface signed bias. The analytic logical
+					// plane/basis created by Build() remains untouched.
+					FTransform ForegroundDepthFrame = Entry->GetLogicalFrame();
+					ForegroundDepthFrame.AddToTranslation(
+						Entry->GetLogicalFrame().GetUnitAxis(EAxis::X) * Entry->SurfaceVisualBias);
+					InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
+						ForegroundDepthFrame,
+						Entry->HalfWidth, Entry->HalfHeight,
+						ParentViewProjection,
+						Request.ForegroundDepthReference);
+
+					Requests.Add(Request);
+					ParentView = Request.VirtualView;
+				}
+
+				const int32 VisibleDepth = Requests.Num();
+				Endpoint.LastVisibleDepth = VisibleDepth;
+				if (VisibleDepth <= 0)
+				{
+					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+					{
+						HideLayer(Endpoint, Level, TEXT("endpoint left visible recursion set"));
+					}
 					continue;
 				}
 
 				VisibleMask |= (1 << EndpointIndex);
-				if (SubmitEndpoint(
-					World, *PortalSystem, *Player, ProjectionData, PlayerRect,
-					PlayerView, PlayerViewProjection, POV, TargetSize, ExpectedPrimarySize,
-					EndpointIndex, Entry, Exit, State))
+				Entry->EnsureTargets(TargetSize.X, TargetSize.Y, VisibleDepth);
+				for (int32 Level = VisibleDepth; Level < MaxRecursionDepth; ++Level)
+				{
+					HideLayer(Endpoint, Level, TEXT("recursion level not visible/requested"));
+				}
+
+				bool bTopSubmitted = false;
+				for (int32 Level = VisibleDepth - 1; Level >= 0; --Level)
+				{
+					if (SubmitLayer(
+						World, *PortalSystem, ProjectionData, POV,
+						TargetSize, ExpectedPrimarySize,
+						EndpointIndex, Level, VisibleDepth,
+						Entry, Exit, Endpoint, Requests[Level]))
+					{
+						bTopSubmitted |= Level == 0;
+					}
+				}
+				if (bTopSubmitted)
 				{
 					SubmittedMask |= (1 << EndpointIndex);
 				}
@@ -778,112 +1021,82 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			LastVisibleMask = VisibleMask;
 			LastSubmittedMask = SubmittedMask;
 			++ProducerTicks;
-
 			if (CVarMultiVisibleDiagnostics.GetValueOnGameThread() != 0
 				&& (ProducerTicks == 1 || (ProducerTicks % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Tick=%llu VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x"),
-					ProducerTicks, CountBits(VisibleMask), VisibleMask, SubmittedMask, BuildPublishedMask());
+					TEXT("PortalMultiVisible Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Depth=%d E1Depth=%d"),
+					ProducerTicks, LastRequestedRecursionDepth,
+					CountBits(VisibleMask), VisibleMask, SubmittedMask, BuildPublishedMask(),
+					Endpoints[0]->LastVisibleDepth, Endpoints[1]->LastVisibleDepth);
 			}
 		}
 
-		bool SubmitEndpoint(
+		bool SubmitLayer(
 			UWorld* World,
 			AInteriorPortalSystem& PortalSystem,
-			APlayerController& Player,
 			const FSceneViewProjectionData& ProjectionData,
-			const FIntRect& PlayerRect,
-			const FTransform& PlayerView,
-			const FMatrix& PlayerViewProjection,
 			const FMinimalViewInfo& POV,
 			const FIntPoint TargetSize,
 			const FIntPoint ExpectedPrimarySize,
 			const int32 EndpointIndex,
+			const int32 Level,
+			const int32 VisibleDepth,
 			AInteriorPortal* Entry,
 			AInteriorPortal* Exit,
-			FEndpointState& State)
+			FEndpointState& Endpoint,
+			FInteriorPortalRenderRequest Request)
 		{
-			if (!IsValid(Entry) || !IsValid(Exit) || !State.CompositionExtension)
+			FLayerState& Layer = *Endpoint.Layers[Level];
+			if (!IsValid(Entry) || !IsValid(Exit) || !World->Scene
+				|| !Endpoint.MainCompositionExtension
+				|| !Entry->RenderTargets.IsValidIndex(Level))
 			{
-				++State.FramesSkipped;
+				++Layer.FramesSkipped;
+				return false;
+			}
+			if (!EnsureDepthTarget(Layer, World, TargetSize))
+			{
+				++Layer.FramesSkipped;
 				return false;
 			}
 
-			const FTransform EntryFrame = Entry->GetLogicalFrame();
-			const FTransform ExitFrame = Exit->GetLogicalFrame();
-			FInteriorPortalRenderRequest Request;
-			if (!FInteriorPortalRenderRequest::Build(
-				EndpointIndex, EndpointIndex, 0,
-				PlayerView, EntryFrame, ExitFrame,
-				Entry->HalfWidth, Entry->HalfHeight,
-				PlayerViewProjection, PlayerRect,
-				ProjectionData.ProjectionMatrix,
-				ProjectionData.IsPerspectiveProjection(),
-				ProjectionData.GetNearPlaneFromProjectionMatrix(),
-				PortalSystem.ClipPlaneBias,
-				State.HistoryGeneration, Request)
-				|| !Request.IsValid() || !IsFiniteTransform(Request.VirtualView))
-			{
-				++State.FramesSkipped;
-				return false;
-			}
-
-			// The visible portal surface is deliberately biased toward the entry side
-			// to avoid host-surface Z fighting. Main SceneDepth therefore sees that
-			// surface slightly before the logical traversal plane. At grazing angles
-			// the line-of-sight depth gap is amplified and the accepted depth-aware
-			// compositor can otherwise classify the portal's own spiral surface as a
-			// foreground occluder. Keep logical aperture/remote-depth math unchanged,
-			// but use the actual cosmetic surface plane for the foreground reference.
-			FTransform ForegroundDepthFrame = EntryFrame;
-			ForegroundDepthFrame.AddToTranslation(
-				EntryFrame.GetUnitAxis(EAxis::X) * Entry->SurfaceVisualBias);
-			InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
-				ForegroundDepthFrame,
-				Entry->HalfWidth,
-				Entry->HalfHeight,
-				PlayerViewProjection,
-				Request.ForegroundDepthReference);
-
-			if (!EnsureDepthTarget(State, World, TargetSize))
-			{
-				++State.FramesSkipped;
-				return false;
-			}
-
-			Entry->EnsureTargets(TargetSize.X, TargetSize.Y, 1);
-			UTextureRenderTarget2D* PortalTarget = Entry->RenderTargets.IsValidIndex(0)
-				? Entry->RenderTargets[0] : nullptr;
+			UTextureRenderTarget2D* PortalTarget = Entry->RenderTargets[Level];
 			FRenderTarget* PortalTargetResource = PortalTarget
 				? PortalTarget->GameThread_GetRenderTargetResource() : nullptr;
 			FRenderTarget* FinalScratchResource = FinalScratch
 				? FinalScratch->GameThread_GetRenderTargetResource() : nullptr;
-			FRenderTarget* DepthTargetResource = State.SecondaryDepthTarget
-				? State.SecondaryDepthTarget->GameThread_GetRenderTargetResource() : nullptr;
-			if (!PortalTargetResource || !FinalScratchResource || !DepthTargetResource || !World->Scene)
+			FRenderTarget* DepthTargetResource = Layer.SecondaryDepthTarget
+				? Layer.SecondaryDepthTarget->GameThread_GetRenderTargetResource() : nullptr;
+			if (!PortalTargetResource || !FinalScratchResource || !DepthTargetResource)
 			{
-				++State.FramesSkipped;
+				++Layer.FramesSkipped;
 				return false;
 			}
 
 			Request.PortalRenderTarget = PortalTargetResource;
 			Request.PortalDepthRenderTarget = DepthTargetResource;
 			Request.ColorSample = MakeShared<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe>(
-				State.FramesSubmitted + 1);
+				Layer.FramesSubmitted + 1);
 
-			FSceneViewStateInterface* ExpectedViewState = State.ViewState.GetReference();
-			TSharedRef<FEndpointExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
-				FSceneViewExtensions::NewExtension<FEndpointExtractionExtension>(
-					World,
-					&State,
-					ExpectedViewState,
-					PortalTargetResource,
-					DepthTargetResource,
-					ExpectedPrimarySize,
-					Request.ColorSample.ToSharedRef(),
-					State.CompositionExtension.ToSharedRef(),
-					Request);
+			TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainPublisher;
+			TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursivePublisher;
+			if (Level == 0)
+			{
+				MainPublisher = Endpoint.MainCompositionExtension;
+			}
+			else
+			{
+				RecursivePublisher = Endpoint.RecursiveCompositionExtensions[Level];
+			}
+
+			FSceneViewStateInterface* ExpectedViewState = Layer.ViewState.GetReference();
+			TSharedRef<FLayerExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
+				FSceneViewExtensions::NewExtension<FLayerExtractionExtension>(
+					World, &Layer, ExpectedViewState,
+					PortalTargetResource, DepthTargetResource,
+					ExpectedPrimarySize, Request.ColorSample.ToSharedRef(),
+					MainPublisher, RecursivePublisher, Request);
 
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
@@ -906,9 +1119,19 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				new FLegacyScreenPercentageDriver(ViewFamily, PrimaryResolutionFraction));
 			ViewFamily.ViewExtensions.Add(ExtractionExtension);
 
+			// Child level L+1 was submitted first. Its extraction publishes an exact
+			// completed request to this extension before the current parent family
+			// reaches BeforeDOF, so recursion is composed deepest -> shallowest.
+			if (Level + 1 < VisibleDepth
+				&& Endpoint.RecursiveCompositionExtensions[Level + 1])
+			{
+				ViewFamily.ViewExtensions.Add(
+					Endpoint.RecursiveCompositionExtensions[Level + 1].ToSharedRef());
+			}
+
 			FString CameraCutReason;
 			const bool bCameraCut = DetermineCameraCut(
-				State, TargetSize, EntryFrame, ExitFrame, CameraCutReason);
+				Layer, TargetSize, Request.EntryFrame, Request.ExitFrame, CameraCutReason);
 
 			FSceneViewInitOptions ViewInitOptions;
 			ViewInitOptions.ViewFamily = &ViewFamily;
@@ -925,8 +1148,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			ViewInitOptions.OverlayColor = FLinearColor::Transparent;
 			ViewInitOptions.PlayerIndex = 0;
 			ViewInitOptions.bUseFieldOfViewForLOD = true;
-			HidePortalPrimitives(PortalSystem.BluePortal.Get(), ViewInitOptions);
-			HidePortalPrimitives(PortalSystem.OrangePortal.Get(), ViewInitOptions);
+
+			// The exit portal sits around the transformed camera and must never be
+			// visible. The entry portal is deliberately NOT hidden: a deeper request
+			// composes over it when recursion continues; at the deepest requested
+			// level its spiral material is the explicit recursion-limit terminator.
+			HidePortalPrimitives(Exit, ViewInitOptions);
 
 			FSceneView* SceneView = new FSceneView(ViewInitOptions);
 			ViewFamily.Views.Add(SceneView);
@@ -953,23 +1180,22 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
-			++State.FramesSubmitted;
-			CommitHistory(State, TargetSize, EntryFrame, ExitFrame, bCameraCut, CameraCutReason);
+			++Layer.FramesSubmitted;
+			CommitHistory(
+				Layer, TargetSize, Request.EntryFrame, Request.ExitFrame,
+				bCameraCut, CameraCutReason);
 
 			if (CVarMultiVisibleDiagnostics.GetValueOnGameThread() != 0
-				&& (State.FramesSubmitted == 1 || (State.FramesSubmitted % 120) == 0))
+				&& (Layer.FramesSubmitted == 1 || (Layer.FramesSubmitted % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Endpoint=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Generation=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
-					EndpointIndex,
-					State.FramesSubmitted,
-					bCameraCut ? 1 : 0,
-					State.CameraCutCount,
-					State.ContinuousHistoryFrames,
-					State.HistoryGeneration,
-					State.SecondaryPreExposure.Load(),
-					State.LastExtractionFrame.Load(),
-					State.LastCompletedSubmission.Load());
+					TEXT("PortalMultiVisible Endpoint=%d Level=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Generation=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
+					EndpointIndex, Level, Layer.FramesSubmitted,
+					bCameraCut ? 1 : 0, Layer.CameraCutCount,
+					Layer.ContinuousHistoryFrames, Layer.HistoryGeneration,
+					Layer.SecondaryPreExposure.Load(),
+					Layer.LastExtractionFrame.Load(),
+					Layer.LastCompletedSubmission.Load());
 			}
 			return true;
 		}
@@ -979,8 +1205,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			int32 Mask = 0;
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				const FEndpointState& State = *Endpoints[EndpointIndex];
-				if (State.CompositionExtension && State.CompositionExtension->HasPublishedRequest())
+				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				if (Endpoint.MainCompositionExtension
+					&& Endpoint.MainCompositionExtension->HasPublishedRequest())
 				{
 					Mask |= (1 << EndpointIndex);
 				}
@@ -994,44 +1221,26 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const FString Json = FString::Printf(
 				TEXT("{\n")
 				TEXT("  \"status\":\"%s\",\n")
+				TEXT("  \"requestedRecursionDepth\":%d,\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"visibleEndpointCount\":%d,\n")
 				TEXT("  \"visibleEndpointMask\":%d,\n")
 				TEXT("  \"submittedEndpointMask\":%d,\n")
 				TEXT("  \"publishedEndpointMask\":%d,\n")
+				TEXT("  \"endpoint0VisibleDepth\":%d,\n")
+				TEXT("  \"endpoint1VisibleDepth\":%d,\n")
 				TEXT("  \"sharedFinalScratch\":true,\n")
-				TEXT("  \"endpoint0\":{\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"secondaryPreExposure\":%.9g,\"observedAA\":%d,\"jitterObserved\":%s,\"completedSubmission\":%llu,\"historyGeneration\":%llu},\n")
-				TEXT("  \"endpoint1\":{\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"secondaryPreExposure\":%.9g,\"observedAA\":%d,\"jitterObserved\":%s,\"completedSubmission\":%llu,\"historyGeneration\":%llu},\n")
-				TEXT("  \"claimBoundary\":\"STEP 1B.14D-MV top-level Blue/Orange simultaneous visibility spike. Each endpoint owns TSR ViewState/history/depth/composition; only the final renderer scratch is sequentially shared. Recursion >= 2 remains out of scope.\"\n")
+				TEXT("  \"claimBoundary\":\"Full-fidelity Blue/Orange renderer with independent endpoint x recursion-level TSR ViewState, depth and exact FColorSample. Recursion is composed deepest-to-shallowest through the same BeforeDOF compositor.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
+				LastRequestedRecursionDepth,
 				PrimaryResolutionFraction,
 				CountBits(LastVisibleMask),
 				LastVisibleMask,
 				LastSubmittedMask,
 				PublishedMask,
-				Endpoints[0]->FramesSubmitted,
-				Endpoints[0]->FramesSkipped,
-				Endpoints[0]->LastExtractionFrame.Load(),
-				Endpoints[0]->LastDepthExtractionFrame.Load(),
-				Endpoints[0]->CameraCutCount,
-				Endpoints[0]->ContinuousHistoryFrames,
-				Endpoints[0]->SecondaryPreExposure.Load(),
-				Endpoints[0]->ObservedAAMethod.Load(),
-				Endpoints[0]->bTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
-				Endpoints[0]->LastCompletedSubmission.Load(),
-				Endpoints[0]->HistoryGeneration,
-				Endpoints[1]->FramesSubmitted,
-				Endpoints[1]->FramesSkipped,
-				Endpoints[1]->LastExtractionFrame.Load(),
-				Endpoints[1]->LastDepthExtractionFrame.Load(),
-				Endpoints[1]->CameraCutCount,
-				Endpoints[1]->ContinuousHistoryFrames,
-				Endpoints[1]->SecondaryPreExposure.Load(),
-				Endpoints[1]->ObservedAAMethod.Load(),
-				Endpoints[1]->bTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
-				Endpoints[1]->LastCompletedSubmission.Load(),
-				Endpoints[1]->HistoryGeneration);
+				Endpoints[0]->LastVisibleDepth,
+				Endpoints[1]->LastVisibleDepth);
 
 			const FString ReportPath = FPaths::Combine(
 				FPaths::ProjectSavedDir(), TEXT("AutomationReports"),
@@ -1050,6 +1259,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		uint64 ProducerTicks = 0;
 		int32 LastVisibleMask = 0;
 		int32 LastSubmittedMask = 0;
+		int32 LastRequestedRecursionDepth = 1;
 		FString Status = TEXT("STOPPED");
 	};
 
@@ -1062,14 +1272,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			UE_LOG(LogTemp, Display, TEXT("PortalMultiVisible: already running."));
 			return;
 		}
-
 		UWorld* World = FindPlayableWorld();
 		if (!World)
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalMultiVisible: PIE/Game world unavailable."));
 			return;
 		}
-
 		GMultiVisibleProducer = MakeUnique<FMultiVisibleProducer>();
 		if (!GMultiVisibleProducer->Start(World))
 		{
@@ -1104,16 +1312,16 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	FAutoConsoleCommand GStartMultiVisibleCommand(
 		TEXT("portal.StartMultiVisibleTSRSpike"),
-		TEXT("Start STEP 1B.14D-MV two-endpoint TSR producer. Stops the single-visible TSR spike."),
+		TEXT("Start endpoint x recursion-level full-fidelity TSR producer."),
 		FConsoleCommandDelegate::CreateStatic(&StartMultiVisible));
 
 	FAutoConsoleCommand GStopMultiVisibleCommand(
 		TEXT("portal.StopMultiVisibleTSRSpike"),
-		TEXT("Stop STEP 1B.14D-MV and release endpoint-owned histories/depth targets."),
+		TEXT("Stop full-fidelity producer and release endpoint x recursion-level histories/depth targets."),
 		FConsoleCommandDelegate::CreateStatic(&StopMultiVisible));
 
 	FAutoConsoleCommand GDumpMultiVisibleCommand(
 		TEXT("portal.DumpMultiVisibleTSRSpike"),
-		TEXT("Dump endpoint-aware STEP 1B.14D-MV telemetry."),
+		TEXT("Dump endpoint/recursion-aware full-fidelity telemetry."),
 		FConsoleCommandDelegate::CreateStatic(&DumpMultiVisible));
 }
