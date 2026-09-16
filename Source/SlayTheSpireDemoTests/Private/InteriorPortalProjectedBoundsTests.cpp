@@ -23,6 +23,14 @@ bool FInteriorPortalProjectedBoundsCropTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Expanded max X"), Expanded.Max.X, 754);
 	TestEqual(TEXT("Expanded max Y"), Expanded.Max.Y, 379);
 
+	FVector4f CropUvBounds;
+	TestTrue(TEXT("Crop rect converts to normalized parent UV bounds"),
+		PixelRectToNormalizedBounds(FIntRect(250, 125, 750, 375), ParentRect, CropUvBounds));
+	TestTrue(TEXT("Crop UV min X"), FMath::IsNearlyEqual(CropUvBounds.X, 0.25f, 1.0e-6f));
+	TestTrue(TEXT("Crop UV min Y"), FMath::IsNearlyEqual(CropUvBounds.Y, 0.25f, 1.0e-6f));
+	TestTrue(TEXT("Crop UV max X"), FMath::IsNearlyEqual(CropUvBounds.Z, 0.75f, 1.0e-6f));
+	TestTrue(TEXT("Crop UV max Y"), FMath::IsNearlyEqual(CropUvBounds.W, 0.75f, 1.0e-6f));
+
 	FMatrix CroppedProjection;
 	const FIntRect CenterCrop(250, 125, 750, 375);
 	TestTrue(TEXT("Centered crop projection builds"),
