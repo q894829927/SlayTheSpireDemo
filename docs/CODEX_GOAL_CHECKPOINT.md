@@ -1,6 +1,53 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current resumable task — STEP 1B.3 Main SceneColor composition boundary, 2026-09-14
+## Current Portal resume authority — 2026-09-16
+
+Branch:
+
+```text
+portal/full-fidelity-p1
+```
+
+Current authorized Portal plan:
+
+```text
+docs/PortalPerformanceVRAMP1Plan.md
+```
+
+Current functional closure record:
+
+```text
+docs/InteriorPortalExperiment/InteriorPortalFullFidelityProductionRegression.md
+```
+
+Current Portal task:
+
+```text
+P1A-1 — Structured resource baseline and Dump instrumentation
+```
+
+Current status:
+
+```text
+SINGLE-PAIR FULLFIDELITY FUNCTIONAL GATE = COMPLETE / VALIDATED / SEALED
+PORTAL PERFORMANCE / VRAM P1 = AUTHORIZED
+P1A-0 DOCUMENTATION ALIGNMENT = COMPLETE
+P1A-1 = NEXT IMPLEMENTATION TASK
+```
+
+Resume rule:
+
+- Do **not** resume the historical STEP 1B.3 / CRP feasibility task below.
+- Do **not** reopen accepted projection, aperture, depth, TSR, Lumen, composition or publication-retirement behavior without a reproduced regression.
+- Start P1A-1 by improving structured diagnostics only; do not change resource allocation/reclaim semantics except where strictly required for truthful reporting.
+- Report `RequestedDepth`, `VisibleDepth`, `EffectiveDepth`, exact attempted/submitted layer masks and resource ownership separately.
+- Lifetime/state fields that do not exist yet must be reported as `INFERRED` or `NOT_IMPLEMENTED`; do not implement the P1A-2 state machine early merely to populate the report.
+
+The historical checkpoint below is retained for engineering evidence only.
+
+---
+
+## HISTORICAL CHECKPOINT — STEP 1B.3 Main SceneColor composition boundary, 2026-09-14
 
 Branch: `portal/full-fidelity-p1`. Current baseline for this delivery:
 `81ffb09af1945ed8f695c934bcfacd67ab29f835` (`portal: add native exit clip diagnostics`).
@@ -109,9 +156,7 @@ arrays and enemy opt-in are Blueprint-editable on `WBP_CombatantPresentation`'s 
 
 Completed: native frame playback and deterministic elapsed-time selection; fallback restoration
 to the authored `Img_Character` brush/transform; no Spine runtime dependency; docs in
-[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation
-and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`,
-`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`, `Saved/Logs/IroncladCharacterAnimationBuild.log`).
 `CompileAllBlueprints` completed with 0 errors and `WBP_CombatantPresentation` successful
 (`Saved/Logs/IroncladCharacterAnimationBlueprints.log`; only existing unrelated warnings remain).
 
