@@ -4,7 +4,8 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — **current STEP 1B.14D-C gate**: Attempt 3A telemetry/static black-aperture regression is accepted; only the dynamic slant/leave-return/crossing visual matrix remains before 1B.14E cleanup.
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — **current STEP 1B.14D-MV gate**: simultaneous Blue + Orange visibility needs independent request / temporal-history ownership; one endpoint is currently left black when both are visible.
+- [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — STEP 1B.14D-C **PASS for one visible portal**: static and dynamic TSR/exposure/composition parity accepted, including slant, leave-return and crossing.
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
 - [InteriorPortalVisualParityIsolation.md](InteriorPortalVisualParityIsolation.md) — STEP 1B.14A visual-parity classification; Outcome B accepted.
 - [InteriorPortalLateLatchedPreExposureBridge.md](InteriorPortalLateLatchedPreExposureBridge.md) — legacy diagnostic only; superseded for normal production validation by exact per-submission color metadata.
@@ -28,6 +29,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalFullViewFamilyTemporalValidation.md](InteriorPortalFullViewFamilyTemporalValidation.md)
 - [InteriorPortalFullViewFamilyTSRValidation.md](InteriorPortalFullViewFamilyTSRValidation.md)
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md)
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 
 ## Aperture, depth and downstream consumers
 
@@ -51,6 +53,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md)
 - [InteriorPortalSecondaryEyeAdaptationValidation.md](InteriorPortalSecondaryEyeAdaptationValidation.md)
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md)
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md)
 - [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md)
 
 ## Folder policy
