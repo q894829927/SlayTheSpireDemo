@@ -16,7 +16,12 @@ float4 ScreenToPortalRow0;
 float4 ScreenToPortalRow1;
 float4 ScreenToPortalRow2;
 float4 PortalClipZRow;
+float4 ForegroundScreenToPortalRow0;
+float4 ForegroundScreenToPortalRow1;
+float4 ForegroundScreenToPortalRow2;
+float4 ForegroundPortalClipZRow;
 float ProjectiveApertureEnabled;
+float ForegroundDepthReferenceEnabled;
 float ProjectiveNearClipW;
 float DepthAwareCompositionEnabled;
 float SecondaryDepthRemapEnabled;
@@ -131,19 +136,48 @@ void MainPS(
 		bPortalPlaneDepthValid = true;
 	}
 
+	// The logical portal plane is still authoritative for aperture/traversal and
+	// remote-depth ordering. Foreground occlusion, however, must compare against
+	// the actual cosmetic portal surface when that surface is biased toward the
+	// player. Otherwise the surface's own SceneDepth becomes increasingly closer
+	// than the logical plane at grazing incidence and exposes the fallback spiral.
+	float ForegroundReferenceDepthCm = PortalPlaneDepthCm;
+	bool bForegroundReferenceDepthValid = bPortalPlaneDepthValid;
+	if (ForegroundDepthReferenceEnabled > 0.5 && bPortalPlaneDepthValid)
+	{
+		const float3 ScreenPoint = float3(ViewportUV, 1.0);
+		const float3 ForegroundHomogeneous = float3(
+			dot(ForegroundScreenToPortalRow0.xyz, ScreenPoint),
+			dot(ForegroundScreenToPortalRow1.xyz, ScreenPoint),
+			dot(ForegroundScreenToPortalRow2.xyz, ScreenPoint));
+		if (ForegroundHomogeneous.z > 1.0e-8)
+		{
+			const float ForegroundClipW = rcp(ForegroundHomogeneous.z);
+			const bool bForegroundPastNearPlane =
+				ProjectiveNearClipW <= 0.0 || ForegroundClipW >= ProjectiveNearClipW;
+			if (bForegroundPastNearPlane)
+			{
+				const float ForegroundDeviceZ = saturate(
+					dot(ForegroundPortalClipZRow.xyz, ForegroundHomogeneous));
+				ForegroundReferenceDepthCm = ConvertFromDeviceZ(ForegroundDeviceZ);
+				bForegroundReferenceDepthValid = true;
+			}
+		}
+	}
+
 	// STEP 1B.12A: preserve real main-view foreground geometry in front of the
-	// physical portal plane. This is only a read/compare gate; it does not mutate
-	// the renderer's main SceneDepth attachment.
+	// physical portal presentation surface. This is only a read/compare gate; it
+	// does not mutate the renderer's main SceneDepth attachment.
 	float ForegroundOcclusionMask = 0.0;
 	if (DepthAwareCompositionEnabled > 0.5
-		&& bPortalPlaneDepthValid
+		&& bForegroundReferenceDepthValid
 		&& ApertureMask > 0.0)
 	{
 		const int2 ScenePixel = int2(SvPosition.xy);
 		const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 		ForegroundOcclusionMask =
-			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < PortalPlaneDepthCm)
+			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < ForegroundReferenceDepthCm)
 			? 1.0 : 0.0;
 	}
 
