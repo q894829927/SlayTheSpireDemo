@@ -4,7 +4,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — **current STEP 1B.14D-MV gate**: endpoint-owned Blue + Orange TSR producer is implemented; rebuild and PIE must now prove both portals render simultaneously without cross-history/exposure contamination.
+- [InteriorPortalMultiVisibleValidation.md](InteriorPortalMultiVisibleValidation.md) — **STEP 1B.14D-MV MV-B PASS**: Blue + Orange now render simultaneously with independent endpoint TSR/exposure/publication ownership. Next is MV-C production promotion; VRAM/bounded-secondary optimization is required after the accepted run reported 161.059 MB over budget.
 - [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — STEP 1B.14D-C **PASS for one visible portal**: static and dynamic TSR/exposure/composition parity accepted, including slant, leave-return and crossing.
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
 - [InteriorPortalVisualParityIsolation.md](InteriorPortalVisualParityIsolation.md) — STEP 1B.14A visual-parity classification; Outcome B accepted.
