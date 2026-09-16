@@ -84,6 +84,7 @@ namespace InteriorPortalRecursionLifetime
 		uint64 LifetimeId = 0;
 		uint64 PublicationGeneration = 0;
 		EResourceState State = EResourceState::Unallocated;
+		TAtomic<uint64> ActivePackedPublicationIdentity { 0 };
 
 		bool BeginAllocated(const uint64 NewLifetimeId)
 		{
@@ -98,6 +99,7 @@ namespace InteriorPortalRecursionLifetime
 			LifetimeId = NewLifetimeId;
 			PublicationGeneration = 1;
 			State = EResourceState::Allocated;
+			ActivePackedPublicationIdentity.Store(GetPackedPublicationIdentity());
 			return true;
 		}
 
@@ -120,6 +122,7 @@ namespace InteriorPortalRecursionLifetime
 			}
 
 			AdvancePublicationGenerationInternal();
+			ActivePackedPublicationIdentity.Store(GetPackedPublicationIdentity());
 			return Previous;
 		}
 
@@ -133,6 +136,7 @@ namespace InteriorPortalRecursionLifetime
 			OutRetiredPublication = CapturePublicationToken();
 			AdvancePublicationGenerationInternal();
 			State = EResourceState::Retiring;
+			ActivePackedPublicationIdentity.Store(0);
 			return true;
 		}
 
@@ -143,6 +147,7 @@ namespace InteriorPortalRecursionLifetime
 				return false;
 			}
 			State = EResourceState::Reclaimable;
+			ActivePackedPublicationIdentity.Store(0);
 			return true;
 		}
 
@@ -155,6 +160,7 @@ namespace InteriorPortalRecursionLifetime
 			LifetimeId = 0;
 			PublicationGeneration = 0;
 			State = EResourceState::Unallocated;
+			ActivePackedPublicationIdentity.Store(0);
 			return true;
 		}
 
@@ -198,9 +204,8 @@ namespace InteriorPortalRecursionLifetime
 
 		bool CanPublishPacked(const uint64 PackedIdentity) const
 		{
-			return IsReusable()
-				&& PackedIdentity != 0
-				&& PackedIdentity == GetPackedPublicationIdentity();
+			return PackedIdentity != 0
+				&& PackedIdentity == ActivePackedPublicationIdentity.Load();
 		}
 
 		bool ShouldRetirePublication(const FPublicationToken& PublishedToken) const
