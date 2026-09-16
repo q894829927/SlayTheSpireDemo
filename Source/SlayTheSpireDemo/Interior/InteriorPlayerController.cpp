@@ -2,9 +2,12 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortalCameraManager.h"
 #include "InteriorPortalFullSceneViewSubsystem.h"
+#include "InteriorPortalPresentation.h"
 #include "Components/InputComponent.h"
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Character.h"
 #include "InputCoreTypes.h"
 
 bool AInteriorPlayerController::IsPortalGunEquipped() const { return bPortalGunEquipped && IsValid(PortalSystem); }
@@ -31,6 +34,47 @@ void AInteriorPlayerController::BeginPlay()
 			break;
 		}
 		PortalSystem = *It;
+	}
+
+	const bool bUseFullFidelity = IsValid(PortalSystem)
+		&& PortalSystem->bUseFullFidelityRenderer
+		&& AInteriorPortalSystem::UsesSceneCapture(PortalSystem->RendererBackend);
+	SetFullFidelityRendererActive(bUseFullFidelity);
+}
+
+void AInteriorPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	SetFullFidelityRendererActive(false);
+	Super::EndPlay(EndPlayReason);
+}
+
+void AInteriorPlayerController::SetFullFidelityRendererActive(const bool bEnable)
+{
+	if (bFullFidelityRendererActive == bEnable)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !GEngine)
+	{
+		bFullFidelityRendererActive = false;
+		return;
+	}
+
+	if (bEnable)
+	{
+		GEngine->Exec(World, TEXT("portal.StartFullFidelityRenderer"));
+		bFullFidelityRendererActive = true;
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalFullFidelityRenderer: lifecycle START from InteriorPlayerController; legacy RenderViews bypassed."));
+	}
+	else
+	{
+		GEngine->Exec(World, TEXT("portal.StopFullFidelityRenderer"));
+		bFullFidelityRendererActive = false;
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalFullFidelityRenderer: lifecycle STOP from InteriorPlayerController."));
 	}
 }
 
@@ -62,6 +106,25 @@ void AInteriorPlayerController::UpdateCameraManager(float DeltaSeconds)
 	Super::UpdateCameraManager(DeltaSeconds);
 	if (IsValid(PortalSystem))
 	{
+		const bool bUseFullFidelity = PortalSystem->bUseFullFidelityRenderer
+			&& AInteriorPortalSystem::UsesSceneCapture(PortalSystem->RendererBackend);
+		SetFullFidelityRendererActive(bUseFullFidelity);
+
+		if (bUseFullFidelity)
+		{
+			// Full-fidelity production candidate owns remote rendering. Keep only
+			// gameplay/presentation-side local visuals here; do not run legacy
+			// SceneCapture RenderViews or the older full-scene-view spike in parallel.
+			if (PortalSystem->PlayerPresentation)
+			{
+				PortalSystem->PlayerPresentation->Update(
+					PortalSystem,
+					Cast<ACharacter>(GetPawn()),
+					PortalSystem->GetPlayerGate());
+			}
+			return;
+		}
+
 		PortalSystem->RenderViews(this);
 		if (UWorld* World = GetWorld())
 		{
