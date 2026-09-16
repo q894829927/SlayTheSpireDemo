@@ -5,7 +5,7 @@
 namespace InteriorPortalProjectedBounds
 {
 	constexpr int32 DefaultOverscanPixels = 4;
-	constexpr int32 TargetAlignmentPixels = 8;
+	constexpr int32 TargetAlignmentPixels = 32;
 
 	inline bool ExpandAndClampRect(
 		const FIntRect& SourceRect,
@@ -94,10 +94,12 @@ namespace InteriorPortalProjectedBounds
 		const int32 Alignment = TargetAlignmentPixels;
 		const int32 AlignedWidth = FMath::Min(
 			ParentRenderSize.X,
-			FMath::Max(Alignment, FMath::DivideAndRoundUp(RawWidth, Alignment) * Alignment));
+			FMath::Max(FMath::Min(Alignment, ParentRenderSize.X),
+				FMath::DivideAndRoundUp(RawWidth, Alignment) * Alignment));
 		const int32 AlignedHeight = FMath::Min(
 			ParentRenderSize.Y,
-			FMath::Max(Alignment, FMath::DivideAndRoundUp(RawHeight, Alignment) * Alignment));
+			FMath::Max(FMath::Min(Alignment, ParentRenderSize.Y),
+				FMath::DivideAndRoundUp(RawHeight, Alignment) * Alignment));
 		return FIntPoint(AlignedWidth, AlignedHeight);
 	}
 }
