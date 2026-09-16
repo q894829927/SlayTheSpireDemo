@@ -211,7 +211,7 @@ namespace InteriorPortalStencilIdentityValidationPrivate
 
 			if (IsValid(PortalSystem) && PortalSystem->IsLinked())
 			{
-				const FMatrix ViewProjection = InView.ViewMatrices.GetViewProjectionMatrix();
+				const FMatrix ViewProjection = InView.ViewMatrices.GetWorldToClip();
 				int32 EndpointIndex = 0;
 				for (AInteriorPortal* Portal : {PortalSystem->BluePortal.Get(), PortalSystem->OrangePortal.Get()})
 				{
