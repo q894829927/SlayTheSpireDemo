@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "InteriorPortalMath.h"
 #include "InteriorPortalProjectiveAperture.h"
+#include "InteriorPortalRenderSample.h"
 #include "Math/RotationMatrix.h"
 #include "Rendering/CustomRenderPass.h"
 #include "SceneInterface.h"
@@ -53,6 +54,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	FRenderTarget* PortalRenderTarget = nullptr;
 	/** STEP 1B.12B external R32F device-depth transport target from the same secondary view. */
 	FRenderTarget* PortalDepthRenderTarget = nullptr;
+	/** Render-thread-only metadata for this exact HDR submission, when supplied. */
+	TSharedPtr<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 	bool bEnabled = false;
 	/** The intended contract is one player-main-view exposure/tone-map owner. */
 	bool bPlayerExposureAuthority = true;

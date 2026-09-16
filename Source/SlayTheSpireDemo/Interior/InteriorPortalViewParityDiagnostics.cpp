@@ -1,4 +1,5 @@
 #include "Engine/Engine.h"
+#include "InteriorPortalRenderSample.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
@@ -127,6 +128,11 @@ namespace InteriorPortalViewParityDiagnosticsPrivate
 			}
 
 			const bool bAdditionalViewFamily = InView.Family->bAdditionalViewFamily;
+			if (!bAdditionalViewFamily
+				&& !InteriorPortalRendering::IsPlayerMainView(*InView.Family, InView))
+			{
+				return;
+			}
 			InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
 				[bAdditionalViewFamily](FRDGBuilder& GraphBuilder, const FSceneView& View,
 					const FPostProcessMaterialInputs& Inputs)

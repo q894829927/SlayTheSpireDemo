@@ -1,4 +1,5 @@
 #include "Engine/Engine.h"
+#include "InteriorPortalRenderSample.h"
 #include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
@@ -63,7 +64,7 @@ namespace InteriorPortalLateLatchedPreExposureBridgePrivate
 			(void)bIsPassEnabled;
 			if (Pass != ISceneViewExtension::EPostProcessingPass::Tonemap
 				|| !InView.Family
-				|| InView.Family->bAdditionalViewFamily
+				|| !InteriorPortalRendering::IsPlayerMainView(*InView.Family, InView)
 				|| CVarLateLatchedPreExposureBridge.GetValueOnAnyThread() == 0)
 			{
 				return;

@@ -370,7 +370,7 @@ void FInteriorPortalViewExtension::SubscribeToPostProcessingPass(
 		return;
 	}
 
-	if (InView.Family && InView.Family->bAdditionalViewFamily)
+	if (!InView.Family || !InteriorPortalRendering::IsPlayerMainView(*InView.Family, InView))
 	{
 		return;
 	}
@@ -468,14 +468,26 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
 
 	const bool bRebasePreExposure = CVarPortalPreExposureRebase.GetValueOnRenderThread() != 0;
-	const float SecondaryPreExposure = FMath::Max(
-		CVarPortalSecondaryPreExposure.GetValueOnRenderThread(), UE_SMALL_NUMBER);
+	const float SecondaryPreExposure = Request.ColorSample
+		? Request.ColorSample->PreExposure
+		: FMath::Max(CVarPortalSecondaryPreExposure.GetValueOnRenderThread(), UE_SMALL_NUMBER);
 	const float MainPreExposure = InView.State
 		? FMath::Max(InView.State->GetPreExposure(), UE_SMALL_NUMBER)
 		: 1.0f;
-	const float PortalExposureScale = bRebasePreExposure
-		? MainPreExposure / SecondaryPreExposure
-		: 1.0f;
+	float PortalExposureScale = 1.0f;
+	if (Request.ColorSample)
+	{
+		if (!Request.ColorSample->TryGetExposureScale(MainPreExposure, PortalExposureScale))
+		{
+			// Never show an old target with unrelated exposure metadata after a
+			// skipped/failed extraction. Diagnostic CVars cannot override ownership.
+			return SceneColor;
+		}
+	}
+	else if (bRebasePreExposure)
+	{
+		PortalExposureScale = MainPreExposure / SecondaryPreExposure;
+	}
 	const bool bUseProjectiveAperture =
 		CVarPortalProjectiveAperture.GetValueOnRenderThread() != 0
 		&& Request.ProjectiveAperture.bValid;

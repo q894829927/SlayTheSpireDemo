@@ -76,11 +76,13 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			UWorld* InWorld,
 			FRenderTarget* InExtractionTarget,
 			FRenderTarget* InDepthExtractionTarget,
-			const FIntPoint& InExpectedDepthSourceSize)
+			const FIntPoint& InExpectedDepthSourceSize,
+			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample)
 			: FWorldSceneViewExtension(AutoRegister, InWorld)
 			, ExtractionTarget(InExtractionTarget)
 			, DepthExtractionTarget(InDepthExtractionTarget)
 			, ExpectedDepthSourceSize(InExpectedDepthSourceSize)
+			, ColorSample(InColorSample)
 		{
 		}
 
@@ -173,6 +175,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 						ExtractionTexture->Desc.Extent,
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
+					ColorSample->PreExposure = MeasuredPreExposure;
 					GLastExtractionFrame.Store(GFrameCounter);
 
 					// STEP 1B.12B: transport the same secondary view's current SceneDepth
@@ -238,6 +241,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 		FRenderTarget* ExtractionTarget = nullptr;
 		FRenderTarget* DepthExtractionTarget = nullptr;
 		FIntPoint ExpectedDepthSourceSize = FIntPoint::ZeroValue;
+		TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 	};
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -734,9 +738,12 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				return;
 			}
 
+			Request.ColorSample = MakeShared<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe>(
+				FramesSubmitted + 1);
 			TSharedRef<FPortalTSRExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
 				FSceneViewExtensions::NewExtension<FPortalTSRExtractionExtension>(
-					World, PortalTargetResource, SecondaryDepthTargetResource, ExpectedPrimarySize);
+					World, PortalTargetResource, SecondaryDepthTargetResource, ExpectedPrimarySize,
+					Request.ColorSample.ToSharedRef());
 
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags

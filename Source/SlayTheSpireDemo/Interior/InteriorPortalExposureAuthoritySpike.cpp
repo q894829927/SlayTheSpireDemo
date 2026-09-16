@@ -101,7 +101,7 @@ namespace InteriorPortalExposureAuthoritySpikePrivate
 
 		virtual void SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView) override
 		{
-			if (InViewFamily.bAdditionalViewFamily || !InView.State)
+			if (!InteriorPortalRendering::IsPlayerMainView(InViewFamily, InView) || !InView.State)
 			{
 				return;
 			}
@@ -210,14 +210,12 @@ namespace InteriorPortalExposureAuthoritySpikePrivate
 					}
 
 					const FSceneViewStateInterface* TemporalState = View.State;
-					const FSceneViewStateInterface* ExposureState =
-						View.SceneViewInitOptions.ExposureSceneViewStateInterface;
 					const float TemporalPreExposure = TemporalState
 						? FMath::Max(TemporalState->GetPreExposure(), UE_SMALL_NUMBER)
 						: 1.0f;
-					const float SceneColorPreExposure = ExposureState
-						? FMath::Max(ExposureState->GetPreExposure(), UE_SMALL_NUMBER)
-						: TemporalPreExposure;
+					// UpdatePreExposure writes the actual color domain into View.State,
+					// even when eye adaptation history is owned by a different state.
+					const float SceneColorPreExposure = TemporalPreExposure;
 
 					GSecondaryTemporalPreExposure.Store(TemporalPreExposure);
 					GSceneColorPreExposure.Store(SceneColorPreExposure);
