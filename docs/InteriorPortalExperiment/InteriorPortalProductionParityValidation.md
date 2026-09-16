@@ -9,10 +9,11 @@ STEP 1B.14A VISUAL-PARITY ISOLATION = PASS / OUTCOME B
 STEP 1B.14B MAIN-VS-SECONDARY DIAGNOSTICS = PASS / ROOT CAUSE CLASSIFIED
 STEP 1B.14C SECONDARY EYE ADAPTATION A/B = PASS
 STEP 1B.14D EXACT PER-SUBMISSION COLOR SAMPLE OWNERSHIP = PRESENT IN HEAD
-STEP 1B.14D-C PRODUCTION TSR DYNAMIC PARITY VALIDATION = IMPLEMENTED / USER PIE REQUIRED
+STEP 1B.14D-C ATTEMPT 1 = FAIL / PIE SINGLE-FRAME FREEZE
+STEP 1B.14D-C ATTEMPT 2 = IMPLEMENTED / SECONDARY OBSERVER REMOVED / USER PIE REQUIRED
 ```
 
-## Why this is the next gate
+## Why this gate exists
 
 The remaining portal darkness was already isolated upstream of aperture, stencil,
 depth propagation and bounded main-pass composition. The decisive runtime A/B was:
@@ -23,90 +24,26 @@ secondary EyeAdaptation ON  -> secondary PreExposure converges to the expected s
 ```
 
 The accepted full-view TSR producer now preserves the game viewport EyeAdaptation
-show flag instead of forcing it off. The current HEAD also associates each submitted
-portal HDR image with its own `FColorSample`; the Tonemap extraction writes that
-sample's measured secondary PreExposure and the main compositor uses the same sample
-for the `MainPreExposure / SecondaryPreExposure` rebase. This removes the old
-one-frame CVar ownership ambiguity from the normal path.
+show flag instead of forcing it off. Each submitted portal HDR image also owns its
+exact `FColorSample`; the producer-owned Tonemap extraction writes the measured
+secondary PreExposure into that sample and the main compositor uses the same sample
+for the `MainPreExposure / SecondaryPreExposure` rebase.
 
-Therefore the next useful work is not another exposure multiplier and not more
-portal-edge tuning. It is one dynamic integration gate proving that the accepted
-production TSR path keeps those contracts while the camera moves, the portal leaves
-the visible set, returns, and the player crosses.
+The purpose of this gate is to validate the resulting production path during
+static viewing, motion, leave/return and crossing without introducing another
+renderer path.
 
-## Implementation
+## Attempt 1 runtime failure — 2026-09-16
 
-Source:
-
-```text
-Source/SlayTheSpireDemo/Interior/InteriorPortalProductionParityValidation.cpp
-```
-
-Commands:
-
-```text
-portal.ProductionParityDiagnostics 1
-portal.StartProductionParityValidation
-portal.DumpProductionParityValidation
-portal.StopProductionParityValidation
-```
-
-Report:
-
-```text
-Saved/AutomationReports/PortalProductionParityValidation.json
-```
-
-The probe observes the actual render-thread `Tonemap` callbacks for:
+The first parity probe registered a second world-scoped `FWorldSceneViewExtension`
+and subscribed that extension to `Tonemap` for both:
 
 ```text
 player main primary view
-portal secondary primary non-capture additional view
+portal secondary primary additional view
 ```
 
-It records:
-
-```text
-main / secondary Tonemap frame counts
-main / secondary PreExposure
-main / secondary EyeAdaptation show-flag state
-main / secondary AA method
-invalid PreExposure frame counts
-main / secondary camera-cut counts
-last observed main and secondary renderer frames
-main / secondary exposure-domain scale
-```
-
-It does not write exposure, gamma, brightness, EyeAdaptation, temporal state,
-portal depth, stencil, aperture, clip plane or renderer settings.
-
-## Automated telemetry classification
-
-The final JSON classification is intentionally narrow.
-
-```text
-INSUFFICIENT_DATA
-    -> fewer than 30 main or secondary Tonemap observations
-
-INVALID_PREEXPOSURE_OBSERVED
-    -> at least one main or secondary Tonemap sample had non-finite / non-positive PreExposure
-
-SECONDARY_EYE_ADAPTATION_DISABLED
-    -> the accepted secondary additional view was observed with EyeAdaptation off
-
-SECONDARY_NOT_TSR
-    -> the accepted secondary view was not observed as AAM_TSR
-
-TELEMETRY_READY_MANUAL_VISUAL_GATE_REQUIRED
-    -> renderer ownership telemetry is coherent; visual parity still requires PIE judgement
-```
-
-`TELEMETRY_READY_MANUAL_VISUAL_GATE_REQUIRED` is not itself a visual PASS.
-
-## USER ACTION REQUIRED — one focused PIE pass
-
-Build the branch, open the existing interior portal test map and keep the accepted
-full-view TSR producer running:
+The user reproduced this sequence:
 
 ```text
 r.AntiAliasingMethod 4
@@ -116,7 +53,147 @@ portal.ProductionParityDiagnostics 1
 portal.StartProductionParityValidation
 ```
 
-Perform only this sequence:
+Immediately after `portal.StartProductionParityValidation`, PIE remained displayed
+on one frame and no longer advanced. This was not an input-focus symptom: the
+rendered viewport itself stopped advancing.
+
+Classification:
+
+```text
+ATTEMPT 1 = FAIL
+REGRESSION = SECONDARY VIEW-FAMILY OBSERVER INTERFERENCE / SINGLE-FRAME FREEZE
+```
+
+No telemetry or visual PASS may be claimed from that run.
+
+## Historical constraint that applies here
+
+The earlier full-SceneView work already established that a world-scoped
+`FSceneViewExtension` can see manually constructed additional portal view families.
+That work therefore added explicit additional-family isolation to prevent an
+ordinary main-view extension from feeding work back into the secondary renderer.
+
+The accepted per-frame and TSR producers subsequently proved continuous operation
+without a per-frame game-thread `FlushRenderingCommands()` and with extraction
+frames continuing to advance across long runs.
+
+Attempt 1 violated the spirit of that isolation by layering a new world-scoped
+Tonemap observer onto the already producer-owned secondary Tonemap chain.
+
+## Corrected implementation — Attempt 2
+
+Source:
+
+```text
+Source/SlayTheSpireDemo/Interior/InteriorPortalProductionParityValidation.cpp
+```
+
+The parity probe is now **main-view-only**.
+
+It no longer:
+
+```text
+subscribes to secondary Tonemap
+copies secondary SceneColor
+registers a parity callback into an additional portal view family
+attempts to infer secondary ownership from generic bAdditionalViewFamily state
+```
+
+Instead, the parity extension observes the authoritative player main view from
+`PostRenderViewFamily_RenderThread` and immediately ignores any family satisfying:
+
+```text
+!bIsMainViewFamily
+OR
+bAdditionalViewFamily
+```
+
+Secondary telemetry remains where it already belongs: inside the accepted
+`portal.StartFullViewFamilyTSRSpike` producer and its own Tonemap extraction hook.
+That producer already owns the secondary `FSceneViewState`, temporal history,
+post-TSR extraction, measured secondary PreExposure, observed AA method, jitter,
+depth transport and exact `FColorSample`.
+
+This creates an explicit ownership split:
+
+```text
+PortalProductionParityValidation
+    -> player main-view observer only
+
+PortalFullViewFamilyTSRSpike
+    -> secondary renderer + secondary telemetry owner
+```
+
+There is no additional parity RDG pass in the secondary view family.
+
+## Commands
+
+Main observer:
+
+```text
+portal.ProductionParityDiagnostics 1
+portal.StartProductionParityValidation
+portal.DumpProductionParityValidation
+portal.StopProductionParityValidation
+```
+
+Main report:
+
+```text
+Saved/AutomationReports/PortalProductionParityValidation.json
+```
+
+Secondary producer report:
+
+```text
+portal.DumpFullViewFamilyTSRSpike
+Saved/AutomationReports/PortalFullViewFamilyTSRSpike.json
+```
+
+## Main-view classification
+
+The parity report now intentionally classifies only the main side:
+
+```text
+INSUFFICIENT_MAIN_DATA
+    -> fewer than 30 authoritative main-view observations
+
+INVALID_MAIN_PREEXPOSURE_OBSERVED
+    -> at least one authoritative main-view observation had non-finite / non-positive PreExposure
+
+MAIN_TELEMETRY_READY_CHECK_TSR_REPORT_AND_MANUAL_VISUAL_GATE
+    -> main-view ownership telemetry is coherent; secondary producer report and manual PIE remain required
+```
+
+This is narrower than Attempt 1 by design. It avoids pretending that a second
+observer is needed to validate data the secondary producer already owns.
+
+## USER ACTION REQUIRED — rebuild, then one focused PIE rerun
+
+The frozen Attempt 1 session is invalid evidence. End that PIE session. If the
+Editor is truly hard-frozen and cannot stop PIE, terminate the Editor process.
+Do not try to dump or preserve the frozen run.
+
+Pull/sync the corrected branch, rebuild, then run:
+
+```text
+r.AntiAliasingMethod 4
+portal.FullViewFamilyTSRPrimaryFraction 0.67
+portal.StartFullViewFamilyTSRSpike
+portal.ProductionParityDiagnostics 1
+portal.StartProductionParityValidation
+```
+
+First acceptance condition is now simply:
+
+```text
+PIE continues rendering and accepting movement after StartProductionParityValidation
+```
+
+If it freezes again, stop this gate immediately and capture the last 30-50 log lines;
+do not continue the movement matrix.
+
+If it remains live, perform:
 
 ```text
 1. Hold a static direct view through the portal for ~3 seconds.
@@ -131,28 +208,39 @@ Then run:
 
 ```text
 portal.DumpProductionParityValidation
-portal.StopProductionParityValidation
 portal.DumpFullViewFamilyTSRSpike
+portal.StopProductionParityValidation
 ```
 
 ## Automated acceptance
 
-The telemetry side passes only if:
+Main report:
 
 ```text
-mainTonemapFrames >= 30
-secondaryTonemapFrames >= 30
+mainViewFamilyFrames >= 30
 invalidMainExposureFrames == 0
-invalidSecondaryExposureFrames == 0
-secondaryEyeAdaptationOffFrames == 0
-secondaryEyeAdaptation == 1
-secondaryAAMethod == AAM_TSR
-classification == TELEMETRY_READY_MANUAL_VISUAL_GATE_REQUIRED
+mainAAMethod == AAM_TSR
+classification == MAIN_TELEMETRY_READY_CHECK_TSR_REPORT_AND_MANUAL_VISUAL_GATE
 ```
 
-Secondary camera cuts do not need to be zero. They must remain explainable by the
-existing structural reset policy rather than occurring continuously during ordinary
-motion.
+Secondary TSR report must independently remain consistent with the previously
+accepted producer contract:
+
+```text
+framesSubmitted continues increasing
+framesSkipped remains 0 for the ordinary run
+lastExtractionFrame continues increasing
+observedAAMethod == AAM_TSR
+temporalJitterObserved == true
+extractionInputSize == full output size
+secondaryPreExposure is finite and positive
+continuousHistoryFrames grows substantially
+camera cuts remain sparse / explainable rather than occurring every frame
+```
+
+Because the corrected parity observer does not touch the secondary family, any
+secondary regression now belongs to the producer itself rather than to validation
+instrumentation.
 
 ## Manual visual acceptance
 
@@ -172,19 +260,25 @@ Do not tune a constant portal gain to pass this gate.
 ## Failure routing
 
 ```text
-secondaryEyeAdaptationOffFrames > 0
-    -> production TSR ViewFamily policy regressed; repair ShowFlags ownership
+PIE freezes immediately after parity observer start
+    -> parity instrumentation is still interfering; capture tail log and do not debug exposure yet
 
-invalidSecondaryExposureFrames > 0
-    -> audit secondary ViewState lifetime / Tonemap extraction / sample completion
+main PreExposure invalid
+    -> audit main-view observer timing / player ViewState ownership
 
-secondaryAAMethod != TSR
-    -> audit AA setup / screen-percentage producer setup
+TSR report stops advancing without parity observer touching secondary
+    -> audit the production TSR producer itself
 
-telemetry passes but view still dark
+TSR observedAAMethod != TSR or jitter disappears
+    -> audit secondary AA / screen-percentage setup
+
+secondaryPreExposure remains near 1 and visual returns dark
+    -> audit production secondary EyeAdaptation policy / exposure history
+
+telemetry is healthy but view still dark
     -> investigate Lumen / reflection / additional-family lighting history next
 
-telemetry passes, static view matches, motion or return flashes
+static view matches but motion or leave-return flashes
     -> investigate temporal-history reset / exact render-sample lifetime next
 
 only portal boundary fails while full secondary image is correct
@@ -193,7 +287,7 @@ only portal boundary fails while full secondary image is correct
 
 ## Gate after PASS
 
-If both telemetry and manual visual acceptance pass, the next renderer task is:
+If both reports and the manual visual acceptance pass, the next renderer task is:
 
 ```text
 STEP 1B.14E — production merge / cleanup + focused regression
@@ -204,6 +298,7 @@ That gate should:
 ```text
 retain production secondary EyeAdaptation ownership
 retain exact per-submission FColorSample exposure metadata
+retain the additional-view-family isolation rule
 retire the late-latched CVar bridge from normal validation instructions
 run the affected depth/stencil/TSR/near-grazing regressions once
 record single-layer visual parity as accepted
