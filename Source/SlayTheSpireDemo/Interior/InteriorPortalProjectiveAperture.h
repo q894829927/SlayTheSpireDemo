@@ -10,6 +10,13 @@
  * exactly u^2 + v^2 <= 1. A perspective projection maps the portal plane to
  * screen space with a 3x3 homography; the inverse rows below map normalized
  * constrained-view UV back to homogeneous portal-local (u,v,w).
+ *
+ * NOTE: FScreenToPortalMapping is also used as a compact immutable transport
+ * container for the production analytic ray/plane aperture geometry. In that
+ * mode BuildAnalyticRayPlaneGeometry packs world-space plane/basis data into
+ * the rows explicitly documented below. This keeps the accepted request ABI
+ * stable while removing inverse-homography math from the production pixel
+ * ownership decision.
  */
 namespace InteriorPortalProjectiveAperture
 {
@@ -129,5 +136,49 @@ namespace InteriorPortalProjectiveAperture
 			&& IsFiniteRow(OutMapping.Row2)
 			&& IsFiniteRow(OutMapping.ClipZRow);
 		return OutMapping.bValid;
+	}
+
+	/**
+	 * Production aperture geometry for analytic per-pixel ray/plane ownership.
+	 * No screen-space matrix inversion is performed, so the representation stays
+	 * well-defined as the portal approaches an edge-on projection.
+	 *
+	 * Packed layout (consumed by the production composition/depth shaders):
+	 *   Row0.xyz = logical portal center, Row0.w = 1 / HalfWidth
+	 *   Row1.xyz = logical portal normal(+X), Row1.w = 1 / HalfHeight
+	 *   Row2.xyz = logical portal width axis(+Y), Row2.w = cosmetic surface bias
+	 *   ClipZRow.xyz = logical portal height axis(+Z)
+	 */
+	inline bool BuildAnalyticRayPlaneGeometry(
+		const FTransform& ApertureFrame,
+		double HalfWidth,
+		double HalfHeight,
+		double SurfaceVisualBias,
+		FScreenToPortalMapping& OutGeometry)
+	{
+		OutGeometry = FScreenToPortalMapping();
+		if (HalfWidth <= UE_SMALL_NUMBER || HalfHeight <= UE_SMALL_NUMBER
+			|| !FMath::IsFinite(SurfaceVisualBias))
+		{
+			return false;
+		}
+
+		const FVector Center = ApertureFrame.GetLocation();
+		const FVector Normal = ApertureFrame.GetUnitAxis(EAxis::X);
+		const FVector AxisY = ApertureFrame.GetUnitAxis(EAxis::Y);
+		const FVector AxisZ = ApertureFrame.GetUnitAxis(EAxis::Z);
+		OutGeometry.Row0 = FVector4f(
+			FVector3f(Center), float(1.0 / HalfWidth));
+		OutGeometry.Row1 = FVector4f(
+			FVector3f(Normal), float(1.0 / HalfHeight));
+		OutGeometry.Row2 = FVector4f(
+			FVector3f(AxisY), float(SurfaceVisualBias));
+		OutGeometry.ClipZRow = FVector4f(FVector3f(AxisZ), 0.0f);
+		OutGeometry.DeterminantQuality = 1.0f;
+		OutGeometry.bValid = IsFiniteRow(OutGeometry.Row0)
+			&& IsFiniteRow(OutGeometry.Row1)
+			&& IsFiniteRow(OutGeometry.Row2)
+			&& IsFiniteRow(OutGeometry.ClipZRow);
+		return OutGeometry.bValid;
 	}
 }
