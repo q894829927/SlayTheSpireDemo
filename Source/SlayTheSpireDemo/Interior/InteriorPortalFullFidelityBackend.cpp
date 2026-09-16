@@ -7,7 +7,7 @@
 // implementation and old console aliases remain private to that file.
 namespace InteriorPortalMultiVisibleTSRPrivate
 {
-	void StartMultiVisible();
+	bool StartMultiVisible(UWorld* World);
 	void StopMultiVisible();
 	void DumpMultiVisible();
 }
@@ -22,8 +22,7 @@ namespace InteriorPortalFullFidelityBackend
 			return false;
 		}
 
-		InteriorPortalMultiVisibleTSRPrivate::StartMultiVisible();
-		return true;
+		return InteriorPortalMultiVisibleTSRPrivate::StartMultiVisible(World);
 	}
 
 	void Stop()

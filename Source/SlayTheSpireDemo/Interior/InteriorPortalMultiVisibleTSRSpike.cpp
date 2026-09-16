@@ -505,13 +505,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return false;
 			}
 
-			if (GEngine)
-			{
-				GEngine->Exec(World, TEXT("portal.StopFullViewFamilyTSRSpike"));
-				GEngine->Exec(World, TEXT("portal.StopFullViewFamilyRealtimeSpike"));
-				GEngine->Exec(World, TEXT("portal.ClearFullViewFamilyMainCompositionSpike"));
-			}
-
+			// FullFidelity lifecycle ownership is established before this producer starts.
+			// Legacy spike console commands remain manual diagnostics only; production
+			// startup must not dispatch console commands to tear them down.
 			ActiveWorld = World;
 			PrimaryResolutionFraction = ReadPrimaryFraction();
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
@@ -1306,24 +1302,31 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	TUniquePtr<FMultiVisibleProducer> GMultiVisibleProducer;
 
-	void StartMultiVisible()
+	bool StartMultiVisible(UWorld* World)
 	{
 		if (GMultiVisibleProducer && GMultiVisibleProducer->IsRunning())
 		{
 			UE_LOG(LogTemp, Display, TEXT("PortalMultiVisible: already running."));
-			return;
+			return true;
 		}
-		UWorld* World = FindPlayableWorld();
-		if (!World)
+		if (!IsValid(World))
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalMultiVisible: PIE/Game world unavailable."));
-			return;
+			return false;
 		}
 		GMultiVisibleProducer = MakeUnique<FMultiVisibleProducer>();
 		if (!GMultiVisibleProducer->Start(World))
 		{
 			GMultiVisibleProducer.Reset();
+			UE_LOG(LogTemp, Error, TEXT("PortalMultiVisible: producer startup failed."));
+			return false;
 		}
+		return true;
+	}
+
+	void StartMultiVisibleFromConsole()
+	{
+		StartMultiVisible(FindPlayableWorld());
 	}
 
 	void StopMultiVisible()
@@ -1354,7 +1357,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 	FAutoConsoleCommand GStartMultiVisibleCommand(
 		TEXT("portal.StartMultiVisibleTSRSpike"),
 		TEXT("Start endpoint x recursion-level full-fidelity TSR producer."),
-		FConsoleCommandDelegate::CreateStatic(&StartMultiVisible));
+		FConsoleCommandDelegate::CreateStatic(&StartMultiVisibleFromConsole));
 
 	FAutoConsoleCommand GStopMultiVisibleCommand(
 		TEXT("portal.StopMultiVisibleTSRSpike"),
