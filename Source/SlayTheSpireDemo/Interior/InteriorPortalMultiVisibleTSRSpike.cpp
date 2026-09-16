@@ -524,7 +524,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					Layer.ViewState.Allocate(World->GetFeatureLevel());
 					ResetLayer(Layer);
-					check(Layer.Lifetime.BeginAllocated(LifetimeIdSource.Allocate()));
+					const uint64 NewLifetimeId = LifetimeIdSource.Allocate();
+					if (!Layer.Lifetime.BeginAllocated(NewLifetimeId))
+					{
+						UE_LOG(LogTemp, Error,
+							TEXT("PortalMultiVisible: failed to initialize recursion lifetime Endpoint=%d Level=%d Lifetime=%llu."),
+							EndpointIndex, Level, NewLifetimeId);
+						return false;
+					}
 					SyncPublicationIdentity(Layer);
 				}
 				Endpoint.MainCompositionExtension =
