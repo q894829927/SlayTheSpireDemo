@@ -40,14 +40,12 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	FMatrix ViewRotationMatrix = FMatrix::Identity;
 	FMatrix ProjectionMatrix = FMatrix::Identity;
 	InteriorPortalMath::FPortalScreenBounds ProjectedBounds;
-	/** Exact inverse planar projection for the authored logical elliptical aperture. */
+	/** Historical inverse homography retained for diagnostics/stencil compatibility. */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ProjectiveAperture;
 	/**
-	 * Exact main-view mapping for the cosmetic entry surface used only as the
-	 * foreground-depth reference. The visible surface can be biased slightly in
-	 * front of the logical traversal plane; treating that surface as a real
-	 * foreground occluder causes grazing-angle flashes back to the spiral material.
-	 * Remote-depth ordering and traversal remain anchored to ProjectiveAperture.
+	 * Production analytic aperture geometry. The full-fidelity pixel compositor
+	 * consumes this as a world-space ray/plane contract, not as H^-1. The existing
+	 * producer updates only its cosmetic surface bias after Build().
 	 */
 	InteriorPortalProjectiveAperture::FScreenToPortalMapping ForegroundDepthReference;
 	/** Perspective clip-W threshold used to reject aperture pixels before the main near plane. 0 disables it. */
@@ -85,7 +83,8 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		uint64 InRendererHistoryGeneration, FInteriorPortalRenderRequest& OutRequest)
 	{
 		OutRequest = FInteriorPortalRenderRequest();
-		if (InPortalId == INDEX_NONE || InEndpointIndex < 0 || InRecursionLevel != 0)
+		if (InPortalId == INDEX_NONE || InEndpointIndex < 0
+			|| InRecursionLevel < 0 || InRecursionLevel > 3)
 		{
 			return false;
 		}
@@ -140,12 +139,17 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 			OutRequest.bExitClipEncodedInProjection = true;
 		}
 		OutRequest.ProjectedBounds = Bounds;
-		// The conservative bounds remain the culling/scissor contract. Composition
-		// itself uses the exact planar inverse homography when it is non-singular,
-		// so an oblique portal no longer becomes an axis-aligned ellipse in its box.
+
+		// Historical H^-1 remains available to old diagnostic/stencil paths.
 		InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
 			InEntryFrame, HalfWidth, HalfHeight, PortalViewProjection,
 			OutRequest.ProjectiveAperture);
+		// Production full-fidelity composition uses a ray/plane representation so
+		// grazing incidence never depends on inverting a collapsing screen homography.
+		InteriorPortalProjectiveAperture::BuildAnalyticRayPlaneGeometry(
+			InEntryFrame, HalfWidth, HalfHeight, 0.0,
+			OutRequest.ForegroundDepthReference);
+
 		OutRequest.ProjectiveNearClipW = bPerspectiveProjection
 			? float(FMath::Max(0.001, NearClip))
 			: 0.0f;
@@ -156,7 +160,7 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		OutRequest.HistoryIdentity = MakeHistoryIdentity(
 			InEndpointIndex, InRecursionLevel, InRendererHistoryGeneration);
 		OutRequest.bEnabled = true;
-		OutRequest.bPlayerExposureAuthority = true;
+		OutRequest.bPlayerExposureAuthority = InRecursionLevel == 0;
 		return true;
 	}
 
@@ -165,7 +169,7 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 		return bEnabled
 			&& PortalId != INDEX_NONE
 			&& EndpointIndex >= 0
-			&& RecursionLevel == 0
+			&& RecursionLevel >= 0 && RecursionLevel <= 3
 			&& ProjectedBounds.bHasVisiblePortion
 			&& ViewRect.Width() > 0 && ViewRect.Height() > 0
 			&& ScissorRect.Width() > 0 && ScissorRect.Height() > 0
