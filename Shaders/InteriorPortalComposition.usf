@@ -58,16 +58,11 @@ bool IntersectAnalyticPortalPlane(
 	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
 	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
 
-	// UE5 LWC view matrices operate in translated world. Move the project-owned
-	// portal geometry into that same frame before the intersection.
 	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
 	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
 	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
 	const float3 RayDirection = mul(float4(ScreenSpacePos, 1.0, 0.0), View.ScreenToTranslatedWorld).xyz;
 	const float Denominator = dot(RayDirection, PortalNormal);
-
-	// No angular threshold or fallback image: a genuinely parallel ray has no
-	// finite portal-plane hit. Near-parallel rays remain valid and continuous.
 	if (abs(Denominator) <= 1.0e-8)
 	{
 		return false;
@@ -92,7 +87,7 @@ bool IntersectAnalyticPortalPlane(
 	}
 	DeviceZ = saturate(Clip.z / Clip.w);
 	LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
-	return FMath::IsFinite(LinearDepthCm) && LinearDepthCm > 0.0;
+	return isfinite(LinearDepthCm) && LinearDepthCm > 0.0;
 }
 
 void MainPS(
@@ -123,9 +118,6 @@ void MainPS(
 	bool bPortalPlaneDepthValid = false;
 	float2 AnalyticPortalLocal = float2(0.0, 0.0);
 
-	// Production path: exact world ray/plane ownership. The old inverse
-	// homography remains below only as a compatibility fallback for historical
-	// diagnostics that do not provide analytic geometry.
 	if (ProjectiveApertureEnabled > 0.5 && ForegroundDepthReferenceEnabled > 0.5)
 	{
 		bPortalPlaneDepthValid = IntersectAnalyticPortalPlane(
@@ -196,10 +188,6 @@ void MainPS(
 		? float4(1.0, 0.0, 1.0, 1.0)
 		: Texture2DSample(PortalTexture, PortalSampler, PortalUV);
 
-	// Main foreground depth compares to the physical cosmetic surface, not the
-	// logical traversal plane. Both depths now come from the same analytic ray,
-	// so the portal's own biased surface cannot oscillate into foreground status
-	// as incidence approaches 90 degrees.
 	float ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 	bool bForegroundReferenceDepthValid = bPortalPlaneDepthValid;
 	if (ForegroundDepthReferenceEnabled > 0.5 && bPortalPlaneDepthValid)
