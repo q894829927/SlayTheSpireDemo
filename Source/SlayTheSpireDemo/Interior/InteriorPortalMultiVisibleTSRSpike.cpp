@@ -141,6 +141,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FTransform LastEntryFrame = FTransform::Identity;
 		FTransform LastExitFrame = FTransform::Identity;
 		FString LastCameraCutReason = TEXT("not started");
+		FString LastSubmissionFailureReason = TEXT("NOT_ATTEMPTED_THIS_FRAME");
 
 		uint64 FramesSubmitted = 0;
 		uint64 FramesSkipped = 0;
@@ -291,6 +292,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainCompositionExtension;
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursiveCompositionExtensions[MaxRecursionDepth];
 		int32 LastVisibleDepth = 0;
+		int32 LastEffectiveDepth = 0;
+		int32 LastAttemptedLayerMask = 0;
+		int32 LastSubmittedLayerMask = 0;
 	};
 
 	class FLayerExtractionExtension final : public FWorldSceneViewExtension
@@ -531,6 +535,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Endpoint.RecursiveCompositionExtensions[ChildLevel]->SetEnabled(true);
 				}
 				Endpoint.LastVisibleDepth = 0;
+				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastAttemptedLayerMask = 0;
+				Endpoint.LastSubmittedLayerMask = 0;
 			}
 
 			WorldPostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddRaw(
@@ -593,11 +600,16 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Layer.ViewState.Destroy();
 					ReleaseDepthTarget(Layer);
 				}
+				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastAttemptedLayerMask = 0;
+				Endpoint.LastSubmittedLayerMask = 0;
 			}
 			ReleaseFinalScratch();
 			ActiveWorld.Reset();
 			bRunning = false;
 			Status = TEXT("STOPPED");
+			LastVisibleMask = 0;
+			LastSubmittedMask = 0;
 			WriteReport();
 			UE_LOG(LogTemp, Display,
 				TEXT("PortalMultiVisible: STOP. VisibleMask=0x%02x SubmittedMask=0x%02x."),
@@ -611,33 +623,48 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible Report RecursionDepth=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Depth=%d E1Depth=%d E0L0[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu] E1L0[Submitted=%llu ExtractFrame=%llu Cuts=%llu Continuous=%llu Pre=%.9g Completed=%llu]"),
-				LastRequestedRecursionDepth,
-				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
-				Endpoints[0]->LastVisibleDepth, Endpoints[1]->LastVisibleDepth,
-				Endpoints[0]->Layers[0]->FramesSubmitted,
-				Endpoints[0]->Layers[0]->LastExtractionFrame.Load(),
-				Endpoints[0]->Layers[0]->CameraCutCount,
-				Endpoints[0]->Layers[0]->ContinuousHistoryFrames,
-				Endpoints[0]->Layers[0]->SecondaryPreExposure.Load(),
-				Endpoints[0]->Layers[0]->LastCompletedSubmission.Load(),
-				Endpoints[1]->Layers[0]->FramesSubmitted,
-				Endpoints[1]->Layers[0]->LastExtractionFrame.Load(),
-				Endpoints[1]->Layers[0]->CameraCutCount,
-				Endpoints[1]->Layers[0]->ContinuousHistoryFrames,
-				Endpoints[1]->Layers[0]->SecondaryPreExposure.Load(),
-				Endpoints[1]->Layers[0]->LastCompletedSubmission.Load());
+				TEXT("PortalMultiVisible P1A1 Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
+				FinalScratchSize.X, FinalScratchSize.Y);
+
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
-				for (int32 Level = 1; Level < Endpoints[EndpointIndex]->LastVisibleDepth; ++Level)
+				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
+				UE_LOG(LogTemp, Display,
+					TEXT("PortalMultiVisible P1A1 Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
+					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
+					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
+					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask);
+
+				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
-					const FLayerState& Layer = *Endpoints[EndpointIndex]->Layers[Level];
+					const FLayerState& Layer = *Endpoint.Layers[Level];
+					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
+					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
+					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
+					const bool bColorAllocated = IsValid(ColorTarget);
+					const bool bOwned = bViewStateAllocated || bDepthAllocated || bColorAllocated;
+					const bool bSubmittedThisFrame = (Endpoint.LastSubmittedLayerMask & (1 << Level)) != 0;
+					const TCHAR* ResourceState = bSubmittedThisFrame
+						? TEXT("ACTIVE_INFERRED")
+						: (bOwned ? TEXT("ALLOCATED_INFERRED") : TEXT("UNALLOCATED_INFERRED"));
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible Recursive Endpoint=%d Level=%d Submitted=%llu ExtractFrame=%llu Pre=%.9g Completed=%llu Cuts=%llu Continuous=%llu"),
-						EndpointIndex, Level,
-						Layer.FramesSubmitted, Layer.LastExtractionFrame.Load(),
-						Layer.SecondaryPreExposure.Load(), Layer.LastCompletedSubmission.Load(),
-						Layer.CameraCutCount, Layer.ContinuousHistoryFrames);
+						TEXT("PortalMultiVisible P1A1 E%dL%d State=%s Lifetime=NOT_IMPLEMENTED HistoryGen=%llu ActivePubGen=%llu ViewState=%d Color=%d[%dx%d PF=%d] Depth=%d[%dx%d PF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
+						EndpointIndex, Level, ResourceState,
+						Layer.HistoryGeneration, Layer.ActivePublicationGeneration.Load(),
+						bViewStateAllocated ? 1 : 0,
+						bColorAllocated ? 1 : 0,
+						bColorAllocated ? ColorTarget->SizeX : 0,
+						bColorAllocated ? ColorTarget->SizeY : 0,
+						bColorAllocated ? static_cast<int32>(ColorTarget->GetFormat()) : -1,
+						bDepthAllocated ? 1 : 0,
+						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
+						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
+						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->GetFormat()) : -1,
+						Layer.FramesSubmitted, Layer.FramesSkipped,
+						*Layer.LastSubmissionFailureReason);
 				}
 			}
 		}
@@ -646,6 +673,98 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		static int32 CountBits(const int32 Mask)
 		{
 			return ((Mask & 1) ? 1 : 0) + ((Mask & 2) ? 1 : 0);
+		}
+
+		static int32 CountSetBits(int32 Mask)
+		{
+			int32 Count = 0;
+			while (Mask != 0)
+			{
+				Count += Mask & 1;
+				Mask >>= 1;
+			}
+			return Count;
+		}
+
+		static uint64 EstimateTargetBytes(const UTextureRenderTarget2D* Target)
+		{
+			if (!IsValid(Target) || Target->SizeX <= 0 || Target->SizeY <= 0)
+			{
+				return 0;
+			}
+
+			uint64 BytesPerPixel = 0;
+			switch (Target->GetFormat())
+			{
+			case PF_FloatRGBA:
+				BytesPerPixel = 8;
+				break;
+			case PF_R32_FLOAT:
+				BytesPerPixel = 4;
+				break;
+			default:
+				break;
+			}
+			return static_cast<uint64>(Target->SizeX)
+				* static_cast<uint64>(Target->SizeY)
+				* BytesPerPixel;
+		}
+
+		AInteriorPortal* GetEndpointPortal(const int32 EndpointIndex) const
+		{
+			AInteriorPortalSystem* PortalSystem = ActiveWorld.IsValid()
+				? FindPortalSystem(ActiveWorld.Get()) : nullptr;
+			if (!PortalSystem)
+			{
+				return nullptr;
+			}
+			return EndpointIndex == 0 ? PortalSystem->BluePortal.Get() : PortalSystem->OrangePortal.Get();
+		}
+
+		static UTextureRenderTarget2D* GetColorTarget(AInteriorPortal* Portal, const int32 Level)
+		{
+			return IsValid(Portal) && Portal->RenderTargets.IsValidIndex(Level)
+				? Portal->RenderTargets[Level] : nullptr;
+		}
+
+		int32 BuildPublishedLayerMask(const int32 EndpointIndex) const
+		{
+			if (EndpointIndex < 0 || EndpointIndex >= EndpointCount)
+			{
+				return 0;
+			}
+			const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+			int32 Mask = 0;
+			if (Endpoint.MainCompositionExtension
+				&& Endpoint.MainCompositionExtension->HasPublishedRequest())
+			{
+				Mask |= 1;
+			}
+			for (int32 Level = 1; Level < MaxRecursionDepth; ++Level)
+			{
+				if (Endpoint.RecursiveCompositionExtensions[Level]
+					&& Endpoint.RecursiveCompositionExtensions[Level]->HasPublishedRequest())
+				{
+					Mask |= (1 << Level);
+				}
+			}
+			return Mask;
+		}
+
+		void ResetFrameSubmissionDiagnostics()
+		{
+			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
+			{
+				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastAttemptedLayerMask = 0;
+				Endpoint.LastSubmittedLayerMask = 0;
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+				{
+					Endpoint.Layers[Level]->LastSubmissionFailureReason =
+						TEXT("NOT_ATTEMPTED_THIS_FRAME");
+				}
+			}
 		}
 
 		void OnWorldPostActorTick(UWorld* World, ELevelTick TickType, float DeltaSeconds)
@@ -678,6 +797,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			Layer.LastEntryFrame = FTransform::Identity;
 			Layer.LastExitFrame = FTransform::Identity;
 			Layer.LastCameraCutReason = TEXT("producer start");
+			Layer.LastSubmissionFailureReason = TEXT("NOT_ATTEMPTED_THIS_FRAME");
 			Layer.FramesSubmitted = 0;
 			Layer.FramesSkipped = 0;
 			Layer.CameraCutCount = 0;
@@ -912,6 +1032,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void SubmitVisibleEndpoints(UWorld* World)
 		{
+			ResetFrameSubmissionDiagnostics();
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
 			APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
 			if (!PortalSystem || !Player || !Player->PlayerCameraManager
@@ -1021,6 +1142,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 				const int32 VisibleDepth = Requests.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
+				Endpoint.LastEffectiveDepth = VisibleDepth; // P1B is not implemented in P1A-1.
 				if (VisibleDepth <= 0)
 				{
 					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
@@ -1040,12 +1162,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				bool bTopSubmitted = false;
 				for (int32 Level = VisibleDepth - 1; Level >= 0; --Level)
 				{
+					Endpoint.LastAttemptedLayerMask |= (1 << Level);
 					if (SubmitLayer(
 						World, *PortalSystem, ProjectionData, POV,
 						TargetSize, ExpectedPrimarySize,
 						EndpointIndex, Level, VisibleDepth,
 						Entry, Exit, Endpoint, Requests[Level]))
 					{
+						Endpoint.LastSubmittedLayerMask |= (1 << Level);
 						bTopSubmitted |= Level == 0;
 					}
 				}
@@ -1062,10 +1186,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (ProducerTicks == 1 || (ProducerTicks % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Depth=%d E1Depth=%d"),
+					TEXT("PortalMultiVisible Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Visible=%d E0Effective=%d E0Attempted=0x%02x E0Submitted=0x%02x E1Visible=%d E1Effective=%d E1Attempted=0x%02x E1Submitted=0x%02x"),
 					ProducerTicks, LastRequestedRecursionDepth,
 					CountBits(VisibleMask), VisibleMask, SubmittedMask, BuildPublishedMask(),
-					Endpoints[0]->LastVisibleDepth, Endpoints[1]->LastVisibleDepth);
+					Endpoints[0]->LastVisibleDepth, Endpoints[0]->LastEffectiveDepth,
+					Endpoints[0]->LastAttemptedLayerMask, Endpoints[0]->LastSubmittedLayerMask,
+					Endpoints[1]->LastVisibleDepth, Endpoints[1]->LastEffectiveDepth,
+					Endpoints[1]->LastAttemptedLayerMask, Endpoints[1]->LastSubmittedLayerMask);
 			}
 		}
 
@@ -1085,16 +1212,19 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FInteriorPortalRenderRequest Request)
 		{
 			FLayerState& Layer = *Endpoint.Layers[Level];
+			Layer.LastSubmissionFailureReason = TEXT("NONE");
 			if (!IsValid(Entry) || !IsValid(Exit) || !World->Scene
 				|| !Endpoint.MainCompositionExtension
 				|| !Entry->RenderTargets.IsValidIndex(Level))
 			{
 				++Layer.FramesSkipped;
+				Layer.LastSubmissionFailureReason = TEXT("PRECONDITION_OR_COLOR_TARGET_UNAVAILABLE");
 				return false;
 			}
 			if (!EnsureDepthTarget(Layer, World, TargetSize))
 			{
 				++Layer.FramesSkipped;
+				Layer.LastSubmissionFailureReason = TEXT("DEPTH_TARGET_UNAVAILABLE");
 				return false;
 			}
 
@@ -1108,6 +1238,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			if (!PortalTargetResource || !FinalScratchResource || !DepthTargetResource)
 			{
 				++Layer.FramesSkipped;
+				Layer.LastSubmissionFailureReason = TEXT("RENDER_RESOURCE_UNAVAILABLE");
 				return false;
 			}
 
@@ -1255,29 +1386,132 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		void WriteReport() const
 		{
 			const int32 PublishedMask = BuildPublishedMask();
+			int32 TotalViewStates = 0;
+			int32 TotalColorTargets = 0;
+			int32 TotalDepthTargets = 0;
+			uint64 TotalExplicitTargetBytes = EstimateTargetBytes(FinalScratch);
+
+			FString EndpointJson;
+			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
+			{
+				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
+				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
+				int32 OwnedLayerMask = 0;
+				int32 ViewStateCount = 0;
+				int32 ColorTargetCount = 0;
+				int32 DepthTargetCount = 0;
+				uint64 EndpointExplicitTargetBytes = 0;
+				FString LayersJson;
+
+				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+				{
+					const FLayerState& Layer = *Endpoint.Layers[Level];
+					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
+					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
+					const bool bColorAllocated = IsValid(ColorTarget);
+					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
+					const bool bOwned = bViewStateAllocated || bColorAllocated || bDepthAllocated;
+					const bool bAttempted = (Endpoint.LastAttemptedLayerMask & (1 << Level)) != 0;
+					const bool bSubmitted = (Endpoint.LastSubmittedLayerMask & (1 << Level)) != 0;
+					const bool bPublished = (PublishedLayerMask & (1 << Level)) != 0;
+					if (bOwned)
+					{
+						OwnedLayerMask |= (1 << Level);
+					}
+					ViewStateCount += bViewStateAllocated ? 1 : 0;
+					ColorTargetCount += bColorAllocated ? 1 : 0;
+					DepthTargetCount += bDepthAllocated ? 1 : 0;
+					const uint64 ColorBytes = EstimateTargetBytes(ColorTarget);
+					const uint64 DepthBytes = EstimateTargetBytes(Layer.SecondaryDepthTarget);
+					EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
+
+					const TCHAR* ResourceState = bSubmitted
+						? TEXT("ACTIVE_INFERRED")
+						: (bOwned ? TEXT("ALLOCATED_INFERRED") : TEXT("UNALLOCATED_INFERRED"));
+					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
+					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
+					LayersJson += FString::Printf(
+						TEXT("      {\"level\":%d,\"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\"resourceState\":\"%s\",\"resourceStateAuthority\":\"INFERRED_P1A1\",\"retirementStateStatus\":\"NOT_IMPLEMENTED\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGeneration\":%llu,\"activePublicationGeneration\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						Level,
+						ResourceState,
+						bAttempted ? TEXT("true") : TEXT("false"),
+						bSubmitted ? TEXT("true") : TEXT("false"),
+						bPublished ? TEXT("true") : TEXT("false"),
+						*EscapedFailure,
+						bViewStateAllocated ? TEXT("true") : TEXT("false"),
+						Layer.HistoryGeneration,
+						Layer.ActivePublicationGeneration.Load(),
+						Layer.bHistoryValid ? TEXT("true") : TEXT("false"),
+						Layer.bVisibleLastTick ? TEXT("true") : TEXT("false"),
+						Layer.FramesSubmitted, Layer.FramesSkipped,
+						Layer.CameraCutCount, Layer.ContinuousHistoryFrames,
+						*EscapedCutReason,
+						Layer.LastExtractionFrame.Load(), Layer.LastDepthExtractionFrame.Load(),
+						Layer.LastCompletedSubmission.Load(), Layer.SecondaryPreExposure.Load(),
+						Layer.ObservedAAMethod.Load(),
+						Layer.bTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
+						bColorAllocated ? TEXT("true") : TEXT("false"),
+						bColorAllocated ? ColorTarget->SizeX : 0,
+						bColorAllocated ? ColorTarget->SizeY : 0,
+						bColorAllocated ? static_cast<int32>(ColorTarget->GetFormat()) : -1,
+						ColorBytes,
+						bDepthAllocated ? TEXT("true") : TEXT("false"),
+						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
+						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
+						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->GetFormat()) : -1,
+						DepthBytes,
+						Layer.DepthSourceWidth.Load(), Layer.DepthSourceHeight.Load(),
+						Level + 1 < MaxRecursionDepth ? TEXT(",") : TEXT(""));
+				}
+
+				TotalViewStates += ViewStateCount;
+				TotalColorTargets += ColorTargetCount;
+				TotalDepthTargets += DepthTargetCount;
+				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
+
+				EndpointJson += FString::Printf(
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"activeLayerMask\":%d,\"retiringLayerMask\":0,\"retiringLayerMaskAuthority\":\"NOT_IMPLEMENTED\",\"reclaimableLayerMask\":0,\"reclaimableLayerMaskAuthority\":\"NOT_IMPLEMENTED\",\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"layers\":[\n%s    ]}%s\n"),
+					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
+					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
+					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
+					OwnedLayerMask, Endpoint.LastSubmittedLayerMask,
+					ViewStateCount, ColorTargetCount, DepthTargetCount,
+					EndpointExplicitTargetBytes, *LayersJson,
+					EndpointIndex + 1 < EndpointCount ? TEXT(",") : TEXT(""));
+			}
+
+			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
+				TEXT("  \"schema\":\"PortalFullFidelityResourceBaseline.P1A1.v1\",\n")
 				TEXT("  \"status\":\"%s\",\n")
-				TEXT("  \"requestedRecursionDepth\":%d,\n")
+				TEXT("  \"diagnosticScope\":\"P1A-1 observation only; allocation/reclaim semantics unchanged\",\n")
+				TEXT("  \"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\n")
+				TEXT("  \"retirementStateStatus\":\"NOT_IMPLEMENTED\",\n")
+				TEXT("  \"resourceStateAuthority\":\"INFERRED_P1A1\",\n")
+				TEXT("  \"requestedDepth\":%d,\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"visibleEndpointCount\":%d,\n")
 				TEXT("  \"visibleEndpointMask\":%d,\n")
 				TEXT("  \"submittedEndpointMask\":%d,\n")
 				TEXT("  \"publishedEndpointMask\":%d,\n")
-				TEXT("  \"endpoint0VisibleDepth\":%d,\n")
-				TEXT("  \"endpoint1VisibleDepth\":%d,\n")
-				TEXT("  \"sharedFinalScratch\":true,\n")
-				TEXT("  \"claimBoundary\":\"Full-fidelity Blue/Orange renderer with independent endpoint x recursion-level TSR ViewState, depth and exact FColorSample. Recursion is composed deepest-to-shallowest through the same BeforeDOF compositor.\"\n")
+				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
+				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\n")
+				TEXT("  \"endpoints\":[\n%s  ],\n")
+				TEXT("  \"claimBoundary\":\"Portal-owned counters prove logical ownership and explicit target estimates only. They do not prove that the same number of bytes has already returned to the global RHI/GPU memory budget.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				LastRequestedRecursionDepth,
 				PrimaryResolutionFraction,
-				CountBits(LastVisibleMask),
-				LastVisibleMask,
-				LastSubmittedMask,
-				PublishedMask,
-				Endpoints[0]->LastVisibleDepth,
-				Endpoints[1]->LastVisibleDepth);
+				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
+				TotalViewStates, TotalColorTargets, TotalDepthTargets, TotalExplicitTargetBytes,
+				bScratchAllocated ? TEXT("true") : TEXT("false"),
+				bScratchAllocated ? FinalScratchSize.X : 0,
+				bScratchAllocated ? FinalScratchSize.Y : 0,
+				bScratchAllocated ? static_cast<int32>(FinalScratch->GetFormat()) : -1,
+				EstimateTargetBytes(FinalScratch),
+				*EndpointJson);
 
 			const FString ReportPath = FPaths::Combine(
 				FPaths::ProjectSavedDir(), TEXT("AutomationReports"),
