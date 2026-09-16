@@ -21,35 +21,51 @@ Validated functional baseline:
 portal: finalize native full-fidelity lifecycle cleanup
 ```
 
+Validation closure:
+
+```text
+2026-09-16
+Editor Build = PASS
+native lifecycle PIE startup = PASS
+short FullFidelity smoke = PASS
+portal.DumpFullFidelityRenderer = PASS
+```
+
+The authoritative functional-regression record is:
+
+```text
+docs/InteriorPortalExperiment/InteriorPortalFullFidelityProductionRegression.md
+```
+
 This plan continues development on the same branch. No new implementation branch is required for this phase.
 
 ---
 
 ## 1. Purpose
 
-The FullFidelity Portal renderer has completed its functional development gate. The renderer is now considered visually and functionally stable enough that the next task should not reopen projection/composition correctness work unless a regression proves it necessary.
+The current single-pair FullFidelity Portal renderer has completed its functional gate. P1 must not reopen accepted projection, aperture, depth, TSR, Lumen, publication-retirement or composition behavior unless a reproduced regression proves it necessary.
 
-The immediate next phase is a narrow **Portal Performance / VRAM P1** pass before broad Portal physics development.
+The immediate next phase is a narrow **Portal Performance / VRAM P1** pass before broad Portal physics work.
 
-The purpose of P1 is to:
+P1 exists to:
 
 ```text
 preserve accepted FullFidelity image correctness
-preserve current projective aperture/depth behavior
-preserve TSR and Lumen fidelity
-remove unnecessary persistent recursion resources
-stop retaining resources for inactive recursion levels
-avoid submitting recursion that is too small to matter
-measure resource ownership and performance before/after every change
+preserve current TSR/Lumen quality
+make recursion-resource ownership explicit and measurable
+reclaim resources that exceed the configured recursion-capacity budget
+avoid unnecessary deep recursive submissions
+complete production evidence for the existing bounded main-pass path
+measure logical ownership separately from observed GPU/RHI memory
 ```
 
-The phase is deliberately conservative. It addresses resource lifetime and bounded work first. It does **not** redesign the renderer.
+P1 deliberately does **not** redesign the renderer.
 
 ---
 
-## 2. Current accepted production architecture
+## 2. Accepted production architecture
 
-The accepted production path is:
+The accepted production path remains:
 
 ```text
 AInteriorPlayerController
@@ -65,518 +81,568 @@ FMultiVisibleProducer
 endpoint × recursion renderer
 ```
 
-The following facts are treated as the baseline contract:
+Baseline contracts that P1 must preserve:
 
-- FullFidelity rendering owns the production remote-view path when enabled.
+- FullFidelity owns the production remote-view path while active.
 - `AInteriorPlayerController` bypasses legacy `PortalSystem->RenderViews()` while FullFidelity owns rendering.
-- Production `Start / Stop / Dump` call the native backend directly.
-- Production startup no longer uses `GEngine::Exec(...)` to dispatch lifecycle console commands.
-- Console commands remain manual diagnostic aliases only.
-- FullFidelity startup failure propagates as a real `bool` failure instead of being reported as success unconditionally.
-
-P1 must preserve this ownership model.
+- Production `Start / Stop / Dump` call native backend APIs directly.
+- Production lifecycle does not dispatch portal console commands through `GEngine::Exec(...)`.
+- Historical console commands remain operator/diagnostic aliases only.
+- Startup failure propagates as a real failure.
+- endpoint × recursion-level temporal history remains independent where a layer is active.
+- render-thread-ordered publication retirement remains authoritative for visible/offscreen transitions.
 
 ---
 
-## 3. Current performance and VRAM problem statement
+## 3. Resource terminology and invariants
 
-### 3.1 ViewState allocation is currently maximum-oriented
+P1 uses four different depth concepts. They must not be conflated.
 
-The current producer owns two portal endpoints and supports four recursion levels.
+### 3.1 RequestedDepth
 
-Conceptually the maximum state surface is:
+```text
+RequestedDepth = clamp(PortalSystem->RecursionDepth, 1, MaxRecursionDepth)
+```
+
+This is the configured recursion-capacity ceiling. It defines which levels are allowed to own production resources.
+
+### 3.2 VisibleDepth
+
+The number of recursion requests that can currently be built for one endpoint from the accepted geometry/visibility pipeline.
+
+```text
+VisibleDepth <= RequestedDepth
+```
+
+A portal moving offscreen may make `VisibleDepth` zero without changing the configured resource-capacity budget.
+
+### 3.3 SubmittedDepth
+
+The number of full scene-view submissions actually issued for one endpoint in the current frame.
+
+P1B may reduce this below `VisibleDepth`.
+
+```text
+SubmittedDepth <= VisibleDepth <= RequestedDepth
+```
+
+### 3.4 AllocatedDepth / AllocatedCapacity
+
+The recursion levels for which this producer currently owns persistent resources such as ViewState, color/depth targets or dependent extensions.
+
+Allocation is allowed to be lazy. P1 must **not** require unused levels to be allocated merely because `RequestedDepth` is high.
+
+Required invariant:
+
+```text
+AllocatedDepth <= RequestedDepth
+```
+
+For a fully warmed, fully visible two-endpoint scene at requested depth `D`, the maximum expected endpoint-level ownership is approximately:
+
+```text
+2 × D
+```
+
+This is a warmed-capacity expectation / upper bound, not a mandatory equality at every frame.
+
+### 3.5 Visibility is not lifetime
+
+The following rule is mandatory:
+
+```text
+visibility/workload change != persistent resource-lifetime change
+```
+
+Short-term offscreen transitions and P1B screen-coverage cutoffs must not automatically destroy and recreate resources every frame.
+
+Persistent reclaim is driven primarily by:
+
+```text
+configured RequestedDepth decreasing
+renderer stop/teardown
+explicitly documented capacity-policy changes
+```
+
+This prevents allocation thrash during normal camera movement.
+
+---
+
+## 4. Current problem statement
+
+### 4.1 ViewState ownership starts maximum-oriented
+
+The producer supports:
 
 ```text
 Blue   L0 L1 L2 L3
 Orange L0 L1 L2 L3
-
-2 endpoints × 4 levels = 8 ViewStates
 ```
 
-At startup, ViewState objects are allocated for the complete endpoint × recursion matrix rather than only the recursion depth that is currently required.
+and currently allocates all eight ViewState objects at startup.
 
-`FSceneViewState` itself is not equivalent to immediately allocating every maximum-size TSR/Lumen texture. Heavy temporal resources are materialized as views actually render. The practical problem is therefore broader:
+`FSceneViewState::Allocate()` does not imply that every possible TSR/Lumen texture is immediately materialized at maximum size. The important problem is lifetime: once deeper layers have rendered and accumulated temporal renderer state, reducing the configured recursion depth does not currently provide an explicit per-layer reclaim path.
 
-```text
-high recursion level becomes active
-→ temporal renderer state/history is established
-→ RecursionDepth later decreases
-→ inactive deep-level state has no explicit reclaim path
-```
+### 4.2 Color targets grow without a shrink contract
 
-P1 must make resource ownership follow active recursion requirements.
+`AInteriorPortal::EnsureTargets()` grows the color-target array and resizes existing targets, but does not remove surplus levels when the configured recursion-capacity ceiling decreases.
 
-### 3.2 FullFidelity targets are derived from the player view size
+Current request creation may call it with `VisibleDepth`; P1 must not reinterpret that as permission to destroy targets merely because a portal is briefly offscreen.
 
-The current FullFidelity producer derives `TargetSize` from the constrained player viewport.
+### 4.3 Depth targets are lazy but lack runtime capacity reclaim
 
-Conceptually:
+Depth targets are created when a layer is actually submitted. This behavior is useful and must remain lazy.
 
-```text
-TargetSize ≈ PlayerRect
-ExpectedPrimarySize = TargetSize × PrimaryResolutionFraction
-```
+P1 must not replace it with eager `RequestedDepth × endpoints` allocation.
 
-This means `PrimaryResolutionFraction` lowers internal primary rendering resolution, but does not inherently shrink the final portal output target dimensions.
+The required change is that a depth target belonging to a level that is now **outside the configured capacity ceiling** can retire safely and be reclaimed.
 
-This is an important optimization opportunity, but portal-projected target allocation is **not part of P1** because changing target extents affects projection, extraction, UV mapping, depth reconstruction and recursive composition.
+### 4.4 FullFidelity output targets remain full-view sized
 
-### 3.3 Recursion resources can grow and remain resident
+The current FullFidelity producer derives its output size from the constrained player view. `PrimaryResolutionFraction` lowers the internal primary render size but does not inherently shrink final color/depth extraction targets.
 
-The existing target management grows resources to satisfy requested recursion depth. Reducing recursion depth does not provide an equally strong shrink/reclaim contract.
+Portal-projected RT allocation and TSR-primary-resolution depth targets are **P2**, not P1.
 
-Example:
+### 4.5 Each submitted recursion layer is expensive
 
-```text
-RecursionDepth = 4
-→ L0/L1/L2/L3 become active
+Each submitted layer is a real Lit `FSceneViewFamily` using the accepted temporal and lighting path, including TSR and Lumen behavior.
 
-RecursionDepth = 1
-→ only L0 is required
-→ L1/L2/L3 must no longer retain production resources
-```
-
-This is the highest-priority P1 issue.
-
-### 3.4 Every submitted layer is a real Lit scene view
-
-Each submitted recursion layer is a real UE scene render using the current FullFidelity path, including the accepted temporal and lighting behavior.
-
-The cost model therefore remains approximately:
-
-```text
-main view
-+ visible endpoint × visible recursion layer scene submissions
-```
-
-P1 should reduce unnecessary submissions but must not reduce visual fidelity by silently disabling FullFidelity features.
-
-### 3.5 Main composition has an existing bounded-pass path
-
-`portal.BoundedMainPassScissor` already exists as a bounded-work mechanism, but it is not the production default.
-
-P1 will validate this existing path after resource lifetime is stable. It will not redesign the composition architecture.
+P1 may reduce unnecessary submissions, but it must not silently lower quality settings.
 
 ---
 
-## 4. P1 scope
+## 5. Non-negotiable publication and lifetime protocol
 
-P1 contains three implementation blocks:
-
-```text
-P1A — Resource Lifetime & Budget
-P1B — Recursion Screen-Coverage Cutoff
-P1C — Bounded Main-Pass Validation
-```
-
-Order is mandatory:
+The accepted offscreen-publication fix is a P1 hard dependency:
 
 ```text
-P1A
- ↓
-P1A Gate
- ↓
-P1B
- ↓
-P1B Gate
- ↓
-P1C
- ↓
-Performance / VRAM P1 Gate
+docs/InteriorPortalExperiment/InteriorPortalOffscreenPublicationRetirement.md
 ```
 
-Do not begin P1B or P1C while P1A is not stable.
+P1 resource reclaim must preserve its queue-ownership semantics.
+
+### 5.1 Layer resource states
+
+P1 should make layer lifetime observable using states equivalent to:
+
+```text
+UNALLOCATED
+ALLOCATED
+ACTIVE
+RETIRING
+RECLAIMABLE
+```
+
+Exact enum names may differ, but diagnostics must distinguish active ownership from pending retirement.
+
+### 5.2 Retirement order
+
+For a layer leaving the configured capacity budget, the required conceptual sequence is:
+
+```text
+ACTIVE / ALLOCATED
+    ↓
+advance lifetime/publication generation
+    ↓
+prevent old extraction callbacks from publishing again
+    ↓
+stop new submissions for that retiring lifetime
+    ↓
+enqueue publication retirement in render-queue order
+    ↓
+allow already-queued consumers to finish safely
+    ↓
+confirm dependent render-thread use is retired
+    ↓
+RECLAIMABLE
+    ↓
+destroy/release ViewState, depth/color resources and dependent references
+```
+
+Synchronous game-thread `ClearRequest()` followed by immediate destruction is not an accepted runtime reclaim strategy.
+
+### 5.3 Old retirement must not clear new publication
+
+A stale retirement command must only retire an older lifetime/generation. If a level is recreated and publishes again before an old retirement command executes, that old command must not clear the new request.
+
+### 5.4 Runtime rebuild identity
+
+Current startup `ResetLayer()` resets `HistoryGeneration` to `1`. That is acceptable for a new producer lifetime but must not be reused blindly for runtime destroy/recreate.
+
+P1 must introduce an identity contract that prevents old and new layer lifetimes from sharing the same effective identity. Acceptable designs include:
+
+```text
+monotonically increasing generation across rebuilds
+```
+
+or preferably an explicit pair such as:
+
+```text
+LayerLifetimeId + PublicationGeneration
+```
+
+A runtime-recreated layer must be distinguishable from every prior lifetime of the same endpoint/level.
+
+### 5.5 Recursive extension dependency
+
+Recursive composition extensions hold relationships to parent ViewState/layer state. If a parent ViewState lifetime is destroyed and recreated, every extension/reference that depends on its old pointer must be rebuilt or rebound before the new layer can submit.
+
+No dangling `SceneViewStateInterface` is permitted.
 
 ---
 
-# 5. P1A — Resource Lifetime & Budget
+# 6. P1A — Resource Lifetime & Budget
 
-## 5.1 P1A-1 — Resource baseline and Dump instrumentation
+P1A is the first implementation block.
+
+## 6.1 P1A-0 — Documentation/evidence closure
+
+Before performance code changes, keep repository evidence internally consistent.
+
+Required state:
+
+```text
+FullFidelity functional gate = COMPLETE / VALIDATED / SEALED
+baseline = 6d514466639858c1fd903d0f9abf96d5aad02077
+Build = PASS
+native lifecycle PIE startup = PASS
+short smoke = PASS
+Dump = PASS
+```
+
+No historical matrix needs to be rerun solely for documentation closure.
+
+## 6.2 P1A-1 — Structured resource baseline and Dump instrumentation
 
 ### Goal
 
-Before changing allocation behavior, establish a measurable baseline from the current renderer.
+Before changing allocation behavior, make the current resource ownership and lifecycle observable.
 
 ### Required diagnostics
 
-`portal.DumpFullFidelityRenderer` or the backend report must expose enough information to answer at least:
+`portal.DumpFullFidelityRenderer` and/or its report must expose at least:
 
 ```text
-RequestedRecursionDepth
+RequestedDepth
 VisibleDepth per endpoint
 SubmittedDepth per endpoint
-Active/Allocated ViewState count
-Allocated portal color-target count
-Allocated depth-target count
-Color-target dimensions
-Depth-target dimensions
-Shared scratch dimensions
-last visible/submitted endpoint mask
+last visible/submitted/published masks
+
+per endpoint / per level:
+  lifetime id
+  publication generation
+  resource state (unallocated/allocated/active/retiring/reclaimable)
+  ViewState allocated yes/no
+  color target allocated yes/no + dimensions + format
+  depth target allocated yes/no + dimensions + format
+  FramesSubmitted
+  last extraction/depth-extraction frame
+  camera-cut count
+  continuous-history frame count
+
+shared scratch:
+  allocated yes/no
+  dimensions
+  format
 ```
 
-Where practical, also report:
+### Logical ownership vs real GPU memory
+
+Dump must separate what it can prove from what it cannot prove.
+
+Portal-owned diagnostics prove:
 
 ```text
-per endpoint / per level allocated state
-per endpoint / per level visible state
-per endpoint / per level FramesSubmitted
-history generation
-camera-cut count
-continuous-history frame count
+which resources this system still owns
+which resources are retiring
+explicit RT dimensions/formats
+theoretical explicit RT bytes
+```
+
+They do **not** alone prove that D3D12/RHI has already returned the same number of bytes to the global GPU-memory budget.
+
+Performance evidence must therefore record separately:
+
+```text
+Portal logical ownership counters
+estimated explicit RT bytes
+observed RHI/GPU memory
+GPU frame time
+peak frame time during depth/capacity transitions
 ```
 
 ### Baseline matrix
 
-Collect baseline data for:
+Use one fixed map, viewport, graphics settings, portal transforms and camera where possible:
 
 ```text
-Depth 1
-Depth 2
-Depth 3
-Depth 4
-Depth 4 → 1
-Depth 1 → 4
+RequestedDepth 1
+RequestedDepth 2
+RequestedDepth 3
+RequestedDepth 4
+4 → 1
+1 → 4
+portal visible
+portal offscreen
+Stop → Restart
 ```
 
-Use the same map, window size, rendering settings and camera position when comparing numbers.
-
-### Acceptance
-
-P1A-1 passes when the report can prove what resources exist without relying on source inspection alone.
-
-No resource-allocation behavior should change in this step unless required solely to expose correct diagnostics.
+P1A-1 must not change production allocation/reclaim semantics except where strictly necessary to report them correctly.
 
 Suggested commit:
 
 ```text
-portal: report full-fidelity recursion resource ownership
+portal: report full-fidelity recursion resource lifetimes
 ```
 
----
+## 6.3 P1A-2 — Explicit lifetime state and identity
 
-## 5.2 P1A-2 — Allocate ViewState on demand
+Before destroying runtime resources, implement/centralize the layer state machine and monotonic lifetime identity described in Section 5.
 
-### Goal
+Required properties:
 
-Stop treating all four recursion levels as active ownership at renderer startup.
-
-### Required behavior
-
-For requested depth `D`, active ViewState ownership should converge to:
-
-```text
-ActiveViewStates = ActiveEndpoints × D
-```
-
-For the normal linked two-endpoint case:
-
-```text
-Depth 1 → 2 ViewStates
-Depth 2 → 4 ViewStates
-Depth 3 → 6 ViewStates
-Depth 4 → 8 ViewStates
-```
-
-### Rules
-
-- Do not change ViewState identity every frame while the level remains active.
-- Stable active levels must retain temporal continuity.
-- Creating a newly required level must initialize it as a clean history generation.
-- Recreated levels must not inherit stale TSR/Lumen state from a prior destroyed lifetime.
-- ViewState allocation must happen before a view or extension references it.
-- No null/dangling `SceneViewStateInterface` may reach the render path.
-
-### Non-goals
-
-Do not change:
-
-```text
-TSR
-Lumen GI
-Lumen reflections
-projection matrix
-portal clip plane
-projective aperture math
-composition shader math
-```
+- stable active level retains its ViewState identity and temporal continuity;
+- runtime-recreated level receives a new lifetime identity;
+- old extraction callbacks cannot publish into the new lifetime;
+- old retirement commands cannot clear a new publication;
+- diagnostics expose `ACTIVE` versus `RETIRING` versus `RECLAIMABLE`.
 
 Suggested commit:
 
 ```text
-portal: allocate full-fidelity recursion view states on demand
+portal: model recursion layer lifetime and retirement state
 ```
 
----
+## 6.4 P1A-3 — Lazy/on-demand ViewState ownership
 
-## 5.3 P1A-3 — Reclaim inactive recursion ViewState and history
+Stop allocating all eight ViewStates at producer startup.
 
-### Goal
-
-When requested recursion depth decreases, higher recursion levels must release temporal renderer state instead of only becoming logically unused.
-
-### Example contract
+Policy:
 
 ```text
-Depth 4
-Blue   L0 L1 L2 L3
-Orange L0 L1 L2 L3
-
-Depth 1
-Blue   L0
-Orange L0
-
-L1/L2/L3 ownership must be destroyed/released.
+RequestedDepth defines the maximum allowed level.
+A permitted level may allocate lazily when it is first needed.
+Short-term invisibility does not force destruction.
+RequestedDepth decrease retires every owned level >= new depth.
 ```
 
-### Required cleanup
-
-For every level that becomes inactive:
+Example after a fully warmed two-endpoint run:
 
 ```text
-detach/revoke publication state
-clear recursive composition references where applicable
-release/destroy ViewState ownership
-reset history metadata
-reset target references associated only with that level
-invalidate stale completed render requests
+RequestedDepth=4 → up to 8 ViewStates may be owned
+RequestedDepth=1 → L1/L2/L3 must retire and be reclaimed
 ```
 
-The exact implementation may differ, but no render-thread or game-thread object may retain a pointer/reference to a released ViewState.
+After re-expansion to depth 4, deep levels allocate again only when needed and start a new lifetime.
 
-### Re-expansion contract
-
-The following sequence is mandatory:
-
-```text
-Depth 4
-→ render stable
-→ Depth 1
-→ deep state reclaimed
-→ render stable
-→ Depth 4
-→ deep state recreated cleanly
-→ render stable
-```
-
-Re-expansion must not produce:
-
-```text
-stale remote image
-one-frame spiral flash
-invalid history reuse
-assert/crash
-render-thread use-after-free
-```
+Do not change TSR, Lumen, projection, clipping, aperture or composition math.
 
 Suggested commit:
 
 ```text
-portal: reclaim inactive full-fidelity recursion histories
+portal: allocate recursion view states within configured capacity
 ```
 
----
+## 6.5 P1A-4 — Queue-safe runtime reclaim
 
-## 5.4 P1A-4 — Shrink portal color-target ownership
+Implement runtime reclaim for levels that exceed the configured capacity budget.
 
-### Goal
+Do not use frequent unconditional `FlushRenderingCommands()` as the normal capacity-change mechanism. `Stop()` may remain a synchronous teardown boundary; normal gameplay capacity changes should retire in queue order and use an appropriate completion/fence strategy.
 
-Fix target arrays that grow to a maximum depth and remain there after depth decreases.
-
-### Required behavior
-
-A portal endpoint should own color targets only for currently required recursion levels, subject to any explicitly documented safety buffer.
-
-Normal target count should converge to:
-
-```text
-ColorTargetsPerEndpoint = RequestedRecursionDepth
-```
-
-When depth decreases:
-
-```text
-Depth 4 → 1
-```
-
-extra targets must be removed/released rather than merely left unused.
-
-### Requirements
-
-- Existing active targets must not be unnecessarily recreated when depth is unchanged.
-- Resolution changes still resize currently active targets correctly.
-- Removed targets must no longer be reachable by portal material publication state.
-- Re-expanding depth must recreate targets correctly.
+Acceptance includes measuring transition hitch/peak frame time so a lower steady-state ownership count is not purchased with an unacceptable game-thread stall.
 
 Suggested commit:
 
 ```text
-portal: shrink inactive recursion color targets
+portal: retire inactive recursion lifetimes without runtime flush stalls
 ```
 
----
+## 6.6 P1A-5 — Color-target capacity shrink
 
-## 5.5 P1A-5 — Depth-target lifetime
+Color-target ownership must obey the configured capacity ceiling without thrashing on visibility.
 
-### Goal
-
-Depth-target ownership must follow active recursion state in the same way as ViewState and color targets.
-
-### Required behavior
-
-For a normal linked pair:
+Required policy:
 
 ```text
-Depth 1 → 2 active depth targets
-Depth 2 → 4 active depth targets
-Depth 3 → 6 active depth targets
-Depth 4 → 8 active depth targets
+RequestedDepth decrease
+→ targets above the new ceiling retire/release
+
+portal briefly offscreen
+→ do not shrink solely because VisibleDepth became 0
+
+P1B per-frame cutoff
+→ do not shrink solely because SubmittedDepth is lower
 ```
 
-If implementation details justify temporary render-thread retirement rather than immediate destruction, diagnostics must distinguish:
+Existing in-budget targets should remain stable when resolution/depth policy has not changed.
 
-```text
-logically inactive
-pending release
-actively owned
-```
-
-### Important limitation
-
-P1 does **not** change the depth-target resolution model. Changing depth target dimensions to TSR primary resolution belongs to P2.
+Re-expansion must recreate missing levels correctly when they become needed.
 
 Suggested commit:
 
 ```text
-portal: reclaim inactive recursion depth targets
+portal: shrink color targets beyond recursion capacity
 ```
 
----
+## 6.7 P1A-6 — Depth-target capacity reclaim
 
-## 5.6 P1A-6 — Shared scratch lifecycle audit
+Depth target allocation remains lazy on submission.
 
-### Goal
-
-Verify that the shared FullFidelity scratch target is genuinely shared and has bounded lifetime.
-
-### Required checks
-
-- only one expected production scratch allocation exists for the producer;
-- viewport-size changes resize rather than leak generations;
-- stop/restart releases and recreates it correctly;
-- FullFidelity renderer shutdown does not leave rooted transient resources behind;
-- no legacy renderer scratch target remains alive through accidental dual-path execution.
-
-This task is primarily an ownership audit. Do not split scratch per recursion level.
-
----
-
-# 6. P1A Gate
-
-P1A is complete only after all resource lifetime work passes the following matrix.
-
-## Build
+Required policy:
 
 ```text
-SlayTheSpireDemoEditor Win64 Development — PASS
+never eagerly allocate unused depth targets
+owned level < RequestedDepth may retain its depth target across short visibility changes
+owned level >= new RequestedDepth must retire/release safely
 ```
 
-## Functional visual matrix
+Diagnostics must distinguish owned, retiring and released depth targets.
+
+P1 does not change depth-target resolution.
+
+Suggested commit:
+
+```text
+portal: reclaim depth targets beyond recursion capacity
+```
+
+## 6.8 P1A-7 — Shared scratch lifecycle audit
+
+Verify:
+
+- one expected producer scratch target;
+- viewport-size changes do not leak old generations;
+- Stop/Restart releases and recreates correctly;
+- no legacy renderer scratch survives through accidental dual-path execution;
+- scratch replacement does not use unnecessary repeated runtime flushes.
+
+Do not split scratch per recursion level.
+
+---
+
+# 7. P1A Gate
+
+P1A closes only after Build, automation and visual validation pass.
+
+## 7.1 Build
+
+```text
+SlayTheSpireDemoEditor Win64 Development = PASS
+```
+
+## 7.2 Lifecycle automation requirements
+
+Add focused automated coverage for at least:
+
+```text
+4 → 1 → 4
+retained L0 lifetime/identity remains stable
+recreated L1-L3 receive new lifetime identities
+old extraction callback cannot publish after lifetime retirement
+old retirement command cannot clear a newly published lifetime
+depth reduction while endpoint is offscreen still reclaims levels above the configured ceiling
+short offscreen transition does not cause allocation churn within the unchanged capacity budget
+P1B-style lower SubmittedDepth does not imply immediate resource destruction
+Stop → Restart leaves no old resource ownership/publication alive
+```
+
+Automation should prove deterministic ownership/lifetime facts. It does not replace visual PIE validation.
+
+## 7.3 PIE visual matrix
 
 ```text
 single visible portal                         PASS
 dual visible portals                         PASS
-RecursionDepth = 1                           PASS
-RecursionDepth = 2                           PASS
-RecursionDepth = 3                           PASS
-RecursionDepth = 4                           PASS
-Depth 4 → 1                                  PASS
-Depth 1 → 4                                  PASS
+RequestedDepth = 1                           PASS
+RequestedDepth = 2                           PASS
+RequestedDepth = 3                           PASS
+RequestedDepth = 4                           PASS
+4 → 1                                        PASS
+1 → 4                                        PASS
 oblique/grazing view                         PASS
-fast look-away / look-back                   PASS
+fast visible → offscreen → visible           PASS
 no stale frame                               PASS
-no unexpected recursion spiral flash         PASS
+no unexpected spiral flash                   PASS
 no renderer crash/assert                     PASS
 ```
 
-## Ownership invariants
+The accepted offscreen retirement regression must remain PASS.
 
-For two active endpoints:
+## 7.4 Ownership/capacity invariants
 
-```text
-Depth 1 → expected active deep-resource levels = 2
-Depth 2 → expected active deep-resource levels = 4
-Depth 3 → expected active deep-resource levels = 6
-Depth 4 → expected active deep-resource levels = 8
-```
-
-After:
+Required:
 
 ```text
-4 → 1
+SubmittedDepth <= VisibleDepth <= RequestedDepth <= MaxRecursionDepth
+AllocatedDepth <= RequestedDepth
 ```
 
-Dump must prove that inactive L1-L3 ownership has been reclaimed.
+After a fully warmed `RequestedDepth=4` scene, `4 → 1` must eventually prove that L1-L3 ownership is no longer active/retained after queue-safe retirement completes.
 
-After:
+After `1 → 4`, recreated deep levels must have new lifetime identities and clean temporal histories.
 
-```text
-1 → 4
-```
+## 7.5 Performance-transition invariant
 
-Dump must prove that L1-L3 were recreated as a new clean lifetime.
-
-## Regression rule
-
-If reclaiming resources causes temporal instability, do **not** hide the issue with arbitrary delays or permanent retention. Identify which reference or history dependency actually requires lifetime extension and document it explicitly.
+Record transition peak frame time. Do not accept a design that obtains lower steady-state ownership by introducing a large avoidable `FlushRenderingCommands()` hitch during normal gameplay configuration changes.
 
 ---
 
-# 7. P1B — Recursion Screen-Coverage Cutoff
+# 8. P1B — Recursion Screen-Coverage Cutoff
 
-P1B begins only after P1A Gate passes.
+P1B begins only after P1A passes.
 
-## 7.1 Goal
+## 8.1 Goal
 
-Avoid submitting expensive full scene views for recursion levels whose projected portal area is too small to provide meaningful visual value.
+Reduce expensive deep recursive scene submissions when the next nested portal contributes very little projected area.
 
-This reduces GPU scene-render count. It is not primarily a persistent-VRAM optimization.
+P1B is a **submission/workload policy**, not a persistent-resource reclaim policy.
 
-## 7.2 Requested depth vs effective depth
-
-Keep two separate concepts:
+### Mandatory decoupling
 
 ```text
-RequestedRecursionDepth
-Effective/VisibleRecursionDepth
+P1B lowers SubmittedDepth.
+P1B does not automatically lower AllocatedDepth.
 ```
 
-Example:
+This prevents allocation/release oscillation as the camera moves around the threshold.
+
+## 8.2 L0 policy
+
+L0 is never removed by the P1B screen-coverage threshold when the endpoint itself is valid and visible.
+
+Coverage cutoff applies only to:
 
 ```text
-RequestedRecursionDepth = 4
-portal projection becomes tiny after L1
-EffectiveRecursionDepth = 2
+L1 and deeper recursion
 ```
 
-Do not silently rewrite the configured requested depth.
+This keeps the primary portal presentation FullFidelity and limits P1B to nested recursion reduction.
 
-## 7.3 Coverage metric
+## 8.3 Coverage coordinate space
 
-Use the existing projected portal bounds generated by the accepted portal geometry pipeline where possible.
+The accepted recursion builder constructs each deeper request from the previous `ParentView` / virtual view.
 
-A suitable metric is normalized conservative projected area:
+Therefore the simple P1 metric is explicitly:
 
 ```text
-Coverage = ProjectedPortalPixelArea / MainViewPixelArea
+RecursiveParentViewCoverage
+= conservative projected portal area
+  / current parent virtual-view area
 ```
 
-Provide a tunable threshold, for example:
+This is **not** claimed to equal the nested portal's final main-screen contribution.
+
+P1 intentionally accepts this conservative, local metric rather than introducing a new cross-recursion projection algorithm.
+
+## 8.4 Threshold
+
+Expose a tunable control such as:
 
 ```text
 portal.MinRecursionScreenCoverage
 ```
 
-Initial validation values may include:
+Candidate validation values:
 
 ```text
 0      = disabled
@@ -585,147 +651,113 @@ Initial validation values may include:
 0.005  = 0.50%
 ```
 
-The final production value must be selected by measurement and visual validation, not assumed from the initial suggestion.
+No production default is selected without measurement and visual acceptance.
 
-## 7.4 Stop rule
+## 8.5 Stop rule
 
-Before constructing/submitting the next deeper request:
+For L1+ only:
 
 ```text
-if next portal projection is invalid
-    stop recursion
+if next request is invalid
+    stop deeper recursion
 
-if projected coverage < threshold
-    stop recursion
+if RecursiveParentViewCoverage < threshold
+    stop deeper recursion
 ```
 
-The deepest actually submitted level must still terminate recursion visually according to the accepted recursion-limit behavior.
+The deepest actually submitted layer must preserve the accepted recursion terminator behavior.
 
-## 7.5 Temporal stability
+## 8.6 Stability
 
-Coverage cutoff must not chatter frame-to-frame around the threshold.
+Coverage decisions must not create visible threshold flicker. If necessary, use small enter/exit hysteresis. Do not use a broad time cooldown and do not trigger immediate resource destruction from threshold crossings.
 
-If necessary, add a small hysteresis rule such as separate enter/exit thresholds. Do not add a large arbitrary time cooldown.
+## 8.7 Diagnostics
 
-## 7.6 Diagnostics
-
-Dump/report should include:
+Report:
 
 ```text
 RequestedDepth
-EffectiveDepth per endpoint
+VisibleDepth
+SubmittedDepth
 cutoff reason
-last projected coverage per level
-number of scene submissions
+parent-view coverage per tested level
+scene submissions/frame
 ```
 
-Suggested commit:
-
-```text
-portal: bound recursion by projected screen coverage
-```
-
----
-
-# 8. P1B Gate
+## 8.8 P1B Gate
 
 Validate:
 
 ```text
-threshold disabled reproduces P1A behavior
-large portal still reaches requested depth
-distant/tiny portal stops earlier
+threshold=0 reproduces P1A submission behavior
+L0 always survives coverage cutoff
+large nested portal reaches requested depth
+tiny/distant nested portal stops earlier
+bright/high-contrast small nested portal is visually checked, not assumed negligible
 oblique portal remains stable
-camera movement across threshold does not flicker
+threshold crossing does not flicker
 look-away/look-back remains stable
-recursion terminator remains correct
-no stale child publication survives a cutoff
+no stale child publication survives cutoff
+AllocatedDepth does not churn merely because SubmittedDepth changes
 ```
 
-Record scene submissions per frame for representative cases.
+Record scene submissions and GPU time for fixed-camera scenarios.
 
-Expected direction:
+Suggested commit:
 
 ```text
-small portal
-→ fewer recursive scene submissions
-→ lower GPU cost
+portal: bound deep recursion by parent-view screen coverage
 ```
-
-Do not claim a specific percentage reduction until measured.
 
 ---
 
-# 9. P1C — Bounded Main-Pass Validation
+# 9. P1C — Bounded Main-Pass Production Evidence
 
-P1C begins only after P1B Gate passes.
+P1C is not a from-zero correctness implementation.
 
-## 9.1 Goal
-
-Validate the already implemented:
+Existing accepted evidence:
 
 ```text
-portal.BoundedMainPassScissor
+docs/InteriorPortalExperiment/InteriorPortalBoundedMainPassValidation.md
 ```
 
-as a production-safe way to reduce raster work outside the conservative projected portal rectangle.
+already records user-confirmed PIE A/B correctness for `portal.BoundedMainPassScissor`.
 
-## 9.2 Test modes
+P1C only fills the remaining production evidence gaps after P1A/P1B.
 
-Compare:
+## 9.1 Required additional evidence
+
+Validate at least:
 
 ```text
-portal.BoundedMainPassScissor=0
-portal.BoundedMainPassScissor=1
+dual visible portal scenario
+recursion >= 2
+P1A/P1B regression interaction
+fixed-camera GPU timing: scissor 0 vs 1
+near-screen-edge / partial offscreen portal
+oblique/grazing portal
+rapid camera motion / TSR jitter
 ```
 
-Use identical camera positions and recursion settings.
+## 9.2 Accepted implementation contracts that must remain
 
-## 9.3 Visual requirements
-
-With bounded pass enabled there must be no:
+Do not shrink these merely to increase scissor savings:
 
 ```text
-edge clipping
-missing portal pixels
-portal border holes
-depth mismatch at aperture boundary
-grazing-angle truncation
-camera-jitter leakage
-one-pixel temporal seams
+full-view stencil-bit clear
+SceneColor prefill required for sparse bounded output
+existing proof/debug full-view behavior documented by the validation record
 ```
 
-Validate with the existing padding setting and specifically test:
+P1C primarily targets pixel/raster work, shader invocations and bandwidth. It is not counted as a major persistent-VRAM optimization unless actual measurement proves otherwise.
 
-```text
-front-on portal
-oblique portal
-near screen edge
-partially off-screen portal
-rapid camera motion
-TSR jitter
-```
+## 9.3 Production-default decision
 
-## 9.4 Performance interpretation
+The default may be changed only if the expanded production matrix and timing evidence justify it.
 
-Bounded scissor primarily targets:
+Keeping the default disabled remains valid if correctness or performance evidence is incomplete.
 
-```text
-pixel/raster work
-shader invocations
-bandwidth
-main composition GPU time
-```
-
-Do not count it as a major persistent-VRAM reduction unless measurement demonstrates one.
-
-## 9.5 Production-default decision
-
-Only after the full visual matrix passes may P1 change the production default to bounded scissor enabled.
-
-If any correctness issue remains, keep the default disabled and record the blocker rather than forcing the optimization.
-
-Suggested commit if validated:
+Suggested commit if enabled:
 
 ```text
 portal: enable bounded full-fidelity main composition
@@ -733,281 +765,122 @@ portal: enable bounded full-fidelity main composition
 
 ---
 
-# 10. Performance measurement protocol
+# 10. Measurement protocol
 
-Optimization claims must use repeatable measurements.
-
-## 10.1 Fixed conditions
-
-Keep constant where possible:
+Use repeatable conditions:
 
 ```text
 same map
-same viewport resolution
+same viewport/window resolution
 same graphics settings
 same renderer backend
 same portal transforms
 same camera transforms
-same RecursionDepth
+same RequestedDepth
 same PrimaryResolutionFraction
 ```
 
-## 10.2 Required scenarios
-
-At minimum measure:
+Minimum scenarios:
 
 ```text
-A. no portal visible
-B. one portal visible, Depth 1
-C. two portals visible, Depth 1
-D. two portals visible, Depth 2
-E. two portals visible, Depth 4
-F. Depth 4 → 1 after deep histories have been exercised
-G. small/distant recursive portal with P1B cutoff
+A. portal not visible
+B. one endpoint visible, shallow recursion
+C. both endpoints visible
+D. recursion depth 2
+E. recursion depth 4 / fully warmed
+F. 4 → 1 capacity transition
+G. 1 → 4 re-expansion
+H. small nested portal with P1B cutoff on/off
+I. bounded-main-pass scissor 0/1 at fixed camera
 ```
 
-## 10.3 Record
-
-Record, where available:
+Record separately:
 
 ```text
+Portal logical ownership
+retiring/reclaimable counts
+explicit RT estimated bytes
+observed GPU/RHI memory
 GPU frame time
-portal-related GPU timing
-scene-view submissions per frame
-active ViewState count
-color-target count and dimensions
-depth-target count and dimensions
-scratch dimensions
-reported VRAM / render-target memory
+scene submissions/frame
+capacity-transition peak frame time
 ```
 
-Use Unreal Insights / GPU Visualizer / RHI memory diagnostics as appropriate, but keep the resource Dump as the authoritative ownership-level report for resources directly controlled by the Portal system.
+Do not claim a percentage improvement without measured data.
 
 ---
 
 # 11. Explicit P1 non-goals
 
-The following are intentionally deferred.
-
-## 11.1 Portal-sized render targets
-
-Do not crop the FullFidelity output RT to the portal projected rectangle in P1.
-
-That work affects:
+The following remain out of P1:
 
 ```text
-projection
-view rect
-screen-to-target mapping
-extraction
-projective composition UVs
-depth reconstruction
-recursive publication
-TSR history dimensions
+portal-projected/cropped color RT allocation
+TSR-primary-resolution depth-target redesign
+Lumen GI quality reduction
+Lumen reflection quality reduction
+shadow quality reduction
+post-process quality reduction
+TSR replacement
+projection-matrix redesign
+portal-specific frustum/PVS/room visibility
+stencil architecture redesign
+physics traversal changes
+partial-body physics/contact bridging
 ```
 
-It belongs to Performance P2.
-
-## 11.2 TSR-primary-resolution depth targets
-
-Do not independently shrink the depth target to primary resolution in P1.
-
-Color/depth coordinate-space assumptions must be redesigned and validated together.
-
-## 11.3 Reduced FullFidelity quality tiers
-
-Do not disable or lower:
-
-```text
-Lumen GI
-Lumen reflections
-TSR
-shadow quality
-post-process fidelity
-```
-
-inside deeper recursion as part of P1.
-
-A future performance tier may intentionally trade quality for cost, but it requires its own visual contract.
-
-## 11.4 Portal-specific frustum/PVS architecture
-
-Do not introduce in P1:
-
-```text
-portal-edge frustum replacement
-room/sector visibility graph
-PVS/areaportal-style scene partitioning
-custom primitive render lists
-renderer-level stencil recursion architecture
-```
-
-These are renderer-architecture projects, not cleanup tasks.
-
-## 11.5 Physics/traversal expansion
-
-P1 must not expand into new Portal gameplay physics.
-
-Portal Physics P1 starts only after this performance phase is sealed.
+These may be considered in Performance P2 or later work after P1 is sealed.
 
 ---
 
-# 12. Risk register
+# 12. Commit and regression policy
 
-## Risk A — ViewState release invalidates render-thread references
-
-Mitigation:
+Prefer narrow commits aligned with one contract at a time. Suggested sequence:
 
 ```text
-revoke publication first
-remove extensions/references
-wait for normal engine ownership boundary where required
-then destroy state
+docs(portal): align full-fidelity and VRAM P1 evidence
+portal: report full-fidelity recursion resource lifetimes
+portal: model recursion layer lifetime and retirement state
+portal: allocate recursion view states within configured capacity
+portal: retire inactive recursion lifetimes without runtime flush stalls
+portal: shrink color targets beyond recursion capacity
+portal: reclaim depth targets beyond recursion capacity
+portal: add recursion lifetime automation coverage
+portal: bound deep recursion by parent-view screen coverage
+portal: record bounded main-pass production evidence
 ```
 
-Do not perform unsafe raw destruction merely to make a counter decrease.
-
-## Risk B — Re-expansion produces stale history
-
-Mitigation:
-
-```text
-new lifetime → new history generation
-camera cut / history invalidation as required
-clear completed requests
-```
-
-## Risk C — Target shrink leaves portal materials referencing removed textures
-
-Mitigation:
-
-Ensure publication is switched to a valid active level or unlinked state before target destruction.
-
-## Risk D — Coverage cutoff causes recursion popping
-
-Mitigation:
-
-Use conservative projected bounds and, if measurement proves necessary, small hysteresis around the cutoff.
-
-## Risk E — Bounded scissor clips jittered edges
-
-Mitigation:
-
-Use conservative bounds plus validated padding. Keep the optimization disabled by default if correctness cannot be proven.
+If a step breaks accepted FullFidelity correctness, revert/reopen only that step. Do not mask a lifetime bug with arbitrary delays, permanent maximum retention or unconditional runtime flushes.
 
 ---
 
-# 13. Rollback policy
+# 13. Final P1 Gate
 
-Every logical optimization should be committed independently.
-
-Preferred sequence:
+Portal Performance / VRAM P1 is sealed only when:
 
 ```text
-1. diagnostics/baseline
-2. ViewState on-demand allocation
-3. inactive ViewState/history reclaim
-4. color-target shrink
-5. depth-target reclaim
-6. scratch ownership cleanup if needed
-7. screen-coverage cutoff
-8. bounded-main-pass production decision
-9. final validation record
+[ ] P1A-0 documentation evidence aligned
+[ ] P1A-1 structured resource baseline captured
+[ ] lifetime/publication identity is explicit and monotonic across runtime rebuilds
+[ ] ViewState ownership is lazy and bounded by RequestedDepth
+[ ] resources above a reduced RequestedDepth retire safely
+[ ] color targets above capacity are reclaimed
+[ ] depth targets above capacity are reclaimed
+[ ] shared scratch lifecycle audited
+[ ] lifecycle-focused Automation PASS
+[ ] FullFidelity visual PIE regression PASS
+[ ] no fast offscreen/return spiral regression
+[ ] P1B L1+ cutoff validated without resource thrash
+[ ] P1C bounded-main-pass production evidence recorded
+[ ] logical ownership and real GPU/RHI measurements are reported separately
+[ ] no unacceptable capacity-transition hitch introduced
+[ ] no FullFidelity quality reduction was used to manufacture the result
 ```
 
-If a step causes a regression:
-
-```text
-revert only that optimization
-preserve earlier validated steps
-record the failed assumption
-```
-
-Do not bundle unrelated renderer changes into one commit.
-
----
-
-# 14. Completion criteria for Portal Performance / VRAM P1
-
-P1 can be marked:
-
-```text
-COMPLETE / VALIDATED / SEALED
-```
-
-only when all of the following are true:
-
-```text
-[ ] P1A-1 resource baseline/report complete
-[ ] P1A-2 ViewState allocation follows required depth
-[ ] P1A-3 inactive ViewState/history is reclaimed safely
-[ ] P1A-4 inactive color RTs are reclaimed
-[ ] P1A-5 inactive depth RTs are reclaimed
-[ ] P1A-6 shared scratch lifetime is verified
-[ ] Depth 4 → 1 → 4 passes without stale history or flash
-[ ] P1A full visual regression matrix passes
-[ ] P1B projected-coverage cutoff implemented and stable
-[ ] P1B reports effective recursion depth/submissions
-[ ] P1B visual regression matrix passes
-[ ] P1C bounded scissor has been measured and visually validated
-[ ] final Build PASS
-[ ] final PIE smoke PASS
-[ ] final resource Dump captured
-[ ] before/after performance measurements recorded
-[ ] no FullFidelity functional regression
-```
-
-No percentage VRAM or GPU target is declared up front. The first objective is eliminating objectively unnecessary ownership. Performance targets may be set only after the P1A-1 baseline exists.
-
----
-
-# 15. Phase handoff after P1
-
-After Performance / VRAM P1 is sealed, development proceeds to:
+After this gate closes, proceed to:
 
 ```text
 Portal Physics P1
 ```
 
-Planned physics order:
-
-```text
-Physics P1A — rigid-body traversal primitive
-Physics P1B — player/character traversal hardening
-Physics P1C — partial crossing / visual proxy / clipping
-Physics P1D — complex contact, held objects and edge cases
-```
-
-Deeper renderer optimization remains a separate later phase:
-
-```text
-Portal Performance P2
-```
-
-Potential P2 subjects:
-
-```text
-portal-projected render-target sizing
-TSR-primary depth storage strategy
-recursion quality tiers
-Lumen/reflection/shadow policy per recursion level
-portal-clipped frustum
-room/sector visibility
-renderer-integrated portal visibility architecture
-```
-
----
-
-# 16. Immediate next authorized task
-
-The next implementation task is strictly:
-
-```text
-P1A-1 — FullFidelity resource baseline + Dump instrumentation
-```
-
-Implementation should begin by measuring the current state, not by changing resource allocation.
-
-The first code change must make resource ownership observable enough that later P1 optimizations can be proven quantitatively.
-
-Until P1A-1 baseline data exists, do not claim that any specific optimization reduces VRAM by a particular amount.
+More invasive render-target cropping, quality-tiering, portal-specific frustum and room/PVS work belong to later performance phases.
