@@ -77,12 +77,16 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			FRenderTarget* InExtractionTarget,
 			FRenderTarget* InDepthExtractionTarget,
 			const FIntPoint& InExpectedDepthSourceSize,
-			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample)
+			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample,
+			TSharedRef<FInteriorPortalViewExtension, ESPMode::ThreadSafe> InCompositionExtension,
+			const FInteriorPortalRenderRequest& InCompletedRequest)
 			: FWorldSceneViewExtension(AutoRegister, InWorld)
 			, ExtractionTarget(InExtractionTarget)
 			, DepthExtractionTarget(InDepthExtractionTarget)
 			, ExpectedDepthSourceSize(InExpectedDepthSourceSize)
 			, ColorSample(InColorSample)
+			, CompositionExtension(InCompositionExtension)
+			, CompletedRequest(InCompletedRequest)
 		{
 		}
 
@@ -175,8 +179,6 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 						ExtractionTexture->Desc.Extent,
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
-					ColorSample->PreExposure = MeasuredPreExposure;
-					GLastExtractionFrame.Store(GFrameCounter);
 
 					// STEP 1B.12B: transport the same secondary view's current SceneDepth
 					// alongside its post-TSR color. SceneDepth is not itself TSR-reconstructed;
@@ -225,6 +227,15 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 						}
 					}
 
+					// Do not expose an in-flight request to the main BeforeDOF compositor.
+					// The request becomes visible only after this secondary Tonemap callback
+					// has measured the exact exposure domain and queued the matching color/depth
+					// extraction work into this RDG graph. Render-command ordering then keeps
+					// the external targets and their FColorSample metadata coherent.
+					ColorSample->PreExposure = MeasuredPreExposure;
+					GLastExtractionFrame.Store(GFrameCounter);
+					CompositionExtension->PublishRequest(CompletedRequest);
+
 					return SceneColor;
 				}));
 		}
@@ -242,6 +253,8 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 		FRenderTarget* DepthExtractionTarget = nullptr;
 		FIntPoint ExpectedDepthSourceSize = FIntPoint::ZeroValue;
 		TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
+		TSharedRef<FInteriorPortalViewExtension, ESPMode::ThreadSafe> CompositionExtension;
+		FInteriorPortalRenderRequest CompletedRequest;
 	};
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -732,18 +745,21 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			FRenderTarget* FinalScratchResource = FinalScratch->GameThread_GetRenderTargetResource();
 			FRenderTarget* SecondaryDepthTargetResource =
 				SecondaryDepthTarget->GameThread_GetRenderTargetResource();
-			if (!FinalScratchResource || !SecondaryDepthTargetResource || !World->Scene)
+			if (!FinalScratchResource || !SecondaryDepthTargetResource || !World->Scene
+				|| !CompositionExtension)
 			{
-				SkipFrame(TEXT("SCENE_OR_SCRATCH_UNAVAILABLE"), TEXT("scene/color/depth scratch resource unavailable"));
+				SkipFrame(TEXT("SCENE_OR_SCRATCH_UNAVAILABLE"), TEXT("scene/color/depth/composition resource unavailable"));
 				return;
 			}
 
+			Request.PortalRenderTarget = PortalTargetResource;
+			Request.PortalDepthRenderTarget = SecondaryDepthTargetResource;
 			Request.ColorSample = MakeShared<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe>(
 				FramesSubmitted + 1);
 			TSharedRef<FPortalTSRExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
 				FSceneViewExtensions::NewExtension<FPortalTSRExtractionExtension>(
 					World, PortalTargetResource, SecondaryDepthTargetResource, ExpectedPrimarySize,
-					Request.ColorSample.ToSharedRef());
+					Request.ColorSample.ToSharedRef(), CompositionExtension.ToSharedRef(), Request);
 
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
@@ -820,10 +836,6 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			IRendererModule& RendererModule =
 				FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
-
-			Request.PortalRenderTarget = PortalTargetResource;
-			Request.PortalDepthRenderTarget = SecondaryDepthTargetResource;
-			CompositionExtension->PublishRequest(Request);
 
 			++FramesSubmitted;
 			Status = TEXT("RUNNING_TSR");
