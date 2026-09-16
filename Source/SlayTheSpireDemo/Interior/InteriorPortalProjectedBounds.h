@@ -28,6 +28,30 @@ namespace InteriorPortalProjectedBounds
 		return OutRect.Width() > 0 && OutRect.Height() > 0;
 	}
 
+	inline bool PixelRectToNormalizedBounds(
+		const FIntRect& CropRect,
+		const FIntRect& ParentViewRect,
+		FVector4f& OutBounds)
+	{
+		OutBounds = FVector4f(0, 0, 1, 1);
+		if (ParentViewRect.Width() <= 0 || ParentViewRect.Height() <= 0
+			|| CropRect.Width() <= 0 || CropRect.Height() <= 0
+			|| CropRect.Min.X < ParentViewRect.Min.X || CropRect.Min.Y < ParentViewRect.Min.Y
+			|| CropRect.Max.X > ParentViewRect.Max.X || CropRect.Max.Y > ParentViewRect.Max.Y)
+		{
+			return false;
+		}
+
+		const float InvWidth = 1.0f / float(ParentViewRect.Width());
+		const float InvHeight = 1.0f / float(ParentViewRect.Height());
+		OutBounds = FVector4f(
+			float(CropRect.Min.X - ParentViewRect.Min.X) * InvWidth,
+			float(CropRect.Min.Y - ParentViewRect.Min.Y) * InvHeight,
+			float(CropRect.Max.X - ParentViewRect.Min.X) * InvWidth,
+			float(CropRect.Max.Y - ParentViewRect.Min.Y) * InvHeight);
+		return OutBounds.Z > OutBounds.X && OutBounds.W > OutBounds.Y;
+	}
+
 	/**
 	 * Build a projection whose full NDC [-1,+1] viewport represents CropRect
 	 * inside ParentViewRect. UE matrices transform row vectors, so the clip-space
