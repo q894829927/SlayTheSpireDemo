@@ -108,6 +108,22 @@ namespace InteriorPortalRecursionLifetime
 			return true;
 		}
 
+		// Visibility/publication retirement is deliberately separate from persistent
+		// resource retirement. A layer may leave the visible recursion set, advance
+		// its publication generation and retire the old publication while keeping the
+		// same reusable lifetime and ViewState/RT ownership.
+		bool AdvancePublicationGeneration(FPublicationToken& OutSupersededPublication)
+		{
+			if (!IsReusable())
+			{
+				return false;
+			}
+
+			OutSupersededPublication = CapturePublicationToken();
+			IncrementPublicationGeneration();
+			return true;
+		}
+
 		bool BeginRetirement(FPublicationToken& OutRetiredPublication)
 		{
 			if (!IsReusable())
@@ -116,7 +132,7 @@ namespace InteriorPortalRecursionLifetime
 			}
 
 			OutRetiredPublication = CapturePublicationToken();
-			AdvancePublicationGeneration();
+			IncrementPublicationGeneration();
 			State = EResourceState::Retiring;
 			return true;
 		}
@@ -170,17 +186,25 @@ namespace InteriorPortalRecursionLifetime
 				&& Token.PublicationGeneration == PublicationGeneration;
 		}
 
-		bool ShouldRetirePublication(const FPublicationToken& PublishedToken) const
+		// Used by queue-ordered publication retirement for both short visibility
+		// changes and persistent resource retirement. The lifetime identity must
+		// match, and only an older generation is eligible for clearing.
+		bool IsSupersededPublication(const FPublicationToken& PublishedToken) const
 		{
-			return (State == EResourceState::Retiring
-					|| State == EResourceState::Reclaimable)
-				&& PublishedToken.IsValid()
+			return PublishedToken.IsValid()
 				&& PublishedToken.LifetimeId == LifetimeId
 				&& PublishedToken.PublicationGeneration < PublicationGeneration;
 		}
 
+		bool ShouldRetirePublication(const FPublicationToken& PublishedToken) const
+		{
+			return (State == EResourceState::Retiring
+					|| State == EResourceState::Reclaimable)
+				&& IsSupersededPublication(PublishedToken);
+		}
+
 	private:
-		void AdvancePublicationGeneration()
+		void IncrementPublicationGeneration()
 		{
 			++PublicationGeneration;
 			if (PublicationGeneration == 0)
