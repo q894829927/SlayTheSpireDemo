@@ -715,23 +715,67 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		void HideLayer(FEndpointState& Endpoint, const int32 Level, const TCHAR* Reason)
 		{
 			FLayerState& Layer = *Endpoint.Layers[Level];
-			if (Layer.bVisibleLastTick)
+			if (!Layer.bVisibleLastTick)
 			{
-				Layer.bVisibleLastTick = false;
-				Layer.bHistoryValid = false;
-				Layer.LastCameraCutReason = Reason;
-				AdvancePublicationGeneration(Layer);
+				return;
 			}
+
+			Layer.bVisibleLastTick = false;
+			Layer.bHistoryValid = false;
+			Layer.LastCameraCutReason = Reason;
+			AdvancePublicationGeneration(Layer);
+			const uint64 ActiveGeneration = Layer.ActivePublicationGeneration.Load();
+
+			// Visibility is decided on the game thread, while an older player/parent
+			// view family may already be queued on the render thread. Clearing the
+			// publication synchronously here creates a one-frame ownership hole: that
+			// already-queued view still rasterizes the portal surface but no longer has
+			// a BeforeDOF portal request, exposing the spiral fallback. Retire the old
+			// generation in render-queue order instead. A newly visible generation is
+			// never cleared because its request generation is >= ActiveGeneration.
 			if (Level == 0)
 			{
-				if (Endpoint.MainCompositionExtension)
+				const TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> Publisher =
+					Endpoint.MainCompositionExtension;
+				if (Publisher)
 				{
-					Endpoint.MainCompositionExtension->ClearRequest();
+					ENQUEUE_RENDER_COMMAND(RetirePortalMainPublication)(
+						[Publisher, ActiveGeneration](FRHICommandListImmediate& RHICmdList)
+						{
+							(void)RHICmdList;
+							if (!Publisher->HasPublishedRequest())
+							{
+								return;
+							}
+							const FInteriorPortalRenderRequest Published = Publisher->GetPublishedRequest();
+							if (Published.RendererHistoryGeneration < ActiveGeneration)
+							{
+								Publisher->ClearRequest();
+							}
+						});
 				}
 			}
-			else if (Endpoint.RecursiveCompositionExtensions[Level])
+			else
 			{
-				Endpoint.RecursiveCompositionExtensions[Level]->ClearRequest();
+				const TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> Publisher =
+					Endpoint.RecursiveCompositionExtensions[Level];
+				if (Publisher)
+				{
+					ENQUEUE_RENDER_COMMAND(RetirePortalRecursivePublication)(
+						[Publisher, ActiveGeneration](FRHICommandListImmediate& RHICmdList)
+						{
+							(void)RHICmdList;
+							if (!Publisher->HasPublishedRequest())
+							{
+								return;
+							}
+							const FInteriorPortalRenderRequest Published = Publisher->GetPublishedRequest();
+							if (Published.RendererHistoryGeneration < ActiveGeneration)
+							{
+								Publisher->ClearRequest();
+							}
+						});
+				}
 			}
 		}
 
@@ -967,16 +1011,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 
-					// Update only the cosmetic-surface signed bias. The analytic logical
-					// plane/basis created by Build() remains untouched.
-					FTransform ForegroundDepthFrame = Entry->GetLogicalFrame();
-					ForegroundDepthFrame.AddToTranslation(
-						Entry->GetLogicalFrame().GetUnitAxis(EAxis::X) * Entry->SurfaceVisualBias);
-					InteriorPortalProjectiveAperture::BuildScreenToPortalMapping(
-						ForegroundDepthFrame,
-						Entry->HalfWidth, Entry->HalfHeight,
-						ParentViewProjection,
-						Request.ForegroundDepthReference);
+					// Build() owns the analytic logical-plane geometry. Only the signed
+					// cosmetic presentation bias is mutable here; rebuilding this field as
+					// a screen homography would silently reintroduce the grazing singularity.
+					if (Request.ForegroundDepthReference.bValid)
+					{
+						Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
+					}
 
 					Requests.Add(Request);
 					ParentView = Request.VirtualView;
