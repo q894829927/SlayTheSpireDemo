@@ -600,6 +600,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Layer.ViewState.Destroy();
 					ReleaseDepthTarget(Layer);
 				}
+				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
 				Endpoint.LastAttemptedLayerMask = 0;
 				Endpoint.LastSubmittedLayerMask = 0;
@@ -651,18 +652,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						? TEXT("ACTIVE_INFERRED")
 						: (bOwned ? TEXT("ALLOCATED_INFERRED") : TEXT("UNALLOCATED_INFERRED"));
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible P1A1 E%dL%d State=%s Lifetime=NOT_IMPLEMENTED HistoryGen=%llu ActivePubGen=%llu ViewState=%d Color=%d[%dx%d PF=%d] Depth=%d[%dx%d PF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
+						TEXT("PortalMultiVisible P1A1 E%dL%d State=%s Lifetime=NOT_IMPLEMENTED HistoryGen=%llu ActivePubGen=%llu ViewState=%d Color=%d[%dx%d RTF=%d] Depth=%d[%dx%d RTF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
 						EndpointIndex, Level, ResourceState,
 						Layer.HistoryGeneration, Layer.ActivePublicationGeneration.Load(),
 						bViewStateAllocated ? 1 : 0,
 						bColorAllocated ? 1 : 0,
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
-						bColorAllocated ? static_cast<int32>(ColorTarget->GetFormat()) : -1,
+						bColorAllocated ? static_cast<int32>(ColorTarget->RenderTargetFormat.GetValue()) : -1,
 						bDepthAllocated ? 1 : 0,
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
-						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->GetFormat()) : -1,
+						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
 						Layer.FramesSubmitted, Layer.FramesSkipped,
 						*Layer.LastSubmissionFailureReason);
 				}
@@ -694,13 +695,28 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 
 			uint64 BytesPerPixel = 0;
-			switch (Target->GetFormat())
+			switch (Target->RenderTargetFormat)
 			{
-			case PF_FloatRGBA:
+			case RTF_R8:
+				BytesPerPixel = 1;
+				break;
+			case RTF_RG8:
+			case RTF_R16f:
+				BytesPerPixel = 2;
+				break;
+			case RTF_RGBA8:
+			case RTF_RGBA8_SRGB:
+			case RTF_RG16f:
+			case RTF_R32f:
+			case RTF_RGB10A2:
+				BytesPerPixel = 4;
+				break;
+			case RTF_RGBA16f:
+			case RTF_RG32f:
 				BytesPerPixel = 8;
 				break;
-			case PF_R32_FLOAT:
-				BytesPerPixel = 4;
+			case RTF_RGBA32f:
+				BytesPerPixel = 16;
 				break;
 			default:
 				break;
@@ -1432,7 +1448,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\"resourceState\":\"%s\",\"resourceStateAuthority\":\"INFERRED_P1A1\",\"retirementStateStatus\":\"NOT_IMPLEMENTED\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGeneration\":%llu,\"activePublicationGeneration\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeIdStatus\":\"NOT_IMPLEMENTED\",\"resourceState\":\"%s\",\"resourceStateAuthority\":\"INFERRED_P1A1\",\"retirementStateStatus\":\"NOT_IMPLEMENTED\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGeneration\":%llu,\"activePublicationGeneration\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
 						Level,
 						ResourceState,
 						bAttempted ? TEXT("true") : TEXT("false"),
@@ -1454,12 +1470,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						bColorAllocated ? TEXT("true") : TEXT("false"),
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
-						bColorAllocated ? static_cast<int32>(ColorTarget->GetFormat()) : -1,
+						bColorAllocated ? static_cast<int32>(ColorTarget->RenderTargetFormat.GetValue()) : -1,
 						ColorBytes,
 						bDepthAllocated ? TEXT("true") : TEXT("false"),
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
-						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->GetFormat()) : -1,
+						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
 						DepthBytes,
 						Layer.DepthSourceWidth.Load(), Layer.DepthSourceHeight.Load(),
 						Level + 1 < MaxRecursionDepth ? TEXT(",") : TEXT(""));
@@ -1497,7 +1513,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"submittedEndpointMask\":%d,\n")
 				TEXT("  \"publishedEndpointMask\":%d,\n")
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
-				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"pixelFormat\":%d,\"estimatedBytes\":%llu},\n")
+				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
 				TEXT("  \"claimBoundary\":\"Portal-owned counters prove logical ownership and explicit target estimates only. They do not prove that the same number of bytes has already returned to the global RHI/GPU memory budget.\"\n")
 				TEXT("}\n"),
@@ -1509,7 +1525,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				bScratchAllocated ? TEXT("true") : TEXT("false"),
 				bScratchAllocated ? FinalScratchSize.X : 0,
 				bScratchAllocated ? FinalScratchSize.Y : 0,
-				bScratchAllocated ? static_cast<int32>(FinalScratch->GetFormat()) : -1,
+				bScratchAllocated ? static_cast<int32>(FinalScratch->RenderTargetFormat.GetValue()) : -1,
 				EstimateTargetBytes(FinalScratch),
 				*EndpointJson);
 
