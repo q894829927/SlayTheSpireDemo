@@ -1,5 +1,6 @@
 #include "InteriorPortalFullFidelityRendererControl.h"
 
+#include "InteriorPortalFullFidelityBackend.h"
 #include "InteriorPortalSystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -108,41 +109,41 @@ namespace InteriorPortalFullFidelityRenderer
 
 	bool Start(UWorld* World)
 	{
-		if (!World || !GEngine)
+		if (!World)
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalFullFidelityRenderer: PIE/Game world unavailable."));
 			return false;
 		}
-		InteriorPortalFullFidelityRendererControlPrivate::ApplyFullFidelityCompositionPolicy();
 
-		// Compatibility seam: the accepted endpoint x recursion backend still lives
-		// in the historical MultiVisibleTSRSpike translation unit. Normal gameplay
-		// reaches this seam through the native API rather than through console commands.
-		GEngine->Exec(World, TEXT("portal.StartMultiVisibleTSRSpike"));
+		InteriorPortalFullFidelityRendererControlPrivate::ApplyFullFidelityCompositionPolicy();
+		if (!InteriorPortalFullFidelityBackend::Start(World))
+		{
+			InteriorPortalFullFidelityRendererControlPrivate::RestoreFullFidelityCompositionPolicy();
+			return false;
+		}
+
 		UE_LOG(LogTemp, Display,
-			TEXT("PortalFullFidelityRenderer: START through stable native lifecycle control."));
+			TEXT("PortalFullFidelityRenderer: START through native lifecycle and backend APIs."));
 		return true;
 	}
 
 	void Stop(UWorld* World)
 	{
-		if (World && GEngine)
-		{
-			GEngine->Exec(World, TEXT("portal.StopMultiVisibleTSRSpike"));
-			UE_LOG(LogTemp, Display,
-				TEXT("PortalFullFidelityRenderer: STOP through stable native lifecycle control."));
-		}
+		(void)World;
+		InteriorPortalFullFidelityBackend::Stop();
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalFullFidelityRenderer: STOP through native lifecycle and backend APIs."));
 		InteriorPortalFullFidelityRendererControlPrivate::RestoreFullFidelityCompositionPolicy();
 	}
 
 	void Dump(UWorld* World)
 	{
-		if (!World || !GEngine)
+		if (!World)
 		{
 			UE_LOG(LogTemp, Error, TEXT("PortalFullFidelityRenderer: PIE/Game world unavailable."));
 			return;
 		}
-		GEngine->Exec(World, TEXT("portal.DumpMultiVisibleTSRSpike"));
+		InteriorPortalFullFidelityBackend::Dump();
 	}
 }
 
