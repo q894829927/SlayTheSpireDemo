@@ -4,7 +4,7 @@ This folder contains the documentation for the UE 5.8 interior-portal / full-fid
 
 ## Start here
 
-- [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — **current STEP 1B.14D-C gate**: production TSR dynamic exposure/view telemetry plus one focused PIE visual parity pass.
+- [InteriorPortalProductionParityValidation.md](InteriorPortalProductionParityValidation.md) — **current STEP 1B.14D-C gate**: Attempt 3A telemetry/static black-aperture regression is accepted; only the dynamic slant/leave-return/crossing visual matrix remains before 1B.14E cleanup.
 - [InteriorPortalViewParityDiagnostics.md](InteriorPortalViewParityDiagnostics.md) — STEP 1B.14B/14C main-vs-secondary diagnostics and the accepted EyeAdaptation root-cause classification.
 - [InteriorPortalVisualParityIsolation.md](InteriorPortalVisualParityIsolation.md) — STEP 1B.14A visual-parity classification; Outcome B accepted.
 - [InteriorPortalLateLatchedPreExposureBridge.md](InteriorPortalLateLatchedPreExposureBridge.md) — legacy diagnostic only; superseded for normal production validation by exact per-submission color metadata.
