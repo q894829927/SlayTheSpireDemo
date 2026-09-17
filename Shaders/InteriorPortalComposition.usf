@@ -97,24 +97,7 @@ void MainPS(
 	}
 
 	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
-	// Projected-bounds FullFidelity requests transport the parent-view crop UV
-	// through the otherwise-unused W components of the historical inverse
-	// homography rows. Legacy/full-view requests leave all four values at zero
-	// and therefore preserve the original whole-view texture mapping.
-	const float4 PortalTextureParentBounds = float4(
-		ScreenToPortalRow0.w,
-		ScreenToPortalRow1.w,
-		ScreenToPortalRow2.w,
-		PortalClipZRow.w);
-	const float2 PortalTextureParentSize =
-		PortalTextureParentBounds.zw - PortalTextureParentBounds.xy;
-	const bool bCroppedPortalTexture =
-		PortalTextureParentSize.x > 1.0e-6 && PortalTextureParentSize.y > 1.0e-6;
-	const float2 PortalTextureLocalUV = bCroppedPortalTexture
-		? saturate((ViewportUV - PortalTextureParentBounds.xy) / PortalTextureParentSize)
-		: ViewportUV;
-	const float2 PortalUV = lerp(
-		Portal_UVViewportMin, Portal_UVViewportMax, PortalTextureLocalUV);
+	const float2 PortalUV = lerp(Portal_UVViewportMin, Portal_UVViewportMax, ViewportUV);
 	const float2 SceneUV = UVAndScreenPos.xy;
 	const float2 ScreenSpacePos = UVAndScreenPos.zw;
 

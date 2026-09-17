@@ -2,7 +2,6 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
-#include "InteriorPortalProjectedBounds.h"
 #include "InteriorPortalRecursionLifetime.h"
 
 #include "Camera/PlayerCameraManager.h"
@@ -50,16 +49,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			return FMath::Clamp(Var->GetFloat(), 0.5f, 1.0f);
 		}
 		return 0.67f;
-	}
-
-	int32 ReadBoundedCompositionPadding()
-	{
-		if (const IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
-			TEXT("portal.BoundedMainPassPaddingPixels")))
-		{
-			return FMath::Clamp(Var->GetInt(), 0, 64);
-		}
-		return InteriorPortalProjectedBounds::DefaultOverscanPixels;
 	}
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -151,10 +140,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		uint64 HistoryGeneration = 0;
 		TAtomic<uint64> ActivePublicationGeneration { 0 };
 		FIntPoint LastTargetSize = FIntPoint::ZeroValue;
-		FIntRect LastParentViewRect = FIntRect(0, 0, 0, 0);
-		FIntRect LastProjectedCropRect = FIntRect(0, 0, 0, 0);
-		FIntPoint LastProjectedTargetSize = FIntPoint::ZeroValue;
-		float LastProjectedCoverage = 0.0f;
 		FTransform LastEntryFrame = FTransform::Identity;
 		FTransform LastExitFrame = FTransform::Identity;
 		FString LastCameraCutReason = TEXT("not started");
@@ -312,16 +297,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		int32 LastEffectiveDepth = 0;
 		int32 LastAttemptedLayerMask = 0;
 		int32 LastSubmittedLayerMask = 0;
-	};
-
-	struct FLayerRenderPlan
-	{
-		FInteriorPortalRenderRequest Request;
-		FMatrix ProjectionMatrix = FMatrix::Identity;
-		FIntPoint TargetSize = FIntPoint::ZeroValue;
-		FIntPoint ExpectedPrimarySize = FIntPoint::ZeroValue;
-		FIntRect ParentViewRect = FIntRect(0, 0, 0, 0);
-		FIntRect CropRect = FIntRect(0, 0, 0, 0);
 	};
 
 	class FLayerExtractionExtension final : public FWorldSceneViewExtension
@@ -536,22 +511,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return false;
 			}
 
-			IConsoleVariable* BoundedComposition = IConsoleManager::Get().FindConsoleVariable(
-				TEXT("portal.BoundedMainPassScissor"));
-			if (!BoundedComposition)
-			{
-				UE_LOG(LogTemp, Error,
-					TEXT("PortalMultiVisible: projected-bounds rendering requires portal.BoundedMainPassScissor."));
-				return false;
-			}
-			PreviousBoundedCompositionValue = BoundedComposition->GetInt();
-			BoundedComposition->Set(1, ECVF_SetByCode);
-			bRestoreBoundedComposition = true;
-
 			// FullFidelity lifecycle ownership is established before this producer starts.
-			// P1A-3 leaves recursion ViewStates/lifetimes unallocated until visible;
-			// this projected-bounds prototype additionally crops each recursion family
-			// to the conservative portal screen rectangle.
+			// P1A-3 deliberately leaves every recursion ViewState/lifetime unallocated
+			// until that exact endpoint/level enters a visible recursion chain.
 			ActiveWorld = World;
 			PrimaryResolutionFraction = ReadPrimaryFraction();
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
@@ -573,10 +535,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WorldPostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddRaw(
 				this, &FMultiVisibleProducer::OnWorldPostActorTick);
 			bRunning = true;
-			Status = TEXT("RUNNING_PROJECTED_BOUNDS_FULL_FIDELITY");
+			Status = TEXT("RUNNING_RECURSIVE_MULTI_VISIBLE_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible: START projected-bounds prototype. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f FullQualityTSRAndLumen=1 PerLayerProjectedTargets=1."),
+				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f SharedFinalScratch=1 LazyPerEndpointPerLevelViewState=1 LazyPerEndpointPerLevelDepth=1."),
 				PrimaryResolutionFraction);
 			return true;
 		}
@@ -585,7 +547,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			if (!bRunning && !WorldPostActorTickHandle.IsValid())
 			{
-				RestoreBoundedComposition();
 				return;
 			}
 			if (WorldPostActorTickHandle.IsValid())
@@ -644,7 +605,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			LastVisibleMask = 0;
 			LastSubmittedMask = 0;
 			WriteReport();
-			RestoreBoundedComposition();
 			UE_LOG(LogTemp, Display,
 				TEXT("PortalMultiVisible: STOP. VisibleMask=0x%02x SubmittedMask=0x%02x."),
 				LastVisibleMask, LastSubmittedMask);
@@ -657,7 +617,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible ProjectedBounds Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				TEXT("PortalMultiVisible P1A3 Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
 				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
 				FinalScratchSize.X, FinalScratchSize.Y);
 
@@ -666,7 +626,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible ProjectedBounds Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
+					TEXT("PortalMultiVisible P1A3 Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask);
@@ -680,22 +640,21 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
 					const bool bColorAllocated = IsValid(ColorTarget);
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible ProjectedBounds E%dL%d State=%s Lifetime=%llu Target=%dx%d Crop=%dx%d Parent=%dx%d Coverage=%.4f ViewState=%d Color=%d[%dx%d] Depth=%d[%dx%d] SubmittedFrames=%llu Failure=%s"),
+						TEXT("PortalMultiVisible P1A3 E%dL%d State=%s Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu ViewState=%d Color=%d[%dx%d RTF=%d] Depth=%d[%dx%d RTF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
 						EndpointIndex, Level,
 						InteriorPortalRecursionLifetime::ToString(Layer.Lifetime.State),
-						Layer.Lifetime.LifetimeId,
-						Layer.LastProjectedTargetSize.X, Layer.LastProjectedTargetSize.Y,
-						Layer.LastProjectedCropRect.Width(), Layer.LastProjectedCropRect.Height(),
-						Layer.LastParentViewRect.Width(), Layer.LastParentViewRect.Height(),
-						Layer.LastProjectedCoverage,
+						Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
+						Layer.HistoryGeneration,
 						bViewStateAllocated ? 1 : 0,
 						bColorAllocated ? 1 : 0,
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
+						bColorAllocated ? static_cast<int32>(ColorTarget->RenderTargetFormat.GetValue()) : -1,
 						bDepthAllocated ? 1 : 0,
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
 						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
-						Layer.FramesSubmitted,
+						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
+						Layer.FramesSubmitted, Layer.FramesSkipped,
 						*Layer.LastSubmissionFailureReason);
 				}
 			}
@@ -755,20 +714,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			return static_cast<uint64>(Target->SizeX)
 				* static_cast<uint64>(Target->SizeY)
 				* BytesPerPixel;
-		}
-
-		void RestoreBoundedComposition()
-		{
-			if (!bRestoreBoundedComposition)
-			{
-				return;
-			}
-			if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
-				TEXT("portal.BoundedMainPassScissor")))
-			{
-				Var->Set(PreviousBoundedCompositionValue, ECVF_SetByCode);
-			}
-			bRestoreBoundedComposition = false;
 		}
 
 		AInteriorPortal* GetEndpointPortal(const int32 EndpointIndex) const
@@ -862,10 +807,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			Layer.HistoryGeneration = 0;
 			Layer.ActivePublicationGeneration.Store(0);
 			Layer.LastTargetSize = FIntPoint::ZeroValue;
-			Layer.LastParentViewRect = FIntRect(0, 0, 0, 0);
-			Layer.LastProjectedCropRect = FIntRect(0, 0, 0, 0);
-			Layer.LastProjectedTargetSize = FIntPoint::ZeroValue;
-			Layer.LastProjectedCoverage = 0.0f;
 			Layer.LastEntryFrame = FTransform::Identity;
 			Layer.LastExitFrame = FTransform::Identity;
 			Layer.LastCameraCutReason = TEXT("producer start");
@@ -978,6 +919,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			AdvancePublicationGeneration(Layer);
 			const uint64 ActiveGeneration = Layer.ActivePublicationGeneration.Load();
 
+			// Visibility is decided on the game thread, while an older player/parent
+			// view family may already be queued on the render thread. Clearing the
+			// publication synchronously here creates a one-frame ownership hole: that
+			// already-queued view still rasterizes the portal surface but no longer has
+			// a BeforeDOF portal request, exposing the spiral fallback. Retire the old
+			// publication identity in render-queue order instead. A newly visible
+			// identity is never cleared because its packed identity is >= ActiveGeneration.
 			if (Level == 0)
 			{
 				const TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> Publisher =
@@ -1121,7 +1069,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 			if (Layer.LastTargetSize != TargetSize)
 			{
-				OutReason = TEXT("projected render target size bucket changed");
+				OutReason = TEXT("render target size changed");
 				return true;
 			}
 			if (PortalFrameChanged(Layer.LastEntryFrame, EntryFrame)
@@ -1198,15 +1146,15 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 			const FMinimalViewInfo& POV = Player->PlayerCameraManager->GetCameraCacheView();
 			const FTransform PlayerView(POV.Rotation, POV.Location);
-			const int32 FullWidth = FMath::Clamp(PlayerRect.Width(), 256, 1920);
-			const int32 FullHeight = FMath::Max(144,
-				FMath::RoundToInt(FullWidth * double(PlayerRect.Height()) / double(PlayerRect.Width())));
-			const FIntPoint FullTargetSize(FullWidth, FullHeight);
+			const int32 Width = FMath::Clamp(PlayerRect.Width(), 256, 1920);
+			const int32 Height = FMath::Max(144,
+				FMath::RoundToInt(Width * double(PlayerRect.Height()) / double(PlayerRect.Width())));
+			const FIntPoint TargetSize(Width, Height);
+			const FIntPoint ExpectedPrimarySize(
+				FMath::Max(1, FMath::RoundToInt(TargetSize.X * PrimaryResolutionFraction)),
+				FMath::Max(1, FMath::RoundToInt(TargetSize.Y * PrimaryResolutionFraction)));
 
-			// Keep one shared family output scratch at the prior full-view extent for
-			// this prototype. Per-layer ViewRects and Color/Depth targets are cropped;
-			// shared scratch shrink is intentionally a separate follow-up measurement.
-			if (!EnsureFinalScratch(World, FullTargetSize))
+			if (!EnsureFinalScratch(World, TargetSize))
 			{
 				return;
 			}
@@ -1218,7 +1166,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			AInteriorPortal* Candidates[EndpointCount] = {
 				PortalSystem->BluePortal.Get(), PortalSystem->OrangePortal.Get()
 			};
-			const int32 CropPadding = ReadBoundedCompositionPadding();
 
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
@@ -1235,26 +1182,22 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					continue;
 				}
 
-				TArray<FLayerRenderPlan, TInlineAllocator<MaxRecursionDepth>> Plans;
+				TArray<FInteriorPortalRenderRequest, TInlineAllocator<MaxRecursionDepth>> Requests;
 				FTransform ParentView = PlayerView;
-				FMatrix ParentProjection = ProjectionData.ProjectionMatrix;
-				FIntRect ParentViewRect = PlayerRect;
-				FIntPoint ParentRenderSize = FullTargetSize;
-
 				for (int32 Level = 0; Level < LastRequestedRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					const uint64 GeometryGeneration = Layer.HistoryGeneration != 0
 						? Layer.HistoryGeneration : 1;
 					const FMatrix ParentViewProjection = BuildViewProjection(
-						ParentView, ParentProjection);
+						ParentView, ProjectionData.ProjectionMatrix);
 					FInteriorPortalRenderRequest Request;
 					if (!FInteriorPortalRenderRequest::Build(
 						EndpointIndex, EndpointIndex, Level,
 						ParentView, Entry->GetLogicalFrame(), Exit->GetLogicalFrame(),
 						Entry->HalfWidth, Entry->HalfHeight,
-						ParentViewProjection, ParentViewRect,
-						ParentProjection,
+						ParentViewProjection, PlayerRect,
+						ProjectionData.ProjectionMatrix,
 						ProjectionData.IsPerspectiveProjection(),
 						ProjectionData.GetNearPlaneFromProjectionMatrix(),
 						PortalSystem->ClipPlaneBias,
@@ -1264,69 +1207,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 
-					FIntRect CropRect;
-					FMatrix CroppedProjection;
-					FVector4f CropUvBounds;
-					if (!InteriorPortalProjectedBounds::ExpandAndClampRect(
-							Request.ScissorRect, ParentViewRect, CropPadding, CropRect)
-						|| !InteriorPortalProjectedBounds::PixelRectToNormalizedBounds(
-							CropRect, ParentViewRect, CropUvBounds)
-						|| !InteriorPortalProjectedBounds::BuildCroppedProjection(
-							ParentProjection, ParentViewRect, CropRect, CroppedProjection))
-					{
-						break;
-					}
-
-					const FIntPoint TargetSize = InteriorPortalProjectedBounds::ComputeAlignedTargetSize(
-						CropRect, ParentViewRect, ParentRenderSize);
-					if (TargetSize.X <= 0 || TargetSize.Y <= 0)
-					{
-						break;
-					}
-
-					Request.ScissorRect = CropRect;
-					// Historical inverse-homography rows consume xyz only. Projected-bounds
-					// rendering uses their otherwise-zero W components to transport the
-					// parent-view crop rectangle to the composition shader without changing
-					// the public render-request ABI or legacy full-view requests.
-					Request.ProjectiveAperture.Row0.W = CropUvBounds.X;
-					Request.ProjectiveAperture.Row1.W = CropUvBounds.Y;
-					Request.ProjectiveAperture.Row2.W = CropUvBounds.Z;
-					Request.ProjectiveAperture.ClipZRow.W = CropUvBounds.W;
 					if (Request.ForegroundDepthReference.bValid)
 					{
 						Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
 					}
 
-					FLayerRenderPlan Plan;
-					Plan.Request = Request;
-					Plan.ProjectionMatrix = CroppedProjection;
-					Plan.TargetSize = TargetSize;
-					Plan.ExpectedPrimarySize = FIntPoint(
-						FMath::Max(1, FMath::RoundToInt(TargetSize.X * PrimaryResolutionFraction)),
-						FMath::Max(1, FMath::RoundToInt(TargetSize.Y * PrimaryResolutionFraction)));
-					Plan.ParentViewRect = ParentViewRect;
-					Plan.CropRect = CropRect;
-					Plans.Add(Plan);
-
-					Layer.LastParentViewRect = ParentViewRect;
-					Layer.LastProjectedCropRect = CropRect;
-					Layer.LastProjectedTargetSize = TargetSize;
-					const int64 ParentPixels = int64(ParentViewRect.Width()) * int64(ParentViewRect.Height());
-					const int64 CropPixels = int64(CropRect.Width()) * int64(CropRect.Height());
-					Layer.LastProjectedCoverage = ParentPixels > 0
-						? float(double(CropPixels) / double(ParentPixels))
-						: 0.0f;
-
+					Requests.Add(Request);
 					ParentView = Request.VirtualView;
-					ParentProjection = CroppedProjection;
-					ParentViewRect = FIntRect(0, 0, TargetSize.X, TargetSize.Y);
-					ParentRenderSize = TargetSize;
 				}
 
-				const int32 VisibleDepth = Plans.Num();
+				const int32 VisibleDepth = Requests.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
-				Endpoint.LastEffectiveDepth = VisibleDepth;
+				Endpoint.LastEffectiveDepth = VisibleDepth; // P1B is not implemented in P1A-3.
 				if (VisibleDepth <= 0)
 				{
 					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
@@ -1347,8 +1239,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 					FLayerState& Layer = *Endpoint.Layers[Level];
-					Plans[Level].Request.RendererHistoryGeneration = Layer.HistoryGeneration;
-					Plans[Level].Request.HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
+					Requests[Level].RendererHistoryGeneration = Layer.HistoryGeneration;
+					Requests[Level].HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
 						EndpointIndex, Level, Layer.HistoryGeneration);
 				}
 				if (!bViewStatesReady)
@@ -1358,11 +1250,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				}
 
 				VisibleMask |= (1 << EndpointIndex);
-				for (int32 Level = 0; Level < VisibleDepth; ++Level)
-				{
-					Entry->EnsureTargetForLevel(
-						Level, Plans[Level].TargetSize.X, Plans[Level].TargetSize.Y);
-				}
+				Entry->EnsureTargets(TargetSize.X, TargetSize.Y, VisibleDepth);
 				for (int32 Level = VisibleDepth; Level < MaxRecursionDepth; ++Level)
 				{
 					HideLayer(Endpoint, Level, TEXT("recursion level not visible/requested"));
@@ -1372,12 +1260,11 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				for (int32 Level = VisibleDepth - 1; Level >= 0; --Level)
 				{
 					Endpoint.LastAttemptedLayerMask |= (1 << Level);
-					const FLayerRenderPlan& Plan = Plans[Level];
 					if (SubmitLayer(
-						World, *PortalSystem, POV,
-						Plan.ProjectionMatrix, Plan.TargetSize, Plan.ExpectedPrimarySize,
+						World, *PortalSystem, ProjectionData, POV,
+						TargetSize, ExpectedPrimarySize,
 						EndpointIndex, Level, VisibleDepth,
-						Entry, Exit, Endpoint, Plan.Request))
+						Entry, Exit, Endpoint, Requests[Level]))
 					{
 						Endpoint.LastSubmittedLayerMask |= (1 << Level);
 						bTopSubmitted |= Level == 0;
@@ -1396,7 +1283,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (ProducerTicks == 1 || (ProducerTicks % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible ProjectedBounds Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Visible=%d E0Effective=%d E0Attempted=0x%02x E0Submitted=0x%02x E1Visible=%d E1Effective=%d E1Attempted=0x%02x E1Submitted=0x%02x"),
+					TEXT("PortalMultiVisible Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Visible=%d E0Effective=%d E0Attempted=0x%02x E0Submitted=0x%02x E1Visible=%d E1Effective=%d E1Attempted=0x%02x E1Submitted=0x%02x"),
 					ProducerTicks, LastRequestedRecursionDepth,
 					CountBits(VisibleMask), VisibleMask, SubmittedMask, BuildPublishedMask(),
 					Endpoints[0]->LastVisibleDepth, Endpoints[0]->LastEffectiveDepth,
@@ -1409,8 +1296,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		bool SubmitLayer(
 			UWorld* World,
 			AInteriorPortalSystem& PortalSystem,
+			const FSceneViewProjectionData& ProjectionData,
 			const FMinimalViewInfo& POV,
-			const FMatrix& LayerProjectionMatrix,
 			const FIntPoint TargetSize,
 			const FIntPoint ExpectedPrimarySize,
 			const int32 EndpointIndex,
@@ -1421,7 +1308,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FEndpointState& Endpoint,
 			FInteriorPortalRenderRequest Request)
 		{
-			(void)PortalSystem;
 			FLayerState& Layer = *Endpoint.Layers[Level];
 			Layer.LastSubmissionFailureReason = TEXT("NONE");
 			if (!Layer.Lifetime.CanSubmit(Level, LastRequestedRecursionDepth))
@@ -1523,7 +1409,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			ViewInitOptions.ViewLocation = Request.ViewLocation;
 			ViewInitOptions.ViewRotation = Request.VirtualView.Rotator();
 			ViewInitOptions.ViewRotationMatrix = Request.ViewRotationMatrix;
-			ViewInitOptions.ProjectionMatrix = LayerProjectionMatrix;
+			ViewInitOptions.ProjectionMatrix = ProjectionData.ProjectionMatrix;
 			ViewInitOptions.FOV = POV.FOV;
 			ViewInitOptions.DesiredFOV = POV.FOV;
 			ViewInitOptions.BackgroundColor = FLinearColor::Black;
@@ -1568,11 +1454,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (Layer.FramesSubmitted == 1 || (Layer.FramesSubmitted % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible ProjectedBounds Endpoint=%d Level=%d Submitted=%llu Target=%dx%d Coverage=%.4f CameraCut=%d Lifetime=%llu PackedIdentity=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
+					TEXT("PortalMultiVisible Endpoint=%d Level=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
 					EndpointIndex, Level, Layer.FramesSubmitted,
-					TargetSize.X, TargetSize.Y, Layer.LastProjectedCoverage,
-					bCameraCut ? 1 : 0,
-					Layer.Lifetime.LifetimeId, Layer.HistoryGeneration,
+					bCameraCut ? 1 : 0, Layer.CameraCutCount,
+					Layer.ContinuousHistoryFrames,
+					Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
+					Layer.HistoryGeneration,
 					Layer.SecondaryPreExposure.Load(),
 					Layer.LastExtractionFrame.Load(),
 					Layer.LastCompletedSubmission.Load());
@@ -1656,7 +1543,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"lifetimeIdStatus\":\"IMPLEMENTED\",\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"resourceStateAuthority\":\"IMPLEMENTED_P1A3\",\"retirementStateStatus\":\"IMPLEMENTED_MODEL\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGenerationCompat\":%llu,\"activePublicationGenerationCompat\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"projectedParentWidth\":%d,\"projectedParentHeight\":%d,\"projectedCropWidth\":%d,\"projectedCropHeight\":%d,\"projectedCoverage\":%.9g,\"plannedTargetWidth\":%d,\"plannedTargetHeight\":%d,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"lifetimeIdStatus\":\"IMPLEMENTED\",\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"resourceStateAuthority\":\"IMPLEMENTED_P1A3\",\"retirementStateStatus\":\"IMPLEMENTED_MODEL\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGenerationCompat\":%llu,\"activePublicationGenerationCompat\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
 						Level,
 						Layer.Lifetime.LifetimeId,
 						Layer.Lifetime.PublicationGeneration,
@@ -1678,10 +1565,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Layer.LastCompletedSubmission.Load(), Layer.SecondaryPreExposure.Load(),
 						Layer.ObservedAAMethod.Load(),
 						Layer.bTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
-						Layer.LastParentViewRect.Width(), Layer.LastParentViewRect.Height(),
-						Layer.LastProjectedCropRect.Width(), Layer.LastProjectedCropRect.Height(),
-						Layer.LastProjectedCoverage,
-						Layer.LastProjectedTargetSize.X, Layer.LastProjectedTargetSize.Y,
 						bColorAllocated ? TEXT("true") : TEXT("false"),
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
@@ -1718,14 +1601,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityProjectedBounds.Prototype.v1\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityLazyViewState.P1A3.v1\",\n")
 				TEXT("  \"status\":\"%s\",\n")
-				TEXT("  \"diagnosticScope\":\"Projected portal-bounds prototype: full-quality TSR/Lumen retained; each recursion level uses a cropped projection/ViewRect and independently sized Color/Depth targets. Shared family scratch remains full-size.\",\n")
+				TEXT("  \"diagnosticScope\":\"P1A-3 visible-demand ViewState/lifetime allocation; runtime capacity reclaim remains deferred to P1A-4\",\n")
 				TEXT("  \"lifetimeIdStatus\":\"IMPLEMENTED\",\n")
 				TEXT("  \"retirementStateStatus\":\"IMPLEMENTED_MODEL_NOT_YET_DRIVING_RUNTIME_RECLAIM\",\n")
 				TEXT("  \"resourceStateAuthority\":\"IMPLEMENTED_P1A3\",\n")
-				TEXT("  \"projectedBoundsRendering\":true,\n")
-				TEXT("  \"boundedCompositionForced\":true,\n")
 				TEXT("  \"requestedDepth\":%d,\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"visibleEndpointCount\":%d,\n")
@@ -1735,7 +1616,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"This prototype proves projected-bounds Color/Depth allocation and cropped view rendering only. Shared scratch is still full-size, ViewState lifetime/reclaim remains P1A-3/P1A-4 behavior, and explicit target estimates do not prove total RHI VRAM returned.\"\n")
+				TEXT("  \"claimBoundary\":\"P1A-3 allocates ViewState/lifetime only after a level enters a visible recursion chain. Short visibility loss keeps allocated in-budget resources; configured-depth retirement/reclaim is still deferred to P1A-4.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				LastRequestedRecursionDepth,
@@ -1768,8 +1649,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		int32 LastVisibleMask = 0;
 		int32 LastSubmittedMask = 0;
 		int32 LastRequestedRecursionDepth = 1;
-		int32 PreviousBoundedCompositionValue = 0;
-		bool bRestoreBoundedComposition = false;
 		FString Status = TEXT("STOPPED");
 	};
 
