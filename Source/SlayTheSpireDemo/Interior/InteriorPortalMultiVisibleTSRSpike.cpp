@@ -2,6 +2,7 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalProjectedBounds.h"
 #include "InteriorPortalRecursionLifetime.h"
 
 #include "Camera/PlayerCameraManager.h"
@@ -41,6 +42,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TEXT("Endpoint/recursion-aware full-fidelity TSR diagnostics. 0=quiet, 1=periodic telemetry."),
 		ECVF_Default);
 
+	TAutoConsoleVariable<int32> CVarFullFidelityPingPong(
+		TEXT("portal.FullFidelityPingPong"),
+		1,
+		TEXT("FullFidelity recursion target policy. 1=two full-coordinate-domain color/depth buffers per visible endpoint with projected viewport/scissor; 0=legacy per-level full-view targets."),
+		ECVF_Default);
+
 	float ReadPrimaryFraction()
 	{
 		if (const IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
@@ -49,6 +56,16 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			return FMath::Clamp(Var->GetFloat(), 0.5f, 1.0f);
 		}
 		return 0.67f;
+	}
+
+	int32 ReadBoundedCompositionPadding()
+	{
+		if (const IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
+			TEXT("portal.BoundedMainPassPaddingPixels")))
+		{
+			return FMath::Clamp(Var->GetInt(), 0, 64);
+		}
+		return InteriorPortalProjectedBounds::DefaultOverscanPixels;
 	}
 
 	bool IsFiniteTransform(const FTransform& Transform)
@@ -130,6 +147,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		int32 Level = 0;
 		FSceneViewStateReference ViewState;
+		// Legacy per-level depth ownership is retained behind portal.FullFidelityPingPong=0.
 		UTextureRenderTarget2D* SecondaryDepthTarget = nullptr;
 		FIntPoint SecondaryDepthTargetSize = FIntPoint::ZeroValue;
 		InteriorPortalRecursionLifetime::FLifetime Lifetime;
@@ -144,6 +162,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FTransform LastExitFrame = FTransform::Identity;
 		FString LastCameraCutReason = TEXT("not started");
 		FString LastSubmissionFailureReason = TEXT("NOT_ATTEMPTED_THIS_FRAME");
+		int32 LastPingPongSlot = INDEX_NONE;
+		FIntRect LastParentViewRect = FIntRect(0, 0, 0, 0);
+		FIntRect LastRenderRect = FIntRect(0, 0, 0, 0);
+		float LastProjectedCoverage = 0.0f;
 
 		uint64 FramesSubmitted = 0;
 		uint64 FramesSkipped = 0;
@@ -293,10 +315,22 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TUniquePtr<FLayerState> Layers[MaxRecursionDepth];
 		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainCompositionExtension;
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursiveCompositionExtensions[MaxRecursionDepth];
+		UTextureRenderTarget2D* PingPongColor[InteriorPortalProjectedBounds::PingPongBufferCount] = { nullptr, nullptr };
+		UTextureRenderTarget2D* PingPongDepth[InteriorPortalProjectedBounds::PingPongBufferCount] = { nullptr, nullptr };
+		FIntPoint PingPongTargetSize = FIntPoint::ZeroValue;
 		int32 LastVisibleDepth = 0;
 		int32 LastEffectiveDepth = 0;
 		int32 LastAttemptedLayerMask = 0;
 		int32 LastSubmittedLayerMask = 0;
+	};
+
+	struct FLayerRenderPlan
+	{
+		FInteriorPortalRenderRequest Request;
+		FMatrix ProjectionMatrix = FMatrix::Identity;
+		FIntRect ParentViewRect = FIntRect(0, 0, 0, 0);
+		FIntRect RenderRect = FIntRect(0, 0, 0, 0);
+		float Coverage = 1.0f;
 	};
 
 	class FLayerExtractionExtension final : public FWorldSceneViewExtension
@@ -309,7 +343,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FSceneViewStateInterface* InExpectedViewState,
 			FRenderTarget* InExtractionTarget,
 			FRenderTarget* InDepthExtractionTarget,
-			const FIntPoint& InExpectedDepthSourceSize,
+			const FIntPoint& InExtractionOutputExtent,
+			const FIntRect& InExtractionDestinationRect,
 			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample,
 			TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> InMainPublisher,
 			TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> InRecursivePublisher,
@@ -319,7 +354,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			, ExpectedViewState(InExpectedViewState)
 			, ExtractionTarget(InExtractionTarget)
 			, DepthExtractionTarget(InDepthExtractionTarget)
-			, ExpectedDepthSourceSize(InExpectedDepthSourceSize)
+			, ExtractionOutputExtent(InExtractionOutputExtent)
+			, ExtractionDestinationRect(InExtractionDestinationRect)
 			, ColorSample(InColorSample)
 			, MainPublisher(MoveTemp(InMainPublisher))
 			, RecursivePublisher(MoveTemp(InRecursivePublisher))
@@ -399,12 +435,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					{
 						return SceneColor;
 					}
+
+					FIntRect DestinationRect = ExtractionDestinationRect;
+					DestinationRect.Min.X = FMath::Clamp(DestinationRect.Min.X, 0, ExtractionTexture->Desc.Extent.X);
+					DestinationRect.Min.Y = FMath::Clamp(DestinationRect.Min.Y, 0, ExtractionTexture->Desc.Extent.Y);
+					DestinationRect.Max.X = FMath::Clamp(DestinationRect.Max.X, 0, ExtractionTexture->Desc.Extent.X);
+					DestinationRect.Max.Y = FMath::Clamp(DestinationRect.Max.Y, 0, ExtractionTexture->Desc.Extent.Y);
+					if (DestinationRect.Width() <= 0 || DestinationRect.Height() <= 0)
+					{
+						return SceneColor;
+					}
+
 					GraphBuilder.UseInternalAccessMode(ExtractionTexture);
 					AddDrawTexturePass(
 						GraphBuilder, View,
 						SceneColor.Texture, ExtractionTexture,
 						SceneColor.ViewRect.Min, SceneColor.ViewRect.Size(),
-						FIntPoint::ZeroValue, ExtractionTexture->Desc.Extent,
+						DestinationRect.Min, DestinationRect.Size(),
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
 
@@ -424,23 +471,30 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 							if (SceneDepthTexture && DepthExtractionTexture)
 							{
 								const FIntPoint AvailableDepthExtent = SceneDepthTexture->Desc.Extent;
-								const FIntPoint SourceSize(
-									FMath::Clamp(ExpectedDepthSourceSize.X, 1, AvailableDepthExtent.X),
-									FMath::Clamp(ExpectedDepthSourceSize.Y, 1, AvailableDepthExtent.Y));
-								LayerState->DepthSourceWidth.Store(SourceSize.X);
-								LayerState->DepthSourceHeight.Store(SourceSize.Y);
-								LayerState->DepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
-								LayerState->DepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
-								GraphBuilder.UseInternalAccessMode(DepthExtractionTexture);
-								AddDrawTexturePass(
-									GraphBuilder, View,
-									SceneDepthTexture, DepthExtractionTexture,
-									FIntPoint::ZeroValue, SourceSize,
-									FIntPoint::ZeroValue, DepthExtractionTexture->Desc.Extent,
-									TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
-								GraphBuilder.UseExternalAccessMode(
-									DepthExtractionTexture, ERHIAccess::SRVMask);
-								LayerState->LastDepthExtractionFrame.Store(GFrameCounter);
+								FIntRect SourceRect;
+								if (InteriorPortalProjectedBounds::ScaleRectBetweenExtents(
+									DestinationRect, ExtractionOutputExtent, AvailableDepthExtent, SourceRect))
+								{
+									FIntRect DepthDestinationRect = DestinationRect;
+									DepthDestinationRect.Min.X = FMath::Clamp(DepthDestinationRect.Min.X, 0, DepthExtractionTexture->Desc.Extent.X);
+									DepthDestinationRect.Min.Y = FMath::Clamp(DepthDestinationRect.Min.Y, 0, DepthExtractionTexture->Desc.Extent.Y);
+									DepthDestinationRect.Max.X = FMath::Clamp(DepthDestinationRect.Max.X, 0, DepthExtractionTexture->Desc.Extent.X);
+									DepthDestinationRect.Max.Y = FMath::Clamp(DepthDestinationRect.Max.Y, 0, DepthExtractionTexture->Desc.Extent.Y);
+									LayerState->DepthSourceWidth.Store(SourceRect.Width());
+									LayerState->DepthSourceHeight.Store(SourceRect.Height());
+									LayerState->DepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
+									LayerState->DepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
+									GraphBuilder.UseInternalAccessMode(DepthExtractionTexture);
+									AddDrawTexturePass(
+										GraphBuilder, View,
+										SceneDepthTexture, DepthExtractionTexture,
+										SourceRect.Min, SourceRect.Size(),
+										DepthDestinationRect.Min, DepthDestinationRect.Size(),
+										TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+									GraphBuilder.UseExternalAccessMode(
+										DepthExtractionTexture, ERHIAccess::SRVMask);
+									LayerState->LastDepthExtractionFrame.Store(GFrameCounter);
+								}
 							}
 						}
 					}
@@ -479,7 +533,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FSceneViewStateInterface* ExpectedViewState = nullptr;
 		FRenderTarget* ExtractionTarget = nullptr;
 		FRenderTarget* DepthExtractionTarget = nullptr;
-		FIntPoint ExpectedDepthSourceSize = FIntPoint::ZeroValue;
+		FIntPoint ExtractionOutputExtent = FIntPoint::ZeroValue;
+		FIntRect ExtractionDestinationRect = FIntRect(0, 0, 0, 0);
 		TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainPublisher;
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> RecursivePublisher;
@@ -511,9 +566,21 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return false;
 			}
 
+			bPingPongEnabled = CVarFullFidelityPingPong.GetValueOnGameThread() != 0;
+			if (bPingPongEnabled)
+			{
+				if (IConsoleVariable* BoundedComposition = IConsoleManager::Get().FindConsoleVariable(
+					TEXT("portal.BoundedMainPassScissor")))
+				{
+					PreviousBoundedCompositionValue = BoundedComposition->GetInt();
+					BoundedComposition->Set(1, ECVF_SetByCode);
+					bRestoreBoundedComposition = true;
+				}
+			}
+
 			// FullFidelity lifecycle ownership is established before this producer starts.
-			// P1A-3 deliberately leaves every recursion ViewState/lifetime unallocated
-			// until that exact endpoint/level enters a visible recursion chain.
+			// Per-level temporal history remains independent; only endpoint output
+			// color/depth resources are shared between alternating recursion levels.
 			ActiveWorld = World;
 			PrimaryResolutionFraction = ReadPrimaryFraction();
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
@@ -535,11 +602,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WorldPostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddRaw(
 				this, &FMultiVisibleProducer::OnWorldPostActorTick);
 			bRunning = true;
-			Status = TEXT("RUNNING_RECURSIVE_MULTI_VISIBLE_TSR");
+			Status = bPingPongEnabled
+				? TEXT("RUNNING_PING_PONG_PROJECTED_VIEWPORT")
+				: TEXT("RUNNING_RECURSIVE_MULTI_VISIBLE_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f SharedFinalScratch=1 LazyPerEndpointPerLevelViewState=1 LazyPerEndpointPerLevelDepth=1."),
-				PrimaryResolutionFraction);
+				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f PingPong=%d SharedFinalScratch=1 PerLevelViewState=1."),
+				PrimaryResolutionFraction, bPingPongEnabled ? 1 : 0);
 			return true;
 		}
 
@@ -547,6 +616,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			if (!bRunning && !WorldPostActorTickHandle.IsValid())
 			{
+				RestoreBoundedComposition();
 				return;
 			}
 			if (WorldPostActorTickHandle.IsValid())
@@ -593,6 +663,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					ReleaseDepthTarget(Layer);
 					ResetLifetimeAfterSynchronousTeardown(Layer);
 				}
+				ReleaseEndpointPingPongTargets(Endpoint);
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
 				Endpoint.LastAttemptedLayerMask = 0;
@@ -605,6 +676,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			LastVisibleMask = 0;
 			LastSubmittedMask = 0;
 			WriteReport();
+			RestoreBoundedComposition();
 			UE_LOG(LogTemp, Display,
 				TEXT("PortalMultiVisible: STOP. VisibleMask=0x%02x SubmittedMask=0x%02x."),
 				LastVisibleMask, LastSubmittedMask);
@@ -617,7 +689,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible P1A3 Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				TEXT("PortalMultiVisible PingPong=%d Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				bPingPongEnabled ? 1 : 0,
 				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
 				FinalScratchSize.X, FinalScratchSize.Y);
 
@@ -626,34 +699,38 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible P1A3 Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x"),
+					TEXT("PortalMultiVisible Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x PingPongSize=%dx%d"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
-					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask);
+					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
+					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y);
 
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
-					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
+					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Endpoint, Portal, Level);
+					const UTextureRenderTarget2D* DepthTarget = GetDepthTarget(Endpoint, Layer, Level);
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
-					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
+					const bool bDepthAllocated = IsValid(DepthTarget);
 					const bool bColorAllocated = IsValid(ColorTarget);
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible P1A3 E%dL%d State=%s Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu ViewState=%d Color=%d[%dx%d RTF=%d] Depth=%d[%dx%d RTF=%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
+						TEXT("PortalMultiVisible E%dL%d State=%s Lifetime=%llu Slot=%d Parent=(%d,%d)-(%d,%d) Render=(%d,%d)-(%d,%d) Coverage=%.5f ViewState=%d Color=%d[%dx%d] Depth=%d[%dx%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
 						EndpointIndex, Level,
 						InteriorPortalRecursionLifetime::ToString(Layer.Lifetime.State),
-						Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
-						Layer.HistoryGeneration,
+						Layer.Lifetime.LifetimeId, Layer.LastPingPongSlot,
+						Layer.LastParentViewRect.Min.X, Layer.LastParentViewRect.Min.Y,
+						Layer.LastParentViewRect.Max.X, Layer.LastParentViewRect.Max.Y,
+						Layer.LastRenderRect.Min.X, Layer.LastRenderRect.Min.Y,
+						Layer.LastRenderRect.Max.X, Layer.LastRenderRect.Max.Y,
+						Layer.LastProjectedCoverage,
 						bViewStateAllocated ? 1 : 0,
 						bColorAllocated ? 1 : 0,
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
-						bColorAllocated ? static_cast<int32>(ColorTarget->RenderTargetFormat.GetValue()) : -1,
 						bDepthAllocated ? 1 : 0,
-						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
-						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
-						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
+						bDepthAllocated ? DepthTarget->SizeX : 0,
+						bDepthAllocated ? DepthTarget->SizeY : 0,
 						Layer.FramesSubmitted, Layer.FramesSkipped,
 						*Layer.LastSubmissionFailureReason);
 				}
@@ -716,6 +793,20 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				* BytesPerPixel;
 		}
 
+		void RestoreBoundedComposition()
+		{
+			if (!bRestoreBoundedComposition)
+			{
+				return;
+			}
+			if (IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("portal.BoundedMainPassScissor")))
+			{
+				Var->Set(PreviousBoundedCompositionValue, ECVF_SetByCode);
+			}
+			bRestoreBoundedComposition = false;
+		}
+
 		AInteriorPortal* GetEndpointPortal(const int32 EndpointIndex) const
 		{
 			AInteriorPortalSystem* PortalSystem = ActiveWorld.IsValid()
@@ -727,10 +818,33 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			return EndpointIndex == 0 ? PortalSystem->BluePortal.Get() : PortalSystem->OrangePortal.Get();
 		}
 
-		static UTextureRenderTarget2D* GetColorTarget(AInteriorPortal* Portal, const int32 Level)
+		const UTextureRenderTarget2D* GetColorTarget(
+			const FEndpointState& Endpoint,
+			AInteriorPortal* Portal,
+			const int32 Level) const
 		{
+			if (bPingPongEnabled)
+			{
+				const int32 Slot = InteriorPortalProjectedBounds::PingPongSlotForLevel(Level);
+				return Slot >= 0 && Slot < InteriorPortalProjectedBounds::PingPongBufferCount
+					? Endpoint.PingPongColor[Slot] : nullptr;
+			}
 			return IsValid(Portal) && Portal->RenderTargets.IsValidIndex(Level)
 				? Portal->RenderTargets[Level] : nullptr;
+		}
+
+		const UTextureRenderTarget2D* GetDepthTarget(
+			const FEndpointState& Endpoint,
+			const FLayerState& Layer,
+			const int32 Level) const
+		{
+			if (bPingPongEnabled)
+			{
+				const int32 Slot = InteriorPortalProjectedBounds::PingPongSlotForLevel(Level);
+				return Slot >= 0 && Slot < InteriorPortalProjectedBounds::PingPongBufferCount
+					? Endpoint.PingPongDepth[Slot] : nullptr;
+			}
+			return Layer.SecondaryDepthTarget;
 		}
 
 		int32 BuildPublishedLayerMask(const int32 EndpointIndex) const
@@ -811,6 +925,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			Layer.LastExitFrame = FTransform::Identity;
 			Layer.LastCameraCutReason = TEXT("producer start");
 			Layer.LastSubmissionFailureReason = TEXT("NOT_ATTEMPTED_THIS_FRAME");
+			Layer.LastPingPongSlot = INDEX_NONE;
+			Layer.LastParentViewRect = FIntRect(0, 0, 0, 0);
+			Layer.LastRenderRect = FIntRect(0, 0, 0, 0);
+			Layer.LastProjectedCoverage = 0.0f;
 			Layer.FramesSubmitted = 0;
 			Layer.FramesSkipped = 0;
 			Layer.CameraCutCount = 0;
@@ -919,13 +1037,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			AdvancePublicationGeneration(Layer);
 			const uint64 ActiveGeneration = Layer.ActivePublicationGeneration.Load();
 
-			// Visibility is decided on the game thread, while an older player/parent
-			// view family may already be queued on the render thread. Clearing the
-			// publication synchronously here creates a one-frame ownership hole: that
-			// already-queued view still rasterizes the portal surface but no longer has
-			// a BeforeDOF portal request, exposing the spiral fallback. Retire the old
-			// publication identity in render-queue order instead. A newly visible
-			// identity is never cleared because its packed identity is >= ActiveGeneration.
 			if (Level == 0)
 			{
 				const TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> Publisher =
@@ -1010,6 +1121,87 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				FinalScratch = nullptr;
 			}
 			FinalScratchSize = FIntPoint::ZeroValue;
+		}
+
+		UTextureRenderTarget2D* CreatePingPongTarget(
+			const FIntPoint TargetSize,
+			const ETextureRenderTargetFormat Format,
+			const EPixelFormat PixelFormat,
+			const bool bForceLinearGamma)
+		{
+			UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(
+				GetTransientPackage(), NAME_None, RF_Transient);
+			if (!Target)
+			{
+				return nullptr;
+			}
+			Target->AddToRoot();
+			Target->RenderTargetFormat = Format;
+			Target->ClearColor = FLinearColor::Black;
+			Target->bForceLinearGamma = bForceLinearGamma;
+			Target->bAutoGenerateMips = false;
+			Target->InitCustomFormat(TargetSize.X, TargetSize.Y, PixelFormat, true);
+			Target->UpdateResourceImmediate(true);
+			return Target;
+		}
+
+		bool EnsureEndpointPingPongTargets(
+			FEndpointState& Endpoint,
+			UWorld* World,
+			const FIntPoint TargetSize,
+			const int32 RequiredSlots)
+		{
+			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0
+				|| RequiredSlots <= 0 || RequiredSlots > InteriorPortalProjectedBounds::PingPongBufferCount)
+			{
+				return false;
+			}
+
+			if (Endpoint.PingPongTargetSize != FIntPoint::ZeroValue
+				&& Endpoint.PingPongTargetSize != TargetSize)
+			{
+				FlushRenderingCommands();
+				ReleaseEndpointPingPongTargets(Endpoint);
+			}
+
+			for (int32 Slot = 0; Slot < RequiredSlots; ++Slot)
+			{
+				if (!Endpoint.PingPongColor[Slot])
+				{
+					Endpoint.PingPongColor[Slot] = CreatePingPongTarget(
+						TargetSize, RTF_RGBA16f, PF_FloatRGBA, true);
+				}
+				if (!Endpoint.PingPongDepth[Slot])
+				{
+					Endpoint.PingPongDepth[Slot] = CreatePingPongTarget(
+						TargetSize, RTF_R32f, PF_R32_FLOAT, true);
+				}
+				if (!Endpoint.PingPongColor[Slot] || !Endpoint.PingPongDepth[Slot])
+				{
+					ReleaseEndpointPingPongTargets(Endpoint);
+					return false;
+				}
+			}
+			Endpoint.PingPongTargetSize = TargetSize;
+			return true;
+		}
+
+		void ReleaseEndpointPingPongTargets(FEndpointState& Endpoint)
+		{
+			for (int32 Slot = 0; Slot < InteriorPortalProjectedBounds::PingPongBufferCount; ++Slot)
+			{
+				if (Endpoint.PingPongColor[Slot])
+				{
+					Endpoint.PingPongColor[Slot]->RemoveFromRoot();
+					Endpoint.PingPongColor[Slot] = nullptr;
+				}
+				if (Endpoint.PingPongDepth[Slot])
+				{
+					Endpoint.PingPongDepth[Slot]->RemoveFromRoot();
+					Endpoint.PingPongDepth[Slot] = nullptr;
+				}
+			}
+			Endpoint.PingPongTargetSize = FIntPoint::ZeroValue;
 		}
 
 		bool EnsureDepthTarget(FLayerState& Layer, UWorld* World, const FIntPoint TargetSize)
@@ -1150,9 +1342,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const int32 Height = FMath::Max(144,
 				FMath::RoundToInt(Width * double(PlayerRect.Height()) / double(PlayerRect.Width())));
 			const FIntPoint TargetSize(Width, Height);
-			const FIntPoint ExpectedPrimarySize(
-				FMath::Max(1, FMath::RoundToInt(TargetSize.X * PrimaryResolutionFraction)),
-				FMath::Max(1, FMath::RoundToInt(TargetSize.Y * PrimaryResolutionFraction)));
+			const FIntRect TargetRect(0, 0, TargetSize.X, TargetSize.Y);
 
 			if (!EnsureFinalScratch(World, TargetSize))
 			{
@@ -1182,22 +1372,24 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					continue;
 				}
 
-				TArray<FInteriorPortalRenderRequest, TInlineAllocator<MaxRecursionDepth>> Requests;
+				TArray<FLayerRenderPlan, TInlineAllocator<MaxRecursionDepth>> Plans;
 				FTransform ParentView = PlayerView;
+				FMatrix ParentProjection = ProjectionData.ProjectionMatrix;
+				FIntRect ParentViewRect = bPingPongEnabled ? TargetRect : PlayerRect;
 				for (int32 Level = 0; Level < LastRequestedRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					const uint64 GeometryGeneration = Layer.HistoryGeneration != 0
 						? Layer.HistoryGeneration : 1;
 					const FMatrix ParentViewProjection = BuildViewProjection(
-						ParentView, ProjectionData.ProjectionMatrix);
+						ParentView, ParentProjection);
 					FInteriorPortalRenderRequest Request;
 					if (!FInteriorPortalRenderRequest::Build(
 						EndpointIndex, EndpointIndex, Level,
 						ParentView, Entry->GetLogicalFrame(), Exit->GetLogicalFrame(),
 						Entry->HalfWidth, Entry->HalfHeight,
-						ParentViewProjection, PlayerRect,
-						ProjectionData.ProjectionMatrix,
+						ParentViewProjection, ParentViewRect,
+						ParentProjection,
 						ProjectionData.IsPerspectiveProjection(),
 						ProjectionData.GetNearPlaneFromProjectionMatrix(),
 						PortalSystem->ClipPlaneBias,
@@ -1212,13 +1404,47 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
 					}
 
-					Requests.Add(Request);
+					FLayerRenderPlan Plan;
+					Plan.Request = Request;
+					Plan.ParentViewRect = ParentViewRect;
+					if (bPingPongEnabled)
+					{
+						if (!InteriorPortalProjectedBounds::ExpandAndClampRect(
+							Request.ScissorRect, ParentViewRect,
+							ReadBoundedCompositionPadding(), Plan.RenderRect))
+						{
+							break;
+						}
+						if (!InteriorPortalProjectedBounds::BuildCroppedProjection(
+							ParentProjection, ParentViewRect, Plan.RenderRect, Plan.ProjectionMatrix))
+						{
+							break;
+						}
+						const int64 ParentPixels = int64(ParentViewRect.Width()) * int64(ParentViewRect.Height());
+						const int64 RenderPixels = int64(Plan.RenderRect.Width()) * int64(Plan.RenderRect.Height());
+						Plan.Coverage = ParentPixels > 0
+							? float(double(RenderPixels) / double(ParentPixels)) : 1.0f;
+						Plan.Request.ProjectionMatrix = Plan.ProjectionMatrix;
+					}
+					else
+					{
+						Plan.RenderRect = TargetRect;
+						Plan.ProjectionMatrix = ProjectionData.ProjectionMatrix;
+						Plan.Coverage = 1.0f;
+					}
+
+					Plans.Add(Plan);
 					ParentView = Request.VirtualView;
+					if (bPingPongEnabled)
+					{
+						ParentProjection = Plan.ProjectionMatrix;
+						ParentViewRect = Plan.RenderRect;
+					}
 				}
 
-				const int32 VisibleDepth = Requests.Num();
+				const int32 VisibleDepth = Plans.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
-				Endpoint.LastEffectiveDepth = VisibleDepth; // P1B is not implemented in P1A-3.
+				Endpoint.LastEffectiveDepth = VisibleDepth;
 				if (VisibleDepth <= 0)
 				{
 					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
@@ -1239,8 +1465,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 					FLayerState& Layer = *Endpoint.Layers[Level];
-					Requests[Level].RendererHistoryGeneration = Layer.HistoryGeneration;
-					Requests[Level].HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
+					Plans[Level].Request.RendererHistoryGeneration = Layer.HistoryGeneration;
+					Plans[Level].Request.HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
 						EndpointIndex, Level, Layer.HistoryGeneration);
 				}
 				if (!bViewStatesReady)
@@ -1250,7 +1476,24 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				}
 
 				VisibleMask |= (1 << EndpointIndex);
-				Entry->EnsureTargets(TargetSize.X, TargetSize.Y, VisibleDepth);
+				if (bPingPongEnabled)
+				{
+					const int32 RequiredSlots = VisibleDepth > 1 ? 2 : 1;
+					if (!EnsureEndpointPingPongTargets(Endpoint, World, TargetSize, RequiredSlots))
+					{
+						Endpoint.LastEffectiveDepth = 0;
+						for (int32 Level = 0; Level < VisibleDepth; ++Level)
+						{
+							Endpoint.Layers[Level]->LastSubmissionFailureReason = TEXT("PING_PONG_TARGET_UNAVAILABLE");
+						}
+						continue;
+					}
+				}
+				else
+				{
+					Entry->EnsureTargets(TargetSize.X, TargetSize.Y, VisibleDepth);
+				}
+
 				for (int32 Level = VisibleDepth; Level < MaxRecursionDepth; ++Level)
 				{
 					HideLayer(Endpoint, Level, TEXT("recursion level not visible/requested"));
@@ -1262,9 +1505,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Endpoint.LastAttemptedLayerMask |= (1 << Level);
 					if (SubmitLayer(
 						World, *PortalSystem, ProjectionData, POV,
-						TargetSize, ExpectedPrimarySize,
+						TargetSize,
 						EndpointIndex, Level, VisibleDepth,
-						Entry, Exit, Endpoint, Requests[Level]))
+						Entry, Exit, Endpoint, Plans[Level]))
 					{
 						Endpoint.LastSubmittedLayerMask |= (1 << Level);
 						bTopSubmitted |= Level == 0;
@@ -1283,8 +1526,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (ProducerTicks == 1 || (ProducerTicks % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Tick=%llu RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Visible=%d E0Effective=%d E0Attempted=0x%02x E0Submitted=0x%02x E1Visible=%d E1Effective=%d E1Attempted=0x%02x E1Submitted=0x%02x"),
-					ProducerTicks, LastRequestedRecursionDepth,
+					TEXT("PortalMultiVisible Tick=%llu PingPong=%d RequestedRecursion=%d VisibleCount=%d VisibleMask=0x%02x SubmittedMask=0x%02x PublishedMask=0x%02x E0Visible=%d E0Effective=%d E0Attempted=0x%02x E0Submitted=0x%02x E1Visible=%d E1Effective=%d E1Attempted=0x%02x E1Submitted=0x%02x"),
+					ProducerTicks, bPingPongEnabled ? 1 : 0, LastRequestedRecursionDepth,
 					CountBits(VisibleMask), VisibleMask, SubmittedMask, BuildPublishedMask(),
 					Endpoints[0]->LastVisibleDepth, Endpoints[0]->LastEffectiveDepth,
 					Endpoints[0]->LastAttemptedLayerMask, Endpoints[0]->LastSubmittedLayerMask,
@@ -1299,16 +1542,16 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const FSceneViewProjectionData& ProjectionData,
 			const FMinimalViewInfo& POV,
 			const FIntPoint TargetSize,
-			const FIntPoint ExpectedPrimarySize,
 			const int32 EndpointIndex,
 			const int32 Level,
 			const int32 VisibleDepth,
 			AInteriorPortal* Entry,
 			AInteriorPortal* Exit,
 			FEndpointState& Endpoint,
-			FInteriorPortalRenderRequest Request)
+			const FLayerRenderPlan& Plan)
 		{
 			FLayerState& Layer = *Endpoint.Layers[Level];
+			FInteriorPortalRenderRequest Request = Plan.Request;
 			Layer.LastSubmissionFailureReason = TEXT("NONE");
 			if (!Layer.Lifetime.CanSubmit(Level, LastRequestedRecursionDepth))
 			{
@@ -1317,27 +1560,46 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				return false;
 			}
 			if (!IsValid(Entry) || !IsValid(Exit) || !World->Scene
-				|| !Endpoint.MainCompositionExtension
-				|| !Entry->RenderTargets.IsValidIndex(Level))
+				|| !Endpoint.MainCompositionExtension)
 			{
 				++Layer.FramesSkipped;
-				Layer.LastSubmissionFailureReason = TEXT("PRECONDITION_OR_COLOR_TARGET_UNAVAILABLE");
-				return false;
-			}
-			if (!EnsureDepthTarget(Layer, World, TargetSize))
-			{
-				++Layer.FramesSkipped;
-				Layer.LastSubmissionFailureReason = TEXT("DEPTH_TARGET_UNAVAILABLE");
+				Layer.LastSubmissionFailureReason = TEXT("PRECONDITION_UNAVAILABLE");
 				return false;
 			}
 
-			UTextureRenderTarget2D* PortalTarget = Entry->RenderTargets[Level];
+			UTextureRenderTarget2D* PortalTarget = nullptr;
+			UTextureRenderTarget2D* DepthTarget = nullptr;
+			int32 PingPongSlot = INDEX_NONE;
+			if (bPingPongEnabled)
+			{
+				PingPongSlot = InteriorPortalProjectedBounds::PingPongSlotForLevel(Level);
+				if (PingPongSlot < 0 || PingPongSlot >= InteriorPortalProjectedBounds::PingPongBufferCount)
+				{
+					++Layer.FramesSkipped;
+					Layer.LastSubmissionFailureReason = TEXT("PING_PONG_SLOT_INVALID");
+					return false;
+				}
+				PortalTarget = Endpoint.PingPongColor[PingPongSlot];
+				DepthTarget = Endpoint.PingPongDepth[PingPongSlot];
+			}
+			else
+			{
+				if (!Entry->RenderTargets.IsValidIndex(Level) || !EnsureDepthTarget(Layer, World, TargetSize))
+				{
+					++Layer.FramesSkipped;
+					Layer.LastSubmissionFailureReason = TEXT("LEGACY_TARGET_UNAVAILABLE");
+					return false;
+				}
+				PortalTarget = Entry->RenderTargets[Level];
+				DepthTarget = Layer.SecondaryDepthTarget;
+			}
+
 			FRenderTarget* PortalTargetResource = PortalTarget
 				? PortalTarget->GameThread_GetRenderTargetResource() : nullptr;
 			FRenderTarget* FinalScratchResource = FinalScratch
 				? FinalScratch->GameThread_GetRenderTargetResource() : nullptr;
-			FRenderTarget* DepthTargetResource = Layer.SecondaryDepthTarget
-				? Layer.SecondaryDepthTarget->GameThread_GetRenderTargetResource() : nullptr;
+			FRenderTarget* DepthTargetResource = DepthTarget
+				? DepthTarget->GameThread_GetRenderTargetResource() : nullptr;
 			if (!PortalTargetResource || !FinalScratchResource || !DepthTargetResource)
 			{
 				++Layer.FramesSkipped;
@@ -1361,12 +1623,16 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				RecursivePublisher = Endpoint.RecursiveCompositionExtensions[Level];
 			}
 
+			const FIntRect ExtractionRect = bPingPongEnabled
+				? Plan.RenderRect
+				: FIntRect(0, 0, TargetSize.X, TargetSize.Y);
 			FSceneViewStateInterface* ExpectedViewState = Layer.ViewState.GetReference();
 			TSharedRef<FLayerExtractionExtension, ESPMode::ThreadSafe> ExtractionExtension =
 				FSceneViewExtensions::NewExtension<FLayerExtractionExtension>(
 					World, &Layer, ExpectedViewState,
 					PortalTargetResource, DepthTargetResource,
-					ExpectedPrimarySize, Request.ColorSample.ToSharedRef(),
+					TargetSize, ExtractionRect,
+					Request.ColorSample.ToSharedRef(),
 					MainPublisher, RecursivePublisher, Request);
 
 			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
@@ -1404,12 +1670,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FSceneViewInitOptions ViewInitOptions;
 			ViewInitOptions.ViewFamily = &ViewFamily;
 			ViewInitOptions.SceneViewStateInterface = ExpectedViewState;
-			ViewInitOptions.SetViewRectangle(FIntRect(0, 0, TargetSize.X, TargetSize.Y));
+			ViewInitOptions.SetViewRectangle(ExtractionRect);
 			ViewInitOptions.ViewOrigin = Request.ViewLocation;
 			ViewInitOptions.ViewLocation = Request.ViewLocation;
 			ViewInitOptions.ViewRotation = Request.VirtualView.Rotator();
 			ViewInitOptions.ViewRotationMatrix = Request.ViewRotationMatrix;
-			ViewInitOptions.ProjectionMatrix = ProjectionData.ProjectionMatrix;
+			ViewInitOptions.ProjectionMatrix = bPingPongEnabled
+				? Plan.ProjectionMatrix
+				: ProjectionData.ProjectionMatrix;
 			ViewInitOptions.FOV = POV.FOV;
 			ViewInitOptions.DesiredFOV = POV.FOV;
 			ViewInitOptions.BackgroundColor = FLinearColor::Black;
@@ -1444,6 +1712,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				FModuleManager::LoadModuleChecked<IRendererModule>(TEXT("Renderer"));
 			RendererModule.BeginRenderingViewFamily(&Canvas, &ViewFamily);
 
+			Layer.LastPingPongSlot = PingPongSlot;
+			Layer.LastParentViewRect = Plan.ParentViewRect;
+			Layer.LastRenderRect = ExtractionRect;
+			Layer.LastProjectedCoverage = Plan.Coverage;
 			Layer.Lifetime.MarkActive();
 			++Layer.FramesSubmitted;
 			CommitHistory(
@@ -1454,8 +1726,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& (Layer.FramesSubmitted == 1 || (Layer.FramesSubmitted % 120) == 0))
 			{
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Endpoint=%d Level=%d Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
-					EndpointIndex, Level, Layer.FramesSubmitted,
+					TEXT("PortalMultiVisible Endpoint=%d Level=%d Slot=%d Rect=(%d,%d)-(%d,%d) Coverage=%.5f Submitted=%llu CameraCut=%d Cuts=%llu Continuous=%llu Lifetime=%llu PublicationGeneration=%llu PackedIdentity=%llu Pre=%.9g ExtractFrame=%llu Completed=%llu"),
+					EndpointIndex, Level, PingPongSlot,
+					ExtractionRect.Min.X, ExtractionRect.Min.Y,
+					ExtractionRect.Max.X, ExtractionRect.Max.Y,
+					Plan.Coverage,
+					Layer.FramesSubmitted,
 					bCameraCut ? 1 : 0, Layer.CameraCutCount,
 					Layer.ContinuousHistoryFrames,
 					Layer.Lifetime.LifetimeId, Layer.Lifetime.PublicationGeneration,
@@ -1506,14 +1782,33 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				uint64 EndpointExplicitTargetBytes = 0;
 				FString LayersJson;
 
+				if (bPingPongEnabled)
+				{
+					for (int32 Slot = 0; Slot < InteriorPortalProjectedBounds::PingPongBufferCount; ++Slot)
+					{
+						if (IsValid(Endpoint.PingPongColor[Slot]))
+						{
+							++ColorTargetCount;
+							EndpointExplicitTargetBytes += EstimateTargetBytes(Endpoint.PingPongColor[Slot]);
+						}
+						if (IsValid(Endpoint.PingPongDepth[Slot]))
+						{
+							++DepthTargetCount;
+							EndpointExplicitTargetBytes += EstimateTargetBytes(Endpoint.PingPongDepth[Slot]);
+						}
+					}
+				}
+
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
-					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Portal, Level);
+					const UTextureRenderTarget2D* ColorTarget = GetColorTarget(Endpoint, Portal, Level);
+					const UTextureRenderTarget2D* DepthTarget = GetDepthTarget(Endpoint, Layer, Level);
 					const bool bViewStateAllocated = Layer.ViewState.GetReference() != nullptr;
 					const bool bColorAllocated = IsValid(ColorTarget);
-					const bool bDepthAllocated = IsValid(Layer.SecondaryDepthTarget);
-					const bool bOwned = bViewStateAllocated || bColorAllocated || bDepthAllocated;
+					const bool bDepthAllocated = IsValid(DepthTarget);
+					const bool bOwned = bViewStateAllocated
+						|| (!bPingPongEnabled && (bColorAllocated || bDepthAllocated));
 					const bool bAttempted = (Endpoint.LastAttemptedLayerMask & (1 << Level)) != 0;
 					const bool bSubmitted = (Endpoint.LastSubmittedLayerMask & (1 << Level)) != 0;
 					const bool bPublished = (PublishedLayerMask & (1 << Level)) != 0;
@@ -1534,16 +1829,19 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						ReclaimableLayerMask |= (1 << Level);
 					}
 					ViewStateCount += bViewStateAllocated ? 1 : 0;
-					ColorTargetCount += bColorAllocated ? 1 : 0;
-					DepthTargetCount += bDepthAllocated ? 1 : 0;
 					const uint64 ColorBytes = EstimateTargetBytes(ColorTarget);
-					const uint64 DepthBytes = EstimateTargetBytes(Layer.SecondaryDepthTarget);
-					EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
+					const uint64 DepthBytes = EstimateTargetBytes(DepthTarget);
+					if (!bPingPongEnabled)
+					{
+						ColorTargetCount += bColorAllocated ? 1 : 0;
+						DepthTargetCount += bDepthAllocated ? 1 : 0;
+						EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
+					}
 
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"lifetimeIdStatus\":\"IMPLEMENTED\",\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"resourceStateAuthority\":\"IMPLEMENTED_P1A3\",\"retirementStateStatus\":\"IMPLEMENTED_MODEL\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyGenerationCompat\":%llu,\"activePublicationGenerationCompat\":%llu,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"pingPongSlot\":%d,\"sharedPingPongTargets\":%s,\"parentViewRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"renderRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"projectedCoverage\":%.9g,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
 						Level,
 						Layer.Lifetime.LifetimeId,
 						Layer.Lifetime.PublicationGeneration,
@@ -1554,8 +1852,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						bPublished ? TEXT("true") : TEXT("false"),
 						*EscapedFailure,
 						bViewStateAllocated ? TEXT("true") : TEXT("false"),
-						Layer.HistoryGeneration,
-						Layer.ActivePublicationGeneration.Load(),
 						Layer.bHistoryValid ? TEXT("true") : TEXT("false"),
 						Layer.bVisibleLastTick ? TEXT("true") : TEXT("false"),
 						Layer.FramesSubmitted, Layer.FramesSkipped,
@@ -1565,15 +1861,22 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Layer.LastCompletedSubmission.Load(), Layer.SecondaryPreExposure.Load(),
 						Layer.ObservedAAMethod.Load(),
 						Layer.bTemporalJitterObserved.Load() ? TEXT("true") : TEXT("false"),
+						Layer.LastPingPongSlot,
+						bPingPongEnabled ? TEXT("true") : TEXT("false"),
+						Layer.LastParentViewRect.Min.X, Layer.LastParentViewRect.Min.Y,
+						Layer.LastParentViewRect.Max.X, Layer.LastParentViewRect.Max.Y,
+						Layer.LastRenderRect.Min.X, Layer.LastRenderRect.Min.Y,
+						Layer.LastRenderRect.Max.X, Layer.LastRenderRect.Max.Y,
+						Layer.LastProjectedCoverage,
 						bColorAllocated ? TEXT("true") : TEXT("false"),
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
 						bColorAllocated ? static_cast<int32>(ColorTarget->RenderTargetFormat.GetValue()) : -1,
 						ColorBytes,
 						bDepthAllocated ? TEXT("true") : TEXT("false"),
-						bDepthAllocated ? Layer.SecondaryDepthTargetSize.X : 0,
-						bDepthAllocated ? Layer.SecondaryDepthTargetSize.Y : 0,
-						bDepthAllocated ? static_cast<int32>(Layer.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
+						bDepthAllocated ? DepthTarget->SizeX : 0,
+						bDepthAllocated ? DepthTarget->SizeY : 0,
+						bDepthAllocated ? static_cast<int32>(DepthTarget->RenderTargetFormat.GetValue()) : -1,
 						DepthBytes,
 						Layer.DepthSourceWidth.Load(), Layer.DepthSourceHeight.Load(),
 						Level + 1 < MaxRecursionDepth ? TEXT(",") : TEXT(""));
@@ -1585,7 +1888,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
@@ -1594,19 +1897,20 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					RetiringLayerMask, CountSetBits(RetiringLayerMask),
 					ReclaimableLayerMask, CountSetBits(ReclaimableLayerMask),
 					ViewStateCount, ColorTargetCount, DepthTargetCount,
-					EndpointExplicitTargetBytes, *LayersJson,
+					EndpointExplicitTargetBytes,
+					bPingPongEnabled ? TEXT("true") : TEXT("false"),
+					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y,
+					*LayersJson,
 					EndpointIndex + 1 < EndpointCount ? TEXT(",") : TEXT(""));
 			}
 
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityLazyViewState.P1A3.v1\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v1\",\n")
 				TEXT("  \"status\":\"%s\",\n")
-				TEXT("  \"diagnosticScope\":\"P1A-3 visible-demand ViewState/lifetime allocation; runtime capacity reclaim remains deferred to P1A-4\",\n")
-				TEXT("  \"lifetimeIdStatus\":\"IMPLEMENTED\",\n")
-				TEXT("  \"retirementStateStatus\":\"IMPLEMENTED_MODEL_NOT_YET_DRIVING_RUNTIME_RECLAIM\",\n")
-				TEXT("  \"resourceStateAuthority\":\"IMPLEMENTED_P1A3\",\n")
+				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
+				TEXT("  \"pingPongEnabled\":%s,\n")
 				TEXT("  \"requestedDepth\":%d,\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"visibleEndpointCount\":%d,\n")
@@ -1616,9 +1920,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"P1A-3 allocates ViewState/lifetime only after a level enters a visible recursion chain. Short visibility loss keeps allocated in-budget resources; configured-depth retirement/reclaim is still deferred to P1A-4.\"\n")
+				TEXT("  \"claimBoundary\":\"Ping-pong removes recursion-depth-proportional portal color/depth ownership but intentionally retains independent per-level ViewState temporal histories. Runtime ViewState reclaim remains separate work.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
+				bPingPongEnabled ? TEXT("true") : TEXT("false"),
 				LastRequestedRecursionDepth,
 				PrimaryResolutionFraction,
 				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
@@ -1638,6 +1943,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		}
 
 		bool bRunning = false;
+		bool bPingPongEnabled = false;
+		bool bRestoreBoundedComposition = false;
+		int32 PreviousBoundedCompositionValue = 0;
 		float PrimaryResolutionFraction = 0.67f;
 		TWeakObjectPtr<UWorld> ActiveWorld;
 		FDelegateHandle WorldPostActorTickHandle;
