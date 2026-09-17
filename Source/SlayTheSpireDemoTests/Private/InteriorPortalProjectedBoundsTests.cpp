@@ -69,4 +69,44 @@ bool FInteriorPortalProjectedBoundsCropTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FInteriorPortalPingPongPolicyTest,
+	"SlayTheSpireDemo.Interior.Portals.FullFidelity.ProjectedBounds.PingPongPolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FInteriorPortalPingPongPolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	TestEqual(TEXT("L0 publishes from slot A"), PingPongSlotForLevel(0), 0);
+	TestEqual(TEXT("L1 uses slot B"), PingPongSlotForLevel(1), 1);
+	TestEqual(TEXT("L2 returns to slot A"), PingPongSlotForLevel(2), 0);
+	TestEqual(TEXT("L3 returns to slot B"), PingPongSlotForLevel(3), 1);
+	TestEqual(TEXT("Invalid level has no slot"), PingPongSlotForLevel(-1), INDEX_NONE);
+	for (int32 Level = 0; Level < 3; ++Level)
+	{
+		TestNotEqual(TEXT("Adjacent recursion levels must never alias the same ping-pong slot"),
+			PingPongSlotForLevel(Level), PingPongSlotForLevel(Level + 1));
+	}
+
+	const FIntPoint FullExtent(1920, 1080);
+	const FIntPoint PrimaryExtent(1286, 724);
+	const FIntRect OutputRect(480, 270, 1440, 810);
+	FIntRect PrimaryRect;
+	TestTrue(TEXT("Projected output rect maps into primary-resolution depth extent"),
+		ScaleRectBetweenExtents(OutputRect, FullExtent, PrimaryExtent, PrimaryRect));
+	TestEqual(TEXT("Primary rect min X floors conservatively"), PrimaryRect.Min.X, 321);
+	TestEqual(TEXT("Primary rect min Y floors conservatively"), PrimaryRect.Min.Y, 181);
+	TestEqual(TEXT("Primary rect max X ceils conservatively"), PrimaryRect.Max.X, 965);
+	TestEqual(TEXT("Primary rect max Y ceils conservatively"), PrimaryRect.Max.Y, 543);
+
+	FIntRect FullMapped;
+	TestTrue(TEXT("Full rect maps exactly to full destination extent"),
+		ScaleRectBetweenExtents(FIntRect(0, 0, 1920, 1080), FullExtent, PrimaryExtent, FullMapped));
+	TestEqual(TEXT("Full mapped min"), FullMapped.Min, FIntPoint::ZeroValue);
+	TestEqual(TEXT("Full mapped max"), FullMapped.Max, PrimaryExtent);
+
+	return true;
+}
+
 #endif
