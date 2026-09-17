@@ -6,6 +6,12 @@ namespace InteriorPortalProjectedBounds
 {
 	constexpr int32 DefaultOverscanPixels = 4;
 	constexpr int32 TargetAlignmentPixels = 32;
+	constexpr int32 PingPongBufferCount = 2;
+
+	inline int32 PingPongSlotForLevel(const int32 Level)
+	{
+		return Level >= 0 ? (Level % PingPongBufferCount) : INDEX_NONE;
+	}
 
 	inline bool ExpandAndClampRect(
 		const FIntRect& SourceRect,
@@ -125,5 +131,31 @@ namespace InteriorPortalProjectedBounds
 			FMath::Max(FMath::Min(Alignment, ParentRenderSize.Y),
 				FMath::DivideAndRoundUp(RawHeight, Alignment) * Alignment));
 		return FIntPoint(AlignedWidth, AlignedHeight);
+	}
+
+	/** Map a rectangle between equal-normalized-coordinate texture extents. */
+	inline bool ScaleRectBetweenExtents(
+		const FIntRect& SourceRect,
+		const FIntPoint& SourceExtent,
+		const FIntPoint& DestinationExtent,
+		FIntRect& OutRect)
+	{
+		OutRect = FIntRect(0, 0, 0, 0);
+		if (SourceExtent.X <= 0 || SourceExtent.Y <= 0
+			|| DestinationExtent.X <= 0 || DestinationExtent.Y <= 0
+			|| SourceRect.Width() <= 0 || SourceRect.Height() <= 0
+			|| SourceRect.Min.X < 0 || SourceRect.Min.Y < 0
+			|| SourceRect.Max.X > SourceExtent.X || SourceRect.Max.Y > SourceExtent.Y)
+		{
+			return false;
+		}
+
+		const double ScaleX = double(DestinationExtent.X) / double(SourceExtent.X);
+		const double ScaleY = double(DestinationExtent.Y) / double(SourceExtent.Y);
+		OutRect.Min.X = FMath::Clamp(FMath::FloorToInt(double(SourceRect.Min.X) * ScaleX), 0, DestinationExtent.X);
+		OutRect.Min.Y = FMath::Clamp(FMath::FloorToInt(double(SourceRect.Min.Y) * ScaleY), 0, DestinationExtent.Y);
+		OutRect.Max.X = FMath::Clamp(FMath::CeilToInt(double(SourceRect.Max.X) * ScaleX), 0, DestinationExtent.X);
+		OutRect.Max.Y = FMath::Clamp(FMath::CeilToInt(double(SourceRect.Max.Y) * ScaleY), 0, DestinationExtent.Y);
+		return OutRect.Width() > 0 && OutRect.Height() > 0;
 	}
 }
