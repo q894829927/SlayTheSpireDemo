@@ -474,7 +474,20 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		GraphBuilder, SceneColor, ERenderTargetLoadAction::ELoad,
 		TEXT("InteriorPortalBeforeDOFComposition"));
 	const FScreenPassTextureViewport OutputViewport(Output);
-	const FScreenPassTextureViewport PortalViewport(PortalTexture);
+	const FIntRect PortalFullRect(FIntPoint::ZeroValue, PortalTexture->Desc.Extent);
+	const bool bRequestViewRectFitsPortalTexture =
+		Request.ViewRect.Width() > 0 && Request.ViewRect.Height() > 0
+		&& Request.ViewRect.Min.X >= 0 && Request.ViewRect.Min.Y >= 0
+		&& Request.ViewRect.Max.X <= PortalTexture->Desc.Extent.X
+		&& Request.ViewRect.Max.Y <= PortalTexture->Desc.Extent.Y;
+	// Ping-pong recursion keeps full-size textures but renders each secondary
+	// view into the same absolute rectangle it occupies in its parent. Limiting
+	// the sampled texture viewport to that parent rectangle preserves the
+	// parent's local 0..1 UV domain without introducing crop-UV shader remapping.
+	const FIntRect PortalTextureViewRect = bRequestViewRectFitsPortalTexture
+		? Request.ViewRect
+		: PortalFullRect;
+	const FScreenPassTextureViewport PortalViewport(PortalTexture, PortalTextureViewRect);
 	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
 
 	const bool bRebasePreExposure = CVarPortalPreExposureRebase.GetValueOnRenderThread() != 0;
