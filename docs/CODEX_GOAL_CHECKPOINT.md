@@ -1,20 +1,112 @@
-# Codex Goal Checkpoint — Interior Portals (interrupted)
+# Codex Goal Checkpoint — Interior Portals
 
-## Current resumable task — Interior portals, 2026-09-12
+## Current Portal resume authority — 2026-09-16
 
-HEAD: `18d4686d9113aacd9fb655426e3b7a7bfcfcd830`.
+Branch:
 
-User requests a Portal-like mechanism in `/Game/House/L_Interior_LivingKitchen` and prefers MCP over desktop control. Desktop Computer Use was stopped by the user with Escape; no further desktop actions were issued. Use MCP for subsequent editor work.
+```text
+portal/full-fidelity-p1
+```
 
-Implemented but **not compiled or accepted**: `InteriorPortalMath`, `InteriorPortal`, `InteriorPortalSystem`, controller/HUD/input integration and three focused Automation tests. Design and gates: `docs/InteriorPortals.md`. No portal material assets or endpoint/system map instances have been created yet. The code still needs build diagnostics and review, especially recursive render correctness, near-plane crossing, upright capsule transitions, scoped collision restoration, physics exit obstruction and partial-body rendering. Do not claim a finished or visually identical portal mechanism.
+Current authorized Portal plan:
 
-Existing user modifications at entry: map, `InteriorChildCharacter.cpp/.h`, untracked `Content/House/BP_CorridorSegment.uasset`. Preserve these. MCP inspection found PlayerStart `(1300,300,100)`, yaw 90, in the corridor extension. Author initial portals near there, not in the old living-room spawn. Detailed transforms/bounds: `Saved/PortalSceneInspection.json`.
+```text
+docs/PortalPerformanceVRAMP1Plan.md
+```
 
-Validation: bundled UE 5.8 project-file generation succeeded. Editor build blocked before compilation by active Live Coding, evidence `Saved/Logs/InteriorPortalsBuild.log`; no Automation or portal PIE tests executed. Map and corridor Blueprint were confirmed saved via MCP. MCP Slate Click close and Alt+F4 returned true but editor process 63544 remained running; do not assume closure.
+Current functional closure record:
 
-Next: close editor normally using MCP if possible (or ask user to close it), execute prescribed Development Editor build, fix compilation failures, create and save procedural portal material + pair/system + surface references using UE-supported tooling, run focused tests and actual-map visual/runtime checks. MCP endpoint `http://127.0.0.1:8000/mcp`; helper `Saved/PortalMcp.ps1` handles JSON/SSE, session ID in `Saved/PortalMcpSession.txt` (reinitialize after restart). Discovered schemas are `Saved/Portal*Schema.json`. `ProgrammaticToolset.get_execution_environment` was read: scripts may only orchestrate registered tools with allowed standard modules. Do not bypass its sandbox. Slate observers: `observer_1`, `observer_2`; window `w1`, may become stale after restart.
+```text
+docs/InteriorPortalExperiment/InteriorPortalFullFidelityProductionRegression.md
+```
 
-`Saved/PortalEditorBridge.py` and `Saved/PortalEditorCommand.py` were written locally but **never executed or activated**. They are not evidence of editor edits. No plugin/config/build-setting changes, commits or generated-file staging were performed.
+Current Portal task:
+
+```text
+P1A-1 — Structured resource baseline and Dump instrumentation
+```
+
+Current status:
+
+```text
+SINGLE-PAIR FULLFIDELITY FUNCTIONAL GATE = COMPLETE / VALIDATED / SEALED
+PORTAL PERFORMANCE / VRAM P1 = AUTHORIZED
+P1A-0 DOCUMENTATION ALIGNMENT = COMPLETE
+P1A-1 = NEXT IMPLEMENTATION TASK
+```
+
+Resume rule:
+
+- Do **not** resume the historical STEP 1B.3 / CRP feasibility task below.
+- Do **not** reopen accepted projection, aperture, depth, TSR, Lumen, composition or publication-retirement behavior without a reproduced regression.
+- Start P1A-1 by improving structured diagnostics only; do not change resource allocation/reclaim semantics except where strictly required for truthful reporting.
+- Report `RequestedDepth`, `VisibleDepth`, `EffectiveDepth`, exact attempted/submitted layer masks and resource ownership separately.
+- Lifetime/state fields that do not exist yet must be reported as `INFERRED` or `NOT_IMPLEMENTED`; do not implement the P1A-2 state machine early merely to populate the report.
+
+The historical checkpoint below is retained for engineering evidence only.
+
+---
+
+## HISTORICAL CHECKPOINT — STEP 1B.3 Main SceneColor composition boundary, 2026-09-14
+
+Branch: `portal/full-fidelity-p1`. Current baseline for this delivery:
+`81ffb09af1945ed8f695c934bcfacd67ab29f835` (`portal: add native exit clip diagnostics`).
+The existing user-owned map change in
+`Content/House/L_Interior_LivingKitchen.umap` remains unrelated and must stay
+uncommitted.
+
+STEP 1B.3 result: **PARTIAL**. `CustomRenderPassCompositionSpike` was added as
+an explicit opt-in backend while preserving the default `SceneCapture`
+fallback, `MainViewStencilSpike` and `CustomRenderPassSpike`. It submits the
+existing real transformed one-layer CRP view, copies the external target
+resource identity into the immutable request, and subscribes to
+`ISceneViewExtension::SubscribeToPostProcessingPass(BeforeDOF)`. The callback
+reads `FPostProcessMaterialInputs::SceneColor`, imports the CRP HDR target and
+returns a new RDG SceneColor before player exposure/local exposure/color
+grading/tonemap.
+
+The project-side pre-tonemap composition boundary is therefore implemented,
+but the spike uses an analytic ellipse from logical projected bounds. It does
+not apply main SceneDepth comparison, public main stencil, true CRP scissor or
+depth-continuous wall occlusion. GPU composition and visual parity remain
+manual PIE/RenderDoc evidence, not Automation claims. No Engine source was
+modified, and no SceneCapture exposure/ObliqueFallback/traversal/physics path
+was changed.
+
+Changed source includes `InteriorPortalRenderer.h/.cpp`,
+`InteriorPortalSystem.h/.cpp`, `SlayTheSpireDemo.Build.cs`,
+`SlayTheSpireDemo.uproject`, `Shaders/InteriorPortalComposition.usf` and
+`InteriorPortalTests.cpp`; docs are updated in the current execution plan and
+observed-issues log. The SceneCapture backend remains the default fallback.
+
+Validation: bundled UE 5.8 project-file generation passed; Development Editor
+build passed; focused `SlayTheSpireDemo.Interior.Portals` passed **17/17** in
+`Saved/AutomationReports/PortalCompositionBoundary/index.json`. The first
+Automation invocation was discarded because `-run=AutomationTests` requested a
+nonexistent commandlet; the corrected `UnrealEditor-Cmd` invocation without
+that flag passed. The module loads at `PostConfigInit` because UE5.8 rejects
+project global shader registration after shader types initialize.
+
+Next action: manual PIE on `/Game/House/L_Interior_LivingKitchen` with
+`RendererBackend=CustomRenderPassCompositionSpike`, `RecursionDepth=1`, then
+compare frontal/vertical/near/partial-offscreen and bright↔dark views. Check
+parallax, ellipse edge, portal-outside contamination, support-wall/depth
+occlusion, exposure/tone-map behavior and crossing frame pops. Record as
+`MANUAL VISUAL ACCEPTANCE REQUIRED`; do not claim SUCCESS from 17/17. If the
+visual path is useful, the next feasibility decision is the minimal
+renderer-private depth-stencil/scissor hook, not a SceneCapture brightness
+hack. Do not start Step 2 or Step 3, recursion > 1, full temporal/Lumen
+fidelity or physics work from this checkpoint.
+
+Rollback checkpoint, 2026-09-13 14:22: the uncommitted portal files were reconstructed from the session history immediately before the 14:22 MCP capture rather than using `git reset --hard`, which would have discarded the earlier portal and presentation work. The map-owned pair and generated assets were rebuilt and saved. UE 5.8's HDR RenderTarget contract was preserved with a Linear Color sampler, and stale disconnected material expressions were removed so `M_InteriorPortal` compiles instead of falling back to the default shader. Final MCP viewport evidence is `Saved/PortalRollback1422FinalViewport.png`; PIE was stopped after capture. The final editor viewport shows both animated portal rings with no checkerboard/default-material surface.
+
+Post-rollback focused Automation was rediscovered and rerun through MCP: 8/8 passed in `Saved/PortalRollback1422Tests.json`.
+
+Evidence caveat: discard `Saved/PortalWallStuckBaseline.json` and the initial `Saved/PortalWallStuckFixed.json`. UE Python unary vector negation modified a reused direction, invalidating those ad hoc labels. Corrected probe uses immutable scalar directions. Native Automation and the six-case replay remain valid. Full details and acceptance limits: `docs/InteriorPortalPlayerTraversal.md`; current defect authority: `docs/InteriorPortalObservedIssues.md`.
+
+Next action: perform the remaining manual visual PIE matrix on `/Game/House/L_Interior_LivingKitchen` for both `FinalColorHDR` and `SceneColorLinear`: bright→dark, dark→bright, static, approach, crossing, slow camera rotation, recursion 1 and recursion >=2. Record screenshots/observations for exposure parity, clipping, Lumen and temporal behavior; automation and JSON diagnostics cannot substitute for this evidence. Do not begin Step 1B Stencil/MainView, Step 2 or Step 3. No Core or Full Physics seal is claimed. The implementation commit is `b89552a`; the remaining work is manual visual acceptance, not an uncommitted code continuation.
+
+Tool navigation: MCP endpoint `http://127.0.0.1:8000/mcp`; `Saved/PortalMcp.ps1` handles SSE (reinitialize the session after editor restart). `Saved/PortalP34Bridge.py` runs through the UE Python plugin at editor startup and consumes `Saved/PortalP34Command.py`. Publish commands atomically via a temporary file and rename; partial writes can execute twice. Do not bypass MCP ProgrammaticToolset's sandbox. The verification PIE session was stopped through MCP; close the background editor before a future build if it is still running. The map and generated presentation assets are intentionally saved as part of this pass; no commit was made.
 
 ## Prior checkpoint retained below
 
@@ -64,9 +156,7 @@ arrays and enemy opt-in are Blueprint-editable on `WBP_CombatantPresentation`'s 
 
 Completed: native frame playback and deterministic elapsed-time selection; fallback restoration
 to the authored `Img_Character` brush/transform; no Spine runtime dependency; docs in
-[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation
-and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`,
-`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`, `Saved/Logs/IroncladCharacterAnimationBuild.log`).
 `CompileAllBlueprints` completed with 0 errors and `WBP_CombatantPresentation` successful
 (`Saved/Logs/IroncladCharacterAnimationBlueprints.log`; only existing unrelated warnings remain).
 
