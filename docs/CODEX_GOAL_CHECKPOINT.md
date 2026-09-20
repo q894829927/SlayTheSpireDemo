@@ -36,9 +36,20 @@
   regression; do not count it as a P1A-4 failure without focused evidence tying
   it to the lifetime path.
 - **P1A-4 queue-safe runtime reclaim = COMPLETE / VALIDATED for its defined
-  scope.** Next implementation is P1A-5 Color Target Capacity Shrink, followed
-  by P1A-6/P1A-7 and the full P1A gate. Do not skip directly to broad physics.
-  P1B is the later stage expected to attack sustained depth-four rendering cost.
+  scope.**
+- P1A-5 fallback/legacy Color Target Capacity Shrink is now implemented in
+  `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`. L1-L3 color targets above a
+  reduced RequestedDepth retire with the same `FRetiringLayer` and RHI-thread
+  fence that owns the old ViewState/publication; report schema v4 exposes active
+  and retiring color counts, and Stop releases active fallback color targets.
+- P1A-5 is **IMPLEMENTED / USER VALIDATION REQUIRED**, not yet sealed. Required
+  next evidence: UE 5.8 build, focused FullFidelity Automation regression, and
+  actual D3D12 fallback `4 -> 1 -> 4` / rapid reversal / offscreen / Stop-Restart
+  target-count checks. Authority:
+  [P1A-5 validation](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
+- After P1A-5 validates, continue P1A-6/P1A-7 and the full P1A gate. Do not skip
+  directly to broad physics. P1B is the later stage expected to attack sustained
+  depth-four rendering cost.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
