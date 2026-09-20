@@ -2,24 +2,40 @@
 
 ## Current P1A-3/P1A-4 implementation checkpoint — 2026-09-21
 
-- Base HEAD `684ebae1c06215196c7bc73ef1c87a8d61030af9`; no new commit requested.
-- Implemented queue-safe ViewState retirement on RequestedDepth reduction,
-  including offscreen/unlinked/viewport-unavailable paths; detached dependent
-  extensions, RHI-thread fence polling, bounded old/new coexistence and teardown.
-- Diagnostics now expose retired lifetime records and count their ownership.
-  Existing shared output/scratch targets remain retained for later capacity work.
-- UE 5.8 project generation and final editor build PASS. Focused CPU Automation
-  10/10 PASS. Actual D3D12 observations verify 8 -> 2 owned ViewStates, stable L0,
-  distinct rebuilt IDs, rapid reversal with old/new coexistence and zero Stop
-  ownership. See [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md)
-  for exact evidence, timing limitations and remaining gates.
-- Crop visual acceptance is user-confirmed. New lifecycle-transition visual
-  acceptance remains USER ACTION REQUIRED; fast growth shows frame spikes.
-- Next: review transition performance evidence, complete lifecycle visual gate,
-  then continue P1A-5/P1A-6/P1A-7 resource capacity contracts. Do not claim P1A
-  sealed or start broad physics. Optimization code default remains 0.
-- Prior-turn documentation edits recording crop acceptance and correcting the
-  physical-design authority link remain included and uncommitted.
+- P1A-4 implementation is committed in `787e507425131f03114794ea1ab3d91b5fdb1cc1`.
+  Focused Unreal Insights instrumentation is committed in
+  `5b6ad649d3e3d8977a79596132168d5067bdd0b2`.
+- Queue-safe ViewState retirement on RequestedDepth reduction remains implemented
+  for visible/offscreen/unlinked/viewport-unavailable paths, with detached
+  dependent extensions, RHI-thread fence polling, bounded old/new coexistence,
+  and synchronous Stop teardown only.
+- UE 5.8 project generation and Development Editor build previously PASS.
+  Focused CPU Automation remains 10/10 PASS. Actual D3D12 ownership evidence
+  still verifies 8 -> 2 owned ViewStates, stable L0, distinct rebuilt IDs,
+  rapid-reversal coexistence and zero Stop ownership.
+- New user-captured Unreal Insights evidence closes the earlier attribution
+  question around the approximately one-second rapid-expansion wall interval.
+  On the actual Depth 1 -> 4 expansion frame, six rebuilt ViewStates cost 21 us
+  total, six recursive extensions cost 25.9 us total, the complete
+  `Portal_SubmitVisibleEndpoints` scope cost 591.4 us, `Portal_UpdateCapacity`
+  cost 800 ns, and `Portal_PollRetirements` cost 100 ns.
+- Stable rendering samples from the same manual session were approximately
+  31.34 ms at RequestedDepth=1 and 145.78 ms at RequestedDepth=4 (~4.65x).
+  Additional sustained depth-four samples were roughly 215-262 ms. The traces
+  are dominated by repeated full scene rendering work rather than P1A-4 CPU
+  lifetime management. Carry this forward as a P1B recursion-rendering
+  performance baseline; do not reopen P1A-4 retirement merely to chase the
+  steady-state Depth=4 GPU cost.
+- P1A-4 transition-performance attribution for the CPU lifetime-management path
+  is CLOSED. Lifecycle-transition visual acceptance remains USER ACTION REQUIRED
+  until the user explicitly confirms no stale flash, prolonged blank aperture,
+  recursion corruption or foreground-occlusion regression during 4 -> 1 -> 4.
+- Next after that manual visual confirmation: continue P1A-5 Color Target
+  Capacity Shrink, then P1A-6/P1A-7 and the full P1A gate. Do not skip directly
+  to broad physics. P1B is the later stage expected to attack the sustained
+  depth-four rendering cost.
+- Exact evidence and caveats:
+  [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
 ## Historical resume update — user-confirmed visual acceptance
 
