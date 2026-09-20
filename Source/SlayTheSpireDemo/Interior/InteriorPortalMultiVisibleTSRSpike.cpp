@@ -323,6 +323,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 	struct FRetiringLayer
 	{
 		TUniquePtr<FLayerState> Layer;
+		// Legacy fallback color output follows the exact same retirement fence as
+		// the lifetime that last submitted into it. It is rooted only while detached
+		// from AInteriorPortal::RenderTargets and waiting for that fence.
+		UTextureRenderTarget2D* LegacyColorTarget = nullptr;
 		// Both the publisher of this layer and the consumer bound to its ViewState.
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> Publisher;
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> ChildConsumer;
@@ -689,6 +693,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				PollRetirements(Endpoint, true);
+				ReleaseLegacyColorTargets(Endpoint);
 				Endpoint.MainCompositionExtension.Reset();
 				for (int32 Level = 1; Level < MaxRecursionDepth; ++Level)
 				{
@@ -744,6 +749,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y);
 
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
+				UE_LOG(LogTemp, Display,
+					TEXT("PortalMultiVisible Endpoint=%d ColorTargets Active=%d Retiring=%d Owned=%d"),
+					EndpointIndex,
+					CountActiveColorTargets(Endpoint, Portal),
+					CountRetiringColorTargets(Endpoint),
+					CountActiveColorTargets(Endpoint, Portal) + CountRetiringColorTargets(Endpoint));
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
@@ -885,6 +896,61 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			return Layer.SecondaryDepthTarget;
 		}
 
+		int32 CountActiveColorTargets(
+			const FEndpointState& Endpoint,
+			const AInteriorPortal* Portal) const
+		{
+			int32 Count = 0;
+			if (bPingPongEnabled)
+			{
+				for (int32 Slot = 0; Slot < InteriorPortalProjectedBounds::PingPongBufferCount; ++Slot)
+				{
+					Count += IsValid(Endpoint.PingPongColor[Slot]) ? 1 : 0;
+				}
+				return Count;
+			}
+			if (!IsValid(Portal))
+			{
+				return 0;
+			}
+			for (const UTextureRenderTarget2D* Target : Portal->RenderTargets)
+			{
+				Count += IsValid(Target) ? 1 : 0;
+			}
+			return Count;
+		}
+
+		int32 CountRetiringColorTargets(const FEndpointState& Endpoint) const
+		{
+			if (bPingPongEnabled)
+			{
+				return 0;
+			}
+			int32 Count = 0;
+			for (const auto& Retiring : Endpoint.RetiringLayers)
+			{
+				Count += IsValid(Retiring->LegacyColorTarget) ? 1 : 0;
+			}
+			return Count;
+		}
+
+		void ReleaseLegacyColorTargets(FEndpointState& Endpoint)
+		{
+			AInteriorPortal* Portal = GetEndpointPortal(Endpoint.EndpointIndex);
+			if (!IsValid(Portal))
+			{
+				return;
+			}
+			for (UTextureRenderTarget2D* Target : Portal->RenderTargets)
+			{
+				if (IsValid(Target))
+				{
+					Target->ReleaseResource();
+				}
+			}
+			Portal->RenderTargets.Reset();
+		}
+
 		int32 BuildPublishedLayerMask(const int32 EndpointIndex) const
 		{
 			if (EndpointIndex < 0 || EndpointIndex >= EndpointCount)
@@ -957,6 +1023,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				Retiring.ChildConsumer.Reset();
 				Layer.ViewState.Destroy();
 				ReleaseDepthTarget(Layer);
+				if (IsValid(Retiring.LegacyColorTarget))
+				{
+					Retiring.LegacyColorTarget->ReleaseResource();
+					Retiring.LegacyColorTarget->RemoveFromRoot();
+					Retiring.LegacyColorTarget = nullptr;
+				}
 				Layer.Lifetime.ResetUnallocated();
 				Endpoint.RetiringLayers.RemoveAt(Index);
 			}
@@ -989,6 +1061,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Layer.bHistoryValid = false;
 					auto Retiring = MakeUnique<FRetiringLayer>();
 					Retiring->Layer = MoveTemp(Endpoint.Layers[Level]);
+					if (!bPingPongEnabled)
+					{
+						AInteriorPortal* Portal = GetEndpointPortal(Endpoint.EndpointIndex);
+						if (IsValid(Portal) && Portal->RenderTargets.IsValidIndex(Level))
+						{
+							UTextureRenderTarget2D* ColorTarget = Portal->RenderTargets[Level];
+							if (IsValid(ColorTarget))
+							{
+								TRACE_CPUPROFILER_EVENT_SCOPE(Portal_RetireLegacyColorTarget);
+								ColorTarget->AddToRoot();
+								Retiring->LegacyColorTarget = ColorTarget;
+							}
+							// Capacity is indexed by recursion level, so shrinking in descending
+							// order keeps all retained lower levels at their original indices.
+							Portal->RenderTargets.RemoveAt(Level, 1, EAllowShrinking::No);
+						}
+					}
 					Retiring->Publisher = MoveTemp(Endpoint.RecursiveCompositionExtensions[Level]);
 					if (Level + 1 < MaxRecursionDepth)
 					{
@@ -1902,6 +1991,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				int32 ReclaimableLayerMask = 0;
 				int32 ViewStateCount = 0;
 				int32 ColorTargetCount = 0;
+				int32 ActiveColorTargetCount = 0;
+				int32 RetiringColorTargetCount = 0;
 				int32 DepthTargetCount = 0;
 				uint64 EndpointExplicitTargetBytes = 0;
 				FString LayersJson;
@@ -1913,6 +2004,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						if (IsValid(Endpoint.PingPongColor[Slot]))
 						{
 							++ColorTargetCount;
+							++ActiveColorTargetCount;
 							EndpointExplicitTargetBytes += EstimateTargetBytes(Endpoint.PingPongColor[Slot]);
 						}
 						if (IsValid(Endpoint.PingPongDepth[Slot]))
@@ -1958,6 +2050,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					if (!bPingPongEnabled)
 					{
 						ColorTargetCount += bColorAllocated ? 1 : 0;
+						ActiveColorTargetCount += bColorAllocated ? 1 : 0;
 						DepthTargetCount += bDepthAllocated ? 1 : 0;
 						EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
 					}
@@ -2012,11 +2105,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					OwnedLayerMask |= 1 << Old.Level;
 					RetiringLayerMask |= 1 << Old.Level;
 					ViewStateCount += Old.ViewState.GetReference() ? 1 : 0;
+					const bool bRetiringColorAllocated = IsValid(Retiring->LegacyColorTarget);
+					const uint64 RetiringColorBytes = EstimateTargetBytes(Retiring->LegacyColorTarget);
+					ColorTargetCount += bRetiringColorAllocated ? 1 : 0;
+					RetiringColorTargetCount += bRetiringColorAllocated ? 1 : 0;
 					DepthTargetCount += IsValid(Old.SecondaryDepthTarget) ? 1 : 0;
-					EndpointExplicitTargetBytes += EstimateTargetBytes(Old.SecondaryDepthTarget);
+					EndpointExplicitTargetBytes += RetiringColorBytes + EstimateTargetBytes(Old.SecondaryDepthTarget);
 					if (!RetirementsJson.IsEmpty()) { RetirementsJson += TEXT(","); }
-					RetirementsJson += FString::Printf(TEXT("{\"level\":%d,\"lifetimeId\":%llu,\"state\":\"RETIRING\",\"fenceComplete\":%s}"),
-						Old.Level, Old.Lifetime.LifetimeId, Retiring->Fence.IsFenceComplete() ? TEXT("true") : TEXT("false"));
+					RetirementsJson += FString::Printf(
+						TEXT("{\"level\":%d,\"lifetimeId\":%llu,\"state\":\"RETIRING\",\"fenceComplete\":%s,\"legacyColorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu}}"),
+						Old.Level, Old.Lifetime.LifetimeId,
+						Retiring->Fence.IsFenceComplete() ? TEXT("true") : TEXT("false"),
+						bRetiringColorAllocated ? TEXT("true") : TEXT("false"),
+						bRetiringColorAllocated ? Retiring->LegacyColorTarget->SizeX : 0,
+						bRetiringColorAllocated ? Retiring->LegacyColorTarget->SizeY : 0,
+						bRetiringColorAllocated
+							? static_cast<int32>(Retiring->LegacyColorTarget->RenderTargetFormat.GetValue()) : -1,
+						RetiringColorBytes);
 				}
 				TotalViewStates += ViewStateCount;
 				TotalColorTargets += ColorTargetCount;
@@ -2024,7 +2129,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"activeColorTargetCount\":%d,\"retiringColorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
@@ -2032,8 +2137,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					ActiveLayerMask, CountSetBits(ActiveLayerMask),
 					RetiringLayerMask, CountSetBits(RetiringLayerMask),
 					ReclaimableLayerMask, CountSetBits(ReclaimableLayerMask),
-					ViewStateCount, ColorTargetCount, DepthTargetCount,
-					EndpointExplicitTargetBytes,
+					ViewStateCount, ColorTargetCount, ActiveColorTargetCount, RetiringColorTargetCount,
+					DepthTargetCount, EndpointExplicitTargetBytes,
 					bPingPongEnabled ? TEXT("true") : TEXT("false"),
 					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y,
 					*RetirementsJson, *LayersJson,
@@ -2043,7 +2148,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v3\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v4\",\n")
 				TEXT("  \"status\":\"%s\",\n")
 				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 				TEXT("  \"pingPongEnabled\":%s,\n")
@@ -2056,7 +2161,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"Ping-pong removes recursion-depth-proportional portal color/depth ownership but intentionally retains independent per-level ViewState temporal histories. ViewState lifetimes retire through an RHI-thread fence; target capacity shrinking and GPU allocator residency are separate gates.\"\n")
+				TEXT("  \"claimBoundary\":\"Legacy per-level color targets above RequestedDepth retire with the exact recursion lifetime and RHI-thread fence that last used them; short invisibility and lower EffectiveDepth do not shrink capacity. Ping-pong color ownership remains shared per endpoint. Depth-target and scratch audits remain separate gates, and logical release does not prove immediate GPU allocator residency return.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
@@ -2157,7 +2262,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	FAutoConsoleCommand GStopMultiVisibleCommand(
 		TEXT("portal.StopMultiVisibleTSRSpike"),
-		TEXT("Stop full-fidelity producer and release endpoint x recursion-level histories/depth targets."),
+		TEXT("Stop full-fidelity producer and release endpoint x recursion-level histories/color/depth targets."),
 		FConsoleCommandDelegate::CreateStatic(&StopMultiVisible));
 
 	FAutoConsoleCommand GDumpMultiVisibleCommand(
