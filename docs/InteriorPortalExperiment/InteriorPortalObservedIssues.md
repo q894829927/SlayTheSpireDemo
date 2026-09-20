@@ -1,5 +1,23 @@
 # Interior Portal — Observed Issues and Regression Targets
 
+## Persistent traversal hitch — clarified 2026-09-21
+
+The user reports that a brief frame hitch when physically crossing a Portal has
+been present throughout the Portal implementation and **predates the P1A-4
+queue-safe runtime reclaim work**. Current P1A-4 Unreal Insights evidence shows
+the capacity/lifetime CPU path is microsecond to sub-millisecond scale during
+Depth 1 -> 4 reconstruction, so the crossing hitch is not currently attributed
+to P1A-4.
+
+Status: **OPEN / PRE-EXISTING / NOT YET ATTRIBUTED**.
+
+A dedicated crossing trace should bracket the frame immediately before the eye/
+capsule transfer, the transfer commit, and the first destination-side frame.
+Inspect GameThread, RenderThread, RHIThread and GPU together, including traversal
+state transfer, camera-cut/history invalidation, scene-view/Lumen/TSR work and
+any render synchronization. Do not conflate this issue with the now-accepted
+P1A-4 depth-capacity transition gate.
+
 ## Current crop-display regression — 2026-09-20
 
 The reproduced vertical slit / distance-dependent aperture scaling has a
