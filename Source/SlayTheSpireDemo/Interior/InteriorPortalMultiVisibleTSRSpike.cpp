@@ -17,6 +17,8 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
+#include "GlobalShader.h"
+#include "RenderGraphUtils.h"
 #include "LegacyScreenPercentageDriver.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -36,6 +38,23 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 	constexpr int32 EndpointCount = 2;
 	constexpr int32 MaxRecursionDepth = 4;
 
+	// Depth has not passed through TSR. Read the actual primary-view rectangle
+	// from its view uniform rather than deriving it from pooled texture extents.
+	class FPortalDepthExtractionPS : public FGlobalShader
+	{
+	public:
+		DECLARE_GLOBAL_SHADER(FPortalDepthExtractionPS);
+		SHADER_USE_PARAMETER_STRUCT(FPortalDepthExtractionPS, FGlobalShader);
+		BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
+			SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
+			SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SourceDepthTexture)
+			SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
+			RENDER_TARGET_BINDING_SLOTS()
+		END_SHADER_PARAMETER_STRUCT()
+	};
+	IMPLEMENT_GLOBAL_SHADER(FPortalDepthExtractionPS,
+		"/Project/InteriorPortalDepthExtraction.usf", "MainPS", SF_Pixel);
+
 	TAutoConsoleVariable<int32> CVarMultiVisibleDiagnostics(
 		TEXT("portal.MultiVisibleDiagnostics"),
 		0,
@@ -44,7 +63,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	TAutoConsoleVariable<int32> CVarFullFidelityPingPong(
 		TEXT("portal.FullFidelityPingPong"),
-		1,
+		// Keep the full-view recovery default until continuous-motion acceptance.
+		0,
 		TEXT("FullFidelity recursion target policy. 1=two full-coordinate-domain color/depth buffers per visible endpoint with projected viewport/scissor; 0=legacy per-level full-view targets."),
 		ECVF_Default);
 
@@ -181,8 +201,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TAtomic<bool> bTemporalJitterObserved { false };
 		TAtomic<int32> ExtractionInputWidth { 0 };
 		TAtomic<int32> ExtractionInputHeight { 0 };
-		TAtomic<int32> DepthSourceWidth { 0 };
-		TAtomic<int32> DepthSourceHeight { 0 };
 		TAtomic<int32> DepthTargetWidth { 0 };
 		TAtomic<int32> DepthTargetHeight { 0 };
 	};
@@ -343,7 +361,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FSceneViewStateInterface* InExpectedViewState,
 			FRenderTarget* InExtractionTarget,
 			FRenderTarget* InDepthExtractionTarget,
-			const FIntPoint& InExtractionOutputExtent,
 			const FIntRect& InExtractionDestinationRect,
 			TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> InColorSample,
 			TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> InMainPublisher,
@@ -354,7 +371,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			, ExpectedViewState(InExpectedViewState)
 			, ExtractionTarget(InExtractionTarget)
 			, DepthExtractionTarget(InDepthExtractionTarget)
-			, ExtractionOutputExtent(InExtractionOutputExtent)
 			, ExtractionDestinationRect(InExtractionDestinationRect)
 			, ColorSample(InColorSample)
 			, MainPublisher(MoveTemp(InMainPublisher))
@@ -455,6 +471,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 					GraphBuilder.UseExternalAccessMode(ExtractionTexture, ERHIAccess::SRVMask);
 
+					bool bDepthExtracted = false;
 					if (DepthExtractionTarget)
 					{
 						const TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer =
@@ -470,35 +487,44 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 								DepthExtractionTarget->GetRenderTargetTexture(GraphBuilder);
 							if (SceneDepthTexture && DepthExtractionTexture)
 							{
-								const FIntPoint AvailableDepthExtent = SceneDepthTexture->Desc.Extent;
-								FIntRect SourceRect;
-								if (InteriorPortalProjectedBounds::ScaleRectBetweenExtents(
-									DestinationRect, ExtractionOutputExtent, AvailableDepthExtent, SourceRect))
+								if (DestinationRect.Max.X <= DepthExtractionTexture->Desc.Extent.X
+									&& DestinationRect.Max.Y <= DepthExtractionTexture->Desc.Extent.Y)
 								{
-									FIntRect DepthDestinationRect = DestinationRect;
-									DepthDestinationRect.Min.X = FMath::Clamp(DepthDestinationRect.Min.X, 0, DepthExtractionTexture->Desc.Extent.X);
-									DepthDestinationRect.Min.Y = FMath::Clamp(DepthDestinationRect.Min.Y, 0, DepthExtractionTexture->Desc.Extent.Y);
-									DepthDestinationRect.Max.X = FMath::Clamp(DepthDestinationRect.Max.X, 0, DepthExtractionTexture->Desc.Extent.X);
-									DepthDestinationRect.Max.Y = FMath::Clamp(DepthDestinationRect.Max.Y, 0, DepthExtractionTexture->Desc.Extent.Y);
-									LayerState->DepthSourceWidth.Store(SourceRect.Width());
-									LayerState->DepthSourceHeight.Store(SourceRect.Height());
 									LayerState->DepthTargetWidth.Store(DepthExtractionTexture->Desc.Extent.X);
 									LayerState->DepthTargetHeight.Store(DepthExtractionTexture->Desc.Extent.Y);
 									GraphBuilder.UseInternalAccessMode(DepthExtractionTexture);
-									AddDrawTexturePass(
-										GraphBuilder, View,
-										SceneDepthTexture, DepthExtractionTexture,
-										SourceRect.Min, SourceRect.Size(),
-										DepthDestinationRect.Min, DepthDestinationRect.Size(),
-										TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+									const FScreenPassRenderTarget DepthOutput(
+										DepthExtractionTexture, DestinationRect, ERenderTargetLoadAction::ELoad);
+									const FScreenPassTextureViewport DepthViewport(DepthOutput);
+									auto* Parameters = GraphBuilder.AllocParameters<FPortalDepthExtractionPS::FParameters>();
+									Parameters->View = View.ViewUniformBuffer;
+									Parameters->SourceDepthTexture = SceneDepthTexture;
+									Parameters->Output = GetScreenPassTextureViewportParameters(DepthViewport);
+									Parameters->RenderTargets[0] = DepthOutput.GetRenderTargetBinding();
+									TShaderMapRef<FPortalDepthExtractionPS> Shader(GetGlobalShaderMap(View.GetFeatureLevel()));
+									AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("InteriorPortal::ExtractViewDepth"),
+										View, DepthViewport, DepthViewport, Shader, Parameters);
 									GraphBuilder.UseExternalAccessMode(
 										DepthExtractionTexture, ERHIAccess::SRVMask);
 									LayerState->LastDepthExtractionFrame.Store(GFrameCounter);
+									bDepthExtracted = true;
 								}
 							}
 						}
 					}
 
+					if (!bDepthExtracted)
+					{
+						// Do not publish fresh color paired with stale ping-pong depth.
+						return SceneColor;
+					}
+					if (CVarMultiVisibleDiagnostics.GetValueOnRenderThread() != 0
+						&& (ColorSample->Submission == 1 || ColorSample->Submission % 120 == 0))
+					{
+						UE_LOG(LogTemp, Display, TEXT("PortalExtract E%dL%d ColorSource=%s Destination=%s DepthSource=View.ViewRectMinAndSize"),
+							CompletedRequest.EndpointIndex, CompletedRequest.RecursionLevel,
+							*SceneColor.ViewRect.ToString(), *DestinationRect.ToString());
+					}
 					ColorSample->PreExposure = MeasuredPreExposure;
 					LayerState->LastExtractionFrame.Store(GFrameCounter);
 					LayerState->LastCompletedSubmission.Store(ColorSample->Submission);
@@ -533,7 +559,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FSceneViewStateInterface* ExpectedViewState = nullptr;
 		FRenderTarget* ExtractionTarget = nullptr;
 		FRenderTarget* DepthExtractionTarget = nullptr;
-		FIntPoint ExtractionOutputExtent = FIntPoint::ZeroValue;
 		FIntRect ExtractionDestinationRect = FIntRect(0, 0, 0, 0);
 		TSharedRef<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 		TSharedPtr<FInteriorPortalViewExtension, ESPMode::ThreadSafe> MainPublisher;
@@ -943,8 +968,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			Layer.bTemporalJitterObserved.Store(false);
 			Layer.ExtractionInputWidth.Store(0);
 			Layer.ExtractionInputHeight.Store(0);
-			Layer.DepthSourceWidth.Store(0);
-			Layer.DepthSourceHeight.Store(0);
 			Layer.DepthTargetWidth.Store(0);
 			Layer.DepthTargetHeight.Store(0);
 		}
@@ -1631,7 +1654,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				FSceneViewExtensions::NewExtension<FLayerExtractionExtension>(
 					World, &Layer, ExpectedViewState,
 					PortalTargetResource, DepthTargetResource,
-					TargetSize, ExtractionRect,
+					ExtractionRect,
 					Request.ColorSample.ToSharedRef(),
 					MainPublisher, RecursivePublisher, Request);
 
@@ -1841,7 +1864,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"pingPongSlot\":%d,\"sharedPingPongTargets\":%s,\"parentViewRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"renderRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"projectedCoverage\":%.9g,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceWidth\":%d,\"depthSourceHeight\":%d}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"pingPongSlot\":%d,\"sharedPingPongTargets\":%s,\"parentViewRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"renderRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"projectedCoverage\":%.9g,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceRectAuthority\":\"View.ViewRectMinAndSize\"}%s\n"),
 						Level,
 						Layer.Lifetime.LifetimeId,
 						Layer.Lifetime.PublicationGeneration,
@@ -1878,7 +1901,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						bDepthAllocated ? DepthTarget->SizeY : 0,
 						bDepthAllocated ? static_cast<int32>(DepthTarget->RenderTargetFormat.GetValue()) : -1,
 						DepthBytes,
-						Layer.DepthSourceWidth.Load(), Layer.DepthSourceHeight.Load(),
 						Level + 1 < MaxRecursionDepth ? TEXT(",") : TEXT(""));
 				}
 
@@ -1907,7 +1929,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v1\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v2\",\n")
 				TEXT("  \"status\":\"%s\",\n")
 				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 				TEXT("  \"pingPongEnabled\":%s,\n")

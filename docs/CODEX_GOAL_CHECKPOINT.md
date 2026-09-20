@@ -1,6 +1,37 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current Portal resume authority — 2026-09-16
+## Current Portal repair checkpoint — 2026-09-20
+
+- Branch: `portal/full-fidelity-p1`; HEAD:
+  `df09691ff277c055621a18602c8d93f1086f7f78`. No repair commit created.
+- Current user-authorized task: repair the reproduced crop/slit display defect
+  while retaining Ping-Pong. Dedicated evidence and remaining acceptance:
+  [InteriorPortalCropDisplayRegression.md](InteriorPortalExperiment/InteriorPortalCropDisplayRegression.md).
+- Completed in the working tree: full receiving-view pixel/NDC mapping for
+  color aperture and depth candidate; actual primary-view depth extraction
+  through the view uniform; paired color/depth publication guard; truthful
+  extraction diagnostics; deterministic off-center/recursive crop regression.
+- Build and focused Automation: PASS (9/9). Actual D3D12 PIE captures verify
+  repaired far/mid/near output with Ping-Pong 0/1, optimized diagnostic matrix,
+  and a temporary facing-pair fixture with four layers submitted/published.
+  Exact evidence and the corrected initial shader signature failure are in
+  the dedicated record. Do not rerun unchanged CPU gates solely to resume.
+- Pending: final continuous-motion manual PIE acceptance. Ping-Pong default is
+  temporarily `0`; use `portal.FullFidelityPingPong 1` before a fresh PIE for
+  acceptance. The optimized implementation and TSR/Lumen quality are retained.
+- Known validation limit: full-view depth-4 expansion encountered D3D12 OOM
+  with the debug layer enabled; optimized four-layer fixture later ran without
+  that layer. This does not close the separate performance/VRAM resource gate.
+- Existing map modification preserved, SHA256
+  `1F8CCDC4B8A5D82B8DB469D8F6F4D290F961FAABE5E17708B89706103ED26E5B`.
+  PIE-only fixture transforms were restored; no map/asset saves performed.
+- Next action: review the working-tree repair and complete the short manual
+  motion/turn/traversal matrix in the dedicated record, then decide whether to
+  restore the optimized default. Do not resume obsolete P1A-1 instructions.
+  Performance work remains governed by `docs/PortalPerformanceVRAMP1Plan.md`
+  and is outside this display repair.
+
+## Historical Portal resume authority — 2026-09-16
 
 Branch:
 

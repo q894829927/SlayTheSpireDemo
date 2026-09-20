@@ -1,5 +1,13 @@
 # Portal Performance / VRAM P1 Execution Plan
 
+**2026-09-20 current-work note:** the user's crop-display repair is tracked in
+[InteriorPortalCropDisplayRegression.md](InteriorPortalExperiment/InteriorPortalCropDisplayRegression.md).
+It retains Ping-Pong, corrects receiving-view coordinates and depth extraction,
+and temporarily defaults the optimization off pending manual motion acceptance.
+The repair does not claim that this plan's resource-reclaim or performance
+gates are complete. The phase descriptions below remain the performance plan;
+they are not a current implementation-status checklist.
+
 Date: **2026-09-16**
 
 Status:

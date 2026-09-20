@@ -1,5 +1,10 @@
 # Interior Portal — STEP 1B.13A Bounded Main-Pass Scissor Hardening
 
+**2026-09-20 regression update:** the historical acceptance below does not
+cover the now-reproduced pass-local NDC / camera-NDC mismatch. Its repair and
+current acceptance boundary are recorded in
+[InteriorPortalCropDisplayRegression.md](InteriorPortalCropDisplayRegression.md).
+
 Date: **2026-09-16**
 
 State:

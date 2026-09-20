@@ -1,4 +1,5 @@
 #include "InteriorPortalRenderer.h"
+#include "InteriorPortalProjectedBounds.h"
 #include "GlobalShader.h"
 #include "HAL/IConsoleManager.h"
 #include "RenderGraphBuilder.h"
@@ -141,6 +142,7 @@ namespace
 namespace InteriorPortalRenderer
 {
 	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalCompositionParameters, )
+		SHADER_PARAMETER(FVector4f, OutputPixelToViewScreen)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
@@ -185,6 +187,7 @@ namespace InteriorPortalRenderer
 		TEXT("/Project/InteriorPortalComposition.usf"), TEXT("MainPS"), SF_Pixel);
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FInteriorPortalDepthCandidateParameters, )
+		SHADER_PARAMETER(FVector4f, OutputPixelToViewScreen)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MainSceneDepthTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SecondaryDepthTexture)
@@ -649,6 +652,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		InteriorPortalRenderer::FInteriorPortalDepthCandidateParameters* CandidateParameters =
 			GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalDepthCandidateParameters>();
 		CandidateParameters->View = InView.ViewUniformBuffer;
+		CandidateParameters->OutputPixelToViewScreen =
+			InteriorPortalProjectedBounds::PixelToViewScreenTransform(SceneColor.ViewRect);
 		CandidateParameters->MainSceneDepthTexture = MainSceneDepthTexture;
 		CandidateParameters->SecondaryDepthTexture = SecondaryDepthTexture;
 		CandidateParameters->SecondaryDepthSampler =
@@ -865,6 +870,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	InteriorPortalRenderer::FInteriorPortalCompositionParameters* PassParameters =
 		GraphBuilder.AllocParameters<InteriorPortalRenderer::FInteriorPortalCompositionParameters>();
 	PassParameters->View = InView.ViewUniformBuffer;
+	PassParameters->OutputPixelToViewScreen =
+		InteriorPortalProjectedBounds::PixelToViewScreenTransform(SceneColor.ViewRect);
 	PassParameters->SceneColorTexture = SceneColor.Texture;
 	PassParameters->SceneColorSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();

@@ -109,4 +109,57 @@ bool FInteriorPortalPingPongPolicyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FInteriorPortalReceivingViewCoordinatesTest,
+	"SlayTheSpireDemo.Interior.Portals.FullFidelity.ProjectedBounds.ReceivingViewCoordinates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FInteriorPortalReceivingViewCoordinatesTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+	// Nonzero viewport origin, off-center aperture and changing crop sizes:
+	// projecting a ray through the cropped camera must land on the same absolute
+	// pixel as through its parent. Pass-local NDC would instead stretch the mask.
+	const FIntRect Parent(113, 71, 1113, 671);
+	const FVector4f ScreenTransform = PixelToViewScreenTransform(Parent);
+	const FVector4 Point(0.4, -0.1, 0.5, 1.0);
+	const FVector2D ExpectedPixel(813.0, 401.0);
+	for (int32 Step = 0; Step <= 10; ++Step)
+	{
+		const FIntRect Crop(713 - Step * 30, 311 - Step * 20,
+			913 + Step * 15, 491 + Step * 15);
+		FMatrix Projection;
+		TestTrue(TEXT("Moving off-center crop builds"),
+			BuildCroppedProjection(FMatrix::Identity, Parent, Crop, Projection));
+		const FVector4 Clip = Projection.TransformFVector4(Point);
+		const FVector2D Pixel(
+			Crop.Min.X + (Clip.X / Clip.W + 1.0) * 0.5 * Crop.Width(),
+			Crop.Min.Y + (1.0 - Clip.Y / Clip.W) * 0.5 * Crop.Height());
+		TestTrue(TEXT("Crop never changes parent pixel/ray correspondence"),
+			Pixel.Equals(ExpectedPixel, 1.e-5));
+		const FVector2D ReceivingNdc(
+			Pixel.X * ScreenTransform.X + ScreenTransform.Z,
+			Pixel.Y * ScreenTransform.Y + ScreenTransform.W);
+		TestTrue(TEXT("Bounded composition reconstructs parent camera ray"),
+			ReceivingNdc.Equals(FVector2D(Point.X, Point.Y), 1.e-5));
+
+		// Repeating the crop for a recursive child preserves the same ray too.
+		const FIntRect Child(763, 351, 863, 451);
+		FMatrix ChildProjection;
+		TestTrue(TEXT("Recursive child crop builds"),
+			BuildCroppedProjection(Projection, Crop, Child, ChildProjection));
+		const FVector4 ChildClip = ChildProjection.TransformFVector4(Point);
+		const FVector2D ChildPixel(
+			Child.Min.X + (ChildClip.X / ChildClip.W + 1.0) * 0.5 * Child.Width(),
+			Child.Min.Y + (1.0 - ChildClip.Y / ChildClip.W) * 0.5 * Child.Height());
+		TestTrue(TEXT("Recursive crop does not apply a second magnification"),
+			ChildPixel.Equals(ExpectedPixel, 1.e-5));
+	}
+	const FVector4f OffsetTransform = PixelToViewScreenTransform(FIntRect(713, 311, 913, 491));
+	TestTrue(TEXT("Receiving cropped view origin maps to left/top NDC"),
+		FMath::IsNearlyEqual(713.f * OffsetTransform.X + OffsetTransform.Z, -1.f, 1.e-5f)
+		&& FMath::IsNearlyEqual(311.f * OffsetTransform.Y + OffsetTransform.W, 1.f, 1.e-5f));
+	return true;
+}
+
 #endif

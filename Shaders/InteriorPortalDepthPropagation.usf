@@ -7,6 +7,7 @@ SamplerState SecondaryDepthSampler;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(Output)
 SCREEN_PASS_TEXTURE_VIEWPORT(Portal)
+float4 OutputPixelToViewScreen;
 float4 PortalBounds;
 float4 ScreenToPortalRow0;
 float4 ScreenToPortalRow1;
@@ -81,6 +82,8 @@ void BuildCandidatePS(
 	OutCandidateDepth = 0.0;
 
 	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
+	// The draw rectangle can be smaller than the receiving camera viewport.
+	const float2 ScreenSpacePos = SvPosition.xy * OutputPixelToViewScreen.xy + OutputPixelToViewScreen.zw;
 	const float BoundsMask =
 		step(PortalBounds.x, ViewportUV.x)
 		* step(PortalBounds.y, ViewportUV.y)
@@ -99,7 +102,7 @@ void BuildCandidatePS(
 	{
 		float PortalDeviceZ;
 		if (!IntersectAnalyticPortalPlane(
-			UVAndScreenPos.zw, 0.0,
+			ScreenSpacePos, 0.0,
 			PortalLocal, PortalDeviceZ, PortalPlaneDepthCm))
 		{
 			return;
@@ -113,7 +116,7 @@ void BuildCandidatePS(
 		float ForegroundDeviceZ;
 		ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 		IntersectAnalyticPortalPlane(
-			UVAndScreenPos.zw,
+			ScreenSpacePos,
 			ForegroundScreenToPortalRow2.w,
 			IgnoredLocal,
 			ForegroundDeviceZ,

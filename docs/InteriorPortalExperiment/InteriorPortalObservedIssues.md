@@ -1,5 +1,21 @@
 # Interior Portal — Observed Issues and Regression Targets
 
+## Current crop-display regression — 2026-09-20
+
+The reproduced vertical slit / distance-dependent aperture scaling has a
+working-tree repair on `df09691`: bounded-pass raster NDC was incorrectly used
+as receiving-camera NDC. Color/depth aperture coordinates and TSR depth
+extraction were corrected. Build and focused Automation passed; actual PIE
+static captures and four-layer recursive publication were checked. Continuous
+motion/traversal visual acceptance remains **USER ACTION REQUIRED**; Ping-Pong
+is retained but defaults off pending that gate.
+
+See [the dedicated repair evidence](InteriorPortalCropDisplayRegression.md)
+for scope, current status, failed/discarded evidence and exact remaining steps.
+The 2026-09-14 entries below are historical observations; their exposure and
+rendering status must be read alongside the later FullFidelity production
+acceptance, not treated as a current list of reproduced failures.
+
 Date: **2026-09-14**
 
 Status:

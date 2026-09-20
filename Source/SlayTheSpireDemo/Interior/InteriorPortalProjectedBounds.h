@@ -8,6 +8,17 @@ namespace InteriorPortalProjectedBounds
 	constexpr int32 TargetAlignmentPixels = 32;
 	constexpr int32 PingPongBufferCount = 2;
 
+	/** Absolute output pixels -> receiving camera NDC, independent of draw/scissor bounds. */
+	inline FVector4f PixelToViewScreenTransform(const FIntRect& ViewRect)
+	{
+		check(ViewRect.Width() > 0 && ViewRect.Height() > 0);
+		const float ScaleX = 2.0f / float(ViewRect.Width());
+		const float ScaleY = -2.0f / float(ViewRect.Height());
+		return FVector4f(ScaleX, ScaleY,
+			-1.0f - float(ViewRect.Min.X) * ScaleX,
+			1.0f - float(ViewRect.Min.Y) * ScaleY);
+	}
+
 	inline int32 PingPongSlotForLevel(const int32 Level)
 	{
 		return Level >= 0 ? (Level % PingPongBufferCount) : INDEX_NONE;
