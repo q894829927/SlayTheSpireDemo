@@ -616,6 +616,16 @@ portal: retire recursion lifetimes without runtime flush stalls
 
 ## 6.6 P1A-5 — Color-target capacity shrink
 
+Implementation update, 2026-09-21: fallback/legacy per-level color-target
+retirement is implemented in `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`.
+Out-of-budget color targets now leave the active `RenderTargets` array with
+their exact retiring recursion lifetime and are released only after that
+lifetime's existing RHI-thread-depth fence completes. Stop also releases active
+fallback color targets. Report schema v4 exposes active versus retiring color
+ownership. Build/Automation/D3D12 acceptance remains USER ACTION REQUIRED; see
+[the P1A-5 validation record](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
+Do not mark P1A-5 validated from source inspection alone.
+
 Policy:
 
 ```text
