@@ -27,13 +27,17 @@
   performance baseline; do not reopen P1A-4 retirement merely to chase the
   steady-state Depth=4 GPU cost.
 - P1A-4 transition-performance attribution for the CPU lifetime-management path
-  is CLOSED. Lifecycle-transition visual acceptance remains USER ACTION REQUIRED
-  until the user explicitly confirms no stale flash, prolonged blank aperture,
-  recursion corruption or foreground-occlusion regression during 4 -> 1 -> 4.
-- Next after that manual visual confirmation: continue P1A-5 Color Target
-  Capacity Shrink, then P1A-6/P1A-7 and the full P1A gate. Do not skip directly
-  to broad physics. P1B is the later stage expected to attack the sustained
-  depth-four rendering cost.
+  is CLOSED. The user has now also confirmed the lifecycle-transition visuals
+  are normal during 4 -> 1 -> 4, with no stale flash, prolonged blank aperture,
+  recursion corruption or foreground-occlusion regression.
+- The user separately reports a brief hitch while physically traversing a Portal.
+  Treat that as a separate, currently unattributed traversal/performance issue;
+  do not count it as a P1A-4 failure without focused evidence tying it to the
+  lifetime path.
+- **P1A-4 queue-safe runtime reclaim = COMPLETE / VALIDATED for its defined
+  scope.** Next implementation is P1A-5 Color Target Capacity Shrink, followed
+  by P1A-6/P1A-7 and the full P1A gate. Do not skip directly to broad physics.
+  P1B is the later stage expected to attack sustained depth-four rendering cost.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
