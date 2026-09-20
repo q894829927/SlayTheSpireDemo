@@ -199,12 +199,12 @@ changes including `4 -> 1 -> 4` and reported the lifecycle transition visuals
 as normal: no stale scene flash, prolonged blank aperture, recursion corruption
 or foreground gun-occlusion regression was observed.
 
-The user separately reported a brief hitch while physically traversing a Portal.
-That traversal hitch is **not attributed to P1A-4 by this evidence**. It was
-observed during crossing rather than capacity shrink/expand, and no focused trace
-has yet isolated its source. Track it as a separate traversal/performance issue;
-do not reopen P1A-4 lifetime retirement unless future evidence ties the hitch to
-the lifetime path.
+The user clarified that a brief hitch while physically traversing a Portal is a
+**pre-existing, persistent issue that predates P1A-4**, not a regression introduced
+by the queue-safe reclaim work. The hitch is observed during crossing rather than
+capacity shrink/expand, and no focused crossing trace has yet isolated its source.
+Track it as a separate traversal/performance issue; do not reopen P1A-4 lifetime
+retirement unless future evidence explicitly ties the crossing hitch to that path.
 
 With the earlier ownership/identity tests, D3D12 capacity transitions, focused
 Unreal Insights transition attribution, and this user-confirmed visual gate,
