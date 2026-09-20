@@ -1,6 +1,8 @@
 # P1A-3/P1A-4 runtime capacity retirement
 
-Date: 2026-09-21. Base HEAD: `684ebae`; changes are uncommitted.
+Date: 2026-09-21. Current evidence HEAD: `5b6ad649d3e3d8977a79596132168d5067bdd0b2`.
+P1A-4 implementation commit: `787e507425131f03114794ea1ab3d91b5fdb1cc1`.
+Focused trace-instrumentation commit: `5b6ad649d3e3d8977a79596132168d5067bdd0b2`.
 Scope: ViewState capacity retirement and its dependent publishers, not the full
 P1 performance seal. The preceding crop visual gate was confirmed by the user.
 
@@ -114,12 +116,64 @@ in `Saved/PortalP1A4TimingRuntime.json`; its zero-ownership teardown is in
 
 These callback intervals include editor, diagnostics and rendering work; they
 are not GPU timings or isolated retirement CPU cost. Startup warmup had a
-1573.43 ms maximum and is not steady-state evidence. **The approximately 1 s
-rapid-expansion hitch leaves transition-performance acceptance OPEN.** Removing
-explicit capacity Flush calls does not prove smooth reconstruction of temporal
-histories or adequate VRAM headroom. GPU timestamp quantiles and actual residency
-before/peak/after are unavailable from this measurement. Investigate the growth
-spike with allocation/renderer profiling before claiming performance closure.
+1573.43 ms maximum and is not steady-state evidence. The approximately 1 s wall
+interval therefore remained an open attribution question until the focused
+Unreal Insights pass below. It must not be interpreted as one second spent in
+P1A-4 lifetime-management code.
+
+### Focused Unreal Insights transition evidence — 2026-09-21
+
+A follow-up manual PIE capture on the current `portal/full-fidelity-p1` branch
+used `portal.FullFidelityPingPong 1` and temporary CPU trace scopes added by
+`5b6ad649` around the P1A-4 capacity/lifetime path. The user reproduced
+`Depth 1 -> 4` and captured the actual expansion frame where both endpoint
+L1/L2/L3 ViewStates were recreated.
+
+Focused expansion-frame CPU observations:
+
+| Trace scope | Count | Inclusive time |
+|---|---:|---:|
+| `Portal_ViewStateAllocate` | 6 | 21 us |
+| `Portal_CreateRecursiveExtension` | 6 | 25.9 us |
+| `Portal_EnsureLayerViewState` | 6 | 48.3 us |
+| `Portal_SubmitVisibleEndpoints` | 1 | 591.4 us |
+| `Portal_SubmitLayer` | 8 | 471.9 us |
+| `Portal_UpdateCapacity` | 1 | 800 ns |
+| `Portal_PollRetirements` | 2 | 100 ns |
+
+The six ViewState/extension creations match two endpoints times rebuilt
+L1/L2/L3. This evidence rules out `ViewState.Allocate`, recursive extension
+creation, capacity update and retirement polling as the source of the previously
+observed approximately one-second wall interval. The complete Portal CPU submit
+path on the captured expansion frame remained sub-millisecond.
+
+The same manual Insights session also compared stable rendering after capacity
+settled:
+
+| Stable sample | Rendering frame time | Approximate frame rate |
+|---|---:|---:|
+| RequestedDepth = 1 | 31.34 ms | 31.9 fps |
+| RequestedDepth = 4 | 145.78 ms | 6.9 fps |
+
+The depth-four sample is about 4.65x the depth-one frame time. Additional
+sustained depth-four captures in the same session showed roughly 215-262 ms
+rendering/GPU frames. Those broader samples are qualitative evidence of sustained
+high recursion rendering cost, not a controlled benchmark and not a P1A-4
+retirement cost measurement.
+
+The depth-four traces are dominated by repeated full scene rendering work
+(`SceneRenderer` / `RenderGraphExecute` / `Scene`, including Lumen, lighting,
+VSM/Nanite/BasePass-related work), while Portal lifetime-management scopes remain
+microsecond to sub-millisecond scale. Therefore the sustained depth-four frame
+cost belongs to recursion rendering policy/performance work, primarily the later
+P1B screen-coverage/effective-depth gate, rather than to P1A-4 queue-safe
+retirement.
+
+**P1A-4 transition-performance attribution is therefore CLOSED for the CPU
+lifetime-management path.** This does not claim that RequestedDepth=4 has
+acceptable steady-state performance, nor does it seal the full P1A/P1B/P1C
+program. The separate lifecycle-transition visual acceptance below remains a
+manual gate until explicitly confirmed by the user.
 
 Fallback-mode check (`portal.FullFidelityPingPong 0`), limited to depth two:
 `Saved/PortalP1A4FallbackFixedRuntime.json` confirms `2 -> 1 -> 2` and rapid
@@ -146,6 +200,9 @@ no prolonged blank aperture and correct gun occlusion. Record the result or a
 clip of any failure. The prior crop acceptance does not automatically accept
 these new lifetime transitions.
 
-Full-view depth-4 OOM remains an earlier open limitation. This step does not prove
-the complete P1A/P1B/P1C matrix, GPU frame-time quantiles, packaged smoke or all
-target shrinking. No performance percentage improvement or full P1 seal claimed.
+Full-view depth-4 OOM remains an earlier open limitation. Focused Insights now
+shows that the previously suspected transition hitch is not caused by the P1A-4
+CPU lifetime path, while stable depth-four recursion remains very expensive and
+is carried forward as a P1B performance baseline. This step does not prove the
+complete P1A/P1B/P1C matrix, packaged smoke or all target shrinking. No full P1
+seal is claimed.
