@@ -24,6 +24,7 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "PostProcess/PostProcessMaterialInputs.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "RendererInterface.h"
 #include "RenderingThread.h"
 #include "RenderCommandFence.h"
@@ -945,6 +946,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void PollRetirements(FEndpointState& Endpoint, const bool bSynchronousStop = false)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_PollRetirements);
 			for (int32 Index = Endpoint.RetiringLayers.Num() - 1; Index >= 0; --Index)
 			{
 				FRetiringLayer& Retiring = *Endpoint.RetiringLayers[Index];
@@ -972,6 +974,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void UpdateCapacity(const int32 RequestedDepth)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_UpdateCapacity);
 			for (auto& EndpointPtr : Endpoints)
 			{
 				FEndpointState& Endpoint = *EndpointPtr;
@@ -1053,6 +1056,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const int32 Level,
 			const int32 RequiredVisibleDepth)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_EnsureLayerViewState);
 			if (!World || !World->Scene || Level < 0 || Level >= MaxRecursionDepth)
 			{
 				return false;
@@ -1065,7 +1069,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				{
 					return false;
 				}
-				Layer.ViewState.Allocate(World->GetFeatureLevel());
+				{
+					TRACE_CPUPROFILER_EVENT_SCOPE(Portal_ViewStateAllocate);
+					Layer.ViewState.Allocate(World->GetFeatureLevel());
+				}
 				if (!Layer.ViewState.GetReference())
 				{
 					return false;
@@ -1089,9 +1096,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				&& ChildLevel < MaxRecursionDepth
 				&& !Endpoint.RecursiveCompositionExtensions[ChildLevel])
 			{
-				Endpoint.RecursiveCompositionExtensions[ChildLevel] =
-					FSceneViewExtensions::NewExtension<FRecursiveCompositionExtension>(
-						World, Layer.ViewState.GetReference());
+				{
+					TRACE_CPUPROFILER_EVENT_SCOPE(Portal_CreateRecursiveExtension);
+					Endpoint.RecursiveCompositionExtensions[ChildLevel] =
+						FSceneViewExtensions::NewExtension<FRecursiveCompositionExtension>(
+							World, Layer.ViewState.GetReference());
+				}
 				Endpoint.RecursiveCompositionExtensions[ChildLevel]->SetEnabled(true);
 			}
 			return true;
@@ -1187,6 +1197,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		bool EnsureFinalScratch(UWorld* World, const FIntPoint TargetSize)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_EnsureFinalScratch);
 			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0)
 			{
 				return false;
@@ -1231,6 +1242,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const EPixelFormat PixelFormat,
 			const bool bForceLinearGamma)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_CreatePingPongTarget);
 			UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(
 				GetTransientPackage(), NAME_None, RF_Transient);
 			if (!Target)
@@ -1253,6 +1265,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const FIntPoint TargetSize,
 			const int32 RequiredSlots)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_EnsureEndpointPingPongTargets);
 			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0
 				|| RequiredSlots <= 0 || RequiredSlots > InteriorPortalProjectedBounds::PingPongBufferCount)
 			{
@@ -1308,6 +1321,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		bool EnsureDepthTarget(FLayerState& Layer, UWorld* World, const FIntPoint TargetSize)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_EnsureDepthTarget);
 			if (!World || TargetSize.X <= 0 || TargetSize.Y <= 0)
 			{
 				return false;
@@ -1403,6 +1417,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void SubmitVisibleEndpoints(UWorld* World)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_SubmitVisibleEndpoints);
 			ResetFrameSubmissionDiagnostics();
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
 			if (PortalSystem)
@@ -1658,6 +1673,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FEndpointState& Endpoint,
 			const FLayerRenderPlan& Plan)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_SubmitLayer);
 			FLayerState& Layer = *Endpoint.Layers[Level];
 			FInteriorPortalRenderRequest Request = Plan.Request;
 			Layer.LastSubmissionFailureReason = TEXT("NONE");
