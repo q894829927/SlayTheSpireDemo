@@ -192,17 +192,28 @@ to production solely to force that branch in PIE.
 
 ## Remaining gate boundaries
 
-**USER ACTION REQUIRED — visual transition acceptance:** in
-`/Game/House/L_Interior_LivingKitchen`, enable Ping-Pong before a new PIE, warm
-actual recursive views, change depth `4 -> 1 -> 4`, including quick reversal and
-turning an endpoint offscreen. Expect stable retained L0, no stale scene flash,
-no prolonged blank aperture and correct gun occlusion. Record the result or a
-clip of any failure. The prior crop acceptance does not automatically accept
-these new lifetime transitions.
+### Lifecycle transition visual acceptance — USER CONFIRMED PASS, 2026-09-21
 
-Full-view depth-4 OOM remains an earlier open limitation. Focused Insights now
-shows that the previously suspected transition hitch is not caused by the P1A-4
-CPU lifetime path, while stable depth-four recursion remains very expensive and
-is carried forward as a P1B performance baseline. This step does not prove the
-complete P1A/P1B/P1C matrix, packaged smoke or all target shrinking. No full P1
-seal is claimed.
+The user manually exercised the Ping-Pong path with runtime recursion-depth
+changes including `4 -> 1 -> 4` and reported the lifecycle transition visuals
+as normal: no stale scene flash, prolonged blank aperture, recursion corruption
+or foreground gun-occlusion regression was observed.
+
+The user separately reported a brief hitch while physically traversing a Portal.
+That traversal hitch is **not attributed to P1A-4 by this evidence**. It was
+observed during crossing rather than capacity shrink/expand, and no focused trace
+has yet isolated its source. Track it as a separate traversal/performance issue;
+do not reopen P1A-4 lifetime retirement unless future evidence ties the hitch to
+the lifetime path.
+
+With the earlier ownership/identity tests, D3D12 capacity transitions, focused
+Unreal Insights transition attribution, and this user-confirmed visual gate,
+**P1A-4 queue-safe runtime reclaim is COMPLETE / VALIDATED for its defined
+scope.** This does not seal the full P1A program.
+
+Full-view depth-4 OOM remains an earlier open limitation. Focused Insights shows
+that the previously suspected transition hitch is not caused by the P1A-4 CPU
+lifetime path, while stable depth-four recursion remains very expensive and is
+carried forward as a P1B performance baseline. P1A-5/P1A-6/P1A-7 target and
+scratch capacity work still remains. This record does not prove the complete
+P1A/P1B/P1C matrix or packaged smoke, and no full P1 seal is claimed.
