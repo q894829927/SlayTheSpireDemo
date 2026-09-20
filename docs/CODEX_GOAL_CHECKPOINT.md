@@ -1,6 +1,47 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current Portal repair checkpoint — 2026-09-20
+## Current P1A-3/P1A-4 implementation checkpoint — 2026-09-21
+
+- Base HEAD `684ebae1c06215196c7bc73ef1c87a8d61030af9`; no new commit requested.
+- Implemented queue-safe ViewState retirement on RequestedDepth reduction,
+  including offscreen/unlinked/viewport-unavailable paths; detached dependent
+  extensions, RHI-thread fence polling, bounded old/new coexistence and teardown.
+- Diagnostics now expose retired lifetime records and count their ownership.
+  Existing shared output/scratch targets remain retained for later capacity work.
+- UE 5.8 project generation and final editor build PASS. Focused CPU Automation
+  10/10 PASS. Actual D3D12 observations verify 8 -> 2 owned ViewStates, stable L0,
+  distinct rebuilt IDs, rapid reversal with old/new coexistence and zero Stop
+  ownership. See [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md)
+  for exact evidence, timing limitations and remaining gates.
+- Crop visual acceptance is user-confirmed. New lifecycle-transition visual
+  acceptance remains USER ACTION REQUIRED; fast growth shows frame spikes.
+- Next: review transition performance evidence, complete lifecycle visual gate,
+  then continue P1A-5/P1A-6/P1A-7 resource capacity contracts. Do not claim P1A
+  sealed or start broad physics. Optimization code default remains 0.
+- Prior-turn documentation edits recording crop acceptance and correcting the
+  physical-design authority link remain included and uncommitted.
+
+## Historical resume update — user-confirmed visual acceptance
+
+- Verified HEAD: `684ebae1c06215196c7bc73ef1c87a8d61030af9`.
+- Repair committed in `9259f8e`; physical interaction design committed in
+  `684ebae`. The earlier repair checkpoint below is historical.
+- User confirmed `portal.FullFidelityPingPong 1` acceptance complete in this
+  conversation. This is user-reported manual evidence; no fresh agent PIE,
+  build or Automation was performed for this documentation update.
+- Code default remains `0`; visual acceptance no longer blocks a separate
+  change restoring the optimized default.
+- Next implementation: P1A-4 queue-safe runtime reclaim, including the remaining
+  P1A-3 depth-decrease retirement integration. Existing lazy allocation and
+  lifetime identity do not prove the entire P1A-3 gate complete.
+- Validate depth transitions `4 -> 1`, `1 -> 4`, and rapid `4 -> 1 -> 4`, stale
+  publication protection, retirement completion and transition hitch/VRAM.
+- Full-view depth-4 OOM remains an open resource limitation. Continue P1A-5/6
+  capacity work and P1A acceptance before broad physical interaction work.
+- Authority: `docs/PortalPerformanceVRAMP1Plan.md`; physical design is planned,
+  not implemented. Documentation references and whitespace checked this turn.
+
+## Historical Portal repair checkpoint — 2026-09-20
 
 - Branch: `portal/full-fidelity-p1`; HEAD:
   `df09691ff277c055621a18602c8d93f1086f7f78`. No repair commit created.

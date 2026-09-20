@@ -2,7 +2,7 @@
 
 Date: **2026-09-20**. Branch: `portal/full-fidelity-p1`.
 Implementation base HEAD: `df09691ff277c055621a18602c8d93f1086f7f78`;
-the repair is an uncommitted working-tree change on that base.
+repair committed as `9259f8e`.
 
 ## Symptom and confirmed cause
 
@@ -134,7 +134,7 @@ The fixture restored the original runtime transforms/depth and did not save
 the map. The terminal spiral at the recursion limit is expected, unlike the
 incorrect spiral around the first aperture in the original defect.
 
-**USER ACTION REQUIRED — final continuous-motion visual acceptance:** on
+**Manual acceptance procedure (user-confirmed complete; see below):** on
 `/Game/House/L_Interior_LivingKitchen`, set `portal.FullFidelityPingPong 1` in
 the editor console before starting a fresh PIE;
 approach/retreat, view both sides obliquely, move a portal partly offscreen,
@@ -142,3 +142,14 @@ rapidly turn away/back, and walk through/back with the gun in front of the
 aperture. Expect continuous remote parallax, no slit/stretch/spiral flash and
 correct foreground occlusion. Record observed result and a short clip for any
 failure. Depth-4 full-view comparison remains unaccepted after the OOM.
+
+
+## User acceptance update
+
+The user confirmed in this conversation that `portal.FullFidelityPingPong 1`
+acceptance is complete. This closes the pending manual visual acceptance gate
+for the crop-display repair, based on user confirmation, not a new agent-run
+PIE session. No new capture or individual scenario measurements were supplied.
+The earlier depth-4 full-view OOM and performance/VRAM gates remain open.
+The code default remains `0`; this documentation update does not change it.
+Restoring the optimized default is now eligible as a separate code change.

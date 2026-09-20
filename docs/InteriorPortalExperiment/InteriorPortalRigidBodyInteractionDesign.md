@@ -3,8 +3,10 @@
 Status: **design only, implementation and acceptance pending**, 2026-09-20.
 Reviewed baseline: `9259f8e`. This document refines P5/P6/P10 in
 [the implementation plan](InteriorPortalFullFidelityImplementationPlan.md).
-[The current execution plan](InteriorPortalCurrentExecutionPlan.md) still owns
-phase order. It does not authorize beginning P8/P9 before their existing gates.
+[The performance execution plan](../PortalPerformanceVRAMP1Plan.md) owns current
+work ordering before broad physics. The older
+[execution record](InteriorPortalCurrentExecutionPlan.md) is historical; the
+implementation plan retains the Core-before-P8/P9 dependencies. It does not authorize beginning P8/P9 before their existing gates.
 
 ## Scope and physical model
 

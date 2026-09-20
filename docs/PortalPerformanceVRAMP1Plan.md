@@ -3,7 +3,8 @@
 **2026-09-20 current-work note:** the user's crop-display repair is tracked in
 [InteriorPortalCropDisplayRegression.md](InteriorPortalExperiment/InteriorPortalCropDisplayRegression.md).
 It retains Ping-Pong, corrects receiving-view coordinates and depth extraction,
-and temporarily defaults the optimization off pending manual motion acceptance.
+and retains a code default of off. The user has now confirmed Ping-Pong=1
+manual acceptance complete; restoring the default is eligible but not yet done.
 The repair does not claim that this plan's resource-reclaim or performance
 gates are complete. The phase descriptions below remain the performance plan;
 they are not a current implementation-status checklist.
@@ -141,6 +142,13 @@ Before P1B exists:
 ```text
 EffectiveDepth == VisibleDepth
 ```
+
+P1A-4 capacity-backpressure refinement: if two retiring generations already
+occupy a level, allocation is deferred and EffectiveDepth temporarily describes
+the consecutive ready prefix, so it may be below VisibleDepth even before P1B.
+The first unavailable layer reports `VIEWSTATE_OR_LIFETIME_UNAVAILABLE`;
+AttemptedLayerMask still records only actual SubmitLayer calls. This bounded
+fallback keeps L0 rendering without waiting or growing retirement ownership.
 
 After P1B exists, screen-coverage policy may produce:
 
@@ -584,6 +592,13 @@ portal: allocate recursion view states within configured capacity
 ```
 
 ## 6.5 P1A-4 — Queue-safe runtime reclaim
+
+Implementation update, 2026-09-21: queue-safe retirement and P1A-3's remaining
+depth-decrease integration are implemented in the working tree. Evidence and
+remaining gates: [P1A-3/P1A-4 capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
+CPU contracts and actual D3D12 ownership transitions pass; transition visual
+acceptance and performance closure remain open. P1A-5/P1A-6/P1A-7 target capacity
+work is not complete. Do not interpret this as a full P1A seal.
 
 Implement runtime reclaim for old lifetimes that leave the configured capacity budget.
 

@@ -4,6 +4,14 @@
 
 namespace InteriorPortalRecursionLifetime
 {
+	// At most one retiring predecessor while allocating its replacement. A second
+	// shrink may retire that replacement, then allocation waits non-blockingly.
+	// Thus at most two allocated lifetimes exist per endpoint/level.
+	inline bool CanAllocateReplacement(const int32 RetiringCount)
+	{
+		return RetiringCount >= 0 && RetiringCount < 2;
+	}
+
 	enum class EResourceState : uint8
 	{
 		Unallocated,

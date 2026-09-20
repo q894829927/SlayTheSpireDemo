@@ -26,6 +26,7 @@
 #include "PostProcess/PostProcessMaterialInputs.h"
 #include "RendererInterface.h"
 #include "RenderingThread.h"
+#include "RenderCommandFence.h"
 #include "RHIStaticStates.h"
 #include "SceneManagement.h"
 #include "SceneRenderTargetParameters.h"
@@ -318,6 +319,15 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TOptional<FInteriorPortalRenderRequest> PublishedRequest;
 	};
 
+	struct FRetiringLayer
+	{
+		TUniquePtr<FLayerState> Layer;
+		// Both the publisher of this layer and the consumer bound to its ViewState.
+		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> Publisher;
+		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> ChildConsumer;
+		FRenderCommandFence Fence;
+	};
+
 	struct FEndpointState
 	{
 		explicit FEndpointState(const int32 InEndpointIndex)
@@ -336,6 +346,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		UTextureRenderTarget2D* PingPongColor[InteriorPortalProjectedBounds::PingPongBufferCount] = { nullptr, nullptr };
 		UTextureRenderTarget2D* PingPongDepth[InteriorPortalProjectedBounds::PingPongBufferCount] = { nullptr, nullptr };
 		FIntPoint PingPongTargetSize = FIntPoint::ZeroValue;
+		TArray<TUniquePtr<FRetiringLayer>> RetiringLayers;
 		int32 LastVisibleDepth = 0;
 		int32 LastEffectiveDepth = 0;
 		int32 LastAttemptedLayerMask = 0;
@@ -676,6 +687,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
+				PollRetirements(Endpoint, true);
 				Endpoint.MainCompositionExtension.Reset();
 				for (int32 Level = 1; Level < MaxRecursionDepth; ++Level)
 				{
@@ -931,6 +943,69 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 		}
 
+		void PollRetirements(FEndpointState& Endpoint, const bool bSynchronousStop = false)
+		{
+			for (int32 Index = Endpoint.RetiringLayers.Num() - 1; Index >= 0; --Index)
+			{
+				FRetiringLayer& Retiring = *Endpoint.RetiringLayers[Index];
+				if (!bSynchronousStop && !Retiring.Fence.IsFenceComplete()) { continue; }
+				FLayerState& Layer = *Retiring.Layer;
+				Layer.Lifetime.MarkReclaimable();
+				Retiring.Publisher.Reset();
+				Retiring.ChildConsumer.Reset();
+				Layer.ViewState.Destroy();
+				ReleaseDepthTarget(Layer);
+				Layer.Lifetime.ResetUnallocated();
+				Endpoint.RetiringLayers.RemoveAt(Index);
+			}
+		}
+
+		int32 CountRetiring(const FEndpointState& Endpoint, const int32 Level) const
+		{
+			int32 Count = 0;
+			for (const auto& Retiring : Endpoint.RetiringLayers)
+			{
+				Count += Retiring->Layer->Level == Level ? 1 : 0;
+			}
+			return Count;
+		}
+
+		void UpdateCapacity(const int32 RequestedDepth)
+		{
+			for (auto& EndpointPtr : Endpoints)
+			{
+				FEndpointState& Endpoint = *EndpointPtr;
+				PollRetirements(Endpoint);
+				for (int32 Level = MaxRecursionDepth - 1; Level >= RequestedDepth; --Level)
+				{
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					InteriorPortalRecursionLifetime::FPublicationToken Token;
+					if (!Layer.Lifetime.BeginRetirement(Token)) { continue; }
+					Layer.ActivePublicationGeneration.Store(0);
+					Layer.bVisibleLastTick = false;
+					Layer.bHistoryValid = false;
+					auto Retiring = MakeUnique<FRetiringLayer>();
+					Retiring->Layer = MoveTemp(Endpoint.Layers[Level]);
+					Retiring->Publisher = MoveTemp(Endpoint.RecursiveCompositionExtensions[Level]);
+					if (Level + 1 < MaxRecursionDepth)
+					{
+						Retiring->ChildConsumer = MoveTemp(Endpoint.RecursiveCompositionExtensions[Level + 1]);
+					}
+					// Queue-local publishers are detached before any replacement is installed.
+					// Clear only these old objects after their previously queued consumers.
+					ENQUEUE_RENDER_COMMAND(RetirePortalCapacity)(
+						[Publisher = Retiring->Publisher, Child = Retiring->ChildConsumer](FRHICommandListImmediate&)
+						{
+							if (Publisher) { Publisher->ClearRequest(); }
+							if (Child) { Child->ClearRequest(); }
+						});
+					Retiring->Fence.BeginFence(FRenderCommandFence::ESyncDepth::RHIThread);
+					Endpoint.RetiringLayers.Add(MoveTemp(Retiring));
+					Endpoint.Layers[Level] = MakeUnique<FLayerState>(Level);
+				}
+			}
+		}
+
 		void SyncPublicationIdentity(FLayerState& Layer)
 		{
 			const uint64 PackedIdentity = Layer.Lifetime.GetPackedPublicationIdentity();
@@ -986,6 +1061,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			FLayerState& Layer = *Endpoint.Layers[Level];
 			if (Layer.Lifetime.State == InteriorPortalRecursionLifetime::EResourceState::Unallocated)
 			{
+				if (!InteriorPortalRecursionLifetime::CanAllocateReplacement(CountRetiring(Endpoint, Level)))
+				{
+					return false;
+				}
 				Layer.ViewState.Allocate(World->GetFeatureLevel());
 				if (!Layer.ViewState.GetReference())
 				{
@@ -1326,6 +1405,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		{
 			ResetFrameSubmissionDiagnostics();
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
+			if (PortalSystem)
+			{
+				LastRequestedRecursionDepth = FMath::Clamp(PortalSystem->RecursionDepth, 1, MaxRecursionDepth);
+			}
+			// Capacity retirement must run even without a linked/visible pair or viewport.
+			UpdateCapacity(LastRequestedRecursionDepth);
 			APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
 			if (!PortalSystem || !Player || !Player->PlayerCameraManager
 				|| PortalSystem->RendererBackend != EInteriorPortalRendererBackend::SceneCapture
@@ -1465,7 +1550,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					}
 				}
 
-				const int32 VisibleDepth = Plans.Num();
+				int32 VisibleDepth = Plans.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
 				Endpoint.LastEffectiveDepth = VisibleDepth;
 				if (VisibleDepth <= 0)
@@ -1477,14 +1562,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					continue;
 				}
 
-				bool bViewStatesReady = true;
 				for (int32 Level = 0; Level < VisibleDepth; ++Level)
 				{
 					if (!EnsureLayerViewState(World, Endpoint, Level, VisibleDepth))
 					{
 						Endpoint.Layers[Level]->LastSubmissionFailureReason =
 							TEXT("VIEWSTATE_OR_LIFETIME_UNAVAILABLE");
-						bViewStatesReady = false;
+						VisibleDepth = Level;
+						Endpoint.LastEffectiveDepth = VisibleDepth;
 						break;
 					}
 					FLayerState& Layer = *Endpoint.Layers[Level];
@@ -1492,7 +1577,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Plans[Level].Request.HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
 						EndpointIndex, Level, Layer.HistoryGeneration);
 				}
-				if (!bViewStatesReady)
+				if (VisibleDepth == 0)
 				{
 					Endpoint.LastEffectiveDepth = 0;
 					continue;
@@ -1904,13 +1989,26 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Level + 1 < MaxRecursionDepth ? TEXT(",") : TEXT(""));
 				}
 
+				FString RetirementsJson;
+				for (const auto& Retiring : Endpoint.RetiringLayers)
+				{
+					FLayerState& Old = *Retiring->Layer;
+					OwnedLayerMask |= 1 << Old.Level;
+					RetiringLayerMask |= 1 << Old.Level;
+					ViewStateCount += Old.ViewState.GetReference() ? 1 : 0;
+					DepthTargetCount += IsValid(Old.SecondaryDepthTarget) ? 1 : 0;
+					EndpointExplicitTargetBytes += EstimateTargetBytes(Old.SecondaryDepthTarget);
+					if (!RetirementsJson.IsEmpty()) { RetirementsJson += TEXT(","); }
+					RetirementsJson += FString::Printf(TEXT("{\"level\":%d,\"lifetimeId\":%llu,\"state\":\"RETIRING\",\"fenceComplete\":%s}"),
+						Old.Level, Old.Lifetime.LifetimeId, Retiring->Fence.IsFenceComplete() ? TEXT("true") : TEXT("false"));
+				}
 				TotalViewStates += ViewStateCount;
 				TotalColorTargets += ColorTargetCount;
 				TotalDepthTargets += DepthTargetCount;
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
@@ -1922,14 +2020,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					EndpointExplicitTargetBytes,
 					bPingPongEnabled ? TEXT("true") : TEXT("false"),
 					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y,
-					*LayersJson,
+					*RetirementsJson, *LayersJson,
 					EndpointIndex + 1 < EndpointCount ? TEXT(",") : TEXT(""));
 			}
 
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v2\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v3\",\n")
 				TEXT("  \"status\":\"%s\",\n")
 				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 				TEXT("  \"pingPongEnabled\":%s,\n")
@@ -1942,7 +2040,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"Ping-pong removes recursion-depth-proportional portal color/depth ownership but intentionally retains independent per-level ViewState temporal histories. Runtime ViewState reclaim remains separate work.\"\n")
+				TEXT("  \"claimBoundary\":\"Ping-pong removes recursion-depth-proportional portal color/depth ownership but intentionally retains independent per-level ViewState temporal histories. ViewState lifetimes retire through an RHI-thread fence; target capacity shrinking and GPU allocator residency are separate gates.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
