@@ -558,6 +558,14 @@ No wall escape, roll snap, input inversion, ping-pong transfer or stale ignore s
 
 ## Rigid bodies / held objects
 
+Apply the design-only
+[rigid-body interaction contract](InteriorPortalRigidBodyInteractionDesign.md)
+for shared geometry, state ownership, bounded drives, physics-step ordering,
+atomic recovery and replacement of the prototype hold/gate branches. Initial
+query-based object selection does not complete continuous-hold integration.
+This refines Step 2; remote-half contacts remain Step 3, not a prerequisite
+silently added to Core. No physical acceptance is claimed by this design update.
+
 Harden the existing Core transfer path without adding remote-half physical contact yet:
 
 - high-speed / CCD crossing;

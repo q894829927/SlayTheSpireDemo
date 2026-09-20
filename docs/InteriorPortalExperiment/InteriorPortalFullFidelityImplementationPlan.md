@@ -870,6 +870,12 @@ Acceptance:
 
 ### P6 — Physics crossing hardening
 
+Detailed P5/P6/P10 ownership, bounded holding drives, simulation timing,
+recovery, migration and acceptance contracts are defined in
+[Portal rigid-body interaction contract](InteriorPortalRigidBodyInteractionDesign.md).
+That refinement is design-only as of 2026-09-20; it does not advance P8/P9 or
+claim that continuous holding already conforms.
+
 **Goal:** make ordinary complete rigid-body transfer stable for all supported velocities/orientations before adding two-world contact bridging.
 
 Requirements:
@@ -1179,12 +1185,17 @@ Requirements:
 
 Execution update, 2026-09-13: `InteriorPortalQuery::LineTrace` and
 `InteriorPortalQuery::SphereSweep` implement the bounded line/sphere path and
-support-wall aperture arbitration. Physics Handle targeting, light-switch
+support-wall aperture arbitration. Initial Physics Handle object selection, light-switch
 focus and entrance-door interaction now reuse the line path, and
 `SlayTheSpireDemo.Interior.Portals.PortalAwareQuery` covers destination hits,
 sweeps, outside-aperture blocking and nearer unrelated obstacles. A segmented
 debug-path return and the complete exploration weapon/projectile matrix remain
 future P10 work.
+
+Clarification, 2026-09-20: initial selection is not continuous holding. The
+current per-frame hold target still uses a separate fixed-radius sweep and
+support-ignore decision. Its migration to shared shape-aware passage/query
+rules remains P6/P10 work under the rigid-body interaction contract above.
 
 Adopt it for:
 
