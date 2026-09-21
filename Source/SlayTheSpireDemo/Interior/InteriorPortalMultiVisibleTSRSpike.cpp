@@ -74,6 +74,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TEXT("FullFidelity recursion target policy. 1=two full-coordinate-domain color/depth buffers per visible endpoint with projected viewport/scissor; 0=legacy per-level full-view targets."),
 		ECVF_Default);
 
+	TAutoConsoleVariable<float> CVarMinRecursionScreenCoverage(
+		TEXT("portal.MinRecursionScreenCoverage"),
+		0.0f,
+		TEXT("P1B parent-view coverage cutoff for L1+ recursion. 0 disables cutoff; candidate validation values: 0.001, 0.0025, 0.005."),
+		ECVF_Default);
+
+	TAutoConsoleVariable<float> CVarRecursionCoverageHysteresisFraction(
+		TEXT("portal.RecursionCoverageHysteresisFraction"),
+		0.10f,
+		TEXT("P1B relative Schmitt-trigger hysteresis for L1+ coverage cutoff. 0.10 means -10% to stay included and +10% to re-enter."),
+		ECVF_Default);
+
 	float ReadPrimaryFraction()
 	{
 		if (const IConsoleVariable* Var = IConsoleManager::Get().FindConsoleVariable(
@@ -192,6 +204,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FIntRect LastParentViewRect = FIntRect(0, 0, 0, 0);
 		FIntRect LastRenderRect = FIntRect(0, 0, 0, 0);
 		float LastProjectedCoverage = 0.0f;
+		float LastParentViewCoverage = 0.0f;
+		float LastCoverageDecisionThreshold = 0.0f;
+		bool bLastCoverageTested = false;
+		bool bLastCoverageAccepted = false;
 
 		uint64 FramesSubmitted = 0;
 		uint64 FramesSkipped = 0;
@@ -366,6 +382,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TArray<TUniquePtr<FRetiringLayer>> RetiringLayers;
 		int32 LastVisibleDepth = 0;
 		int32 LastEffectiveDepth = 0;
+		int32 LastCoverageSelectedDepth = 0;
+		int32 LastCoverageCutoffLevel = INDEX_NONE;
+		FString LastCoverageCutoffReason = TEXT("NONE");
 		int32 LastAttemptedLayerMask = 0;
 		int32 LastSubmittedLayerMask = 0;
 	};
@@ -377,6 +396,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		FIntRect ParentViewRect = FIntRect(0, 0, 0, 0);
 		FIntRect RenderRect = FIntRect(0, 0, 0, 0);
 		float Coverage = 1.0f;
+		float ParentViewCoverage = 1.0f;
 	};
 
 	class FLayerExtractionExtension final : public FWorldSceneViewExtension
