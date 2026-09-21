@@ -168,10 +168,21 @@
   nearly unchanged, consistent with the intended recursive-render workload
   reduction. The tested workload delta is Endpoint 1 SubmissionCount 2 -> 1
   with Endpoint 0 unchanged at 2.
-- P1B remaining gate is now the M5 visual-stability matrix: large nested portal,
-  tiny/distant, bright/high-contrast tiny, oblique, slow threshold crossing, and
-  look-away/look-back. Do not select a nonzero production default until that
-  visual evidence is accepted. Authority:
+- P1B M5 visual stability is now user-confirmed PASS at candidate 0.0025:
+  large/tiny/high-contrast/oblique fixed-portal cases, slow EffectiveDepth
+  1<->2 threshold crossings, and look-away/look-back showed no P1B flicker,
+  black aperture, stale nested child, unexpected spiral flash or repeated depth
+  oscillation.
+- A separate endpoint-replacement observation remains: the old portal position
+  can appear white and fade after placing a new same-color portal. This occurs on
+  endpoint replacement, not fixed-portal coverage threshold crossing, so it is
+  tracked separately and does not reopen P1B.
+- **All P1B validation evidence is now present except the explicit production
+  default decision.** Measured candidate 0.0025 reduced Endpoint 1 submissions
+  2->1 and GPUTime average 50.270->36.745 ms at the validated fixed camera with
+  the visual matrix passing. Next decide whether to promote 0.0025 from runtime
+  candidate to production default, then seal P1B and advance to P1C.
+  Authority:
   [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md)
   and [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
