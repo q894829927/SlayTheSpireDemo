@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8, §10`  
-Status: **M1-M5 PASS / PRODUCTION DEFAULT 0.0025 IMPLEMENTED / FINAL REGRESSION PENDING**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 ## Purpose
 
@@ -239,5 +239,7 @@ M1-M5 evidence is complete. The user accepted `0.0025` as the production
 default, and the runtime CVar default was changed from `0` to `0.0025` in
 commit `7bee7cd79426`. The cutoff algorithm and 10% hysteresis are unchanged.
 
-Only a final minimal build + focused FullFidelity Automation regression remains
-before P1B can be sealed.
+Final post-default regression is now user-confirmed PASS: the focused
+`SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation prefix passes after
+the production default was changed to `0.0025`. With the already-recorded build,
+M1-M5 measurement and visual evidence, P1B is COMPLETE / VALIDATED / SEALED.
