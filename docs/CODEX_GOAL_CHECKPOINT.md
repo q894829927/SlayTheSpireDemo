@@ -160,11 +160,18 @@
   threshold 0 and 0.001 retain EffectiveDepth=2 / SubmissionCount=2, while
   0.0025 and 0.005 both cut Endpoint 1 to EffectiveDepth=1 /
   SubmissionCount=1. Endpoint 0 remains unchanged at depth/submission count 2.
-- For this camera, the selected warm GPU A/B pair is **0 vs 0.0025**. 0.001 is
-  not worth profiling here because it changes no submissions; 0.005 adds no
-  further submission reduction over 0.0025 at this camera. Next run identical
-  warm >=300-frame GPU samples for 0 and 0.0025, then perform threshold-crossing
-  visual-stability checks. Authority:
+- The selected **0 vs 0.0025** fixed-camera GPU A/B is now complete with two
+  300-frame CSV captures. Average GPUTime falls from **50.270 ms to 36.745 ms**
+  (-13.525 ms / -26.90%); median from 50.222 to 36.650 ms (-27.03%); P95 from
+  51.148 to 37.720 ms (-26.25%); P99 from 52.288 to 38.741 ms (-25.91%).
+  FrameTime average similarly falls 54.449 -> 40.111 ms while GameThreadTime is
+  nearly unchanged, consistent with the intended recursive-render workload
+  reduction. The tested workload delta is Endpoint 1 SubmissionCount 2 -> 1
+  with Endpoint 0 unchanged at 2.
+- P1B remaining gate is now the M5 visual-stability matrix: large nested portal,
+  tiny/distant, bright/high-contrast tiny, oblique, slow threshold crossing, and
+  look-away/look-back. Do not select a nonzero production default until that
+  visual evidence is accepted. Authority:
   [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md)
   and [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
