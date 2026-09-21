@@ -54,10 +54,18 @@
   teardown evidence, **P1A-5 Color Target Capacity Shrink = COMPLETE / VALIDATED**.
   Authority:
   [P1A-5 validation](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
-- Current active implementation step: **P1A-6 Depth Target Capacity Reclaim**.
-  Preserve lazy depth-target creation; reclaim only out-of-budget old lifetimes
-  after safe retirement. Then continue P1A-7 and the full P1A gate. Do not skip
-  directly to broad physics. P1B remains the later stage for sustained
+- P1A-6 Depth Target Capacity Reclaim is implemented in
+  `583181eb35786548ccc3604d0d72278dc0e170db`. The existing P1A-4 retirement
+  fence remains the sole lifetime mechanism; P1A-6 now explicitly
+  `ReleaseResource()`s the old per-level SecondaryDepthTarget after that fence
+  and report schema v5 exposes active/retiring depth ownership.
+- P1A-6 is **IMPLEMENTED / USER VALIDATION REQUIRED**. Next evidence: Development
+  Editor build, focused `SlayTheSpireDemo.Interior.Portals.FullFidelity`
+  Automation, and actual D3D12 fallback depth-target `4 -> 1 -> 4`, rapid
+  reversal, offscreen retention, and Stop-zero-ownership checks. Authority:
+  [P1A-6 validation](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
+- Do not start P1A-7 until P1A-6 acceptance is recorded. After P1A-6, continue
+  P1A-7 and the full P1A gate. P1B remains the later stage for sustained
   depth-four rendering cost.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
