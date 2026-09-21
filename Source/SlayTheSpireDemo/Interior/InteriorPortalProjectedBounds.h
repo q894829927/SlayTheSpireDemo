@@ -24,6 +24,12 @@ namespace InteriorPortalProjectedBounds
 		return Level >= 0 ? (Level % PingPongBufferCount) : INDEX_NONE;
 	}
 
+	inline bool ExpandAndClampRect(
+		const FIntRect& SourceRect,
+		const FIntRect& ParentViewRect,
+		const int32 PaddingPixels,
+		FIntRect& OutRect);
+
 	/**
 	 * Conservative projected portal coverage in the current recursive parent
 	 * view. Padding matches the bounded-composition safety margin, then the
