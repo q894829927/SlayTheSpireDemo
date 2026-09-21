@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §9-10`  
-Status: **ACTIVE / P1C-1 INTERACTION SMOKE NEXT**
+Status: **P1C-1 PASS / P1C-2 GPU A-B NEXT**
 
 ## Existing accepted baseline
 
@@ -105,9 +105,67 @@ portal.BoundedMainPassScissor 0
 
 at the same camera and confirm no visible semantic change.
 
+## P1C-1 result — USER CONFIRMED PASS
+
+User-provided PIE evidence at RequestedDepth=2 with the sealed P1B production
+threshold `0.0025` shows:
+
+~~~text
+VisibleEndpointMask=0x03
+SubmittedEndpointMask=0x03
+PublishedEndpointMask=0x03
+
+Endpoint 0:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 ParentCoverage=0.005130
+Failure=NONE
+
+Endpoint 1:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 ParentCoverage=0.012615
+Failure=NONE
+~~~
+
+This proves the dual-visible, recursion-depth-two configuration remains healthy
+with the sealed P1B policy active.
+
+After enabling `portal.BoundedMainPassScissor=1`, render-thread diagnostics
+settled to `Requested=1 Active=1` and `BoundedScissor=1` for both endpoint
+composition paths. Representative bounded coverage from the accepted frame:
+
+~~~text
+recursive-view Endpoint 0: 3828 / 662860 pixels  = 0.005775
+recursive-view Endpoint 1: 9027 / 662860 pixels  = 0.013618
+main-view Endpoint 0:     48416 / 1008406 pixels = 0.048012
+main-view Endpoint 1:    265506 / 1008406 pixels = 0.263293
+~~~
+
+The user reported the resulting image as normal. No clipping, black rectangle,
+stale-pixel, recursion, foreground-depth, crash/assert, RDG or RHI regression
+was reported.
+
+The first frame immediately after the console command still reported
+`Requested=0 Active=0`; the next frame and subsequent frames reported
+`Requested=1 Active=1`. This is treated as ordinary console/render-thread
+propagation, not a failure.
+
+**P1C-1 = PASS.**
+
 ## P1C-2 — fixed-camera GPU A/B
 
-Only after P1C-1 passes, keep the exact same camera/window/settings and compare:
+Keep the exact same camera/window/settings and compare:
 
 ~~~text
 portal.BoundedMainPassScissor 0
