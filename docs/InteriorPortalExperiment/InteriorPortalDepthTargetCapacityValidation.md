@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Implementation commit: `583181eb35786548ccc3604d0d72278dc0e170db`  
-Status: **IMPLEMENTED / USER VALIDATION REQUIRED**
+Status: **IMPLEMENTED / D3D12 CORE MATRIX PASS / AUTOMATION + RAPID-REVERSAL CONFIRMATION PENDING**
 
 ## Scope
 
@@ -121,12 +121,74 @@ Logical/report ownership and explicit `ReleaseResource()` still do not prove an
 exact immediate decrease in process-wide D3D12 allocator residency. Global RHI
 memory remains supporting evidence rather than an equality assertion.
 
+## User-provided D3D12 evidence — 2026-09-21
+
+The user supplied actual fallback PIE output with report schema v5 and
+`portal.FullFidelityPingPong 0`.
+
+Observed warmed RequestedDepth=2:
+
+```text
+Endpoint 0 DepthTargets Active=2 Retiring=0 Owned=2
+Endpoint 1 DepthTargets Active=2 Retiring=0 Owned=2
+```
+
+Both L0/L1 layers were ACTIVE and had real 1606x900 secondary depth targets.
+
+Observed settled shrink to RequestedDepth=1:
+
+```text
+Endpoint 0 DepthTargets Active=1 Retiring=0 Owned=1
+Endpoint 1 DepthTargets Active=1 Retiring=0 Owned=1
+L1 = UNALLOCATED
+```
+
+Observed settled regrowth back to RequestedDepth=2:
+
+```text
+Endpoint 0 DepthTargets Active=2 Retiring=0 Owned=2
+Endpoint 1 DepthTargets Active=2 Retiring=0 Owned=2
+```
+
+The retained L0 lifetime identities stayed stable across the cycle
+(`E0L0 Lifetime=1`, `E1L0 Lifetime=2`). Rebuilt L1 received fresh identities
+(`E0L1 3 -> 5`, `E1L1 4 -> 6`). This matches the lifetime/reclaim model and
+demonstrates that the old L1 depth targets did not remain as active capacity.
+
+The final STOPPED v5 report shows:
+
+```text
+totals.depthTargets = 0
+endpoint activeDepthTargetCount = 0
+endpoint retiringDepthTargetCount = 0
+```
+
+Therefore the actual D3D12 fallback depth-target settled `2 -> 1 -> 2` matrix
+and Stop-zero-ownership gates pass.
+
+The lower `2 -> 1 -> 2` matrix is accepted in place of forcing full fallback
+Depth=4 for this resource-lifecycle gate because the same per-level retirement
+path is exercised and the user observed approximately 1 GB of additional VRAM
+pressure at fallback Depth=4. This avoids turning a known high-VRAM validation
+case into an unnecessary OOM risk.
+
+The earlier P1A-5 offscreen capture already showed that, with unchanged
+RequestedDepth, per-level depth targets remained allocated while
+VisibleDepth/EffectiveDepth dropped to zero. P1A-6 does not modify the
+visibility/capacity trigger path, so that passing offscreen-retention evidence
+remains applicable under the repository validation-reuse policy.
+
+The supplied sequence is settled evidence; it does not prove a deliberately
+rapid `2 -> 1 -> 2` reversal while the old depth target is still retiring.
+Focused Automation after the P1A-6 code change is also not yet recorded here.
+
 ## Validation not performed by the implementation environment
 
 The GitHub-only implementation environment cannot execute the user's UE 5.8
 editor, Development Editor build, D3D12 PIE, or GPU-memory capture.
 
-P1A-6 remains **USER VALIDATION REQUIRED** until the following gates pass.
+Actual D3D12 core-matrix and Stop evidence above are user-provided. P1A-6 remains
+open only for the remaining affected regression gates.
 
 ## USER ACTION REQUIRED
 
