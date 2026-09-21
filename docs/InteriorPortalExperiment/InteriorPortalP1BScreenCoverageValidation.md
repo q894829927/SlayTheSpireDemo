@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / THRESHOLD-ZERO COMPATIBILITY PASS / REMAINING VALIDATION REQUIRED**
+Status: **IMPLEMENTED / THRESHOLD-ZERO + FORCED-CUTOFF CORE GATES PASS / REMAINING VALIDATION REQUIRED**
 
 ## Goal
 
@@ -276,7 +276,72 @@ and the v8 JSON must show
 
 This proves threshold zero reproduces the P1A workload policy.
 
-### 4. Forced cutoff without capacity churn
+### 4. Forced cutoff without capacity churn — USER CONFIRMED PASS
+
+The user kept the same warmed fallback RequestedDepth=2 session and set:
+
+```text
+portal.MinRecursionScreenCoverage 0.02
+```
+
+Observed settled endpoint state:
+
+```text
+Endpoint 0:
+VisibleDepth=2
+EffectiveDepth=1
+Attempted=0x01
+Submitted=0x01
+SubmissionCount=1
+Published=0x01
+Cutoff=SCREEN_COVERAGE
+CutoffLevel=1
+L1 Lifetime=2
+L1 ParentCoverage=0.007594
+L1 CoverageAccepted=0
+L1 CoverageThreshold=0.022000
+ColorTargets Active=2 Retiring=0 Owned=2
+DepthTargets Active=2 Retiring=0 Owned=2
+
+Endpoint 1:
+VisibleDepth=2
+EffectiveDepth=1
+Attempted=0x01
+Submitted=0x01
+SubmissionCount=1
+Published=0x01
+Cutoff=SCREEN_COVERAGE
+CutoffLevel=1
+L1 Lifetime=4
+L1 ParentCoverage=0.008763
+L1 CoverageAccepted=0
+L1 CoverageThreshold=0.022000
+ColorTargets Active=2 Retiring=0 Owned=2
+DepthTargets Active=2 Retiring=0 Owned=2
+```
+
+This proves all of the mechanism-level contracts in the settled cutoff state:
+
+```text
+RequestedDepth remains 2
+VisibleDepth remains 2
+EffectiveDepth falls to 1
+L0 remains submitted
+L1 receives no SubmitLayer call
+per-endpoint PublishedLayerMask falls from 0x03 to 0x01
+warmed L1 lifetime/ViewState/color/depth ownership remains allocated
+no capacity retirement is triggered by EffectiveDepth-only reduction
+```
+
+The `CoverageThreshold=0.022` value is expected in the settled state. On the
+first exclusion transition the previously-included boundary is
+`0.02 * 0.9 = 0.018`; after L1 is excluded, the hysteresis state switches to
+the re-entry boundary `0.02 * 1.1 = 0.022`. The dump was captured after that
+settled state.
+
+The endpoint-level `Published=0x01` also proves the old L1 publication is no
+longer present in the settled layer publication mask, so it cannot be consumed
+as a stale child.
 
 Keep the exact same PIE session and camera after warming Depth=2.
 
