@@ -695,8 +695,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				: TEXT("RUNNING_RECURSIVE_MULTI_VISIBLE_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f PingPong=%d SharedFinalScratch=1 PerLevelViewState=1."),
-				PrimaryResolutionFraction, bPingPongEnabled ? 1 : 0);
+				TEXT("PortalMultiVisible: START. Endpoints=2 MaxRecursionDepth=4 PrimaryFraction=%.3f PingPong=%d SharedFinalScratch=1 PerLevelViewState=1 MinRecursionCoverage=%.6f CoverageHysteresis=%.3f."),
+				PrimaryResolutionFraction, bPingPongEnabled ? 1 : 0,
+				ReadMinRecursionScreenCoverage(),
+				ReadRecursionCoverageHysteresisFraction());
 			return true;
 		}
 
@@ -783,9 +785,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible PingPong=%d Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d ScratchGeneration=%llu RetiringScratch=%d OwnedScratch=%d ScratchResizeDeferred=%llu"),
+				TEXT("PortalMultiVisible PingPong=%d Requested=%d MinCoverage=%.6f Hysteresis=%.3f VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d ScratchGeneration=%llu RetiringScratch=%d OwnedScratch=%d ScratchResizeDeferred=%llu"),
 				bPingPongEnabled ? 1 : 0,
-				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
+				LastRequestedRecursionDepth,
+				LastMinRecursionScreenCoverage,
+				LastRecursionCoverageHysteresisFraction,
+				LastVisibleMask, LastSubmittedMask, PublishedMask,
 				FinalScratchSize.X, FinalScratchSize.Y,
 				FinalScratchGeneration,
 				RetiringScratchTargets.Num(),
@@ -797,10 +802,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				const FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				const int32 PublishedLayerMask = BuildPublishedLayerMask(EndpointIndex);
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x PingPongSize=%dx%d"),
+					TEXT("PortalMultiVisible Endpoint=%d VisibleDepth=%d EffectiveDepth=%d Attempted=0x%02x Submitted=0x%02x SubmissionCount=%d Published=0x%02x Cutoff=%s CutoffLevel=%d PingPongSize=%dx%d"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
+					Endpoint.LastCoverageSelectedDepth,
+					*Endpoint.LastCoverageCutoffReason.ReplaceCharWithEscapedChar(),
+					Endpoint.LastCoverageCutoffLevel,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
+					*Endpoint.LastCoverageCutoffReason, Endpoint.LastCoverageCutoffLevel,
 					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y);
 
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
@@ -822,7 +831,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const bool bDepthAllocated = IsValid(DepthTarget);
 					const bool bColorAllocated = IsValid(ColorTarget);
 					UE_LOG(LogTemp, Display,
-						TEXT("PortalMultiVisible E%dL%d State=%s Lifetime=%llu Slot=%d Parent=(%d,%d)-(%d,%d) Render=(%d,%d)-(%d,%d) Coverage=%.5f ViewState=%d Color=%d[%dx%d] Depth=%d[%dx%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
+						TEXT("PortalMultiVisible E%dL%d State=%s Lifetime=%llu Slot=%d Parent=(%d,%d)-(%d,%d) Render=(%d,%d)-(%d,%d) Coverage=%.5f ParentCoverage=%.6f CoverageTested=%d CoverageAccepted=%d CoverageThreshold=%.6f ViewState=%d Color=%d[%dx%d] Depth=%d[%dx%d] SubmittedFrames=%llu Skipped=%llu Failure=%s"),
 						EndpointIndex, Level,
 						InteriorPortalRecursionLifetime::ToString(Layer.Lifetime.State),
 						Layer.Lifetime.LifetimeId, Layer.LastPingPongSlot,
@@ -831,6 +840,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Layer.LastRenderRect.Min.X, Layer.LastRenderRect.Min.Y,
 						Layer.LastRenderRect.Max.X, Layer.LastRenderRect.Max.Y,
 						Layer.LastProjectedCoverage,
+						Layer.LastParentViewCoverage,
+						Layer.bLastCoverageTested ? 1 : 0,
+						Layer.bLastCoverageAccepted ? 1 : 0,
+						Layer.LastCoverageDecisionThreshold,
 						bViewStateAllocated ? 1 : 0,
 						bColorAllocated ? 1 : 0,
 						bColorAllocated ? ColorTarget->SizeX : 0,
@@ -2318,7 +2331,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const FString EscapedFailure = Layer.LastSubmissionFailureReason.ReplaceCharWithEscapedChar();
 					const FString EscapedCutReason = Layer.LastCameraCutReason.ReplaceCharWithEscapedChar();
 					LayersJson += FString::Printf(
-						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"consumableByParentThisFrame\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"pingPongSlot\":%d,\"sharedPingPongTargets\":%s,\"parentViewRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"renderRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"projectedCoverage\":%.9g,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceRectAuthority\":\"View.ViewRectMinAndSize\"}%s\n"),
+						TEXT("      {\"level\":%d,\"lifetimeId\":%llu,\"publicationGeneration\":%llu,\"packedPublicationIdentity\":%llu,\"resourceState\":\"%s\",\"attemptedThisFrame\":%s,\"submittedThisFrame\":%s,\"published\":%s,\"consumableByParentThisFrame\":%s,\"submissionFailureReason\":\"%s\",\"viewStateAllocated\":%s,\"historyValid\":%s,\"visibleLastTick\":%s,\"framesSubmitted\":%llu,\"framesSkipped\":%llu,\"cameraCutCount\":%llu,\"continuousHistoryFrames\":%llu,\"lastCameraCutReason\":\"%s\",\"lastExtractionFrame\":%llu,\"lastDepthExtractionFrame\":%llu,\"lastCompletedSubmission\":%llu,\"secondaryPreExposure\":%.9g,\"observedAAMethod\":%d,\"temporalJitterObserved\":%s,\"pingPongSlot\":%d,\"sharedPingPongTargets\":%s,\"parentViewRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"renderRect\":{\"minX\":%d,\"minY\":%d,\"maxX\":%d,\"maxY\":%d},\"projectedCoverage\":%.9g,\"parentViewCoverage\":%.9g,\"coverageTested\":%s,\"coverageAccepted\":%s,\"coverageDecisionThreshold\":%.9g,\"colorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"depthSourceRectAuthority\":\"View.ViewRectMinAndSize\"}%s\n"),
 						Level,
 						Layer.Lifetime.LifetimeId,
 						Layer.Lifetime.PublicationGeneration,
@@ -2346,6 +2359,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Layer.LastRenderRect.Min.X, Layer.LastRenderRect.Min.Y,
 						Layer.LastRenderRect.Max.X, Layer.LastRenderRect.Max.Y,
 						Layer.LastProjectedCoverage,
+						Layer.LastParentViewCoverage,
+						Layer.bLastCoverageTested ? TEXT("true") : TEXT("false"),
+						Layer.bLastCoverageAccepted ? TEXT("true") : TEXT("false"),
+						Layer.LastCoverageDecisionThreshold,
 						bColorAllocated ? TEXT("true") : TEXT("false"),
 						bColorAllocated ? ColorTarget->SizeX : 0,
 						bColorAllocated ? ColorTarget->SizeY : 0,
@@ -2399,7 +2416,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"activeColorTargetCount\":%d,\"retiringColorTargetCount\":%d,\"depthTargetCount\":%d,\"activeDepthTargetCount\":%d,\"retiringDepthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"coverageSelectedDepth\":%d,\"cutoffReason\":\"%s\",\"cutoffLevel\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"activeColorTargetCount\":%d,\"retiringColorTargetCount\":%d,\"depthTargetCount\":%d,\"activeDepthTargetCount\":%d,\"retiringDepthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
@@ -2437,12 +2454,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const int32 RetiringScratchCount = RetiringScratchTargets.Num();
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v7\",\n")
+					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v8\",\n")
 					TEXT("  \"status\":\"%s\",\n")
 					TEXT("  \"diagnosticScope\":\"FullFidelity endpoint/recursion ownership plus bounded shared-final-scratch retirement; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 					TEXT("  \"pingPongEnabled\":%s,\n")
 					TEXT("  \"requestedDepth\":%d,\n")
 					TEXT("  \"primaryResolutionFraction\":%.6f,\n")
+					TEXT("  \"minRecursionScreenCoverage\":%.9g,\n")
+					TEXT("  \"recursionCoverageHysteresisFraction\":%.9g,\n")
 					TEXT("  \"visibleEndpointCount\":%d,\n")
 					TEXT("  \"visibleEndpointMask\":%d,\n")
 					TEXT("  \"submittedEndpointMask\":%d,\n")
@@ -2450,12 +2469,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 					TEXT("  \"sharedScratch\":{\"allocated\":%s,\"generation\":%llu,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu,\"activeCount\":%d,\"retiringCount\":%d,\"ownedCount\":%d,\"maxRetiringCount\":%d,\"replacementDeferredCount\":%llu,\"retiring\":[%s]},\n")
 					TEXT("  \"endpoints\":[\n%s  ],\n")
-					TEXT("  \"claimBoundary\":\"Per-level color/depth retirement remains queue-safe. The producer owns one steady-state shared final scratch; viewport-size replacement retires at most one prior generation behind an RHI-thread-depth fence instead of calling FlushRenderingCommands in the normal resize path. A failed child submission truncates current-frame EffectiveDepth and cannot be consumed by its parent unless that child is present in the current-frame SubmittedLayerMask; an older publication may remain visible in diagnostics until ordered retirement but is not current-frame-valid. Stop remains the synchronous teardown boundary. Logical ownership does not prove immediate global GPU allocator residency return.\"\n")
+					TEXT("  \"claimBoundary\":\"Per-level color/depth retirement remains queue-safe. The producer owns one steady-state shared final scratch; viewport-size replacement retires at most one prior generation behind an RHI-thread-depth fence instead of calling FlushRenderingCommands in the normal resize path. P1B may lower EffectiveDepth for L1+ when conservative parent-view coverage falls below the hysteretic threshold; L0 is never removed by coverage, and lower EffectiveDepth does not reclaim persistent RequestedDepth capacity. A failed child submission also truncates current-frame EffectiveDepth and cannot be consumed by its parent unless that child is present in the current-frame SubmittedLayerMask; an older publication may remain visible in diagnostics until ordered retirement but is not current-frame-valid. Stop remains the synchronous teardown boundary. Logical ownership does not prove immediate global GPU allocator residency return.\"\n")
 					TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
 				LastRequestedRecursionDepth,
 				PrimaryResolutionFraction,
+				LastMinRecursionScreenCoverage,
+				LastRecursionCoverageHysteresisFraction,
 				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
 				TotalViewStates, TotalColorTargets, TotalDepthTargets, TotalExplicitTargetBytes,
 				bScratchAllocated ? TEXT("true") : TEXT("false"),
@@ -2484,6 +2505,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		bool bRestoreBoundedComposition = false;
 		int32 PreviousBoundedCompositionValue = 0;
 		float PrimaryResolutionFraction = 0.67f;
+		float LastMinRecursionScreenCoverage = 0.0f;
+		float LastRecursionCoverageHysteresisFraction = 0.10f;
 		TWeakObjectPtr<UWorld> ActiveWorld;
 		FDelegateHandle WorldPostActorTickHandle;
 		InteriorPortalRecursionLifetime::FLifetimeIdSource LifetimeIdSource;
