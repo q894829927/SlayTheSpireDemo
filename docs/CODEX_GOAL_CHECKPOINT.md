@@ -42,11 +42,6 @@
   reduced RequestedDepth retire with the same `FRetiringLayer` and RHI-thread
   fence that owns the old ViewState/publication; report schema v4 exposes active
   and retiring color counts, and Stop releases active fallback color targets.
-- P1A-5 is **IMPLEMENTED / D3D12 CORE MATRIX PASS / REMAINING VALIDATION
-  REQUIRED**, not yet sealed. User-provided fallback D3D12 dumps verify settled
-  `4 -> 1 -> 4` color counts `4 -> 1 -> 4` on both endpoints, stable retained
-  L0 identities, fresh rebuilt L1-L3 identities, no offscreen shrink at
-  RequestedDepth=4, and Stop ownership of zero color/depth/ViewState targets.
 - The user confirmed the UE 5.8 Development Editor build PASS,
   `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS, and a
   deliberate rapid `4 -> 1 -> 4` reversal with no stale/blank/crash regression.
@@ -66,13 +61,14 @@
   validation depth is deliberate because fallback Depth=4 produced roughly
   1 GB additional VRAM pressure while exercising the same per-level reclaim path.
 - Prior offscreen-retention evidence remains valid because P1A-6 did not modify
-  the visibility/capacity trigger. Remaining P1A-6 evidence is a fresh focused
+  the visibility/capacity trigger. The user has now also confirmed a fresh
   `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS after the
-  P1A-6 code change and one deliberate rapid `2 -> 1 -> 2` reversal with no
-  stale/blank/crash regression. Authority:
+  P1A-6 code change and a deliberate rapid `2 -> 1 -> 2` reversal with no
+  stale/blank/crash regression.
+- **P1A-6 Depth Target Capacity Reclaim = COMPLETE / VALIDATED.** Authority:
   [P1A-6 validation](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
-- Do not start P1A-7 until P1A-6 acceptance is recorded. After P1A-6, continue
-  P1A-7 and the full P1A gate. P1B remains the later stage for sustained
+- Current active implementation step: **P1A-7 Shared Scratch Lifecycle Audit**.
+  After P1A-7, run the full P1A gate. P1B remains the later stage for sustained
   depth-four rendering cost.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
