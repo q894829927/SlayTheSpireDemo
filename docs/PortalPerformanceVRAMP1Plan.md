@@ -869,11 +869,13 @@ stage.**
 
 ## 8.1 Goal
 
-Implementation update, 2026-09-21: P1B parent-view coverage selection is now
-implemented. `portal.MinRecursionScreenCoverage` defaults to `0`, so the
-production default still reproduces the sealed P1A workload policy until
-measurement/visual acceptance selects otherwise. A 10% relative Schmitt-trigger
-hysteresis is provided through
+Implementation update, 2026-09-22: P1B parent-view coverage selection is
+implemented and its measured production default is now
+`portal.MinRecursionScreenCoverage=0.0025` (0.25%). The selected fixed-camera
+A/B reduced Endpoint 1 recursion submissions from 2 to 1 and reduced average
+GPUTime from 50.270 ms to 36.745 ms (-26.90%), while the manual visual-stability
+matrix passed. Setting the CVar to `0` remains the explicit P1A-parity override.
+A 10% relative Schmitt-trigger hysteresis remains provided through
 `portal.RecursionCoverageHysteresisFraction` to avoid threshold flicker without
 using a time cooldown.
 
@@ -944,7 +946,8 @@ Candidate validation values:
 0.005  = 0.50%
 ```
 
-No production default is selected without measurement and visual acceptance.
+The accepted production default is `0.0025`, selected only after the recorded
+submission/GPU measurements and visual-stability acceptance.
 
 ## 8.5 Stop rule
 
