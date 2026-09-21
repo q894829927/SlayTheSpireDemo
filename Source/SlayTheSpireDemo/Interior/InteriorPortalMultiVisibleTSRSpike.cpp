@@ -1833,17 +1833,31 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				}
 
 				bool bTopSubmitted = false;
+				int32 EffectiveDepth = VisibleDepth;
+				Endpoint.LastEffectiveDepth = EffectiveDepth;
 				for (int32 Level = VisibleDepth - 1; Level >= 0; --Level)
 				{
 					Endpoint.LastAttemptedLayerMask |= (1 << Level);
-					if (SubmitLayer(
+					const bool bSubmitted = SubmitLayer(
 						World, *PortalSystem, ProjectionData, POV,
 						TargetSize,
-						EndpointIndex, Level, VisibleDepth,
-						Entry, Exit, Endpoint, Plans[Level]))
+						EndpointIndex, Level, EffectiveDepth,
+						Entry, Exit, Endpoint, Plans[Level]);
+					if (bSubmitted)
 					{
 						Endpoint.LastSubmittedLayerMask |= (1 << Level);
 						bTopSubmitted |= Level == 0;
+					}
+					else
+					{
+						// A failed child is not a valid current-frame recursion result.
+						// Terminate recursion at that level and invalidate its prior
+						// publication; shallower parents may still submit without it.
+						EffectiveDepth =
+							InteriorPortalRecursionLifetime::TruncateEffectiveDepthAfterSubmissionFailure(
+								EffectiveDepth, Level);
+						Endpoint.LastEffectiveDepth = EffectiveDepth;
+						HideLayer(Endpoint, Level, TEXT("current-frame submission failed"));
 					}
 				}
 				if (bTopSubmitted)
@@ -1877,7 +1891,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const FIntPoint TargetSize,
 			const int32 EndpointIndex,
 			const int32 Level,
-			const int32 VisibleDepth,
+			const int32 EffectiveDepth,
 			AInteriorPortal* Entry,
 			AInteriorPortal* Exit,
 			FEndpointState& Endpoint,
@@ -1990,7 +2004,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				new FLegacyScreenPercentageDriver(ViewFamily, PrimaryResolutionFraction));
 			ViewFamily.ViewExtensions.Add(ExtractionExtension);
 
-			if (Level + 1 < VisibleDepth
+			if (InteriorPortalRecursionLifetime::CanConsumeCurrentFrameChild(
+					Level, EffectiveDepth, Endpoint.LastSubmittedLayerMask)
 				&& Endpoint.RecursiveCompositionExtensions[Level + 1])
 			{
 				ViewFamily.ViewExtensions.Add(
@@ -2156,6 +2171,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const bool bAttempted = (Endpoint.LastAttemptedLayerMask & (1 << Level)) != 0;
 					const bool bSubmitted = (Endpoint.LastSubmittedLayerMask & (1 << Level)) != 0;
 					const bool bPublished = (PublishedLayerMask & (1 << Level)) != 0;
+					const bool bConsumableByParentThisFrame = Level > 0
+						&& InteriorPortalRecursionLifetime::CanConsumeCurrentFrameChild(
+							Level - 1, Endpoint.LastEffectiveDepth, Endpoint.LastSubmittedLayerMask);
 					if (bOwned)
 					{
 						OwnedLayerMask |= (1 << Level);
@@ -2196,6 +2214,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						bAttempted ? TEXT("true") : TEXT("false"),
 						bSubmitted ? TEXT("true") : TEXT("false"),
 						bPublished ? TEXT("true") : TEXT("false"),
+						bConsumableByParentThisFrame ? TEXT("true") : TEXT("false"),
 						*EscapedFailure,
 						bViewStateAllocated ? TEXT("true") : TEXT("false"),
 						Layer.bHistoryValid ? TEXT("true") : TEXT("false"),
@@ -2305,7 +2324,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const int32 RetiringScratchCount = RetiringScratchTargets.Num();
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v6\",\n")
+					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v7\",\n")
 					TEXT("  \"status\":\"%s\",\n")
 					TEXT("  \"diagnosticScope\":\"FullFidelity endpoint/recursion ownership plus bounded shared-final-scratch retirement; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 					TEXT("  \"pingPongEnabled\":%s,\n")
@@ -2318,7 +2337,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 					TEXT("  \"sharedScratch\":{\"allocated\":%s,\"generation\":%llu,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu,\"activeCount\":%d,\"retiringCount\":%d,\"ownedCount\":%d,\"maxRetiringCount\":%d,\"replacementDeferredCount\":%llu,\"retiring\":[%s]},\n")
 					TEXT("  \"endpoints\":[\n%s  ],\n")
-					TEXT("  \"claimBoundary\":\"Per-level color/depth retirement remains queue-safe. The producer owns one steady-state shared final scratch; viewport-size replacement retires at most one prior generation behind an RHI-thread-depth fence instead of calling FlushRenderingCommands in the normal resize path. Stop remains the synchronous teardown boundary. Logical ownership does not prove immediate global GPU allocator residency return.\"\n")
+					TEXT("  \"claimBoundary\":\"Per-level color/depth retirement remains queue-safe. The producer owns one steady-state shared final scratch; viewport-size replacement retires at most one prior generation behind an RHI-thread-depth fence instead of calling FlushRenderingCommands in the normal resize path. A failed child submission truncates current-frame EffectiveDepth and cannot be consumed by its parent unless that child is present in the current-frame SubmittedLayerMask; an older publication may remain visible in diagnostics until ordered retirement but is not current-frame-valid. Stop remains the synchronous teardown boundary. Logical ownership does not prove immediate global GPU allocator residency return.\"\n")
 					TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
