@@ -534,6 +534,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 		{
 			if (FinalScratch)
 			{
+				FinalScratch->ReleaseResource();
 				FinalScratch->RemoveFromRoot();
 				FinalScratch = nullptr;
 			}
