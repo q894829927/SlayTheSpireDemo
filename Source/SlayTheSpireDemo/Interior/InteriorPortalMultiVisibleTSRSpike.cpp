@@ -2464,7 +2464,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("{\n")
 					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v8\",\n")
 					TEXT("  \"status\":\"%s\",\n")
-					TEXT("  \"diagnosticScope\":\"FullFidelity endpoint/recursion ownership plus bounded shared-final-scratch retirement; per-level ViewState/TSR/Lumen remain unchanged\",\n")
+					TEXT("  \"diagnosticScope\":\"FullFidelity endpoint/recursion ownership, bounded shared-final-scratch retirement, and P1B parent-view coverage workload cutoff; per-level ViewState/TSR/Lumen ownership remains capacity-driven\",\n")
 					TEXT("  \"pingPongEnabled\":%s,\n")
 					TEXT("  \"requestedDepth\":%d,\n")
 					TEXT("  \"primaryResolutionFraction\":%.6f,\n")
