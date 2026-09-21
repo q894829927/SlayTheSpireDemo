@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Primary scratch implementation: `6df29d708d4bcc0d435a57162b0e2ee91cfcad33`  
-Status: **IMPLEMENTED / MANUAL CORE MATRIX MOSTLY PASS / RESIZE GENERATION RETEST + AUTOMATION PENDING**
+Status: **COMPLETE / VALIDATED**
 
 ## Scope
 
@@ -213,6 +213,35 @@ immediate process-wide D3D12 allocator residency return.
 ## User-provided manual evidence — 2026-09-21
 
 The user supplied actual D3D12 PIE output from the P1A-7 implementation.
+The final retest after `126582bfc9f4e6984f4bfd1cad711b83ff3ea88d`
+confirmed the diagnostics fix and the live replacement contract:
+
+```text
+before resize:
+Scratch=1662x524
+ScratchGeneration=1
+RetiringScratch=0
+OwnedScratch=1
+ScratchResizeDeferred=0
+
+after live resize in the same producer:
+Scratch=1920x688
+ScratchGeneration=2
+RetiringScratch=0
+OwnedScratch=1
+ScratchResizeDeferred=0
+```
+
+The retained endpoint lifetimes remained `E0L0=1` and `E1L0=2`, while
+SubmittedFrames advanced from 139 to 303, proving this was an in-place live
+resize rather than a producer restart. The scratch generation therefore now
+advances correctly and ownership settles back to exactly one.
+
+The user also confirmed the focused
+`SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation suite PASS on the
+final P1A-7 code. The same session ran the latest generation behavior, so the
+current editor build/load path is accepted for this phase.
+
 
 Stable RequestedDepth=1 ownership passed:
 
@@ -275,11 +304,10 @@ PortalTSRSpike: stopped...
 After the reverse takeover the accepted FullFidelity renderer remained visually
 normal.
 
-Therefore stable one-scratch ownership, settled resize ownership, Stop zero
-ownership, legacy-start rejection and reverse-takeover teardown all have actual
-manual evidence. The only manual P1A-7 item requiring repetition after the
-generation fix is one live resize confirming that the generation now advances
-while ownership still settles back to one.
+Therefore stable one-scratch ownership, live generation advance, settled resize
+ownership, Stop zero ownership, legacy-start rejection and reverse-takeover
+teardown all have actual manual evidence. The focused FullFidelity Automation
+suite also passes on the final implementation.
 
 ## Validation not performed by the implementation environment
 
@@ -287,11 +315,11 @@ The GitHub-only implementation environment cannot run the user's UE 5.8 build,
 Automation, D3D12 PIE, interactive viewport resize, or legacy-console coexistence
 test.
 
-Do not mark P1A-7 COMPLETE / VALIDATED until the following gates are recorded.
+All required P1A-7 gates are now recorded.
 
-## USER ACTION REQUIRED
+## Completed validation
 
-### 1. Development Editor build
+### 1. Development Editor build — PASS
 
 Run the same UE 5.8 Development Editor build used for P1A-5/P1A-6.
 
@@ -301,7 +329,7 @@ Expected:
 SlayTheSpireDemoEditor Win64 Development = PASS
 ```
 
-### 2. Focused FullFidelity Automation
+### 2. Focused FullFidelity Automation — USER CONFIRMED PASS
 
 Run:
 
@@ -315,7 +343,7 @@ Run:
 
 Expected: focused suite PASS.
 
-### 3. Stable shared-scratch ownership
+### 3. Stable shared-scratch ownership — PASS
 
 Use a low-pressure configuration:
 
@@ -342,7 +370,7 @@ sharedScratch.maxRetiringCount = 1
 
 There must never be one scratch per recursion level or endpoint.
 
-### 4. Viewport-size replacement
+### 4. Viewport-size replacement — PASS
 
 Prefer **New Editor Window (PIE)** so the play window can be resized directly.
 
@@ -377,7 +405,7 @@ Visual expectation: no crash/assert and no persistent blank or stale portal
 after resizing settles. A transient skipped portal submission under extreme
 resize churn is permitted by the bounded backpressure policy.
 
-### 5. Stop / Restart
+### 5. Stop / Restart — PASS
 
 After stable rendering:
 
@@ -404,7 +432,7 @@ portal.StartMultiVisibleTSRSpike
 Warm again and dump. Expect exactly one active shared scratch and no old retiring
 generation.
 
-### 6. Legacy dual-path guard
+### 6. Legacy dual-path guard — PASS
 
 While MultiVisible FullFidelity is running, issue:
 
@@ -439,7 +467,7 @@ backend-ownership guard and the same explicit scratch-release rule.
 
 ## Acceptance
 
-P1A-7 becomes **COMPLETE / VALIDATED** when:
+P1A-7 acceptance results:
 
 - Development Editor build passes;
 - focused FullFidelity Automation passes;
@@ -452,4 +480,8 @@ P1A-7 becomes **COMPLETE / VALIDATED** when:
 - reverse takeover makes the legacy producer Stop and release its scratch;
 - no crash/assert or persistent blank/stale portal is introduced.
 
-After P1A-7 closes, execute the **full P1A Gate** before beginning P1B.
+All required P1A-7 gates are satisfied. **P1A-7 Shared Scratch Lifecycle Audit
+is COMPLETE / VALIDATED.**
+
+The next planned step is the **full P1A Gate**. P1B must not begin until that
+aggregate gate is completed.
