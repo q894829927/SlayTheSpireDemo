@@ -152,10 +152,13 @@
   recovery are independent from persistent-capacity lifetime.
 - P1B FullFidelity focused Automation is now user-confirmed PASS on the current
   11-test prefix, including `P1B.CoveragePolicy`.
-- P1B remains **IMPLEMENTED / BUILD + MEASUREMENT PENDING**. Remaining formal
-  evidence is the final-head Development Editor build, followed by candidate
-  `0 / 0.001 / 0.0025 / 0.005` fixed-camera submission/GPU measurements and
-  threshold-crossing visual-stability checks. Authority:
+- Current P1B Development Editor build is user-confirmed PASS; the same current
+  code is running in PIE with schema-v8 diagnostics, and the 11-test
+  FullFidelity Automation prefix is also PASS.
+- P1B is now **IMPLEMENTED / MEASUREMENT + VISUAL-STABILITY PENDING**. Remaining
+  work is candidate `0 / 0.001 / 0.0025 / 0.005` fixed-camera
+  SubmissionCount/GPU measurements plus threshold-crossing visual-stability
+  checks. Authority:
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
