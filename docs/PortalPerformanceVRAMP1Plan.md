@@ -661,8 +661,14 @@ resource-release/diagnostic gap in
 root reference, and report schema v5 exposes active versus retiring depth-target
 ownership plus per-retiree depth details.
 
-Build/Automation/actual D3D12 acceptance remains USER ACTION REQUIRED; see
-[the P1A-6 validation record](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
+Validation is complete: actual fallback D3D12 `2 -> 1 -> 2` depth ownership
+shrinks/regrows correctly, retained L0 identities remain stable, rebuilt L1
+receives fresh lifetime identity, Stop reaches zero depth ownership, prior
+offscreen-retention evidence remains applicable, focused FullFidelity Automation
+passes, and rapid `2 -> 1 -> 2` is visually stable. The reduced depth matrix is
+intentional because fallback Depth=4 adds roughly 1 GB of VRAM pressure while
+exercising the same per-level retirement path. **P1A-6 = COMPLETE / VALIDATED.**
+See [the P1A-6 validation record](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
 
 Depth target creation remains lazy on submission.
 
