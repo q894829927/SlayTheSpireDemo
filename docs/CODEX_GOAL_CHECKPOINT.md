@@ -188,13 +188,17 @@
   visual evidence, **P1B = COMPLETE / VALIDATED / SEALED**.
 - Production default remains `0.0025`; runtime override `0` still disables
   P1B and reproduces P1A workload policy.
-- **Current active stage: P1C — Bounded Main-Pass Production Evidence.** Start
-  from the already-accepted bounded-main-pass correctness record; do not reopen
-  P1A/P1B. P1C next needs dual-visible / recursion>=2 interaction evidence and
-  fixed-camera `portal.BoundedMainPassScissor 0 vs 1` GPU timing, followed by
-  edge/oblique/rapid-motion stability.
+- **Current active stage: P1C — Bounded Main-Pass Production Evidence.**
+  Existing 1B.13A correctness is reused; no renderer source change is required
+  before measurement because `portal.CompositionDiagnostics=1` already reports
+  bounded-pass Requested/Active/Rect/Pixels/Coverage.
+- P1C-1 is now the active gate: with RequestedDepth=2, production P1B default
+  0.0025, both endpoints visible and recursion present, enable
+  `portal.BoundedMainPassScissor 1` and prove `BoundedPass Requested=1 Active=1`
+  plus visually identical output versus scissor 0. Only after that smoke passes
+  proceed to fixed-camera 300-frame scissor 0/1 GPU A/B.
   Authority:
-  [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md),
+  [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md),
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),
   and [P1 plan](PortalPerformanceVRAMP1Plan.md).
 - Exact evidence and caveats:
