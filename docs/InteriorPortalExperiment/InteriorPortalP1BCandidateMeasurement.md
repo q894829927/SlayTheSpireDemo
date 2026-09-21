@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8, §10`  
-Status: **M4 GPU A-B PASS / VISUAL-STABILITY MATRIX NEXT**
+Status: **M5 VISUAL-STABILITY PASS / PRODUCTION DEFAULT DECISION PENDING**
 
 ## Purpose
 
@@ -201,27 +201,40 @@ Record where tooling permits: GPU average, median, P95, P99, SubmissionCount
 per endpoint, EffectiveDepth per endpoint, cutoff-level ParentCoverage, and
 visual observation. If a statistic is unavailable, mark it unavailable.
 
-## Phase M5 — visual stability matrix
+## Phase M5 — visual stability matrix — USER CONFIRMED PASS
 
-After a useful nonzero candidate is identified, check:
+The user completed the manual candidate-threshold visual checks with
+`portal.MinRecursionScreenCoverage=0.0025` and reported no P1B visual problems
+for the tested fixed-portal cases:
 
 ~~~text
-large nested portal -> reaches requested depth
-tiny/distant nested portal -> stops earlier
+large nested portal
+tiny/distant nested portal
 bright/high-contrast tiny nested portal
 oblique portal
-slow motion across threshold
+slow 1 -> 2 threshold recovery
+slow 2 -> 1 threshold cutoff
 look-away / look-back
 ~~~
 
-Acceptance:
+Observed acceptance:
 
 ~~~text
 no rapid cutoff flicker
 no stale nested child
 no persistent black aperture
 no unexpected spiral flash
-L0 always survives
+no repeated EffectiveDepth oscillation
+L0 remains usable
 ~~~
 
-The nonzero production default remains undecided until M1-M5 evidence is recorded.
+A separate observation exists when physically re-placing an endpoint: the old
+portal location can appear white and fade away. Current placement code moves the
+same endpoint actor immediately and invalidates portal renderer histories, so
+that replacement-only temporal residue is tracked separately from P1B. It was
+not reproduced by fixed-portal coverage threshold crossings and does not block
+this M5 gate.
+
+M1-M5 evidence is now complete. The only remaining P1B decision is whether to
+promote the measured candidate `0.0025` to the production default or retain
+zero explicitly.
