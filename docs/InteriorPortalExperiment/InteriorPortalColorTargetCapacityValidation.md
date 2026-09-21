@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Implementation commit: `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`  
-Status: **IMPLEMENTED / USER VALIDATION REQUIRED**
+Status: **IMPLEMENTED / D3D12 CORE MATRIX PASS / BUILD + AUTOMATION + RAPID-REVERSAL CONFIRMATION PENDING**
 
 ## Scope
 
@@ -86,11 +86,78 @@ ColorTargets Active=<n> Retiring=<n> Owned=<n>
 Logical release/estimated bytes do not by themselves prove that the global
 D3D12 allocator has immediately returned the same number of resident bytes.
 
+## User-provided D3D12 evidence — 2026-09-21
+
+The user supplied actual PIE dump output with `portal.FullFidelityPingPong 0`
+and report schema v4.
+
+Observed settled depth-four state:
+
+```text
+RequestedDepth = 4
+Endpoint 0 ColorTargets Active=4 Retiring=0 Owned=4
+Endpoint 1 ColorTargets Active=4 Retiring=0 Owned=4
+```
+
+Observed settled shrink:
+
+```text
+RequestedDepth = 1
+Endpoint 0 ColorTargets Active=1 Retiring=0 Owned=1
+Endpoint 1 ColorTargets Active=1 Retiring=0 Owned=1
+L1-L3 = UNALLOCATED
+```
+
+Observed settled regrowth:
+
+```text
+RequestedDepth = 4
+Endpoint 0 ColorTargets Active=4 Retiring=0 Owned=4
+Endpoint 1 ColorTargets Active=4 Retiring=0 Owned=4
+```
+
+The retained L0 lifetime identities remained stable across the shrink/regrowth
+(`E0L0 Lifetime=1`, `E1L0 Lifetime=5`) while rebuilt L1-L3 received fresh
+identities (`E0: 9/10/11`, `E1: 12/13/14`). This is consistent with the
+P1A-4/P1A-5 capacity model.
+
+Observed offscreen invariance at RequestedDepth 4:
+
+```text
+VisibleEndpointMask = 0
+Endpoint 0 ColorTargets Active=4 Retiring=0 Owned=4
+Endpoint 1 ColorTargets Active=4 Retiring=0 Owned=4
+```
+
+Therefore visibility dropping to zero did not shrink configured color capacity.
+
+Observed Stop teardown report:
+
+```text
+status = STOPPED
+totals.viewStates = 0
+totals.colorTargets = 0
+totals.depthTargets = 0
+totals.explicitTargetEstimatedBytes = 0
+endpoint activeColorTargetCount = 0
+endpoint retiringColorTargetCount = 0
+```
+
+This establishes the core actual-D3D12 P1A-5 capacity behavior for settled
+`4 -> 1 -> 4`, offscreen invariance, and Stop teardown.
+
+The supplied dump sequence does **not** prove a deliberately rapid
+`4 -> 1 -> 4` reversal before the old retirement fence completes, because all
+captured states are already settled with `Retiring=0`. It also does not contain
+the formal UE 5.8 Development Editor build or focused FullFidelity Automation
+result. Those remain pending acceptance evidence.
+
 ## Validation not performed by this change
 
-No local UE 5.8 build, Automation run, D3D12 PIE run, or GPU-memory capture was
-available from the GitHub-only implementation environment. Do not mark P1A-5
-COMPLETE / VALIDATED until the user executes the gates below.
+The GitHub implementation environment itself did not run local UE 5.8 build,
+Automation, D3D12 PIE, or GPU-memory capture. Actual D3D12 PIE evidence above is
+user-provided. Do not mark P1A-5 COMPLETE / VALIDATED until the remaining gates
+below are satisfied.
 
 ## USER ACTION REQUIRED
 
