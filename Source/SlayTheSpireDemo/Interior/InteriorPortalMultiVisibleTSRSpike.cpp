@@ -1425,7 +1425,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 			FinalScratch = Replacement;
 			FinalScratchSize = TargetSize;
-			FinalScratchGeneration = NextScratchGeneration++;
+			// Generation belongs to this producer's active scratch lineage. Derive
+			// it from the previously active generation so a live resize is
+			// observably 1 -> 2 -> 3 without maintaining a second mutable counter.
+			FinalScratchGeneration = FinalScratchGeneration == MAX_uint64
+				? 1
+				: FinalScratchGeneration + 1;
 			return true;
 		}
 
@@ -2354,7 +2359,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		UTextureRenderTarget2D* FinalScratch = nullptr;
 		FIntPoint FinalScratchSize = FIntPoint::ZeroValue;
 		uint64 FinalScratchGeneration = 0;
-		uint64 NextScratchGeneration = 1;
 		TArray<TUniquePtr<FRetiringScratchTarget>> RetiringScratchTargets;
 		uint64 ScratchReplacementDeferredCount = 0;
 		uint64 ProducerTicks = 0;
