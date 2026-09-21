@@ -1734,6 +1734,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				PortalSystem->RecursionDepth, 1, MaxRecursionDepth);
 			int32 VisibleMask = 0;
 			int32 SubmittedMask = 0;
+			LastMinRecursionScreenCoverage = ReadMinRecursionScreenCoverage();
+			LastRecursionCoverageHysteresisFraction =
+				ReadRecursionCoverageHysteresisFraction();
 			AInteriorPortal* Candidates[EndpointCount] = {
 				PortalSystem->BluePortal.Get(), PortalSystem->OrangePortal.Get()
 			};
@@ -1754,9 +1757,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				}
 
 				TArray<FLayerRenderPlan, TInlineAllocator<MaxRecursionDepth>> Plans;
+				FString GeometryCutoffReason = TEXT("NONE");
+				int32 GeometryCutoffLevel = INDEX_NONE;
 				FTransform ParentView = PlayerView;
 				FMatrix ParentProjection = ProjectionData.ProjectionMatrix;
 				FIntRect ParentViewRect = bPingPongEnabled ? TargetRect : PlayerRect;
+				const int32 CoveragePadding = ReadBoundedCompositionPadding();
 				for (int32 Level = 0; Level < LastRequestedRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
@@ -1777,6 +1783,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						GeometryGeneration, Request)
 						|| !Request.IsValid() || !IsFiniteTransform(Request.VirtualView))
 					{
+						GeometryCutoffReason = TEXT("REQUEST_INVALID");
+						GeometryCutoffLevel = Level;
 						break;
 					}
 
@@ -1788,21 +1796,30 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					FLayerRenderPlan Plan;
 					Plan.Request = Request;
 					Plan.ParentViewRect = ParentViewRect;
+					Plan.ParentViewCoverage =
+						InteriorPortalProjectedBounds::ComputeParentViewCoverage(
+							Request.ScissorRect, ParentViewRect, CoveragePadding);
 					if (bPingPongEnabled)
 					{
 						if (!InteriorPortalProjectedBounds::ExpandAndClampRect(
 							Request.ScissorRect, ParentViewRect,
-							ReadBoundedCompositionPadding(), Plan.RenderRect))
+							CoveragePadding, Plan.RenderRect))
 						{
+							GeometryCutoffReason = TEXT("PROJECTED_BOUNDS_INVALID");
+							GeometryCutoffLevel = Level;
 							break;
 						}
 						if (!InteriorPortalProjectedBounds::BuildCroppedProjection(
 							ParentProjection, ParentViewRect, Plan.RenderRect, Plan.ProjectionMatrix))
 						{
+							GeometryCutoffReason = TEXT("CROPPED_PROJECTION_INVALID");
+							GeometryCutoffLevel = Level;
 							break;
 						}
-						const int64 ParentPixels = int64(ParentViewRect.Width()) * int64(ParentViewRect.Height());
-						const int64 RenderPixels = int64(Plan.RenderRect.Width()) * int64(Plan.RenderRect.Height());
+						const int64 ParentPixels =
+							int64(ParentViewRect.Width()) * int64(ParentViewRect.Height());
+						const int64 RenderPixels =
+							int64(Plan.RenderRect.Width()) * int64(Plan.RenderRect.Height());
 						Plan.Coverage = ParentPixels > 0
 							? float(double(RenderPixels) / double(ParentPixels)) : 1.0f;
 						Plan.Request.ProjectionMatrix = Plan.ProjectionMatrix;
@@ -1823,9 +1840,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					}
 				}
 
-				int32 VisibleDepth = Plans.Num();
+				const int32 VisibleDepth = Plans.Num();
 				Endpoint.LastVisibleDepth = VisibleDepth;
-				Endpoint.LastEffectiveDepth = VisibleDepth;
+				Endpoint.LastCoverageCutoffReason = GeometryCutoffReason;
+				Endpoint.LastCoverageCutoffLevel = GeometryCutoffLevel;
 				if (VisibleDepth <= 0)
 				{
 					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
@@ -1835,55 +1853,100 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					continue;
 				}
 
+				int32 EffectiveDepth = VisibleDepth;
+				const int32 PreviousCoverageDepth = Endpoint.LastCoverageSelectedDepth;
 				for (int32 Level = 0; Level < VisibleDepth; ++Level)
 				{
-					if (!EnsureLayerViewState(World, Endpoint, Level, VisibleDepth))
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					const FLayerRenderPlan& Plan = Plans[Level];
+					Layer.LastParentViewCoverage = Plan.ParentViewCoverage;
+					Layer.LastCoverageDecisionThreshold =
+						InteriorPortalProjectedBounds::CoverageDecisionThreshold(
+							Level,
+							LastMinRecursionScreenCoverage,
+							PreviousCoverageDepth,
+							LastRecursionCoverageHysteresisFraction);
+					Layer.bLastCoverageTested = true;
+					Layer.bLastCoverageAccepted =
+						InteriorPortalProjectedBounds::ShouldIncludeRecursionLevelByCoverage(
+							Level,
+							Plan.ParentViewCoverage,
+							LastMinRecursionScreenCoverage,
+							PreviousCoverageDepth,
+							LastRecursionCoverageHysteresisFraction);
+					if (Level > 0 && !Layer.bLastCoverageAccepted)
+					{
+						EffectiveDepth = Level;
+						Endpoint.LastCoverageCutoffReason = TEXT("SCREEN_COVERAGE");
+						Endpoint.LastCoverageCutoffLevel = Level;
+						break;
+					}
+				}
+				Endpoint.LastCoverageSelectedDepth = EffectiveDepth;
+				Endpoint.LastEffectiveDepth = EffectiveDepth;
+
+				for (int32 Level = 0; Level < EffectiveDepth; ++Level)
+				{
+					if (!EnsureLayerViewState(World, Endpoint, Level, EffectiveDepth))
 					{
 						Endpoint.Layers[Level]->LastSubmissionFailureReason =
 							TEXT("VIEWSTATE_OR_LIFETIME_UNAVAILABLE");
-						VisibleDepth = Level;
-						Endpoint.LastEffectiveDepth = VisibleDepth;
+						EffectiveDepth = Level;
+						Endpoint.LastEffectiveDepth = EffectiveDepth;
+						Endpoint.LastCoverageCutoffReason = TEXT("RESOURCE_BACKPRESSURE");
+						Endpoint.LastCoverageCutoffLevel = Level;
 						break;
 					}
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					Plans[Level].Request.RendererHistoryGeneration = Layer.HistoryGeneration;
-					Plans[Level].Request.HistoryIdentity = FInteriorPortalRenderRequest::MakeHistoryIdentity(
-						EndpointIndex, Level, Layer.HistoryGeneration);
+					Plans[Level].Request.HistoryIdentity =
+						FInteriorPortalRenderRequest::MakeHistoryIdentity(
+							EndpointIndex, Level, Layer.HistoryGeneration);
 				}
-				if (VisibleDepth == 0)
+				if (EffectiveDepth == 0)
 				{
-					Endpoint.LastEffectiveDepth = 0;
+					for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+					{
+						HideLayer(Endpoint, Level, TEXT("no effective recursion level"));
+					}
 					continue;
 				}
 
 				VisibleMask |= (1 << EndpointIndex);
 				if (bPingPongEnabled)
 				{
-					const int32 RequiredSlots = VisibleDepth > 1 ? 2 : 1;
-					if (!EnsureEndpointPingPongTargets(Endpoint, World, TargetSize, RequiredSlots))
+					const int32 RequiredSlots = EffectiveDepth > 1 ? 2 : 1;
+					if (!EnsureEndpointPingPongTargets(
+						Endpoint, World, TargetSize, RequiredSlots))
 					{
 						Endpoint.LastEffectiveDepth = 0;
-						for (int32 Level = 0; Level < VisibleDepth; ++Level)
+						Endpoint.LastCoverageCutoffReason = TEXT("PING_PONG_TARGET_UNAVAILABLE");
+						Endpoint.LastCoverageCutoffLevel = 0;
+						for (int32 Level = 0; Level < EffectiveDepth; ++Level)
 						{
-							Endpoint.Layers[Level]->LastSubmissionFailureReason = TEXT("PING_PONG_TARGET_UNAVAILABLE");
+							Endpoint.Layers[Level]->LastSubmissionFailureReason =
+								TEXT("PING_PONG_TARGET_UNAVAILABLE");
+							HideLayer(Endpoint, Level, TEXT("ping-pong target unavailable"));
 						}
 						continue;
 					}
 				}
 				else
 				{
-					Entry->EnsureTargets(TargetSize.X, TargetSize.Y, VisibleDepth);
+					Entry->EnsureTargets(TargetSize.X, TargetSize.Y, EffectiveDepth);
 				}
 
-				for (int32 Level = VisibleDepth; Level < MaxRecursionDepth; ++Level)
+				for (int32 Level = EffectiveDepth; Level < MaxRecursionDepth; ++Level)
 				{
-					HideLayer(Endpoint, Level, TEXT("recursion level not visible/requested"));
+					HideLayer(
+						Endpoint, Level,
+						Endpoint.LastCoverageCutoffReason == TEXT("SCREEN_COVERAGE")
+							? TEXT("screen coverage cutoff")
+							: TEXT("recursion level not effective/requested"));
 				}
 
 				bool bTopSubmitted = false;
-				int32 EffectiveDepth = VisibleDepth;
-				Endpoint.LastEffectiveDepth = EffectiveDepth;
-				for (int32 Level = VisibleDepth - 1; Level >= 0; --Level)
+				for (int32 Level = EffectiveDepth - 1; Level >= 0; --Level)
 				{
 					Endpoint.LastAttemptedLayerMask |= (1 << Level);
 					const bool bSubmitted = SubmitLayer(
@@ -1905,6 +1968,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 							InteriorPortalRecursionLifetime::TruncateEffectiveDepthAfterSubmissionFailure(
 								EffectiveDepth, Level);
 						Endpoint.LastEffectiveDepth = EffectiveDepth;
+						Endpoint.LastCoverageCutoffReason = TEXT("SUBMISSION_FAILURE");
+						Endpoint.LastCoverageCutoffLevel = Level;
 						HideLayer(Endpoint, Level, TEXT("current-frame submission failed"));
 					}
 				}
