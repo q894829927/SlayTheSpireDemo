@@ -117,10 +117,24 @@
 - Together with the already-passing schema-v7 RequestedDepth=2 recursion smoke,
   **FULL P1A = COMPLETE / VALIDATED / SEALED**. Authority:
   [full P1A Gate validation](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
-- Current active implementation stage: **P1B — Recursion Screen-Coverage
-  Cutoff**. Preserve the P1A resource-lifetime contract: P1B may lower
-  EffectiveDepth/submission workload, but must not reinterpret lower
-  EffectiveDepth as permission to reclaim persistent capacity.
+- Current active stage: **P1B — Recursion Screen-Coverage Cutoff**.
+  Implementation is now present: `portal.MinRecursionScreenCoverage` defaults
+  to 0; L0 is always retained; L1+ uses conservative recursive-parent coverage
+  with 10% relative hysteresis; the first rejected child lowers workload
+  EffectiveDepth without lowering RequestedDepth or reclaiming in-budget
+  persistent ownership.
+- Report schema v8 exposes global threshold/hysteresis, endpoint
+  coverageSelectedDepth/cutoff reason, and per-level parent-view coverage and
+  decision thresholds. New
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`
+  Automation covers disabled-policy parity, L0 survival, conservative area math
+  and hysteresis.
+- P1B is **IMPLEMENTED / USER VALIDATION REQUIRED**. Next evidence is: final-head
+  Development Editor build, FullFidelity prefix **11/11 PASS**, threshold=0
+  Depth=2 compatibility, a forced L1 cutoff proving no ownership churn/stale
+  child consumption, then candidate 0/0.001/0.0025/0.005 fixed-camera
+  submission/GPU measurements and visual stability. Authority:
+  [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
