@@ -24,6 +24,76 @@ namespace InteriorPortalProjectedBounds
 		return Level >= 0 ? (Level % PingPongBufferCount) : INDEX_NONE;
 	}
 
+	/**
+	 * Conservative projected portal coverage in the current recursive parent
+	 * view. Padding matches the bounded-composition safety margin, then the
+	 * rectangle is clipped to the parent view before the area ratio is measured.
+	 */
+	inline float ComputeParentViewCoverage(
+		const FIntRect& ProjectedRect,
+		const FIntRect& ParentViewRect,
+		const int32 PaddingPixels)
+	{
+		FIntRect ConservativeRect;
+		if (!ExpandAndClampRect(ProjectedRect, ParentViewRect, PaddingPixels, ConservativeRect))
+		{
+			return 0.0f;
+		}
+
+		const int64 ParentPixels =
+			int64(ParentViewRect.Width()) * int64(ParentViewRect.Height());
+		const int64 ProjectedPixels =
+			int64(ConservativeRect.Width()) * int64(ConservativeRect.Height());
+		if (ParentPixels <= 0 || ProjectedPixels <= 0)
+		{
+			return 0.0f;
+		}
+		return FMath::Clamp(
+			float(double(ProjectedPixels) / double(ParentPixels)),
+			0.0f, 1.0f);
+	}
+
+	inline float CoverageDecisionThreshold(
+		const int32 Level,
+		const float MinCoverage,
+		const int32 PreviousEffectiveDepth,
+		const float HysteresisFraction)
+	{
+		if (Level <= 0 || MinCoverage <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Base = FMath::Clamp(MinCoverage, 0.0f, 1.0f);
+		const float Hysteresis = FMath::Clamp(HysteresisFraction, 0.0f, 0.5f);
+		const bool bWasPreviouslyIncluded = Level < PreviousEffectiveDepth;
+		const float Multiplier = bWasPreviouslyIncluded
+			? (1.0f - Hysteresis)
+			: (1.0f + Hysteresis);
+		return FMath::Clamp(Base * Multiplier, 0.0f, 1.0f);
+	}
+
+	/**
+	 * P1B workload policy. L0 is never removed by coverage. Threshold 0 disables
+	 * the policy exactly. For L1+, a small Schmitt-trigger hysteresis keeps a
+	 * previously included level until it falls below the lower boundary and
+	 * requires a previously excluded level to cross the upper boundary.
+	 */
+	inline bool ShouldIncludeRecursionLevelByCoverage(
+		const int32 Level,
+		const float ParentViewCoverage,
+		const float MinCoverage,
+		const int32 PreviousEffectiveDepth,
+		const float HysteresisFraction)
+	{
+		if (Level <= 0 || MinCoverage <= 0.0f)
+		{
+			return Level >= 0;
+		}
+		return ParentViewCoverage >= CoverageDecisionThreshold(
+			Level, MinCoverage, PreviousEffectiveDepth, HysteresisFraction);
+	}
+
 	inline bool ExpandAndClampRect(
 		const FIntRect& SourceRect,
 		const FIntRect& ParentViewRect,
