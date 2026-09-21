@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8, §10`  
-Status: **ACTIVE / SUBMISSION SCREENING FIRST**
+Status: **M2 SUBMISSION SCREENING PASS / GPU A-B NEXT**
 
 ## Purpose
 
@@ -94,10 +94,10 @@ history from the previous candidate.
 
 | Threshold | E0 L1 coverage | E0 EffectiveDepth | E0 Submissions | E0 cutoff | E1 L1 coverage | E1 EffectiveDepth | E1 Submissions | E1 cutoff | Visual |
 |---:|---:|---:|---:|---|---:|---:|---:|---|---|
-| 0 | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 0.001 | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 0.0025 | pending | pending | pending | pending | pending | pending | pending | pending | pending |
-| 0.005 | pending | pending | pending | pending | pending | pending | pending | pending | pending |
+| 0 | 0.014953 | 2 | 2 | NONE | 0.001617 | 2 | 2 | NONE | baseline |
+| 0.001 | 0.014953 | 2 | 2 | NONE | 0.001617 | 2 | 2 | NONE | unchanged |
+| 0.0025 | 0.014953 | 2 | 2 | NONE | 0.001617 | 1 | 1 | SCREEN_COVERAGE L1 | cutoff |
+| 0.005 | 0.014953 | 2 | 2 | NONE | 0.001617 | 1 | 1 | SCREEN_COVERAGE L1 | same submission result as 0.0025 |
 
 Expected exit boundary when starting from included state:
 
@@ -111,6 +111,25 @@ After exclusion settles, the displayed re-entry boundaries are 0.0011,
 0.00275 and 0.0055 respectively.
 
 ## Phase M3 — choose meaningful GPU A/B pair
+
+M2 user evidence selects the pair for this fixed camera:
+
+```text
+baseline = 0
+candidate = 0.0025
+```
+
+Reason:
+
+```text
+0.001  -> no SubmissionCount reduction
+0.0025 -> Endpoint 1 falls from 2 submissions to 1
+0.005  -> same Endpoint 1 submission result as 0.0025
+```
+
+Endpoint 0 remains at EffectiveDepth=2 / SubmissionCount=2 across all four
+thresholds, so the policy is selectively cutting only the small recursive child
+at Endpoint 1 in this camera.
 
 Do not profile a threshold that leaves SubmissionCount identical to zero.
 
