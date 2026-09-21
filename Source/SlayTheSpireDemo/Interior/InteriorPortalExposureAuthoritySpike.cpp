@@ -501,6 +501,7 @@ namespace InteriorPortalExposureAuthoritySpikePrivate
 		{
 			if (FinalScratch)
 			{
+				FinalScratch->ReleaseResource();
 				FinalScratch->RemoveFromRoot();
 				FinalScratch = nullptr;
 			}
