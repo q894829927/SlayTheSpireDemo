@@ -1,6 +1,6 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current P1A-3/P1A-4 implementation checkpoint — 2026-09-21
+## Current Portal Performance P1A checkpoint — 2026-09-21
 
 - P1A-4 implementation is committed in `787e507425131f03114794ea1ab3d91b5fdb1cc1`.
   Focused Unreal Insights instrumentation is committed in
@@ -67,9 +67,21 @@
   stale/blank/crash regression.
 - **P1A-6 Depth Target Capacity Reclaim = COMPLETE / VALIDATED.** Authority:
   [P1A-6 validation](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
-- Current active implementation step: **P1A-7 Shared Scratch Lifecycle Audit**.
-  After P1A-7, run the full P1A gate. P1B remains the later stage for sustained
-  depth-four rendering cost.
+- P1A-7 Shared Scratch Lifecycle Audit is implemented. The accepted producer
+  now uses one active shared FinalScratch plus at most one queue-safe retiring
+  generation on viewport resize, with no normal resize-path
+  `FlushRenderingCommands()`; report schema v6 exposes scratch generation,
+  active/retiring/owned counts and resize deferrals.
+- Historical persistent scratch producers are now guarded by
+  `InteriorPortalFullFidelityBackend::IsRunning()`: they refuse to start while
+  accepted FullFidelity owns rendering, self-stop if ownership changes, and
+  explicitly release their scratch resource during teardown.
+- P1A-7 is **IMPLEMENTED / USER VALIDATION REQUIRED**. Required next evidence:
+  Development Editor build, focused FullFidelity Automation, stable one-scratch
+  ownership, viewport resize/rapid-resize bounded ownership, Stop/Restart zero ->
+  one ownership, and one legacy TSR dual-path ownership-guard check. Authority:
+  [P1A-7 validation](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
+- Do not begin P1B yet. After P1A-7 validates, run the full P1A gate first.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
