@@ -177,12 +177,16 @@
   can appear white and fade after placing a new same-color portal. This occurs on
   endpoint replacement, not fixed-portal coverage threshold crossing, so it is
   tracked separately and does not reopen P1B.
-- **All P1B validation evidence is now present except the explicit production
-  default decision.** Measured candidate 0.0025 reduced Endpoint 1 submissions
-  2->1 and GPUTime average 50.270->36.745 ms at the validated fixed camera with
-  the visual matrix passing. Next decide whether to promote 0.0025 from runtime
-  candidate to production default, then seal P1B and advance to P1C.
-  Authority:
+- The user accepted **0.0025** as the P1B production default after the full
+  M1-M5 evidence. Commit `7bee7cd79426` changes only the runtime CVar default
+  from 0 to 0.0025 and updates its help text; the cutoff algorithm and hysteresis
+  are unchanged.
+- P1B is now **DEFAULT IMPLEMENTED / FINAL MINIMAL REGRESSION PENDING**. Run one
+  Development Editor build and the focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation prefix after this
+  default-value source edit. If both pass, seal P1B and advance to P1C; do not
+  repeat the already-accepted GPU/visual matrix solely because the default
+  constant changed. Authority:
   [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md)
   and [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
