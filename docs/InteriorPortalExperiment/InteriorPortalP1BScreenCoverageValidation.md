@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / THRESHOLD-ZERO + FORCED-CUTOFF CORE GATES PASS / REMAINING VALIDATION REQUIRED**
+Status: **IMPLEMENTED / FUNCTIONAL MECHANISM GATE PASS / BUILD + AUTOMATION + MEASUREMENT PENDING**
 
 ## Goal
 
@@ -386,6 +386,49 @@ after retirement settles.
 Set threshold back to zero. The same in-budget L1 lifetime/resource ownership
 should be reusable without a capacity destroy/recreate cycle; visual recursion
 must recover normally.
+
+User-provided same-session recovery evidence confirms this path:
+
+```text
+portal.MinRecursionScreenCoverage 0
+
+Endpoint 0:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 Lifetime=2
+L1 CoverageAccepted=1
+L1 CoverageThreshold=0
+ColorTargets Active=2 Retiring=0 Owned=2
+DepthTargets Active=2 Retiring=0 Owned=2
+
+Endpoint 1:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 Lifetime=4
+L1 CoverageAccepted=1
+L1 CoverageThreshold=0
+ColorTargets Active=2 Retiring=0 Owned=2
+DepthTargets Active=2 Retiring=0 Owned=2
+```
+
+The retained L1 lifetimes are exactly the same identities as before and during
+the forced cutoff (`2 / 4`). Therefore coverage cutoff and recovery do not
+destroy/recreate in-budget lifetime ownership. Submission workload drops and
+recovers independently from persistent capacity.
+
+Together, threshold-zero parity, forced cutoff, stale-publication clearing,
+L0 survival, ownership retention and same-lifetime recovery close the P1B
+functional mechanism gate.
 
 ### 5. Hysteresis / visual stability
 
