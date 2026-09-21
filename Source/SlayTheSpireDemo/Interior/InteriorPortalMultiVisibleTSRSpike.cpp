@@ -394,6 +394,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TArray<TUniquePtr<FRetiringLayer>> RetiringLayers;
 		int32 LastVisibleDepth = 0;
 		int32 LastEffectiveDepth = 0;
+		int32 CoverageHysteresisDepth = 0;
 		int32 LastCoverageSelectedDepth = 0;
 		int32 LastCoverageCutoffLevel = INDEX_NONE;
 		FString LastCoverageCutoffReason = TEXT("NONE");
@@ -680,6 +681,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				Endpoint.MainCompositionExtension->SetEnabled(true);
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.CoverageHysteresisDepth = 0;
 				Endpoint.LastCoverageSelectedDepth = 0;
 				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
 				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
@@ -759,6 +761,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				ReleaseEndpointPingPongTargets(Endpoint);
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.CoverageHysteresisDepth = 0;
 				Endpoint.LastCoverageSelectedDepth = 0;
 				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
 				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
@@ -1081,6 +1084,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastCoverageSelectedDepth = 0;
 				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
 				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
 				Endpoint.LastAttemptedLayerMask = 0;
@@ -1864,7 +1868,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				}
 
 				int32 EffectiveDepth = VisibleDepth;
-				const int32 PreviousCoverageDepth = Endpoint.LastCoverageSelectedDepth;
+				const int32 PreviousCoverageDepth = Endpoint.CoverageHysteresisDepth;
 				for (int32 Level = 0; Level < VisibleDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
@@ -1892,6 +1896,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 				}
+				Endpoint.CoverageHysteresisDepth = EffectiveDepth;
 				Endpoint.LastCoverageSelectedDepth = EffectiveDepth;
 				Endpoint.LastEffectiveDepth = EffectiveDepth;
 
