@@ -181,14 +181,22 @@
   M1-M5 evidence. Commit `7bee7cd79426` changes only the runtime CVar default
   from 0 to 0.0025 and updates its help text; the cutoff algorithm and hysteresis
   are unchanged.
-- P1B is now **DEFAULT IMPLEMENTED / FINAL MINIMAL REGRESSION PENDING**. Run one
-  Development Editor build and the focused
-  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation prefix after this
-  default-value source edit. If both pass, seal P1B and advance to P1C; do not
-  repeat the already-accepted GPU/visual matrix solely because the default
-  constant changed. Authority:
-  [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md)
-  and [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
+- Final post-default focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation is now
+  user-confirmed PASS after promoting `portal.MinRecursionScreenCoverage` to
+  `0.0025`. Together with the previously accepted build, M1-M5 measurement and
+  visual evidence, **P1B = COMPLETE / VALIDATED / SEALED**.
+- Production default remains `0.0025`; runtime override `0` still disables
+  P1B and reproduces P1A workload policy.
+- **Current active stage: P1C — Bounded Main-Pass Production Evidence.** Start
+  from the already-accepted bounded-main-pass correctness record; do not reopen
+  P1A/P1B. P1C next needs dual-visible / recursion>=2 interaction evidence and
+  fixed-camera `portal.BoundedMainPassScissor 0 vs 1` GPU timing, followed by
+  edge/oblique/rapid-motion stability.
+  Authority:
+  [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md),
+  [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),
+  and [P1 plan](PortalPerformanceVRAMP1Plan.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
