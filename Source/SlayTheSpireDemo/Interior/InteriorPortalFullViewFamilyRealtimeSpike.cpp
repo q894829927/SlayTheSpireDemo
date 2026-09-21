@@ -1,4 +1,5 @@
 #include "InteriorPortalRenderer.h"
+#include "InteriorPortalFullFidelityBackend.h"
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
@@ -226,6 +227,13 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 				return false;
 			}
 
+			if (InteriorPortalFullFidelityBackend::IsRunning())
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("PortalRealtimeSpike: refusing to start while accepted FullFidelity backend owns rendering."));
+				return false;
+			}
+
 			AInteriorPortalSystem* PortalSystem = FindPortalSystem(World);
 			if (!PortalSystem || PortalSystem->RendererBackend != EInteriorPortalRendererBackend::SceneCapture)
 			{
@@ -323,6 +331,13 @@ namespace InteriorPortalFullViewFamilyRealtimeSpikePrivate
 			(void)DeltaSeconds;
 			if (!bRunning)
 			{
+				return;
+			}
+			if (InteriorPortalFullFidelityBackend::IsRunning())
+			{
+				UE_LOG(LogTemp, Warning,
+					TEXT("PortalRealtimeSpike: stopping because accepted FullFidelity backend acquired rendering ownership."));
+				Stop();
 				return;
 			}
 			if (!ActiveWorld.IsValid())
