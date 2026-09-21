@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / FUNCTIONAL MECHANISM + BUILD + AUTOMATION PASS / MEASUREMENT PENDING**
+Status: **ALL VALIDATION GATES PASS / PRODUCTION DEFAULT DECISION PENDING**
 
 ## Goal
 
@@ -431,7 +431,12 @@ Together, threshold-zero parity, forced cutoff, stale-publication clearing,
 L0 survival, ownership retention and same-lifetime recovery close the P1B
 functional mechanism gate.
 
-### 5. Hysteresis / visual stability
+### 5. Hysteresis / visual stability — USER CONFIRMED PASS
+
+The user completed the nonzero-candidate fixed-portal visual matrix at
+`portal.MinRecursionScreenCoverage=0.0025` and reported the threshold-crossing,
+oblique, tiny/distant, bright/high-contrast and look-away/look-back cases as
+visually normal.
 
 After the forced mechanism test passes, use a nonzero candidate threshold near
 the observed L1 or deeper coverage and move/rotate slowly across the boundary.
@@ -450,7 +455,7 @@ look-away / look-back remains stable
 The deterministic test establishes the +/-10% decision band; this PIE check is
 for visible behavior.
 
-## Candidate measurement gate — pending after functional acceptance
+## Candidate measurement gate — USER CONFIRMED PASS
 
 After the functional gate passes, compare fixed-camera scenarios using:
 
