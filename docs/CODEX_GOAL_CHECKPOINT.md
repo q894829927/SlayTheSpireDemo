@@ -199,9 +199,22 @@
   BoundedScissor=1 on both endpoint paths, with representative main-view
   coverage 0.048012 and 0.263293 and much smaller recursive-view coverage
   0.005775 and 0.013618. The user reports the image as normal.
-- **P1C-2 is now active:** keep this exact camera/window/settings and run warm
-  300-frame CSV GPU A/B for `portal.BoundedMainPassScissor 0` versus `1`,
-  with P1B default 0.0025 unchanged. Do not move the camera between captures.
+- P1C-2 fixed-camera GPU A/B is complete with two 300-frame captures at the
+  exact same camera. `portal.BoundedMainPassScissor=0` measures GPUTime
+  38.373 ms average / 38.224 median / 39.433 P95 / 41.609 P99; scissor=1
+  measures 39.014 / 38.867 / 40.280 / 42.311 ms respectively. The bounded path
+  is therefore about **+1.67% slower on average** (+0.641 ms) in this production
+  camera despite substantially reduced bounded pixel coverage.
+- Do **not** promote bounded scissor to the production default from this result.
+  Keep the code default at 0. The likely cost boundary is the sparse-output path:
+  bounded composition requires preserving main SceneColor outside the portal
+  rectangle, and the current implementation may perform a full SceneColor
+  prefill copy before bounded draws, so reduced raster coverage does not
+  guarantee lower total GPU time.
+- **P1C-3 is now active:** finish the edge/partial-offscreen, oblique/grazing,
+  rapid-camera/TSR-jitter, dual-visible and recursion>=2 visual-stability matrix
+  with scissor=1. If visually clean, P1C can close as production evidence with
+  the bounded optimization remaining default-disabled.
   Authority:
   [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md),
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),
