@@ -869,6 +869,31 @@ stage.**
 
 ## 8.1 Goal
 
+Implementation update, 2026-09-21: P1B parent-view coverage selection is now
+implemented. `portal.MinRecursionScreenCoverage` defaults to `0`, so the
+production default still reproduces the sealed P1A workload policy until
+measurement/visual acceptance selects otherwise. A 10% relative Schmitt-trigger
+hysteresis is provided through
+`portal.RecursionCoverageHysteresisFraction` to avoid threshold flicker without
+using a time cooldown.
+
+Coverage is measured conservatively from each request's projected
+`ScissorRect`, expanded by the bounded-composition padding and divided by the
+current recursive parent-view area. L0 is always admitted. For L1+, the first
+rejected level truncates coverage-selected EffectiveDepth; skipped deeper layers
+receive no SubmitLayer call and any prior publication is invalidated, while
+in-budget persistent capacity remains owned.
+
+Report schema v8 exposes the threshold/hysteresis, endpoint
+`coverageSelectedDepth/cutoffReason/cutoffLevel`, and per-level
+`parentViewCoverage/coverageTested/coverageAccepted/coverageDecisionThreshold`.
+Focused Automation adds
+`SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`.
+
+Build/Automation/PIE stability and fixed-camera GPU/submission measurement remain
+USER ACTION REQUIRED. See
+[the P1B validation record](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
+
 Reduce expensive deep recursive scene submissions when the next nested portal contributes very little projected area.
 
 P1B is a **submission/workload policy**, not a persistent-resource reclaim policy.
