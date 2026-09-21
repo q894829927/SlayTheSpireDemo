@@ -155,14 +155,16 @@
 - Current P1B Development Editor build is user-confirmed PASS; the same current
   code is running in PIE with schema-v8 diagnostics, and the 11-test
   FullFidelity Automation prefix is also PASS.
-- P1B is now **IMPLEMENTED / MEASUREMENT + VISUAL-STABILITY PENDING**.
-  Candidate measurement is split into a low-cost submission-screening pass
-  before GPU profiling. First find a fixed small/distant nested-portal camera
-  with L1 ParentCoverage roughly `0.001..0.005` (prefer `0.002..0.004`), then
-  compare `0 / 0.001 / 0.0025 / 0.005` at the exact same camera. Reset threshold
-  to zero before each nonzero sample so hysteresis starts from the same included
-  state. Only thresholds that actually reduce SubmissionCount proceed to warm
-  >=300-frame GPU A/B. Authority:
+- P1B candidate submission screening M2 is user-confirmed PASS at one fixed
+  small/distant nested-portal camera. E1L1 ParentCoverage=0.001617:
+  threshold 0 and 0.001 retain EffectiveDepth=2 / SubmissionCount=2, while
+  0.0025 and 0.005 both cut Endpoint 1 to EffectiveDepth=1 /
+  SubmissionCount=1. Endpoint 0 remains unchanged at depth/submission count 2.
+- For this camera, the selected warm GPU A/B pair is **0 vs 0.0025**. 0.001 is
+  not worth profiling here because it changes no submissions; 0.005 adds no
+  further submission reduction over 0.0025 at this camera. Next run identical
+  warm >=300-frame GPU samples for 0 and 0.0025, then perform threshold-crossing
+  visual-stability checks. Authority:
   [P1B candidate measurement](InteriorPortalExperiment/InteriorPortalP1BCandidateMeasurement.md)
   and [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
