@@ -864,8 +864,7 @@ Record transition peak frame time. Do not accept lower steady-state ownership if
 
 # 8. P1B — Recursion Screen-Coverage Cutoff
 
-P1A has now passed and is sealed. **P1B is the current active implementation
-stage.**
+P1A and P1B have passed and are sealed. **P1C is the current active stage.**
 
 ## 8.1 Goal
 
@@ -892,8 +891,9 @@ Report schema v8 exposes the threshold/hysteresis, endpoint
 Focused Automation adds
 `SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`.
 
-Build/Automation/PIE stability and fixed-camera GPU/submission measurement remain
-USER ACTION REQUIRED. See
+P1B validation is complete: build, focused Automation, functional mechanism,
+fixed-camera submission/GPU measurement, visual stability and production-default
+selection are all accepted. See
 [the P1B validation record](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 
 Reduce expensive deep recursive scene submissions when the next nested portal contributes very little projected area.
@@ -1011,6 +1011,8 @@ portal: bound deep recursion by parent-view screen coverage
 ---
 
 # 9. P1C — Bounded Main-Pass Production Evidence
+
+**Current active stage.**
 
 P1C is not a from-zero correctness implementation.
 
