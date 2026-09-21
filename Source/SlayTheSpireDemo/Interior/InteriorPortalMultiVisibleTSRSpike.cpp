@@ -106,6 +106,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		return InteriorPortalProjectedBounds::DefaultOverscanPixels;
 	}
 
+	float ReadMinRecursionScreenCoverage()
+	{
+		return FMath::Clamp(
+			CVarMinRecursionScreenCoverage.GetValueOnGameThread(), 0.0f, 1.0f);
+	}
+
+	float ReadRecursionCoverageHysteresisFraction()
+	{
+		return FMath::Clamp(
+			CVarRecursionCoverageHysteresisFraction.GetValueOnGameThread(), 0.0f, 0.5f);
+	}
+
 	bool IsFiniteTransform(const FTransform& Transform)
 	{
 		const FVector Location = Transform.GetLocation();
@@ -668,6 +680,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				Endpoint.MainCompositionExtension->SetEnabled(true);
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastCoverageSelectedDepth = 0;
+				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
+				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
 				Endpoint.LastAttemptedLayerMask = 0;
 				Endpoint.LastSubmittedLayerMask = 0;
 			}
@@ -742,6 +757,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				ReleaseEndpointPingPongTargets(Endpoint);
 				Endpoint.LastVisibleDepth = 0;
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastCoverageSelectedDepth = 0;
+				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
+				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
 				Endpoint.LastAttemptedLayerMask = 0;
 				Endpoint.LastSubmittedLayerMask = 0;
 			}
@@ -1053,12 +1071,18 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
 				Endpoint.LastEffectiveDepth = 0;
+				Endpoint.LastCoverageCutoffLevel = INDEX_NONE;
+				Endpoint.LastCoverageCutoffReason = TEXT("NONE");
 				Endpoint.LastAttemptedLayerMask = 0;
 				Endpoint.LastSubmittedLayerMask = 0;
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
-					Endpoint.Layers[Level]->LastSubmissionFailureReason =
-						TEXT("NOT_ATTEMPTED_THIS_FRAME");
+					FLayerState& Layer = *Endpoint.Layers[Level];
+					Layer.LastSubmissionFailureReason = TEXT("NOT_ATTEMPTED_THIS_FRAME");
+					Layer.LastParentViewCoverage = 0.0f;
+					Layer.LastCoverageDecisionThreshold = 0.0f;
+					Layer.bLastCoverageTested = false;
+					Layer.bLastCoverageAccepted = false;
 				}
 			}
 		}
@@ -1193,6 +1217,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			Layer.LastParentViewRect = FIntRect(0, 0, 0, 0);
 			Layer.LastRenderRect = FIntRect(0, 0, 0, 0);
 			Layer.LastProjectedCoverage = 0.0f;
+			Layer.LastParentViewCoverage = 0.0f;
+			Layer.LastCoverageDecisionThreshold = 0.0f;
+			Layer.bLastCoverageTested = false;
+			Layer.bLastCoverageAccepted = false;
 			Layer.FramesSubmitted = 0;
 			Layer.FramesSkipped = 0;
 			Layer.CameraCutCount = 0;
