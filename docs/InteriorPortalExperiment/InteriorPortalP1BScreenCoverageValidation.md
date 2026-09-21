@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **ALL VALIDATION GATES PASS / DEFAULT 0.0025 IMPLEMENTED / FINAL REGRESSION PENDING**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 ## Goal
 
@@ -26,8 +26,8 @@ New runtime controls:
 
 ```text
 portal.MinRecursionScreenCoverage
-default = 0
-candidate measurements = 0.001 / 0.0025 / 0.005
+default = 0.0025
+validation candidates = 0 / 0.001 / 0.0025 / 0.005
 
 portal.RecursionCoverageHysteresisFraction
 default = 0.10
@@ -508,3 +508,20 @@ P1B becomes COMPLETE / VALIDATED only when:
 - fixed-camera submission/GPU measurements are recorded for candidate values;
 - the evidence-backed production default is explicitly accepted and receives
   one final build + focused Automation regression after the default-value edit.
+
+
+## Final seal
+
+After promoting the runtime default to `0.0025`, the user reran the focused
+`SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation prefix and
+confirmed PASS.
+
+Together with the previously accepted Development Editor build, threshold-zero
+parity, forced-cutoff/recovery evidence, 300-frame GPU A/B, persistent-capacity
+invariants and M5 visual-stability matrix:
+
+```text
+P1B — COMPLETE / VALIDATED / SEALED
+production default = 0.0025
+runtime disable override = 0
+```
