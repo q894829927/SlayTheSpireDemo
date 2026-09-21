@@ -690,6 +690,25 @@ portal: reclaim depth targets beyond recursion capacity
 
 ## 6.8 P1A-7 — Shared scratch lifecycle audit
 
+Implementation update, 2026-09-21: accepted FullFidelity shared-scratch resize
+retirement is implemented in
+`6df29d708d4bcc0d435a57162b0e2ee91cfcad33`. The producer keeps one
+steady-state `FinalScratch`, allows at most one queue-safe retiring generation,
+and no longer calls `FlushRenderingCommands()` from normal
+`EnsureFinalScratch()` size replacement. Report schema v6 exposes active,
+retiring and owned scratch generations plus resize-backpressure counts.
+
+The historical persistent scratch producers (Realtime, TSR, ExposureAuthority,
+SecondaryEyeAdaptation) now query accepted-backend ownership: they refuse to
+start while FullFidelity owns rendering, self-stop on the next world tick if
+FullFidelity takes ownership after they started, and explicitly
+`ReleaseResource()` their scratch during their existing synchronous teardown.
+The production Controller already bypasses legacy `RenderViews()` and
+FullSceneViewSubsystem rendering while FullFidelity owns the path.
+
+Build/Automation/PIE resize and dual-path acceptance remain USER ACTION REQUIRED;
+see [the P1A-7 validation record](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
+
 Verify:
 
 - one expected producer scratch target;
