@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §9-10`  
-Status: **P1C-1 PASS / P1C-2 GPU A-B NEXT**
+Status: **P1C-1 PASS / P1C-2 GPU A-B COMPLETE / P1C-3 VISUAL STABILITY NEXT**
 
 ## Existing accepted baseline
 
@@ -183,6 +183,65 @@ csvprofile frames=300
 ~~~
 
 Record GPUTime average / median / P95 / P99 and the bounded-pass Coverage.
+
+## P1C-2 result — USER CAPTURED COMPLETE / NO PERFORMANCE WIN
+
+The user provided two 300-frame CSV captures in the prescribed order:
+
+~~~text
+Profile(20260922_011453).csv -> portal.BoundedMainPassScissor=0
+Profile(20260922_011526).csv -> portal.BoundedMainPassScissor=1
+~~~
+
+Both captures contain exactly 300 valid `GPUTime` samples. The camera is
+identical across both captures:
+
+~~~text
+View/Pos = (1163.9623, 609.1017, 120.1500)
+View/Forward = (0.8914, 0.4526, -0.023018)
+View/Speed = 0
+~~~
+
+Measured GPU timing:
+
+| Metric | Scissor 0 | Scissor 1 | Delta | Change |
+|---|---:|---:|---:|---:|
+| GPU Average | 38.373 ms | 39.014 ms | +0.641 ms | +1.67% |
+| GPU Median | 38.224 ms | 38.867 ms | +0.644 ms | +1.68% |
+| GPU P95 | 39.433 ms | 40.280 ms | +0.847 ms | +2.15% |
+| GPU P99 | 41.609 ms | 42.311 ms | +0.701 ms | +1.69% |
+
+Supporting frame/thread timing:
+
+~~~text
+FrameTime average:        42.319 -> 43.536 ms (+1.217 ms / +2.88%)
+RenderThreadTime average: 42.304 -> 43.526 ms (+1.222 ms / +2.89%)
+GameThreadTime average:    7.833 ->  8.738 ms (+0.904 ms)
+RHIThreadTime average:    12.719 -> 14.127 ms (+1.409 ms)
+~~~
+
+The draw-call count is effectively unchanged:
+
+~~~text
+RHI/DrawCalls average:
+2199.70 -> 2199.35
+~~~
+
+Therefore this fixed production camera does **not** show a GPU benefit from the
+current bounded-main-pass implementation. It shows a small but consistent
+regression instead.
+
+This is compatible with the current implementation contract: enabling bounded
+composition turns the output into a sparse pass and, when the post-process
+output texture differs from incoming SceneColor, performs a full SceneColor
+prefill copy before the smaller bounded draws. The saved raster work therefore
+does not automatically imply lower total GPU cost.
+
+Do not promote `portal.BoundedMainPassScissor` to the production default from
+this evidence. The code default remains `0`.
+
+**P1C-2 measurement is complete. The result is negative for performance at the
+validated camera, not a validation failure.**
 
 ## P1C-3 — expanded visual stability
 
