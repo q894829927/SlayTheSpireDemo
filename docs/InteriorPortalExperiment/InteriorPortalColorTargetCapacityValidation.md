@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Implementation commit: `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`  
-Status: **IMPLEMENTED / D3D12 + AUTOMATION + RAPID-REVERSAL PASS / FORMAL BUILD CONFIRMATION PENDING**
+Status: **COMPLETE / VALIDATED**
 
 ## Scope
 
@@ -157,21 +157,20 @@ For the rapid reversal, the user reported no stale frame, persistent blank/black
 Portal, crash or assert. This closes the user-visible old/new color-target
 coexistence regression check.
 
-The only acceptance item not explicitly confirmed in this conversation is the
-formal UE 5.8 Development Editor build command. Do not infer that Gate from the
-Automation/PIE results alone in this record.
+The user also confirmed the UE 5.8 Development Editor build passed. Therefore
+all P1A-5 acceptance gates defined by this record are satisfied.
 
 ## Validation not performed by this change
 
 The GitHub implementation environment itself did not run local UE 5.8 build,
-Automation, D3D12 PIE, or GPU-memory capture. Actual D3D12 PIE, focused
-FullFidelity Automation, and rapid-reversal results above are user-provided.
-Do not mark P1A-5 COMPLETE / VALIDATED until the formal Development Editor build
-is explicitly confirmed.
+Automation, D3D12 PIE, or GPU-memory capture. The Development Editor build,
+focused FullFidelity Automation, actual D3D12 PIE matrix, and rapid-reversal
+results above are user-provided. Together they satisfy the P1A-5 acceptance
+contract.
 
-## USER ACTION REQUIRED
+## Completed validation
 
-### 1. Regenerate and build
+### 1. Regenerate and build — USER CONFIRMED PASS
 
 Run from PowerShell:
 
@@ -185,7 +184,7 @@ Then:
 & "E:\Unreal engine\UE_5.8\Engine\Build\BatchFiles\Build.bat" SlayTheSpireDemoEditor Win64 Development -Project="E:\UE_DEMO\SlayTheSpireDemo\SlayTheSpireDemo.uproject" -WaitMutex -FromMsBuild -2022 -architecture=x64
 ```
 
-Expected: both commands finish successfully.
+Result: **PASS**, user confirmed.
 
 ### 2. Focused Automation regression — USER CONFIRMED PASS
 
@@ -302,14 +301,18 @@ without stale publications.
 
 ## Acceptance rule
 
-P1A-5 may be marked **COMPLETE / VALIDATED** only after:
+P1A-5 acceptance results:
 
-- Development Editor build PASS;
+- Development Editor build PASS (**user confirmed**);
 - focused FullFidelity Automation regression PASS (**user confirmed**);
 - actual D3D12 fallback `4 -> 1 -> 4` target counts behave as above;
 - offscreen visibility does not shrink capacity;
 - rapid reversal has no stale/blank/crash regression (**user confirmed**);
 - Stop/Restart leaves no old FullFidelity color-target ownership.
 
+All required P1A-5 gates are satisfied. **P1A-5 Color Target Capacity Shrink is
+COMPLETE / VALIDATED.**
+
 P1A-5 does not require solving the pre-existing traversal hitch or the sustained
-Depth=4 scene-rendering cost. Those remain separate issues.
+Depth=4 scene-rendering cost. Those remain separate issues. The next authorized
+implementation step is P1A-6 Depth Target Capacity Reclaim.
