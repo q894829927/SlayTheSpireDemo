@@ -134,12 +134,21 @@
   Submitted=0x03 / SubmissionCount=2 / Cutoff=NONE. Observed L1 parent-view
   coverage is 0.007987 on endpoint 0 and 0.008814 on endpoint 1, with
   CoverageAccepted=1 and CoverageThreshold=0.
+- P1B forced same-session L1 cutoff is now user-confirmed PASS with
+  `portal.MinRecursionScreenCoverage=0.02`: both endpoints stay
+  VisibleDepth=2 but fall to EffectiveDepth=1 / Attempted=0x01 /
+  Submitted=0x01 / SubmissionCount=1 / Published=0x01 /
+  Cutoff=SCREEN_COVERAGE at level 1. L1 remains ACTIVE with original lifetimes
+  2/4 and both endpoints retain two active/owned color and depth targets, so the
+  EffectiveDepth-only workload reduction does not trigger capacity retirement.
+  Settled L1 CoverageThreshold=0.022 is the expected +10% re-entry boundary after
+  exclusion.
 - P1B remains **IMPLEMENTED / REMAINING VALIDATION REQUIRED**. Next evidence is:
-  final-head Development Editor build, FullFidelity prefix **11/11 PASS**, then
-  a forced same-session L1 cutoff proving L0 survival, stale-child rejection and
-  no persistent ownership churn; after that run candidate
-  0/0.001/0.0025/0.005 fixed-camera submission/GPU measurements and visual
-  stability. Authority:
+  restore threshold to zero in the same PIE and confirm L1 resumes with the same
+  lifetimes (no destroy/recreate), plus final-head Development Editor build and
+  FullFidelity prefix **11/11 PASS**. After the functional gate closes, run
+  candidate 0/0.001/0.0025/0.005 fixed-camera submission/GPU measurements and
+  visual-stability checks. Authority:
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
