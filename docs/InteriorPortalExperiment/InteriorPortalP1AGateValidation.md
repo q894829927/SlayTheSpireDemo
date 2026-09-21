@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §7`  
-Status: **IMPLEMENTED / FINAL-HEAD RECURSION SMOKE PASS / BUILD + AUTOMATION PENDING**
+Status: **COMPLETE / VALIDATED / SEALED**
 
 ## Purpose
 
@@ -81,7 +81,7 @@ retirement; `consumableByParentThisFrame` is the explicit current-frame contract
 Final-head build is required because the aggregate Gate added C++ production and
 Automation code after the last P1A-7 build.
 
-Pending:
+User-confirmed final-head result:
 
 ```text
 SlayTheSpireDemoEditor Win64 Development = PASS
@@ -130,7 +130,11 @@ Stop clears old publication identity
 Restart receives fresh identity
 ```
 
-Pending: final-head focused suite PASS.
+User-confirmed final-head focused suite result:
+
+```text
+SlayTheSpireDemo.Interior.Portals.FullFidelity = 10/10 PASS
+```
 
 ## §7.3 Submission-failure contract
 
@@ -309,9 +313,10 @@ actually fails. No new normal `4 -> 1 -> 4` flush was introduced.
 No new Unreal Insights capture is required unless final-head validation reveals
 a regression.
 
-## Final-head USER ACTION REQUIRED
+## Final-head validation — COMPLETE
 
-Run the standard Development Editor build, then:
+The user confirmed the final-head Development Editor build PASS and the complete
+FullFidelity prefix PASS 10/10. The required command was:
 
 ```powershell
 & "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
@@ -321,24 +326,27 @@ Run the standard Development Editor build, then:
   -log
 ```
 
-Expected:
+Recorded result:
 
 ```text
 10/10 PASS
 ```
 
-The Depth=2 final-head recursion smoke is already complete. No additional PIE
-rerun is required unless build/Automation reveals a regression.
+The Depth=2 final-head recursion smoke also passed on schema v7 with both L1
+children submitted and consumable by their parents in the current frame, and
+the user confirmed normal recursive visuals.
 
 ## Seal condition
 
-P1A becomes **COMPLETE / VALIDATED / SEALED** when the final-head:
+Final-head P1A Gate results:
 
-- Development Editor build passes;
-- FullFidelity focused Automation passes all 10 tests;
-- Depth=2 healthy recursion smoke shows current-frame child consumption and
-  normal visual output (**PASS, user-confirmed with v7 diagnostics**).
+- Development Editor build: **PASS, user-confirmed**;
+- FullFidelity focused Automation: **10/10 PASS, user-confirmed**;
+- Depth=2 healthy recursion smoke: **PASS**, with current-frame child
+  consumption confirmed by v7 diagnostics and normal visual output.
 
 All other §7 evidence is reused from already accepted P1A/crop validation.
 
-Only after this record is sealed may P1B begin.
+**FULL P1A = COMPLETE / VALIDATED / SEALED.**
+
+P1B may now begin as the next planned stage.
