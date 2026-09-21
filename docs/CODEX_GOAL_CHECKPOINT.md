@@ -105,14 +105,19 @@
 - New deterministic tests in `b911fa95b5e5` cover the submission-failure
   contract and aggregate capacity invariants. The current FullFidelity prefix
   contains 10 tests.
-- Full P1A is now **IMPLEMENTED / FINAL-HEAD VALIDATION REQUIRED**. Under the
+- Final-head RequestedDepth=2 recursion smoke now PASS on schema v7:
+  both endpoints report VisibleDepth=2 / EffectiveDepth=2 / Attempted=0x03 /
+  Submitted=0x03 / SubmissionCount=2 / Published=0x03, both L1 children are
+  submitted this frame, consumable by the parent this frame, and have
+  submissionFailureReason=NONE. The user also confirmed normal two-level visuals
+  with no persistent black/stale/spiral regression, crash or assert.
+- Full P1A is **IMPLEMENTED / FINAL-HEAD BUILD + AUTOMATION PENDING**. Under the
   repository evidence-reuse policy, do not rerun sealed 4->1->4/offscreen/
-  scratch/Insights matrices. Remaining work is only: final Development Editor
-  build, 10-test FullFidelity Automation PASS, and one RequestedDepth=2 healthy
-  recursion smoke confirming L1 is current-frame consumable and the nested visual
-  remains normal. Authority:
+  scratch/Insights/Depth=2 visual matrices. Remaining work is only the final
+  Development Editor build and the 10-test FullFidelity Automation prefix.
+  Authority:
   [full P1A Gate validation](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
-- Do not begin P1B until those final-head gates close.
+- Do not begin P1B until those two final-head gates close.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
