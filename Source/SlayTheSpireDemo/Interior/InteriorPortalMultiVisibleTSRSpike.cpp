@@ -2366,6 +2366,11 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	TUniquePtr<FMultiVisibleProducer> GMultiVisibleProducer;
 
+	bool IsMultiVisibleRunning()
+	{
+		return GMultiVisibleProducer && GMultiVisibleProducer->IsRunning();
+	}
+
 	bool StartMultiVisible(UWorld* World)
 	{
 		if (GMultiVisibleProducer && GMultiVisibleProducer->IsRunning())
