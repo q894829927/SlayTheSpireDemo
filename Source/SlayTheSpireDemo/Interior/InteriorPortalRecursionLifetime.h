@@ -12,6 +12,36 @@ namespace InteriorPortalRecursionLifetime
 		return RetiringCount >= 0 && RetiringCount < 2;
 	}
 
+	// Submission runs deepest -> shallowest. If a child level fails this frame,
+	// recursion terminates at that level: shallower parents may still render, but
+	// they must not consume an older publication from the failed child.
+	inline int32 TruncateEffectiveDepthAfterSubmissionFailure(
+		const int32 CurrentEffectiveDepth,
+		const int32 FailedLevel)
+	{
+		if (CurrentEffectiveDepth <= 0 || FailedLevel < 0)
+		{
+			return FMath::Max(0, CurrentEffectiveDepth);
+		}
+		return FMath::Clamp(
+			FMath::Min(CurrentEffectiveDepth, FailedLevel),
+			0,
+			CurrentEffectiveDepth);
+	}
+
+	inline bool CanConsumeCurrentFrameChild(
+		const int32 ParentLevel,
+		const int32 EffectiveDepth,
+		const int32 CurrentFrameSubmittedLayerMask)
+	{
+		const int32 ChildLevel = ParentLevel + 1;
+		return ParentLevel >= 0
+			&& ChildLevel >= 0
+			&& ChildLevel < EffectiveDepth
+			&& ChildLevel < 31
+			&& (CurrentFrameSubmittedLayerMask & (1 << ChildLevel)) != 0;
+	}
+
 	enum class EResourceState : uint8
 	{
 		Unallocated,
