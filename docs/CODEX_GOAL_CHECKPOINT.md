@@ -111,13 +111,16 @@
   submitted this frame, consumable by the parent this frame, and have
   submissionFailureReason=NONE. The user also confirmed normal two-level visuals
   with no persistent black/stale/spiral regression, crash or assert.
-- Full P1A is **IMPLEMENTED / FINAL-HEAD BUILD + AUTOMATION PENDING**. Under the
-  repository evidence-reuse policy, do not rerun sealed 4->1->4/offscreen/
-  scratch/Insights/Depth=2 visual matrices. Remaining work is only the final
-  Development Editor build and the 10-test FullFidelity Automation prefix.
-  Authority:
+- Final-head Development Editor build is user-confirmed PASS.
+- Final-head `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation is
+  user-confirmed **10/10 PASS**.
+- Together with the already-passing schema-v7 RequestedDepth=2 recursion smoke,
+  **FULL P1A = COMPLETE / VALIDATED / SEALED**. Authority:
   [full P1A Gate validation](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
-- Do not begin P1B until those two final-head gates close.
+- Current active implementation stage: **P1B — Recursion Screen-Coverage
+  Cutoff**. Preserve the P1A resource-lifetime contract: P1B may lower
+  EffectiveDepth/submission workload, but must not reinterpret lower
+  EffectiveDepth as permission to reclaim persistent capacity.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
