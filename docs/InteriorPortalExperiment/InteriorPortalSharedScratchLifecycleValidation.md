@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Primary scratch implementation: `6df29d708d4bcc0d435a57162b0e2ee91cfcad33`  
-Status: **IMPLEMENTED / USER VALIDATION REQUIRED**
+Status: **IMPLEMENTED / MANUAL CORE MATRIX MOSTLY PASS / RESIZE GENERATION RETEST + AUTOMATION PENDING**
 
 ## Scope
 
@@ -209,6 +209,77 @@ temporarily retiring scratch generations.
 
 Logical ownership and explicit resource release still do not prove exact
 immediate process-wide D3D12 allocator residency return.
+
+## User-provided manual evidence — 2026-09-21
+
+The user supplied actual D3D12 PIE output from the P1A-7 implementation.
+
+Stable RequestedDepth=1 ownership passed:
+
+```text
+Scratch=1577x961
+ScratchGeneration=1
+RetiringScratch=0
+OwnedScratch=1
+ScratchResizeDeferred=0
+```
+
+Both endpoints remained on one active color/depth/ViewState layer, confirming the
+shared scratch is producer-wide rather than per-endpoint/per-recursion.
+
+A later dump from the same producer (retained L0 lifetime identities and
+monotonically increasing submitted-frame counters) showed the live viewport had
+changed to:
+
+```text
+Scratch=1920x985
+RetiringScratch=0
+OwnedScratch=1
+ScratchResizeDeferred=0
+```
+
+The resize settled back to one owned scratch with normal portal output. However,
+that first validation build still reported `ScratchGeneration=1` instead of
+advancing to `2` for the live replacement. This was a diagnostics-state defect,
+not an ownership leak: size changed, ownership settled at one, and endpoint
+lifetimes did not restart.
+
+Commit `126582bfc9f4e6984f4bfd1cad711b83ff3ea88d` removes the redundant
+`NextScratchGeneration` mutable counter and derives the active generation
+directly from the prior active generation. A live scratch replacement is now
+required to report `1 -> 2 -> 3...` within one producer lifetime.
+
+The uploaded STOPPED v6 report confirms full teardown:
+
+```text
+status = STOPPED
+totals.viewStates = 0
+totals.colorTargets = 0
+totals.depthTargets = 0
+totals.explicitTargetEstimatedBytes = 0
+sharedScratch.allocated = false
+sharedScratch.activeCount = 0
+sharedScratch.retiringCount = 0
+sharedScratch.ownedCount = 0
+```
+
+Legacy dual-path protection also passed in both directions:
+
+```text
+PortalTSRSpike: refusing to start while accepted FullFidelity backend owns rendering.
+
+PortalTSRSpike: stopping because accepted FullFidelity backend acquired rendering ownership.
+PortalTSRSpike: stopped...
+```
+
+After the reverse takeover the accepted FullFidelity renderer remained visually
+normal.
+
+Therefore stable one-scratch ownership, settled resize ownership, Stop zero
+ownership, legacy-start rejection and reverse-takeover teardown all have actual
+manual evidence. The only manual P1A-7 item requiring repetition after the
+generation fix is one live resize confirming that the generation now advances
+while ownership still settles back to one.
 
 ## Validation not performed by the implementation environment
 
