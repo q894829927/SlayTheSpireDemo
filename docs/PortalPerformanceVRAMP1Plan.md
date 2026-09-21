@@ -729,6 +729,12 @@ Do not split scratch per recursion level.
 
 # 7. P1A Gate
 
+**Final status, 2026-09-21: COMPLETE / VALIDATED / SEALED.** Final-head
+Development Editor build passed, the
+`SlayTheSpireDemo.Interior.Portals.FullFidelity` focused prefix passed 10/10,
+and the RequestedDepth=2 healthy-recursion smoke passed on schema v7 with
+current-frame child consumption intact and normal visuals.
+
 Implementation update, 2026-09-21: the aggregate audit found and closed the
 remaining §7.3 stale-child contract. Current-frame recursion now terminates at a
 failed child submission, and a parent may attach a child composition extension
@@ -858,7 +864,8 @@ Record transition peak frame time. Do not accept lower steady-state ownership if
 
 # 8. P1B — Recursion Screen-Coverage Cutoff
 
-P1B begins only after P1A passes.
+P1A has now passed and is sealed. **P1B is the current active implementation
+stage.**
 
 ## 8.1 Goal
 
