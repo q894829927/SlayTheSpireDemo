@@ -110,6 +110,66 @@ bool FInteriorPortalPingPongPolicyTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FInteriorPortalRecursionCoveragePolicyTest,
+	"SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FInteriorPortalRecursionCoveragePolicyTest::RunTest(const FString& Parameters)
+{
+	(void)Parameters;
+
+	const FIntRect Parent(0, 0, 1000, 1000);
+	const FIntRect OnePercent(450, 450, 550, 550);
+	TestTrue(TEXT("Coverage is measured in the current parent-view area"),
+		FMath::IsNearlyEqual(
+			ComputeParentViewCoverage(OnePercent, Parent, 0),
+			0.01f, 1.0e-6f));
+
+	const float PaddedCoverage = ComputeParentViewCoverage(OnePercent, Parent, 4);
+	TestTrue(TEXT("Coverage includes conservative bounded-composition padding"),
+		FMath::IsNearlyEqual(PaddedCoverage, 0.011664f, 1.0e-6f));
+
+	TestTrue(TEXT("Threshold zero exactly disables P1B for deep recursion"),
+		ShouldIncludeRecursionLevelByCoverage(3, 0.0f, 0.0f, 0, 0.10f));
+	TestTrue(TEXT("L0 always survives coverage cutoff"),
+		ShouldIncludeRecursionLevelByCoverage(0, 0.0f, 0.5f, 0, 0.10f));
+
+	constexpr float Threshold = 0.005f;
+	constexpr float Hysteresis = 0.10f;
+	TestTrue(TEXT("Previously included L1 uses the lower hysteresis boundary"),
+		FMath::IsNearlyEqual(
+			CoverageDecisionThreshold(1, Threshold, 2, Hysteresis),
+			0.0045f, 1.0e-7f));
+	TestTrue(TEXT("Previously excluded L1 uses the upper hysteresis boundary"),
+		FMath::IsNearlyEqual(
+			CoverageDecisionThreshold(1, Threshold, 1, Hysteresis),
+			0.0055f, 1.0e-7f));
+
+	TestTrue(TEXT("Coverage inside hysteresis band stays included when already included"),
+		ShouldIncludeRecursionLevelByCoverage(1, 0.0050f, Threshold, 2, Hysteresis));
+	TestFalse(TEXT("Same coverage does not immediately re-enter after exclusion"),
+		ShouldIncludeRecursionLevelByCoverage(1, 0.0050f, Threshold, 1, Hysteresis));
+	TestTrue(TEXT("Excluded level re-enters only above the upper boundary"),
+		ShouldIncludeRecursionLevelByCoverage(1, 0.0056f, Threshold, 1, Hysteresis));
+
+	int32 EffectiveDepth = 4;
+	const float Coverage[4] = { 1.0f, 0.02f, 0.004f, 0.001f };
+	for (int32 Level = 1; Level < 4; ++Level)
+	{
+		if (!ShouldIncludeRecursionLevelByCoverage(
+			Level, Coverage[Level], Threshold, 4, Hysteresis))
+		{
+			EffectiveDepth = Level;
+			break;
+		}
+	}
+	TestEqual(TEXT("First sub-threshold child terminates the continuous recursion chain"),
+		EffectiveDepth, 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FInteriorPortalReceivingViewCoordinatesTest,
 	"SlayTheSpireDemo.Interior.Portals.FullFidelity.ProjectedBounds.ReceivingViewCoordinates",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
