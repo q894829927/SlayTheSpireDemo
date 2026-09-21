@@ -750,11 +750,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 				AInteriorPortal* Portal = GetEndpointPortal(EndpointIndex);
 				UE_LOG(LogTemp, Display,
-					TEXT("PortalMultiVisible Endpoint=%d ColorTargets Active=%d Retiring=%d Owned=%d"),
+					TEXT("PortalMultiVisible Endpoint=%d ColorTargets Active=%d Retiring=%d Owned=%d DepthTargets Active=%d Retiring=%d Owned=%d"),
 					EndpointIndex,
 					CountActiveColorTargets(Endpoint, Portal),
 					CountRetiringColorTargets(Endpoint),
-					CountActiveColorTargets(Endpoint, Portal) + CountRetiringColorTargets(Endpoint));
+					CountActiveColorTargets(Endpoint, Portal) + CountRetiringColorTargets(Endpoint),
+					CountActiveDepthTargets(Endpoint),
+					CountRetiringDepthTargets(Endpoint),
+					CountActiveDepthTargets(Endpoint) + CountRetiringDepthTargets(Endpoint));
 				for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
 				{
 					FLayerState& Layer = *Endpoint.Layers[Level];
@@ -930,6 +933,38 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			for (const auto& Retiring : Endpoint.RetiringLayers)
 			{
 				Count += IsValid(Retiring->LegacyColorTarget) ? 1 : 0;
+			}
+			return Count;
+		}
+
+		int32 CountActiveDepthTargets(const FEndpointState& Endpoint) const
+		{
+			int32 Count = 0;
+			if (bPingPongEnabled)
+			{
+				for (int32 Slot = 0; Slot < InteriorPortalProjectedBounds::PingPongBufferCount; ++Slot)
+				{
+					Count += IsValid(Endpoint.PingPongDepth[Slot]) ? 1 : 0;
+				}
+				return Count;
+			}
+			for (int32 Level = 0; Level < MaxRecursionDepth; ++Level)
+			{
+				Count += IsValid(Endpoint.Layers[Level]->SecondaryDepthTarget) ? 1 : 0;
+			}
+			return Count;
+		}
+
+		int32 CountRetiringDepthTargets(const FEndpointState& Endpoint) const
+		{
+			if (bPingPongEnabled)
+			{
+				return 0;
+			}
+			int32 Count = 0;
+			for (const auto& Retiring : Endpoint.RetiringLayers)
+			{
+				Count += IsValid(Retiring->Layer->SecondaryDepthTarget) ? 1 : 0;
 			}
 			return Count;
 		}
@@ -1444,8 +1479,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void ReleaseDepthTarget(FLayerState& Layer)
 		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_ReleaseDepthTarget);
 			if (Layer.SecondaryDepthTarget)
 			{
+				// Runtime capacity retirement reaches here only after the retiring
+				// lifetime's RHI-thread-depth fence has completed. Explicitly release
+				// the render resource instead of waiting for a later UObject GC pass.
+				Layer.SecondaryDepthTarget->ReleaseResource();
 				Layer.SecondaryDepthTarget->RemoveFromRoot();
 				Layer.SecondaryDepthTarget = nullptr;
 			}
@@ -1994,6 +2034,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				int32 ActiveColorTargetCount = 0;
 				int32 RetiringColorTargetCount = 0;
 				int32 DepthTargetCount = 0;
+				int32 ActiveDepthTargetCount = 0;
+				int32 RetiringDepthTargetCount = 0;
 				uint64 EndpointExplicitTargetBytes = 0;
 				FString LayersJson;
 
@@ -2010,6 +2052,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						if (IsValid(Endpoint.PingPongDepth[Slot]))
 						{
 							++DepthTargetCount;
+							++ActiveDepthTargetCount;
 							EndpointExplicitTargetBytes += EstimateTargetBytes(Endpoint.PingPongDepth[Slot]);
 						}
 					}
@@ -2052,6 +2095,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						ColorTargetCount += bColorAllocated ? 1 : 0;
 						ActiveColorTargetCount += bColorAllocated ? 1 : 0;
 						DepthTargetCount += bDepthAllocated ? 1 : 0;
+						ActiveDepthTargetCount += bDepthAllocated ? 1 : 0;
 						EndpointExplicitTargetBytes += ColorBytes + DepthBytes;
 					}
 
@@ -2109,11 +2153,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					const uint64 RetiringColorBytes = EstimateTargetBytes(Retiring->LegacyColorTarget);
 					ColorTargetCount += bRetiringColorAllocated ? 1 : 0;
 					RetiringColorTargetCount += bRetiringColorAllocated ? 1 : 0;
-					DepthTargetCount += IsValid(Old.SecondaryDepthTarget) ? 1 : 0;
-					EndpointExplicitTargetBytes += RetiringColorBytes + EstimateTargetBytes(Old.SecondaryDepthTarget);
+					const bool bRetiringDepthAllocated = IsValid(Old.SecondaryDepthTarget);
+					const uint64 RetiringDepthBytes = EstimateTargetBytes(Old.SecondaryDepthTarget);
+					DepthTargetCount += bRetiringDepthAllocated ? 1 : 0;
+					RetiringDepthTargetCount += bRetiringDepthAllocated ? 1 : 0;
+					EndpointExplicitTargetBytes += RetiringColorBytes + RetiringDepthBytes;
 					if (!RetirementsJson.IsEmpty()) { RetirementsJson += TEXT(","); }
 					RetirementsJson += FString::Printf(
-						TEXT("{\"level\":%d,\"lifetimeId\":%llu,\"state\":\"RETIRING\",\"fenceComplete\":%s,\"legacyColorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu}}"),
+						TEXT("{\"level\":%d,\"lifetimeId\":%llu,\"state\":\"RETIRING\",\"fenceComplete\":%s,\"legacyColorTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\"secondaryDepthTarget\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu}}"),
 						Old.Level, Old.Lifetime.LifetimeId,
 						Retiring->Fence.IsFenceComplete() ? TEXT("true") : TEXT("false"),
 						bRetiringColorAllocated ? TEXT("true") : TEXT("false"),
@@ -2121,7 +2168,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						bRetiringColorAllocated ? Retiring->LegacyColorTarget->SizeY : 0,
 						bRetiringColorAllocated
 							? static_cast<int32>(Retiring->LegacyColorTarget->RenderTargetFormat.GetValue()) : -1,
-						RetiringColorBytes);
+						RetiringColorBytes,
+						bRetiringDepthAllocated ? TEXT("true") : TEXT("false"),
+						bRetiringDepthAllocated ? Old.SecondaryDepthTarget->SizeX : 0,
+						bRetiringDepthAllocated ? Old.SecondaryDepthTarget->SizeY : 0,
+						bRetiringDepthAllocated
+							? static_cast<int32>(Old.SecondaryDepthTarget->RenderTargetFormat.GetValue()) : -1,
+						RetiringDepthBytes);
 				}
 				TotalViewStates += ViewStateCount;
 				TotalColorTargets += ColorTargetCount;
@@ -2129,7 +2182,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TotalExplicitTargetBytes += EndpointExplicitTargetBytes;
 
 				EndpointJson += FString::Printf(
-					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"activeColorTargetCount\":%d,\"retiringColorTargetCount\":%d,\"depthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
+					TEXT("    {\"endpoint\":%d,\"visibleDepth\":%d,\"effectiveDepth\":%d,\"attemptedLayerMask\":%d,\"submittedLayerMask\":%d,\"submissionCount\":%d,\"publishedLayerMask\":%d,\"ownedLayerMask\":%d,\"ownedCount\":%d,\"activeLayerMask\":%d,\"activeCount\":%d,\"retiringLayerMask\":%d,\"retiringCount\":%d,\"reclaimableLayerMask\":%d,\"reclaimableCount\":%d,\"viewStateCount\":%d,\"colorTargetCount\":%d,\"activeColorTargetCount\":%d,\"retiringColorTargetCount\":%d,\"depthTargetCount\":%d,\"activeDepthTargetCount\":%d,\"retiringDepthTargetCount\":%d,\"explicitTargetEstimatedBytes\":%llu,\"pingPong\":{\"enabled\":%s,\"targetWidth\":%d,\"targetHeight\":%d},\"retiringLifetimes\":[%s],\"layers\":[\n%s    ]}%s\n"),
 					EndpointIndex, Endpoint.LastVisibleDepth, Endpoint.LastEffectiveDepth,
 					Endpoint.LastAttemptedLayerMask, Endpoint.LastSubmittedLayerMask,
 					CountSetBits(Endpoint.LastSubmittedLayerMask), PublishedLayerMask,
@@ -2138,7 +2191,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					RetiringLayerMask, CountSetBits(RetiringLayerMask),
 					ReclaimableLayerMask, CountSetBits(ReclaimableLayerMask),
 					ViewStateCount, ColorTargetCount, ActiveColorTargetCount, RetiringColorTargetCount,
-					DepthTargetCount, EndpointExplicitTargetBytes,
+					DepthTargetCount, ActiveDepthTargetCount, RetiringDepthTargetCount,
+					EndpointExplicitTargetBytes,
 					bPingPongEnabled ? TEXT("true") : TEXT("false"),
 					Endpoint.PingPongTargetSize.X, Endpoint.PingPongTargetSize.Y,
 					*RetirementsJson, *LayersJson,
@@ -2148,7 +2202,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			const bool bScratchAllocated = IsValid(FinalScratch);
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v4\",\n")
+				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v5\",\n")
 				TEXT("  \"status\":\"%s\",\n")
 				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
 				TEXT("  \"pingPongEnabled\":%s,\n")
@@ -2161,7 +2215,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
 				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
 				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"Legacy per-level color targets above RequestedDepth retire with the exact recursion lifetime and RHI-thread fence that last used them; short invisibility and lower EffectiveDepth do not shrink capacity. Ping-pong color ownership remains shared per endpoint. Depth-target and scratch audits remain separate gates, and logical release does not prove immediate GPU allocator residency return.\"\n")
+				TEXT("  \"claimBoundary\":\"Legacy per-level color and secondary depth targets above RequestedDepth retire with the exact recursion lifetime and RHI-thread fence that last used them; depth creation remains lazy on submission, and short invisibility/lower EffectiveDepth do not shrink configured capacity. Ping-pong endpoint targets remain shared. Shared-scratch audit remains a separate gate, and logical release does not prove immediate global GPU allocator residency return.\"\n")
 				TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
