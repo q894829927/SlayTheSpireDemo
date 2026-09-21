@@ -192,11 +192,16 @@
   Existing 1B.13A correctness is reused; no renderer source change is required
   before measurement because `portal.CompositionDiagnostics=1` already reports
   bounded-pass Requested/Active/Rect/Pixels/Coverage.
-- P1C-1 is now the active gate: with RequestedDepth=2, production P1B default
-  0.0025, both endpoints visible and recursion present, enable
-  `portal.BoundedMainPassScissor 1` and prove `BoundedPass Requested=1 Active=1`
-  plus visually identical output versus scissor 0. Only after that smoke passes
-  proceed to fixed-camera 300-frame scissor 0/1 GPU A/B.
+- P1C-1 dual-visible / recursion-depth-two interaction smoke is now
+  user-confirmed PASS with the sealed P1B default 0.0025. Both endpoints report
+  VisibleDepth=2 / EffectiveDepth=2 / Submitted=0x03 / SubmissionCount=2 /
+  Failure=NONE. Bounded main-pass diagnostics settle to Requested=1 / Active=1 /
+  BoundedScissor=1 on both endpoint paths, with representative main-view
+  coverage 0.048012 and 0.263293 and much smaller recursive-view coverage
+  0.005775 and 0.013618. The user reports the image as normal.
+- **P1C-2 is now active:** keep this exact camera/window/settings and run warm
+  300-frame CSV GPU A/B for `portal.BoundedMainPassScissor 0` versus `1`,
+  with P1B default 0.0025 unchanged. Do not move the camera between captures.
   Authority:
   [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md),
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),
