@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8, §10`  
-Status: **M2 SUBMISSION SCREENING PASS / GPU A-B NEXT**
+Status: **M4 GPU A-B PASS / VISUAL-STABILITY MATRIX NEXT**
 
 ## Purpose
 
@@ -140,7 +140,55 @@ If none of 0.001 / 0.0025 / 0.005 reduces submissions, move farther or make the
 nested portal smaller and repeat M1/M2. Do not expand the candidate set just to
 force a result.
 
-## Phase M4 — warm GPU A/B
+## Phase M4 — warm GPU A/B — USER CAPTURED PASS
+
+Two 300-frame CSV captures were analyzed in the user-provided capture order:
+
+```text
+Profile(20260922_000003).csv -> threshold 0 baseline
+Profile(20260922_000157).csv -> threshold 0.0025 candidate
+```
+
+Both files contain exactly 300 valid `GPUTime` samples.
+
+Measured GPUTime:
+
+| Metric | threshold 0 | threshold 0.0025 | Delta | Change |
+|---|---:|---:|---:|---:|
+| Average | 50.270 ms | 36.745 ms | -13.525 ms | -26.90% |
+| Median | 50.222 ms | 36.650 ms | -13.573 ms | -27.03% |
+| P95 | 51.148 ms | 37.720 ms | -13.428 ms | -26.25% |
+| P99 | 52.288 ms | 38.741 ms | -13.547 ms | -25.91% |
+
+The full frame-time CSV statistic also drops from 54.449 ms average to
+40.111 ms average (-14.338 ms / -26.33%). GameThreadTime is nearly unchanged
+(7.527 -> 7.317 ms average), while RenderThreadTime drops from 54.425 to
+40.101 ms average. This is consistent with the measurement being dominated by
+rendering workload rather than gameplay-thread work.
+
+The GPUTime distributions are well separated in these fixed 300-frame windows:
+
+```text
+baseline min/max  = 48.893 / 54.422 ms
+candidate min/max = 35.623 / 40.876 ms
+```
+
+Associated shared GPU CSV categories with the largest average decreases include
+ShadowDepths, LumenSceneUpdate, TemporalSuperResolution and RayTracingScene.
+These category deltas are supporting attribution only; they are not summed
+because GPU stat scopes may overlap.
+
+This A/B corresponds to the already-recorded workload change at the same
+camera:
+
+```text
+Endpoint 1:
+threshold 0      -> EffectiveDepth=2 / SubmissionCount=2
+threshold 0.0025 -> EffectiveDepth=1 / SubmissionCount=1
+
+Endpoint 0:
+unchanged at EffectiveDepth=2 / SubmissionCount=2
+```
 
 For the selected fixed camera and threshold pair:
 
