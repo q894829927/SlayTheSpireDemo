@@ -47,18 +47,17 @@
   `4 -> 1 -> 4` color counts `4 -> 1 -> 4` on both endpoints, stable retained
   L0 identities, fresh rebuilt L1-L3 identities, no offscreen shrink at
   RequestedDepth=4, and Stop ownership of zero color/depth/ViewState targets.
-- The user has now confirmed
-  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS and a
+- The user confirmed the UE 5.8 Development Editor build PASS,
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS, and a
   deliberate rapid `4 -> 1 -> 4` reversal with no stale/blank/crash regression.
-  P1A-5 therefore has D3D12 settled shrink/regrowth, offscreen invariance,
-  Stop teardown, focused Automation, and rapid-reversal evidence.
-- The only P1A-5 acceptance item not explicitly confirmed in this conversation
-  is the formal UE 5.8 Development Editor build. Keep P1A-5 at
-  **READY TO SEAL / BUILD CONFIRMATION PENDING** until that result is stated.
+  Together with the D3D12 settled shrink/regrowth, offscreen invariance, and Stop
+  teardown evidence, **P1A-5 Color Target Capacity Shrink = COMPLETE / VALIDATED**.
   Authority:
   [P1A-5 validation](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
-- After P1A-5 validates, continue P1A-6/P1A-7 and the full P1A gate. Do not skip
-  directly to broad physics. P1B is the later stage expected to attack sustained
+- Current active implementation step: **P1A-6 Depth Target Capacity Reclaim**.
+  Preserve lazy depth-target creation; reclaim only out-of-budget old lifetimes
+  after safe retirement. Then continue P1A-7 and the full P1A gate. Do not skip
+  directly to broad physics. P1B remains the later stage for sustained
   depth-four rendering cost.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
