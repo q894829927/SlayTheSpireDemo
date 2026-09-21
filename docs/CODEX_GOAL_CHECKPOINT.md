@@ -129,11 +129,17 @@
   `SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`
   Automation covers disabled-policy parity, L0 survival, conservative area math
   and hysteresis.
-- P1B is **IMPLEMENTED / USER VALIDATION REQUIRED**. Next evidence is: final-head
-  Development Editor build, FullFidelity prefix **11/11 PASS**, threshold=0
-  Depth=2 compatibility, a forced L1 cutoff proving no ownership churn/stale
-  child consumption, then candidate 0/0.001/0.0025/0.005 fixed-camera
-  submission/GPU measurements and visual stability. Authority:
+- P1B threshold-zero compatibility is now user-confirmed PASS in fallback
+  RequestedDepth=2: both endpoints remain VisibleDepth=2 / EffectiveDepth=2 /
+  Submitted=0x03 / SubmissionCount=2 / Cutoff=NONE. Observed L1 parent-view
+  coverage is 0.007987 on endpoint 0 and 0.008814 on endpoint 1, with
+  CoverageAccepted=1 and CoverageThreshold=0.
+- P1B remains **IMPLEMENTED / REMAINING VALIDATION REQUIRED**. Next evidence is:
+  final-head Development Editor build, FullFidelity prefix **11/11 PASS**, then
+  a forced same-session L1 cutoff proving L0 survival, stale-child rejection and
+  no persistent ownership churn; after that run candidate
+  0/0.001/0.0025/0.005 fixed-camera submission/GPU measurements and visual
+  stability. Authority:
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
