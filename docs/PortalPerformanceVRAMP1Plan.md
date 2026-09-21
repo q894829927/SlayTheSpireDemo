@@ -652,6 +652,18 @@ portal: shrink color targets beyond recursion capacity
 
 ## 6.7 P1A-6 — Depth-target capacity reclaim
 
+Implementation update, 2026-09-21: the existing P1A-4 retirement path already
+moved each per-level `SecondaryDepthTarget` with its old `FLayerState` and
+released it only after the retirement fence completed. P1A-6 closes the remaining
+resource-release/diagnostic gap in
+`583181eb35786548ccc3604d0d72278dc0e170db`: `ReleaseDepthTarget()` now calls
+`ReleaseResource()` after the safe RHI-thread-depth fence before removing the
+root reference, and report schema v5 exposes active versus retiring depth-target
+ownership plus per-retiree depth details.
+
+Build/Automation/actual D3D12 acceptance remains USER ACTION REQUIRED; see
+[the P1A-6 validation record](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
+
 Depth target creation remains lazy on submission.
 
 Policy:
