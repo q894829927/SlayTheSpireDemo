@@ -76,10 +76,20 @@
   `InteriorPortalFullFidelityBackend::IsRunning()`: they refuse to start while
   accepted FullFidelity owns rendering, self-stop if ownership changes, and
   explicitly release their scratch resource during teardown.
-- P1A-7 is **IMPLEMENTED / USER VALIDATION REQUIRED**. Required next evidence:
-  Development Editor build, focused FullFidelity Automation, stable one-scratch
-  ownership, viewport resize/rapid-resize bounded ownership, Stop/Restart zero ->
-  one ownership, and one legacy TSR dual-path ownership-guard check. Authority:
+- P1A-7 manual D3D12 evidence now confirms stable one-scratch ownership,
+  settled viewport-resize ownership returning to one, STOPPED zero ownership,
+  legacy TSR start rejection while FullFidelity owns rendering, and reverse
+  takeover causing the legacy TSR producer to self-stop while FullFidelity stays
+  visually normal.
+- The first live-resize capture exposed a diagnostics defect: scratch dimensions
+  changed within the same producer but `ScratchGeneration` remained 1.
+  `126582bfc9f4e6984f4bfd1cad711b83ff3ea88d` removes the redundant next-
+  generation counter and makes the active scratch generation monotonic from the
+  prior active generation.
+- P1A-7 remains **IMPLEMENTED / FINAL RETEST REQUIRED**. Rebuild the generation
+  fix, rerun focused FullFidelity Automation, and perform one live viewport
+  resize confirming `ScratchGeneration 1 -> 2` (or later) while
+  `OwnedScratch` settles back to 1. Authority:
   [P1A-7 validation](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
 - Do not begin P1B yet. After P1A-7 validates, run the full P1A gate first.
 - Exact evidence and caveats:
