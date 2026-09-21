@@ -618,13 +618,16 @@ portal: retire recursion lifetimes without runtime flush stalls
 
 Implementation update, 2026-09-21: fallback/legacy per-level color-target
 retirement is implemented in `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`.
-Out-of-budget color targets now leave the active `RenderTargets` array with
-their exact retiring recursion lifetime and are released only after that
-lifetime's existing RHI-thread-depth fence completes. Stop also releases active
-fallback color targets. Report schema v4 exposes active versus retiring color
-ownership. Build/Automation/D3D12 acceptance remains USER ACTION REQUIRED; see
+Out-of-budget color targets leave the active `RenderTargets` array with their
+exact retiring recursion lifetime and are released only after that lifetime's
+existing RHI-thread-depth fence completes. Stop also releases active fallback
+color targets. Report schema v4 exposes active versus retiring color ownership.
+
+Validation is complete: the user confirmed the UE 5.8 Development Editor build,
+focused FullFidelity Automation, actual D3D12 fallback `4 -> 1 -> 4` capacity
+shrink/regrowth, offscreen no-shrink behavior, Stop zero ownership, and rapid
+`4 -> 1 -> 4` visual stability. **P1A-5 = COMPLETE / VALIDATED.** See
 [the P1A-5 validation record](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
-Do not mark P1A-5 validated from source inspection alone.
 
 Policy:
 
