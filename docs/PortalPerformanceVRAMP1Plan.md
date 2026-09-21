@@ -706,8 +706,14 @@ FullFidelity takes ownership after they started, and explicitly
 The production Controller already bypasses legacy `RenderViews()` and
 FullSceneViewSubsystem rendering while FullFidelity owns the path.
 
-Build/Automation/PIE resize and dual-path acceptance remain USER ACTION REQUIRED;
-see [the P1A-7 validation record](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
+Validation is complete: the final build runs the monotonic scratch-generation
+fix, focused FullFidelity Automation passes, stable ownership is exactly one
+scratch, live viewport resize advances generation `1 -> 2` and settles back to
+one owned scratch, Stop reaches zero scratch ownership, Restart recreates the
+accepted producer scratch, legacy TSR start is rejected during FullFidelity
+ownership, and reverse takeover makes the legacy TSR producer self-stop without
+breaking the accepted renderer. **P1A-7 = COMPLETE / VALIDATED.** See
+[the P1A-7 validation record](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
 
 Verify:
 
