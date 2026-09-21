@@ -76,8 +76,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 	TAutoConsoleVariable<float> CVarMinRecursionScreenCoverage(
 		TEXT("portal.MinRecursionScreenCoverage"),
-		0.0f,
-		TEXT("P1B parent-view coverage cutoff for L1+ recursion. 0 disables cutoff; candidate validation values: 0.001, 0.0025, 0.005."),
+		0.0025f,
+		TEXT("P1B parent-view coverage cutoff for L1+ recursion. Production default=0.0025 (0.25%); 0 disables cutoff."),
 		ECVF_Default);
 
 	TAutoConsoleVariable<float> CVarRecursionCoverageHysteresisFraction(
