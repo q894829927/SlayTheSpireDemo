@@ -93,11 +93,26 @@
   `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS.
 - **P1A-7 Shared Scratch Lifecycle Audit = COMPLETE / VALIDATED.** Authority:
   [P1A-7 validation](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
-- Current active step is now the **full P1A Gate** from
-  `docs/PortalPerformanceVRAMP1Plan.md §7`: aggregate lifecycle automation,
-  child-submission stale-publication contract, PIE visual matrix, capacity
-  invariants, and transition-performance acceptance. Do not begin P1B until this
-  aggregate gate closes.
+- The full P1A Gate audit found one remaining production gap: a parent could
+  previously attach an existing recursive child extension even when that child
+  failed `SubmitLayer()` in the current frame, allowing an older publication to
+  remain eligible for composition.
+- The aggregate fix is implemented in `4db81169f5ea` /
+  `1bd1ad1b943f` / `295721ba7243`: failed child submission truncates
+  EffectiveDepth, invalidates the failed layer's prior publication, and parent
+  composition now requires the child bit in the current-frame SubmittedLayerMask.
+  Report schema v7 exposes `consumableByParentThisFrame`.
+- New deterministic tests in `b911fa95b5e5` cover the submission-failure
+  contract and aggregate capacity invariants. The current FullFidelity prefix
+  contains 10 tests.
+- Full P1A is now **IMPLEMENTED / FINAL-HEAD VALIDATION REQUIRED**. Under the
+  repository evidence-reuse policy, do not rerun sealed 4->1->4/offscreen/
+  scratch/Insights matrices. Remaining work is only: final Development Editor
+  build, 10-test FullFidelity Automation PASS, and one RequestedDepth=2 healthy
+  recursion smoke confirming L1 is current-frame consumable and the nested visual
+  remains normal. Authority:
+  [full P1A Gate validation](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
+- Do not begin P1B until those final-head gates close.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
