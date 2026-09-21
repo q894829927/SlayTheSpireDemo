@@ -16,6 +16,9 @@ namespace InteriorPortalFullFidelityBackend
 	/** Start the accepted endpoint x recursion renderer for the active PIE/Game world. */
 	SLAYTHESPIREDEMO_API bool Start(UWorld* World);
 
+	/** True while the accepted endpoint x recursion backend owns rendering. */
+	SLAYTHESPIREDEMO_API bool IsRunning();
+
 	/** Stop the accepted renderer and release its endpoint x recursion resources. */
 	SLAYTHESPIREDEMO_API void Stop();
 
