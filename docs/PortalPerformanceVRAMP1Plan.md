@@ -729,6 +729,23 @@ Do not split scratch per recursion level.
 
 # 7. P1A Gate
 
+Implementation update, 2026-09-21: the aggregate audit found and closed the
+remaining §7.3 stale-child contract. Current-frame recursion now terminates at a
+failed child submission, and a parent may attach a child composition extension
+only when that child is present in the current-frame SubmittedLayerMask. Report
+schema v7 exposes `consumableByParentThisFrame`, so a lingering older
+`published=true` request is not confused with a current-frame-valid child.
+
+Focused deterministic coverage was added in
+`SlayTheSpireDemo.Interior.Portals.FullFidelity.P1AGate.SubmissionFailureContract`
+and `.P1AGate.CapacityInvariants`.
+
+Final-head acceptance is intentionally minimal under
+`docs/ValidationExecutionPolicy.md`: final Development Editor build, the
+10-test FullFidelity prefix, and one healthy RequestedDepth=2 recursion smoke.
+Already sealed P1A-4..7/crop/Insights evidence is reused rather than rerun. See
+[the full P1A Gate validation record](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
+
 ## 7.1 Build
 
 ```text
@@ -756,6 +773,22 @@ Stop -> Restart leaves no old resource ownership/publication alive
 Automation proves deterministic lifetime/ownership facts. It does not replace PIE visual acceptance.
 
 ## 7.3 Submission-failure diagnostic contract
+
+Implementation status: **IMPLEMENTED / FINAL-HEAD AUTOMATION PENDING**.
+
+Production rule:
+
+```text
+failed child SubmitLayer
+-> child is absent from current-frame SubmittedLayerMask
+-> EffectiveDepth truncates at the failed child level
+-> prior child publication is invalidated/retired in order
+-> shallower parent may continue as a recursion terminator
+-> parent may consume child only when that child submitted this frame
+```
+
+Report schema v7 exposes `consumableByParentThisFrame` separately from
+`published`.
 
 P1A-1 does not have to change existing `SubmitLayer()` failure behavior, but the report must expose it accurately.
 
