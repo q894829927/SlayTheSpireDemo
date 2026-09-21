@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Implementation commit: `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`  
-Status: **IMPLEMENTED / D3D12 CORE MATRIX PASS / BUILD + AUTOMATION + RAPID-REVERSAL CONFIRMATION PENDING**
+Status: **IMPLEMENTED / D3D12 + AUTOMATION + RAPID-REVERSAL PASS / FORMAL BUILD CONFIRMATION PENDING**
 
 ## Scope
 
@@ -146,18 +146,28 @@ endpoint retiringColorTargetCount = 0
 This establishes the core actual-D3D12 P1A-5 capacity behavior for settled
 `4 -> 1 -> 4`, offscreen invariance, and Stop teardown.
 
-The supplied dump sequence does **not** prove a deliberately rapid
-`4 -> 1 -> 4` reversal before the old retirement fence completes, because all
-captured states are already settled with `Retiring=0`. It also does not contain
-the formal UE 5.8 Development Editor build or focused FullFidelity Automation
-result. Those remain pending acceptance evidence.
+The user subsequently confirmed two remaining runtime gates:
+
+```text
+SlayTheSpireDemo.Interior.Portals.FullFidelity = PASS
+rapid 4 -> 1 -> 4 = visually normal
+```
+
+For the rapid reversal, the user reported no stale frame, persistent blank/black
+Portal, crash or assert. This closes the user-visible old/new color-target
+coexistence regression check.
+
+The only acceptance item not explicitly confirmed in this conversation is the
+formal UE 5.8 Development Editor build command. Do not infer that Gate from the
+Automation/PIE results alone in this record.
 
 ## Validation not performed by this change
 
 The GitHub implementation environment itself did not run local UE 5.8 build,
-Automation, D3D12 PIE, or GPU-memory capture. Actual D3D12 PIE evidence above is
-user-provided. Do not mark P1A-5 COMPLETE / VALIDATED until the remaining gates
-below are satisfied.
+Automation, D3D12 PIE, or GPU-memory capture. Actual D3D12 PIE, focused
+FullFidelity Automation, and rapid-reversal results above are user-provided.
+Do not mark P1A-5 COMPLETE / VALIDATED until the formal Development Editor build
+is explicitly confirmed.
 
 ## USER ACTION REQUIRED
 
@@ -177,9 +187,10 @@ Then:
 
 Expected: both commands finish successfully.
 
-### 2. Focused Automation regression
+### 2. Focused Automation regression — USER CONFIRMED PASS
 
-Run the existing focused FullFidelity tests, at minimum:
+The user confirmed this suite passed:
+
 
 ```text
 SlayTheSpireDemo.Interior.Portals.FullFidelity
@@ -237,7 +248,11 @@ colorTargetCount > 1
 The retiring records must subsequently disappear without
 `FlushRenderingCommands()` in the normal capacity-change path.
 
-### 4. Regrowth and rapid reversal
+### 4. Regrowth and rapid reversal — USER CONFIRMED PASS
+
+The settled regrowth dump passed and the user additionally confirmed a deliberate
+rapid `4 -> 1 -> 4` reversal completed normally, with no stale/blank/crash
+regression.
 
 Exercise:
 
@@ -290,10 +305,10 @@ without stale publications.
 P1A-5 may be marked **COMPLETE / VALIDATED** only after:
 
 - Development Editor build PASS;
-- focused FullFidelity Automation regression PASS;
+- focused FullFidelity Automation regression PASS (**user confirmed**);
 - actual D3D12 fallback `4 -> 1 -> 4` target counts behave as above;
 - offscreen visibility does not shrink capacity;
-- rapid reversal has no stale/blank/crash regression;
+- rapid reversal has no stale/blank/crash regression (**user confirmed**);
 - Stop/Restart leaves no old FullFidelity color-target ownership.
 
 P1A-5 does not require solving the pre-existing traversal hitch or the sustained
