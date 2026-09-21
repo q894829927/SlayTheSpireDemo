@@ -39,6 +39,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 {
 	constexpr int32 EndpointCount = 2;
 	constexpr int32 MaxRecursionDepth = 4;
+	// A viewport resize may leave the immediately previous shared scratch in
+	// flight. Keep at most one retired generation; further resize churn skips
+	// portal submission until that fence completes instead of flushing.
+	constexpr int32 MaxRetiringScratchTargets = 1;
 
 	// Depth has not passed through TSR. Read the actual primary-view rectangle
 	// from its view uniform rather than deriving it from pooled texture extents.
@@ -330,6 +334,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		// Both the publisher of this layer and the consumer bound to its ViewState.
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> Publisher;
 		TSharedPtr<FRecursiveCompositionExtension, ESPMode::ThreadSafe> ChildConsumer;
+		FRenderCommandFence Fence;
+	};
+
+	struct FRetiringScratchTarget
+	{
+		UTextureRenderTarget2D* Target = nullptr;
+		FIntPoint Size = FIntPoint::ZeroValue;
+		uint64 Generation = 0;
 		FRenderCommandFence Fence;
 	};
 
@@ -689,6 +701,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 
 			FlushRenderingCommands();
+			PollRetiringScratchTargets(true);
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
@@ -732,10 +745,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			WriteReport();
 			const int32 PublishedMask = BuildPublishedMask();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalMultiVisible PingPong=%d Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d"),
+				TEXT("PortalMultiVisible PingPong=%d Requested=%d VisibleEndpointMask=0x%02x SubmittedEndpointMask=0x%02x PublishedEndpointMask=0x%02x Scratch=%dx%d ScratchGeneration=%llu RetiringScratch=%d OwnedScratch=%d ScratchResizeDeferred=%llu"),
 				bPingPongEnabled ? 1 : 0,
 				LastRequestedRecursionDepth, LastVisibleMask, LastSubmittedMask, PublishedMask,
-				FinalScratchSize.X, FinalScratchSize.Y);
+				FinalScratchSize.X, FinalScratchSize.Y,
+				FinalScratchGeneration,
+				RetiringScratchTargets.Num(),
+				(IsValid(FinalScratch) ? 1 : 0) + RetiringScratchTargets.Num(),
+				ScratchReplacementDeferredCount);
 
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
@@ -1319,6 +1336,55 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 		}
 
+		UTextureRenderTarget2D* CreateFinalScratchTarget(const FIntPoint TargetSize)
+		{
+			UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(
+				GetTransientPackage(), NAME_None, RF_Transient);
+			if (!Target)
+			{
+				return nullptr;
+			}
+			Target->AddToRoot();
+			Target->RenderTargetFormat = RTF_RGBA16f;
+			Target->ClearColor = FLinearColor::Black;
+			Target->bAutoGenerateMips = false;
+			Target->InitCustomFormat(TargetSize.X, TargetSize.Y, PF_FloatRGBA, true);
+			Target->UpdateResourceImmediate(true);
+			if (!Target->GameThread_GetRenderTargetResource())
+			{
+				Target->ReleaseResource();
+				Target->RemoveFromRoot();
+				return nullptr;
+			}
+			return Target;
+		}
+
+		void ReleaseScratchTarget(UTextureRenderTarget2D*& Target)
+		{
+			if (!Target)
+			{
+				return;
+			}
+			Target->ReleaseResource();
+			Target->RemoveFromRoot();
+			Target = nullptr;
+		}
+
+		void PollRetiringScratchTargets(const bool bSynchronousStop = false)
+		{
+			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_PollRetiringScratch);
+			for (int32 Index = RetiringScratchTargets.Num() - 1; Index >= 0; --Index)
+			{
+				FRetiringScratchTarget& Retiring = *RetiringScratchTargets[Index];
+				if (!bSynchronousStop && !Retiring.Fence.IsFenceComplete())
+				{
+					continue;
+				}
+				ReleaseScratchTarget(Retiring.Target);
+				RetiringScratchTargets.RemoveAt(Index);
+			}
+		}
+
 		bool EnsureFinalScratch(UWorld* World, const FIntPoint TargetSize)
 		{
 			TRACE_CPUPROFILER_EVENT_SCOPE(Portal_EnsureFinalScratch);
@@ -1326,38 +1392,48 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			{
 				return false;
 			}
+
+			PollRetiringScratchTargets();
 			if (FinalScratch && FinalScratchSize == TargetSize)
 			{
 				return true;
 			}
-			if (FinalScratch)
+
+			if (FinalScratch && RetiringScratchTargets.Num() >= MaxRetiringScratchTargets)
 			{
-				FlushRenderingCommands();
-				ReleaseFinalScratch();
+				// Continuous editor-window resize must not turn into an unbounded chain
+				// of full-size scratch generations or repeated render-thread flushes.
+				++ScratchReplacementDeferredCount;
+				return false;
 			}
-			FinalScratch = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
-			if (!FinalScratch)
+
+			UTextureRenderTarget2D* Replacement = CreateFinalScratchTarget(TargetSize);
+			if (!Replacement)
 			{
 				return false;
 			}
-			FinalScratch->AddToRoot();
-			FinalScratch->RenderTargetFormat = RTF_RGBA16f;
-			FinalScratch->ClearColor = FLinearColor::Black;
-			FinalScratch->bAutoGenerateMips = false;
-			FinalScratch->InitCustomFormat(TargetSize.X, TargetSize.Y, PF_FloatRGBA, true);
-			FinalScratch->UpdateResourceImmediate(true);
+
+			if (FinalScratch)
+			{
+				auto Retiring = MakeUnique<FRetiringScratchTarget>();
+				Retiring->Target = FinalScratch;
+				Retiring->Size = FinalScratchSize;
+				Retiring->Generation = FinalScratchGeneration;
+				Retiring->Fence.BeginFence(FRenderCommandFence::ESyncDepth::RHIThread);
+				RetiringScratchTargets.Add(MoveTemp(Retiring));
+			}
+
+			FinalScratch = Replacement;
 			FinalScratchSize = TargetSize;
-			return FinalScratch->GameThread_GetRenderTargetResource() != nullptr;
+			FinalScratchGeneration = NextScratchGeneration++;
+			return true;
 		}
 
 		void ReleaseFinalScratch()
 		{
-			if (FinalScratch)
-			{
-				FinalScratch->RemoveFromRoot();
-				FinalScratch = nullptr;
-			}
+			ReleaseScratchTarget(FinalScratch);
 			FinalScratchSize = FIntPoint::ZeroValue;
+			FinalScratchGeneration = 0;
 		}
 
 		UTextureRenderTarget2D* CreatePingPongTarget(
@@ -2018,6 +2094,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			int32 TotalColorTargets = 0;
 			int32 TotalDepthTargets = 0;
 			uint64 TotalExplicitTargetBytes = EstimateTargetBytes(FinalScratch);
+			for (const auto& RetiringScratch : RetiringScratchTargets)
+			{
+				TotalExplicitTargetBytes += EstimateTargetBytes(RetiringScratch->Target);
+			}
 
 			FString EndpointJson;
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
@@ -2200,23 +2280,41 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 
 			const bool bScratchAllocated = IsValid(FinalScratch);
+			FString RetiringScratchJson;
+			for (int32 Index = 0; Index < RetiringScratchTargets.Num(); ++Index)
+			{
+				const FRetiringScratchTarget& Retiring = *RetiringScratchTargets[Index];
+				const bool bAllocated = IsValid(Retiring.Target);
+				RetiringScratchJson += FString::Printf(
+					TEXT("{\"generation\":%llu,\"fenceComplete\":%s,\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu}%s"),
+					Retiring.Generation,
+					Retiring.Fence.IsFenceComplete() ? TEXT("true") : TEXT("false"),
+					bAllocated ? TEXT("true") : TEXT("false"),
+					bAllocated ? Retiring.Size.X : 0,
+					bAllocated ? Retiring.Size.Y : 0,
+					bAllocated ? static_cast<int32>(Retiring.Target->RenderTargetFormat.GetValue()) : -1,
+					EstimateTargetBytes(Retiring.Target),
+					Index + 1 < RetiringScratchTargets.Num() ? TEXT(",") : TEXT(""));
+			}
+			const int32 ActiveScratchCount = bScratchAllocated ? 1 : 0;
+			const int32 RetiringScratchCount = RetiringScratchTargets.Num();
 			const FString Json = FString::Printf(
 				TEXT("{\n")
-				TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v5\",\n")
-				TEXT("  \"status\":\"%s\",\n")
-				TEXT("  \"diagnosticScope\":\"Two-buffer-per-endpoint FullFidelity recursion outputs with projected secondary ViewRect/cropped projection; per-level ViewState/TSR/Lumen remain unchanged\",\n")
-				TEXT("  \"pingPongEnabled\":%s,\n")
-				TEXT("  \"requestedDepth\":%d,\n")
-				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
-				TEXT("  \"visibleEndpointCount\":%d,\n")
-				TEXT("  \"visibleEndpointMask\":%d,\n")
-				TEXT("  \"submittedEndpointMask\":%d,\n")
-				TEXT("  \"publishedEndpointMask\":%d,\n")
-				TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
-				TEXT("  \"sharedScratch\":{\"allocated\":%s,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu},\n")
-				TEXT("  \"endpoints\":[\n%s  ],\n")
-				TEXT("  \"claimBoundary\":\"Legacy per-level color and secondary depth targets above RequestedDepth retire with the exact recursion lifetime and RHI-thread fence that last used them; depth creation remains lazy on submission, and short invisibility/lower EffectiveDepth do not shrink configured capacity. Ping-pong endpoint targets remain shared. Shared-scratch audit remains a separate gate, and logical release does not prove immediate global GPU allocator residency return.\"\n")
-				TEXT("}\n"),
+					TEXT("  \"schema\":\"PortalFullFidelityPingPongViewport.Prototype.v6\",\n")
+					TEXT("  \"status\":\"%s\",\n")
+					TEXT("  \"diagnosticScope\":\"FullFidelity endpoint/recursion ownership plus bounded shared-final-scratch retirement; per-level ViewState/TSR/Lumen remain unchanged\",\n")
+					TEXT("  \"pingPongEnabled\":%s,\n")
+					TEXT("  \"requestedDepth\":%d,\n")
+					TEXT("  \"primaryResolutionFraction\":%.6f,\n")
+					TEXT("  \"visibleEndpointCount\":%d,\n")
+					TEXT("  \"visibleEndpointMask\":%d,\n")
+					TEXT("  \"submittedEndpointMask\":%d,\n")
+					TEXT("  \"publishedEndpointMask\":%d,\n")
+					TEXT("  \"totals\":{\"viewStates\":%d,\"colorTargets\":%d,\"depthTargets\":%d,\"explicitTargetEstimatedBytes\":%llu},\n")
+					TEXT("  \"sharedScratch\":{\"allocated\":%s,\"generation\":%llu,\"width\":%d,\"height\":%d,\"renderTargetFormat\":%d,\"estimatedBytes\":%llu,\"activeCount\":%d,\"retiringCount\":%d,\"ownedCount\":%d,\"maxRetiringCount\":%d,\"replacementDeferredCount\":%llu,\"retiring\":[%s]},\n")
+					TEXT("  \"endpoints\":[\n%s  ],\n")
+					TEXT("  \"claimBoundary\":\"Per-level color/depth retirement remains queue-safe. The producer owns one steady-state shared final scratch; viewport-size replacement retires at most one prior generation behind an RHI-thread-depth fence instead of calling FlushRenderingCommands in the normal resize path. Stop remains the synchronous teardown boundary. Logical ownership does not prove immediate global GPU allocator residency return.\"\n")
+					TEXT("}\n"),
 				*Status.ReplaceCharWithEscapedChar(),
 				bPingPongEnabled ? TEXT("true") : TEXT("false"),
 				LastRequestedRecursionDepth,
@@ -2224,10 +2322,17 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				CountBits(LastVisibleMask), LastVisibleMask, LastSubmittedMask, PublishedMask,
 				TotalViewStates, TotalColorTargets, TotalDepthTargets, TotalExplicitTargetBytes,
 				bScratchAllocated ? TEXT("true") : TEXT("false"),
+				FinalScratchGeneration,
 				bScratchAllocated ? FinalScratchSize.X : 0,
 				bScratchAllocated ? FinalScratchSize.Y : 0,
 				bScratchAllocated ? static_cast<int32>(FinalScratch->RenderTargetFormat.GetValue()) : -1,
 				EstimateTargetBytes(FinalScratch),
+				ActiveScratchCount,
+				RetiringScratchCount,
+				ActiveScratchCount + RetiringScratchCount,
+				MaxRetiringScratchTargets,
+				ScratchReplacementDeferredCount,
+				*RetiringScratchJson,
 				*EndpointJson);
 
 			const FString ReportPath = FPaths::Combine(
@@ -2248,6 +2353,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		TUniquePtr<FEndpointState> Endpoints[EndpointCount];
 		UTextureRenderTarget2D* FinalScratch = nullptr;
 		FIntPoint FinalScratchSize = FIntPoint::ZeroValue;
+		uint64 FinalScratchGeneration = 0;
+		uint64 NextScratchGeneration = 1;
+		TArray<TUniquePtr<FRetiringScratchTarget>> RetiringScratchTargets;
+		uint64 ScratchReplacementDeferredCount = 0;
 		uint64 ProducerTicks = 0;
 		int32 LastVisibleMask = 0;
 		int32 LastSubmittedMask = 0;
