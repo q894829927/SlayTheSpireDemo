@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / FUNCTIONAL MECHANISM GATE PASS / BUILD + AUTOMATION + MEASUREMENT PENDING**
+Status: **IMPLEMENTED / FUNCTIONAL MECHANISM + AUTOMATION PASS / BUILD + MEASUREMENT PENDING**
 
 ## Goal
 
@@ -190,9 +190,13 @@ Expected:
 SlayTheSpireDemoEditor Win64 Development = PASS
 ```
 
-### 2. Focused Automation
+### 2. Focused Automation — USER CONFIRMED PASS
 
-Run:
+The user confirmed the current FullFidelity focused Automation prefix passes on
+the P1B implementation. The current prefix contains 11 tests, including
+`SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`.
+
+Command used/prescribed:
 
 ```powershell
 & "E:\Unreal engine\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe" `
@@ -202,7 +206,7 @@ Run:
   -log
 ```
 
-The prefix now contains **11 tests**. Expected: 11/11 PASS.
+Recorded result: **PASS** for the current 11-test FullFidelity prefix.
 
 ### 3. Threshold-zero compatibility — USER CONFIRMED PASS
 
