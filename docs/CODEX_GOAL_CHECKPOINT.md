@@ -86,12 +86,18 @@
   `126582bfc9f4e6984f4bfd1cad711b83ff3ea88d` removes the redundant next-
   generation counter and makes the active scratch generation monotonic from the
   prior active generation.
-- P1A-7 remains **IMPLEMENTED / FINAL RETEST REQUIRED**. Rebuild the generation
-  fix, rerun focused FullFidelity Automation, and perform one live viewport
-  resize confirming `ScratchGeneration 1 -> 2` (or later) while
-  `OwnedScratch` settles back to 1. Authority:
+- Final P1A-7 retest passes: within the same producer, scratch size changed
+  `1662x524 -> 1920x688`, `ScratchGeneration 1 -> 2`, retained endpoint L0
+  lifetimes stayed `1/2`, and ownership settled at
+  `RetiringScratch=0 / OwnedScratch=1`. The user also confirmed focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS.
+- **P1A-7 Shared Scratch Lifecycle Audit = COMPLETE / VALIDATED.** Authority:
   [P1A-7 validation](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
-- Do not begin P1B yet. After P1A-7 validates, run the full P1A gate first.
+- Current active step is now the **full P1A Gate** from
+  `docs/PortalPerformanceVRAMP1Plan.md §7`: aggregate lifecycle automation,
+  child-submission stale-publication contract, PIE visual matrix, capacity
+  invariants, and transition-performance acceptance. Do not begin P1B until this
+  aggregate gate closes.
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
