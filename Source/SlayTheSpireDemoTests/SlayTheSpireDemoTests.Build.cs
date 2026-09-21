@@ -15,7 +15,10 @@ public class SlayTheSpireDemoTests : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"RenderCore",
+			"RHI",
 			"UMG",
+			"UnrealEd",
 			"SlayTheSpireDemo"
 		});
 

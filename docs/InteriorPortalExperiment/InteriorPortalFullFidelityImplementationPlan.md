@@ -11,6 +11,28 @@ VISUAL + PHYSICS HARDENING REQUIRED /
 NOT YET FULL-FIDELITY ACCEPTED
 ```
 
+### Current execution snapshot — 2026-09-13
+
+| Area | State | Remaining gate |
+|---|---|---|
+| P0 baseline / logical-vs-visual frame | Implemented baseline | Complete the full reproducible view matrix |
+| P1 clipping / native clip candidate | Implemented candidate | Near, grazing, recursion and replacement acceptance |
+| P2 exposure / temporal / render targets | **Open and blocking** | Direct-vs-portal exposure parity, temporal policy and RT memory profile |
+| P3 player camera and crossing | Implemented candidate | Manual arbitrary-orientation and active-input matrix |
+| P4 aperture collision | Player path implemented | High-speed Chaos traveller gate and diagonal escape matrix |
+| P5 traveller registry / shape fit | Implemented candidate | Broader sphere/capsule/box/unsupported-category acceptance |
+| P6 rigid body / held object | Baseline transfer implemented | CCD/high-speed, angular and held-object acceptance |
+| P7 partial-crossing visuals / flashlight | Implementation candidate | Manual near-plane, held-item and illumination matrix |
+| P10 portal-aware queries | Line/sphere path implemented | Segmented diagnostics and exploration projectile/beam coverage |
+| P11 lifecycle / P12 performance | Partial baseline | Reset/destruction matrix, recursion cost, temporal history and VRAM profile |
+| P8/P9 dual-space physics / constraints | Deferred | P8A contact spike, then finite-mass bridge and constraint policy |
+
+This means the project is roughly at the **implementation-baseline stage** for
+the Core loop, but the Core Seal is still several acceptance gates away. The
+Full Physics Seal is substantially farther away because P8/P9 have not started.
+Do not convert the number of passing unit tests into a fidelity percentage:
+visual, Chaos-contact and performance rows require their own evidence.
+
 Related contracts and current references:
 
 - `AGENTS.md`
@@ -305,7 +327,19 @@ Current initialization creates a no-collision proxy StaticMesh for configured ph
 
 `M_PortalTestCube` already exposes slice origin/normal/enabled material parameters so the source and remote visual representations can be clipped against the portal plane.
 
-This currently provides **visual continuity only**. The remote proxy has `NoCollision`, so destination-side physical contact during partial crossing is not yet represented.
+The local player now has the same presentation path for explicitly tagged
+first-person meshes. `UInteriorPortalPresentation` binds original material
+slots to five generated slice variants, updates source/remote slice planes from
+the logical frame and creates no-collision mapped copies only while a mesh
+intersects the aperture. The attached flashlight also has a mapped remote
+spotlight with an aperture light-function mask and reversible lighting-channel
+reservation. Runtime state evidence is recorded in
+`Saved/PortalPlayerPresentationRuntime.json`.
+
+These player/rigid-body proxies provide **visual continuity only**. The remote
+proxies have `NoCollision`, so destination-side physical contact during partial
+crossing is not yet represented. Manual near-plane, grazing-angle, held-item and
+exposure acceptance remains open.
 
 ### 3.8 Recursive rendering — IMPLEMENTED BASELINE
 
@@ -330,6 +364,11 @@ Focused C++ Automation currently covers:
 - basic endpoint lifecycle and placement guard behavior.
 
 Setup/validation Python scripts exist for authoring the test pair, materials, demo surface and physics cube in the interior map.
+
+The presentation setup and runtime scripts are
+`tools/setup_portal_player_presentation.py` and
+`tools/validate_portal_player_presentation.py`; they preserve the original
+interior materials and restore temporary PIE state after the check.
 
 ---
 
@@ -651,6 +690,16 @@ Acceptance:
 - temporal policy is documented and passes moving-view comparison;
 - peak portal RenderTarget memory at supported recursion/resolution is measured and recorded.
 
+Execution update, 2026-09-13: the live PIE capture path reports finite positive
+capture pre-exposure for both endpoints (`Saved/PortalExposureNormalizationRuntime.json`).
+The production capture source is now `SCS_FinalColorHDR`, using the player's
+post-process exposure contract before the HDR RenderTarget is sampled. The
+portal material normalizes each sampled target with the measured capture
+PreExposure; the player's `EyeAdaptationInverse` is no longer applied to a
+different view domain. This removes the observed SceneColor black-crush path,
+but does not close P2: direct-vs-portal parity, temporal behavior and the full
+visual matrix remain open.
+
 #### P2 SceneCapture capability escalation gate
 
 If SceneCapture2D cannot meet the required visual contract after P1/P2 because of a demonstrated engine-path limitation—for example irreconcilable temporal history, Lumen/reflection behavior, translucency ordering or motion-vector mismatch—stop adding material/projection workarounds and record the exact failed acceptance cells.
@@ -672,6 +721,8 @@ Option B is a new architecture authorization, not an incidental P2 refactor.
 ### P3 — Camera crossing, quaternion input and player traversal hardening
 
 **Goal:** remove all discontinuity around the instant the eye/capsule crosses the portal plane.
+
+Execution update, 2026-09-13: the [player traversal delivery](InteriorPortalPlayerTraversal.md) implements explicit states, quaternion camera/input ownership and per-submove transfer before floor queries. Its evidence does not seal every orientation/visual cell below. Follow the observed-issues priority order for subsequent work.
 
 Required crossing state:
 
@@ -736,6 +787,8 @@ Acceptance scenarios:
 ### P4 — Aperture-local collision passage instead of broad wall ignore
 
 **Goal:** allow traversal through the portal hole while preventing escape through the rest of the support surface.
+
+Execution update, 2026-09-13: the player capsule now uses a continuous conservative aperture interval at the CharacterMovement submove boundary; [scope and evidence](InteriorPortalPlayerTraversal.md). The high-speed Chaos rigid-body half of P4 remains open. Do not label the whole P4 stage complete from player-only evidence.
 
 Current behavior temporarily ignores the whole support primitive when the character/body is close enough and fits the aperture. This is safe as a prototype but not full-fidelity collision.
 
@@ -817,6 +870,12 @@ Acceptance:
 
 ### P6 — Physics crossing hardening
 
+Detailed P5/P6/P10 ownership, bounded holding drives, simulation timing,
+recovery, migration and acceptance contracts are defined in
+[Portal rigid-body interaction contract](InteriorPortalRigidBodyInteractionDesign.md).
+That refinement is design-only as of 2026-09-20; it does not advance P8/P9 or
+claim that continuous holding already conforms.
+
 **Goal:** make ordinary complete rigid-body transfer stable for all supported velocities/orientations before adding two-world contact bridging.
 
 Requirements:
@@ -879,6 +938,14 @@ Character/weapon presentation:
 
 - first-person weapon/hand meshes must not visibly intersect the portal plane incorrectly;
 - if a visible character body is present, apply the same split/proxy principle or explicitly hide body regions that would otherwise reveal the teleport.
+
+Execution update, 2026-09-13: `UInteriorPortalPresentation` now applies this
+split/proxy principle to the authored player meshes tagged
+`PortalTravellerVisual`, with five map-bound slice material variants. The
+handheld flashlight also has a mapped remote spotlight and aperture light
+function. Runtime state evidence is recorded in
+`Saved/PortalPlayerPresentationRuntime.json`; the manual visual acceptance
+matrix and held-item coverage remain open.
 
 Acceptance:
 
@@ -1115,6 +1182,20 @@ Requirements:
 - return a segmented debug path for diagnostics;
 - preserve total remaining distance across hops;
 - support sweep radius/shape where Physics Handle targeting needs volume rather than a ray.
+
+Execution update, 2026-09-13: `InteriorPortalQuery::LineTrace` and
+`InteriorPortalQuery::SphereSweep` implement the bounded line/sphere path and
+support-wall aperture arbitration. Initial Physics Handle object selection, light-switch
+focus and entrance-door interaction now reuse the line path, and
+`SlayTheSpireDemo.Interior.Portals.PortalAwareQuery` covers destination hits,
+sweeps, outside-aperture blocking and nearer unrelated obstacles. A segmented
+debug-path return and the complete exploration weapon/projectile matrix remain
+future P10 work.
+
+Clarification, 2026-09-20: initial selection is not continuous holding. The
+current per-frame hold target still uses a separate fixed-radius sweep and
+support-ignore decision. Its migration to shared shape-aware passage/query
+rules remains P6/P10 work under the rigid-body interaction contract above.
 
 Adopt it for:
 

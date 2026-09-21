@@ -1,20 +1,385 @@
-# Codex Goal Checkpoint — Interior Portals (interrupted)
+# Codex Goal Checkpoint — Interior Portals
 
-## Current resumable task — Interior portals, 2026-09-12
+## Current Portal Performance P1A checkpoint — 2026-09-21
 
-HEAD: `18d4686d9113aacd9fb655426e3b7a7bfcfcd830`.
+- P1A-4 implementation is committed in `787e507425131f03114794ea1ab3d91b5fdb1cc1`.
+  Focused Unreal Insights instrumentation is committed in
+  `5b6ad649d3e3d8977a79596132168d5067bdd0b2`.
+- Queue-safe ViewState retirement on RequestedDepth reduction remains implemented
+  for visible/offscreen/unlinked/viewport-unavailable paths, with detached
+  dependent extensions, RHI-thread fence polling, bounded old/new coexistence,
+  and synchronous Stop teardown only.
+- UE 5.8 project generation and Development Editor build previously PASS.
+  Focused CPU Automation remains 10/10 PASS. Actual D3D12 ownership evidence
+  still verifies 8 -> 2 owned ViewStates, stable L0, distinct rebuilt IDs,
+  rapid-reversal coexistence and zero Stop ownership.
+- New user-captured Unreal Insights evidence closes the earlier attribution
+  question around the approximately one-second rapid-expansion wall interval.
+  On the actual Depth 1 -> 4 expansion frame, six rebuilt ViewStates cost 21 us
+  total, six recursive extensions cost 25.9 us total, the complete
+  `Portal_SubmitVisibleEndpoints` scope cost 591.4 us, `Portal_UpdateCapacity`
+  cost 800 ns, and `Portal_PollRetirements` cost 100 ns.
+- Stable rendering samples from the same manual session were approximately
+  31.34 ms at RequestedDepth=1 and 145.78 ms at RequestedDepth=4 (~4.65x).
+  Additional sustained depth-four samples were roughly 215-262 ms. The traces
+  are dominated by repeated full scene rendering work rather than P1A-4 CPU
+  lifetime management. Carry this forward as a P1B recursion-rendering
+  performance baseline; do not reopen P1A-4 retirement merely to chase the
+  steady-state Depth=4 GPU cost.
+- P1A-4 transition-performance attribution for the CPU lifetime-management path
+  is CLOSED. The user has now also confirmed the lifecycle-transition visuals
+  are normal during 4 -> 1 -> 4, with no stale flash, prolonged blank aperture,
+  recursion corruption or foreground-occlusion regression.
+- The user clarified that the brief hitch while physically traversing a Portal
+  is a pre-existing persistent issue that predates P1A-4. Treat it as a separate,
+  currently unattributed traversal/performance issue rather than a reclaim
+  regression; do not count it as a P1A-4 failure without focused evidence tying
+  it to the lifetime path.
+- **P1A-4 queue-safe runtime reclaim = COMPLETE / VALIDATED for its defined
+  scope.**
+- P1A-5 fallback/legacy Color Target Capacity Shrink is now implemented in
+  `6404baf08f0fcfce0a3dd21ed1aa5fb94da541dd`. L1-L3 color targets above a
+  reduced RequestedDepth retire with the same `FRetiringLayer` and RHI-thread
+  fence that owns the old ViewState/publication; report schema v4 exposes active
+  and retiring color counts, and Stop releases active fallback color targets.
+- The user confirmed the UE 5.8 Development Editor build PASS,
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS, and a
+  deliberate rapid `4 -> 1 -> 4` reversal with no stale/blank/crash regression.
+  Together with the D3D12 settled shrink/regrowth, offscreen invariance, and Stop
+  teardown evidence, **P1A-5 Color Target Capacity Shrink = COMPLETE / VALIDATED**.
+  Authority:
+  [P1A-5 validation](InteriorPortalExperiment/InteriorPortalColorTargetCapacityValidation.md).
+- P1A-6 Depth Target Capacity Reclaim is implemented in
+  `583181eb35786548ccc3604d0d72278dc0e170db`. The existing P1A-4 retirement
+  fence remains the sole lifetime mechanism; P1A-6 now explicitly
+  `ReleaseResource()`s the old per-level SecondaryDepthTarget after that fence
+  and report schema v5 exposes active/retiring depth ownership.
+- P1A-6 actual fallback D3D12 core matrix now passes using the safer
+  `2 -> 1 -> 2` validation depth: both endpoints settle `2 -> 1 -> 2` active
+  depth ownership correctly, retained L0 identities stay stable, rebuilt L1 gets
+  fresh identities, and Stop reports zero depth-target ownership. The reduced
+  validation depth is deliberate because fallback Depth=4 produced roughly
+  1 GB additional VRAM pressure while exercising the same per-level reclaim path.
+- Prior offscreen-retention evidence remains valid because P1A-6 did not modify
+  the visibility/capacity trigger. The user has now also confirmed a fresh
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS after the
+  P1A-6 code change and a deliberate rapid `2 -> 1 -> 2` reversal with no
+  stale/blank/crash regression.
+- **P1A-6 Depth Target Capacity Reclaim = COMPLETE / VALIDATED.** Authority:
+  [P1A-6 validation](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
+- P1A-7 Shared Scratch Lifecycle Audit is implemented. The accepted producer
+  now uses one active shared FinalScratch plus at most one queue-safe retiring
+  generation on viewport resize, with no normal resize-path
+  `FlushRenderingCommands()`; report schema v6 exposes scratch generation,
+  active/retiring/owned counts and resize deferrals.
+- Historical persistent scratch producers are now guarded by
+  `InteriorPortalFullFidelityBackend::IsRunning()`: they refuse to start while
+  accepted FullFidelity owns rendering, self-stop if ownership changes, and
+  explicitly release their scratch resource during teardown.
+- P1A-7 manual D3D12 evidence now confirms stable one-scratch ownership,
+  settled viewport-resize ownership returning to one, STOPPED zero ownership,
+  legacy TSR start rejection while FullFidelity owns rendering, and reverse
+  takeover causing the legacy TSR producer to self-stop while FullFidelity stays
+  visually normal.
+- The first live-resize capture exposed a diagnostics defect: scratch dimensions
+  changed within the same producer but `ScratchGeneration` remained 1.
+  `126582bfc9f4e6984f4bfd1cad711b83ff3ea88d` removes the redundant next-
+  generation counter and makes the active scratch generation monotonic from the
+  prior active generation.
+- Final P1A-7 retest passes: within the same producer, scratch size changed
+  `1662x524 -> 1920x688`, `ScratchGeneration 1 -> 2`, retained endpoint L0
+  lifetimes stayed `1/2`, and ownership settled at
+  `RetiringScratch=0 / OwnedScratch=1`. The user also confirmed focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS.
+- **P1A-7 Shared Scratch Lifecycle Audit = COMPLETE / VALIDATED.** Authority:
+  [P1A-7 validation](InteriorPortalExperiment/InteriorPortalSharedScratchLifecycleValidation.md).
+- The full P1A Gate audit found one remaining production gap: a parent could
+  previously attach an existing recursive child extension even when that child
+  failed `SubmitLayer()` in the current frame, allowing an older publication to
+  remain eligible for composition.
+- The aggregate fix is implemented in `4db81169f5ea` /
+  `1bd1ad1b943f` / `295721ba7243`: failed child submission truncates
+  EffectiveDepth, invalidates the failed layer's prior publication, and parent
+  composition now requires the child bit in the current-frame SubmittedLayerMask.
+  Report schema v7 exposes `consumableByParentThisFrame`.
+- New deterministic tests in `b911fa95b5e5` cover the submission-failure
+  contract and aggregate capacity invariants. The current FullFidelity prefix
+  contains 10 tests.
+- Final-head RequestedDepth=2 recursion smoke now PASS on schema v7:
+  both endpoints report VisibleDepth=2 / EffectiveDepth=2 / Attempted=0x03 /
+  Submitted=0x03 / SubmissionCount=2 / Published=0x03, both L1 children are
+  submitted this frame, consumable by the parent this frame, and have
+  submissionFailureReason=NONE. The user also confirmed normal two-level visuals
+  with no persistent black/stale/spiral regression, crash or assert.
+- Final-head Development Editor build is user-confirmed PASS.
+- Final-head `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation is
+  user-confirmed **10/10 PASS**.
+- Together with the already-passing schema-v7 RequestedDepth=2 recursion smoke,
+  **FULL P1A = COMPLETE / VALIDATED / SEALED**. Authority:
+  [full P1A Gate validation](InteriorPortalExperiment/InteriorPortalP1AGateValidation.md).
+- Current active stage: **P1B — Recursion Screen-Coverage Cutoff**.
+  Implementation is now present: `portal.MinRecursionScreenCoverage` defaults
+  to 0; L0 is always retained; L1+ uses conservative recursive-parent coverage
+  with 10% relative hysteresis; the first rejected child lowers workload
+  EffectiveDepth without lowering RequestedDepth or reclaiming in-budget
+  persistent ownership.
+- Report schema v8 exposes global threshold/hysteresis, endpoint
+  coverageSelectedDepth/cutoff reason, and per-level parent-view coverage and
+  decision thresholds. New
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity.P1B.CoveragePolicy`
+  Automation covers disabled-policy parity, L0 survival, conservative area math
+  and hysteresis.
+- P1B threshold-zero compatibility is now user-confirmed PASS in fallback
+  RequestedDepth=2: both endpoints remain VisibleDepth=2 / EffectiveDepth=2 /
+  Submitted=0x03 / SubmissionCount=2 / Cutoff=NONE. Observed L1 parent-view
+  coverage is 0.007987 on endpoint 0 and 0.008814 on endpoint 1, with
+  CoverageAccepted=1 and CoverageThreshold=0.
+- P1B forced same-session L1 cutoff is now user-confirmed PASS with
+  `portal.MinRecursionScreenCoverage=0.02`: both endpoints stay
+  VisibleDepth=2 but fall to EffectiveDepth=1 / Attempted=0x01 /
+  Submitted=0x01 / SubmissionCount=1 / Published=0x01 /
+  Cutoff=SCREEN_COVERAGE at level 1. L1 remains ACTIVE with original lifetimes
+  2/4 and both endpoints retain two active/owned color and depth targets, so the
+  EffectiveDepth-only workload reduction does not trigger capacity retirement.
+  Settled L1 CoverageThreshold=0.022 is the expected +10% re-entry boundary after
+  exclusion.
+- Same-session cutoff recovery is now user-confirmed PASS after restoring
+  `portal.MinRecursionScreenCoverage=0`: both endpoints return to
+  VisibleDepth=2 / EffectiveDepth=2 / Attempted=0x03 / Submitted=0x03 /
+  SubmissionCount=2 / Published=0x03 / Cutoff=NONE while L1 keeps the exact same
+  lifetimes `2 / 4` and both endpoints continue owning two active color/depth
+  targets. This closes the functional mechanism gate: workload reduction and
+  recovery are independent from persistent-capacity lifetime.
+- P1B FullFidelity focused Automation is now user-confirmed PASS on the current
+  11-test prefix, including `P1B.CoveragePolicy`.
+- Current P1B Development Editor build is user-confirmed PASS; the same current
+  code is running in PIE with schema-v8 diagnostics, and the 11-test
+  FullFidelity Automation prefix is also PASS.
+- P1B candidate submission screening M2 is user-confirmed PASS at one fixed
+  small/distant nested-portal camera. E1L1 ParentCoverage=0.001617:
+  threshold 0 and 0.001 retain EffectiveDepth=2 / SubmissionCount=2, while
+  0.0025 and 0.005 both cut Endpoint 1 to EffectiveDepth=1 /
+  SubmissionCount=1. Endpoint 0 remains unchanged at depth/submission count 2.
+- The selected **0 vs 0.0025** fixed-camera GPU A/B is now complete with two
+  300-frame CSV captures. Average GPUTime falls from **50.270 ms to 36.745 ms**
+  (-13.525 ms / -26.90%); median from 50.222 to 36.650 ms (-27.03%); P95 from
+  51.148 to 37.720 ms (-26.25%); P99 from 52.288 to 38.741 ms (-25.91%).
+  FrameTime average similarly falls 54.449 -> 40.111 ms while GameThreadTime is
+  nearly unchanged, consistent with the intended recursive-render workload
+  reduction. The tested workload delta is Endpoint 1 SubmissionCount 2 -> 1
+  with Endpoint 0 unchanged at 2.
+- P1B M5 visual stability is now user-confirmed PASS at candidate 0.0025:
+  large/tiny/high-contrast/oblique fixed-portal cases, slow EffectiveDepth
+  1<->2 threshold crossings, and look-away/look-back showed no P1B flicker,
+  black aperture, stale nested child, unexpected spiral flash or repeated depth
+  oscillation.
+- A separate endpoint-replacement observation remains: the old portal position
+  can appear white and fade after placing a new same-color portal. This occurs on
+  endpoint replacement, not fixed-portal coverage threshold crossing, so it is
+  tracked separately and does not reopen P1B.
+- The user accepted **0.0025** as the P1B production default after the full
+  M1-M5 evidence. Commit `7bee7cd79426` changes only the runtime CVar default
+  from 0 to 0.0025 and updates its help text; the cutoff algorithm and hysteresis
+  are unchanged.
+- Final post-default focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation is now
+  user-confirmed PASS after promoting `portal.MinRecursionScreenCoverage` to
+  `0.0025`. Together with the previously accepted build, M1-M5 measurement and
+  visual evidence, **P1B = COMPLETE / VALIDATED / SEALED**.
+- Production default remains `0.0025`; runtime override `0` still disables
+  P1B and reproduces P1A workload policy.
+- **Current active stage: P1C — Bounded Main-Pass Production Evidence.**
+  Existing 1B.13A correctness is reused; no renderer source change is required
+  before measurement because `portal.CompositionDiagnostics=1` already reports
+  bounded-pass Requested/Active/Rect/Pixels/Coverage.
+- P1C-1 dual-visible / recursion-depth-two interaction smoke is now
+  user-confirmed PASS with the sealed P1B default 0.0025. Both endpoints report
+  VisibleDepth=2 / EffectiveDepth=2 / Submitted=0x03 / SubmissionCount=2 /
+  Failure=NONE. Bounded main-pass diagnostics settle to Requested=1 / Active=1 /
+  BoundedScissor=1 on both endpoint paths, with representative main-view
+  coverage 0.048012 and 0.263293 and much smaller recursive-view coverage
+  0.005775 and 0.013618. The user reports the image as normal.
+- P1C-2 fixed-camera GPU A/B is complete with two 300-frame captures at the
+  exact same camera. `portal.BoundedMainPassScissor=0` measures GPUTime
+  38.373 ms average / 38.224 median / 39.433 P95 / 41.609 P99; scissor=1
+  measures 39.014 / 38.867 / 40.280 / 42.311 ms respectively. The bounded path
+  is therefore about **+1.67% slower on average** (+0.641 ms) in this production
+  camera despite substantially reduced bounded pixel coverage.
+- Do **not** promote bounded scissor to the production default from this result.
+  Keep the code default at 0. The likely cost boundary is the sparse-output path:
+  bounded composition requires preserving main SceneColor outside the portal
+  rectangle, and the current implementation may perform a full SceneColor
+  prefill copy before bounded draws, so reduced raster coverage does not
+  guarantee lower total GPU time.
+- **P1C-3 is now active:** finish the edge/partial-offscreen, oblique/grazing,
+  rapid-camera/TSR-jitter, dual-visible and recursion>=2 visual-stability matrix
+  with scissor=1. If visually clean, P1C can close as production evidence with
+  the bounded optimization remaining default-disabled.
+  Authority:
+  [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md),
+  [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),
+  and [P1 plan](PortalPerformanceVRAMP1Plan.md).
+- Exact evidence and caveats:
+  [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
 
-User requests a Portal-like mechanism in `/Game/House/L_Interior_LivingKitchen` and prefers MCP over desktop control. Desktop Computer Use was stopped by the user with Escape; no further desktop actions were issued. Use MCP for subsequent editor work.
+## Historical resume update — user-confirmed visual acceptance
 
-Implemented but **not compiled or accepted**: `InteriorPortalMath`, `InteriorPortal`, `InteriorPortalSystem`, controller/HUD/input integration and three focused Automation tests. Design and gates: `docs/InteriorPortals.md`. No portal material assets or endpoint/system map instances have been created yet. The code still needs build diagnostics and review, especially recursive render correctness, near-plane crossing, upright capsule transitions, scoped collision restoration, physics exit obstruction and partial-body rendering. Do not claim a finished or visually identical portal mechanism.
+- Verified HEAD: `684ebae1c06215196c7bc73ef1c87a8d61030af9`.
+- Repair committed in `9259f8e`; physical interaction design committed in
+  `684ebae`. The earlier repair checkpoint below is historical.
+- User confirmed `portal.FullFidelityPingPong 1` acceptance complete in this
+  conversation. This is user-reported manual evidence; no fresh agent PIE,
+  build or Automation was performed for this documentation update.
+- Code default remains `0`; visual acceptance no longer blocks a separate
+  change restoring the optimized default.
+- Next implementation: P1A-4 queue-safe runtime reclaim, including the remaining
+  P1A-3 depth-decrease retirement integration. Existing lazy allocation and
+  lifetime identity do not prove the entire P1A-3 gate complete.
+- Validate depth transitions `4 -> 1`, `1 -> 4`, and rapid `4 -> 1 -> 4`, stale
+  publication protection, retirement completion and transition hitch/VRAM.
+- Full-view depth-4 OOM remains an open resource limitation. Continue P1A-5/6
+  capacity work and P1A acceptance before broad physical interaction work.
+- Authority: `docs/PortalPerformanceVRAMP1Plan.md`; physical design is planned,
+  not implemented. Documentation references and whitespace checked this turn.
 
-Existing user modifications at entry: map, `InteriorChildCharacter.cpp/.h`, untracked `Content/House/BP_CorridorSegment.uasset`. Preserve these. MCP inspection found PlayerStart `(1300,300,100)`, yaw 90, in the corridor extension. Author initial portals near there, not in the old living-room spawn. Detailed transforms/bounds: `Saved/PortalSceneInspection.json`.
+## Historical Portal repair checkpoint — 2026-09-20
 
-Validation: bundled UE 5.8 project-file generation succeeded. Editor build blocked before compilation by active Live Coding, evidence `Saved/Logs/InteriorPortalsBuild.log`; no Automation or portal PIE tests executed. Map and corridor Blueprint were confirmed saved via MCP. MCP Slate Click close and Alt+F4 returned true but editor process 63544 remained running; do not assume closure.
+- Branch: `portal/full-fidelity-p1`; HEAD:
+  `df09691ff277c055621a18602c8d93f1086f7f78`. No repair commit created.
+- Current user-authorized task: repair the reproduced crop/slit display defect
+  while retaining Ping-Pong. Dedicated evidence and remaining acceptance:
+  [InteriorPortalCropDisplayRegression.md](InteriorPortalExperiment/InteriorPortalCropDisplayRegression.md).
+- Completed in the working tree: full receiving-view pixel/NDC mapping for
+  color aperture and depth candidate; actual primary-view depth extraction
+  through the view uniform; paired color/depth publication guard; truthful
+  extraction diagnostics; deterministic off-center/recursive crop regression.
+- Build and focused Automation: PASS (9/9). Actual D3D12 PIE captures verify
+  repaired far/mid/near output with Ping-Pong 0/1, optimized diagnostic matrix,
+  and a temporary facing-pair fixture with four layers submitted/published.
+  Exact evidence and the corrected initial shader signature failure are in
+  the dedicated record. Do not rerun unchanged CPU gates solely to resume.
+- Pending: final continuous-motion manual PIE acceptance. Ping-Pong default is
+  temporarily `0`; use `portal.FullFidelityPingPong 1` before a fresh PIE for
+  acceptance. The optimized implementation and TSR/Lumen quality are retained.
+- Known validation limit: full-view depth-4 expansion encountered D3D12 OOM
+  with the debug layer enabled; optimized four-layer fixture later ran without
+  that layer. This does not close the separate performance/VRAM resource gate.
+- Existing map modification preserved, SHA256
+  `1F8CCDC4B8A5D82B8DB469D8F6F4D290F961FAABE5E17708B89706103ED26E5B`.
+  PIE-only fixture transforms were restored; no map/asset saves performed.
+- Next action: review the working-tree repair and complete the short manual
+  motion/turn/traversal matrix in the dedicated record, then decide whether to
+  restore the optimized default. Do not resume obsolete P1A-1 instructions.
+  Performance work remains governed by `docs/PortalPerformanceVRAMP1Plan.md`
+  and is outside this display repair.
 
-Next: close editor normally using MCP if possible (or ask user to close it), execute prescribed Development Editor build, fix compilation failures, create and save procedural portal material + pair/system + surface references using UE-supported tooling, run focused tests and actual-map visual/runtime checks. MCP endpoint `http://127.0.0.1:8000/mcp`; helper `Saved/PortalMcp.ps1` handles JSON/SSE, session ID in `Saved/PortalMcpSession.txt` (reinitialize after restart). Discovered schemas are `Saved/Portal*Schema.json`. `ProgrammaticToolset.get_execution_environment` was read: scripts may only orchestrate registered tools with allowed standard modules. Do not bypass its sandbox. Slate observers: `observer_1`, `observer_2`; window `w1`, may become stale after restart.
+## Historical Portal resume authority — 2026-09-16
 
-`Saved/PortalEditorBridge.py` and `Saved/PortalEditorCommand.py` were written locally but **never executed or activated**. They are not evidence of editor edits. No plugin/config/build-setting changes, commits or generated-file staging were performed.
+Branch:
+
+```text
+portal/full-fidelity-p1
+```
+
+Current authorized Portal plan:
+
+```text
+docs/PortalPerformanceVRAMP1Plan.md
+```
+
+Current functional closure record:
+
+```text
+docs/InteriorPortalExperiment/InteriorPortalFullFidelityProductionRegression.md
+```
+
+Current Portal task:
+
+```text
+P1A-1 — Structured resource baseline and Dump instrumentation
+```
+
+Current status:
+
+```text
+SINGLE-PAIR FULLFIDELITY FUNCTIONAL GATE = COMPLETE / VALIDATED / SEALED
+PORTAL PERFORMANCE / VRAM P1 = AUTHORIZED
+P1A-0 DOCUMENTATION ALIGNMENT = COMPLETE
+P1A-1 = NEXT IMPLEMENTATION TASK
+```
+
+Resume rule:
+
+- Do **not** resume the historical STEP 1B.3 / CRP feasibility task below.
+- Do **not** reopen accepted projection, aperture, depth, TSR, Lumen, composition or publication-retirement behavior without a reproduced regression.
+- Start P1A-1 by improving structured diagnostics only; do not change resource allocation/reclaim semantics except where strictly required for truthful reporting.
+- Report `RequestedDepth`, `VisibleDepth`, `EffectiveDepth`, exact attempted/submitted layer masks and resource ownership separately.
+- Lifetime/state fields that do not exist yet must be reported as `INFERRED` or `NOT_IMPLEMENTED`; do not implement the P1A-2 state machine early merely to populate the report.
+
+The historical checkpoint below is retained for engineering evidence only.
+
+---
+
+## HISTORICAL CHECKPOINT — STEP 1B.3 Main SceneColor composition boundary, 2026-09-14
+
+Branch: `portal/full-fidelity-p1`. Current baseline for this delivery:
+`81ffb09af1945ed8f695c934bcfacd67ab29f835` (`portal: add native exit clip diagnostics`).
+The existing user-owned map change in
+`Content/House/L_Interior_LivingKitchen.umap` remains unrelated and must stay
+uncommitted.
+
+STEP 1B.3 result: **PARTIAL**. `CustomRenderPassCompositionSpike` was added as
+an explicit opt-in backend while preserving the default `SceneCapture`
+fallback, `MainViewStencilSpike` and `CustomRenderPassSpike`. It submits the
+existing real transformed one-layer CRP view, copies the external target
+resource identity into the immutable request, and subscribes to
+`ISceneViewExtension::SubscribeToPostProcessingPass(BeforeDOF)`. The callback
+reads `FPostProcessMaterialInputs::SceneColor`, imports the CRP HDR target and
+returns a new RDG SceneColor before player exposure/local exposure/color
+grading/tonemap.
+
+The project-side pre-tonemap composition boundary is therefore implemented,
+but the spike uses an analytic ellipse from logical projected bounds. It does
+not apply main SceneDepth comparison, public main stencil, true CRP scissor or
+depth-continuous wall occlusion. GPU composition and visual parity remain
+manual PIE/RenderDoc evidence, not Automation claims. No Engine source was
+modified, and no SceneCapture exposure/ObliqueFallback/traversal/physics path
+was changed.
+
+Changed source includes `InteriorPortalRenderer.h/.cpp`,
+`InteriorPortalSystem.h/.cpp`, `SlayTheSpireDemo.Build.cs`,
+`SlayTheSpireDemo.uproject`, `Shaders/InteriorPortalComposition.usf` and
+`InteriorPortalTests.cpp`; docs are updated in the current execution plan and
+observed-issues log. The SceneCapture backend remains the default fallback.
+
+Validation: bundled UE 5.8 project-file generation passed; Development Editor
+build passed; focused `SlayTheSpireDemo.Interior.Portals` passed **17/17** in
+`Saved/AutomationReports/PortalCompositionBoundary/index.json`. The first
+Automation invocation was discarded because `-run=AutomationTests` requested a
+nonexistent commandlet; the corrected `UnrealEditor-Cmd` invocation without
+that flag passed. The module loads at `PostConfigInit` because UE5.8 rejects
+project global shader registration after shader types initialize.
+
+Next action: manual PIE on `/Game/House/L_Interior_LivingKitchen` with
+`RendererBackend=CustomRenderPassCompositionSpike`, `RecursionDepth=1`, then
+compare frontal/vertical/near/partial-offscreen and bright↔dark views. Check
+parallax, ellipse edge, portal-outside contamination, support-wall/depth
+occlusion, exposure/tone-map behavior and crossing frame pops. Record as
+`MANUAL VISUAL ACCEPTANCE REQUIRED`; do not claim SUCCESS from 17/17. If the
+visual path is useful, the next feasibility decision is the minimal
+renderer-private depth-stencil/scissor hook, not a SceneCapture brightness
+hack. Do not start Step 2 or Step 3, recursion > 1, full temporal/Lumen
+fidelity or physics work from this checkpoint.
+
+Rollback checkpoint, 2026-09-13 14:22: the uncommitted portal files were reconstructed from the session history immediately before the 14:22 MCP capture rather than using `git reset --hard`, which would have discarded the earlier portal and presentation work. The map-owned pair and generated assets were rebuilt and saved. UE 5.8's HDR RenderTarget contract was preserved with a Linear Color sampler, and stale disconnected material expressions were removed so `M_InteriorPortal` compiles instead of falling back to the default shader. Final MCP viewport evidence is `Saved/PortalRollback1422FinalViewport.png`; PIE was stopped after capture. The final editor viewport shows both animated portal rings with no checkerboard/default-material surface.
+
+Post-rollback focused Automation was rediscovered and rerun through MCP: 8/8 passed in `Saved/PortalRollback1422Tests.json`.
+
+Evidence caveat: discard `Saved/PortalWallStuckBaseline.json` and the initial `Saved/PortalWallStuckFixed.json`. UE Python unary vector negation modified a reused direction, invalidating those ad hoc labels. Corrected probe uses immutable scalar directions. Native Automation and the six-case replay remain valid. Full details and acceptance limits: `docs/InteriorPortalPlayerTraversal.md`; current defect authority: `docs/InteriorPortalObservedIssues.md`.
+
+Next action: perform the remaining manual visual PIE matrix on `/Game/House/L_Interior_LivingKitchen` for both `FinalColorHDR` and `SceneColorLinear`: bright→dark, dark→bright, static, approach, crossing, slow camera rotation, recursion 1 and recursion >=2. Record screenshots/observations for exposure parity, clipping, Lumen and temporal behavior; automation and JSON diagnostics cannot substitute for this evidence. Do not begin Step 1B Stencil/MainView, Step 2 or Step 3. No Core or Full Physics seal is claimed. The implementation commit is `b89552a`; the remaining work is manual visual acceptance, not an uncommitted code continuation.
+
+Tool navigation: MCP endpoint `http://127.0.0.1:8000/mcp`; `Saved/PortalMcp.ps1` handles SSE (reinitialize the session after editor restart). `Saved/PortalP34Bridge.py` runs through the UE Python plugin at editor startup and consumes `Saved/PortalP34Command.py`. Publish commands atomically via a temporary file and rename; partial writes can execute twice. Do not bypass MCP ProgrammaticToolset's sandbox. The verification PIE session was stopped through MCP; close the background editor before a future build if it is still running. The map and generated presentation assets are intentionally saved as part of this pass; no commit was made.
 
 ## Prior checkpoint retained below
 
@@ -64,9 +429,7 @@ arrays and enemy opt-in are Blueprint-editable on `WBP_CombatantPresentation`'s 
 
 Completed: native frame playback and deterministic elapsed-time selection; fallback restoration
 to the authored `Img_Character` brush/transform; no Spine runtime dependency; docs in
-[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation
-and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`,
-`Saved/Logs/IroncladCharacterAnimationBuild.log`).
+[IroncladCharacterAnimation.md](IroncladCharacterAnimation.md). Bundled project-file generation and Development Editor build passed (`Saved/Logs/IroncladCharacterAnimationProjectFiles.log`, `Saved/Logs/IroncladCharacterAnimationBuild.log`).
 `CompileAllBlueprints` completed with 0 errors and `WBP_CombatantPresentation` successful
 (`Saved/Logs/IroncladCharacterAnimationBlueprints.log`; only existing unrelated warnings remain).
 
