@@ -3,7 +3,7 @@
 Date: 2026-09-22  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8, §10`  
-Status: **M5 VISUAL-STABILITY PASS / PRODUCTION DEFAULT DECISION PENDING**
+Status: **M1-M5 PASS / PRODUCTION DEFAULT 0.0025 IMPLEMENTED / FINAL REGRESSION PENDING**
 
 ## Purpose
 
@@ -235,6 +235,9 @@ that replacement-only temporal residue is tracked separately from P1B. It was
 not reproduced by fixed-portal coverage threshold crossings and does not block
 this M5 gate.
 
-M1-M5 evidence is now complete. The only remaining P1B decision is whether to
-promote the measured candidate `0.0025` to the production default or retain
-zero explicitly.
+M1-M5 evidence is complete. The user accepted `0.0025` as the production
+default, and the runtime CVar default was changed from `0` to `0.0025` in
+commit `7bee7cd79426`. The cutoff algorithm and 10% hysteresis are unchanged.
+
+Only a final minimal build + focused FullFidelity Automation regression remains
+before P1B can be sealed.
