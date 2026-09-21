@@ -8,6 +8,7 @@
 namespace InteriorPortalMultiVisibleTSRPrivate
 {
 	bool StartMultiVisible(UWorld* World);
+	bool IsMultiVisibleRunning();
 	void StopMultiVisible();
 	void DumpMultiVisible();
 }
@@ -23,6 +24,11 @@ namespace InteriorPortalFullFidelityBackend
 		}
 
 		return InteriorPortalMultiVisibleTSRPrivate::StartMultiVisible(World);
+	}
+
+	bool IsRunning()
+	{
+		return InteriorPortalMultiVisibleTSRPrivate::IsMultiVisibleRunning();
 	}
 
 	void Stop()
