@@ -59,10 +59,17 @@
   fence remains the sole lifetime mechanism; P1A-6 now explicitly
   `ReleaseResource()`s the old per-level SecondaryDepthTarget after that fence
   and report schema v5 exposes active/retiring depth ownership.
-- P1A-6 is **IMPLEMENTED / USER VALIDATION REQUIRED**. Next evidence: Development
-  Editor build, focused `SlayTheSpireDemo.Interior.Portals.FullFidelity`
-  Automation, and actual D3D12 fallback depth-target `4 -> 1 -> 4`, rapid
-  reversal, offscreen retention, and Stop-zero-ownership checks. Authority:
+- P1A-6 actual fallback D3D12 core matrix now passes using the safer
+  `2 -> 1 -> 2` validation depth: both endpoints settle `2 -> 1 -> 2` active
+  depth ownership correctly, retained L0 identities stay stable, rebuilt L1 gets
+  fresh identities, and Stop reports zero depth-target ownership. The reduced
+  validation depth is deliberate because fallback Depth=4 produced roughly
+  1 GB additional VRAM pressure while exercising the same per-level reclaim path.
+- Prior offscreen-retention evidence remains valid because P1A-6 did not modify
+  the visibility/capacity trigger. Remaining P1A-6 evidence is a fresh focused
+  `SlayTheSpireDemo.Interior.Portals.FullFidelity` Automation PASS after the
+  P1A-6 code change and one deliberate rapid `2 -> 1 -> 2` reversal with no
+  stale/blank/crash regression. Authority:
   [P1A-6 validation](InteriorPortalExperiment/InteriorPortalDepthTargetCapacityValidation.md).
 - Do not start P1A-7 until P1A-6 acceptance is recorded. After P1A-6, continue
   P1A-7 and the full P1A gate. P1B remains the later stage for sustained
