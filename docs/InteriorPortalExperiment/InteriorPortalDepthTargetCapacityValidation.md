@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Implementation commit: `583181eb35786548ccc3604d0d72278dc0e170db`  
-Status: **IMPLEMENTED / D3D12 CORE MATRIX PASS / AUTOMATION + RAPID-REVERSAL CONFIRMATION PENDING**
+Status: **COMPLETE / VALIDATED**
 
 ## Scope
 
@@ -178,19 +178,26 @@ VisibleDepth/EffectiveDepth dropped to zero. P1A-6 does not modify the
 visibility/capacity trigger path, so that passing offscreen-retention evidence
 remains applicable under the repository validation-reuse policy.
 
-The supplied sequence is settled evidence; it does not prove a deliberately
-rapid `2 -> 1 -> 2` reversal while the old depth target is still retiring.
-Focused Automation after the P1A-6 code change is also not yet recorded here.
+The user subsequently confirmed both remaining regression gates:
+
+```text
+SlayTheSpireDemo.Interior.Portals.FullFidelity = PASS
+rapid 2 -> 1 -> 2 = visually normal
+```
+
+The rapid reversal showed no stale publication, persistent blank/black Portal,
+crash, or assert. This closes the old/new depth-target coexistence regression
+check for the P1A-6 code.
 
 ## Validation not performed by the implementation environment
 
 The GitHub-only implementation environment cannot execute the user's UE 5.8
 editor, Development Editor build, D3D12 PIE, or GPU-memory capture.
 
-Actual D3D12 core-matrix and Stop evidence above are user-provided. P1A-6 remains
-open only for the remaining affected regression gates.
+Actual D3D12 core-matrix, Stop, focused Automation, and rapid-reversal evidence
+above are user-provided. Together they satisfy the P1A-6 acceptance contract.
 
-## USER ACTION REQUIRED
+## Completed validation
 
 ### 1. Development Editor build
 
@@ -202,7 +209,7 @@ Expected:
 SlayTheSpireDemoEditor Win64 Development = PASS
 ```
 
-### 2. Focused FullFidelity Automation
+### 2. Focused FullFidelity Automation — USER CONFIRMED PASS
 
 Run:
 
@@ -257,7 +264,7 @@ Owned>1
 and the corresponding `retiringLifetimes[].secondaryDepthTarget.allocated`
 must be true until that lifetime's fence completes.
 
-### 4. Regrowth and rapid reversal
+### 4. Regrowth and rapid reversal — USER CONFIRMED PASS
 
 Exercise:
 
@@ -303,14 +310,16 @@ retiringDepthTargetCount=0
 
 ## Acceptance
 
-P1A-6 becomes **COMPLETE / VALIDATED** when:
+P1A-6 acceptance results:
 
 - Development Editor build passes;
-- focused FullFidelity Automation passes;
+- focused FullFidelity Automation passes (**user confirmed**);
 - actual D3D12 fallback depth ownership settles `4 -> 1 -> 4` as expected;
-- rapid reversal has no stale/blank/crash regression;
+- rapid reversal has no stale/blank/crash regression (**user confirmed**);
 - offscreen visibility does not reclaim in-budget depth targets;
 - Stop leaves no active or retiring depth-target ownership.
 
-After P1A-6 closes, the next planned step is **P1A-7 Shared Scratch Lifecycle
-Audit**.
+All required P1A-6 gates are satisfied. **P1A-6 Depth Target Capacity Reclaim
+is COMPLETE / VALIDATED.**
+
+The next planned step is **P1A-7 Shared Scratch Lifecycle Audit**.
