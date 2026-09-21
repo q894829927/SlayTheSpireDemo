@@ -143,12 +143,17 @@
   EffectiveDepth-only workload reduction does not trigger capacity retirement.
   Settled L1 CoverageThreshold=0.022 is the expected +10% re-entry boundary after
   exclusion.
-- P1B remains **IMPLEMENTED / REMAINING VALIDATION REQUIRED**. Next evidence is:
-  restore threshold to zero in the same PIE and confirm L1 resumes with the same
-  lifetimes (no destroy/recreate), plus final-head Development Editor build and
-  FullFidelity prefix **11/11 PASS**. After the functional gate closes, run
-  candidate 0/0.001/0.0025/0.005 fixed-camera submission/GPU measurements and
-  visual-stability checks. Authority:
+- Same-session cutoff recovery is now user-confirmed PASS after restoring
+  `portal.MinRecursionScreenCoverage=0`: both endpoints return to
+  VisibleDepth=2 / EffectiveDepth=2 / Attempted=0x03 / Submitted=0x03 /
+  SubmissionCount=2 / Published=0x03 / Cutoff=NONE while L1 keeps the exact same
+  lifetimes `2 / 4` and both endpoints continue owning two active color/depth
+  targets. This closes the functional mechanism gate: workload reduction and
+  recovery are independent from persistent-capacity lifetime.
+- P1B remains **IMPLEMENTED / BUILD + AUTOMATION + MEASUREMENT PENDING**. Next:
+  final-head Development Editor build, FullFidelity prefix **11/11 PASS**, then
+  candidate `0 / 0.001 / 0.0025 / 0.005` fixed-camera submission/GPU
+  measurements plus threshold-crossing visual stability. Authority:
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md).
 - Exact evidence and caveats:
   [capacity validation](InteriorPortalExperiment/InteriorPortalCapacityReclaimValidation.md).
