@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / FUNCTIONAL MECHANISM + AUTOMATION PASS / BUILD + MEASUREMENT PENDING**
+Status: **IMPLEMENTED / FUNCTIONAL MECHANISM + BUILD + AUTOMATION PASS / MEASUREMENT PENDING**
 
 ## Goal
 
@@ -180,15 +180,12 @@ Do not mark P1B complete until the following gates are recorded.
 
 ## USER ACTION REQUIRED — first functional gate
 
-### 1. Development Editor build
+### 1. Development Editor build — USER CONFIRMED PASS
 
-Run the standard UE 5.8 Development Editor build.
-
-Expected:
-
-```text
-SlayTheSpireDemoEditor Win64 Development = PASS
-```
+The user confirmed the current P1B editor build is already passing. The same
+current P1B code is running in PIE with schema-v8 diagnostics and the focused
+Automation prefix has also passed, so no duplicate build rerun is required for
+this stage.
 
 ### 2. Focused Automation — USER CONFIRMED PASS
 
