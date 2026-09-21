@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §7`  
-Status: **IMPLEMENTED / FINAL-HEAD BUILD + AUTOMATION + RECURSION SMOKE REQUIRED**
+Status: **IMPLEMENTED / FINAL-HEAD RECURSION SMOKE PASS / BUILD + AUTOMATION PENDING**
 
 ## Purpose
 
@@ -186,10 +186,11 @@ already observed roughly 1 GB additional fallback Depth=4 VRAM pressure and a
 historical D3D12-debug-layer OOM. Those resource limits are already recorded and
 do not add new evidence for the final-head child-consumption change.
 
-### Final-head affected visual smoke
+### Final-head affected visual smoke — USER CONFIRMED PASS
 
 The aggregate code changed the healthy parent/child extension attachment
-condition, so one small current-head recursion smoke is required:
+condition, so one small current-head recursion smoke was required and has now
+passed on the final-head v7 diagnostics.
 
 ```text
 portal.FullFidelityPingPong 0
@@ -218,8 +219,40 @@ consumableByParentThisFrame=true
 submissionFailureReason=NONE
 ```
 
-Visual expectation: recursion/nested portal display remains normal with no
-persistent blank, stale, spiral regression, crash or assert.
+User-provided D3D12 PIE evidence:
+
+```text
+Endpoint 0:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+
+Endpoint 1:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+```
+
+The final v7 JSON shows both L1 children as:
+
+```text
+submittedThisFrame=true
+published=true
+consumableByParentThisFrame=true
+submissionFailureReason=NONE
+```
+
+The user also confirmed the two-level recursive display was visually normal with
+no persistent black frame, stale scene, unexpected spiral, crash or assert.
+
+Therefore the final-head healthy parent->child path remains intact after the
+stale-child guard.
 
 Depth=2 is sufficient for this final-head smoke because it exercises the exact
 new parent -> child consumption edge. Existing accepted evidence retains the
@@ -294,7 +327,8 @@ Expected:
 10/10 PASS
 ```
 
-Then perform only the Depth=2 final-head recursion smoke described above.
+The Depth=2 final-head recursion smoke is already complete. No additional PIE
+rerun is required unless build/Automation reveals a regression.
 
 ## Seal condition
 
@@ -303,7 +337,7 @@ P1A becomes **COMPLETE / VALIDATED / SEALED** when the final-head:
 - Development Editor build passes;
 - FullFidelity focused Automation passes all 10 tests;
 - Depth=2 healthy recursion smoke shows current-frame child consumption and
-  normal visual output.
+  normal visual output (**PASS, user-confirmed with v7 diagnostics**).
 
 All other §7 evidence is reused from already accepted P1A/crop validation.
 
