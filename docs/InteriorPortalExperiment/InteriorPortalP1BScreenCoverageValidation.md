@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **ALL VALIDATION GATES PASS / PRODUCTION DEFAULT DECISION PENDING**
+Status: **ALL VALIDATION GATES PASS / DEFAULT 0.0025 IMPLEMENTED / FINAL REGRESSION PENDING**
 
 ## Goal
 
@@ -33,8 +33,9 @@ portal.RecursionCoverageHysteresisFraction
 default = 0.10
 ```
 
-The default threshold remains zero. No production nonzero default has been
-selected before measurement and visual acceptance.
+The measured and visually accepted production default is now `0.0025`
+(0.25% parent-view coverage). Runtime override `0` remains available to
+disable P1B and reproduce the sealed P1A workload policy.
 
 For each valid recursive request:
 
@@ -490,8 +491,8 @@ oblique portal
 look-away / look-back
 ```
 
-No nonzero production default is selected until these measurements and visual
-checks support one.
+The completed measurement and visual checks support `0.0025`; the user
+accepted it as the production default.
 
 ## Acceptance
 
@@ -505,5 +506,5 @@ P1B becomes COMPLETE / VALIDATED only when:
 - threshold crossings remain visually stable;
 - persistent ownership does not churn on EffectiveDepth-only changes;
 - fixed-camera submission/GPU measurements are recorded for candidate values;
-- a nonzero production default is either explicitly accepted from evidence or
-  the default remains zero with the measurement conclusion recorded.
+- the evidence-backed production default is explicitly accepted and receives
+  one final build + focused Automation regression after the default-value edit.
