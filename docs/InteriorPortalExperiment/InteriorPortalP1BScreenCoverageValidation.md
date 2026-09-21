@@ -3,7 +3,7 @@
 Date: 2026-09-21  
 Branch: `portal/full-fidelity-p1`  
 Authority: `docs/PortalPerformanceVRAMP1Plan.md §8`  
-Status: **IMPLEMENTED / USER VALIDATION REQUIRED**
+Status: **IMPLEMENTED / THRESHOLD-ZERO COMPATIBILITY PASS / REMAINING VALIDATION REQUIRED**
 
 ## Goal
 
@@ -204,7 +204,42 @@ Run:
 
 The prefix now contains **11 tests**. Expected: 11/11 PASS.
 
-### 3. Threshold-zero compatibility
+### 3. Threshold-zero compatibility — USER CONFIRMED PASS
+
+User-provided fallback D3D12 PIE evidence with
+`portal.MinRecursionScreenCoverage 0` and RequestedDepth=2:
+
+```text
+Endpoint 0:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 ParentCoverage=0.007987
+L1 CoverageTested=1
+L1 CoverageAccepted=1
+L1 CoverageThreshold=0
+
+Endpoint 1:
+VisibleDepth=2
+EffectiveDepth=2
+Attempted=0x03
+Submitted=0x03
+SubmissionCount=2
+Published=0x03
+Cutoff=NONE
+L1 ParentCoverage=0.008814
+L1 CoverageTested=1
+L1 CoverageAccepted=1
+L1 CoverageThreshold=0
+```
+
+Both endpoints retain two active/owned color and depth targets. This confirms
+that threshold zero reproduces the sealed P1A submission policy in the tested
+two-level scene.
 
 Use the already-safe two-level scene first:
 
