@@ -669,6 +669,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			// color/depth resources are shared between alternating recursion levels.
 			ActiveWorld = World;
 			PrimaryResolutionFraction = ReadPrimaryFraction();
+			LastMinRecursionScreenCoverage = ReadMinRecursionScreenCoverage();
+			LastRecursionCoverageHysteresisFraction =
+				ReadRecursionCoverageHysteresisFraction();
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
 				FEndpointState& Endpoint = *Endpoints[EndpointIndex];
