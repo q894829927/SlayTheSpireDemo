@@ -2,7 +2,7 @@
 
 ## Held-body lateral oscillation — 2026-09-26
 
-Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION COMPLETE; PHYSICAL FIX PENDING**.
+Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION AND PHY-2 NARROW BOUNDARY VALIDATED; PHYSICAL FIX PENDING**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`; diagnostics and the
 identity/geometry foundation are included in the PHY-1 delivery commit.
 The user's modified map is preserved and excluded from that commit.
@@ -21,9 +21,13 @@ collision-shape eligibility shared by held/free diagnostics. Its geometry and
 lifetime tests pass, but it adds no motion/contact writer and does not switch
 the legacy policies. A 360-tick native integration capture still exhibits the
 same one transfer and 98 recovery moves. The defect therefore remains open.
-Next is PHY-2's Chaos timing/handoff spike, followed by bounded holding and the
-single-coordinator cutover. Do not close this issue on pure geometry tests or
-suppress Recovery to hide the symptom.
+PHY-2 now validates actual Chaos timing, pair-specific permission, cancellation,
+bounded force and restricted transfer/retirement in an isolated editor test
+fixture (4/4 PASS). It is an uncommitted continuation of `fb9d3f4` and does not
+attach a new motion/contact writer to the game. Next is PHY-3 bounded holding
+and shape-aware target/route solving, then PHY-4's single-coordinator cutover.
+See [the boundary spike](InteriorPortalPhysicsBoundarySpike.md) for the narrow
+profile. Do not close this issue on these tests or suppress Recovery to hide it.
 
 See [the physics execution record](InteriorPortalPhysicsP1Execution.md) for
 exact fixture, extraction limits, validation evidence and next-stage gate, and

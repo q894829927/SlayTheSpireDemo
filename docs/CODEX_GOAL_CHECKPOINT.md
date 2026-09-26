@@ -2,6 +2,50 @@
 
 ## Current execution update — 2026-09-26
 
+- Verified HEAD: `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`, branch
+  `portal/full-fidelity-p1`. The requested PHY-1 delivery commit is complete;
+  the current PHY-2 code/documentation continuation is uncommitted.
+- **PHY-2 COMPLETE for its narrow native Chaos profile; next action PHY-3.**
+  Authority: [Physics P1 execution](InteriorPortalExperiment/InteriorPortalPhysicsP1Execution.md)
+  and [boundary spike evidence](InteriorPortalExperiment/InteriorPortalPhysicsBoundarySpike.md).
+  Value-only command/receipt helpers live in the runtime module; the mutating
+  solver callback and native fixture live only in the editor test module.
+- Actual single/two-substep contact tests in SingleThread/TaskGraph prove exact
+  body/support contact modification before solve, unaffected other-body contacts,
+  restored blocking and bounded command expiry. Native force tests prove the
+  capped force's actual per-interval velocity change. TaskGraph/two-substep
+  transfer/lifetime test proves one certified endpoint mapping, outbound next
+  interval, owner cancellation and native unregister retirement; old input
+  cannot revive a permanently retired binding.
+- Important findings: contact restoration alone let the inserted box reach
+  X=-13 cm. The static approach cancellation now removes inward velocity and
+  acceleration before integration and restores original contacts in one boundary
+  transaction; unchanged X>6.8 criterion passes. Native unregister alone arrives
+  too late for the first affected interval, so owner cancellation accompanies
+  teardown. Advisory receipt filtering is not a durable committed-fact protocol.
+- Acceptance is limited to fixed orientation, bounded motion, zero gravity/
+  damping and a known empty static exit corridor. No general rotation, lateral
+  rim, CCD, blocked-exit, holder-route, remote-contact or Core seal is claimed.
+  Production hold/gate/Recovery remains unchanged; the carrying defect stays open.
+- Prescribed bundled UE 5.8 project generation PASS; Development Editor build
+  PASS. Focused `SlayTheSpireDemo.Interior.Portals.PhysicsBoundary` Automation:
+  **4/4 PASS, zero warnings**, report 2026.09.26-12.50.22 UTC at
+  `Saved/AutomationReports/PortalPhysicsPHY2/index.json`, log
+  `Saved/Logs/PortalPhysicsPHY2Automation.log`. Failed development runs are
+  retained under `Saved/PortalPhysicsPHY2/`; they are not passing evidence.
+  Unchanged PHY-1 tests/evidence are reused. NullRHI native physics evidence
+  does not constitute PIE/visual acceptance.
+- Next: bounded hold force/torque and shared shape-aware target/route solver;
+  define supported motion and numeric criteria before native PHY-3 validation.
+  Keep experiments isolated until PHY-4 removes old competing writers together.
+  Do not start P8/P9. No manual gate blocks this nonproduction spike; future Core
+  physics/visual gates remain mandatory. No known blocker for PHY-3.
+- The pre-existing modified `Content/House/L_Interior_LivingKitchen.umap` was
+  neither saved nor reverted and remains excluded. SHA-256:
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous PHY-1 delivery — 2026-09-26
+
 - Verified pre-delivery HEAD: `78057a34022e0f979be887a9ad7f97038c3350bf`, branch
   `portal/full-fidelity-p1`. P1A/P1B/P1C and Performance P1 are now sealed.
   Current forward scope is Physics P1 under

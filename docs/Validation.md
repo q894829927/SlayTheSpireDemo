@@ -2,6 +2,24 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-2 native Chaos boundary — 2026-09-26
+
+Source HEAD `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; uncommitted PHY-2
+continuation. Prescribed bundled UE 5.8 project generation and Development Editor
+build **PASS**. Focused
+`SlayTheSpireDemo.Interior.Portals.PhysicsBoundary` NullRHI Automation:
+**4/4 PASS, zero warnings** (`Saved/AutomationReports/PortalPhysicsPHY2/index.json`,
+2026.09.26-12.50.22 UTC; `Saved/Logs/PortalPhysicsPHY2Automation.log`).
+
+Native Chaos scenes prove exact pair contact timing for single/two-substep
+SingleThread/TaskGraph profiles, static approach cancellation, capped force
+application and one restricted endpoint transfer with teardown retirement.
+The [dedicated evidence](InteriorPortalExperiment/InteriorPortalPhysicsBoundarySpike.md)
+records fixtures, thresholds, failed development runs and the narrow support
+limits. This editor-only experiment is not attached to gameplay writers. No
+production carrying fix, general rotation/blocked-exit behavior, PIE/visual or
+Core acceptance is claimed. Next is PHY-3; unchanged PHY-1 evidence is reused.
+
 ## Interior portal material recovery and runtime regression — 2026-09-13 (latest)
 
 An experimental uncommitted exposure-material graph used an invalid custom-node

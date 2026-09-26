@@ -1,11 +1,12 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-26.
-Status: **PHY-0 baseline and PHY-1 identity/geometry foundation COMPLETE; PHY-2 NEXT; production physics migration not yet accepted**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2 narrow Chaos profile VALIDATED; PHY-3 NEXT; production physics migration not yet accepted**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
-the pre-existing modified map is excluded.
+the pre-existing modified map is excluded. That delivery is
+`fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; PHY-2 is its uncommitted continuation.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -277,7 +278,24 @@ No manual visual gate is required for this read-only foundation. Future Core
 physical/visual gates remain required; no user acceptance of the oscillation
 fix is claimed.
 
-## Next action: PHY-2
+## PHY-2 completed boundary spike
+
+The [dedicated spike record](InteriorPortalPhysicsBoundarySpike.md) records the
+actual hooks, immutable command/result protocol, exact native fixtures, failures
+and supported interval. Prescribed project generation and Development Editor
+build PASS; focused PhysicsBoundary Automation **4/4 PASS, zero warnings**.
+Real Chaos runs prove single/two-substep contact timing in SingleThread/TaskGraph,
+exact body/support permission, ordinary blocking after cancellation, bounded
+force application, one restricted transfer and two-sided lifetime retirement.
+
+The mutating callback is editor-test-only and never attached to legacy gameplay
+writers. Transfer is validated only at the solved endpoint for fixed orientation,
+bounded motion and an authored clear static destination corridor. General
+rotation, blocked exits, hold routes, CCD and remote contacts remain unaccepted.
+The carrying defect remains open; this is boundary evidence, not Core acceptance.
+Advisory receipt freshness is not a durable transfer-fact publication protocol.
+
+The original PHY-2 scope, now completed within that narrow profile, was:
 
 Run the narrow UE 5.8 / Chaos boundary spike. Establish immutable physics input
 and result handoff carrying body/pair/step identities; prove when exact
@@ -286,3 +304,13 @@ including declared substep configurations. Establish the supported transfer
 interval and fail closed outside it. Do not promote game-thread Tick labels
 into solver callbacks, introduce remote-half contacts (P8), or switch only one
 of the legacy competing motion/contact branches before the timing proof.
+
+## Next action: PHY-3
+
+Implement bounded hold force/torque and shape-aware target/route solving using
+the same registered geometry and proven solver boundary. Declare motion support
+and numeric force/error/energy criteria before running native blocked/rotated
+target tests. Keep its mutating experiment isolated from the active legacy
+PhysicsHandle and gate/Recovery. PHY-4 owns the coordinated production cutover,
+durable transfer facts, route/history reconciliation and removal of superseded
+writers together. Core acceptance and subsequent P8/P9 gates remain open.

@@ -1,6 +1,6 @@
 # Portal rigid-body interaction contract
 
-Status: **architecture migration pending; PHY-0 baseline and PHY-1 foundation complete, PHY-2 next**, 2026-09-26.
+Status: **architecture migration pending; PHY-0/PHY-1 complete, PHY-2 narrow boundary profile validated, PHY-3 next**, 2026-09-26.
 Execution: [Physics P1 migration](InteriorPortalPhysicsP1Execution.md). Performance
 P1 is now sealed. The diagnostic and identity/geometry stages do not make existing physics
 conform to this contract or establish physical acceptance.
@@ -107,6 +107,15 @@ passage throughout the supported motion interval. A broad ignore followed by
 next-frame rollback does not meet this contract. If the adapter cannot enforce
 this, block/reject that passage safely and keep its acceptance gate open.
 
+Cancelling bypass must remove forbidden inward motion before affected contacts
+solve in the same boundary transaction; simply restoring a wall pair after
+integration can eject an inserted body through its back face. PHY-2 proves a
+static normal projection for its fixed-orientation approach fixture, not a
+general rotating-body cancellation algorithm. See
+[the boundary spike](InteriorPortalPhysicsBoundarySpike.md) for its exact limits.
+The supported production profile must establish safe rejection for every
+admitted motion, including bodies already straddling the opening.
+
 ## Transfer, recovery and cleanup
 
 One transfer maps pose, linear/angular velocity, grab anchor/target and route;
@@ -127,6 +136,14 @@ Repeated recovery in ordinary wall sliding fails acceptance.
 Reset, replacement, body/holder destruction and EndPlay cancel pending work by
 generation, release drives, restore exact collision pairs and remove derived
 state. Cleanup is idempotent. No callback may revive an invalid hold or passage.
+
+Owner cancellation must reach the affected physics boundary with teardown;
+native proxy-unregister notification is an independent lifetime guard, not the
+only cancellation signal. Retired bindings cannot be revived by replayed input.
+Keep advisory intent freshness separate from durable committed transfer facts:
+a newer command must never discard an already committed transfer or prevent
+holder route/history reconciliation. Physics-step keys do not replace transfer
+revisions.
 
 ## P8/P9 extension boundary
 
@@ -154,9 +171,11 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
    stale-token rejection. Its conservative fixed-orientation translation rule
    explicitly rejects continuous rotation. Legacy drive/contact writers remain
    active; full P10 route/obstruction migration and swept rotational support are
-   still required. Next, PHY-2 introduces the physics adapter boundary and proves
-   simulation timing. See the execution record for supported extraction modes,
-   actual tests and runtime diagnostics; this foundation is not Core acceptance.
+   still required. PHY-2 now proves actual Chaos timing, capped force application,
+   a restricted transfer interval and cancellation/retirement in an isolated
+   editor fixture. See the execution and boundary-spike records for exact scope;
+   these foundations are not Core acceptance. Next is PHY-3 bounded holding and
+   shape-aware target/route solving before PHY-4's coordinated authority cutover.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and
    independent position rollback. Remove superseded branches when switching;
