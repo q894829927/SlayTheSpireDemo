@@ -145,6 +145,19 @@ namespace
 
 namespace InteriorPortalQuery
 {
+	InteriorPortalPhysics::FFitResult EvaluateBodyPassage(const AInteriorPortalSystem* System,
+		const InteriorPortalPhysics::FTravellerSnapshot& Snapshot, const FTransform& From,
+		const FTransform& To, const AInteriorPortal* Portal, uint64 PairGeneration, double MarginCm)
+	{
+		if (!IsValid(System) || !System->IsCurrentPhysicsTraveller(Snapshot.Handle))
+		{ return {InteriorPortalPhysics::EGeometryResult::StaleIdentity}; }
+		if (!PairGeneration || System->GetPhysicsPairGeneration() != PairGeneration
+			|| !IsValid(Portal) || !System->IsLinked()
+			|| (Portal != System->BluePortal && Portal != System->OrangePortal))
+		{ return {InteriorPortalPhysics::EGeometryResult::InvalidPair}; }
+		return InteriorPortalPhysics::EvaluateTranslation(Snapshot.Geometry, From, To,
+			Portal->GetLogicalFrame(), Portal->HalfWidth, Portal->HalfHeight, MarginCm);
+	}
 	bool LineTrace(const AInteriorPortalSystem* System, const FVector& Start, const FVector& End,
 		ECollisionChannel Channel, const FCollisionQueryParams& Params, FHitResult& OutHit,
 		int32 MaxPortalHops, float PortalBias)

@@ -1,6 +1,93 @@
 # Codex Goal Checkpoint — Interior Portals
 
+## Current execution update — 2026-09-26
+
+- Verified pre-delivery HEAD: `78057a34022e0f979be887a9ad7f97038c3350bf`, branch
+  `portal/full-fidelity-p1`. P1A/P1B/P1C and Performance P1 are now sealed.
+  Current forward scope is Physics P1 under
+  [its execution record](InteriorPortalExperiment/InteriorPortalPhysicsP1Execution.md).
+- The user requested one delivery commit after PHY-1 completion. This checkpoint,
+  P1C acceptance, PHY-0 diagnostics and PHY-1 foundation are included in the
+  commit titled `feat(portal): add physics identity and collision geometry foundation`.
+  Resolve its current SHA with Git; the baseline above is its pre-delivery HEAD.
+  The pre-existing modified map is excluded from the commit.
+- Actual UE 5.8 D3D12 floating PIE completed seven stationary scissor 0/1 camera
+  pairs on `L_Interior_LivingKitchen`, plus a 240-tick rapid-camera sweep.
+  Production coverage 0.0025, RequestedDepth=2, padding=4, Ping-Pong=0 and
+  TSR remained active. Actual capture/parent extent is 1280x723; main
+  composition extent is 1278x722.
+- All 14 stationary captures and 12 motion samples were inspected. No
+  scissor-dependent aperture truncation, stretching, black rectangle, portal
+  residue or foreground-overlap regression was observed in those samples.
+  Stationary submitted-layer diagnostics have zero failures and matched A/B
+  workload; actual depth-two submission was exercised. Existing P1C-1/P1C-2
+  evidence was reused; no project C++/asset/config change, build or Automation
+  rerun was needed.
+- The user completed the outstanding continuous-motion gate and confirmed
+  **“已完成，画面正常”** for rapid turns / screen-edge crossings and scissor=1
+  vs 0. This user evidence, separately from the sampled screenshots, seals P1C.
+  Evidence is recorded in
+  [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md).
+- Scissor remains default=0; the already measured +1.67% GPU regression does
+  not justify promotion. Renderer defaults, assets and quality are unchanged.
+- Physics PHY-0 added default-off `portal.PhysicsDiagnostics` observations
+  of hold target, gate evaluation, support permission, recovery and transfer.
+  The PHY-0 baseline had no solver-step or generation tokens and labelled
+  them UNAVAILABLE. PHY-1 now supplies registry/body/pair generations, while
+  physics-step remains UNAVAILABLE. Diagnostics do not change motion decisions.
+- Prescribed UE 5.8 project generation PASS; Development Editor build PASS
+  after adding the missing private engine Json dependency for the initial link
+  failure. Existing TravellerRegistry Automation 1/1 PASS (NullRHI).
+- Actual D3D12 baseline capture: no/unlinked/linked each 360 ticks. The linked
+  remote-held rim scenario has 98 actual recovery moves (maximum 46.2149 cm),
+  one body transfer, and 136 permission-selection changes across observed
+  game-thread boundaries. No/unlinked controls have zero recovery or transfers.
+  This reproduces competing legacy hold/recovery decisions; it does not prove
+  all original user cases, Chaos substep timing or a physical fix.
+- **PHY-0 baseline and PHY-1 identity/geometry foundation COMPLETE; next
+  action is PHY-2.** The registry now owns epoch/ID/generation and collision
+  configuration, without duplicating simulated pose/velocity. Body/pair mutation,
+  unregister/re-register and owner destruction invalidate old query results.
+  Sphere/capsule/box/convex/compound extraction uses BodySetup rather than visual
+  bounds; a single native eligibility query serves held/free diagnostics.
+  Fixed-orientation translation is proven conservatively; rotation sweeps are
+  explicitly unsupported. Legacy hold/gate/recovery remains active until the
+  staged authority cutover. PHY-2 must prove solver contact timing and immutable
+  step-aware handoff before changing production drive/contact authority.
+  Do not start P8/P9, suppress recovery, enlarge portals or run two movement
+  writers. No remaining manual acceptance gate blocks this diagnostics stage;
+  future Core physics PIE gates remain required.
+- Local evidence: `Saved/PortalP1C3/` and `Saved/Logs/PortalP1C3.log`. PIE
+  stopped; temporary runtime CVars/editor preferences restored. The user's
+  modified map was not saved or reverted; SHA-256 remains
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- Physics evidence: `Saved/PortalPhysicsP1/`, its focused Automation report and
+  `Saved/Logs/PortalPhysicsP1{Capture,Automation}.log`. Capture exited PIE/editor
+  and restored diagnostics/FPS/throttle preferences. The C++/documentation
+  changes are included in this delivery; the pre-existing map change remains local.
+- PHY-1 prescribed project generation/build PASS (initial private PhysicsCore
+  link dependency and test FGeometry ambiguity corrected). Initial focused
+  PhysicsFoundation + TravellerRegistry Automation 5/5 PASS; after adding the
+  pending-destroy owner guard and stronger lifetime tests, affected
+  GenerationAndSharedQuery rerun 1/1 PASS. Other unchanged geometry tests and
+  baseline evidence remain valid; totals are separate runs.
+- Actual PHY-1 D3D12 linked PIE: 360 ticks, 1,896 parsed records with stable
+  epoch/body/pair tokens and one extracted collision primitive. Shared held
+  eligibility: 177 FITS / 183 OUTSIDE_APERTURE; predicted translation:
+  399 FITS / 318 OUTSIDE_APERTURE. Existing behavior still gives one transfer
+  and 98 recovery moves (max 46.2149 cm), confirming no physical fix is claimed.
+  No manual gate blocks this foundation; future Core visual/physical gates remain.
+- PHY-1 local evidence: `Saved/PortalPhysicsPHY1/`,
+  `Saved/AutomationReports/PortalPhysicsPHY1{,Lifetime}/index.json` and
+  `Saved/Logs/PortalPhysicsPHY1{Capture,Automation,LifetimeAutomation}.log`.
+  Native capture restored temporary settings, ended PIE and exited. Its immediate
+  quit command emitted the editor's play-mode utility error during shutdown;
+  COMPLETE marker and final normal exit are recorded in the execution document.
+
 ## Current Portal Performance P1A checkpoint — 2026-09-21
+
+Historical rollout notes below; the current execution update above supersedes
+their old active-stage / next-action wording.
 
 - P1A-4 implementation is committed in `787e507425131f03114794ea1ab3d91b5fdb1cc1`.
   Focused Unreal Insights instrumentation is committed in
@@ -211,10 +298,10 @@
   rectangle, and the current implementation may perform a full SceneColor
   prefill copy before bounded draws, so reduced raster coverage does not
   guarantee lower total GPU time.
-- **P1C-3 is now active:** finish the edge/partial-offscreen, oblique/grazing,
-  rapid-camera/TSR-jitter, dual-visible and recursion>=2 visual-stability matrix
-  with scissor=1. If visually clean, P1C can close as production evidence with
-  the bounded optimization remaining default-disabled.
+- P1C-3 initially awaited continuous-motion acceptance after the stationary
+  matrix and camera-motion samples. The user subsequently confirmed PASS on
+  2026-09-26; the current execution update above records the P1C seal and the
+  transition to Physics P1, with bounded scissor still default-disabled.
   Authority:
   [P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md),
   [P1B validation](InteriorPortalExperiment/InteriorPortalP1BScreenCoverageValidation.md),

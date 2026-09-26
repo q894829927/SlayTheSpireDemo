@@ -2,8 +2,10 @@
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
+#include "InteriorPortalTravellerRegistry.h"
 
 class AInteriorPortalSystem;
+class AInteriorPortal;
 
 /**
  * Bounded world queries that continue through the authored portal pair.
@@ -12,6 +14,11 @@ class AInteriorPortalSystem;
  */
 namespace InteriorPortalQuery
 {
+	/** Read-only PHY-1 eligibility shared by held/free body consumers. */
+	SLAYTHESPIREDEMO_API InteriorPortalPhysics::FFitResult EvaluateBodyPassage(
+		const AInteriorPortalSystem* System, const InteriorPortalPhysics::FTravellerSnapshot& Snapshot,
+		const FTransform& From, const FTransform& To, const AInteriorPortal* Portal,
+		uint64 PairGeneration, double MarginCm = .5);
 	SLAYTHESPIREDEMO_API bool LineTrace(
 		const AInteriorPortalSystem* System,
 		const FVector& Start,

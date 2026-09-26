@@ -4,6 +4,7 @@
 #include "Engine/EngineTypes.h"
 #include "GameFramework/Actor.h"
 #include "SceneTypes.h"
+#include "InteriorPortalTravellerRegistry.h"
 #include "InteriorPortalSystem.generated.h"
 
 class AInteriorPortal;
@@ -144,6 +145,11 @@ public:
 	/** Remove a runtime traveller and all of its transient portal state. */
 	UFUNCTION(BlueprintCallable, Category="Portals|Travellers")
 	bool UnregisterPhysicsTraveller(UPrimitiveComponent* Traveller);
+	/** Immutable collision configuration/identity, shared by holding/traversal/query preparation. */
+	bool CapturePhysicsTraveller(const UPrimitiveComponent* Body, InteriorPortalPhysics::FTravellerSnapshot& Out) const;
+	bool IsCurrentPhysicsTraveller(const InteriorPortalPhysics::FTravellerHandle& Handle) const;
+	/** Zero means topology changed before its next synchronization boundary. */
+	uint64 GetPhysicsPairGeneration() const;
 	bool TryGrab(APlayerController* Player);
 	/** Called by the local controller immediately before and after its camera update. */
 	void UpdateTraversal(APlayerController* Player);
@@ -169,11 +175,25 @@ public:
 	bool ValidatePlacement(const FHitResult& Hit, const FVector& ViewRight, const AInteriorPortal* Endpoint,
 		FTransform& OutFrame, FString& OutReason) const;
 private:
+	struct FPhysicsEndpointIdentity
+	{
+		TWeakObjectPtr<AInteriorPortal> Endpoint;
+		TWeakObjectPtr<UPrimitiveComponent> Support;
+		FTransform Frame;
+		FVector2D Aperture = FVector2D::ZeroVector;
+		bool Placed = false;
+	};
+	InteriorPortalPhysics::FTravellerRegistry TravellerRegistry;
+	TArray<FPhysicsEndpointIdentity> PhysicsPairIdentity;
+	uint64 PhysicsPairGeneration = 0;
+	TArray<FPhysicsEndpointIdentity> CapturePhysicsPairIdentity() const;
+	bool PhysicsPairMatches(const TArray<FPhysicsEndpointIdentity>& Candidate) const;
+	void RefreshPhysicsPairIdentity();
 	bool FitsCharacter(const ACharacter* Character, const FVector& Center, const AInteriorPortal* Portal) const;
 	void RestoreIgnores();
 	void RecoverCharacterPassage();
 	double CharacterNormalExtent(const ACharacter* Pawn, const FTransform& Frame) const;
-	void UpdatePhysicsGates();
+	void UpdatePhysicsGates(const TCHAR* DiagnosticBoundary);
 	void UpdateBodyVisuals();
 	void DiscoverTaggedTravellers();
 	void RemoveInvalidTravellers();

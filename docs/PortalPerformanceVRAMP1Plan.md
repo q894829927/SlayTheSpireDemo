@@ -1,6 +1,6 @@
 # Portal Performance / VRAM P1 Execution Plan
 
-**2026-09-20 current-work note:** the user's crop-display repair is tracked in
+**Historical 2026-09-20 crop-repair note:** the user's crop-display repair is tracked in
 [InteriorPortalCropDisplayRegression.md](InteriorPortalExperiment/InteriorPortalCropDisplayRegression.md).
 It retains Ping-Pong, corrects receiving-view coordinates and depth extraction,
 and retains a code default of off. The user has now confirmed Ping-Pong=1
@@ -14,7 +14,7 @@ Date: **2026-09-16**
 Status:
 
 ```text
-AUTHORIZED / READY FOR IMPLEMENTATION
+COMPLETE / VALIDATED / SEALED — 2026-09-26
 ```
 
 Working branch:
@@ -864,7 +864,7 @@ Record transition peak frame time. Do not accept lower steady-state ownership if
 
 # 8. P1B — Recursion Screen-Coverage Cutoff
 
-P1A and P1B have passed and are sealed. **P1C is the current active stage.**
+P1A, P1B and P1C have passed and are sealed. Current forward work is Physics P1.
 
 ## 8.1 Goal
 
@@ -1012,7 +1012,7 @@ portal: bound deep recursion by parent-view screen coverage
 
 # 9. P1C — Bounded Main-Pass Production Evidence
 
-**Current active stage.**
+**COMPLETE / VALIDATED / SEALED — 2026-09-26.**
 
 P1C is not a from-zero correctness implementation.
 
@@ -1057,6 +1057,25 @@ P1C primarily targets raster work, shader invocations and bandwidth. Do not coun
 The default may change only if the expanded production matrix and timing evidence justify it.
 
 Keeping the default disabled remains valid if correctness/performance evidence is incomplete.
+
+## 9.4 Current execution evidence — 2026-09-26
+
+P1C-1 remains user-confirmed PASS and P1C-2 timing is complete (scissor=1 was
+1.67% slower at the accepted camera). At HEAD `78057a3`, P1C-3 now has seven
+stationary camera A/B pairs on actual D3D12 PIE, covering both screen edges,
+vertical clipping, dual visibility, oblique/grazing views, no-visible-aperture
+cleanup and actual depth-two submissions. Inspected captures show no
+scissor-dependent geometry/foreground regression; submitted-layer diagnostics
+report no failures. This pass used the existing Ping-Pong=0 producer default.
+
+A 240-tick camera sweep with TSR active also produced inspected samples, but
+sampled screenshots cannot close the continuous-motion/flicker gate.
+The user subsequently confirmed continuous-motion acceptance with
+**“已完成，画面正常”**. P1C is now sealed; sampled screenshots alone were not
+used to satisfy that manual gate.
+Keep scissor default-disabled and reuse prior passing evidence. Detailed fixture,
+local artifact paths and the minimal remaining user check are recorded in
+[P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md).
 
 ---
 
@@ -1251,3 +1270,19 @@ Portal Physics P1
 ```
 
 More invasive render-target cropping, quality-tiering, portal-specific frustum and room/PVS work belong to later performance phases.
+
+## Final execution seal — 2026-09-26
+
+The criteria above are the original acceptance template. Execution acceptance
+is recorded by the already sealed P1A/P1B lifecycle, submission, build/Automation,
+runtime measurement and user visual records in
+[the checkpoint](CODEX_GOAL_CHECKPOINT.md), plus the final
+[P1C production evidence](InteriorPortalExperiment/InteriorPortalP1CProductionEvidence.md).
+Performance / VRAM P1 is **COMPLETE / VALIDATED / SEALED** for its declared scope.
+This does not promise affordable depth-four rendering on every GPU or reopen
+the pre-existing crossing hitch. Producer defaults and quality remain unchanged;
+bounded scissor stays 0 after its negative timing result.
+
+Next execution authority:
+[Physics P1 execution](InteriorPortalExperiment/InteriorPortalPhysicsP1Execution.md),
+under the existing rigid-body interaction contract.

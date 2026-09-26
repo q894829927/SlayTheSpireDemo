@@ -33,9 +33,65 @@
 #include "SceneView.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 
 namespace
 {
+	TAutoConsoleVariable<int32> CVarPortalPhysicsDiagnostics(
+		TEXT("portal.PhysicsDiagnostics"), 0,
+		TEXT("Log JSON holding/passage/recovery observations. Game-thread boundaries only; does not identify Chaos substeps."),
+		ECVF_Default);
+
+	void TraceVector(const TSharedPtr<FJsonObject>& Trace, const TCHAR* Name, const FVector& Value)
+	{
+		Trace->SetArrayField(Name, { MakeShared<FJsonValueNumber>(Value.X),
+			MakeShared<FJsonValueNumber>(Value.Y), MakeShared<FJsonValueNumber>(Value.Z) });
+	}
+
+	TSharedPtr<FJsonObject> PhysicsTrace(const AInteriorPortalSystem* System, const TCHAR* Event, const TCHAR* Boundary,
+		const UPrimitiveComponent* Body, const AInteriorPortal* RouteEntry, bool bLinked, bool bHeld)
+	{
+		if (CVarPortalPhysicsDiagnostics.GetValueOnGameThread() == 0 || !IsValid(Body)) { return nullptr; }
+		TSharedPtr<FJsonObject> Trace = MakeShared<FJsonObject>();
+		Trace->SetStringField(TEXT("event"), Event);
+		Trace->SetStringField(TEXT("boundary"), Boundary);
+		Trace->SetNumberField(TEXT("gameFrame"), GFrameCounter);
+		// Game frames are not Chaos solver-step identities. PHY-1 owns real
+		// registration/topology generations without owning simulated body poses.
+		Trace->SetStringField(TEXT("physicsStep"), TEXT("UNAVAILABLE"));
+		InteriorPortalPhysics::FTravellerSnapshot Snapshot;
+		if (System->CapturePhysicsTraveller(Body, Snapshot))
+		{
+			Trace->SetStringField(TEXT("registryEpoch"), LexToString(Snapshot.Handle.Epoch));
+			Trace->SetStringField(TEXT("bodyId"), LexToString(Snapshot.Handle.Id));
+			Trace->SetStringField(TEXT("bodyGeneration"), LexToString(Snapshot.Handle.Generation));
+			Trace->SetNumberField(TEXT("collisionPrimitiveCount"), Snapshot.Geometry.Primitives.Num());
+		}
+		else { Trace->SetStringField(TEXT("bodyGeneration"), TEXT("UNAVAILABLE")); }
+		Trace->SetStringField(TEXT("pairGeneration"), LexToString(System->GetPhysicsPairGeneration()));
+		Trace->SetStringField(TEXT("body"), Body->GetPathName());
+		Trace->SetStringField(TEXT("routeEntry"), GetPathNameSafe(RouteEntry));
+		Trace->SetBoolField(TEXT("linked"), bLinked);
+		Trace->SetBoolField(TEXT("held"), bHeld);
+		TraceVector(Trace, TEXT("pose"), Body->GetComponentLocation());
+		TraceVector(Trace, TEXT("rotationDegrees"), Body->GetComponentRotation().Euler());
+		TraceVector(Trace, TEXT("linearVelocity"), Body->GetPhysicsLinearVelocity());
+		TraceVector(Trace, TEXT("angularVelocityRadians"), Body->GetPhysicsAngularVelocityInRadians());
+		return Trace;
+	}
+
+	void EmitPhysicsTrace(const TSharedPtr<FJsonObject>& Trace)
+	{
+		FString Json;
+		const auto Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Json);
+		if (FJsonSerializer::Serialize(Trace.ToSharedRef(), Writer))
+		{
+			UE_LOG(LogTemp, Display, TEXT("PortalPhysicsTrace %s"), *Json);
+		}
+	}
+
 	FVector EyeOf(const ACharacter* Pawn)
 	{
 		const UCameraComponent* Camera = Pawn->FindComponentByClass<UCameraComponent>();
@@ -207,6 +263,7 @@ void AInteriorPortalSystem::BeginPlay()
 	for (UPrimitiveComponent* Traveller : AuthoredTravellers) { RegisterPhysicsTraveller(Traveller); }
 	DiscoverTaggedTravellers();
 	InvalidateRendererHistories(TEXT("begin play"));
+	RefreshPhysicsPairIdentity();
 	UpdateFidelityDiagnostics();
 	SetActorTickEnabled(true);
 }
@@ -219,6 +276,13 @@ bool AInteriorPortalSystem::RegisterPhysicsTraveller(UPrimitiveComponent* Travel
 		return false;
 	}
 
+	InteriorPortalPhysics::EGeometryResult GeometryReason;
+	if (!TravellerRegistry.Register(Traveller, GeometryReason))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("Portal traveller rejected: %s (%s)"),
+			*Traveller->GetPathName(), InteriorPortalPhysics::Reason(GeometryReason));
+		return false;
+	}
 	const int32 Index = PhysicsTravellers.Add(Traveller);
 	PreviousBodyPositions.Add(Traveller->GetComponentLocation());
 	LastSafeBodyPositions.Add(Traveller->GetComponentLocation());
@@ -247,6 +311,7 @@ bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Trav
 {
 	const int32 Index = PhysicsTravellers.IndexOfByKey(Traveller);
 	if (Index == INDEX_NONE) { return false; }
+	TravellerRegistry.Unregister(Traveller);
 
 	if (GrabHandle && GrabHandle->GetGrabbedComponent() == Traveller) { GrabHandle->ReleaseComponent(); }
 	if (PassageConstraints.IsValidIndex(Index) && IsValid(PassageConstraints[Index]))
@@ -274,7 +339,7 @@ void AInteriorPortalSystem::RemoveInvalidTravellers()
 	for (int32 Index = PhysicsTravellers.Num() - 1; Index >= 0; --Index)
 	{
 		UPrimitiveComponent* Traveller = PhysicsTravellers[Index];
-		if (!IsValid(Traveller) || !Traveller->IsSimulatingPhysics())
+		if (!IsValid(Traveller) || !Traveller->IsSimulatingPhysics() || !TravellerRegistry.Refresh(Traveller))
 		{
 			UnregisterPhysicsTraveller(Traveller);
 		}
@@ -312,6 +377,49 @@ bool AInteriorPortalSystem::IsLinked() const
 	return IsValid(BluePortal) && IsValid(OrangePortal) && BluePortal != OrangePortal
 		&& BluePortal->bPlaced && OrangePortal->bPlaced;
 }
+
+bool AInteriorPortalSystem::CapturePhysicsTraveller(const UPrimitiveComponent* Body,
+	InteriorPortalPhysics::FTravellerSnapshot& Out) const { return TravellerRegistry.Capture(Body, Out); }
+
+bool AInteriorPortalSystem::IsCurrentPhysicsTraveller(const InteriorPortalPhysics::FTravellerHandle& Handle) const
+{ return TravellerRegistry.IsCurrent(Handle); }
+
+TArray<AInteriorPortalSystem::FPhysicsEndpointIdentity> AInteriorPortalSystem::CapturePhysicsPairIdentity() const
+{
+	TArray<FPhysicsEndpointIdentity> Result;
+	for (AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
+	{
+		FPhysicsEndpointIdentity I;
+		if (IsValid(Portal))
+		{
+			I.Endpoint = Portal; I.Support = Portal->Support; I.Frame = Portal->GetLogicalFrame();
+			I.Aperture = FVector2D(Portal->HalfWidth, Portal->HalfHeight); I.Placed = Portal->bPlaced;
+		}
+		Result.Add(I);
+	}
+	return Result;
+}
+
+bool AInteriorPortalSystem::PhysicsPairMatches(const TArray<FPhysicsEndpointIdentity>& Candidate) const
+{
+	if (Candidate.Num() != PhysicsPairIdentity.Num()) { return false; }
+	for (int32 I = 0; I < Candidate.Num(); ++I)
+	{
+		const auto& A = Candidate[I]; const auto& B = PhysicsPairIdentity[I];
+		if (A.Endpoint != B.Endpoint || A.Support != B.Support || !A.Frame.Equals(B.Frame, 0)
+			|| A.Aperture != B.Aperture || A.Placed != B.Placed) { return false; }
+	}
+	return true;
+}
+
+void AInteriorPortalSystem::RefreshPhysicsPairIdentity()
+{
+	const auto Current = CapturePhysicsPairIdentity();
+	if (!PhysicsPairMatches(Current)) { ++PhysicsPairGeneration; PhysicsPairIdentity = Current; }
+}
+
+uint64 AInteriorPortalSystem::GetPhysicsPairGeneration() const
+{ return PhysicsPairMatches(CapturePhysicsPairIdentity()) ? PhysicsPairGeneration : 0; }
 
 bool AInteriorPortalSystem::IsFlashlightTraceThroughPortal(const FHitResult& Hit,
 	const FVector& TraceStart, const FVector& TraceEnd, const float TraceRadius) const
@@ -514,6 +622,7 @@ void AInteriorPortalSystem::RestoreIgnores()
 void AInteriorPortalSystem::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	RefreshPhysicsPairIdentity();
 	// Runtime-spawned physics actors opt in with the PortalTraveller component
 	// tag. Discovering them before the pre-physics gates keeps registration and
 	// the first traversal sample in the same frame.
@@ -543,7 +652,7 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 		FinishCharacterMove(Pawn);
 		if (!bHasPreviousEye) { PreviousEye = EyeOf(Pawn); bHasPreviousEye = true; }
 	}
-	UpdatePhysicsGates();
+	UpdatePhysicsGates(TEXT("PrePhysicsTick"));
 	if (Pawn && GrabHandle->GetGrabbedComponent())
 	{
 		const APlayerController* Player = Cast<APlayerController>(Pawn->GetController());
@@ -554,6 +663,8 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 			FRotator TargetRotation = Player->GetControlRotation();
 			FCollisionQueryParams Params(SCENE_QUERY_STAT(PortalGrab), false, Pawn);
 			Params.AddIgnoredComponent(GrabHandle->GetGrabbedComponent());
+			const bool bTraceHolding = CVarPortalPhysicsDiagnostics.GetValueOnGameThread() != 0;
+			TArray<UPrimitiveComponent*> SweepIgnoredSupports;
 			if (IsLinked())
 			{
 				if (HeldThroughEntry.IsValid())
@@ -565,7 +676,11 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 					Eye = InteriorPortalMath::Position(Eye, EntryFrame, ExitFrame);
 					Desired = InteriorPortalMath::Position(Desired, EntryFrame, ExitFrame);
 					TargetRotation = (InteriorPortalMath::Rotation(EntryFrame, ExitFrame)*TargetRotation.Quaternion()).Rotator();
-					if (Exit->Support) { Params.AddIgnoredComponent(Exit->Support.Get()); }
+					if (Exit->Support)
+					{
+						Params.AddIgnoredComponent(Exit->Support.Get());
+						if (bTraceHolding) { SweepIgnoredSupports.Add(Exit->Support.Get()); }
+					}
 				}
 				else
 				{
@@ -573,18 +688,55 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 					{
 						FVector Intersection;
 						if (Entry->Support && InteriorPortalMath::Crossed(Eye,Desired,Entry->GetLogicalFrame(),Entry->HalfWidth-30,Entry->HalfHeight-30,Intersection))
-						{ Params.AddIgnoredComponent(Entry->Support.Get()); }
+						{
+							Params.AddIgnoredComponent(Entry->Support.Get());
+							if (bTraceHolding) { SweepIgnoredSupports.Add(Entry->Support.Get()); }
+						}
 					}
 				}
 			}
 			FHitResult Hit;
 			const bool bBlocked = GetWorld()->SweepSingleByChannel(Hit, Eye, Desired, FQuat::Identity, ECC_Visibility, FCollisionShape::MakeSphere(28), Params);
 			GrabHandle->SetTargetLocationAndRotation(bBlocked ? Hit.Location : Desired, TargetRotation);
+			if (const auto Trace = PhysicsTrace(this, TEXT("HoldTarget"), TEXT("PrePhysicsTick"),
+				GrabHandle->GetGrabbedComponent(), HeldThroughEntry.Get(), IsLinked(), true))
+			{
+				TraceVector(Trace, TEXT("eye"), Eye);
+				TraceVector(Trace, TEXT("desired"), Desired);
+				TraceVector(Trace, TEXT("driveTarget"), bBlocked ? Hit.Location : Desired);
+				Trace->SetBoolField(TEXT("sweepBlocked"), bBlocked);
+				Trace->SetNumberField(TEXT("sweepRadiusCm"), 28);
+				Trace->SetStringField(TEXT("hitComponent"), GetPathNameSafe(Hit.GetComponent()));
+				TArray<TSharedPtr<FJsonValue>> Supports;
+				for (const auto* Ignored : SweepIgnoredSupports) { Supports.Add(MakeShared<FJsonValueString>(Ignored->GetPathName())); }
+				Trace->SetArrayField(TEXT("queryIgnoredSupports"), Supports);
+				Trace->SetNumberField(TEXT("transferCount"), PhysicsCrossings);
+				InteriorPortalPhysics::FTravellerSnapshot Snapshot;
+				if (CapturePhysicsTraveller(GrabHandle->GetGrabbedComponent(), Snapshot))
+				{
+					TArray<TSharedPtr<FJsonValue>> Candidates;
+					for (const AInteriorPortal* Portal : {BluePortal.Get(), OrangePortal.Get()})
+					{
+						if (!IsValid(Portal) || !SweepIgnoredSupports.Contains(Portal->Support.Get())) { continue; }
+						FTransform TargetPose = GrabHandle->GetGrabbedComponent()->GetComponentTransform();
+						TargetPose.SetLocation(bBlocked ? Hit.Location : Desired);
+						TargetPose.SetRotation(TargetRotation.Quaternion());
+						const auto Fit = InteriorPortalQuery::EvaluateBodyPassage(this, Snapshot,
+							TargetPose, TargetPose, Portal, GetPhysicsPairGeneration());
+						auto Candidate = MakeShared<FJsonObject>();
+						Candidate->SetStringField(TEXT("portal"), Portal->GetPathName());
+						Candidate->SetStringField(TEXT("targetEligibility"), InteriorPortalPhysics::Reason(Fit.Result));
+						Candidates.Add(MakeShared<FJsonValueObject>(Candidate));
+					}
+					Trace->SetArrayField(TEXT("shapeCandidates"), Candidates);
+				}
+				EmitPhysicsTrace(Trace);
+			}
 		}
 	}
 }
 
-void AInteriorPortalSystem::UpdatePhysicsGates()
+void AInteriorPortalSystem::UpdatePhysicsGates(const TCHAR* DiagnosticBoundary)
 {
 	for (int32 I = 0; I < PhysicsTravellers.Num(); ++I)
 	{
@@ -613,6 +765,29 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 				const bool bFits = BodyFits(Body, Portal);
 				const bool bPredictedFits = BodyFitsAt(Body, Portal, PredictedLocation);
 				const bool bWillClearSupport = FMath::Abs(PredictedDistance) > BodyExtent.Normal + 20;
+				if (const auto Trace = PhysicsTrace(this, TEXT("GateEvaluation"), DiagnosticBoundary,
+					Body, HeldThroughEntry.Get(), IsLinked(), GrabHandle->GetGrabbedComponent() == Body))
+				{
+					Trace->SetStringField(TEXT("portal"), Portal->GetPathName());
+					Trace->SetStringField(TEXT("support"), Portal->Support->GetPathName());
+					Trace->SetBoolField(TEXT("currentFits"), bFits);
+					Trace->SetBoolField(TEXT("predictedFits"), bPredictedFits);
+					Trace->SetBoolField(TEXT("willClearSupport"), bWillClearSupport);
+					Trace->SetNumberField(TEXT("distanceCm"), Distance);
+					Trace->SetNumberField(TEXT("predictionSeconds"), Delta);
+					TraceVector(Trace, TEXT("predictedPose"), PredictedLocation);
+					TraceVector(Trace, TEXT("portalLocalPose"), Frame.InverseTransformPositionNoScale(Location));
+					TraceVector(Trace, TEXT("supportExtents"), FVector(BodyExtent.Normal, BodyExtent.Width, BodyExtent.Height));
+					InteriorPortalPhysics::FTravellerSnapshot Snapshot;
+					if (CapturePhysicsTraveller(Body, Snapshot))
+					{
+						FTransform PredictedPose = Body->GetComponentTransform(); PredictedPose.SetLocation(PredictedLocation);
+						const auto Fit = InteriorPortalQuery::EvaluateBodyPassage(this, Snapshot,
+							Body->GetComponentTransform(), PredictedPose, Portal, GetPhysicsPairGeneration());
+						Trace->SetStringField(TEXT("shapeTranslationEligibility"), InteriorPortalPhysics::Reason(Fit.Result));
+					}
+					EmitPhysicsTrace(Trace);
+				}
 				// Disable only this body's contact while both the current and
 				// predicted poses occupy the legal opening. A lateral prediction
 				// outside the aperture keeps the wall solid for the next physics
@@ -662,6 +837,8 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 		// velocity component that points farther into the wall.
 		if (bInvalidInsideSupport && IsValid(Body) && LastSafeBodyPositions.IsValidIndex(I))
 		{
+			const auto Trace = PhysicsTrace(this, TEXT("Recovery"), DiagnosticBoundary, Body,
+				HeldThroughEntry.Get(), IsLinked(), GrabHandle->GetGrabbedComponent() == Body);
 			const FVector SafeLocation = LastSafeBodyPositions[I];
 			if (!Body->GetComponentLocation().Equals(SafeLocation, .01f))
 			{
@@ -678,6 +855,15 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 				Body->SetPhysicsLinearVelocity(SafeVelocity);
 			}
 			Support = nullptr;
+			if (Trace)
+			{
+				Trace->SetStringField(TEXT("reason"), TEXT("OUTSIDE_APERTURE_INSIDE_SUPPORT"));
+				Trace->SetStringField(TEXT("portal"), GetPathNameSafe(InvalidPortal));
+				TraceVector(Trace, TEXT("safePose"), SafeLocation);
+				TraceVector(Trace, TEXT("resultPose"), Body->GetComponentLocation());
+				TraceVector(Trace, TEXT("resultVelocity"), Body->GetPhysicsLinearVelocity());
+				EmitPhysicsTrace(Trace);
+			}
 		}
 		else if (IsValid(Body) && (!bNearSupport || Support || !IsLinked())
 			&& LastSafeBodyPositions.IsValidIndex(I))
@@ -705,6 +891,15 @@ void AInteriorPortalSystem::UpdatePhysicsGates()
 			Constraint->RegisterComponent();
 			Constraint->SetConstrainedComponents(Support, NAME_None, Body, NAME_None);
 			PassageConstraints[I] = Constraint;
+		}
+		if (const auto Trace = PhysicsTrace(this, TEXT("ContactPermission"), DiagnosticBoundary,
+			Body, HeldThroughEntry.Get(), IsLinked(), GrabHandle->GetGrabbedComponent() == Body))
+		{
+			Trace->SetStringField(TEXT("bypassedSupport"), GetPathNameSafe(Support));
+			Trace->SetBoolField(TEXT("constraintPresent"), IsValid(PassageConstraints[I]));
+			Trace->SetStringField(TEXT("exit"), GetPathNameSafe(BodyExits[I].Get()));
+			Trace->SetNumberField(TEXT("transferCount"), PhysicsCrossings);
+			EmitPhysicsTrace(Trace);
 		}
 	}
 }
@@ -844,11 +1039,19 @@ void AInteriorPortalSystem::UpdateTraversal(APlayerController* Player)
 			}
 			BodyExits[I] = Exit;
 			++PhysicsCrossings;
+			if (const auto Trace = PhysicsTrace(this, TEXT("Transfer"), TEXT("PostCameraTraversal"),
+				Body, HeldThroughEntry.Get(), IsLinked(), bHeld))
+			{
+				Trace->SetStringField(TEXT("entry"), Entry->GetPathName());
+				Trace->SetStringField(TEXT("exit"), Exit->GetPathName());
+				Trace->SetNumberField(TEXT("transferCount"), PhysicsCrossings);
+				EmitPhysicsTrace(Trace);
+			}
 			break;
 		}
 		PreviousBodyPositions[I] = Body->GetComponentLocation();
 	}
-	UpdatePhysicsGates();
+	UpdatePhysicsGates(TEXT("PostCameraTraversal"));
 	UpdateBodyVisuals();
 }
 
@@ -967,6 +1170,7 @@ bool AInteriorPortalSystem::FirePortal(APlayerController* Player, bool bOrange)
 	Portal->SetActorTransform(Frame);
 	Portal->Support = Hit.GetComponent();
 	Portal->bPlaced = true;
+	RefreshPhysicsPairIdentity();
 	Portal->RefreshAppearance();
 	InvalidateRendererHistories(TEXT("portal placement or replacement"));
 	bHasPreviousEye = false;
@@ -991,6 +1195,7 @@ void AInteriorPortalSystem::ResetPortals()
 		}
 	}
 	InvalidateRendererHistories(TEXT("portal clear"));
+	RefreshPhysicsPairIdentity();
 	bHasPreviousEye = false;
 	PlacementMessage = TEXT("Portals cleared");
 }
@@ -1828,5 +2033,8 @@ void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 		if (IsValid(Constraint)) { Constraint->DestroyComponent(); }
 	}
 	PassageConstraints.Reset();
+	TravellerRegistry.Reset();
+	PhysicsPairIdentity.Reset();
+	++PhysicsPairGeneration;
 	Super::EndPlay(Reason);
 }

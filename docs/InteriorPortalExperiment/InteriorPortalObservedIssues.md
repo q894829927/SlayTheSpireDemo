@@ -1,5 +1,34 @@
 # Interior Portal — Observed Issues and Regression Targets
 
+## Held-body lateral oscillation — 2026-09-26
+
+Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION COMPLETE; PHYSICAL FIX PENDING**.
+Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`; diagnostics and the
+identity/geometry foundation are included in the PHY-1 delivery commit.
+The user's modified map is preserved and excluded from that commit.
+
+Actual D3D12 PIE confirms competing legacy holding and passage/recovery
+decisions in a linked, remote-held rim fixture. The hold query ignores the exit
+support and continues advancing an unreachable target; the gate alternates
+support permission and Recovery relocates the body back to safety. PHY-0
+recorded one transfer, 98 recovery moves (maximum 46.2149 cm), and 136 observed
+permission-selection changes; no/unlinked controls had zero recovery/transfers.
+These are real body changes, not merely a rendering trail. This attribution
+covers the captured fixture, not every reported holding/camera arrangement.
+
+PHY-1 adds stable registration/configuration identities and conservative actual
+collision-shape eligibility shared by held/free diagnostics. Its geometry and
+lifetime tests pass, but it adds no motion/contact writer and does not switch
+the legacy policies. A 360-tick native integration capture still exhibits the
+same one transfer and 98 recovery moves. The defect therefore remains open.
+Next is PHY-2's Chaos timing/handoff spike, followed by bounded holding and the
+single-coordinator cutover. Do not close this issue on pure geometry tests or
+suppress Recovery to hide the symptom.
+
+See [the physics execution record](InteriorPortalPhysicsP1Execution.md) for
+exact fixture, extraction limits, validation evidence and next-stage gate, and
+[the physical contract](InteriorPortalRigidBodyInteractionDesign.md) for ownership.
+
 ## Persistent traversal hitch — clarified 2026-09-21
 
 The user reports that a brief frame hitch when physically crossing a Portal has

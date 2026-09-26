@@ -1,6 +1,9 @@
 # Portal rigid-body interaction contract
 
-Status: **design only, implementation and acceptance pending**, 2026-09-20.
+Status: **architecture migration pending; PHY-0 baseline and PHY-1 foundation complete, PHY-2 next**, 2026-09-26.
+Execution: [Physics P1 migration](InteriorPortalPhysicsP1Execution.md). Performance
+P1 is now sealed. The diagnostic and identity/geometry stages do not make existing physics
+conform to this contract or establish physical acceptance.
 Reviewed baseline: `9259f8e`. This document refines P5/P6/P10 in
 [the implementation plan](InteriorPortalFullFidelityImplementationPlan.md).
 [The performance execution plan](../PortalPerformanceVRAMP1Plan.md) owns current
@@ -140,10 +143,20 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
 
 1. Capture the reported lateral oscillation with body/desired/drive target poses,
    passage/route IDs, contact permission changes, recovery/transfer counters and
-   physics-step IDs. Current pull-versus-rollback explanation is a hypothesis,
-   not a reproduced root cause. Test with unlinked and linked portals.
-2. Establish P5 identity/geometry and shared P10 eligibility with pure contract
-   tests. Introduce the physics adapter boundary and prove simulation timing.
+   physics-step IDs where available. The PHY-0 execution record now reproduces
+   real repeated recovery moves in one linked, remote-held rim fixture (98
+   moves, one transfer); no/unlinked controls have none. It establishes competing
+   legacy hold/recovery decisions for that fixture, not every user-reported
+   scenario or solver-substep correctness. Physics-step/generation identities
+   remain unavailable in the baseline. See the execution record for exact scope.
+2. PHY-1 now supplies stable epoch/ID/generation registration, collision-shape
+   extraction and one read-only held/free body eligibility query with tested
+   stale-token rejection. Its conservative fixed-orientation translation rule
+   explicitly rejects continuous rotation. Legacy drive/contact writers remain
+   active; full P10 route/obstruction migration and swept rotational support are
+   still required. Next, PHY-2 introduces the physics adapter boundary and proves
+   simulation timing. See the execution record for supported extraction modes,
+   actual tests and runtime diagnostics; this foundation is not Core acceptance.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and
    independent position rollback. Remove superseded branches when switching;

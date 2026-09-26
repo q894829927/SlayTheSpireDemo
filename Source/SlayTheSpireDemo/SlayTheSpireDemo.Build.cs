@@ -15,6 +15,10 @@ public class SlayTheSpireDemo : ModuleRules
 		// STEP 1B.2 uses the UE 5.8 public CustomRenderPass/RenderGraph contract
 		// to submit a real transformed scene pass into an external proof target.
 		PrivateDependencyModuleNames.AddRange(new string[] { "SlateCore", "RenderCore", "Renderer", "RHI" });
+		// Opt-in portal physics observations use the engine JSON serializer internally.
+		PrivateDependencyModuleNames.Add("Json");
+		// Collision-shape adapters resolve BodySetup's effective collision policy.
+		PrivateDependencyModuleNames.Add("PhysicsCore");
 		
 		// Gameplay still exposes no Slate types; this private SlateCore dependency is
 		// limited to the Native HUD's FReply input boundary.
