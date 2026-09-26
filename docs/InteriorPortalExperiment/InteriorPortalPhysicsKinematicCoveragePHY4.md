@@ -2,6 +2,9 @@
 
 Updated: 2026-09-27. Status: **FILTERS/KINEMATIC COVERAGE VALIDATED; general dynamics/cutover/Core OPEN**.
 Source HEAD: `12f1fe81ef11cdc1ffc3403ae142782680f041e0` (native static certificate committed).
+This delivery is committed as `9d44f5b535ca4371a60892afbd9ba357d93d44ed`.
+This record describes that commit's scope. Subsequent sleep-lease work is tracked
+in [native dormant coverage](InteriorPortalPhysicsDormantCoveragePHY4.md).
 Authority: [PHY-4 ordering](InteriorPortalPhysicsPHY4.md),
 [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md).
 

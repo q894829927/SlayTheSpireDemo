@@ -2,9 +2,49 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 native dormant-body leases — 2026-09-27
+
+Source HEAD `9d44f5b535ca4371a60892afbd9ba357d93d44ed` (filter/kinematic
+delivery committed); current dormant continuation uncommitted. Prescribed bundled
+UE 5.8 generation/editor builds PASS. Final affected PhysicsSolverClearance
+**11/11 PASS, zero test warnings**, 2026.09.26-17.14.46 UTC: four new dormant
+tests plus all seven existing native static/filter/kinematic tests. Unchanged
+hold/coordinator/world-query/shared-mapping evidence is reused.
+
+Earlier runs are separate: initial 7/11 PASS, one warning (16.50.52 UTC; typed
+console data lookup caused an ensure for FAutoConsoleVariableRef); settings fix
+0/4 PASS, zero warnings (16.52.58; maximum velocity cap used as actual distance);
+native travel/corridor fix 3/4 PASS, two repeated console lookup warnings (16.55.50);
+diagnostic 0/1 PASS, zero warnings (17.11.32; retained-contact warm-up also collided
+and rotated the traveller, masking the intended sleep rejection). Read referenced
+console values through cached FindConsoleVariable pointers, use actual native
+travel inflation capped by detector limits and separate source/destination paths;
+reset fixture traveller motion and assert actual native retained-midphase count.
+Final all-sleeper wake analysis also prevents filtered intermediary wake chains.
+No results are combined across these runs.
+
+Actual TaskGraph one/two-step held/free scenes beside isolated 1 kg / 20 kg native
+sleepers consume all three current-stage proofs, commit once with fact revision 1
+and preserve material/sleep state. Sleeping PhysicsOnly exit obstruction, partial
+insertion followed by wake-up, direct/indirect wake partners, native PostIntegrate/
+PostSolve pose mutation, pending impulse, persistent joint and retained-contact
+rejections pass. Wake cancellation restores ordinary contacts without GT Recovery;
+valid newly sleeping native state can acquire a new interval lease. Active dynamics
+and contact islands still reject; no arbitrary production coverage is claimed.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Automation.log`,
+`PortalPhysicsPHY4DormantProjectFiles.log` and
+`PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Build.log`.
+Scope/limits: [dormant provider record](InteriorPortalExperiment/InteriorPortalPhysicsDormantCoveragePHY4.md).
+No manual PIE performed; no manual gate applies to this isolated slice. No new
+production writer/Core/P8/P9 seal; carrying defect remains OPEN. Pre-existing map
+hash is unchanged and the map was excluded from the requested prior commit.
+
 ## Interior portal PHY-4 native filters/kinematic coverage — 2026-09-27
 
 Source HEAD `12f1fe81ef11cdc1ffc3403ae142782680f041e0`; uncommitted continuation.
+This historical continuation is now committed as `9d44f5b`.
 Prescribed bundled UE 5.8 generation/editor builds PASS. Initial affected
 PhysicsSolverClearance 6/6 PASS, zero test warnings, 2026.09.26-16.06.09 UTC.
 Separate added Velocity-mode test initially 0/1 PASS, 16.08.40 UTC, zero warnings:

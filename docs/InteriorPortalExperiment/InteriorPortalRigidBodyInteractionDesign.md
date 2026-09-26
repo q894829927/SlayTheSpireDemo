@@ -192,9 +192,15 @@ all intermediate rotations about the native origin. Later hooks verify actual
 geometry stays inside that same envelope. Envelopes expire per physical step;
 GT component transforms cannot substitute for native state. Both supports must
 retain native interaction with the traveller for contact restoration; losing it
-retires the binding. Filtered-out dynamics are excluded, while interacting
-Dynamic/Sleeping motion still requires contact/constraint-safe coverage or a
-bounded rejection policy. This does not certify arbitrary production scenes.
+retires the binding. Filtered-out dynamics are excluded. The subsequent
+[native dormant-body lease](InteriorPortalPhysicsDormantCoveragePHY4.md) admits
+isolated actual Sleeping particles by freezing native pose/geometry per physical
+interval and revalidating all three stages. No GT sleep claim or V*dt prediction
+can substitute for a native lease. Every simulation sleeper participates in wake
+analysis, including filtered-out intermediates; retained midphases, persistent
+joints, pending impulses and uncertified wake reach reject. Active dynamic and
+contact-island motion still requires contact/constraint-safe coverage or a bounded
+rejection policy. This does not certify arbitrary production scenes.
 The shared rigid half-turn is an exact quaternion, preserving an axial trajectory
 without float-angle lateral drift across physics and virtual-camera mapping.
 

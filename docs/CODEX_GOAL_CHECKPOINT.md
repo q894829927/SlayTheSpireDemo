@@ -2,6 +2,56 @@
 
 ## Current execution update — 2026-09-27
 
+- Verified HEAD: `9d44f5b535ca4371a60892afbd9ba357d93d44ed`, branch
+  `portal/full-fidelity-p1`. User-requested prior delivery commit completed:
+  `feat(portal): certify native filters and kinematic clearance`.
+  Pre-existing modified map excluded. Current dormant continuation is uncommitted.
+- **PHY-4 IN PROGRESS; native dormant profile VALIDATED; active dynamics/contact
+  islands, production cutover and Core OPEN.** Authority:
+  [dormant provider record](InteriorPortalExperiment/InteriorPortalPhysicsDormantCoveragePHY4.md)
+  and [PHY-4 ordering](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md).
+- Existing PT-only certificate now leases all simulation-enabled native sleepers,
+  including filtered intermediates, per physical step. Freeze native pose/geometry;
+  PostIntegrate/PostSolve must retain the same lease. Zero native V/W/acceleration/
+  pending impulse, positive mass, no persistent joint or retained midphase are
+  required. No verifier sleep writes or new gameplay motion writer. Active dynamics
+  retain conservative rejection because V*dt cannot certify force/contact reach.
+- Bounded wake analysis covers bilateral native filters, source/destination
+  separately, full kinematic target/rotation and native collision inflation based
+  on actual travel capped by engine limits. Reject indirect wake chains, invalid
+  settings, unknown reach or >32 sleepers/>16384 checks. Pointer caches remove
+  repeated console lookup warnings; native unique indices are keys, not handles.
+- Prescribed bundled UE 5.8 generation/editor builds PASS. Final affected
+  PhysicsSolverClearance **11/11 PASS, zero test warnings**,
+  2026.09.26-17.14.46 UTC (four dormant gates plus seven existing regressions).
+  Earlier initial 7/11 (one warning), settings 0/4 (zero warnings), inflation
+  3/4 (two warnings) and diagnostic 0/1 (zero warnings) are separate runs retained
+  in the dedicated record. Typed cvar reference lookup, cap-as-distance inflation
+  and warmed traveller motion masking the sleep gate were corrected. No tolerance
+  relaxation. Unchanged coordinator/hold/world-query/mapping evidence is reused.
+- Actual one/two-substep held/free 1 kg / 20 kg sleeper scenes commit one coherent
+  transfer/fact and preserve native material/sleep. Sleeping PhysicsOnly obstruction
+  creates no fact. Wake during partial insertion rejects at first affected
+  PreIntegrate, restores ordinary wall blocking (X>6.8 cm) without GT Recovery;
+  newly valid native sleep reacquires only a fresh interval lease. Direct/indirect
+  wake influence rejects before pair suppression. PostIntegrate/PostSolve injected
+  pose changes, pending native impulse, a real joint and verified native retained
+  contact cannot authorize transfer.
+- Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}/index.json`,
+  corresponding `Saved/Logs/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Automation.log`,
+  `PortalPhysicsPHY4DormantProjectFiles.log` and
+  `PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Build.log`.
+- Next exact action: prove active dynamic/contact-island interval reach or a native
+  bounded rejection policy compatible with ordinary production contacts. Then
+  broaden traveller motion/cancellation, straddling topology, exceptional recovery
+  and pending-fact shutdown handoff. Assemble production only after slice 2 passes;
+  remove all legacy writers atomically, then run actual-map Core gates.
+- No manual PIE performed; no manual gate applies to this isolated slice. Carrying
+  defect OPEN; no Core/P8/P9 seal or new manual acceptance request. User map untouched,
+  SHA256 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous filter/kinematic execution — 2026-09-27 (committed as 9d44f5b)
+
 - Verified HEAD: `12f1fe81ef11cdc1ffc3403ae142782680f041e0`, branch
   `portal/full-fidelity-p1`. User-requested prior delivery commit completed:
   `feat(portal): certify native static passage clearance`. Pre-existing modified

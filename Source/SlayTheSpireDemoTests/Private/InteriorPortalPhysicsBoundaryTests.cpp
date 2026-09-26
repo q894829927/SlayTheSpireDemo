@@ -81,6 +81,7 @@ namespace
 		const uint64 Epoch = SolverEpochs.Increment();
 		bool ProbeAdapterRejections = false; // configured only before dispatch
 		bool NativeClearanceEnabled = false, ProbeClearanceProtocol = false;
+		TFunction<void()> AfterIntegrateMutation, AfterSolveMutation; // editor fixture injections, configured before dispatch
 		void ConfigureClearanceBeforeDispatch(const FBoundaryCommand& C, const FTransform& Support0, const FTransform& Support1,
 			const InteriorPortalPhysics::FGeometry& Geometry0, const InteriorPortalPhysics::FGeometry& Geometry1)
 		{
@@ -257,6 +258,7 @@ namespace
 		}
 		virtual void OnPostIntegrate_Internal() override
 		{
+			if (AfterIntegrateMutation) { AfterIntegrateMutation(); }
 			Sample->Integrated = Read(true);
 			ProveClearance(EClearanceStage::PostIntegrate,Sample->Integrated);
 			Sample->Decision = Coordinator->EvaluateInterval(Current, Sample->Before, Sample->Integrated,
@@ -297,6 +299,7 @@ namespace
 		virtual void OnPreSolve_Internal() override { Sample->Order = Sample->Order * 10 + 3; }
 		virtual void OnPostSolve_Internal() override
 		{
+			if (AfterSolveMutation) { AfterSolveMutation(); }
 			Sample->Order = Sample->Order * 10 + 4;
 			Sample->Solved = Read(true);
 			if (!ProveClearance(EClearanceStage::PostSolve,Sample->Solved))
@@ -1261,6 +1264,175 @@ bool FPortalSolverKinematicVelocityTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Velocity-mode clear scene commits once with coherent facts"),F.Samples.Last().Transfers == 1
 				&& F.FactCursor->LastRevision() == 1 && F.FactsValid);
 		}
+	}
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverDormantClearTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.DormantStableBodies", PortalBoundaryTestFlags)
+bool FPortalSolverDormantClearTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Held : {false,true}) for (double Mass : {1.,20.})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Sleeper = F.Box(FVector(1500,400,100),FVector(5),true);
+		Sleeper->SetMassOverrideInKg(NAME_None,Mass); Sleeper->PutAllRigidBodiesToSleep(); F.FlushRegistration();
+		TestFalse(TEXT("Candidate is genuinely asleep, not a static/kinematic replacement"),Sleeper->IsAnyRigidBodyAwake());
+		if (Held)
+		{
+			BeginHold(F,FTransform(FVector(-40,0,0))); F.Hold.Region.Planes.Reset();
+			TestTrue(TEXT("Held traveller shares the native dormant scene proof"),F.Callback->ConfigureRelationBeforeDispatch(F.Hold.DesiredHolderPose,F.Hold.LocalGrabAnchor));
+		}
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true, Material = true;
+		for (const auto& S : F.Samples) { Clear &= S.PreClearance == EStaticClearanceReason::Clear
+			&& S.IntegratedClearance == EStaticClearanceReason::Clear && S.SolvedClearance == EStaticClearanceReason::Clear;
+			Material &= S.MaterialPreserved; }
+		TestTrue(FString::Printf(TEXT("Isolated native sleeper permits every stage: substeps=%d held=%d mass=%.0f"),Substeps,Held,Mass),Clear);
+		TestTrue(TEXT("Isolated dormant scene commits one coherent transfer/fact"),F.Samples.Last().Transfers == 1
+			&& F.FactCursor->LastRevision() == 1 && F.FactsValid && Material);
+		TestFalse(TEXT("Verifier preserves obstacle sleep state"),Sleeper->IsAnyRigidBodyAwake());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverDormantWakeTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.DormantWakeAndObstruction", PortalBoundaryTestFlags)
+bool FPortalSolverDormantWakeTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		{
+			FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+			auto* Sleeper = F.Box(FVector(1013,0,0),FVector(.25),true);
+			Sleeper->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly); Sleeper->PutAllRigidBodiesToSleep(); F.FlushRegistration();
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Sleeping PhysicsOnly obstruction still blocks mapped exit"),F.Samples[0].PreClearance == EStaticClearanceReason::DestinationBlocked);
+			TestTrue(TEXT("Sleeping obstruction cannot publish a transfer"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		}
+		{
+			FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+			auto* Sleeper = F.Box(FVector(1500,400,100),FVector(5),true); Sleeper->PutAllRigidBodiesToSleep();
+			for (int32 I=0; I<3; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Dormant lease initially permits partial insertion"),FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,2.,1.e-6));
+			const int32 First = F.Samples.Num(); Sleeper->WakeAllRigidBodies();
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Wake invalidates clearance at the first affected PreIntegrate"),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
+			TestTrue(TEXT("Wake rejection restores ordinary contacts without GT Recovery"),F.Body->GetComponentLocation().X > 6.8
+				&& F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+			Sleeper->PutAllRigidBodiesToSleep(); const int32 Reacquire = F.Samples.Num(); F.Advance(Substeps);
+			TestTrue(TEXT("A new physical interval may acquire a fresh actually valid sleep lease"),F.Samples[Reacquire].PreClearance == EStaticClearanceReason::Clear && !F.Samples.Last().Retired);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverDormantPartnersTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.DormantWakePartners", PortalBoundaryTestFlags)
+bool FPortalSolverDormantPartnersTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (int32 Mode : {0,1,2})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Sleeper = F.Box(FVector(1500,400,0),FVector(1),true); Sleeper->PutAllRigidBodiesToSleep();
+		auto* Partner = F.Box(FVector(1500,Mode == 0 ? 360 : 600,0),FVector(1),true);
+		Partner->SetCollisionObjectType(ECC_WorldDynamic);
+		F.Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Ignore);
+		if (Mode == 0) { Partner->SetSimulatePhysics(false); }
+		if (Mode == 2) { Partner->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Ignore); }
+		F.FlushRegistration();
+		if (Mode == 0) { Partner->BodyInstance.SetBodyTransform(FTransform(FVector(1500,440,0)),ETeleportType::None); }
+		F.Advance(Substeps);
+		if (Mode == 2)
+		{
+			for (int32 I=0; I<11; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Native filtering against both traveller and sleeper excludes the wake source"),F.Samples[0].PreClearance == EStaticClearanceReason::Clear
+				&& F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1);
+		}
+		else
+		{
+			TestTrue(TEXT("Partner ignored by traveller but collidable with sleeper cannot create false clearance"),F.Samples[0].PreClearance == EStaticClearanceReason::UncertifiedDynamicInteraction);
+			TestTrue(TEXT("Potential wake source cannot disable support pairs or create a fact"),F.Samples[0].DisabledPairs == 0
+				&& F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		}
+	}
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Sleeper = F.Box(FVector(1500,400,0),FVector(1),true);
+		auto* Bridge = F.Box(FVector(1500,440,0),FVector(1),true);
+		auto* Active = F.Box(FVector(1500,600,0),FVector(1),true);
+		Bridge->SetCollisionObjectType(ECC_WorldDynamic); Active->SetCollisionObjectType(ECC_Pawn);
+		F.Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Ignore);
+		F.Body->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
+		Sleeper->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
+		Sleeper->PutAllRigidBodiesToSleep(); Bridge->PutAllRigidBodiesToSleep(); F.FlushRegistration();
+		F.Advance(Substeps);
+		TestTrue(TEXT("Active wake influence through a sleeper ignored by the traveller is still rejected"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::UncertifiedDynamicInteraction
+			&& F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverDormantLeaseTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.DormantLeaseInvalidation", PortalBoundaryTestFlags)
+bool FPortalSolverDormantLeaseTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool PostSolve : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Sleeper = F.Box(FVector(1500,400,0),FVector(1),true); Sleeper->PutAllRigidBodiesToSleep(); F.FlushRegistration();
+		auto Mutation = [Proxy=Sleeper->BodyInstance.GetPhysicsActor(),Changed=false]() mutable
+		{
+			if (Changed) { return; } Changed = true;
+			auto* Native = Proxy->GetPhysicsThreadAPI(); Native->SetX(Native->X()+Chaos::FVec3(0,1,0));
+		};
+		if (PostSolve) { F.Callback->AfterSolveMutation = MoveTemp(Mutation); }
+		else { F.Callback->AfterIntegrateMutation = MoveTemp(Mutation); }
+		F.Advance(Substeps);
+		TestTrue(TEXT("Dormant interval started with a valid native certificate"),F.Samples[0].PreClearance == EStaticClearanceReason::Clear);
+		TestTrue(TEXT("Native pose mutation cannot reuse the same interval lease"),
+			(PostSolve ? F.Samples[0].SolvedClearance : F.Samples[0].IntegratedClearance) == EStaticClearanceReason::UnsupportedScene);
+		TestTrue(TEXT("Changed native obstacle cannot publish a transfer"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+	}
+	for (int32 Invalid : {0,1,2})
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		auto* Sleeper = F.Box(FVector(1500,400,0),FVector(5),true); F.FlushRegistration();
+		if (Invalid == 2)
+		{
+			F.Box(FVector(1509,400,0),FVector(5),false); F.Advance(true);
+			// The warm-up also collided the traveller with its support; restore the
+			// declared normal-motion fixture so that it cannot mask the sleep gate.
+			F.Body->BodyInstance.SetBodyTransform(FTransform(FVector(8,0,0)),ETeleportType::TeleportPhysics);
+			F.Body->SetPhysicsLinearVelocity(FVector(-120,0,0));
+			F.Body->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		}
+		if (Invalid == 1)
+		{
+			AActor* Owner = F.World->SpawnActor<AActor>(); auto* Joint = NewObject<UPhysicsConstraintComponent>(Owner);
+			Owner->SetRootComponent(Joint); Owner->AddInstanceComponent(Joint);
+			Joint->SetWorldLocation(Sleeper->GetComponentLocation()); Joint->RegisterComponent();
+			Joint->SetConstrainedComponents(Sleeper,NAME_None,F.EntryWall,NAME_None);
+		}
+		Sleeper->PutAllRigidBodiesToSleep(); F.FlushRegistration();
+		if (Invalid == 2)
+		{
+			int32 Midphases = 0; auto* Proxy = Sleeper->BodyInstance.GetPhysicsActor();
+			F.Scene->GetSolver()->EnqueueCommandImmediate([Proxy,&Midphases]()
+			{ Midphases = Proxy->GetHandle_LowLevel()->ParticleCollisions().Num(); });
+			F.FlushRegistration();
+			TestTrue(TEXT("The sleeping contact fixture really retains native collision midphases"),Midphases > 0);
+		}
+		if (Invalid == 0)
+		{
+			auto* Proxy = Sleeper->BodyInstance.GetPhysicsActor();
+			F.Scene->GetSolver()->EnqueueCommandImmediate([Proxy]()
+			{ Proxy->GetHandle_LowLevel()->CastToRigidParticle()->SetLinearImpulseVelocity(Chaos::FVec3(0,1,0)); });
+		}
+		const int32 First = F.Samples.Num(); F.Advance(true);
+		TestTrue(FString::Printf(TEXT("Invalid dormant profile %d (impulse / joint / contact) rejects; reason=%d"),Invalid,static_cast<int32>(F.Samples[First].PreClearance)),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
+		TestTrue(TEXT("Invalid sleep lease creates no transfer"),F.Samples.Last().Transfers == 0);
 	}
 	return true;
 }

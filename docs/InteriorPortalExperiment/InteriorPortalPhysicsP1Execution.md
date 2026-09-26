@@ -1,7 +1,7 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-27.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static certificate and filters/kinematic coverage validated); production migration/Core OPEN**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static, filter/kinematic and dormant profiles validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
@@ -12,7 +12,10 @@ the pre-existing modified map is excluded. That delivery is
 `f6ed5dfd332c4ad083ba4439da411e7dc720033e`; the current world-observation/transfer
 primitives are committed as `33492d01471b2025f7d068dc090c0e4b1ac2ee37`.
 The native static certificate is committed as `12f1fe81ef11cdc1ffc3403ae142782680f041e0`.
-The native filter/kinematic continuation is uncommitted.
+The native filter/kinematic delivery is committed as
+`9d44f5b535ca4371a60892afbd9ba357d93d44ed`.
+Current native dormant-body lease continuation is uncommitted; see
+[its execution/evidence record](InteriorPortalPhysicsDormantCoveragePHY4.md).
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -387,8 +390,15 @@ now proves bilateral simulation filtering and complete Position/Velocity-mode
 kinematic envelopes across intermediate rotations, plus support-filter retirement.
 Final affected 7/7 PASS, zero test warnings; earlier initial/failed runs recorded
 separately. Filtered-out dynamics and certified kinematics no longer deny passage.
-Interacting Dynamic/Sleeping obstacles still reject; arbitrary production scenes
-remain uncertified.
+That delivery still rejected interacting Dynamic/Sleeping obstacles. The subsequent
+[native dormant-body lease](InteriorPortalPhysicsDormantCoveragePHY4.md) extends
+the provider to isolated native sleepers with per-step pose/geometry leases and
+bounded wake-partner checks, including sleepers filtered out against the traveller.
+Active dynamics and retained contact/joint islands remain rejected; arbitrary
+production scenes remain uncertified. Generation/build PASS; final affected
+PhysicsSolverClearance **11/11 PASS, zero test warnings**, including four new
+dormant gates and seven existing regressions. Dedicated record retains failed
+runs separately. No manual PIE performed or production carrying fix claimed.
 
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a

@@ -10,7 +10,7 @@ namespace InteriorPortalPhysics
 	enum class EStaticClearanceReason : uint8
 	{
 		Clear, Retired, InvalidInterval, BindingChanged, UnsupportedMotion,
-		UnsupportedScene, OutsideAperture, SourceBlocked, DestinationBlocked
+		UnsupportedScene, OutsideAperture, SourceBlocked, DestinationBlocked, UncertifiedDynamicInteraction
 	};
 	class FChaosStaticClearance;
 	/** Issued by a native solver scan, never constructible from GT query results. */
@@ -28,9 +28,9 @@ namespace InteriorPortalPhysics
 		EClearanceStage Stage = EClearanceStage::PreIntegrate;
 	};
 	/** PT-only, fixed-normal traveller with static supports and certified kinematics.
-	 * Collidable dynamics still reject; simulation filters exclude unrelated pairs.
+	 * Isolated native sleepers are leased per interval; active dynamics still reject.
 	 * Retire before proxy removal.
-	 * An O(N) correctness primitive, not yet an active general-world production provider. */
+	 * A bounded native scan, not yet an active general-world production provider. */
 	class SLAYTHESPIREDEMO_API FChaosStaticClearance
 	{
 	public:
@@ -66,6 +66,15 @@ namespace InteriorPortalPhysics
 		// Native unique indices are keys only, never retained particle/proxy pointers.
 		// Cleared for every physical interval; later hooks verify against its sweep.
 		TMap<int32, FKinematicEnvelope> KinematicEnvelopes;
+		struct FDormantLease
+		{
+			FBox Local;
+			FTransform Pose;
+			const void* Geometry = nullptr;
+			uint32 GeometryHash = 0;
+		};
+		TMap<int32, FDormantLease> DormantLeases;
+		double DormantCollisionSettings[5] = {0,0,0,0,0};
 		FBoundaryState IntervalStart;
 		FPhysicsStepKey IntervalStep;
 		uint64 Epoch = 0, Binding = 0, Sequence = 0;

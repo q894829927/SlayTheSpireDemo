@@ -39,7 +39,12 @@ dynamic/kinematic particles in that original scope. The subsequent
 [native filter/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
 validates actual bilateral filters, moving/rotating native kinematic interval
 envelopes and support-response retirement (final affected 7/7 PASS, zero warnings).
-Interacting Dynamic/Sleeping obstacles still reject; no new production writer.
+That delivery is committed as `9d44f5b`. The subsequent
+[native dormant-body lease](InteriorPortalPhysicsDormantCoveragePHY4.md) admits
+isolated actual sleepers, revalidates per-step native pose/geometry and rejects
+uncertified wake influence, including sleeping intermediates filtered out
+against the traveller. Active dynamic/contact-island coverage remains open;
+there is no new production writer.
 General production coverage and atomic removal of
 legacy writers are still required; this does not close the carrying defect.
 See [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md)
