@@ -2,9 +2,52 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 solver-bound static certificate — 2026-09-26
+
+Source HEAD `33492d01471b2025f7d068dc090c0e4b1ac2ee37`; uncommitted continuation.
+Prescribed bundled UE 5.8 generation and editor builds PASS. Initial affected
+run 18/20 PASS (two failing tests; two warnings inside the static-wall movement
+fixture). Corrected the test's refused Static component move to a real native
+body transform; diagnostic rerun 1/2 PASS, zero test warnings. Post-transfer
+UnsupportedMotion exposed float-PI drift in the shared half-turn. Replaced that
+angle construction with exact `(0,0,1,0)`, preserving the existing tolerances and
+one mapping across physics/holding/cameras. Rebuild PASS.
+
+Final affected **29/29 PASS, zero test warnings**, 2026.09.26-15.31.28 UTC:
+PhysicsBoundary (4), PhysicsHold (4), PhysicsCoordinator (6), PhysicsSolverClearance
+(4), PhysicsWorldQuery (5), RigidMapping, QuaternionCamera, VirtualViewRequest,
+FullFidelity.RecursiveRenderRequest, FullFidelity.AnalyticApertureGeometry and
+PortalAwareQuery (one each). Separate initial/diagnostic/final runs, not a combined
+total. Shared mapping changed, so directly affected route/camera gates were rerun.
+
+Subsequent supported-motion review adds angular-acceleration and persistent-joint
+guards. Real bounded rotational drive from zero initial spin and a real world
+joint reject before integration/support bypass. Rebuild PASS; affected
+PhysicsSolverClearance **4/4 PASS, zero test warnings**, 2026.09.26-15.41.14 UTC.
+Other 25 unchanged gates reuse preceding evidence. This is a separate focused
+rerun, not a 33-test aggregate or a repeated full 29-test run.
+
+Actual TaskGraph one/two-step held/free static scenes each commit once; each
+interval consumes three fresh native stage proofs. Certificate replay and wrong
+step/stage/command/sample reject. Native PhysicsOnly obstacle is invisible to GT
+queries but cancels the next affected interval with zero transfer; partial
+insertion restores original wall blocking. Native support movement/body extent/
+aperture mutation retire the binding; stale restoration cannot revive it. Other
+dynamic/kinematic particles, tangent velocity and spin reject. This does not
+prove general scene filtering/moving-obstacle coverage, arbitrary straddling
+topology recovery, gravity/rotation, journal shutdown handoff or production Core.
+No new gameplay writer/map edits; common rigid-mapping precision is corrected.
+No manual PIE was performed. Scope/evidence:
+[native certificate record](InteriorPortalExperiment/InteriorPortalPhysicsSolverClearancePHY4.md).
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}Automation.log`,
+`PortalPhysicsPHY4Solver{ProjectFiles,InitialBuild,Build,FinalBuild,MotionBuild}.log`.
+
 ## Interior portal PHY-4 world-observation/transfer primitives — 2026-09-26
 
 Source HEAD `f6ed5dfd332c4ad083ba4439da411e7dc720033e`; uncommitted continuation.
+This historical continuation is now committed as `33492d0`.
 Prescribed bundled UE 5.8 generation PASS. Initial build exposed a unity helper
 name collision in committed hold/coordinator code; coordinator helper renamed,
 rebuild PASS, subsequent primitive-test build PASS.

@@ -2,6 +2,70 @@
 
 ## Current execution update — 2026-09-26
 
+- Verified HEAD: `33492d01471b2025f7d068dc090c0e4b1ac2ee37`, branch
+  `portal/full-fidelity-p1`. User-requested world-observation/native-adapter
+  commit completed: `feat(portal): observe world clearance and validate native
+  transfer writes`; pre-existing map excluded. Current native static-clearance
+  continuation and exact shared-half-turn repair are uncommitted.
+- **PHY-4 IN PROGRESS; native static certificate VALIDATED; general provider,
+  production cutover and Core OPEN.** Authority:
+  [native certificate execution](InteriorPortalExperiment/InteriorPortalPhysicsSolverClearancePHY4.md)
+  and [PHY-4 ordering](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md).
+- PT-only FChaosStaticClearance binds body geometry/identity, pair/solver/binding
+  and native support descriptors. It re-scans native simulation-enabled geometry
+  at PreIntegrate/PostIntegrate/PostSolve, including PhysicsOnly collision. Private
+  proof carries command, exact samples/step/stage and issuance sequence; consume
+  once. Native geometry/configuration mismatch permanently retires the binding.
+  Owner/native-unregister lifetime guards remain before raw-proxy use.
+- Supported profile is conservative complete native bounds in a static scene,
+  fixed orientation and normal motion. Every other simulation-enabled dynamic/
+  sleeping/kinematic particle rejects, as do tangent velocity/acceleration and
+  spin/angular acceleration. Persistent native joints reject before integration;
+  real hold rotation torque from zero initial spin cannot bypass the guard.
+  Unknown/cluster/unbounded geometry or >4096 native particles rejects.
+  Response filters are conservatively over-blocked. No active gameplay writer
+  was replaced/added; new mutable code remains attached only in editor tests.
+- Native stage validation exposed float-PI half-turn drift after transfer:
+  inward -120 cm/s gained about 0.00001049 cm/s lateral velocity. Shared
+  InteriorPortalMath::Rotation now uses exact quaternion (0,0,1,0), preserving
+  one mapping for physics, holding routes, world queries and virtual cameras.
+  New rigid-mapping axial/repeated-half-turn assertions and affected camera/
+  route gates pass; no tolerance was relaxed. This small common precision
+  correction affects production mapping, but adds no production physics writer.
+- Prescribed bundled UE 5.8 generation/editor builds PASS. Initial focused
+  run 18/20 PASS, two failures and two warnings in the refused Static component
+  movement fixture. Fixed that test through actual BodyInstance transform;
+  diagnostic run 1/2 PASS, zero warnings. Exact-half-turn repair and rebuild PASS;
+  final affected **29/29 PASS, zero test warnings**, 2026.09.26-15.31.28 UTC.
+  Subsequent angular-acceleration/persistent-joint guards: rebuild PASS, affected
+  PhysicsSolverClearance **4/4 PASS, zero test warnings**, 15.41.14 UTC; other 25
+  unchanged gates reuse preceding evidence. Actual rotation-drive/world-joint
+  fixtures reject before support bypass. No aggregate 33-test claim.
+  Separate runs, not aggregate totals. Reports:
+  `Saved/AutomationReports/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}/index.json`;
+  logs `Saved/Logs/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}Automation.log` and
+  `PortalPhysicsPHY4Solver{ProjectFiles,InitialBuild,Build,FinalBuild,MotionBuild}.log`.
+- Actual TaskGraph one/two-step held/free scenes: 12 dispatches, 12/24 samples,
+  three native proofs per sample, exactly one commit/fact revision 1. Actual
+  material preserved; replay/wrong step/stage/command/sample fail. PhysicsOnly
+  blocker unseen by GT cancels first affected native interval; no transfer.
+  Partial insertion X=2 restores via ordinary contacts to X=7/7.000001 cm,
+  without test-side pose Recovery. Native wall movement, body extent and
+  unversioned aperture mutation retire permanently; static rollback cannot revive.
+- Next exact action: replace strict whole-scene rejection with proven native
+  simulation filtering and conservative moving-obstacle interval coverage so
+  unrelated dynamics/kinematics need not deny passage. Preserve Core blocked-exit
+  policy and do not imply P8 remote-half contacts. Then prove supported gravity/
+  rotation/tangential cancellation, topology changes while straddling, exceptional
+  recovery and final pending-fact handoff. Only after slice 2 passes remove legacy
+  hold/gate/Recovery/player-held warp together and run actual-map Core gates.
+- No manual gate applies to this isolated native profile; no manual PIE performed.
+  Do not request visual acceptance of unchanged legacy carrying. Defect remains
+  OPEN; no Core seal/P8/P9 advancement. Pre-existing map untouched, hash
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous PHY-4 world-observation execution — 2026-09-26
+
 - Verified HEAD: `f6ed5dfd332c4ad083ba4439da411e7dc720033e`, branch
   `portal/full-fidelity-p1`. User-requested coordinator commit completed:
   `feat(portal): coordinate passage commits and durable transfer facts`.

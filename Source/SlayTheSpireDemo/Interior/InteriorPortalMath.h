@@ -214,7 +214,9 @@ namespace InteriorPortalMath
 
 	inline FQuat Rotation(const FTransform& Entry, const FTransform& Exit)
 	{
-		return (Exit.GetRotation() * FQuat(FVector::UpVector, PI) * Entry.GetRotation().Inverse()).GetNormalized();
+		// Exact rigid half-turn: a float PI angle injects tangential velocity when
+		// promoted to double, breaking the normal-motion contract after transfer.
+		return (Exit.GetRotation() * FQuat(0.,0.,1.,0.) * Entry.GetRotation().Inverse()).GetNormalized();
 	}
 	inline FVector Position(const FVector& Point, const FTransform& Entry, const FTransform& Exit)
 	{

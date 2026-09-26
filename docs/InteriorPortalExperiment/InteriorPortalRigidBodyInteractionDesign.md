@@ -179,6 +179,15 @@ the actual solved P/Q and material state before its first setter; an advisory
 query cannot itself write a body. See
 [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md).
 
+The [native static certificate](InteriorPortalPhysicsSolverClearancePHY4.md)
+implements the boundary distinction in a restricted normal-motion/static-scene
+profile: consume one private proof for its exact command, samples, physical step
+and stage, with fresh scans at PreIntegrate/PostIntegrate/PostSolve. Actual native
+simulation geometry includes PhysicsOnly collision. This profile rejects other
+dynamic/kinematic particles; it does not certify arbitrary production scenes.
+The shared rigid half-turn is an exact quaternion, preserving an axial trajectory
+without float-angle lateral drift across physics and virtual-camera mapping.
+
 ## P8/P9 extension boundary
 
 Keep the planned PortalPhysicsBubble and ShadowPhysicsClone. Visual proxies and
@@ -214,7 +223,8 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
    PHY-4 now proves the coordinator/durable-fact slice in the editor fixture;
    actual-world volume observations and a reusable native transfer primitive now
    also pass narrow tests, including normal blocked-exit cancellation. Certified
-   solver/topology coverage, coordinated production cutover and Core acceptance
+   static solver/topology coverage now passes its strict native profile; general
+   dynamic scene coverage, coordinated production cutover and Core acceptance
    remain unfinished. None of these isolated slices closes the carrying defect.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and

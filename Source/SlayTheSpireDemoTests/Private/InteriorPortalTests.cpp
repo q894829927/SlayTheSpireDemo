@@ -22,6 +22,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FInteriorPortalMappingTest,
 	"SlayTheSpireDemo.Interior.Portals.RigidMapping", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FInteriorPortalMappingTest::RunTest(const FString& Parameters)
 {
+	const FQuat HalfTurn = InteriorPortalMath::Rotation(FTransform::Identity,FTransform(FVector(1000,0,0)));
+	TestTrue(TEXT("Rigid half-turn injects no lateral velocity into normal approach"),HalfTurn.RotateVector(FVector(-120,0,0)) == FVector(120,0,0));
+	TestTrue(TEXT("Repeated half-turn exactly restores axial momentum"),HalfTurn.RotateVector(HalfTurn.RotateVector(FVector(-120,0,0))) == FVector(-120,0,0));
 	const FTransform A(FRotator(0, 90, 0), FVector(10, 20, 130));
 	for (const FRotator Orientation : {FRotator(0, -90, 0), FRotator(90, 20, 0), FRotator(-90, 0, 0), FRotator(25, 173, 47)})
 	{

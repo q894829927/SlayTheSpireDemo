@@ -4,6 +4,7 @@
 #include "Interior/InteriorPortalHoldSolver.h"
 #include "Interior/InteriorPortalPassageCoordinator.h"
 #include "Interior/InteriorPortalChaosTransferAdapter.h"
+#include "Interior/InteriorPortalChaosStaticClearance.h"
 #include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
@@ -12,6 +13,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -47,6 +49,11 @@ namespace
 		FHoldRelationSnapshot Relation;
 		bool MaterialPreserved = true;
 		bool AdapterRejectionsAtomic = true;
+		bool ProofProtocolValid = true;
+		int32 ClearanceScans = 0;
+		EStaticClearanceReason PreClearance = EStaticClearanceReason::InvalidInterval;
+		EStaticClearanceReason IntegratedClearance = EStaticClearanceReason::InvalidInterval;
+		EStaticClearanceReason SolvedClearance = EStaticClearanceReason::InvalidInterval;
 		FVector GateImpulse = FVector::ZeroVector;
 		FBoundaryDecision Decision;
 		uint32 ReuseOrdinal = 0;
@@ -73,6 +80,14 @@ namespace
 	public:
 		const uint64 Epoch = SolverEpochs.Increment();
 		bool ProbeAdapterRejections = false; // configured only before dispatch
+		bool NativeClearanceEnabled = false, ProbeClearanceProtocol = false;
+		void ConfigureClearanceBeforeDispatch(const FBoundaryCommand& C, const FTransform& Support0, const FTransform& Support1,
+			const InteriorPortalPhysics::FGeometry& Geometry0, const InteriorPortalPhysics::FGeometry& Geometry1)
+		{
+			Clearance = MakeUnique<FChaosStaticClearance>(static_cast<Chaos::FPBDRigidsSolver*>(GetSolver()),
+				Body,Supports[0],Supports[1],C,Epoch,Epoch,Support0,Support1,Geometry0,Geometry1);
+			NativeClearanceEnabled = true;
+		}
 		void ConfigureHoldBeforeDispatch(uint64 RouteRevision, uint64 RegionRevision)
 		{ HoldRouteRevision = RouteRevision; HoldRegionRevision = RegionRevision; }
 		bool ConfigureRelationBeforeDispatch(const FTransform& Desired, const FVector& Anchor)
@@ -100,11 +115,50 @@ namespace
 		uint64 HoldRouteRevision = 0, HoldRegionRevision = 0;
 		TUniquePtr<FPassageCoordinator> Coordinator;
 		TUniquePtr<FChaosTransferAdapter> Adapter;
+		TUniquePtr<FChaosStaticClearance> Clearance;
+		TOptional<FStaticClearanceProof> PreviousProof;
+		bool NativeIntervalEligible = false;
 		bool HasInput = false, BindingMatches = false;
 		FSpikeSample* Sample = nullptr;
 		// UE registers evolution callbacks in its simulation list too. Presimulate
 		// is intentionally empty: interval work starts at the actual PreIntegrate hook.
 		virtual void OnPreSimulate_Internal() override {}
+		bool ProveClearance(EClearanceStage Stage, const FBoundaryState& End)
+		{
+			if (!NativeClearanceEnabled) { return true; }
+			Current.IsolatedStaticScope = false; Current.ExitCorridorCertified = false;
+			if (Retired) { return false; }
+			const auto Proof = Clearance->Certify_Internal(Current,Sample->Before,End,Sample->Receipt.Step,Stage,PortalIndex);
+			++Sample->ClearanceScans;
+			if (Stage == EClearanceStage::PreIntegrate) { Sample->PreClearance = Proof.Reason(); }
+			if (Stage == EClearanceStage::PostIntegrate) { Sample->IntegratedClearance = Proof.Reason(); }
+			if (Stage == EClearanceStage::PostSolve) { Sample->SolvedClearance = Proof.Reason(); }
+			if (Proof.Reason() == EStaticClearanceReason::BindingChanged || Proof.Reason() == EStaticClearanceReason::Retired)
+			{
+				Retired = true; Sample->Retired = true; Coordinator->Retire(); Adapter->Retire_Internal();
+			}
+			if (ProbeClearanceProtocol && Proof.Reason() == EStaticClearanceReason::Clear)
+			{
+				auto WrongStep = Sample->Receipt.Step; ++WrongStep.EvolutionSerial;
+				auto WrongCommand = Current; ++WrongCommand.Revision;
+				auto WrongEnd = End; WrongEnd.Pose.AddToTranslation(FVector(1,0,0));
+				Sample->ProofProtocolValid &= !Clearance->Consume_Internal(Proof,Current,Sample->Before,End,WrongStep,Stage)
+					&& !Clearance->Consume_Internal(Proof,WrongCommand,Sample->Before,End,Sample->Receipt.Step,Stage)
+					&& !Clearance->Consume_Internal(Proof,Current,Sample->Before,WrongEnd,Sample->Receipt.Step,Stage)
+					&& !Clearance->Consume_Internal(Proof,Current,Sample->Before,End,Sample->Receipt.Step,
+						Stage == EClearanceStage::PreIntegrate ? EClearanceStage::PostIntegrate : EClearanceStage::PreIntegrate);
+				if (PreviousProof.IsSet())
+				{ Sample->ProofProtocolValid &= !Clearance->Consume_Internal(PreviousProof.GetValue(),Current,Sample->Before,End,Sample->Receipt.Step,Stage); }
+			}
+			bool Allowed = Clearance->Consume_Internal(Proof,Current,Sample->Before,End,Sample->Receipt.Step,Stage);
+			if (ProbeClearanceProtocol && Allowed)
+			{ Sample->ProofProtocolValid &= !Clearance->Consume_Internal(Proof,Current,Sample->Before,End,Sample->Receipt.Step,Stage); }
+			PreviousProof = Proof;
+			if (Stage == EClearanceStage::PreIntegrate) { NativeIntervalEligible = Allowed; }
+			else { Allowed &= NativeIntervalEligible; }
+			Current.IsolatedStaticScope = Allowed; Current.ExitCorridorCertified = Allowed;
+			return Allowed;
+		}
 		FBoundaryState Read(bool Predicted) const
 		{
 			FBoundaryState S;
@@ -130,7 +184,7 @@ namespace
 			// Owner cancellation reaches the same marshalled boundary as physics removal.
 			// The native unregister callback is a second lifetime guard, not the sole cancellation signal.
 			if (HasInput && !BindingMatches) { Retired = true; }
-			if (Retired) { Coordinator->Retire(); Adapter->Retire_Internal(); }
+			if (Retired) { Coordinator->Retire(); Adapter->Retire_Internal(); if (Clearance) { Clearance->Retire_Internal(); } }
 			if (HasInput) { Coordinator->Acknowledge(Input->TransferAck); }
 			PortalIndex = Coordinator->BodyEndpoint();
 			if (Current.Revision > Revision) { Revision = Current.Revision; Reuse = 0; }
@@ -182,6 +236,7 @@ namespace
 				FBoundaryState Predicted = Sample->Before;
 				Predicted.Pose.AddToTranslation((Handle->V() + Handle->Acceleration() * Sample->Receipt.Step.DeltaSeconds)
 					* Sample->Receipt.Step.DeltaSeconds);
+				ProveClearance(EClearanceStage::PreIntegrate,Predicted);
 				const auto Preflight = EvaluateBoundary(Current, Sample->Before, Predicted,
 					Sample->Receipt.Step, Sample->ReuseOrdinal, false);
 				const bool Block = !HasInput || !BindingMatches || Sample->RepeatedSolverFrame || Current.Revision != Revision || !Preflight.BypassSupport;
@@ -203,6 +258,7 @@ namespace
 		virtual void OnPostIntegrate_Internal() override
 		{
 			Sample->Integrated = Read(true);
+			ProveClearance(EClearanceStage::PostIntegrate,Sample->Integrated);
 			Sample->Decision = Coordinator->EvaluateInterval(Current, Sample->Before, Sample->Integrated,
 				Sample->Receipt.Step, Sample->ReuseOrdinal, false);
 			if (!HasInput) { Sample->Decision = { EBoundaryReason::ExpiredInput, false, false }; }
@@ -243,6 +299,8 @@ namespace
 		{
 			Sample->Order = Sample->Order * 10 + 4;
 			Sample->Solved = Read(true);
+			if (!ProveClearance(EClearanceStage::PostSolve,Sample->Solved))
+			{ Sample->Decision = {EBoundaryReason::TransferNotCertified,false,false}; Coordinator->RevokeInterval(EBoundaryReason::TransferNotCertified); }
 			if (!Retired) { Adapter->BeginSolvedStep_Internal(Sample->Receipt.Step); }
 			if (Sample->Decision.TransferAfterSolve && !Retired && Body && Body->GetPhysicsThreadAPI())
 			{
@@ -302,7 +360,10 @@ namespace
 			{
 				const auto* Proxy = Item.Get<1>();
 				if (Proxy == Body || Proxy == Supports[0] || Proxy == Supports[1])
-				{ Retired = true; UnregistrationObserved = true; Coordinator->Retire(); Adapter->Retire_Internal(); }
+				{
+					Retired = true; UnregistrationObserved = true; Coordinator->Retire(); Adapter->Retire_Internal();
+					if (Clearance) { Clearance->Retire_Internal(); }
+				}
 			}
 		}
 	};
@@ -408,6 +469,16 @@ namespace
 			R.Entry = Command.Entry; R.Exit = Command.Exit;
 			R.From = Body->GetComponentTransform(); R.To = R.From; R.To.AddToTranslation(FVector(-2,0,0));
 			return R;
+		}
+		void EnableNativeClearance(bool RemoveOtherBody = true)
+		{
+			if (RemoveOtherBody) { ProtectedBody->DestroyComponent(); ProtectedBody = nullptr; }
+			InteriorPortalPhysics::FGeometry Geometry0, Geometry1;
+			check(ExtractStaticSupportGeometry(EntryWall,Geometry0) == EGeometryResult::Fits);
+			check(ExtractStaticSupportGeometry(ExitWall,Geometry1) == EGeometryResult::Fits);
+			Callback->ConfigureClearanceBeforeDispatch(Command,EntryWall->GetComponentTransform(),ExitWall->GetComponentTransform(),Geometry0,Geometry1);
+			// Authoritative proof must replace these authored fixture claims at every stage.
+			Command.IsolatedStaticScope = false; Command.ExitCorridorCertified = false;
 		}
 		void ConsumeFacts(const TArray<FTransferFact>& Facts)
 		{
@@ -605,9 +676,8 @@ bool FPortalHoldGeometryTest::RunTest(const FString& Parameters)
 	C.Route.BodySide = FTransform(FVector(1000,0,0)); C.DesiredHolderPose = FTransform(FVector(10,20,0));
 	Body.Pose.SetLocation(FVector(990,-20,0));
 	const auto Remote = SolveHoldTarget(C,Body,Traveller.Handle,1,1,1);
-	// Use the declared frame's half-turn, not rounded ideal coordinates: the
-	// existing portal math constructs its quaternion with the engine PI constant.
-	const FVector ExpectedRemote = FVector(1000,0,0) + FQuat(FVector::UpVector,PI).RotateVector(FVector(10,20,0));
+	// The canonical rigid half-turn has exact axial signs and no float-angle drift.
+	const FVector ExpectedRemote(990,-20,0);
 	TestTrue(TEXT("Explicit single-pair route maps position and orientation into body space"), Remote.Usable()
 		&& Remote.Pose.GetLocation().Equals(ExpectedRemote,1.e-6)
 		&& Remote.Pose.GetRotation().Equals(InteriorPortalMath::Rotation(C.Route.HolderSide,C.Route.BodySide),1.e-6));
@@ -919,6 +989,144 @@ bool FPortalNativeAdapterAtomicTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Wrong binding/step/solved state/material/nonfinite output and replay perform no write"),Atomic && Crossings == 1);
 		TestTrue(TEXT("Valid fact commits once in same solved interval after rejected attempts"),F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1);
 		TestTrue(TEXT("Native solved-state mapping preserves mass/inertia/COM/mass-frame/sleep"),Material);
+	}
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverStaticCertificateTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.NativeStaticAndCertificate", PortalBoundaryTestFlags)
+bool FPortalSolverStaticCertificateTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Held : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance(); F.Callback->ProbeClearanceProtocol = true;
+		if (Held)
+		{
+			BeginHold(F,FTransform(FVector(-40,0,0))); F.Hold.Region.Planes.Reset();
+			TestTrue(TEXT("Held/free native-certificate fixture uses the same coordinator relation"),
+				F.Callback->ConfigureRelationBeforeDispatch(F.Hold.DesiredHolderPose,F.Hold.LocalGrabAnchor));
+		}
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true, Protocol = true, Materials = true; int32 Crossings = 0;
+		for (const auto& S : F.Samples)
+		{
+			if (S.ClearanceScans != 3 || S.PreClearance != EStaticClearanceReason::Clear
+				|| S.IntegratedClearance != EStaticClearanceReason::Clear || S.SolvedClearance != EStaticClearanceReason::Clear)
+			{
+				AddInfo(FString::Printf(TEXT("Certificate stage diagnostic step=%llu pre=%d integrated=%d solved=%d scans=%d retired=%d beforeX=%.6f integratedX=%.6f solvedX=%.6f"),
+					S.Receipt.Step.EvolutionSerial,static_cast<int32>(S.PreClearance),static_cast<int32>(S.IntegratedClearance),
+					static_cast<int32>(S.SolvedClearance),S.ClearanceScans,S.Retired,S.Before.Pose.GetLocation().X,
+					S.Integrated.Pose.GetLocation().X,S.Solved.Pose.GetLocation().X));
+			}
+			Clear &= S.ClearanceScans == 3 && S.PreClearance == EStaticClearanceReason::Clear
+				&& S.IntegratedClearance == EStaticClearanceReason::Clear && S.SolvedClearance == EStaticClearanceReason::Clear;
+			Protocol &= S.ProofProtocolValid; Materials &= S.MaterialPreserved;
+			if (S.Decision.TransferAfterSolve) { ++Crossings; }
+		}
+		TestTrue(TEXT("All three actual callback stages issue current native scene proofs"),Clear);
+		TestTrue(TEXT("Wrong step/stage/command/sample, prior proof and duplicate consumption reject"),Protocol);
+		TestTrue(TEXT("Without authored GT certificates native proof permits exactly one transfer"),
+			Crossings == 1 && F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1);
+		TestTrue(TEXT("Actual native transfer preserves materials and coherent facts"),Materials && F.FactsValid);
+		TestTrue(TEXT("Certificates cover distinct one/two-substep intervals"),F.Samples.Num() == (Substeps ? 24 : 12) && F.ReceiptsValid);
+		AddInfo(FString::Printf(TEXT("Native certificate substeps=%d held=%d samples=%d x=%.6f transfers=%d"),
+			Substeps,Held,F.Samples.Num(),F.Body->GetComponentLocation().X,F.Samples.Last().Transfers));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverPhysicsOnlyTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.NativePhysicsOnlyAndCancellation", PortalBoundaryTestFlags)
+bool FPortalSolverPhysicsOnlyTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Partial : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		if (Partial) { for (int32 I=0; I<3; ++I) { F.Advance(Substeps); } }
+		else { F.FlushRegistration(); }
+		const double Before = F.Body->GetComponentLocation().X;
+		if (Partial) { TestTrue(TEXT("The actual body reached partial insertion before obstruction"),FMath::IsNearlyEqual(Before,2.,1.e-6)); }
+		auto* Blocker = F.Box(FVector(1013,0,0),FVector(.25),false);
+		Blocker->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly); F.FlushRegistration();
+		TestTrue(TEXT("GT observer does not see a query-disabled physics blocker"),ObserveWorldPassage(F.PassageRequest(),F.Registry).Result == EWorldPassageResult::ClearAtQuery);
+		// Deliberately stale author claims cannot override the native scan.
+		F.Command.ExitCorridorCertified = true; F.Command.IsolatedStaticScope = true;
+		const int32 First = F.Samples.Num();
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		TestTrue(TEXT("PhysicsOnly exit obstacle is caught before the first affected integration"),
+			F.Samples[First].PreClearance == EStaticClearanceReason::DestinationBlocked);
+		TestTrue(TEXT("Restored ordinary contacts prevent traversal without GT pose Recovery"),F.Body->GetComponentLocation().X > 6.8);
+		TestTrue(TEXT("Stale authored clear claim cannot commit or publish a transfer"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		AddInfo(FString::Printf(TEXT("Native PhysicsOnly substeps=%d partial=%d beforeX=%.6f restoredX=%.6f transfers=%d"),
+			Substeps,Partial,Before,F.Body->GetComponentLocation().X,F.Samples.Last().Transfers));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverUnsupportedSceneTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.UnsupportedSceneAndMotion", PortalBoundaryTestFlags)
+bool FPortalSolverUnsupportedSceneTest::RunTest(const FString& Parameters)
+{
+	for (bool Kinematic : {false,true})
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance(false);
+		if (Kinematic) { F.ProtectedBody->SetSimulatePhysics(false); }
+		F.Advance(true);
+		TestTrue(TEXT("Other dynamic/kinematic simulation particle cannot be certified as static coverage"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene);
+		TestTrue(TEXT("Unsupported scene cannot bypass or transfer"),F.Samples.Last().DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		F.Body->SetPhysicsLinearVelocity(FVector(-120,1,0)); F.Advance(true);
+		TestTrue(TEXT("Non-normal motion is rejected by the declared safe-cancellation profile"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedMotion);
+		TestTrue(TEXT("Unsupported motion creates no transfer"),F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		F.Body->SetPhysicsAngularVelocityInRadians(FVector(0,0,1)); F.Advance(true);
+		TestTrue(TEXT("Spin cannot consume a fixed-orientation clearance certificate"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedMotion);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		BeginHold(F,FTransform(FQuat(FVector::UpVector,UE_PI/2),FVector(-40,0,0))); F.Hold.Region.Planes.Reset();
+		F.Advance(true);
+		TestTrue(TEXT("Rotation drive actually applies a bounded nonzero torque from zero initial spin"),!F.Samples[0].AppliedTorque.IsNearlyZero());
+		TestTrue(TEXT("Angular acceleration rejects before the body begins rotating"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedMotion);
+		TestTrue(TEXT("Unsupported rotational drive cannot disable the support pair"),F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		AActor* Owner = F.World->SpawnActor<AActor>(); auto* Joint = NewObject<UPhysicsConstraintComponent>(Owner);
+		Owner->SetRootComponent(Joint); Owner->AddInstanceComponent(Joint);
+		Joint->SetWorldLocation(F.Body->GetComponentLocation()); Joint->RegisterComponent();
+		Joint->SetConstrainedComponents(F.Body,NAME_None,F.EntryWall,NAME_None); F.Advance(true);
+		TestTrue(TEXT("Persistent world joint is rejected as outside independent-body profile"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene);
+		TestTrue(TEXT("Constrained body cannot consume bypass or transfer permission"),F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverBindingRetirementTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.NativeBindingRetirement", PortalBoundaryTestFlags)
+bool FPortalSolverBindingRetirementTest::RunTest(const FString& Parameters)
+{
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance(); F.Advance(true);
+		F.ExitWall->BodyInstance.SetBodyTransform(FTransform(FVector(1000,10,0)),ETeleportType::TeleportPhysics); F.FlushRegistration(); F.Advance(true);
+		bool Changed = false;
+		for (const auto& S : F.Samples) { Changed |= S.PreClearance == EStaticClearanceReason::BindingChanged; }
+		TestTrue(TEXT("Native support movement retires its immutable topology binding"),Changed && F.Samples.Last().Retired);
+		F.ExitWall->BodyInstance.SetBodyTransform(FTransform(FVector(1000,0,0)),ETeleportType::TeleportPhysics); F.FlushRegistration(); F.Advance(true);
+		TestTrue(TEXT("Returning support to old pose does not revive stale binding"),F.Samples.Last().Retired && !F.Samples.Last().Decision.BypassSupport && F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		F.Body->SetBoxExtent(FVector(6)); F.Advance(true);
+		TestTrue(TEXT("Native shape mutation cannot reuse bound registered geometry"),F.Samples[0].PreClearance == EStaticClearanceReason::BindingChanged && F.Samples.Last().Retired);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance(); ++F.Command.HalfWidth; F.Advance(true);
+		TestTrue(TEXT("Unversioned aperture change cannot reuse bound pair"),F.Samples[0].PreClearance == EStaticClearanceReason::BindingChanged && F.Samples.Last().Retired);
 	}
 	return true;
 }

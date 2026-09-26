@@ -2,6 +2,8 @@
 
 Updated: 2026-09-26. Status: **OBSERVATION/TRANSFER PRIMITIVES VALIDATED; full slice 2 and production cutover OPEN**.
 Source HEAD: `f6ed5dfd332c4ad083ba4439da411e7dc720033e` (coordinator committed).
+This historical primitive delivery is now committed as
+`33492d01471b2025f7d068dc090c0e4b1ac2ee37`.
 Authority: [PHY-4 ordering](InteriorPortalPhysicsPHY4.md).
 
 ## Implemented scope and authority
@@ -120,6 +122,9 @@ No map/system cutover or manual PIE was performed. Pre-existing map hash remains
 Next: correlate topology/support/body revisions and scene coverage with the
 actual solver interval; include query-disabled physics collision or explicitly
 reject it, and revalidate dynamic obstacles at the authoritative boundary.
+The subsequent [native static certificate record](InteriorPortalPhysicsSolverClearancePHY4.md)
+now proves actual-stage static coverage including PhysicsOnly blockers. It
+rejects other dynamic/kinematic particles; general coverage remains open.
 Prove supported gravity/rotation or bounded safe rejection, topology changes
 while straddling, exceptional recovery and final journal handoff. Only after
 those slice-2 gates pass may the old production writers be removed together.

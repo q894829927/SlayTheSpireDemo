@@ -32,6 +32,11 @@ now validates actual-world full-volume observations and a reusable Chaos transfe
 primitive, including narrow blocked-exit/partial-insertion cancellation. The
 queries are advisory; certified solver/topology coverage, production single-coordinator cutover and actual-map
 Core acceptance remain unfinished. The defect is still open.
+The subsequent native static certificate validates actual solver stages and
+PhysicsOnly exit obstruction/cancellation (final affected run 29/29 PASS), plus
+an exact shared half-turn repair. Its strict static scene scope rejects other
+dynamic/kinematic particles. General production coverage and atomic removal of
+legacy writers are still required; this does not close the carrying defect.
 See [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md)
 for supported profiles, exact test results and uncompleted certification gates.
 See [PHY-4 execution](InteriorPortalPhysicsPHY4.md) for exact progress/next action.

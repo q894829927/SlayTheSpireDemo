@@ -1,8 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
 Updated: 2026-09-26. Status: **IN PROGRESS; COORDINATOR SLICE VALIDATED; actual-world provider/cutover/Core gates OPEN**.
-Source HEAD: `f6ed5dfd332c4ad083ba4439da411e7dc720033e` (coordinator committed).
-World-observation/native-transfer continuation is uncommitted; full slice 2 OPEN.
+Source HEAD: `33492d01471b2025f7d068dc090c0e4b1ac2ee37` (world observations/native adapter committed).
+Native static-clearance continuation is uncommitted; general slice 2 OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -162,9 +162,26 @@ without test-side pose Recovery; runtime adapter rejection is checked before
 valid commit. These narrow checks do not establish a certified production
 provider, arbitrary straddling cancellation or actual-map Core acceptance.
 
+Subsequent [solver-bound clearance evidence](InteriorPortalPhysicsSolverClearancePHY4.md)
+now proves a private once-consumed certificate at PreIntegrate/PostIntegrate/
+PostSolve in a strict static-scene normal-motion profile. It reads actual native
+geometry and includes PhysicsOnly blockers; topology/body configuration mismatch
+retires its binding. Rejection/partial-insertion cancellation, held/free transfer
+and mapping regressions pass. Final affected run 29/29 PASS, zero test warnings;
+the record retains earlier failed/diagnostic runs separately. A discovered shared
+float-PI half-turn drift is fixed with an exact quaternion and geometry/camera
+mapping gates revalidated. New writers remain attached only in tests.
+
+Follow-up angular-acceleration/persistent-joint guards reject before integration;
+actual rotation-drive and world-joint fixtures pass. Rebuild PASS and affected
+PhysicsSolverClearance rerun 4/4 PASS, zero test warnings. Other unchanged gates
+reuse the preceding evidence; these are separate runs.
+
 Limitations are explicit: game-thread observations are not physics-substep
-certificates. Query-disabled collision, dynamic motion and scene/topology lease
-correlation remain open. Native journal-full cancellation, invalid topology while
+certificates. The native certificate currently rejects every other dynamic/
+kinematic simulation particle and conservatively over-blocks collision responses.
+General dynamic scene coverage/filtering and production adapter assembly remain
+open. Native journal-full cancellation, invalid topology while
 straddling, rotation/gravity and exceptional recovery are not proved by the
 current fixtures. Destruction of
 the final coordinator/solver must drain or explicitly hand off pending facts;
