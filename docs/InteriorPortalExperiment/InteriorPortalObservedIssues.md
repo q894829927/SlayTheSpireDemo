@@ -2,7 +2,7 @@
 
 ## Held-body lateral oscillation — 2026-09-26
 
-Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION AND PHY-2 NARROW BOUNDARY VALIDATED; PHYSICAL FIX PENDING**.
+Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION AND PHY-2/PHY-3 NARROW PROFILES VALIDATED; PRODUCTION FIX PENDING**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`; diagnostics and the
 identity/geometry foundation are included in the PHY-1 delivery commit.
 The user's modified map is preserved and excluded from that commit.
@@ -23,9 +23,13 @@ the legacy policies. A 360-tick native integration capture still exhibits the
 same one transfer and 98 recovery moves. The defect therefore remains open.
 PHY-2 now validates actual Chaos timing, pair-specific permission, cancellation,
 bounded force and restricted transfer/retirement in an isolated editor test
-fixture (4/4 PASS). It is an uncommitted continuation of `fb9d3f4` and does not
-attach a new motion/contact writer to the game. Next is PHY-3 bounded holding
-and shape-aware target/route solving, then PHY-4's single-coordinator cutover.
+fixture (4/4 PASS), committed as `b4dec6f`. PHY-3 is its uncommitted continuation,
+validating bounded hold force/torque and shape-aware target/route solving in
+the editor fixture. The actual 1 kg and 20 kg blocked targets settle to <0.15 cm error;
+native free rotation and energy checks pass. Production writers remain unchanged.
+Next is PHY-4's single-coordinator cutover and actual-map Core acceptance.
+See [the drive/target record](InteriorPortalPhysicsHoldPHY3.md) for separate test
+runs and the certified static-region query limits.
 See [the boundary spike](InteriorPortalPhysicsBoundarySpike.md) for the narrow
 profile. Do not close this issue on these tests or suppress Recovery to hide it.
 

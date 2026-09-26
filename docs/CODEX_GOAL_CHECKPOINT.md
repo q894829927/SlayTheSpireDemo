@@ -2,6 +2,45 @@
 
 ## Current execution update — 2026-09-26
 
+- Verified HEAD: `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`, branch
+  `portal/full-fidelity-p1`. User-requested PHY-2 commit completed as
+  `feat(portal): validate Chaos simulation boundary`; the map was excluded.
+  Current PHY-3 implementation/documentation continuation is uncommitted.
+- **PHY-3 narrow drive/target profile VALIDATED; next action PHY-4.**
+  Authority: [Physics P1 execution](InteriorPortalExperiment/InteriorPortalPhysicsP1Execution.md),
+  [drive/target profile](InteriorPortalExperiment/InteriorPortalPhysicsHoldPHY3.md).
+  Runtime value-only helpers separate intent, explicit direct/single-pair route,
+  certified static convex free region, shape-aware feasible target and capped
+  wrench. The existing editor-only Chaos fixture consumes drive at PreIntegrate.
+  No gameplay PhysicsHandle/gate/Recovery writer was replaced or duplicated.
+- Actual TaskGraph one/two-interval profiles: 1 kg and 20 kg blocked boxes settle within
+  0.144566 cm error, force/torque remain capped, unsafe target rotation is projected
+  and contacts remain active. Centered isotropic 1 kg free rotation settles
+  within 0.009990 degrees and passes actual impulse/energy bounds.
+- Prescribed bundled generation/build PASS; final affected-test rebuild PASS.
+  Combined PhysicsBoundary + PhysicsHold run: 7/8 PASS, one rounded route-position
+  expectation failure, zero warnings. Only that test's reference was corrected
+  to the actual declared frame precision; numeric tolerance is unchanged.
+  GeometryAndRoutes rerun 1/1 PASS, zero warnings. Seven unchanged passing tests
+  remain valid; totals are separate. Reports/logs:
+  `Saved/AutomationReports/PortalPhysicsPHY3{,Geometry}/index.json`,
+  `Saved/Logs/PortalPhysicsPHY3{,Geometry}Automation.log`,
+  `Saved/Logs/PortalPhysicsPHY3{ProjectFiles,Build,FinalBuild}.log`.
+  Initial failed evidence retained in `Saved/PortalPhysicsPHY3/initial-run.*`.
+- Supported query profile is certified static half-spaces, not arbitrary-world
+  hit collection. Actual general-world provider, off-center/anisotropic/gravity
+  native response, coupled anchor solve, moving-target velocity, blocked exits
+  and complete rotational traversal remain open. No production carrying fix,
+  manual PIE or Core seal is claimed; no manual gate blocks this isolated phase.
+- Next PHY-4: one held/free coordinator and production solver adapter; certify
+  query/topology coverage or reject; durable transfer facts, route/anchor/history
+  reconciliation, teardown invalidation and atomic old-writer removal. Core
+  physical and manual PIE acceptance remain required before P8/P9.
+- Map `Content/House/L_Interior_LivingKitchen.umap` remains untouched, hash
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous PHY-2 execution — 2026-09-26
+
 - Verified HEAD: `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`, branch
   `portal/full-fidelity-p1`. The requested PHY-1 delivery commit is complete;
   the current PHY-2 code/documentation continuation is uncommitted.

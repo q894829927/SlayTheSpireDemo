@@ -1,12 +1,13 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-26.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2 narrow Chaos profile VALIDATED; PHY-3 NEXT; production physics migration not yet accepted**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 NEXT; production physics migration not yet accepted**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
 the pre-existing modified map is excluded. That delivery is
-`fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; PHY-2 is its uncommitted continuation.
+`fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; PHY-2 is committed as
+`b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`. PHY-3 is the uncommitted continuation.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -305,7 +306,30 @@ interval and fail closed outside it. Do not promote game-thread Tick labels
 into solver callbacks, introduce remote-half contacts (P8), or switch only one
 of the legacy competing motion/contact branches before the timing proof.
 
-## Next action: PHY-3
+## PHY-3 validated drive/target profile
+
+The [dedicated drive/target record](InteriorPortalPhysicsHoldPHY3.md) defines the
+limited query provider, predeclared thresholds, spring/wrench model and actual
+evidence. Runtime helpers separate hold intent, explicit route, shape-aware
+feasible target and bounded physical drive. The editor-only native boundary
+fixture applies force and total torque at PreIntegrate; production remains on
+the legacy path. No second gameplay motion/contact writer was introduced.
+
+Prescribed generation/build PASS; combined boundary/hold tests initially 7/8
+PASS with one rounded route-coordinate expectation failure. After correcting
+only that test's reference (same tolerance), rebuild PASS and affected test 1/1
+PASS. The seven unchanged passing tests are reused, not combined into an 8/8
+run claim. Actual Chaos proves wrench caps, impulse/energy bounds in a free
+isotropic-body profile, and blocked/rotated targets for declared one/two steps.
+Native wall profiles use 1 kg and 20 kg boxes and settle to <0.15 cm error.
+
+Query coverage is a certified static convex free region, not arbitrary-world
+sweeping. Initial overlap/uncertified/stale input releases with zero drive;
+unsafe target rotation is projected. Portal route mapping never authorizes
+support bypass. Gravity compensation, moving-target velocity, coupled-anchor
+native response, general rotation/blocked exits and production Core remain open.
+
+The original PHY-3 scope, completed for this declared profile, was:
 
 Implement bounded hold force/torque and shape-aware target/route solving using
 the same registered geometry and proven solver boundary. Declare motion support
@@ -314,3 +338,13 @@ target tests. Keep its mutating experiment isolated from the active legacy
 PhysicsHandle and gate/Recovery. PHY-4 owns the coordinated production cutover,
 durable transfer facts, route/history reconciliation and removal of superseded
 writers together. Core acceptance and subsequent P8/P9 gates remain open.
+
+## Next action: PHY-4
+
+Implement the single held/free coordinator, certified query/topology snapshot
+provider and production solver adapter with explicit supported motion and safe
+rejection. Commit transfer/recovery/route/history/constraint updates together,
+with durable transfer-fact handoff and teardown cancellation. Remove old drive,
+whole-support arbitration and normal frame Recovery together at cutover; do not
+switch only one branch. Actual Core physics tests and manual PIE acceptance
+remain required before claiming the carrying defect fixed or proceeding to P8/P9.

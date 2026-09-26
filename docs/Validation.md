@@ -2,7 +2,35 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-3 bounded drive and target profile — 2026-09-26
+
+Source HEAD `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`; uncommitted PHY-3.
+Prescribed bundled UE 5.8 generation/build PASS, final affected-test rebuild PASS.
+Combined PhysicsBoundary + PhysicsHold NullRHI run initially **7/8 PASS, one
+failed, zero warnings**. The failed pure route assertion used rounded ideal
+coordinates instead of the existing frame quaternion precision. Only its
+reference was corrected, with tolerance unchanged; affected GeometryAndRoutes
+rerun **1/1 PASS, zero warnings**. The seven unchanged tests remain valid; totals
+are separate runs, not one combined 8/8 claim.
+
+Real TaskGraph Chaos scenes test one/two intervals per dispatch. Blocked 1 kg and 20 kg
+boxes retain collisions and capped force/torque, with final error 0.015443–
+0.144566 cm; centered 1 kg free rotation settles within 0.009990 degrees and
+passes actual impulse/work-plus-impulse energy bounds. The
+[dedicated record](InteriorPortalExperiment/InteriorPortalPhysicsHoldPHY3.md)
+defines thresholds and limited certified static-region query coverage.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY3/index.json`
+(2026.09.26-13.22.07 UTC), `PortalPhysicsPHY3Geometry/index.json`
+(2026.09.26-13.27.06 UTC), `Saved/Logs/PortalPhysicsPHY3{,Geometry}Automation.log`
+and `PortalPhysicsPHY3{ProjectFiles,Build,FinalBuild}.log`. This editor-only
+experiment does not fix production carrying or prove arbitrary-world queries,
+gravity/off-center/anisotropic behavior, visual PIE or Core acceptance. Next PHY-4.
+
 ## Interior portal PHY-2 native Chaos boundary — 2026-09-26
+
+Historical PHY-2 delivery below is now committed as `b4dec6f`; current PHY-3
+evidence precedes it.
 
 Source HEAD `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; uncommitted PHY-2
 continuation. Prescribed bundled UE 5.8 project generation and Development Editor

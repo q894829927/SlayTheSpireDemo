@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Interior/InteriorPortalPhysicsBoundary.h"
+#include "Interior/InteriorPortalHoldSolver.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
@@ -20,13 +21,18 @@ namespace
 	struct FSpikeInput : Chaos::FSimCallbackInput
 	{
 		FBoundaryCommand Command;
-		void Reset() { Command = FBoundaryCommand(); }
+		bool HoldEnabled = false;
+		FHoldCommand Hold;
+		void Reset() { Command = FBoundaryCommand(); HoldEnabled = false; Hold = FHoldCommand(); }
 	};
 	struct FSpikeSample
 	{
 		FBoundaryReceipt Receipt;
 		FBoundaryState Before, Integrated, Solved, Published;
 		FVector AppliedForce = FVector::ZeroVector;
+		FVector AppliedTorque = FVector::ZeroVector;
+		FHoldTarget HoldTarget;
+		FVector LocalInertia = FVector::ZeroVector;
 		FVector GateImpulse = FVector::ZeroVector;
 		FBoundaryDecision Decision;
 		uint32 ReuseOrdinal = 0;
@@ -52,6 +58,8 @@ namespace
 	{
 	public:
 		const uint64 Epoch = SolverEpochs.Increment();
+		void ConfigureHoldBeforeDispatch(uint64 RouteRevision, uint64 RegionRevision)
+		{ HoldRouteRevision = RouteRevision; HoldRegionRevision = RegionRevision; }
 		void BindBeforeDispatch(Chaos::FSingleParticlePhysicsProxy* InBody,
 			Chaos::FSingleParticlePhysicsProxy* EntrySupport, Chaos::FSingleParticlePhysicsProxy* ExitSupport,
 			FTravellerHandle BodyToken, uint64 PairToken)
@@ -68,6 +76,7 @@ namespace
 		FBoundaryCommand Current, LastCommand;
 		FTravellerHandle BoundBody;
 		uint64 BoundPair = 0;
+		uint64 HoldRouteRevision = 0, HoldRegionRevision = 0;
 		bool HasInput = false, BindingMatches = false;
 		FSpikeSample* Sample = nullptr;
 		// UE registers evolution callbacks in its simulation list too. Presimulate
@@ -110,12 +119,30 @@ namespace
 			Sample->UnregistrationObserved = UnregistrationObserved;
 			Sample->OnGameThread = IsInGameThread(); Sample->Order = 1;
 			Sample->Before = Read(false);
-			if (!Retired && Body && HasInput && BindingMatches && Current.Revision == Revision && Sample->ReuseOrdinal < Current.MaxReuseSteps
+			if (!Retired && Body && HasInput && BindingMatches && !Sample->RepeatedSolverFrame && Current.Revision == Revision && Sample->ReuseOrdinal < Current.MaxReuseSteps
 				&& Body->GetPhysicsThreadAPI())
 			{
 				// The spike has no holding route. Never reapply an old-space intent after transfer.
 				Sample->AppliedForce = Transfers ? FVector::ZeroVector : BoundedForce(Current);
+				if (Input->HoldEnabled)
+				{
+					Sample->AppliedForce = FVector::ZeroVector;
+					const FHoldCommand& Hold = Input->Hold;
+					if (!Transfers && Hold.Traveller.Handle == BoundBody && Hold.Traveller.Geometry == Current.Traveller.Geometry)
+					{
+						const auto* Handle = Body->GetPhysicsThreadAPI();
+						const FVector InvInertia = FVector(Handle->InvI());
+						FHoldPhysicalState State;
+						State.Body = Sample->Before; State.MassKg = Handle->M(); State.LocalCOM = Handle->CenterOfMass();
+						for (int32 I = 0; I < 3; ++I) { State.LocalInertia[I] = InvInertia[I] > 0 ? 1. / InvInertia[I] : 0; }
+						State.RotationOfMass = Handle->RotationOfMass(); Sample->LocalInertia = State.LocalInertia;
+						const auto Drive = EvaluateHoldDrive(Hold, State, Sample->Receipt.Step, BoundBody, BoundPair,
+							HoldRouteRevision, HoldRegionRevision);
+						Sample->HoldTarget = Drive.Target; Sample->AppliedForce = Drive.Force; Sample->AppliedTorque = Drive.Torque;
+					}
+				}
 				Body->GetPhysicsThreadAPI()->AddForce(Sample->AppliedForce);
+				Body->GetPhysicsThreadAPI()->AddTorque(Sample->AppliedTorque);
 			}
 			if (!Retired && Body && Body->GetPhysicsThreadAPI())
 			{
@@ -125,7 +152,7 @@ namespace
 					* Sample->Receipt.Step.DeltaSeconds);
 				const auto Preflight = EvaluateBoundary(Current, Sample->Before, Predicted,
 					Sample->Receipt.Step, Sample->ReuseOrdinal, false);
-				const bool Block = !HasInput || !BindingMatches || Current.Revision != Revision || !Preflight.BypassSupport;
+				const bool Block = !HasInput || !BindingMatches || Sample->RepeatedSolverFrame || Current.Revision != Revision || !Preflight.BypassSupport;
 				const auto Span = EvaluatePose(Current.Traveller.Geometry, Sample->Before.Pose, Current.Entry,
 					Current.HalfWidth, Current.HalfHeight, Current.MarginCm);
 				const double Normal = Current.Entry.InverseTransformPositionNoScale(Sample->Before.Pose.GetLocation()).X;
@@ -218,6 +245,8 @@ namespace
 		FTravellerRegistry Registry;
 		FPortalBoundarySpike* Callback = nullptr;
 		FBoundaryCommand Command;
+		bool HoldEnabled = false;
+		FHoldCommand Hold;
 		FPhysicsStepKey LastConsumed;
 		TArray<FSpikeSample> Samples;
 		bool ReceiptsValid = true;
@@ -272,7 +301,8 @@ namespace
 			if (Submit)
 			{
 				Command.Revision = NextRevision++;
-				Callback->GetProducerInputData_External()->Command = Command;
+				auto* Input = Callback->GetProducerInputData_External();
+				Input->Command = Command; Input->HoldEnabled = HoldEnabled; Input->Hold = Hold;
 			}
 			Scene->SetUpForFrame(&FVector::ZeroVector, 1.f/60, 0, 1.f/60, 1.f/120, 2, Substeps);
 			Scene->StartFrame(); Scene->WaitPhysScenes(); Scene->EndFrame();
@@ -409,6 +439,176 @@ bool FPortalNativeForceBoundaryTest::RunTest(const FString& Parameters)
 		}
 		AddInfo(FString::Printf(TEXT("Native bounded force substeps=%d massKg=%.6f maxForce=1200 finalVX=%.6f samples=%d"),
 			Substeps,Mass,F.Body->GetPhysicsLinearVelocity().X,F.Samples.Num()));
+	}
+	return true;
+}
+
+namespace
+{
+	FHoldCommand MakeHold(const FTravellerSnapshot& Traveller, const FTransform& Desired)
+	{
+		FHoldCommand C; C.Traveller = Traveller; C.DesiredHolderPose = Desired;
+		C.Route.Revision = 1; C.Region.Revision = 1; C.Region.CertifiedStaticCoverage = true;
+		C.Region.Planes.Add({1, FVector::ForwardVector, FVector(2,0,0)});
+		return C;
+	}
+	void BeginHold(FNativeScene& F, const FTransform& Desired)
+	{
+		F.HoldEnabled = true; F.Hold = MakeHold(F.Command.Traveller, Desired);
+		F.Callback->ConfigureHoldBeforeDispatch(1, 1);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalHoldGeometryTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsHold.GeometryAndRoutes", PortalBoundaryTestFlags)
+bool FPortalHoldGeometryTest::RunTest(const FString& Parameters)
+{
+	FTravellerSnapshot Traveller; Traveller.Handle = {1,2,3};
+	FBoundaryState Body; Body.Pose.SetLocation(FVector(80,0,0));
+	const auto CheckShape = [&](const FPrimitive& Shape, double ExpectedX, const TCHAR* Message)
+	{
+		Traveller.Geometry.Primitives = {Shape};
+		auto C = MakeHold(Traveller, FTransform(Body.Pose.GetRotation(), FVector(-30,20,0)));
+		const auto Target = SolveHoldTarget(C,Body,Traveller.Handle,1,1,1);
+		TestTrue(Message, Target.Usable() && FMath::IsNearlyEqual(Target.Pose.GetLocation().X,ExpectedX,1.e-6)
+			&& FMath::IsNearlyEqual(Target.Pose.GetLocation().Y,20.,1.e-6));
+	};
+	FPrimitive Sphere; Sphere.Radius = 2; Sphere.Center = FVector(3,0,0);
+	CheckShape(Sphere,1.5,TEXT("Offset sphere support retains tangential target"));
+	FPrimitive Capsule; Capsule.Shape = EShape::Capsule; Capsule.Radius = 2; Capsule.HalfSegment = FVector(20,0,0);
+	CheckShape(Capsule,24.5,TEXT("Capsule span is used rather than a fixed holding radius"));
+	FPrimitive Box; Box.Shape = EShape::Box;
+	for (int32 X : {-1,1}) for (int32 Y : {-1,1}) for (int32 Z : {-1,1}) { Box.Vertices.Add(FVector(20*X,3*Y,4*Z)); }
+	Body.Pose.SetRotation(FQuat(FVector::UpVector,UE_PI/2));
+	CheckShape(Box,5.5,TEXT("Rotated long box uses oriented collision support"));
+	Body.Pose.SetRotation(FQuat::Identity);
+	FPrimitive Convex; Convex.Shape = EShape::Convex; Convex.Vertices = {FVector(-7,0,0),FVector(2,0,0),FVector(0,4,0),FVector(0,0,4)};
+	CheckShape(Convex,9.5,TEXT("Authored convex vertices constrain target"));
+	Traveller.Geometry.Primitives = {Box,Sphere};
+	auto C = MakeHold(Traveller,FTransform(FVector(-30,20,0)));
+	TestTrue(TEXT("Compound takes support of all primitives"), FMath::IsNearlyEqual(
+		SolveHoldTarget(C,Body,Traveller.Handle,1,1,1).Pose.GetLocation().X,22.5,1.e-6));
+	Body.Pose.SetLocation(FVector(23,0,0)); C.DesiredHolderPose.SetRotation(FQuat(FVector::UpVector,UE_PI/2));
+	const auto Limited = SolveHoldTarget(C,Body,Traveller.Handle,1,1,1);
+	TestTrue(TEXT("Unsafe intermediate rotation retains orientation and tangential translation"),
+		Limited.Usable() && Limited.RotationProjected && Limited.Pose.GetRotation().Equals(Body.Pose.GetRotation(),1.e-6)
+		&& Limited.Pose.GetLocation().Y == 20);
+	Body.Pose.SetLocation(FVector(21,0,0));
+	TestTrue(TEXT("Initial overlap does not silently manufacture a safe pose"),
+		SolveHoldTarget(C,Body,Traveller.Handle,1,1,1).Reason == EHoldReason::InitialOverlap);
+	Body.Pose.SetLocation(FVector(80,0,0));
+	C.Region.Planes.Add({2,FVector::RightVector,FVector(0,5,0)});
+	TestTrue(TEXT("Every plane validates the initial full shape"),
+		SolveHoldTarget(C,Body,Traveller.Handle,1,1,1).Reason == EHoldReason::InitialOverlap);
+	C.Region.Planes.Reset(); C.Route.Kind = EHoldRoute::SinglePair; C.Route.PairGeneration = 1;
+	C.Route.BodySide = FTransform(FVector(1000,0,0)); C.DesiredHolderPose = FTransform(FVector(10,20,0));
+	Body.Pose.SetLocation(FVector(990,-20,0));
+	const auto Remote = SolveHoldTarget(C,Body,Traveller.Handle,1,1,1);
+	// Use the declared frame's half-turn, not rounded ideal coordinates: the
+	// existing portal math constructs its quaternion with the engine PI constant.
+	const FVector ExpectedRemote = FVector(1000,0,0) + FQuat(FVector::UpVector,PI).RotateVector(FVector(10,20,0));
+	TestTrue(TEXT("Explicit single-pair route maps position and orientation into body space"), Remote.Usable()
+		&& Remote.Pose.GetLocation().Equals(ExpectedRemote,1.e-6)
+		&& Remote.Pose.GetRotation().Equals(InteriorPortalMath::Rotation(C.Route.HolderSide,C.Route.BodySide),1.e-6));
+	TestTrue(TEXT("Stale portal pair rejected"),SolveHoldTarget(C,Body,Traveller.Handle,2,1,1).Reason == EHoldReason::StaleIdentity);
+	TestTrue(TEXT("Stale route revision rejected"),SolveHoldTarget(C,Body,Traveller.Handle,1,2,1).Reason == EHoldReason::StaleIdentity);
+	TestTrue(TEXT("Stale region revision rejected"),SolveHoldTarget(C,Body,Traveller.Handle,1,1,2).Reason == EHoldReason::StaleIdentity);
+	TestTrue(TEXT("Stale body rejected"),SolveHoldTarget(C,Body,{1,2,4},1,1,1).Reason == EHoldReason::StaleIdentity);
+	C.Route.Kind = EHoldRoute::Unsupported;
+	TestTrue(TEXT("Multiple hops have an explicit rejection"),SolveHoldTarget(C,Body,Traveller.Handle,1,1,1).Reason == EHoldReason::UnsupportedRoute);
+	C.Route.Kind = EHoldRoute::Direct; C.Region.CertifiedStaticCoverage = false;
+	TestTrue(TEXT("Unverified world hits are not a free-space certificate"),SolveHoldTarget(C,Body,Traveller.Handle,1,1,1).Reason == EHoldReason::UncertifiedRegion);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalHoldWrenchTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsHold.AnchorAndBounds", PortalBoundaryTestFlags)
+bool FPortalHoldWrenchTest::RunTest(const FString& Parameters)
+{
+	FTravellerSnapshot Traveller; Traveller.Handle = {1,2,3}; FPrimitive Sphere; Sphere.Radius = 5;
+	Traveller.Geometry.Primitives = {Sphere};
+	FHoldPhysicalState State; State.Body.Pose.SetLocation(FVector(80,0,0)); State.MassKg = 1; State.LocalInertia = FVector(10);
+	auto C = MakeHold(Traveller,FTransform(FVector(90,0,0))); C.LocalGrabAnchor = FVector(0,3,0);
+	C.Profile.AngularStiffness = 0; C.Profile.AngularDamping = 0; C.Profile.MaxForce = 100; C.Profile.MaxTorque = 40;
+	const FPhysicsStepKey Step {1,1,1,1./60};
+	const auto Drive = EvaluateHoldDrive(C,State,Step,Traveller.Handle,1,1,1);
+	TestTrue(TEXT("Off-center force contributes torque before total torque cap"),Drive.Target.Usable()
+		&& Drive.Force.Equals(FVector(100,0,0),1.e-6) && Drive.Torque.Equals(FVector(0,0,-40),1.e-6));
+	C.DesiredHolderPose = State.Body.Pose; State.Body.AngularVelocity = FVector(0,0,2);
+	const auto Damped = EvaluateHoldDrive(C,State,Step,Traveller.Handle,1,1,1);
+	TestTrue(TEXT("Damping uses anchor velocity including angular motion"), Damped.Force.X > 0 && Damped.Torque.Z < 0);
+	C.DesiredHolderPose.SetLocation(FVector(1000,0,0));
+	const auto Released = EvaluateHoldDrive(C,State,Step,Traveller.Handle,1,1,1);
+	TestTrue(TEXT("Excessive raw error requests release without force or torque"), Released.Target.Reason == EHoldReason::ExcessiveError
+		&& Released.Force.IsZero() && Released.Torque.IsZero());
+	C.DesiredHolderPose = State.Body.Pose; C.Profile.MaxTorque = -1;
+	TestFalse(TEXT("Invalid drive profile cannot produce a wrench"), EvaluateHoldDrive(C,State,Step,Traveller.Handle,1,1,1).Target.Usable());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeHoldBlockedTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsHold.NativeBlockedTargets", PortalBoundaryTestFlags)
+bool FPortalNativeHoldBlockedTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (double Mass : {1.,20.})
+	{
+		FNativeScene F(Substeps,true,false); F.Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		F.Body->SetMassOverrideInKg(NAME_None,Mass,true);
+		BeginHold(F,FTransform(FQuat(FVector::UpVector,UE_PI/2),FVector(-50,20,0)));
+		for (int32 I = 0; I < 240; ++I) { F.Advance(Substeps); }
+		bool Bounded = true, Safe = true, RotationLimited = true;
+		for (const auto& S : F.Samples)
+		{
+			Bounded &= S.AppliedForce.Size() <= 1200 + 1.e-5 && S.AppliedTorque.Size() <= 1200 + 1.e-5;
+			Safe &= S.DisabledPairs == 0 && S.Transfers == 0 && S.Published.Pose.GetLocation().X >= 6.8;
+			RotationLimited &= S.HoldTarget.Usable() && S.HoldTarget.RotationProjected;
+		}
+		const double Error = FVector::Dist(F.Body->GetComponentLocation(),FVector(7.5,20,0));
+		const double Speed = F.Body->GetPhysicsLinearVelocity().Size();
+		TestTrue(TEXT("Actual light/heavy drive respects wrench caps every interval"),Bounded);
+		TestTrue(TEXT("Blocked holding retains collisions without recovery or transfer"),Safe && F.ReceiptsValid);
+		TestTrue(TEXT("Near-wall target rotation is explicitly projected throughout"),RotationLimited);
+		TestTrue(TEXT("Blocked tangential target settles within declared error/speed"),Error <= 2 && Speed <= 3);
+		AddInfo(FString::Printf(TEXT("Hold blocked substeps=%d mass=%.3f samples=%d error=%.6f speed=%.6f x=%.6f"),
+			Substeps,F.Body->GetMass(),F.Samples.Num(),Error,Speed,F.Body->GetComponentLocation().X));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeHoldRotationTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsHold.NativeRotationAndEnergy", PortalBoundaryTestFlags)
+bool FPortalNativeHoldRotationTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,false); F.Body->SetWorldLocation(FVector(70,0,0));
+		F.Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		const FQuat Desired(FVector::ForwardVector,UE_PI/2);
+		BeginHold(F,FTransform(Desired,FVector(75,10,0)));
+		for (int32 I = 0; I < 240; ++I) { F.Advance(Substeps); }
+		bool Bounds = true, Impulses = true, Energy = true, Targets = true;
+		const double Mass = F.Body->GetMass();
+		for (const auto& S : F.Samples)
+		{
+			const double Dt = S.Receipt.Step.DeltaSeconds;
+			Bounds &= S.AppliedForce.Size() <= 1200 + 1.e-5 && S.AppliedTorque.Size() <= 1200 + 1.e-5;
+			Targets &= S.HoldTarget.Usable() && !S.HoldTarget.RotationProjected;
+			Impulses &= (S.Integrated.LinearVelocity-S.Before.LinearVelocity).Equals(S.AppliedForce/Mass*Dt,1.e-4)
+				&& (S.Integrated.AngularVelocity-S.Before.AngularVelocity).Equals(S.AppliedTorque/S.LocalInertia.X*Dt,1.e-4);
+			const double StartE = .5*Mass*S.Before.LinearVelocity.SizeSquared() + .5*S.LocalInertia.X*S.Before.AngularVelocity.SizeSquared();
+			const double EndE = .5*Mass*S.Integrated.LinearVelocity.SizeSquared() + .5*S.LocalInertia.X*S.Integrated.AngularVelocity.SizeSquared();
+			const double Work = Dt*(FVector::DotProduct(S.AppliedForce,S.Before.LinearVelocity)+FVector::DotProduct(S.AppliedTorque,S.Before.AngularVelocity));
+			const double ImpulseE = .5*Dt*Dt*(S.AppliedForce.SizeSquared()/Mass+S.AppliedTorque.SizeSquared()/S.LocalInertia.X);
+			Energy &= EndE <= StartE + Work + ImpulseE + .02;
+		}
+		const double ErrorDegrees = FMath::RadiansToDegrees(F.Body->GetComponentQuat().AngularDistance(Desired));
+		const double AngularSpeed = F.Body->GetPhysicsAngularVelocityInRadians().Size();
+		TestTrue(TEXT("Actual drive norm caps and feasible rotation hold every interval"),Bounds && Targets);
+		TestTrue(TEXT("Chaos linear and angular impulse use actual mass and inertia"),Impulses);
+		TestTrue(TEXT("Free-step energy is bounded by actual wrench work and impulse energy"),Energy);
+		TestTrue(TEXT("Free rotation settles within declared angle and speed"),ErrorDegrees <= 3 && AngularSpeed <= .1);
+		TestTrue(TEXT("Free positional target settles without bypass or transfer"),FVector::Dist(F.Body->GetComponentLocation(),FVector(75,10,0)) <= 2 && F.Samples.Last().Transfers == 0);
+		AddInfo(FString::Printf(TEXT("Hold rotation substeps=%d samples=%d angleError=%.6f angularSpeed=%.6f"),Substeps,F.Samples.Num(),ErrorDegrees,AngularSpeed));
 	}
 	return true;
 }

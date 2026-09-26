@@ -1,6 +1,6 @@
 # Portal rigid-body interaction contract
 
-Status: **architecture migration pending; PHY-0/PHY-1 complete, PHY-2 narrow boundary profile validated, PHY-3 next**, 2026-09-26.
+Status: **production migration pending; PHY-0/PHY-1 complete, PHY-2/PHY-3 narrow profiles validated, PHY-4 next**, 2026-09-26.
 Execution: [Physics P1 migration](InteriorPortalPhysicsP1Execution.md). Performance
 P1 is now sealed. The diagnostic and identity/geometry stages do not make existing physics
 conform to this contract or establish physical acceptance.
@@ -73,6 +73,21 @@ direction and mapping between holder and body; it is not a toggle inferred from
 whether an entry pointer happens to be set. Core declares support for direct and
 single-pair routes; unsupported additional hops release safely or reject the
 operation with a documented reason, rather than silently choosing a route.
+
+The [PHY-3 drive/target profile](InteriorPortalPhysicsHoldPHY3.md) separates
+value-only intent, explicit route, certified static obstruction region, feasible
+target and bounded wrench. Its free region is an intersection of inward
+half-spaces with stable ordering and actual collision-shape offsets; it must
+not be populated from unverified or incomplete world hits. Production providers
+must certify coverage and invalidate snapshots with topology changes. Target
+assistance neither disables contacts nor authorizes a portal passage.
+
+Drive uses actual mass/inertia and solver dt, includes angular grab-anchor
+velocity, and caps total torque after combining anchor and orientation torque.
+The tested implicit-step gains are separate translational/rotational estimates,
+not a fully coupled anchor solve. Native support proven so far is the centered,
+isotropic box in zero gravity; off-center/anisotropic/gravity cases need their
+own acceptance before promotion. Contact response remains Chaos authority.
 
 ## Passage lifecycle and simulation order
 
@@ -174,8 +189,10 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
    still required. PHY-2 now proves actual Chaos timing, capped force application,
    a restricted transfer interval and cancellation/retirement in an isolated
    editor fixture. See the execution and boundary-spike records for exact scope;
-   these foundations are not Core acceptance. Next is PHY-3 bounded holding and
-   shape-aware target/route solving before PHY-4's coordinated authority cutover.
+   these foundations are not Core acceptance. PHY-3 now validates bounded drive
+   and shape-aware target/route solving for its certified static-region profile,
+   with actual light/heavy blocked targets and free rotation/energy checks.
+   Next is PHY-4's coordinated authority cutover and Core physical acceptance.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and
    independent position rollback. Remove superseded branches when switching;

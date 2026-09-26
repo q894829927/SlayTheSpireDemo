@@ -1,9 +1,9 @@
 # PHY-2 — Chaos simulation boundary spike
 
 Updated: 2026-09-26.
-Status: **COMPLETE for the narrow profile below; PHY-3 NEXT; production migration and Core acceptance remain open**.
-Source HEAD: `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; this spike is an
-uncommitted continuation. Authority and ordering:
+Status: **COMPLETE for the narrow profile below; production migration and Core acceptance remain open**.
+Source HEAD: `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; this spike is committed as
+`b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`. Authority and current ordering:
 [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 execution](InteriorPortalPhysicsP1Execution.md).
 
@@ -169,9 +169,13 @@ experiment. It is not PIE, visual or packaged-game acceptance. Future Core
 physics/visual gates remain mandatory, with `USER ACTION REQUIRED` if required
 manual acceptance cannot be executed.
 
-## Next action
+## Subsequent stage
 
-Implement PHY-3 bounded hold force/torque and shape-aware target/route solving
+[PHY-3](InteriorPortalPhysicsHoldPHY3.md) subsequently extends this editor
+fixture with a bounded hold drive. The PHY-2 profiles/evidence above use holding
+disabled. Current forward action is recorded in the Physics P1 execution document.
+
+The subsequent scope is PHY-3 bounded hold force/torque and shape-aware target/route solving
 using the registered geometry and proven boundary. Define supported motion,
 numeric force/error/energy criteria before actual Chaos runs. Keep experimental
 writers isolated; production authority changes only in PHY-4 when superseded
