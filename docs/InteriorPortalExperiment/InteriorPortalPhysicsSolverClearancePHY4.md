@@ -2,6 +2,10 @@
 
 Updated: 2026-09-26. Status: **NATIVE STATIC CERTIFICATE VALIDATED; general provider/cutover/Core OPEN**.
 Source HEAD: `33492d01471b2025f7d068dc090c0e4b1ac2ee37` (world observations/native adapter committed).
+This historical static delivery is now committed as `12f1fe8`. Its subsequent
+[native filters/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
+defines the expanded current supported scope; the strict static profile below
+records the original validation, not a restriction on that later extension.
 Authority: [PHY-4 ordering](InteriorPortalPhysicsPHY4.md).
 
 ## Supported profile and ownership
@@ -138,7 +142,7 @@ No new active gameplay writer or map/asset edits; the shared rigid mapping's
 half-turn precision is corrected. No manual PIE was performed. Map hash remains
 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
 
-Next: replace strict whole-scene rejection with proven native simulation filtering
+Original next action (advanced by the extension linked above): replace strict whole-scene rejection with proven native simulation filtering
 and conservative moving-obstacle coverage at the actual interval, so unrelated
 dynamic/kinematic bodies need not deny a legal static-support passage. Retain
 Core's blocked-exit policy; do not imply P8 remote-half contact support. Prove

@@ -1,7 +1,7 @@
 # Portal Physics P1 execution
 
-Updated: 2026-09-26.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives and native static certificate validated); production migration/Core OPEN**.
+Updated: 2026-09-27.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static certificate and filters/kinematic coverage validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
@@ -11,7 +11,8 @@ the pre-existing modified map is excluded. That delivery is
 `6de308be4c4e9d2377674303390f1261df4d860f`. PHY-4 coordinator is committed as
 `f6ed5dfd332c4ad083ba4439da411e7dc720033e`; the current world-observation/transfer
 primitives are committed as `33492d01471b2025f7d068dc090c0e4b1ac2ee37`.
-The native static-clearance continuation is uncommitted.
+The native static certificate is committed as `12f1fe81ef11cdc1ffc3403ae142782680f041e0`.
+The native filter/kinematic continuation is uncommitted.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -373,18 +374,25 @@ The [native static certificate](InteriorPortalPhysicsSolverClearancePHY4.md) now
 correlates bound geometry/topology with actual PreIntegrate/PostIntegrate/PostSolve
 intervals and includes query-disabled PhysicsOnly obstacles. Final affected
 29/29 PASS, zero test warnings; shared exact-half-turn repair revalidates physics,
-routes and virtual camera geometry. General production coverage remains OPEN:
-the native profile rejects all other dynamic/kinematic simulation particles and
-uses conservative bounds/filter over-blocking. New writers are test-attached only.
+routes and virtual camera geometry. That initial profile's strict whole-scene
+dynamic/kinematic rejection is extended below. New writers are test-attached only.
 
 Follow-up native angular-acceleration/persistent-joint rejection passes actual
 rotation-drive/world-joint fixtures before support bypass. Rebuild PASS; affected
 PhysicsSolverClearance rerun 4/4 PASS with zero test warnings, separately from the
 preceding 29-test evidence. Unchanged gates reuse that evidence.
 
+The [native filter/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
+now proves bilateral simulation filtering and complete Position/Velocity-mode
+kinematic envelopes across intermediate rotations, plus support-filter retirement.
+Final affected 7/7 PASS, zero test warnings; earlier initial/failed runs recorded
+separately. Filtered-out dynamics and certified kinematics no longer deny passage.
+Interacting Dynamic/Sleeping obstacles still reject; arbitrary production scenes
+remain uncertified.
+
 Complete actual-world certification of general scene coverage and production
-adapter assembly: implement proven native simulation filtering and conservative
-moving-obstacle interval coverage, then prove
+adapter assembly: prove interacting dynamic obstacle interval coverage or a
+bounded rejection policy that includes contact/constraint effects, then prove
 normal/exceptional cancellation, rotation/gravity/blocked
 exit support and final pending-fact handoff. The remaining full PHY-4 contract is:
 

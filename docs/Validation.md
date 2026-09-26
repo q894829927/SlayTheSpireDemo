@@ -2,9 +2,42 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 native filters/kinematic coverage — 2026-09-27
+
+Source HEAD `12f1fe81ef11cdc1ffc3403ae142782680f041e0`; uncommitted continuation.
+Prescribed bundled UE 5.8 generation/editor builds PASS. Initial affected
+PhysicsSolverClearance 6/6 PASS, zero test warnings, 2026.09.26-16.06.09 UTC.
+Separate added Velocity-mode test initially 0/1 PASS, 16.08.40 UTC, zero warnings:
+four endpoint assertions read a stale GT BodyInstance transform. The fixture now
+enqueues a native PT read and waits through a zero-dt flush, proving actual motion.
+After native support-filter retirement guard and fixture correction, rebuild PASS;
+final affected **7/7 PASS, zero test warnings**, 2026.09.26-16.11.22 UTC. Initial,
+failed and final runs are separate, not cumulative totals. Unchanged mapping,
+coordinator, hold and world-query gates reuse prior passing evidence.
+
+Actual TaskGraph one/two-step coverage: bilateral Ignore, native simulation
+Overlap, query-only and filtered dynamic obstacles allow one transfer/fact;
+Ignore-to-Block during insertion cancels at the next PreIntegrate. Kinematic
+position targets and intermediate thin-box rotations reject before integration
+despite clear endpoint boxes. Unrelated kinematics allow passage. Native velocity
+mode with spin reaches actual PT Y=100.000003 / 30.000003 cm (clear/crossing),
+both step profiles; clear interval stages pass, crossing publishes no fact in the
+affected frame. Support response loss retires the binding and restoration cannot
+revive it. PhysicsOnly, certificate protocol, material/facts, geometry retirement
+and unsupported traveller-motion gates remain passing.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Kinematic{,Velocity,Final}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Kinematic{,Velocity,Final}Automation.log`,
+`PortalPhysicsPHY4Kinematic{ProjectFiles,Build,VelocityBuild,FinalBuild,NativeReadBuild}.log`.
+Full scope and limits: [native filter/kinematic record](InteriorPortalExperiment/InteriorPortalPhysicsKinematicCoveragePHY4.md).
+Interacting Dynamic/Sleeping motion, broad traveller cancellation, topology
+recovery, journal shutdown and production cutover/Core remain open. No manual
+PIE performed; no manual gate applies to the isolated provider. Map unchanged.
+
 ## Interior portal PHY-4 solver-bound static certificate — 2026-09-26
 
 Source HEAD `33492d01471b2025f7d068dc090c0e4b1ac2ee37`; uncommitted continuation.
+This historical continuation is now committed as `12f1fe8`.
 Prescribed bundled UE 5.8 generation and editor builds PASS. Initial affected
 run 18/20 PASS (two failing tests; two warnings inside the static-wall movement
 fixture). Corrected the test's refused Static component move to a real native

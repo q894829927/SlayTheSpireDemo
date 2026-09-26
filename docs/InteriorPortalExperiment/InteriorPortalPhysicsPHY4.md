@@ -1,8 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
-Updated: 2026-09-26. Status: **IN PROGRESS; COORDINATOR SLICE VALIDATED; actual-world provider/cutover/Core gates OPEN**.
-Source HEAD: `33492d01471b2025f7d068dc090c0e4b1ac2ee37` (world observations/native adapter committed).
-Native static-clearance continuation is uncommitted; general slice 2 OPEN.
+Updated: 2026-09-27. Status: **IN PROGRESS; COORDINATOR, STATIC CERTIFICATE AND FILTER/KINEMATIC SLICES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
+Source HEAD: `12f1fe81ef11cdc1ffc3403ae142782680f041e0` (native static certificate committed).
+Native filter/kinematic continuation is uncommitted; general slice 2 OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -177,11 +177,21 @@ actual rotation-drive and world-joint fixtures pass. Rebuild PASS and affected
 PhysicsSolverClearance rerun 4/4 PASS, zero test warnings. Other unchanged gates
 reuse the preceding evidence; these are separate runs.
 
+The subsequent [native filter/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
+uses actual bilateral simulation filters and full native kinematic envelopes,
+including intermediate rotation and Velocity mode. It retains the exact private
+per-stage proof and verifies actual geometry against its interval envelope.
+Native support response loss permanently retires the binding. Final affected
+7/7 PASS, zero test warnings; the record retains the initial 6/6 and failed
+velocity fixture 0/1 runs separately. Native PT reads fix the stale GT endpoint
+assertion; no runtime tolerance relaxation was used.
+
 Limitations are explicit: game-thread observations are not physics-substep
-certificates. The native certificate currently rejects every other dynamic/
-kinematic simulation particle and conservatively over-blocks collision responses.
-General dynamic scene coverage/filtering and production adapter assembly remain
-open. Native journal-full cancellation, invalid topology while
+certificates. Interacting Dynamic/Sleeping particles still reject anywhere;
+filtered-out dynamics and certified kinematics no longer deny passage. Geometry
+and ignore-manager exclusions remain conservative over-blocks. General dynamic
+scene coverage and production adapter assembly remain open. Native journal-full
+cancellation, invalid topology while
 straddling, rotation/gravity and exceptional recovery are not proved by the
 current fixtures. Destruction of
 the final coordinator/solver must drain or explicitly hand off pending facts;
@@ -191,6 +201,6 @@ No manual gate applies to this isolated slice and no production fix/Core seal
 is claimed. Map hash remains
 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
 **Next unfinished work: slice 2 — actual-world certified query/topology provider
-and production adapter assembly**, building on the validated observation/transfer
-primitives and including the unsupported cancellation/recovery cases
+and production adapter assembly**, beginning with interacting Dynamic/Sleeping
+motion coverage or a proven bounded rejection policy, then the unsupported cancellation/recovery cases
 above. Then perform atomic cutover and the required Core manual gate.

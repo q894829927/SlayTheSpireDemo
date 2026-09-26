@@ -1066,12 +1066,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverUnsupportedSceneTest,
 	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.UnsupportedSceneAndMotion", PortalBoundaryTestFlags)
 bool FPortalSolverUnsupportedSceneTest::RunTest(const FString& Parameters)
 {
-	for (bool Kinematic : {false,true})
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance(false);
-		if (Kinematic) { F.ProtectedBody->SetSimulatePhysics(false); }
 		F.Advance(true);
-		TestTrue(TEXT("Other dynamic/kinematic simulation particle cannot be certified as static coverage"),
+		TestTrue(TEXT("Interacting dynamics still require certified contact/constraint motion bounds"),
 			F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene);
 		TestTrue(TEXT("Unsupported scene cannot bypass or transfer"),F.Samples.Last().DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
 	}
@@ -1127,6 +1125,142 @@ bool FPortalSolverBindingRetirementTest::RunTest(const FString& Parameters)
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance(); ++F.Command.HalfWidth; F.Advance(true);
 		TestTrue(TEXT("Unversioned aperture change cannot reuse bound pair"),F.Samples[0].PreClearance == EStaticClearanceReason::BindingChanged && F.Samples.Last().Retired);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance(); F.Advance(true);
+		F.EntryWall->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Ignore); F.Advance(true);
+		TestTrue(TEXT("Support response loss retires the binding needed for safe contact restoration"),F.Samples.Last().Retired);
+		F.EntryWall->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Block); F.Advance(true);
+		TestTrue(TEXT("Restoring a support filter cannot revive retired passage authority"),F.Samples.Last().Retired && F.Samples.Last().Transfers == 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverNativeFiltersTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.NativeSimulationFilters", PortalBoundaryTestFlags)
+bool FPortalSolverNativeFiltersTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (int32 Mode : {0,1,2,3,4})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Obstacle = F.Box(FVector(1013,0,0),FVector(.25),Mode == 3);
+		if (Mode == 0 || Mode == 3) { Obstacle->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Ignore); }
+		if (Mode == 1) { Obstacle->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Overlap); }
+		if (Mode == 2) { Obstacle->SetCollisionEnabled(ECollisionEnabled::QueryOnly); }
+		if (Mode == 4)
+		{
+			Obstacle->SetCollisionObjectType(ECC_WorldDynamic);
+			F.Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Ignore);
+		}
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true;
+		for (const auto& S : F.Samples) { Clear &= S.PreClearance == EStaticClearanceReason::Clear
+			&& S.IntegratedClearance == EStaticClearanceReason::Clear && S.SolvedClearance == EStaticClearanceReason::Clear; }
+		TestTrue(FString::Printf(TEXT("Native bilateral filters allow clear passage: substeps=%d mode=%d"),Substeps,Mode),Clear);
+		TestTrue(TEXT("Ignored/Overlap/query-only/filtered-dynamic obstruction allows one committed fact"),
+			F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1 && F.FactsValid);
+	}
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Obstacle = F.Box(FVector(1013,0,0),FVector(.25),false);
+		Obstacle->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Ignore);
+		for (int32 I=0; I<3; ++I) { F.Advance(Substeps); }
+		TestTrue(TEXT("Ignored obstacle initially permits partial insertion"),FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,2.,1.e-6));
+		const int32 First = F.Samples.Num(); Obstacle->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Block);
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		TestTrue(TEXT("Native filter mutation revokes clearance at first affected PreIntegrate"),F.Samples[First].PreClearance == EStaticClearanceReason::DestinationBlocked);
+		TestTrue(TEXT("Restored blocking response cancels without a transfer or GT Recovery"),F.Samples.Last().Transfers == 0
+			&& F.FactCursor->LastRevision() == 0 && F.Body->GetComponentLocation().X > 6.8);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverKinematicCoverageTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.KinematicIntervalCoverage", PortalBoundaryTestFlags)
+bool FPortalSolverKinematicCoverageTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		{
+			FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance(false);
+			F.ProtectedBody->SetSimulatePhysics(false); F.FlushRegistration();
+			F.ProtectedBody->BodyInstance.SetBodyTransform(FTransform(FVector(8,80,0)),ETeleportType::None);
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			bool Clear = true;
+			for (const auto& S : F.Samples) { Clear &= S.PreClearance == EStaticClearanceReason::Clear
+				&& S.IntegratedClearance == EStaticClearanceReason::Clear && S.SolvedClearance == EStaticClearanceReason::Clear; }
+			TestTrue(TEXT("Unrelated moving kinematic no longer rejects the entire scene"),Clear && F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1);
+			TestTrue(TEXT("Clear kinematic target actually reaches its native endpoint"),FMath::IsNearlyEqual(F.ProtectedBody->BodyInstance.GetUnrealWorldTransform().GetLocation().Y,80.,1.e-4));
+		}
+		for (bool Partial : {false,true})
+		{
+			FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+			if (Partial) { for (int32 I=0; I<3; ++I) { F.Advance(Substeps); } }
+			auto* Moving = F.Box(FVector(1013,-30,0),FVector(.25),true); Moving->SetSimulatePhysics(false);
+			Moving->SetCollisionEnabled(ECollisionEnabled::PhysicsOnly); F.FlushRegistration();
+			const int32 First = F.Samples.Num();
+			Moving->BodyInstance.SetBodyTransform(FTransform(FVector(1013,30,0)),ETeleportType::None);
+			F.Advance(Substeps);
+			TestTrue(TEXT("Endpoint-clear kinematic sweep blocks before entering the corridor"),F.Samples[First].PreClearance == EStaticClearanceReason::DestinationBlocked);
+			TestTrue(TEXT("Swept obstruction actual native target reaches clear far endpoint"),FMath::IsNearlyEqual(Moving->BodyInstance.GetUnrealWorldTransform().GetLocation().Y,30.,1.e-4));
+			// Keep a stationary blocker after the path sweep to prove contact restoration.
+			Moving->BodyInstance.SetBodyTransform(FTransform(FVector(1013,0,0)),ETeleportType::TeleportPhysics);
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Moving PhysicsOnly blocker cancels partial/normal insertion with no transfer"),F.Samples.Last().Transfers == 0
+				&& F.FactCursor->LastRevision() == 0 && F.Body->GetComponentLocation().X > 6.8);
+		}
+		{
+			FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+			auto* Rotating = F.Box(FVector(1013,17,0),FVector(.25,20,.25),true); Rotating->SetSimulatePhysics(false);
+			Rotating->BodyInstance.SetBodyTransform(FTransform(FQuat(FVector::UpVector,UE_PI/2),FVector(1013,17,0)),ETeleportType::TeleportPhysics);
+			F.FlushRegistration();
+			Rotating->BodyInstance.SetBodyTransform(FTransform(FQuat(FVector::UpVector,-UE_PI/2),FVector(1013,17,0)),ETeleportType::None);
+			F.Advance(Substeps);
+			TestTrue(TEXT("Endpoint-clear thin rotating box is blocked by intermediate-rotation envelope"),F.Samples[0].PreClearance == EStaticClearanceReason::DestinationBlocked);
+			TestTrue(TEXT("Rotating kinematic actually reaches native target orientation"),Rotating->BodyInstance.GetUnrealWorldTransform().GetRotation().Equals(FQuat(FVector::UpVector,-UE_PI/2),1.e-5));
+			TestTrue(TEXT("Rotational obstacle sweep cannot commit a transfer"),F.Samples.Last().Transfers == 0);
+		}
+	}
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverKinematicVelocityTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.KinematicVelocityCoverage", PortalBoundaryTestFlags)
+bool FPortalSolverKinematicVelocityTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Blocked : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.EnableNativeClearance();
+		auto* Moving = F.Box(FVector(1013,Blocked ? -30 : 40,0),FVector(.25),true);
+		Moving->SetSimulatePhysics(false); F.FlushRegistration();
+		// Use the native GT handoff, not a component trajectory/extrapolation.
+		auto& Native = Moving->BodyInstance.GetPhysicsActor()->GetGameThreadAPI();
+		Native.SetV(Chaos::FVec3(0,3600,0)); Native.SetW(Chaos::FVec3(0,0,5));
+		Chaos::FKinematicTarget Target; Target.SetVelocityMode(); Native.SetKinematicTarget(Target);
+		F.Advance(Substeps);
+		FVector NativePosition = FVector::ZeroVector;
+		auto* Proxy = Moving->BodyInstance.GetPhysicsActor();
+		F.Scene->GetSolver()->EnqueueCommandImmediate([Proxy,&NativePosition]()
+		{ NativePosition = FVector(Proxy->GetPhysicsThreadAPI()->X()); });
+		F.FlushRegistration(); // wait for the native read; no simulated interval.
+		AddInfo(FString::Printf(TEXT("Velocity-mode actual PT endpoint substeps=%d blocked=%d y=%.6f"),Substeps,Blocked,NativePosition.Y));
+		TestTrue(TEXT("Native velocity-mode target actually integrates a full frame"),
+			FMath::IsNearlyEqual(NativePosition.Y,Blocked ? 30. : 100.,1.e-3));
+		if (Blocked)
+		{
+			TestTrue(TEXT("Kinematic velocity/angular-motion sweep rejects before affected integration"),F.Samples[0].PreClearance == EStaticClearanceReason::DestinationBlocked);
+			TestTrue(TEXT("Velocity-mode obstruction creates no committed transfer"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		}
+		else
+		{
+			for (int32 I=0; I<11; ++I) { F.Advance(Substeps); }
+			bool Clear = true;
+			for (const auto& S : F.Samples) { Clear &= S.PreClearance == EStaticClearanceReason::Clear
+				&& S.IntegratedClearance == EStaticClearanceReason::Clear && S.SolvedClearance == EStaticClearanceReason::Clear; }
+			TestTrue(TEXT("Unrelated velocity-mode spinning kinematic stays inside each physical envelope"),Clear);
+			TestTrue(TEXT("Velocity-mode clear scene commits once with coherent facts"),F.Samples.Last().Transfers == 1
+				&& F.FactCursor->LastRevision() == 1 && F.FactsValid);
+		}
 	}
 	return true;
 }

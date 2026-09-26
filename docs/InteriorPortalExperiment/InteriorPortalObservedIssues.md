@@ -35,7 +35,12 @@ Core acceptance remain unfinished. The defect is still open.
 The subsequent native static certificate validates actual solver stages and
 PhysicsOnly exit obstruction/cancellation (final affected run 29/29 PASS), plus
 an exact shared half-turn repair. Its strict static scene scope rejects other
-dynamic/kinematic particles. General production coverage and atomic removal of
+dynamic/kinematic particles in that original scope. The subsequent
+[native filter/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
+validates actual bilateral filters, moving/rotating native kinematic interval
+envelopes and support-response retirement (final affected 7/7 PASS, zero warnings).
+Interacting Dynamic/Sleeping obstacles still reject; no new production writer.
+General production coverage and atomic removal of
 legacy writers are still required; this does not close the carrying defect.
 See [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md)
 for supported profiles, exact test results and uncompleted certification gates.

@@ -1,6 +1,56 @@
 # Codex Goal Checkpoint — Interior Portals
 
-## Current execution update — 2026-09-26
+## Current execution update — 2026-09-27
+
+- Verified HEAD: `12f1fe81ef11cdc1ffc3403ae142782680f041e0`, branch
+  `portal/full-fidelity-p1`. User-requested prior delivery commit completed:
+  `feat(portal): certify native static passage clearance`. Pre-existing modified
+  map excluded. Native filter/kinematic continuation is uncommitted.
+- **PHY-4 IN PROGRESS; native filters/kinematic coverage VALIDATED; interacting
+  dynamics, production cutover and Core OPEN.** Authority:
+  [filter/kinematic record](InteriorPortalExperiment/InteriorPortalPhysicsKinematicCoveragePHY4.md)
+  and [PHY-4 ordering](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md).
+- Existing PT-only verifier now uses native particle broad filtering and
+  bilateral simulation-enabled shape NarrowFilter. Ignore from either side,
+  simulation Overlap, query-only and filtered dynamics no longer deny passage.
+  Ignore-manager/geometry exclusions still conservatively over-block. Both
+  supports must retain native interaction; response loss retires the binding.
+- Native kinematic envelopes cover the complete remaining Position target or
+  one physical Velocity interval, all intermediate rotations around native origin
+  and off-center geometry. Interval cache uses unique-index keys only. PostIntegrate
+  and PostSolve verify actual geometry/root identity/bounds against the original
+  envelope. No GT query/transform substitutes for physics state. No new active
+  gameplay writer; code remains attached only in editor tests.
+- Prescribed bundled UE 5.8 generation/builds PASS. Initial affected suite
+  6/6 PASS, zero test warnings (2026.09.26-16.06.09 UTC). Separately added
+  Velocity-mode gate initially 0/1 PASS, zero warnings (16.08.40 UTC): four
+  endpoint assertions used stale GT BodyInstance transform. Fixture now enqueues
+  actual native PT read and waits through zero-dt flush. After support-response
+  guard and fixture correction, rebuild PASS; final affected **7/7 PASS, zero
+  test warnings**, 16.11.22 UTC. Separate runs, not aggregate totals. Prior
+  unaffected hold/coordinator/world-query/shared-mapping evidence remains valid.
+- Actual one/two-substep gates: clear/filtered scenes commit one coherent fact;
+  Ignore-to-Block at partial insertion cancels before the affected integration,
+  restores contacts, source X>6.8 cm and zero transfers. Endpoint-clear motion
+  Y=-30 to +30 and intermediate thin-box rotation reject at PreIntegrate.
+  Unrelated kinematics permit passage. Velocity+spin native endpoints are
+  Y=100.000003 (clear) / 30.000003 (crossing); clear stages pass, crossing creates
+  no fact in the affected frame. Support filter restoration cannot revive retirement.
+- Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Kinematic{,Velocity,Final}/index.json`;
+  `Saved/Logs/PortalPhysicsPHY4Kinematic{,Velocity,Final}Automation.log`;
+  `PortalPhysicsPHY4Kinematic{ProjectFiles,Build,VelocityBuild,FinalBuild,NativeReadBuild}.log`.
+- Next exact action: prove conservative interacting Dynamic/Sleeping interval
+  coverage or bounded rejection, including contact/constraint motion (V*dt alone
+  is insufficient). These particles still reject anywhere. Then broaden supported
+  traveller motion/cancellation, topology while straddling, exceptional recovery
+  and final pending-fact shutdown handoff. Only after slice 2 passes assemble
+  production and remove all legacy writers together; run actual-map Core gates.
+- No manual gate applies to this isolated slice; no manual PIE performed. Carrying
+  defect remains OPEN; no Core/P8/P9 seal or new acceptance request. Pre-existing
+  map untouched, SHA256
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous native-static execution — 2026-09-26 (committed as 12f1fe8)
 
 - Verified HEAD: `33492d01471b2025f7d068dc090c0e4b1ac2ee37`, branch
   `portal/full-fidelity-p1`. User-requested world-observation/native-adapter

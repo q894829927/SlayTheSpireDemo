@@ -184,7 +184,17 @@ implements the boundary distinction in a restricted normal-motion/static-scene
 profile: consume one private proof for its exact command, samples, physical step
 and stage, with fresh scans at PreIntegrate/PostIntegrate/PostSolve. Actual native
 simulation geometry includes PhysicsOnly collision. This profile rejects other
-dynamic/kinematic particles; it does not certify arbitrary production scenes.
+dynamic/kinematic particles in its original static profile. The subsequent
+[native filter/kinematic extension](InteriorPortalPhysicsKinematicCoveragePHY4.md)
+uses bilateral native simulation filters and PreIntegrate envelopes that cover
+the full remaining kinematic target or one physical velocity interval, including
+all intermediate rotations about the native origin. Later hooks verify actual
+geometry stays inside that same envelope. Envelopes expire per physical step;
+GT component transforms cannot substitute for native state. Both supports must
+retain native interaction with the traveller for contact restoration; losing it
+retires the binding. Filtered-out dynamics are excluded, while interacting
+Dynamic/Sleeping motion still requires contact/constraint-safe coverage or a
+bounded rejection policy. This does not certify arbitrary production scenes.
 The shared rigid half-turn is an exact quaternion, preserving an axial trajectory
 without float-angle lateral drift across physics and virtual-camera mapping.
 

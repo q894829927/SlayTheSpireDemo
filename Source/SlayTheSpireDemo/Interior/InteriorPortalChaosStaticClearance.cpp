@@ -3,6 +3,7 @@
 #include "Chaos/ImplicitObject.h"
 #include "Chaos/PBDRigidsSOAs.h"
 #include "Chaos/ShapeInstance.h"
+#include "Chaos/Collision/CollisionFilter.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PBDRigidsSolver.h"
 
@@ -45,7 +46,20 @@ namespace InteriorPortalPhysics
 			return B;
 		}
 		template<typename TParticle> bool Simulates(const TParticle& P)
-		{ for (const auto& S : P.ShapesArray()) { if (S->GetSimEnabled()) { return true; } } return false; }
+		{ for (const auto& S : P.ShapesArray()) { if (Chaos::FilterHasSimEnabled(S.Get())) { return true; } } return false; }
+		bool Interacts(const Chaos::FGeometryParticleHandle* Body, const Chaos::FGeometryParticleHandle* Other)
+		{
+			// Passing no ignore manager conservatively keeps explicitly ignored pairs.
+			// Geometry/trace-type exclusions likewise remain conservative over-blocks.
+			if (!Chaos::ParticlePairBroadPhaseFilter(Body,Other,nullptr)) { return false; }
+			for (const auto& A : Body->ShapesArray()) for (const auto& B : Other->ShapesArray())
+			{
+				if (Chaos::FilterHasSimEnabled(A.Get()) && Chaos::FilterHasSimEnabled(B.Get())
+					&& A->GetShapeFilterData().NarrowFilter(B->GetShapeFilterData()) != Chaos::Filter::ENarrowFilterResult::None)
+				{ return true; }
+			}
+			return false;
+		}
 		template<typename TParticle> bool NativeBounds(const TParticle& P, FBox& Out)
 		{
 			const auto* G = P.GetGeometry();
@@ -62,6 +76,34 @@ namespace InteriorPortalPhysics
 		}
 		FBox SweptBounds(const FBox& Local, const FTransform& A, const FTransform& B, double Margin)
 		{ return (WorldBounds(Local,A) + WorldBounds(Local,B)).ExpandBy(Margin); }
+		bool KinematicSweep(const Chaos::FGeometryParticleHandle* P, const FBox& Local, double Dt, FBox& Out)
+		{
+			const auto* K = P->CastToKinematicParticle();
+			const FVector Origin(P->GetX()); const FQuat Rotation(P->GetR());
+			if (!K || Origin.ContainsNaN() || Rotation.ContainsNaN() || !Rotation.IsNormalized()) { return false; }
+			const auto& Target = K->KinematicTarget(); FVector End = Origin;
+			switch (Target.GetMode())
+			{
+			case Chaos::EKinematicTargetMode::None:
+			case Chaos::EKinematicTargetMode::Reset:
+				Out = WorldBounds(Local,FTransform(Rotation,Origin)).ExpandBy(1.e-4); return true;
+			case Chaos::EKinematicTargetMode::Position:
+				// Full remaining frame target covers every unknown substep fraction.
+				End = FVector(Target.GetPosition());
+				if (FQuat(Target.GetRotation()).ContainsNaN() || !FQuat(Target.GetRotation()).IsNormalized()) { return false; }
+				break;
+			case Chaos::EKinematicTargetMode::Velocity:
+				if (FVector(K->GetV()).ContainsNaN() || FVector(K->GetW()).ContainsNaN()) { return false; }
+				End += FVector(K->GetV())*Dt; break;
+			default: return false;
+			}
+			// Radius is around the native actor origin, covering off-center geometry
+			// and every intermediate rotation, not just endpoint boxes.
+			double Radius = 0; const FGeometry Geometry = BoxGeometry(Local);
+			for (const auto& V : Geometry.Primitives[0].Vertices) { Radius = FMath::Max(Radius,V.Size()); }
+			if (End.ContainsNaN() || !FMath::IsFinite(Radius)) { return false; }
+			Out = FBox(Origin,Origin); Out += End; Out = Out.ExpandBy(Radius+1.e-4); return true;
+		}
 	}
 	FChaosStaticClearance::FChaosStaticClearance(Chaos::FPBDRigidsSolver* InSolver, Chaos::FSingleParticlePhysicsProxy* InBody,
 		Chaos::FSingleParticlePhysicsProxy* Support0, Chaos::FSingleParticlePhysicsProxy* Support1,
@@ -78,7 +120,7 @@ namespace InteriorPortalPhysics
 			|| !C.Traveller.Handle.Generation || !BoundSupportBounds[0].IsValid || !BoundSupportBounds[1].IsValid) { Retire_Internal(); }
 	}
 	void FChaosStaticClearance::Retire_Internal()
-	{ Retired = true; Consumed = true; Body = nullptr; Supports[0] = Supports[1] = nullptr; Solver = nullptr; }
+	{ Retired = true; Consumed = true; KinematicEnvelopes.Reset(); Body = nullptr; Supports[0] = Supports[1] = nullptr; Solver = nullptr; }
 	FStaticClearanceProof FChaosStaticClearance::Certify_Internal(const FBoundaryCommand& C,
 		const FBoundaryState& A, const FBoundaryState& B, const FPhysicsStepKey& Step, EClearanceStage Stage, int32 Endpoint)
 	{
@@ -102,6 +144,7 @@ namespace InteriorPortalPhysics
 			if (IntervalStep.SolverEpoch && (Step.EvolutionSerial <= IntervalStep.EvolutionSerial || Step.SolverFrame <= IntervalStep.SolverFrame))
 			{ return Reject(EStaticClearanceReason::InvalidInterval); }
 			IntervalStep = Step; IntervalStart = A; IntervalCommand = C; LastStage = Stage;
+			KinematicEnvelopes.Reset();
 		}
 		else
 		{
@@ -139,7 +182,7 @@ namespace InteriorPortalPhysics
 		for (int32 I=0; I<2; ++I)
 		{
 			const auto* P = Supports[I]->GetHandle_LowLevel();
-			if (!P || P->ObjectState() != Chaos::EObjectStateType::Static || !Simulates(*P) || !NativeBounds(*P,SupportBounds[I])
+			if (!P || P->ObjectState() != Chaos::EObjectStateType::Static || !Simulates(*P) || !Interacts(Particle,P) || !NativeBounds(*P,SupportBounds[I])
 				|| !SupportBounds[I].Min.Equals(BoundSupportBounds[I].Min,1.e-6) || !SupportBounds[I].Max.Equals(BoundSupportBounds[I].Max,1.e-6)
 				|| !FTransform(FQuat(P->GetR()),FVector(P->GetX())).Equals(SupportPoses[I],1.e-6))
 			{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
@@ -181,11 +224,30 @@ namespace InteriorPortalPhysics
 		for (auto& P : Solver->GetParticles().GetNonDisabledView())
 		{
 			if (P.PhysicsProxy() == Body) { SawBody = true; continue; }
-			if (!Simulates(P)) { continue; }
-			FBox Bounds(ForceInit);
-			if (P.ObjectState() != Chaos::EObjectStateType::Static || !NativeBounds(P,Bounds)) { Unsupported = true; continue; }
-			const FBox World = WorldBounds(Bounds,FTransform(FQuat(P.GetR()),FVector(P.GetX())));
 			SawSupports[0] |= P.PhysicsProxy() == Supports[0]; SawSupports[1] |= P.PhysicsProxy() == Supports[1];
+			if (!Interacts(Particle,P.Handle())) { continue; }
+			FBox Bounds(ForceInit);
+			if (!NativeBounds(P,Bounds)) { Unsupported = true; continue; }
+			FBox World = WorldBounds(Bounds,FTransform(FQuat(P.GetR()),FVector(P.GetX())));
+			if (P.ObjectState() == Chaos::EObjectStateType::Kinematic)
+			{
+				const int32 Key = P.UniqueIdx().Idx;
+				if (Stage == EClearanceStage::PreIntegrate)
+				{
+					if (!KinematicSweep(P.Handle(),Bounds,Step.DeltaSeconds,World)) { Unsupported = true; continue; }
+					KinematicEnvelopes.Add(Key,{World,Bounds,P.GetGeometry(),P.GetGeometry()->GetTypeHash()});
+				}
+				else
+				{
+					const auto* Envelope = KinematicEnvelopes.Find(Key);
+					if (!Envelope || Envelope->Geometry != P.GetGeometry() || Envelope->GeometryHash != P.GetGeometry()->GetTypeHash()
+						|| !Envelope->Local.Min.Equals(Bounds.Min,1.e-6) || !Envelope->Local.Max.Equals(Bounds.Max,1.e-6)
+						|| !Envelope->Sweep.IsInsideOrOn(World.Min) || !Envelope->Sweep.IsInsideOrOn(World.Max))
+					{ Unsupported = true; continue; }
+					World = Envelope->Sweep;
+				}
+			}
+			else if (P.ObjectState() != Chaos::EObjectStateType::Static) { Unsupported = true; continue; }
 			if (P.PhysicsProxy() != Supports[Endpoint]) { SourceBlocked |= Source.Intersect(World); }
 			if (P.PhysicsProxy() != Supports[1-Endpoint]) { DestinationBlocked |= Destination.Intersect(World); }
 		}

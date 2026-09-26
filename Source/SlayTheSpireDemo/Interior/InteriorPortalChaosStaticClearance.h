@@ -27,7 +27,9 @@ namespace InteriorPortalPhysics
 		FPhysicsStepKey Step;
 		EClearanceStage Stage = EClearanceStage::PreIntegrate;
 	};
-	/** PT-only, conservative whole-scene static profile. Retire before proxy removal.
+	/** PT-only, fixed-normal traveller with static supports and certified kinematics.
+	 * Collidable dynamics still reject; simulation filters exclude unrelated pairs.
+	 * Retire before proxy removal.
 	 * An O(N) correctness primitive, not yet an active general-world production provider. */
 	class SLAYTHESPIREDEMO_API FChaosStaticClearance
 	{
@@ -55,6 +57,15 @@ namespace InteriorPortalPhysics
 		const void* NativeGeometry[3] = {nullptr,nullptr,nullptr};
 		uint32 GeometryHashes[3] = {0,0,0};
 		bool GeometryBound = false;
+		struct FKinematicEnvelope
+		{
+			FBox Sweep, Local;
+			const void* Geometry = nullptr;
+			uint32 GeometryHash = 0;
+		};
+		// Native unique indices are keys only, never retained particle/proxy pointers.
+		// Cleared for every physical interval; later hooks verify against its sweep.
+		TMap<int32, FKinematicEnvelope> KinematicEnvelopes;
 		FBoundaryState IntervalStart;
 		FPhysicsStepKey IntervalStep;
 		uint64 Epoch = 0, Binding = 0, Sequence = 0;
