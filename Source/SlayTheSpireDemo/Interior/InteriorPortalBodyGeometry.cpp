@@ -35,10 +35,12 @@ namespace InteriorPortalPhysics
 		}
 	}
 
-	EGeometryResult ExtractGeometry(UPrimitiveComponent* Body, FGeometry& Out)
+	static EGeometryResult ExtractSimpleGeometry(UPrimitiveComponent* Body, FGeometry& Out, bool StaticSupport)
 	{
 		Out = FGeometry();
-		if (!IsValid(Body) || !IsValid(Body->GetOwner()) || Body->GetOwner()->GetRootComponent() != Body
+		if (!IsValid(Body) || !IsValid(Body->GetOwner())
+			|| (!StaticSupport && Body->GetOwner()->GetRootComponent() != Body)
+			|| (StaticSupport && (Body->Mobility != EComponentMobility::Static || Body->IsSimulatingPhysics()))
 			|| (!Body->IsA<UShapeComponent>() && !Body->IsA<UStaticMeshComponent>())
 			|| (Body->GetBodyInstance() && Body->GetBodyInstance()->WeldParent))
 		{ return EGeometryResult::UnsupportedComponent; }
@@ -101,6 +103,10 @@ namespace InteriorPortalPhysics
 		Out = MoveTemp(Geometry);
 		return EGeometryResult::Fits;
 	}
+	EGeometryResult ExtractGeometry(UPrimitiveComponent* Body, FGeometry& Out)
+	{ return ExtractSimpleGeometry(Body, Out, false); }
+	EGeometryResult ExtractStaticSupportGeometry(UPrimitiveComponent* Support, FGeometry& Out)
+	{ return ExtractSimpleGeometry(Support, Out, true); }
 
 	FFitResult EvaluatePose(const FGeometry& Geometry, const FTransform& Pose,
 		const FTransform& Frame, double Width, double Height, double Margin)

@@ -1,7 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
 Updated: 2026-09-26. Status: **IN PROGRESS; COORDINATOR SLICE VALIDATED; actual-world provider/cutover/Core gates OPEN**.
-Source HEAD: `6de308be4c4e9d2377674303390f1261df4d860f` (PHY-3 delivery).
+Source HEAD: `f6ed5dfd332c4ad083ba4439da411e7dc720033e` (coordinator committed).
+World-observation/native-transfer continuation is uncommitted; full slice 2 OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -103,7 +104,10 @@ observations plus diagnostics. If manual execution is unavailable, label it
 Coordinator slice is implemented in runtime value-only helpers and integrated
 only into the existing editor Chaos fixture. The native adapter performs the
 prepared physics-thread write; held and free bodies share the coordinator.
-There is no active map/system reference to it. A coordinator cannot be copied
+There is no active map/system reference to it. The inline fixture writer is now
+replaced by a reusable runtime Chaos transfer primitive (still attached only in
+tests); see [slice-2 evidence](InteriorPortalPhysicsWorldQueriesPHY4.md).
+A coordinator cannot be copied
 to create another commit owner. The bounded journal defaults to 32 facts; invalid
 capacity (<=0 or >1024) retires the binding.
 
@@ -149,11 +153,20 @@ protocol tests, not actual player traversal acceptance. Delayed native fact
 test withholds consumption for 12 newer command revisions, consumes/replays the
 single retained fact, then confirms the marshalled ack clears it.
 
-Limitations are explicit: the authored static empty corridor is not an actual
-world provider. Native journal-full cancellation, invalid topology while
-straddling, blocked exit with contacts, rotation/gravity and exceptional recovery
-are not proved by metadata-only rejection tests. An adapter's false-without-write
-contract needs separate proof for its production implementation. Destruction of
+The subsequent [world-observation/transfer record](InteriorPortalPhysicsWorldQueriesPHY4.md)
+adds real-world volume queries, full exit clearance and a reusable native adapter.
+Its focused run is 16/16 PASS (two existing foundation-fixture warnings); later
+shape coverage is a separate 1/1 PASS with zero warnings. Native zero-gravity
+normal blocked-exit/partial-insertion cancellation restores ordinary contacts
+without test-side pose Recovery; runtime adapter rejection is checked before
+valid commit. These narrow checks do not establish a certified production
+provider, arbitrary straddling cancellation or actual-map Core acceptance.
+
+Limitations are explicit: game-thread observations are not physics-substep
+certificates. Query-disabled collision, dynamic motion and scene/topology lease
+correlation remain open. Native journal-full cancellation, invalid topology while
+straddling, rotation/gravity and exceptional recovery are not proved by the
+current fixtures. Destruction of
 the final coordinator/solver must drain or explicitly hand off pending facts;
 retention inside this object alone does not implement whole-world shutdown.
 
@@ -161,5 +174,6 @@ No manual gate applies to this isolated slice and no production fix/Core seal
 is claimed. Map hash remains
 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
 **Next unfinished work: slice 2 — actual-world certified query/topology provider
-and production adapter**, including the unsupported cancellation/recovery cases
+and production adapter assembly**, building on the validated observation/transfer
+primitives and including the unsupported cancellation/recovery cases
 above. Then perform atomic cutover and the required Core manual gate.

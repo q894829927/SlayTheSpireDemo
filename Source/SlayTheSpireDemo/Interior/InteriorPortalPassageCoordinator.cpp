@@ -18,7 +18,7 @@ namespace InteriorPortalPhysics
 				&& FMath::IsFinite(S.MassKg) && S.MassKg > 0 && !S.LocalInertia.ContainsNaN() && S.LocalInertia.GetMin() > 0
 				&& !S.LocalCOM.ContainsNaN() && !S.RotationOfMass.ContainsNaN() && S.RotationOfMass.IsNormalized();
 		}
-		bool RigidFrame(const FTransform& F) { return F.IsValid() && F.GetScale3D().Equals(FVector::OneVector, 1.e-6); }
+		bool CoordinatorRigidFrame(const FTransform& F) { return F.IsValid() && F.GetScale3D().Equals(FVector::OneVector, 1.e-6); }
 	}
 	EFactResult FTransferFactCursor::Consume(const FTransferFact& F)
 	{
@@ -43,7 +43,7 @@ namespace InteriorPortalPhysics
 	{
 		Frames[0] = Endpoint0; Frames[1] = Endpoint1;
 		if (!ValidHandle(Body) || !Pair || !Epoch || !Binding || Endpoint < 0 || Endpoint > 1 || Capacity <= 0 || Capacity > 1024
-			|| !RigidFrame(Frames[0]) || !RigidFrame(Frames[1])) { Endpoint = 0; Retire(); }
+			|| !CoordinatorRigidFrame(Frames[0]) || !CoordinatorRigidFrame(Frames[1])) { Endpoint = 0; Retire(); }
 	}
 	bool FPassageCoordinator::Matches(const FBoundaryCommand& C, const FPhysicsStepKey& Step) const
 	{

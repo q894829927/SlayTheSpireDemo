@@ -43,6 +43,8 @@ namespace InteriorPortalPhysics
 	SLAYTHESPIREDEMO_API const TCHAR* Reason(EGeometryResult Result);
 	/** Only simple collision on root, unwelded shape/static-mesh components. */
 	SLAYTHESPIREDEMO_API EGeometryResult ExtractGeometry(UPrimitiveComponent* Body, FGeometry& Out);
+	/** Static, unwelded support collision may be a non-root component. Same shape extraction. */
+	SLAYTHESPIREDEMO_API EGeometryResult ExtractStaticSupportGeometry(UPrimitiveComponent* Support, FGeometry& Out);
 	/** Convex/box vertex containment; sphere/capsule use a proven conservative ellipse bound. */
 	SLAYTHESPIREDEMO_API FFitResult EvaluatePose(const FGeometry& Geometry,
 		const FTransform& BodyPose, const FTransform& PortalFrame, double HalfWidth, double HalfHeight,

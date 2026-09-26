@@ -19,6 +19,8 @@ public class SlayTheSpireDemo : ModuleRules
 		PrivateDependencyModuleNames.Add("Json");
 		// Collision-shape adapters resolve BodySetup's effective collision policy.
 		PrivateDependencyModuleNames.Add("PhysicsCore");
+		// Solver-side transfer adapter uses native particle handles, with no public Chaos types.
+		PrivateDependencyModuleNames.Add("Chaos");
 		
 		// Gameplay still exposes no Slate types; this private SlateCore dependency is
 		// limited to the Native HUD's FReply input boundary.

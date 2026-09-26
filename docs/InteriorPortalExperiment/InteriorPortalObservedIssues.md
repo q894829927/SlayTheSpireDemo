@@ -27,9 +27,13 @@ fixture (4/4 PASS), committed as `b4dec6f`. PHY-3 is committed as `6de308b`,
 validating bounded hold force/torque and shape-aware target/route solving in
 the editor fixture. The actual 1 kg and 20 kg blocked targets settle to <0.15 cm error;
 native free rotation and energy checks pass. Production writers remain unchanged.
-PHY-4's coordinator/durable-fact slice now passes editor/native tests; the
-actual-world provider, production single-coordinator cutover and actual-map
+PHY-4's coordinator/durable-fact slice is committed as `f6ed5df`. Its continuation
+now validates actual-world full-volume observations and a reusable Chaos transfer
+primitive, including narrow blocked-exit/partial-insertion cancellation. The
+queries are advisory; certified solver/topology coverage, production single-coordinator cutover and actual-map
 Core acceptance remain unfinished. The defect is still open.
+See [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md)
+for supported profiles, exact test results and uncompleted certification gates.
 See [PHY-4 execution](InteriorPortalPhysicsPHY4.md) for exact progress/next action.
 See [the drive/target record](InteriorPortalPhysicsHoldPHY3.md) for separate test
 runs and the certified static-region query limits.

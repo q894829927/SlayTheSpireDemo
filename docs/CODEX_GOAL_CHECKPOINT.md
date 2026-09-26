@@ -2,6 +2,57 @@
 
 ## Current execution update — 2026-09-26
 
+- Verified HEAD: `f6ed5dfd332c4ad083ba4439da411e7dc720033e`, branch
+  `portal/full-fidelity-p1`. User-requested coordinator commit completed:
+  `feat(portal): coordinate passage commits and durable transfer facts`.
+  The pre-existing map modification was excluded. Current slice-2 continuation
+  (world observations/native transfer primitives, tests and docs) is uncommitted.
+- **PHY-4 IN PROGRESS; world-observation/transfer primitives VALIDATED; full
+  certified provider, production cutover and Core gates OPEN.** Authority:
+  [PHY-4 execution](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md) and
+  [slice-2 evidence](InteriorPortalExperiment/InteriorPortalPhysicsWorldQueriesPHY4.md).
+- Runtime world observer checks the full registered shape, both apertures,
+  source initial overlap/linear approach and destination full-clearance corridor.
+  Sphere/capsule centers/orientations and all compound elements are retained;
+  box/convex world-query bounds are conservative. Exact component exclusions
+  preserve colliders on the same owner. Static supports may be non-root through
+  the shared extractor; traveller root/unwelded policy stays unchanged.
+- `ClearAtQuery` is GT evidence, never a substep permission. No runtime caller
+  assigns bypass/certificate fields from it. Query-disabled physics collisions,
+  future dynamic motion and topology/scene/lease correlation are still open.
+- Runtime Chaos adapter replaces the inline editor-fixture writer. It binds
+  proxy/body/pair/solver/binding, validates actual solved P/Q, V/W and material
+  state before any setter, rejects malformed/replayed facts without writes,
+  retires before native proxy removal. It is attached only in tests; the active
+  gameplay system has no new writer and no partial production cutover.
+- Prescribed bundled UE 5.8 project generation PASS. Initial build revealed
+  hold/coordinator `RigidFrame` helper name collision in unity compilation;
+  renamed coordinator helper, rebuild PASS. Added shape coverage, rebuild PASS.
+  Initial focused run **16/16 PASS**, with two existing GenerationAndSharedQuery
+  test-world cleanup warnings; subsequent PrimitivesAndCompound **1/1 PASS,
+  zero warnings**. Separate runs; no aggregate total. Evidence:
+  `Saved/AutomationReports/PortalPhysicsPHY4World{,Shapes}/index.json`,
+  `Saved/Logs/PortalPhysicsPHY4World{,Shapes}Automation.log`,
+  `PortalPhysicsPHY4World{ProjectFiles,InitialBuild,Build,ShapeBuild}.log`.
+- Native TaskGraph one/two-interval normal cancellation with actual exit blocker
+  has zero transfers/facts; partial insertion X=2 restores to X=7/7.000001 cm
+  via original contacts, no test-side pose Recovery. Actual sphere, rotated
+  capsule and offset compound probes pass. Adapter rejection and existing
+  held/free material mapping, durable facts and retirement regressions pass.
+- Next exact action: correlate world/topology/support/body revisions and scene
+  collision coverage with actual solver intervals; include query-disabled physics
+  collisions or explicitly reject that scope, and revalidate moving obstacles
+  at the authoritative boundary. Then prove supported gravity/rotation or bounded
+  safe rejection, topology changes while straddling, exceptional recovery and
+  final pending-fact handoff. Only after slice 2 passes remove all old production
+  writers together; actual-map Core native/manual gates still follow.
+- No manual gate applies to these isolated primitives. Do not ask for visual
+  acceptance of unchanged legacy gameplay. Carrying defect remains OPEN;
+  no Core seal/P8/P9 advancement. Map hash remains unchanged:
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous PHY-4 coordinator execution — 2026-09-26
+
 - Verified HEAD: `6de308be4c4e9d2377674303390f1261df4d860f`, branch
   `portal/full-fidelity-p1`. User-requested PHY-3 commit completed:
   `feat(portal): add bounded hold drive and shape-aware targets`. The map was

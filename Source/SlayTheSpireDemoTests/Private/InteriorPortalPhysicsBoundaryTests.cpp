@@ -3,8 +3,15 @@
 #include "Interior/InteriorPortalPhysicsBoundary.h"
 #include "Interior/InteriorPortalHoldSolver.h"
 #include "Interior/InteriorPortalPassageCoordinator.h"
+#include "Interior/InteriorPortalChaosTransferAdapter.h"
+#include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -15,6 +22,7 @@
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PBDRigidsSolver.h"
 #include "HAL/ThreadSafeCounter64.h"
+#include <limits>
 
 namespace
 {
@@ -38,6 +46,7 @@ namespace
 		TArray<FTransferFact> Facts;
 		FHoldRelationSnapshot Relation;
 		bool MaterialPreserved = true;
+		bool AdapterRejectionsAtomic = true;
 		FVector GateImpulse = FVector::ZeroVector;
 		FBoundaryDecision Decision;
 		uint32 ReuseOrdinal = 0;
@@ -63,6 +72,7 @@ namespace
 	{
 	public:
 		const uint64 Epoch = SolverEpochs.Increment();
+		bool ProbeAdapterRejections = false; // configured only before dispatch
 		void ConfigureHoldBeforeDispatch(uint64 RouteRevision, uint64 RegionRevision)
 		{ HoldRouteRevision = RouteRevision; HoldRegionRevision = RegionRevision; }
 		bool ConfigureRelationBeforeDispatch(const FTransform& Desired, const FVector& Anchor)
@@ -73,6 +83,7 @@ namespace
 		{
 			Body = InBody; Supports[0] = EntrySupport; Supports[1] = ExitSupport; BoundBody = BodyToken; BoundPair = PairToken;
 			Coordinator = MakeUnique<FPassageCoordinator>(BodyToken,PairToken,Epoch,Epoch,EntryFrame,ExitFrame);
+			Adapter = MakeUnique<FChaosTransferAdapter>(InBody,BodyToken,PairToken,Epoch,Epoch,FVector::OneVector);
 		}
 		virtual FName GetFNameForStatId() const override { return TEXT("PortalBoundarySpike"); }
 	private:
@@ -88,6 +99,7 @@ namespace
 		uint64 BoundPair = 0;
 		uint64 HoldRouteRevision = 0, HoldRegionRevision = 0;
 		TUniquePtr<FPassageCoordinator> Coordinator;
+		TUniquePtr<FChaosTransferAdapter> Adapter;
 		bool HasInput = false, BindingMatches = false;
 		FSpikeSample* Sample = nullptr;
 		// UE registers evolution callbacks in its simulation list too. Presimulate
@@ -118,7 +130,7 @@ namespace
 			// Owner cancellation reaches the same marshalled boundary as physics removal.
 			// The native unregister callback is a second lifetime guard, not the sole cancellation signal.
 			if (HasInput && !BindingMatches) { Retired = true; }
-			if (Retired) { Coordinator->Retire(); }
+			if (Retired) { Coordinator->Retire(); Adapter->Retire_Internal(); }
 			if (HasInput) { Coordinator->Acknowledge(Input->TransferAck); }
 			PortalIndex = Coordinator->BodyEndpoint();
 			if (Current.Revision > Revision) { Revision = Current.Revision; Reuse = 0; }
@@ -231,6 +243,7 @@ namespace
 		{
 			Sample->Order = Sample->Order * 10 + 4;
 			Sample->Solved = Read(true);
+			if (!Retired) { Adapter->BeginSolvedStep_Internal(Sample->Receipt.Step); }
 			if (Sample->Decision.TransferAfterSolve && !Retired && Body && Body->GetPhysicsThreadAPI())
 			{
 				// Experimental end-of-interval commit for the isolated static corridor only.
@@ -241,20 +254,40 @@ namespace
 				for (int32 I=0; I<3; ++I) { Solved.LocalInertia[I] = InvI[I] > 0 ? 1. / InvI[I] : 0; }
 				Solved.LocalCOM = Handle->CenterOfMass(); Solved.RotationOfMass = Handle->RotationOfMass();
 				Solved.Sleeping = Handle->ObjectState() == Chaos::EObjectStateType::Sleeping;
-				struct FNativeAdapter final : IPortalTransferAdapter
+				struct FCheckedAdapter final : IPortalTransferAdapter
 				{
-					Chaos::FSingleParticlePhysicsProxy* Proxy;
+					FChaosTransferAdapter* Native = nullptr;
+					FPortalBoundarySpike* Owner = nullptr;
 					virtual bool Commit(const FTransferFact& Fact) override
 					{
-						auto* H = Proxy->GetPhysicsThreadAPI();
-						if (!H) { return false; }
-						H->SetX(Fact.After.Motion.Pose.GetLocation()); H->SetR(Fact.After.Motion.Pose.GetRotation());
-						H->SetV(Fact.After.Motion.LinearVelocity); H->SetW(Fact.After.Motion.AngularVelocity);
-						return true;
+						if (Owner->ProbeAdapterRejections)
+						{
+							const auto Reject = [&](const FTransferFact& Bad)
+							{
+								const auto Before = Owner->Read(true);
+								const bool Rejected = !Native->Commit(Bad);
+								const auto After = Owner->Read(true);
+								Owner->Sample->AdapterRejectionsAtomic &= Rejected && Before.Pose.Equals(After.Pose,1.e-6)
+									&& Before.LinearVelocity == After.LinearVelocity && Before.AngularVelocity == After.AngularVelocity;
+							};
+							FTransferFact Bad = Fact; ++Bad.BindingEpoch; Reject(Bad);
+							Bad = Fact; ++Bad.Step.EvolutionSerial; Reject(Bad);
+							Bad = Fact; Bad.Before.Motion.Pose.AddToTranslation(FVector(1,0,0)); Reject(Bad);
+							Bad = Fact; Bad.After.MassKg += 1; Reject(Bad);
+							Bad = Fact; Bad.After.Motion.LinearVelocity.X = std::numeric_limits<double>::infinity(); Reject(Bad);
+						}
+						const bool Committed = Native->Commit(Fact);
+						if (Committed && Owner->ProbeAdapterRejections)
+						{
+							const auto Published = Owner->Read(true);
+							Owner->Sample->AdapterRejectionsAtomic &= !Native->Commit(Fact)
+								&& Published.Pose.Equals(Owner->Read(true).Pose,1.e-6);
+						}
+						return Committed;
 					}
-				} Adapter;
-				Adapter.Proxy = Body;
-				Coordinator->CommitSolved(Current,Solved,Sample->Receipt.Step,Adapter);
+					} Checked;
+					Checked.Native = Adapter.Get(); Checked.Owner = this;
+					Coordinator->CommitSolved(Current,Solved,Sample->Receipt.Step,Checked);
 				Sample->MaterialPreserved = Handle->M() == Solved.MassKg && FVector(Handle->InvI()) == InvI
 					&& Handle->CenterOfMass() == Solved.LocalCOM && Handle->RotationOfMass() == Solved.RotationOfMass
 					&& (Handle->ObjectState() == Chaos::EObjectStateType::Sleeping) == Solved.Sleeping;
@@ -269,7 +302,7 @@ namespace
 			{
 				const auto* Proxy = Item.Get<1>();
 				if (Proxy == Body || Proxy == Supports[0] || Proxy == Supports[1])
-				{ Retired = true; UnregistrationObserved = true; Coordinator->Retire(); }
+				{ Retired = true; UnregistrationObserved = true; Coordinator->Retire(); Adapter->Retire_Internal(); }
 			}
 		}
 	};
@@ -361,6 +394,20 @@ namespace
 					if (!DelayFacts) { ConsumeFacts(S.Facts); }
 				}
 			}
+		}
+		void FlushRegistration()
+		{
+			Scene->SetUpForFrame(&FVector::ZeroVector, 0, 0, 1.f/60, 1.f/120, 2, false);
+			Scene->StartFrame(); Scene->WaitPhysScenes(); Scene->EndFrame();
+		}
+		FWorldPassageRequest PassageRequest() const
+		{
+			FWorldPassageRequest R;
+			R.World = World; R.Body = Body; R.EntrySupport = EntryWall; R.ExitSupport = ExitWall;
+			R.Traveller = Command.Traveller; R.PairGeneration = Command.PairGeneration; R.Revision = NextRevision;
+			R.Entry = Command.Entry; R.Exit = Command.Exit;
+			R.From = Body->GetComponentTransform(); R.To = R.From; R.To.AddToTranslation(FVector(-2,0,0));
+			return R;
 		}
 		void ConsumeFacts(const TArray<FTransferFact>& Facts)
 		{
@@ -722,6 +769,157 @@ bool FPortalNativeCoordinatorDelayedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Delayed fact consumed once, duplicate delivery harmless"),F.FactsValid && F.FactCursor->LastRevision() == 1);
 	F.Advance(true);
 	TestTrue(TEXT("Acknowledgment reaches solver boundary and retires journal prefix"),F.Samples.Last().Facts.IsEmpty());
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalWorldPassageVolumeTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsWorldQuery.VolumesAndClearance", PortalBoundaryTestFlags)
+bool FPortalWorldPassageVolumeTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(false,true,false); F.FlushRegistration();
+	auto R = F.PassageRequest();
+	const auto Clear = ObserveWorldPassage(R,F.Registry);
+	TestTrue(TEXT("Actual world compound-volume path observes empty legal openings"),Clear.Result == EWorldPassageResult::ClearAtQuery);
+	TestTrue(TEXT("Support depth comes from baked collision shape"),Clear.EntryOutwardDepthCm == 2 && Clear.ExitOutwardDepthCm == 2);
+	TestTrue(TEXT("Full exit clearance precedes permission, beyond mapped next interval"),Clear.DestinationClear.GetLocation().X > 1009);
+	TestTrue(TEXT("A probe cannot move the held body or publish a transfer"),F.Body->GetComponentLocation().X == 8 && F.Samples.IsEmpty());
+	auto* Blocker = F.Box(FVector(1013,0,0),FVector(.25),false); F.FlushRegistration();
+	FCollisionQueryParams Params; Params.AddIgnoredComponent(F.Body); Params.AddIgnoredComponent(F.ExitWall);
+	TestFalse(TEXT("Center ray misses the blocker beyond its endpoint"),F.World->LineTraceTestByChannel(
+		Clear.DestinationAtPlane.GetLocation(),Clear.DestinationClear.GetLocation(),F.Body->GetCollisionObjectType(),Params));
+	TestTrue(TEXT("Full-volume exit sweep detects blocker invisible to center ray and mapped next endpoint"),
+		ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::DestinationBlocked);
+	Blocker->SetCollisionResponseToChannel(F.Body->GetCollisionObjectType(),ECR_Ignore); F.FlushRegistration();
+	TestTrue(TEXT("Actual collision responses govern blocking"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::ClearAtQuery);
+	Blocker->SetCollisionResponseToChannel(F.Body->GetCollisionObjectType(),ECR_Block);
+	Blocker->SetMobility(EComponentMobility::Movable); Blocker->SetSimulatePhysics(true); F.FlushRegistration();
+	TestTrue(TEXT("Currently observed dynamic obstacle blocks; no future-motion certificate inferred"),
+		ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::DestinationBlocked);
+	Blocker->DestroyComponent(); F.FlushRegistration();
+	auto* LocalBlocker = F.Box(FVector(8,0,0),FVector(1),false); F.FlushRegistration();
+	TestTrue(TEXT("Initial source overlap blocks before a sweep"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::SourceBlocked);
+	LocalBlocker->DestroyComponent(); F.FlushRegistration();
+	auto* Sibling = NewObject<UBoxComponent>(F.Body->GetOwner()); F.Body->GetOwner()->AddInstanceComponent(Sibling);
+	Sibling->SetBoxExtent(FVector(1)); Sibling->SetCollisionProfileName(TEXT("PhysicsActor"));
+	Sibling->SetWorldLocation(FVector(8,0,0)); Sibling->RegisterComponent(); F.FlushRegistration();
+	TestTrue(TEXT("Ignoring selected component preserves blocking by sibling on same owner"),
+		ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::SourceBlocked);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalWorldPassagePrimitiveTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsWorldQuery.PrimitivesAndCompound", PortalBoundaryTestFlags)
+bool FPortalWorldPassagePrimitiveTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(false,true,false);
+	const auto Register = [&](UPrimitiveComponent* Shape, const FQuat& Rotation)
+	{
+		Shape->GetOwner()->SetRootComponent(Shape); Shape->GetOwner()->AddInstanceComponent(Shape);
+		Shape->SetCollisionProfileName(TEXT("PhysicsActor")); Shape->SetEnableGravity(false);
+		Shape->SetWorldTransform(FTransform(Rotation,FVector(8,0,0))); Shape->RegisterComponent(); Shape->SetSimulatePhysics(true);
+		EGeometryResult Reason;
+		TestTrue(TEXT("Actual shape registers as an independently simulated traveller"),F.Registry.Register(Shape,Reason));
+		F.FlushRegistration();
+		auto R = F.PassageRequest(); R.Body = Shape; F.Registry.Capture(Shape,R.Traveller);
+		R.From = Shape->GetComponentTransform(); R.To = R.From; R.To.AddToTranslation(FVector(-2,0,0));
+		return R;
+	};
+	// Move the fixture's selected body out of the observed paths, without ever stepping it.
+	F.Body->SetWorldLocation(FVector(100,70,0));
+	auto* Sphere = NewObject<USphereComponent>(F.World->SpawnActor<AActor>()); Sphere->SetSphereRadius(2);
+	auto R = Register(Sphere,FQuat::Identity);
+	TestTrue(TEXT("Sphere volume has its actual radius and clears legal openings"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::ClearAtQuery);
+	Sphere->DestroyComponent();
+	auto* Capsule = NewObject<UCapsuleComponent>(F.World->SpawnActor<AActor>()); Capsule->SetCapsuleSize(2,12);
+	R = Register(Capsule,FQuat(FVector::ForwardVector,UE_PI/2));
+	auto* Blocker = F.Box(FVector(1001,10,0),FVector(.25),false); F.FlushRegistration();
+	TestTrue(TEXT("Rotated capsule distal spine blocks though center path is clear"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::DestinationBlocked);
+	Blocker->DestroyComponent(); Capsule->DestroyComponent();
+	auto* Compound = NewObject<UStaticMeshComponent>(F.World->SpawnActor<AActor>());
+	auto* Mesh = NewObject<UStaticMesh>(); Mesh->CreateBodySetup();
+	auto* Setup = Mesh->GetBodySetup(); Setup->CollisionTraceFlag = CTF_UseSimpleAsComplex;
+	FKSphereElem Center; Center.Radius = 2; Setup->AggGeom.SphereElems.Add(Center);
+	FKSphereElem Offset = Center; Offset.Center = FVector(0,30,0); Setup->AggGeom.SphereElems.Add(Offset);
+	Compound->SetStaticMesh(Mesh); R = Register(Compound,FQuat::Identity);
+	TestTrue(TEXT("All compound elements are captured in collision space"),R.Traveller.Geometry.Primitives.Num() == 2);
+	TestTrue(TEXT("Offset compound body clears when both element corridors are empty"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::ClearAtQuery);
+	Blocker = F.Box(FVector(1001,-30,0),FVector(.25),false); F.FlushRegistration();
+	const auto O = ObserveWorldPassage(R,F.Registry);
+	TestTrue(TEXT("Mapped offset element blocks and identifies the distal primitive"),O.Result == EWorldPassageResult::DestinationBlocked && O.BlockingPrimitive == 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalWorldPassageValidityTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsWorldQuery.IdentityAndSupport", PortalBoundaryTestFlags)
+bool FPortalWorldPassageValidityTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(false,true,false); F.FlushRegistration();
+	auto R = F.PassageRequest(); R.ExitHalfWidth = 3;
+	TestTrue(TEXT("Destination containment checked separately before support exclusion"),
+		ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::OutsideAperture);
+	R = F.PassageRequest(); R.To.SetRotation(FQuat(FVector::ForwardVector,.1));
+	TestTrue(TEXT("Rotation is explicitly unsupported rather than silently swept as translation"),
+		ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::UnsupportedMotion);
+	R = F.PassageRequest(); ++R.Traveller.Handle.Generation;
+	TestTrue(TEXT("Mismatched registered body generation rejects"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::StaleTraveller);
+	R = F.PassageRequest(); F.Body->SetBoxExtent(FVector(6));
+	TestTrue(TEXT("Changed actual collision shape cannot reuse an old snapshot"),ObserveWorldPassage(R,F.Registry).Result == EWorldPassageResult::StaleTraveller);
+	AActor* Owner = F.World->SpawnActor<AActor>();
+	auto* Root = NewObject<USceneComponent>(Owner); Owner->SetRootComponent(Root); Owner->AddInstanceComponent(Root);
+	Root->SetMobility(EComponentMobility::Static); Root->RegisterComponent();
+	auto* Support = NewObject<UBoxComponent>(Owner); Owner->AddInstanceComponent(Support); Support->SetupAttachment(Root);
+	Support->SetMobility(EComponentMobility::Static); Support->SetBoxExtent(FVector(2,100,150));
+	Support->SetCollisionProfileName(TEXT("PhysicsActor")); Support->RegisterComponent();
+	InteriorPortalPhysics::FGeometry Geometry;
+	TestTrue(TEXT("Static support geometry accepts non-root collision component"),ExtractStaticSupportGeometry(Support,Geometry) == EGeometryResult::Fits);
+	TestTrue(TEXT("Traveller root/unwelded restriction remains unchanged"),ExtractGeometry(Support,Geometry) == EGeometryResult::UnsupportedComponent);
+	Support->SetMobility(EComponentMobility::Movable);
+	TestTrue(TEXT("Moving support cannot masquerade as certified static support"),ExtractStaticSupportGeometry(Support,Geometry) == EGeometryResult::UnsupportedComponent);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalWorldPassageCancellationTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsWorldQuery.NativeBlockedExitAndCancellation", PortalBoundaryTestFlags)
+bool FPortalWorldPassageCancellationTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool PartialInsertion : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		if (PartialInsertion) { for (int32 I=0; I<3; ++I) { F.Advance(Substeps); } }
+		else { F.FlushRegistration(); }
+		const double Before = F.Body->GetComponentLocation().X;
+		F.Box(FVector(1013,0,0),FVector(.25),false); F.FlushRegistration();
+		TestTrue(TEXT("Registration flush does not advance body or create a solver interval"),FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,Before,1.e-6));
+		const auto O = ObserveWorldPassage(F.PassageRequest(),F.Registry);
+		TestTrue(TEXT("Actual exit obstruction is observed before next physics interval"),O.Result == EWorldPassageResult::DestinationBlocked);
+		// Test-only bridge to the fixture's authored static protocol. This is not a production certificate.
+		F.Command.PermitSupportBypass = false; F.Command.ExitCorridorCertified = false;
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		TestTrue(TEXT("Ordinary contacts restore blocking without test-side pose Recovery"),F.Body->GetComponentLocation().X > 6.8);
+		TestTrue(TEXT("Cancellation publishes no transfer or durable fact"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		AddInfo(FString::Printf(TEXT("World cancellation substeps=%d partial=%d beforeX=%.6f restoredX=%.6f transfers=%d"),
+			Substeps,PartialInsertion,Before,F.Body->GetComponentLocation().X,F.Samples.Last().Transfers));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeAdapterAtomicTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsWorldQuery.NativeAdapterAtomicity", PortalBoundaryTestFlags)
+bool FPortalNativeAdapterAtomicTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true); F.Callback->ProbeAdapterRejections = true;
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Atomic = true, Material = true; int32 Crossings = 0;
+		for (const auto& S : F.Samples)
+		{
+			Atomic &= S.AdapterRejectionsAtomic; Material &= S.MaterialPreserved;
+			if (S.Decision.TransferAfterSolve) { ++Crossings; }
+		}
+		TestTrue(TEXT("Wrong binding/step/solved state/material/nonfinite output and replay perform no write"),Atomic && Crossings == 1);
+		TestTrue(TEXT("Valid fact commits once in same solved interval after rejected attempts"),F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1);
+		TestTrue(TEXT("Native solved-state mapping preserves mass/inertia/COM/mass-frame/sleep"),Material);
+	}
 	return true;
 }
 #endif

@@ -2,9 +2,41 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 world-observation/transfer primitives — 2026-09-26
+
+Source HEAD `f6ed5dfd332c4ad083ba4439da411e7dc720033e`; uncommitted continuation.
+Prescribed bundled UE 5.8 generation PASS. Initial build exposed a unity helper
+name collision in committed hold/coordinator code; coordinator helper renamed,
+rebuild PASS, subsequent primitive-test build PASS.
+
+Focused NullRHI run **16/16 PASS**, 2026.09.26-14.54.24 UTC:
+PhysicsFoundation (4), PhysicsCoordinator (6), PhysicsWorldQuery (4),
+NativeContactAndSubsteps (1), NativeTransferAndRetirement (1). Fifteen tests have
+zero warnings; GenerationAndSharedQuery passes with two existing test-world
+`DestroyActor: World has no context` warnings. Added PrimitivesAndCompound,
+rebuilt and ran that test only: **1/1 PASS, zero warnings**,
+2026.09.26-14.57.19 UTC. Separate runs; preceding unchanged evidence is reused.
+
+Actual world queries prove volume/clearance blocking, responses, source overlap,
+same-owner sibling collision, stale geometry and sphere/rotated capsule/offset
+compound coverage. Native TaskGraph one/two-interval cancellation restores
+blocking, no transfer or test-side pose Recovery. Runtime adapter verifies
+solved P/Q/material and rejects malformed facts atomically before valid commit;
+held/free, delayed facts and retirement regressions pass. These do not certify
+game-thread observations for actual solver intervals, query-disabled collision,
+future dynamic obstacles, rotation/gravity, arbitrary straddling topology changes,
+exceptional recovery, production cutover or Core manual acceptance.
+See [complete slice evidence](InteriorPortalExperiment/InteriorPortalPhysicsWorldQueriesPHY4.md).
+Map hash unchanged; no active map/system physics writers replaced or added.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4World{,Shapes}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4World{,Shapes}Automation.log` and
+`PortalPhysicsPHY4World{ProjectFiles,InitialBuild,Build,ShapeBuild}.log`.
+
 ## Interior portal PHY-4 coordinator slice — 2026-09-26
 
-Source HEAD `6de308be4c4e9d2377674303390f1261df4d860f`; uncommitted coordinator
+Historical coordinator slice is now committed as `f6ed5df`.
+Source HEAD `6de308be4c4e9d2377674303390f1261df4d860f`; then-uncommitted coordinator
 slice, full PHY-4 IN PROGRESS. Prescribed bundled UE 5.8 generation/build PASS.
 Combined PhysicsBoundary + PhysicsHold + PhysicsCoordinator: **14/14 PASS,
 zero warnings** (2026.09.26-14.18.32 UTC). After introducing distinct binding

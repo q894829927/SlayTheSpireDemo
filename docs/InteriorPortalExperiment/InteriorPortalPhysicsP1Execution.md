@@ -1,14 +1,16 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-26.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator slice validated); production migration/Core OPEN**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator and world-observation/transfer primitives validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
 the pre-existing modified map is excluded. That delivery is
 `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; PHY-2 is committed as
 `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`. PHY-3 is committed as
-`6de308be4c4e9d2377674303390f1261df4d860f`; PHY-4 is the uncommitted continuation.
+`6de308be4c4e9d2377674303390f1261df4d860f`. PHY-4 coordinator is committed as
+`f6ed5dfd332c4ad083ba4439da411e7dc720033e`; the current world-observation/transfer
+primitive continuation is uncommitted.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -355,10 +357,21 @@ after the binding-lifetime review, affected coordinator/native-transfer rerun
 Production is unchanged. Journal metadata rejection does not prove native
 straddling cancellation or actual-world blocked-exit handling.
 
+Subsequent [world-observation/transfer primitives](InteriorPortalPhysicsWorldQueriesPHY4.md)
+use actual full collision volumes, both aperture bounds and full exit clearance.
+The runtime Chaos adapter validates native solved P/Q and complete material state
+before writing. Actual blocked exit and partial-insertion cancellation pass in
+the narrow normal zero-gravity fixture. Generation/build PASS; focused run
+16/16 PASS (two existing fixture warnings), subsequent added primitive test
+1/1 PASS with zero warnings. These are separate runs. Query observations do not
+yet certify authoritative solver coverage; production remains unchanged.
+
 ## Next action within PHY-4
 
-Complete the actual-world certified query/topology provider and production
-adapter, including normal/exceptional cancellation, rotation/gravity/blocked
+Complete actual-world certification of the query/topology provider and production
+adapter assembly: correlate scene coverage/revisions/lease with actual solver
+intervals, cover query-disabled collision/dynamic motion, then prove
+normal/exceptional cancellation, rotation/gravity/blocked
 exit support and final pending-fact handoff. The remaining full PHY-4 contract is:
 
 Implement the single held/free coordinator, certified query/topology snapshot

@@ -1,6 +1,6 @@
 # Portal rigid-body interaction contract
 
-Status: **production migration pending; PHY-0/PHY-1 complete, PHY-2/PHY-3 narrow profiles validated, PHY-4 coordinator slice validated/in progress**, 2026-09-26.
+Status: **production migration pending; PHY-0/PHY-1 complete, PHY-2/PHY-3 narrow profiles validated, PHY-4 coordinator and world-observation/transfer primitives validated/in progress**, 2026-09-26.
 Execution: [Physics P1 migration](InteriorPortalPhysicsP1Execution.md). Performance
 P1 is now sealed. The diagnostic and identity/geometry stages do not make existing physics
 conform to this contract or establish physical acceptance.
@@ -170,6 +170,15 @@ holding but not already committed facts. See
 [PHY-4 execution](InteriorPortalPhysicsPHY4.md) for implementation and open
 production lifetime/cancellation gates.
 
+World-query observations and authoritative permissions are different types and
+ownership boundaries. A game-thread `ClearAtQuery` result for a geometric path
+does not certify physics-only collision, future dynamic obstacles or an arbitrary
+solver interval. A provider must prove coverage, topology/body revision and scene
+lease correlation before authorizing bypass/transfer. The native adapter checks
+the actual solved P/Q and material state before its first setter; an advisory
+query cannot itself write a body. See
+[world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md).
+
 ## P8/P9 extension boundary
 
 Keep the planned PortalPhysicsBubble and ShadowPhysicsClone. Visual proxies and
@@ -203,7 +212,9 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
    and shape-aware target/route solving for its certified static-region profile,
    with actual light/heavy blocked targets and free rotation/energy checks.
    PHY-4 now proves the coordinator/durable-fact slice in the editor fixture;
-   actual-world provider, coordinated production cutover and Core acceptance
+   actual-world volume observations and a reusable native transfer primitive now
+   also pass narrow tests, including normal blocked-exit cancellation. Certified
+   solver/topology coverage, coordinated production cutover and Core acceptance
    remain unfinished. None of these isolated slices closes the carrying defect.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and
