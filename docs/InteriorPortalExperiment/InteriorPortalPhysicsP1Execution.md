@@ -1,13 +1,14 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-26.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 NEXT; production physics migration not yet accepted**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator slice validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
 the pre-existing modified map is excluded. That delivery is
 `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; PHY-2 is committed as
-`b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`. PHY-3 is the uncommitted continuation.
+`b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`. PHY-3 is committed as
+`6de308be4c4e9d2377674303390f1261df4d860f`; PHY-4 is the uncommitted continuation.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -339,7 +340,26 @@ PhysicsHandle and gate/Recovery. PHY-4 owns the coordinated production cutover,
 durable transfer facts, route/history reconciliation and removal of superseded
 writers together. Core acceptance and subsequent P8/P9 gates remain open.
 
-## Next action: PHY-4
+## PHY-4 in progress: coordinator slice validated
+
+The [PHY-4 execution record](InteriorPortalPhysicsPHY4.md) orders dependent
+coordinator, actual-world provider, production cutover and Core acceptance work.
+The solver-side metadata/commit owner is implemented and proven in the existing
+editor native fixture. It coordinates held/free transfer, actual COM authority,
+route/anchor/target relation and a durable journal whose binding-domain typed
+acks are independent of current intent freshness.
+
+Prescribed generation/build PASS; initial affected combined suite 14/14 PASS;
+after the binding-lifetime review, affected coordinator/native-transfer rerun
+7/7 PASS, both zero warnings. Separate runs are recorded with exact limitations.
+Production is unchanged. Journal metadata rejection does not prove native
+straddling cancellation or actual-world blocked-exit handling.
+
+## Next action within PHY-4
+
+Complete the actual-world certified query/topology provider and production
+adapter, including normal/exceptional cancellation, rotation/gravity/blocked
+exit support and final pending-fact handoff. The remaining full PHY-4 contract is:
 
 Implement the single held/free coordinator, certified query/topology snapshot
 provider and production solver adapter with explicit supported motion and safe

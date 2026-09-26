@@ -2,7 +2,34 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 coordinator slice — 2026-09-26
+
+Source HEAD `6de308be4c4e9d2377674303390f1261df4d860f`; uncommitted coordinator
+slice, full PHY-4 IN PROGRESS. Prescribed bundled UE 5.8 generation/build PASS.
+Combined PhysicsBoundary + PhysicsHold + PhysicsCoordinator: **14/14 PASS,
+zero warnings** (2026.09.26-14.18.32 UTC). After introducing distinct binding
+epochs and typed acknowledgments, rebuild PASS; affected PhysicsCoordinator +
+NativeTransferAndRetirement rerun **7/7 PASS, zero warnings**
+(2026.09.26-14.21.42 UTC). Other unchanged motion/hold evidence is reused;
+these totals are separate runs.
+
+Actual TaskGraph one/two-step Chaos scenes prove one shared held/free transfer,
+preserved actual material/mass-frame/sleep state, immediate route rebinding and
+delayed/duplicate fact consumption plus boundary ack. Pure tests cover COM,
+atomic adapter failure, stale/unsupported input, holder ordering, retirement,
+binding-domain isolation and bounded journal. This does not prove a production
+adapter's atomicity, native journal-full/straddling cancellation, world providers,
+blocked exits, arbitrary rotation/gravity, recovery or visual/Core acceptance.
+The [dedicated PHY-4 record](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md)
+records complete scope and remaining slices. Production gameplay is unchanged.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4{Coordinator,Binding}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4{Coordinator,Binding}Automation.log` and
+`PortalPhysicsPHY4Coordinator{ProjectFiles,Build,FinalBuild}.log`.
+
 ## Interior portal PHY-3 bounded drive and target profile — 2026-09-26
+
+Historical PHY-3 delivery below is now committed as `6de308b`.
 
 Source HEAD `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`; uncommitted PHY-3.
 Prescribed bundled UE 5.8 generation/build PASS, final affected-test rebuild PASS.

@@ -23,11 +23,14 @@ the legacy policies. A 360-tick native integration capture still exhibits the
 same one transfer and 98 recovery moves. The defect therefore remains open.
 PHY-2 now validates actual Chaos timing, pair-specific permission, cancellation,
 bounded force and restricted transfer/retirement in an isolated editor test
-fixture (4/4 PASS), committed as `b4dec6f`. PHY-3 is its uncommitted continuation,
+fixture (4/4 PASS), committed as `b4dec6f`. PHY-3 is committed as `6de308b`,
 validating bounded hold force/torque and shape-aware target/route solving in
 the editor fixture. The actual 1 kg and 20 kg blocked targets settle to <0.15 cm error;
 native free rotation and energy checks pass. Production writers remain unchanged.
-Next is PHY-4's single-coordinator cutover and actual-map Core acceptance.
+PHY-4's coordinator/durable-fact slice now passes editor/native tests; the
+actual-world provider, production single-coordinator cutover and actual-map
+Core acceptance remain unfinished. The defect is still open.
+See [PHY-4 execution](InteriorPortalPhysicsPHY4.md) for exact progress/next action.
 See [the drive/target record](InteriorPortalPhysicsHoldPHY3.md) for separate test
 runs and the certified static-region query limits.
 See [the boundary spike](InteriorPortalPhysicsBoundarySpike.md) for the narrow

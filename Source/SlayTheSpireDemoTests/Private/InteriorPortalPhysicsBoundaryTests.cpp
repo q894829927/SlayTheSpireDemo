@@ -2,6 +2,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Interior/InteriorPortalPhysicsBoundary.h"
 #include "Interior/InteriorPortalHoldSolver.h"
+#include "Interior/InteriorPortalPassageCoordinator.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
@@ -23,7 +24,8 @@ namespace
 		FBoundaryCommand Command;
 		bool HoldEnabled = false;
 		FHoldCommand Hold;
-		void Reset() { Command = FBoundaryCommand(); HoldEnabled = false; Hold = FHoldCommand(); }
+		FTransferAcknowledgment TransferAck;
+		void Reset() { Command = FBoundaryCommand(); HoldEnabled = false; Hold = FHoldCommand(); TransferAck = {}; }
 	};
 	struct FSpikeSample
 	{
@@ -33,6 +35,9 @@ namespace
 		FVector AppliedTorque = FVector::ZeroVector;
 		FHoldTarget HoldTarget;
 		FVector LocalInertia = FVector::ZeroVector;
+		TArray<FTransferFact> Facts;
+		FHoldRelationSnapshot Relation;
+		bool MaterialPreserved = true;
 		FVector GateImpulse = FVector::ZeroVector;
 		FBoundaryDecision Decision;
 		uint32 ReuseOrdinal = 0;
@@ -60,10 +65,15 @@ namespace
 		const uint64 Epoch = SolverEpochs.Increment();
 		void ConfigureHoldBeforeDispatch(uint64 RouteRevision, uint64 RegionRevision)
 		{ HoldRouteRevision = RouteRevision; HoldRegionRevision = RegionRevision; }
+		bool ConfigureRelationBeforeDispatch(const FTransform& Desired, const FVector& Anchor)
+		{ return Coordinator->AcquireHold(17,{1,71,1},0,Desired,Anchor); }
 		void BindBeforeDispatch(Chaos::FSingleParticlePhysicsProxy* InBody,
 			Chaos::FSingleParticlePhysicsProxy* EntrySupport, Chaos::FSingleParticlePhysicsProxy* ExitSupport,
-			FTravellerHandle BodyToken, uint64 PairToken)
-		{ Body = InBody; Supports[0] = EntrySupport; Supports[1] = ExitSupport; BoundBody = BodyToken; BoundPair = PairToken; }
+			FTravellerHandle BodyToken, uint64 PairToken, const FTransform& EntryFrame, const FTransform& ExitFrame)
+		{
+			Body = InBody; Supports[0] = EntrySupport; Supports[1] = ExitSupport; BoundBody = BodyToken; BoundPair = PairToken;
+			Coordinator = MakeUnique<FPassageCoordinator>(BodyToken,PairToken,Epoch,Epoch,EntryFrame,ExitFrame);
+		}
 		virtual FName GetFNameForStatId() const override { return TEXT("PortalBoundarySpike"); }
 	private:
 		Chaos::FSingleParticlePhysicsProxy* Body = nullptr;
@@ -77,6 +87,7 @@ namespace
 		FTravellerHandle BoundBody;
 		uint64 BoundPair = 0;
 		uint64 HoldRouteRevision = 0, HoldRegionRevision = 0;
+		TUniquePtr<FPassageCoordinator> Coordinator;
 		bool HasInput = false, BindingMatches = false;
 		FSpikeSample* Sample = nullptr;
 		// UE registers evolution callbacks in its simulation list too. Presimulate
@@ -107,6 +118,9 @@ namespace
 			// Owner cancellation reaches the same marshalled boundary as physics removal.
 			// The native unregister callback is a second lifetime guard, not the sole cancellation signal.
 			if (HasInput && !BindingMatches) { Retired = true; }
+			if (Retired) { Coordinator->Retire(); }
+			if (HasInput) { Coordinator->Acknowledge(Input->TransferAck); }
+			PortalIndex = Coordinator->BodyEndpoint();
 			if (Current.Revision > Revision) { Revision = Current.Revision; Reuse = 0; }
 			if (PortalIndex == 1) { Swap(Current.Entry, Current.Exit); }
 			auto& Out = GetProducerOutputData_Internal();
@@ -127,8 +141,14 @@ namespace
 				if (Input->HoldEnabled)
 				{
 					Sample->AppliedForce = FVector::ZeroVector;
-					const FHoldCommand& Hold = Input->Hold;
-					if (!Transfers && Hold.Traveller.Handle == BoundBody && Hold.Traveller.Geometry == Current.Traveller.Geometry)
+					auto Hold = Input->Hold;
+					const auto Relation = Coordinator->Hold();
+					if (Relation.Active)
+					{
+						Hold.Route = Relation.Route; Hold.LocalGrabAnchor = Relation.LocalAnchor;
+						Hold.DesiredHolderPose = Relation.DesiredHolderPose;
+					}
+					if ((!Transfers || Relation.Active) && Hold.Traveller.Handle == BoundBody && Hold.Traveller.Geometry == Current.Traveller.Geometry)
 					{
 						const auto* Handle = Body->GetPhysicsThreadAPI();
 						const FVector InvInertia = FVector(Handle->InvI());
@@ -137,7 +157,7 @@ namespace
 						for (int32 I = 0; I < 3; ++I) { State.LocalInertia[I] = InvInertia[I] > 0 ? 1. / InvInertia[I] : 0; }
 						State.RotationOfMass = Handle->RotationOfMass(); Sample->LocalInertia = State.LocalInertia;
 						const auto Drive = EvaluateHoldDrive(Hold, State, Sample->Receipt.Step, BoundBody, BoundPair,
-							HoldRouteRevision, HoldRegionRevision);
+							Relation.Active ? Relation.Route.Revision : HoldRouteRevision, HoldRegionRevision);
 						Sample->HoldTarget = Drive.Target; Sample->AppliedForce = Drive.Force; Sample->AppliedTorque = Drive.Torque;
 					}
 				}
@@ -171,11 +191,12 @@ namespace
 		virtual void OnPostIntegrate_Internal() override
 		{
 			Sample->Integrated = Read(true);
-			Sample->Decision = EvaluateBoundary(Current, Sample->Before, Sample->Integrated,
+			Sample->Decision = Coordinator->EvaluateInterval(Current, Sample->Before, Sample->Integrated,
 				Sample->Receipt.Step, Sample->ReuseOrdinal, false);
 			if (!HasInput) { Sample->Decision = { EBoundaryReason::ExpiredInput, false, false }; }
 			if (Retired || !BindingMatches || Current.Revision != Revision || Sample->RepeatedSolverFrame)
 			{ Sample->Decision = { EBoundaryReason::UnsupportedStep, false, false }; }
+			if (!Sample->Decision.BypassSupport) { Coordinator->RevokeInterval(Sample->Decision.Reason); }
 		}
 		virtual void OnContactModification_Internal(Chaos::FCollisionContactModifier& Modifier) override
 		{
@@ -191,7 +212,8 @@ namespace
 				if (!Own) { ++Sample->UnrelatedPairs; }
 				if (HasBody && !Own) { OtherContact = true; }
 			}
-			if (OtherContact) { Sample->Decision = { EBoundaryReason::OtherContact, false, false }; }
+			if (OtherContact)
+			{ Sample->Decision = { EBoundaryReason::OtherContact, false, false }; Coordinator->RevokeInterval(EBoundaryReason::OtherContact); }
 			for (auto& Pair : Modifier)
 			{
 				const auto Particles = Pair.GetParticlePair();
@@ -213,14 +235,32 @@ namespace
 			{
 				// Experimental end-of-interval commit for the isolated static corridor only.
 				// The fixture certifies destination opening/corridor before submitting this command.
-				const FQuat Q = InteriorPortalMath::Rotation(Current.Entry, Current.Exit);
 				auto* Handle = Body->GetPhysicsThreadAPI();
-				Handle->SetX(InteriorPortalMath::Position(Sample->Solved.Pose.GetLocation(), Current.Entry, Current.Exit));
-				Handle->SetR(Q * Sample->Solved.Pose.GetRotation());
-				Handle->SetV(Q.RotateVector(Sample->Solved.LinearVelocity));
-				Handle->SetW(Q.RotateVector(Sample->Solved.AngularVelocity));
-				PortalIndex = 1 - PortalIndex; ++Transfers;
+				FBodyCommitState Solved; Solved.Motion = Sample->Solved; Solved.MassKg = Handle->M();
+				const FVector InvI = FVector(Handle->InvI());
+				for (int32 I=0; I<3; ++I) { Solved.LocalInertia[I] = InvI[I] > 0 ? 1. / InvI[I] : 0; }
+				Solved.LocalCOM = Handle->CenterOfMass(); Solved.RotationOfMass = Handle->RotationOfMass();
+				Solved.Sleeping = Handle->ObjectState() == Chaos::EObjectStateType::Sleeping;
+				struct FNativeAdapter final : IPortalTransferAdapter
+				{
+					Chaos::FSingleParticlePhysicsProxy* Proxy;
+					virtual bool Commit(const FTransferFact& Fact) override
+					{
+						auto* H = Proxy->GetPhysicsThreadAPI();
+						if (!H) { return false; }
+						H->SetX(Fact.After.Motion.Pose.GetLocation()); H->SetR(Fact.After.Motion.Pose.GetRotation());
+						H->SetV(Fact.After.Motion.LinearVelocity); H->SetW(Fact.After.Motion.AngularVelocity);
+						return true;
+					}
+				} Adapter;
+				Adapter.Proxy = Body;
+				Coordinator->CommitSolved(Current,Solved,Sample->Receipt.Step,Adapter);
+				Sample->MaterialPreserved = Handle->M() == Solved.MassKg && FVector(Handle->InvI()) == InvI
+					&& Handle->CenterOfMass() == Solved.LocalCOM && Handle->RotationOfMass() == Solved.RotationOfMass
+					&& (Handle->ObjectState() == Chaos::EObjectStateType::Sleeping) == Solved.Sleeping;
 			}
+			Transfers = static_cast<int32>(Coordinator->TransferRevision()); PortalIndex = Coordinator->BodyEndpoint();
+			Sample->Facts = Coordinator->PendingFacts(); Sample->Relation = Coordinator->Hold();
 			Sample->Transfers = Transfers; Sample->Published = Read(true);
 		}
 		virtual void OnParticleUnregistered_Internal(TArray<TTuple<Chaos::FUniqueIdx, Chaos::FSingleParticlePhysicsProxy*>>& Proxies) override
@@ -229,7 +269,7 @@ namespace
 			{
 				const auto* Proxy = Item.Get<1>();
 				if (Proxy == Body || Proxy == Supports[0] || Proxy == Supports[1])
-				{ Retired = true; UnregistrationObserved = true; }
+				{ Retired = true; UnregistrationObserved = true; Coordinator->Retire(); }
 			}
 		}
 	};
@@ -250,6 +290,9 @@ namespace
 		FPhysicsStepKey LastConsumed;
 		TArray<FSpikeSample> Samples;
 		bool ReceiptsValid = true;
+		TUniquePtr<FTransferFactCursor> FactCursor;
+		bool FactsValid = true;
+		bool DelayFacts = false;
 		uint64 NextRevision = 1;
 		FNativeScene(bool Substeps, bool TaskGraph, bool Permit, bool Transfer = false)
 		{
@@ -275,7 +318,8 @@ namespace
 			Callback = Scene->GetSolver()->CreateAndRegisterSimCallbackObject_External<FPortalBoundarySpike>();
 			Callback->BindBeforeDispatch(Body->BodyInstance.GetPhysicsActor(),
 				EntryWall->BodyInstance.GetPhysicsActor(), ExitWall->BodyInstance.GetPhysicsActor(),
-				Command.Traveller.Handle, Command.PairGeneration);
+				Command.Traveller.Handle, Command.PairGeneration,Command.Entry,Command.Exit);
+			FactCursor = MakeUnique<FTransferFactCursor>(Command.Traveller.Handle,Callback->Epoch,Callback->Epoch);
 		}
 		~FNativeScene()
 		{
@@ -303,6 +347,7 @@ namespace
 				Command.Revision = NextRevision++;
 				auto* Input = Callback->GetProducerInputData_External();
 				Input->Command = Command; Input->HoldEnabled = HoldEnabled; Input->Hold = Hold;
+				Input->TransferAck = FactCursor->Acknowledgment();
 			}
 			Scene->SetUpForFrame(&FVector::ZeroVector, 1.f/60, 0, 1.f/60, 1.f/120, 2, Substeps);
 			Scene->StartFrame(); Scene->WaitPhysScenes(); Scene->EndFrame();
@@ -313,7 +358,16 @@ namespace
 					ReceiptsValid &= CanConsumeReceipt(S.Receipt, Command.Traveller.Handle, Command.PairGeneration,
 						Command.Revision, Callback->Epoch, LastConsumed);
 					LastConsumed = S.Receipt.Step; Samples.Add(S);
+					if (!DelayFacts) { ConsumeFacts(S.Facts); }
 				}
+			}
+		}
+		void ConsumeFacts(const TArray<FTransferFact>& Facts)
+		{
+			for (const auto& Fact : Facts)
+			{
+				const auto R = FactCursor->Consume(Fact);
+				FactsValid &= R == EFactResult::Consumed || R == EFactResult::Duplicate;
 			}
 		}
 	};
@@ -610,6 +664,64 @@ bool FPortalNativeHoldRotationTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Free positional target settles without bypass or transfer"),FVector::Dist(F.Body->GetComponentLocation(),FVector(75,10,0)) <= 2 && F.Samples.Last().Transfers == 0);
 		AddInfo(FString::Printf(TEXT("Hold rotation substeps=%d samples=%d angleError=%.6f angularSpeed=%.6f"),Substeps,F.Samples.Num(),ErrorDegrees,AngularSpeed));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeCoordinatorHeldTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsCoordinator.NativeHeldAndFree", PortalBoundaryTestFlags)
+bool FPortalNativeCoordinatorHeldTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Held : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		if (Held)
+		{
+			BeginHold(F,FTransform(FVector(-40,0,0)));
+			// The authored corridor has no blockers except the pair handled by the
+			// exact-contact coordinator. This is not a production world certificate.
+			F.Hold.Region.Planes.Reset();
+			TestTrue(TEXT("Native fixture installs explicit association before dispatch"),
+				F.Callback->ConfigureRelationBeforeDispatch(F.Hold.DesiredHolderPose,F.Hold.LocalGrabAnchor));
+		}
+		for (int32 I=0; I<24; ++I) { F.Advance(Substeps); }
+		int32 Commits = 0; bool Materials = true, RouteReady = true, DriveAfterTransfer = false;
+		for (const auto& S : F.Samples)
+		{
+			if (S.Decision.TransferAfterSolve) { ++Commits; }
+			Materials &= S.MaterialPreserved;
+			if (Held && S.Transfers)
+			{
+				RouteReady &= S.Relation.Active && S.Relation.Route.Kind == EHoldRoute::SinglePair;
+				if (S.Before.Pose.GetLocation().X > 1000)
+				{
+					DriveAfterTransfer |= !S.AppliedForce.IsNearlyZero();
+					RouteReady &= S.HoldTarget.Usable() && S.HoldTarget.Pose.GetLocation().Equals(FVector(1040,0,0),1.e-5)
+						&& S.AppliedForce.Size() <= 1200 + 1.e-5 && S.AppliedTorque.Size() <= 1200 + 1.e-5;
+				}
+			}
+		}
+		TestTrue(TEXT("Held/free traversal shares exactly one actual coordinator commit"),Commits == 1 && F.Samples.Last().Transfers == 1);
+		TestTrue(TEXT("Native adapter preserves actual mass/inertia/COM/sleep state"),Materials);
+		TestTrue(TEXT("Facts use coherent lifetime/step domains and are acknowledged"),F.FactsValid && F.FactCursor->LastRevision() == 1 && F.Samples.Last().Facts.IsEmpty());
+		if (Held) { TestTrue(TEXT("Next physics drive consumes rebound route and mapped target"),RouteReady && DriveAfterTransfer); }
+		AddInfo(FString::Printf(TEXT("Coordinator native substeps=%d held=%d samples=%d transfers=%d factRevision=%llu x=%.6f"),
+			Substeps,Held,F.Samples.Num(),F.Samples.Last().Transfers,F.FactCursor->LastRevision(),F.Body->GetComponentLocation().X));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeCoordinatorDelayedTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsCoordinator.NativeDelayedFacts", PortalBoundaryTestFlags)
+bool FPortalNativeCoordinatorDelayedTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(true,true,true,true); F.DelayFacts = true;
+	for (int32 I=0; I<12; ++I) { F.Advance(true); }
+	TestTrue(TEXT("Committed fact survives many newer intent commands without acknowledgment"),
+		F.Command.Revision >= 12 && F.Samples.Last().Facts.Num() == 1 && F.FactCursor->LastRevision() == 0);
+	F.ConsumeFacts(F.Samples.Last().Facts); F.ConsumeFacts(F.Samples.Last().Facts);
+	TestTrue(TEXT("Delayed fact consumed once, duplicate delivery harmless"),F.FactsValid && F.FactCursor->LastRevision() == 1);
+	F.Advance(true);
+	TestTrue(TEXT("Acknowledgment reaches solver boundary and retires journal prefix"),F.Samples.Last().Facts.IsEmpty());
 	return true;
 }
 #endif

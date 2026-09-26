@@ -1,6 +1,6 @@
 # Portal rigid-body interaction contract
 
-Status: **production migration pending; PHY-0/PHY-1 complete, PHY-2/PHY-3 narrow profiles validated, PHY-4 next**, 2026-09-26.
+Status: **production migration pending; PHY-0/PHY-1 complete, PHY-2/PHY-3 narrow profiles validated, PHY-4 coordinator slice validated/in progress**, 2026-09-26.
 Execution: [Physics P1 migration](InteriorPortalPhysicsP1Execution.md). Performance
 P1 is now sealed. The diagnostic and identity/geometry stages do not make existing physics
 conform to this contract or establish physical acceptance.
@@ -160,6 +160,16 @@ a newer command must never discard an already committed transfer or prevent
 holder route/history reconciliation. Physics-step keys do not replace transfer
 revisions.
 
+Committed-fact identity includes a unique coordinator binding epoch independent
+of solver epoch, body identity and mutable pair configuration. Cursors and
+acknowledgments name the same domain. Topology rebinding cannot restart a fact
+revision in an indistinguishable domain; drain/handoff the old domain explicitly.
+Unacknowledged facts are retained with bounded backpressure before new commits,
+never silently replaced by the latest intent. Retirement cancels permission/
+holding but not already committed facts. See
+[PHY-4 execution](InteriorPortalPhysicsPHY4.md) for implementation and open
+production lifetime/cancellation gates.
+
 ## P8/P9 extension boundary
 
 Keep the planned PortalPhysicsBubble and ShadowPhysicsClone. Visual proxies and
@@ -192,7 +202,9 @@ single-body hold implementation. Existing go/no-go gates remain unchanged.
    these foundations are not Core acceptance. PHY-3 now validates bounded drive
    and shape-aware target/route solving for its certified static-region profile,
    with actual light/heavy blocked targets and free rotation/energy checks.
-   Next is PHY-4's coordinated authority cutover and Core physical acceptance.
+   PHY-4 now proves the coordinator/durable-fact slice in the editor fixture;
+   actual-world provider, coordinated production cutover and Core acceptance
+   remain unfinished. None of these isolated slices closes the carrying defect.
 3. Route free and held bodies through the same passage coordinator. Replace the
    fixed sphere continuous-hold sweep, ad hoc whole-support ignore decision and
    independent position rollback. Remove superseded branches when switching;

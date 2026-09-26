@@ -16,6 +16,7 @@ namespace InteriorPortalPhysics
 		bool ExitCorridorCertified = false;
 		FTransform Entry = FTransform::Identity;
 		FTransform Exit = FTransform::Identity;
+		FVector LocalAuthorityReference = FVector::ZeroVector; // Baked cm; production adapter supplies actual COM.
 		double HalfWidth = 65;
 		double HalfHeight = 115;
 		double MarginCm = .5;

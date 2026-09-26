@@ -1,7 +1,8 @@
 # PHY-3 — bounded hold drive and feasible targets
 
-Updated: 2026-09-26. Status: **NARROW DRIVE/TARGET PROFILE VALIDATED; PHY-4 NEXT; production migration and Core acceptance OPEN**.
+Updated: 2026-09-26. Status: **NARROW DRIVE/TARGET PROFILE VALIDATED; forward PHY-4 IN PROGRESS; production migration and Core acceptance OPEN**.
 Source HEAD: `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95` (PHY-2 delivery).
+PHY-3 is now committed as `6de308be4c4e9d2377674303390f1261df4d860f`.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md)
 and [ordered migration](InteriorPortalPhysicsP1Execution.md).
 
@@ -127,7 +128,10 @@ SHA-256 remains `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25
 No manual visual gate applies to this nonproduction experiment; production
 carrying behavior, arbitrary-world query providers and Core PIE remain open.
 
-## Next action: PHY-4
+## Subsequent stage: PHY-4
+
+[PHY-4 execution](InteriorPortalPhysicsPHY4.md) now records coordinator-slice
+progress. Its world provider, production cutover and Core acceptance remain open.
 
 Integrate one coordinator and physics adapter for held/free bodies. Supply
 actual certified obstruction/topology snapshots or reject unsupported world

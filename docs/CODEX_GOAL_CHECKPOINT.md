@@ -2,6 +2,51 @@
 
 ## Current execution update — 2026-09-26
 
+- Verified HEAD: `6de308be4c4e9d2377674303390f1261df4d860f`, branch
+  `portal/full-fidelity-p1`. User-requested PHY-3 commit completed:
+  `feat(portal): add bounded hold drive and shape-aware targets`. The map was
+  excluded. Current PHY-4 coordinator continuation is uncommitted.
+- **PHY-4 IN PROGRESS; coordinator slice VALIDATED, not full PHY-4 completion.**
+  Authority: [PHY-4 execution](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md)
+  and [Physics P1 ordering](InteriorPortalExperiment/InteriorPortalPhysicsP1Execution.md).
+  A noncopyable solver-side coordinator owns held/free passage/commit metadata,
+  explicit holder/body relation and durable fact journal. The native adapter is
+  still editor-only; no production writer was replaced or duplicated.
+- Durable facts/cursors/acks carry body/solver/unique binding identity. Current
+  command freshness does not filter committed facts. Contiguous revisions,
+  gap/dedup, typed ack and bounded backpressure are implemented; retirement
+  preserves pending facts and permanently cancels holding/permission.
+  The final production teardown must still drain/handoff the journal.
+- Explicit local authority reference supports actual COM; pure tests prove
+  nonzero COM mapping. Commit revalidates solved geometry/material and unchanged
+  interval contract before adapter write, then updates route/history metadata.
+  Body-first/holder-first events update one relation; old-space targets and
+  reused/released hold instances cannot revive it.
+- Prescribed bundled UE 5.8 generation/build PASS. Initial combined
+  PhysicsBoundary + PhysicsHold + PhysicsCoordinator: 14/14 PASS, zero warnings.
+  After binding-domain review and typed-ack tests, rebuild PASS; affected
+  PhysicsCoordinator + NativeTransferAndRetirement: 7/7 PASS, zero warnings.
+  Totals are separate runs. Reports:
+  `Saved/AutomationReports/PortalPhysicsPHY4{Coordinator,Binding}/index.json`;
+  logs `Saved/Logs/PortalPhysicsPHY4{Coordinator,Binding}Automation.log` and
+  `PortalPhysicsPHY4Coordinator{ProjectFiles,Build,FinalBuild}.log`.
+- Native TaskGraph one/two-step held/free profiles each commit once and consume
+  fact revision 1; preserve actual mass/inertia/COM/mass frame/sleep flags; held
+  drive uses updated route/target on the next interval. Delayed fact test retains
+  one commit through 12 newer commands then deduplicates delivery and clears
+  the prefix only after marshalled acknowledgment.
+- Next unfinished work: PHY-4 slice 2 actual-world certified query/topology
+  provider and production adapter. Must prove straddling cancellation, blocked
+  exits, rotation/gravity and exceptional recovery, plus final journal handoff.
+  Then remove legacy hold/gate/Recovery/player-held warp together and run actual
+  Core native/manual gates. No manual gate applies to this isolated coordinator
+  slice; do not ask for visual acceptance of unchanged legacy gameplay.
+  Carrying defect remains open; no Core seal/P8/P9 advancement is authorized.
+- Pre-existing modified map remains untouched and excluded, SHA-256
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Previous PHY-3 execution — 2026-09-26
+
 - Verified HEAD: `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`, branch
   `portal/full-fidelity-p1`. User-requested PHY-2 commit completed as
   `feat(portal): validate Chaos simulation boundary`; the map was excluded.

@@ -18,7 +18,7 @@ namespace InteriorPortalPhysics
 	{
 		const auto Reject = [](EBoundaryReason R) { return FBoundaryDecision{R, false, false}; };
 		if (!C.Traveller.Handle.Epoch || !C.Traveller.Handle.Id || !C.Traveller.Handle.Generation
-			|| !C.PairGeneration || !C.Revision || !C.MaxReuseSteps || !Step.SolverEpoch
+			|| !C.PairGeneration || !C.Revision || !C.MaxReuseSteps || C.LocalAuthorityReference.ContainsNaN() || !Step.SolverEpoch
 			|| Step.SolverFrame < 0 || !Step.EvolutionSerial || !FMath::IsFinite(C.MaxStepSeconds)
 			|| !FMath::IsFinite(C.MaxTranslationCm) || C.MaxStepSeconds <= 0 || C.MaxTranslationCm <= 0)
 		{ return Reject(EBoundaryReason::InvalidCommand); }
@@ -38,8 +38,8 @@ namespace InteriorPortalPhysics
 		if (!EvaluateTranslation(C.Traveller.Geometry, A.Pose, B.Pose, C.Entry,
 			C.HalfWidth, C.HalfHeight, C.MarginCm).Fits())
 		{ return Reject(EBoundaryReason::OutsideAperture); }
-		const double From = C.Entry.InverseTransformPositionNoScale(A.Pose.GetLocation()).X;
-		const double To = C.Entry.InverseTransformPositionNoScale(B.Pose.GetLocation()).X;
+		const double From = C.Entry.InverseTransformPositionNoScale(A.Pose.TransformPositionNoScale(C.LocalAuthorityReference)).X;
+		const double To = C.Entry.InverseTransformPositionNoScale(B.Pose.TransformPositionNoScale(C.LocalAuthorityReference)).X;
 		const bool Crossed = From > 1.e-6 && To <= 0;
 		if (Crossed && (!C.PermitTransfer || !C.ExitCorridorCertified || !C.Exit.IsValid()
 			|| !C.Exit.GetScale3D().Equals(FVector::OneVector, 1.e-6)))
