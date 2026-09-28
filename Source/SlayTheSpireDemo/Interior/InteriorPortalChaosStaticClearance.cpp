@@ -5,6 +5,9 @@
 #include "Chaos/ShapeInstance.h"
 #include "Chaos/Collision/CollisionFilter.h"
 #include "Chaos/PBDCollisionConstraints.h"
+#include "Chaos/ContactModification.h"
+#include "Chaos/Island/IslandManager.h"
+#include "Chaos/Collision/CollisionConstraintAllocator.h"
 #include "HAL/IConsoleManager.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PBDRigidsSolver.h"
@@ -109,12 +112,12 @@ namespace InteriorPortalPhysics
 		bool StableDormant(const Chaos::FGeometryParticleHandle* P)
 		{
 			const auto* R = P->CastToRigidParticle();
-			return R && P->ObjectState() == Chaos::EObjectStateType::Sleeping
+			return R && !R->Disabled() && P->ObjectState() == Chaos::EObjectStateType::Sleeping
 				&& FMath::IsFinite(R->M()) && R->M() > 0 && R->InvM() > 0
 				&& FVector(R->GetV()).IsNearlyZero(1.e-6) && FVector(R->GetW()).IsNearlyZero(1.e-6)
 				&& FVector(R->Acceleration()).IsNearlyZero(1.e-6) && FVector(R->AngularAcceleration()).IsNearlyZero(1.e-6)
 				&& FVector(R->LinearImpulseVelocity()).IsNearlyZero(1.e-6) && FVector(R->AngularImpulseVelocity()).IsNearlyZero(1.e-6)
-				&& P->ParticleConstraints().IsEmpty() && P->ParticleCollisions().Num() == 0;
+				&& P->ParticleConstraints().IsEmpty();
 		}
 	}
 	FChaosStaticClearance::FChaosStaticClearance(Chaos::FPBDRigidsSolver* InSolver, Chaos::FSingleParticlePhysicsProxy* InBody,
@@ -132,7 +135,40 @@ namespace InteriorPortalPhysics
 			|| !C.Traveller.Handle.Generation || !BoundSupportBounds[0].IsValid || !BoundSupportBounds[1].IsValid) { Retire_Internal(); }
 	}
 	void FChaosStaticClearance::Retire_Internal()
-	{ Retired = true; Consumed = true; KinematicEnvelopes.Reset(); DormantLeases.Reset(); Body = nullptr; Supports[0] = Supports[1] = nullptr; Solver = nullptr; }
+	{ Retired = true; Consumed = true; KinematicEnvelopes.Reset(); ActiveEnvelopes.Reset(); DormantLeases.Reset(); Body = nullptr; Supports[0] = Supports[1] = nullptr; Solver = nullptr; }
+	bool FChaosStaticClearance::ContactsRemainIndependent_Internal(Chaos::FCollisionContactModifier& Modifier) const
+	{
+		if (Retired || !Solver || !Body || TravellerMaxLinearSpeedSq <= 0) { return false; }
+		const auto* Traveller = Body->GetHandle_LowLevel();
+		const auto* RigidTraveller = Traveller ? Traveller->CastToRigidParticle() : nullptr;
+		if (!RigidTraveller || RigidTraveller->MaxLinearSpeedSq() != TravellerMaxLinearSpeedSq
+			|| !Traveller->ParticleConstraints().IsEmpty()) { return false; }
+		if (ActiveEnvelopes.IsEmpty()) { return true; }
+		for (auto& Pair : Modifier)
+		{
+			const auto Particles = Pair.GetParticlePair();
+			if (ActiveEnvelopes.Contains(Particles[0]->UniqueIdx().Idx)
+				|| ActiveEnvelopes.Contains(Particles[1]->UniqueIdx().Idx)) { return false; }
+		}
+		int32 Seen = 0;
+		for (const auto& P : Solver->GetParticles().GetNonDisabledView())
+		{
+			const auto* Lease = ActiveEnvelopes.Find(P.UniqueIdx().Idx);
+			if (!Lease) { continue; }
+			++Seen;
+			const auto* R = P.CastToRigidParticle();
+			FBox Local(ForceInit);
+			if (!R || P.ObjectState() != Chaos::EObjectStateType::Dynamic || R->CCDEnabled()
+				|| !P.ParticleConstraints().IsEmpty() || P.ParticleCollisions().Num() != 0
+				|| !StaticClearanceDetail::NativeBounds(P,Local) || Lease->Geometry != P.GetGeometry()
+				|| Lease->GeometryHash != P.GetGeometry()->GetTypeHash()
+				|| Lease->MaxLinearSpeedSq != R->MaxLinearSpeedSq()
+				|| !Lease->Local.Min.Equals(Local.Min,1.e-6) || !Lease->Local.Max.Equals(Local.Max,1.e-6)) { return false; }
+			const FBox World = StaticClearanceDetail::WorldBounds(Local,FTransform(FQuat(R->GetQ()),FVector(R->GetP())));
+			if (!Lease->Reach.IsInsideOrOn(World.Min) || !Lease->Reach.IsInsideOrOn(World.Max)) { return false; }
+		}
+		return Seen == ActiveEnvelopes.Num();
+	}
 	FStaticClearanceProof FChaosStaticClearance::Certify_Internal(const FBoundaryCommand& C,
 		const FBoundaryState& A, const FBoundaryState& B, const FPhysicsStepKey& Step, EClearanceStage Stage, int32 Endpoint)
 	{
@@ -157,7 +193,9 @@ namespace InteriorPortalPhysics
 			{ return Reject(EStaticClearanceReason::InvalidInterval); }
 			IntervalStep = Step; IntervalStart = A; IntervalCommand = C; LastStage = Stage;
 			KinematicEnvelopes.Reset();
+			ActiveEnvelopes.Reset();
 			DormantLeases.Reset();
+			TravellerMaxLinearSpeedSq = 0;
 		}
 		else
 		{
@@ -177,6 +215,18 @@ namespace InteriorPortalPhysics
 		// Persistent constraints can move/rotate the body after this hook; they
 		// are not collision constraints and are outside the independent-body profile.
 		if (!Particle->ParticleConstraints().IsEmpty()) { return Reject(EStaticClearanceReason::UnsupportedScene); }
+		// The adapter must install a native hard speed cap before this interval.
+		// Arbitrary gravity/force rules are not represented by the submitted
+		// predicted pose; the Chaos integrator clamps V before updating P.
+		const double SpeedSq = Rigid->MaxLinearSpeedSq();
+		// A recreated body or GT/PT state push may restore Chaos's effectively
+		// unbounded default. Reject it before issuing a proof.
+		const double StepReach = FMath::Sqrt(SpeedSq)*Step.DeltaSeconds;
+		if (!FMath::IsFinite(SpeedSq) || SpeedSq <= 0 || !FMath::IsFinite(StepReach)
+			|| StepReach >= FMath::Min(C.HalfWidth,C.HalfHeight))
+		{ return Reject(EStaticClearanceReason::UnsupportedMotion); }
+		if (Stage == EClearanceStage::PreIntegrate) { TravellerMaxLinearSpeedSq = SpeedSq; }
+		else if (TravellerMaxLinearSpeedSq != SpeedSq) { return Reject(EStaticClearanceReason::UnsupportedMotion); }
 		const FTransform Actual(Stage == EClearanceStage::PreIntegrate ? FQuat(H->R()) : FQuat(Rigid->GetQ()),
 			Stage == EClearanceStage::PreIntegrate ? FVector(H->X()) : FVector(Rigid->GetP()),C.Traveller.Geometry.BakedScale);
 		const auto& ActualSample = Stage == EClearanceStage::PreIntegrate ? A : B;
@@ -184,12 +234,16 @@ namespace InteriorPortalPhysics
 			|| !ActualSample.AngularVelocity.Equals(FVector(H->W()),1.e-6))
 		{ return Reject(EStaticClearanceReason::InvalidInterval); }
 		const FVector Normal = C.Entry.GetUnitAxis(EAxis::X);
-		const auto NormalOnly = [&](const FVector& V) { return !V.ContainsNaN() && (V-Normal*FVector::DotProduct(V,Normal)).IsNearlyZero(1.e-6); };
-		if (!NormalOnly(A.LinearVelocity) || !NormalOnly(B.LinearVelocity) || !NormalOnly(FVector(H->Acceleration()))
+		// The native cap bounds translation in every direction, including gravity.
+		// Aperture and scene clearance below certify that full reachable volume;
+		// requiring normal-only velocity would reject ordinary falling bodies.
+		const double ActualTravel = FVector::Dist(A.Pose.GetLocation(),B.Pose.GetLocation());
+		if (A.LinearVelocity.ContainsNaN() || B.LinearVelocity.ContainsNaN() || FVector(H->Acceleration()).ContainsNaN()
 			|| !FVector(H->AngularAcceleration()).IsNearlyZero(1.e-6)
 			|| !A.AngularVelocity.IsNearlyZero(1.e-6) || !B.AngularVelocity.IsNearlyZero(1.e-6)
 			|| !A.Pose.GetRotation().Equals(B.Pose.GetRotation(),1.e-8)
-			|| FVector::Dist(A.Pose.GetLocation(),B.Pose.GetLocation()) > C.MaxTranslationCm)
+			|| !FMath::IsFinite(ActualTravel) || ActualTravel > C.MaxTranslationCm
+			|| ActualTravel > StepReach + 1.e-4)
 		{ return Reject(EStaticClearanceReason::UnsupportedMotion); }
 		FBox SupportBounds[2];
 		for (int32 I=0; I<2; ++I)
@@ -228,10 +282,26 @@ namespace InteriorPortalPhysics
 			|| !EvaluateTranslation(Box,Mapped(A.Pose),Mapped(B.Pose),C.Exit,C.HalfWidth,C.HalfHeight,C.MarginCm).Fits()
 			|| !EvaluateTranslation(Box,Mapped(AtPlane),ExitClear,C.Exit,C.HalfWidth,C.HalfHeight,C.MarginCm).Fits())
 		{ return Reject(EStaticClearanceReason::OutsideAperture); }
-		const FBox Source = SweptBounds(Local,A.Pose,B.Pose,C.MarginCm) + SweptBounds(Local,B.Pose,AtPlane,C.MarginCm);
-		const FBox Destination = SweptBounds(Local,Mapped(A.Pose),Mapped(B.Pose),C.MarginCm)
+		const double MotionReach = FMath::Sqrt(SpeedSq)*Step.DeltaSeconds;
+		double RotationRadius = 0;
+		const auto Corners = BoxGeometry(Local);
+		for (const auto& V : Corners.Primitives[0].Vertices) { RotationRadius = FMath::Max(RotationRadius,V.Size()); }
+		const double ConservativeRadius = RotationRadius + MotionReach + C.MarginCm + 1.e-4;
+		if (!FMath::IsFinite(ConservativeRadius)) { return Reject(EStaticClearanceReason::UnsupportedMotion); }
+		const FVector EntryLocal = C.Entry.InverseTransformPositionNoScale(A.Pose.GetLocation());
+		if (FMath::Abs(EntryLocal.Y) + ConservativeRadius > C.HalfWidth
+			|| FMath::Abs(EntryLocal.Z) + ConservativeRadius > C.HalfHeight)
+		{ return Reject(EStaticClearanceReason::OutsideAperture); }
+		FBox Source = SweptBounds(Local,A.Pose,B.Pose,C.MarginCm) + SweptBounds(Local,B.Pose,AtPlane,C.MarginCm);
+		FBox Destination = SweptBounds(Local,Mapped(A.Pose),Mapped(B.Pose),C.MarginCm)
 			+ SweptBounds(Local,Mapped(AtPlane),ExitClear,C.MarginCm);
+		// Origin-centered balls cover all native rotations and all integration
+		// translations admitted by the cap, including gravity and unknown forces.
+		Source += FBox(A.Pose.GetLocation(),A.Pose.GetLocation()).ExpandBy(ConservativeRadius);
+		const FVector ExitOrigin = Mapped(A.Pose).GetLocation();
+		Destination += FBox(ExitOrigin,ExitOrigin).ExpandBy(ConservativeRadius);
 		bool Unsupported = false, SourceBlocked = false, DestinationBlocked = false, SawBody = false;
+		int32 SeenActive = 0;
 		bool WakeRisk = false;
 		TArray<const Chaos::FGeometryParticleHandle*> Sleepers;
 		bool SawSupports[2] = {false,false};
@@ -251,6 +321,106 @@ namespace InteriorPortalPhysics
 				|| !Envelope->Sweep.IsInsideOrOn(World.Min) || !Envelope->Sweep.IsInsideOrOn(World.Max)) { return false; }
 			World = Envelope->Sweep; return true;
 		};
+		const auto ActiveInterval = [&](const Chaos::FGeometryParticleHandle* P, const FBox& Bounds, FBox& World)
+		{
+			const auto* R = P->CastToRigidParticle();
+			if (!R || P->ObjectState() != Chaos::EObjectStateType::Dynamic || R->CCDEnabled()
+				|| !P->ParticleConstraints().IsEmpty() || P->ParticleCollisions().Num() != 0) { return false; }
+			const int32 Key = P->UniqueIdx().Idx;
+			const double SpeedSq = R->MaxLinearSpeedSq();
+			const FVector Origin(Stage == EClearanceStage::PreIntegrate ? P->GetX() : R->GetP());
+			if (!FMath::IsFinite(SpeedSq) || SpeedSq < 0 || SpeedSq >= TNumericLimits<float>::Max()
+				|| Origin.ContainsNaN()) { return false; }
+			if (Stage == EClearanceStage::PreIntegrate)
+			{
+				// Chaos clamps integration velocity before updating P. A radius about the
+				// actor origin contains any orientation of the native bounded geometry.
+				// Contacts/joints/CCD are excluded because their solve displacement is
+				// not bounded by MaxLinearSpeedSq.
+				double Radius = 0;
+				const auto Corners = BoxGeometry(Bounds);
+				for (const auto& V : Corners.Primitives[0].Vertices) { Radius = FMath::Max(Radius,V.Size()); }
+				const double ReachCm = Radius + FMath::Sqrt(SpeedSq)*Step.DeltaSeconds + 1.e-4;
+				if (!FMath::IsFinite(ReachCm)) { return false; }
+				World = FBox(Origin,Origin).ExpandBy(ReachCm);
+				ActiveEnvelopes.Add(Key,{World,Bounds,P->GetGeometry(),P->GetGeometry()->GetTypeHash(),SpeedSq});
+				return true;
+			}
+			World = WorldBounds(Bounds,FTransform(
+				FQuat(Stage == EClearanceStage::PostIntegrate || Stage == EClearanceStage::PostSolve ? R->GetQ() : P->GetR()),Origin));
+			const auto* Lease = ActiveEnvelopes.Find(Key);
+			if (!Lease || Lease->Geometry != P->GetGeometry() || Lease->GeometryHash != P->GetGeometry()->GetTypeHash()
+				|| Lease->MaxLinearSpeedSq != SpeedSq || !Lease->Local.Min.Equals(Bounds.Min,1.e-6)
+				|| !Lease->Local.Max.Equals(Bounds.Max,1.e-6)
+				|| !Lease->Reach.IsInsideOrOn(World.Min) || !Lease->Reach.IsInsideOrOn(World.Max)) { return false; }
+			World = Lease->Reach; return true;
+		};
+		const auto DormantTopology = [&](const Chaos::FGeometryParticleHandle* P, FDormantLease& Lease)
+		{
+			const int32 MidphaseCount = P->ParticleCollisions().Num();
+			if (!MidphaseCount) { return true; }
+			if (MidphaseCount > 128) { return false; }
+			const auto& Evolution = *Solver->GetEvolution();
+			const int32 CollisionContainer = Evolution.GetCollisionConstraints().GetContainerId();
+			if (CollisionContainer < 0 || CollisionContainer >= Evolution.GetIslandManager().GetNumConstraintContainers()) { return false; }
+			const auto* Island = Evolution.GetIslandManager().GetParticleIsland(P);
+			if (!Island || !Island->IsSleeping() || Island->NeedsResim() || Island->IsUsingCache()
+				|| Island->GetNumParticles() > 32 || Island->GetNumParticles() <= 0
+				|| Island->GetNumConstraints() <= 0 || Island->GetNumConstraints() > 256
+				|| Island->GetNumConstraints() != Island->GetNumContainerConstraints(CollisionContainer))
+			{ return false; }
+			Lease.IslandConstraints = Island->GetNumConstraints();
+			for (int32 I=0; I<Island->GetNumParticles(); ++I)
+			{
+				const auto* Node = Island->GetNode(I);
+				const auto* Member = Node ? Node->GetParticle() : nullptr; FBox Bounds(ForceInit);
+				if (!Member || !StableDormant(Member) || !Simulates(*Member) || !NativeBounds(*Member,Bounds)) { return false; }
+				Lease.IslandMembers.Add(Member->UniqueIdx().Idx);
+			}
+			Lease.IslandMembers.Sort();
+			if (!Lease.IslandMembers.Contains(P->UniqueIdx().Idx)) { return false; }
+			bool Valid = true; int32 ContactCount = 0;
+			P->ParticleCollisions().VisitConstMidPhases([&](const Chaos::FParticlePairMidPhase& Mid)
+			{
+				const auto* Other = Mid.GetParticle0() == P ? Mid.GetParticle1() : Mid.GetParticle1() == P ? Mid.GetParticle0() : nullptr;
+				if (!Mid.IsValid() || !Mid.IsSleeping() || !Other) { Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+				Lease.ContactPartners.Add(Other->UniqueIdx().Idx);
+				if (Other->ObjectState() == Chaos::EObjectStateType::Sleeping)
+				{
+					if (!StableDormant(Other) || !Lease.IslandMembers.Contains(Other->UniqueIdx().Idx))
+					{ Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+				}
+				else if (Other->ObjectState() == Chaos::EObjectStateType::Static)
+				{
+					FBox Bounds(ForceInit); const FTransform Pose(FQuat(Other->GetR()),FVector(Other->GetX()));
+					if (!NativeBounds(*Other,Bounds) || !Simulates(*Other) || Pose.ContainsNaN() || !Pose.GetRotation().IsNormalized())
+					{ Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+					Lease.StaticContacts.Add({Other->UniqueIdx().Idx,Pose,Other->GetGeometry(),Other->GetGeometry()->GetTypeHash()});
+					// A stale cached manifold must not bootstrap a fresh native lease.
+					Mid.VisitConstCollisions([&](const Chaos::FPBDCollisionConstraint& Contact)
+					{
+						if (++ContactCount > 256) { Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+						const int32 Index = Contact.GetParticle0() == Other ? 0 : 1;
+						const auto* Shape = Contact.GetShape(Index);
+						bool CurrentShape = false;
+						for (const auto& NativeShape : Other->ShapesArray()) { CurrentShape |= NativeShape.Get() == Shape; }
+						if (!CurrentShape || !Shape || Contact.GetParticle(Index) != Other || Contact.GetImplicit(Index) != Shape->GetLeafGeometry())
+						{ Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+						const auto& Relative = Contact.GetShapeRelativeTransform(Index);
+						const auto& Cached = Contact.GetShapeWorldTransform(Index);
+						const FTransform Expected = FTransform(FQuat(Relative.GetRotation()),FVector(Relative.GetTranslation()))*Pose;
+						if (!Contact.IsSleeping() || !Expected.Equals(FTransform(FQuat(Cached.GetRotation()),FVector(Cached.GetTranslation())),1.e-6))
+						{ Valid = false; return Chaos::ECollisionVisitorResult::Stop; }
+						return Chaos::ECollisionVisitorResult::Continue;
+					});
+				}
+				else { Valid = false; }
+				return Valid ? Chaos::ECollisionVisitorResult::Continue : Chaos::ECollisionVisitorResult::Stop;
+			});
+			Lease.ContactPartners.Sort();
+			Lease.StaticContacts.Sort([](const FStaticContactParticipant& L, const FStaticContactParticipant& R) { return L.Id < R.Id; });
+			return Valid;
+		};
 		for (auto& P : Solver->GetParticles().GetNonDisabledView())
 		{
 			if (P.PhysicsProxy() == Body) { SawBody = true; continue; }
@@ -268,19 +438,28 @@ namespace InteriorPortalPhysics
 			{
 				if (!KinematicInterval(P.Handle(),Bounds,World)) { Unsupported = true; continue; }
 			}
+			else if (P.ObjectState() == Chaos::EObjectStateType::Dynamic)
+			{
+				++SeenActive;
+				if (!ActiveInterval(P.Handle(),Bounds,World)) { Unsupported = true; continue; }
+			}
 			else if (P.ObjectState() == Chaos::EObjectStateType::Sleeping)
 			{
 				if (!StableDormant(P.Handle())) { Unsupported = true; continue; }
 				const FTransform Pose(FQuat(P.GetR()),FVector(P.GetX())); const int32 Key = P.UniqueIdx().Idx;
 				if (Pose.ContainsNaN() || !Pose.GetRotation().IsNormalized()) { Unsupported = true; continue; }
+				FDormantLease CurrentLease{Bounds,Pose,P.GetGeometry(),P.GetGeometry()->GetTypeHash()};
+				if (!DormantTopology(P.Handle(),CurrentLease)) { Unsupported = true; continue; }
 				if (Stage == EClearanceStage::PreIntegrate)
-				{ DormantLeases.Add(Key,{Bounds,Pose,P.GetGeometry(),P.GetGeometry()->GetTypeHash()}); }
+				{ DormantLeases.Add(Key,MoveTemp(CurrentLease)); }
 				else
 				{
 					const auto* Lease = DormantLeases.Find(Key);
 					if (!Lease || Lease->Geometry != P.GetGeometry() || Lease->GeometryHash != P.GetGeometry()->GetTypeHash()
 						|| !Lease->Local.Min.Equals(Bounds.Min,1.e-6) || !Lease->Local.Max.Equals(Bounds.Max,1.e-6)
-						|| !Lease->Pose.Equals(Pose,1.e-6)) { Unsupported = true; continue; }
+						|| !Lease->Pose.Equals(Pose,1.e-6) || Lease->IslandMembers != CurrentLease.IslandMembers
+						|| Lease->ContactPartners != CurrentLease.ContactPartners || Lease->StaticContacts != CurrentLease.StaticContacts
+						|| Lease->IslandConstraints != CurrentLease.IslandConstraints) { Unsupported = true; continue; }
 				}
 				Sleepers.Add(P.Handle());
 			}
@@ -288,6 +467,42 @@ namespace InteriorPortalPhysics
 			if (!HitsTraveller) { continue; }
 			if (P.PhysicsProxy() != Supports[Endpoint]) { SourceBlocked |= Source.Intersect(World); }
 			if (P.PhysicsProxy() != Supports[1-Endpoint]) { DestinationBlocked |= Destination.Intersect(World); }
+		}
+		// A speed cap bounds integration, not contact-solver displacement. Before
+		// granting any support bypass, exclude every possible contact of a leased
+		// active body for the entire interval. An interacting second non-static
+		// body is outside this independent-body profile, even when distant.
+		if (!ActiveEnvelopes.IsEmpty())
+		{
+			const auto& Settings = Solver->GetEvolution()->GetCollisionConstraints().GetDetectorSettings();
+			static const auto* Ref = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Collision.CullDistanceReferenceSize"));
+			static const auto* Min = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Collision.MinCullDistanceScale"));
+			if (!Ref || !Min || !Settings.bFilteringEnabled || Settings.bDeferNarrowPhase
+				|| ActiveEnvelopes.Num() > 32 || ActiveEnvelopes.Num()*Solver->GetParticles().GetNonDisabledView().Num() > 16384)
+			{ Unsupported = true; }
+			else for (auto& Moving : Solver->GetParticles().GetNonDisabledView())
+			{
+				const auto* Lease = ActiveEnvelopes.Find(Moving.UniqueIdx().Idx);
+				if (!Lease) { continue; }
+				for (auto& Other : Solver->GetParticles().GetNonDisabledView())
+				{
+					if (Other.Handle() == Moving.Handle() || Other.PhysicsProxy() == Body
+						|| !Interacts(Moving.Handle(),Other.Handle())) { continue; }
+					if (Other.ObjectState() != Chaos::EObjectStateType::Static) { Unsupported = true; break; }
+					FBox OtherLocal(ForceInit);
+					if (!NativeBounds(Other,OtherLocal)) { Unsupported = true; break; }
+					const double Size = FMath::Max(Lease->Local.GetSize().GetMax(),OtherLocal.GetSize().GetMax());
+					const double Travel = FMath::Sqrt(Lease->MaxLinearSpeedSq)*Step.DeltaSeconds;
+					const double Padding = Settings.BoundsExpansion*FMath::Max(Min->GetFloat(),Size*Ref->GetFloat())
+						+ FMath::Min(FMath::Max(Settings.BoundsVelocityInflation,Settings.BoundsVelocityInflationMACD)*Travel,
+							FMath::Max(Settings.MaxVelocityBoundsExpansion,Settings.MaxVelocityBoundsExpansionMACD)) + 1.e-4;
+					if (!FMath::IsFinite(Padding) || Padding < 0 || !FMath::IsFinite(Travel)
+						|| Lease->Reach.Intersect(WorldBounds(OtherLocal,
+							FTransform(FQuat(Other.GetR()),FVector(Other.GetX()))).ExpandBy(Padding)))
+					{ Unsupported = true; break; }
+				}
+				if (Unsupported) { break; }
+			}
 		}
 		if (!Sleepers.IsEmpty())
 		{
@@ -343,6 +558,7 @@ namespace InteriorPortalPhysics
 			}
 		}
 		if (!SawBody || !SawSupports[0] || !SawSupports[1]) { Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		if (Stage != EClearanceStage::PreIntegrate && SeenActive != ActiveEnvelopes.Num()) { Unsupported = true; }
 		if (Unsupported) { return Reject(EStaticClearanceReason::UnsupportedScene); }
 		if (SourceBlocked) { return Reject(EStaticClearanceReason::SourceBlocked); }
 		if (DestinationBlocked) { return Reject(EStaticClearanceReason::DestinationBlocked); }

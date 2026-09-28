@@ -1,8 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
-Updated: 2026-09-27. Status: **IN PROGRESS; COORDINATOR, STATIC CERTIFICATE, FILTER/KINEMATIC AND DORMANT SLICES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
-Source HEAD: `9d44f5b535ca4371a60892afbd9ba357d93d44ed` (native filter/kinematic coverage committed).
-Native dormant-body lease continuation is uncommitted; general slice 2 OPEN.
+Updated: 2026-09-27. Status: **IN PROGRESS; COORDINATOR, STATIC, FILTER/KINEMATIC, DORMANT AND CLOSED SLEEPING CONTACT PROFILES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
+Source HEAD: `fd825aca848de01f120bf346badd0eab6f161bc8` (native dormant leases committed).
+Closed sleeping contact-island continuation is uncommitted; general slice 2 OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -195,14 +195,52 @@ test warnings** (2026.09.26-17.14.46 UTC), including four new dormant gates and
 seven existing regressions. Earlier failures are recorded separately in that
 dedicated record. Prescribed generation/build PASS. No gameplay writer is added.
 
+The subsequent [closed sleeping contact-island extension](InteriorPortalPhysicsContactIslandsPHY4.md)
+admits actual sleeping collision-only islands with fixed native static participants.
+Canonical members/partners, constraint counts, static pose/geometry and cached
+shape transforms are part of the exact interval lease. No graph/midphase pointer
+or debug island ID is retained. Unknown/moving/jointed participants reject.
+Generation/build PASS; initial affected 14/15 PASS (all existing 11 regressions
+passed), final affected ContactIsland 4/4 PASS, both zero test warnings. These
+are separate runs; the dedicated record retains the fixture failure/correction.
+
+The subsequent [bounded independent active-body reach](InteriorPortalPhysicsActiveReachPHY4.md)
+admits one contact-free remote dynamic with a usable native speed cap. A whole-step
+reach and actual collision-cull padding exclude possible static contacts before
+support bypass; any other interacting non-static body remains unsupported in this
+narrow profile. Contact, CCD, joint, geometry and speed-cap changes revoke.
+Prescribed generation/build PASS; final affected PhysicsSolverClearance
+**16/16 PASS, zero test warnings/errors**. This remains test-attached only.
+
+The next [gravity/contact cancellation increment](InteriorPortalPhysicsGravityCancellationPHY4.md)
+identified the risk that gravity can reach a floor after PreIntegrate even when the
+submitted normal-only prediction is clear; its original fixture did not enable
+body gravity, as corrected by the later continuous-gravity increment. The traveller now needs a native
+integration speed cap and an all-orientation whole-step reach at both endpoints;
+potential floor contact is denied before support bypass. A later
+[speed-cap lifecycle increment](InteriorPortalPhysicsSpeedCapLifecyclePHY4.md)
+corrects the original PT-only write: GT state synchronization could overwrite
+that cap; installation through UE's GT physics interface survives ordinary
+filter updates. True body recreation retires the old binding and needs a fresh
+installation. Final affected PhysicsSolverClearance
+**17/17 PASS, zero test warnings/errors** for the earlier PT-only increment;
+the later lifecycle increment was **18/18 PASS, zero test warnings/errors**,
+but its gravity-enabled claim is corrected: the traveller fixture still had
+gravity disabled. The subsequent [continuous-gravity increment](InteriorPortalPhysicsContinuousGravityPHY4.md)
+enabled native body gravity, asserted actual downward integration, removed the
+normal-only linear-motion restriction while retaining whole-step reach checks,
+and passed **19/19** affected tests. This is still fixture-only.
+
 Limitations are explicit: game-thread observations are not physics-substep
-certificates. Interacting active dynamics and contact/joint islands still reject;
+certificates. Only bounded independent remote active dynamics are admitted;
+contacting/CCD/awake-jointed dynamics and retained kinematic contacts still reject;
 filtered-out dynamics and certified kinematics no longer deny passage. Geometry
 and ignore-manager exclusions remain conservative over-blocks. General dynamic
 scene coverage and production adapter assembly remain open. Native journal-full
 cancellation, invalid topology while
-straddling, rotation/gravity and exceptional recovery are not proved by the
-current fixtures. Destruction of
+straddling, floor-supported or rotating passage and exceptional recovery are not proved by the
+current fixtures. Free, fixed-orientation passage under continuous gravity is
+proved in the isolated solver fixture. Destruction of
 the final coordinator/solver must drain or explicitly hand off pending facts;
 retention inside this object alone does not implement whole-world shutdown.
 
@@ -210,6 +248,9 @@ No manual gate applies to this isolated slice and no production fix/Core seal
 is claimed. Map hash remains
 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
 **Next unfinished work: slice 2 — actual-world certified query/topology provider
-and production adapter assembly**, beginning with interacting active dynamics/contact-island
-motion coverage or a proven bounded rejection policy, then the unsupported cancellation/recovery cases
-above. Then perform atomic cutover and the required Core manual gate.
+and production adapter assembly**. Native-gravity free passage and partially
+inserted cancellation fixtures now pass. Resolve awake interacting islands,
+general rotating/held-body motion and remaining exceptional recovery cases.
+The production adapter must bind the current native body and install the speed
+cap through the GT physics interface after creation/recreation. Then perform
+atomic cutover and the required Core manual gate.

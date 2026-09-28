@@ -5,6 +5,7 @@
 #include "Interior/InteriorPortalPassageCoordinator.h"
 #include "Interior/InteriorPortalChaosTransferAdapter.h"
 #include "Interior/InteriorPortalChaosStaticClearance.h"
+#include "Interior/InteriorPortalChaosSpeedCap.h"
 #include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
@@ -21,6 +22,7 @@
 #include "Chaos/SimCallbackObject.h"
 #include "Chaos/ContactModification.h"
 #include "Chaos/ParticleHandle.h"
+#include "Chaos/Island/IslandManager.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PBDRigidsSolver.h"
 #include "HAL/ThreadSafeCounter64.h"
@@ -284,6 +286,8 @@ namespace
 			}
 			if (OtherContact)
 			{ Sample->Decision = { EBoundaryReason::OtherContact, false, false }; Coordinator->RevokeInterval(EBoundaryReason::OtherContact); }
+			if (NativeClearanceEnabled && Clearance && !Clearance->ContactsRemainIndependent_Internal(Modifier))
+			{ Sample->Decision = { EBoundaryReason::OtherContact, false, false }; Coordinator->RevokeInterval(EBoundaryReason::OtherContact); }
 			for (auto& Pair : Modifier)
 			{
 				const auto Particles = Pair.GetParticlePair();
@@ -390,6 +394,7 @@ namespace
 		TUniquePtr<FTransferFactCursor> FactCursor;
 		bool FactsValid = true;
 		bool DelayFacts = false;
+		FVector SceneGravity = FVector::ZeroVector;
 		uint64 NextRevision = 1;
 		FNativeScene(bool Substeps, bool TaskGraph, bool Permit, bool Transfer = false)
 		{
@@ -446,7 +451,7 @@ namespace
 				Input->Command = Command; Input->HoldEnabled = HoldEnabled; Input->Hold = Hold;
 				Input->TransferAck = FactCursor->Acknowledgment();
 			}
-			Scene->SetUpForFrame(&FVector::ZeroVector, 1.f/60, 0, 1.f/60, 1.f/120, 2, Substeps);
+			Scene->SetUpForFrame(&SceneGravity, 1.f/60, 0, 1.f/60, 1.f/120, 2, Substeps);
 			Scene->StartFrame(); Scene->WaitPhysScenes(); Scene->EndFrame();
 			while (auto Output = Callback->PopOutputData_External())
 			{
@@ -473,9 +478,17 @@ namespace
 			R.From = Body->GetComponentTransform(); R.To = R.From; R.To.AddToTranslation(FVector(-2,0,0));
 			return R;
 		}
+		void InstallNativeTravellerCap()
+		{
+			// Complete any pending body/filter rebuild before binding the native cap.
+			FlushRegistration();
+			check(FChaosTravellerSpeedCap::Install_GameThread(Body->BodyInstance,250));
+			FlushRegistration();
+		}
 		void EnableNativeClearance(bool RemoveOtherBody = true)
 		{
 			if (RemoveOtherBody) { ProtectedBody->DestroyComponent(); ProtectedBody = nullptr; }
+			InstallNativeTravellerCap();
 			InteriorPortalPhysics::FGeometry Geometry0, Geometry1;
 			check(ExtractStaticSupportGeometry(EntryWall,Geometry0) == EGeometryResult::Fits);
 			check(ExtractStaticSupportGeometry(ExitWall,Geometry1) == EGeometryResult::Fits);
@@ -490,6 +503,48 @@ namespace
 				const auto R = FactCursor->Consume(Fact);
 				FactsValid &= R == EFactResult::Consumed || R == EFactResult::Duplicate;
 			}
+		}
+	};
+	struct FNativeSleepingContacts
+	{
+		FNativeScene Scene;
+		UBoxComponent* Floor = nullptr;
+		TArray<UBoxComponent*> Members;
+		bool NativeSleepingIsland = false;
+		int32 NativeIslandSize = 0, NativeMidphases = 0;
+		FNativeSleepingContacts(bool Substeps, bool Stack, bool AtExit = false, bool KinematicFloor = false)
+			: Scene(Substeps,true,false,false)
+		{
+			Scene.ProtectedBody->DestroyComponent(); Scene.ProtectedBody = nullptr;
+			Scene.Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+			Scene.SceneGravity = FVector(0,0,-980);
+			const FVector Origin = AtExit ? FVector(1013,0,0) : FVector(1500,400,0);
+			const double Extent = AtExit ? .25 : 5.;
+			Floor = Scene.Box(Origin-FVector(0,0,Extent+.5),FVector(25,25,1),KinematicFloor);
+			if (KinematicFloor) { Floor->SetSimulatePhysics(false); }
+			// The floor contacts furniture but not the traveller. Its pose must still
+			// participate in the native contact lease, even outside traveller queries.
+			Floor->SetCollisionResponseToChannel(ECC_PhysicsBody,ECR_Ignore);
+			Members.Add(Scene.Box(Origin,FVector(Extent),true));
+			if (Stack) { Members.Add(Scene.Box(Origin+FVector(0,0,9),FVector(Extent),true)); }
+			for (auto* Member : Members)
+			{ Member->SetCollisionObjectType(ECC_WorldDynamic); Member->SetEnableGravity(true); }
+			for (int32 I=0; I<8; ++I) { Scene.Advance(Substeps); }
+			for (auto* Member : Members) { Member->PutAllRigidBodiesToSleep(); }
+			for (int32 I=0; I<2; ++I) { Scene.Advance(Substeps); }
+			auto* Proxy = Members[0]->BodyInstance.GetPhysicsActor();
+			Scene.Scene->GetSolver()->EnqueueCommandImmediate([this,Proxy]()
+			{
+				const auto* P = Proxy->GetHandle_LowLevel();
+				const auto* Island = Scene.Scene->GetSolver()->GetEvolution()->GetIslandManager().GetParticleIsland(P);
+				NativeSleepingIsland = Island && Island->IsSleeping();
+				NativeIslandSize = Island ? Island->GetNumParticles() : 0;
+				NativeMidphases = P->ParticleCollisions().Num();
+			});
+			Scene.FlushRegistration(); Scene.Samples.Reset();
+			Scene.Command.PermitSupportBypass = true; Scene.Command.PermitTransfer = true;
+			Scene.EnableNativeClearance(false);
+			Scene.Body->SetPhysicsLinearVelocity(FVector(-120,0,0));
 		}
 	};
 	constexpr EAutomationTestFlags PortalBoundaryTestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter;
@@ -1065,22 +1120,165 @@ bool FPortalSolverPhysicsOnlyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverGravityContactTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.GravityContactCancellation", PortalBoundaryTestFlags)
+bool FPortalSolverGravityContactTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		F.Body->SetEnableGravity(true);
+		F.SceneGravity = FVector(0,0,-20000);
+		F.Box(FVector(0,0,-7),FVector(50,50,1),false);
+		F.FlushRegistration(); F.EnableNativeClearance(false);
+		F.Advance(Substeps);
+		const auto& S = F.Samples[0];
+		AddInfo(FString::Printf(TEXT("Gravity contact substeps=%d pre=%d integrated=%d solved=%d disabled=%d unrelated=%d"),
+			Substeps,static_cast<int32>(S.PreClearance),static_cast<int32>(S.IntegratedClearance),
+			static_cast<int32>(S.SolvedClearance),S.DisabledPairs,S.UnrelatedPairs));
+		TestTrue(TEXT("Gravity-reachable floor rejects at the first affected PreIntegrate"),
+			S.PreClearance == EStaticClearanceReason::SourceBlocked);
+		TestTrue(TEXT("The body actually integrates downward under native gravity"),
+			S.Integrated.Pose.GetLocation().Z < S.Before.Pose.GetLocation().Z);
+		bool NoBypassOrTransfer = F.FactCursor->LastRevision() == 0;
+		for (const auto& Sample : F.Samples)
+		{ NoBypassOrTransfer &= Sample.DisabledPairs == 0 && Sample.Transfers == 0; }
+		TestTrue(TEXT("Gravity-driven contact cannot suppress the portal support pair or transfer"),NoBypassOrTransfer);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverGravityPartialCancellationTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.GravityPartialCancellation", PortalBoundaryTestFlags)
+bool FPortalSolverGravityPartialCancellationTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Partial : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		F.Body->SetEnableGravity(true); F.EnableNativeClearance();
+		if (Partial)
+		{
+			for (int32 I=0; I<3; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Native body is partially inserted before gravity/floor obstruction"),
+				FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,2.,1.e-6));
+		}
+		const int32 First = F.Samples.Num();
+		F.SceneGravity = FVector(0,0,-980);
+		F.Box(FVector(0,0,-7),FVector(50,50,1),false);
+		F.FlushRegistration();
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		const auto& FirstAffected = F.Samples[First];
+		AddInfo(FString::Printf(TEXT("Ordinary gravity cancellation substeps=%d partial=%d pre=%d gate=%s restored=%s"),
+			Substeps,Partial,static_cast<int32>(FirstAffected.PreClearance),
+			*FirstAffected.GateImpulse.ToString(),*F.Body->GetComponentLocation().ToString()));
+		TestTrue(TEXT("Ordinary gravity and reachable floor revoke before first affected integration"),
+			FirstAffected.PreClearance == EStaticClearanceReason::SourceBlocked);
+		TestTrue(TEXT("The first affected step really integrates normal gravity"),
+			FirstAffected.Integrated.Pose.GetLocation().Z < FirstAffected.Before.Pose.GetLocation().Z);
+		bool NoBypassOrFact = F.FactCursor->LastRevision() == 0;
+		for (int32 I=First; I<F.Samples.Num(); ++I)
+		{ NoBypassOrFact &= F.Samples[I].DisabledPairs == 0 && F.Samples[I].Transfers == 0; }
+		TestTrue(TEXT("Cancellation keeps wall contacts and publishes no transfer"),NoBypassOrFact);
+		TestTrue(TEXT("Wall and floor resolve inserted body without a game-thread pose rollback"),
+			F.Body->GetComponentLocation().X > 6.8);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverContinuousGravityTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ContinuousGravityPassage", PortalBoundaryTestFlags)
+bool FPortalSolverContinuousGravityTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		F.Body->SetEnableGravity(true);
+		F.SceneGravity = FVector(0,0,-980);
+		F.Command.MaxTranslationCm = 4.5;
+		F.Box(FVector(0,0,-70),FVector(50,50,1),false);
+		F.Box(FVector(1000,0,-70),FVector(50,50,1),false);
+		F.EnableNativeClearance(false);
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true;
+		for (const auto& S : F.Samples)
+		{ Clear &= S.PreClearance == EStaticClearanceReason::Clear
+			&& S.IntegratedClearance == EStaticClearanceReason::Clear
+			&& S.SolvedClearance == EStaticClearanceReason::Clear; }
+		AddInfo(FString::Printf(TEXT("Continuous gravity substeps=%d first=%d/%d/%d z=%.3f transfers=%d"),
+			Substeps,static_cast<int32>(F.Samples[0].PreClearance),
+			static_cast<int32>(F.Samples[0].IntegratedClearance),
+			static_cast<int32>(F.Samples[0].SolvedClearance),F.Body->GetComponentLocation().Z,
+			F.Samples.Last().Transfers));
+		TestTrue(TEXT("Enabled native gravity moves the traveller downward before contacts"),
+			F.Samples[0].Integrated.Pose.GetLocation().Z < F.Samples[0].Before.Pose.GetLocation().Z);
+		TestTrue(TEXT("Continuous gravity without reachable contacts stays certified across one portal transfer"),
+			Clear && F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1 && F.FactsValid);
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverUnsupportedSceneTest,
 	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.UnsupportedSceneAndMotion", PortalBoundaryTestFlags)
 bool FPortalSolverUnsupportedSceneTest::RunTest(const FString& Parameters)
 {
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance(false);
+		auto* Unbounded = F.ProtectedBody->BodyInstance.GetPhysicsActor();
+		F.Scene->GetSolver()->EnqueueCommandImmediate([Unbounded]()
+		{ Unbounded->GetHandle_LowLevel()->CastToRigidParticle()->SetMaxLinearSpeedSq(TNumericLimits<float>::Max()); });
+		F.FlushRegistration();
 		F.Advance(true);
-		TestTrue(TEXT("Interacting dynamics still require certified contact/constraint motion bounds"),
+		TestTrue(TEXT("Interacting active body without a finite usable speed cap still rejects"),
 			F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene);
 		TestTrue(TEXT("Unsupported scene cannot bypass or transfer"),F.Samples.Last().DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
 	}
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		F.Body->SetCollisionResponseToChannel(ECC_WorldDynamic,ECR_Ignore);
+		F.Advance(true);
+		TestTrue(TEXT("GT-installed native cap survives ordinary collision-filter updates"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::Clear);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
+		F.Body->RecreatePhysicsState(); F.FlushRegistration();
+		const auto* Replacement = F.Body->BodyInstance.GetPhysicsActor();
+		if (!Replacement) { AddError(TEXT("Physics-state recreation did not create a new traveller body")); return false; }
+		double BeforeCap = 0, AfterCap = 0;
+		F.Scene->GetSolver()->EnqueueCommandImmediate([Replacement,&BeforeCap]()
+		{ BeforeCap = Replacement->GetHandle_LowLevel()->CastToRigidParticle()->MaxLinearSpeedSq(); });
+		F.FlushRegistration();
+		const bool Reinstalled = FChaosTravellerSpeedCap::Install_GameThread(F.Body->BodyInstance,250);
+		F.FlushRegistration();
+		F.Scene->GetSolver()->EnqueueCommandImmediate([Replacement,&AfterCap]()
+		{ AfterCap = Replacement->GetHandle_LowLevel()->CastToRigidParticle()->MaxLinearSpeedSq(); });
+		F.FlushRegistration(); F.Advance(true);
+		TestTrue(TEXT("Recreated native body starts unbounded and needs a fresh GT cap install"),
+			Reinstalled && BeforeCap > 250*250 && AfterCap == 250*250);
+		TestTrue(TEXT("Old clearance binding retires on proxy replacement even after cap reinstall"),
+			F.Samples[0].Retired && F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
 		F.Body->SetPhysicsLinearVelocity(FVector(-120,1,0)); F.Advance(true);
-		TestTrue(TEXT("Non-normal motion is rejected by the declared safe-cancellation profile"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedMotion);
-		TestTrue(TEXT("Unsupported motion creates no transfer"),F.Samples.Last().Transfers == 0);
+		TestTrue(TEXT("Bounded lateral translation is certified when the full reach fits the portal"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::Clear
+			&& F.Samples[0].IntegratedClearance == EStaticClearanceReason::Clear
+			&& F.Samples[0].SolvedClearance == EStaticClearanceReason::Clear);
+		TestTrue(TEXT("The solver integrates lateral motion without an early transfer"),
+			F.Samples[0].Integrated.Pose.GetLocation().Y > F.Samples[0].Before.Pose.GetLocation().Y
+			&& F.Samples.Last().Transfers == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true);
+		F.Body->SetWorldLocation(FVector(8,54,0));
+		F.EnableNativeClearance(); F.Advance(true);
+		TestTrue(TEXT("Near-rim body fits now but its bounded next-step reach does not"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::OutsideAperture);
+		TestTrue(TEXT("Uncertified rim reach keeps wall contacts and cannot transfer"),
+			F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
 	}
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance();
@@ -1103,6 +1301,88 @@ bool FPortalSolverUnsupportedSceneTest::RunTest(const FString& Parameters)
 		Joint->SetConstrainedComponents(F.Body,NAME_None,F.EntryWall,NAME_None); F.Advance(true);
 		TestTrue(TEXT("Persistent world joint is rejected as outside independent-body profile"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene);
 		TestTrue(TEXT("Constrained body cannot consume bypass or transfer permission"),F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverActiveIndependentTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ActiveIndependentReach", PortalBoundaryTestFlags)
+bool FPortalSolverActiveIndependentTest::RunTest(const FString& Parameters)
+{
+	const auto SetNativeCap = [](FNativeScene& F, UBoxComponent* Box, double SpeedCmPerSecond)
+	{
+		auto* Proxy = Box->BodyInstance.GetPhysicsActor();
+		F.Scene->GetSolver()->EnqueueCommandImmediate([Proxy,SpeedCmPerSecond]()
+		{
+			if (auto* R = Proxy->GetHandle_LowLevel()->CastToRigidParticle())
+			{ R->SetMaxLinearSpeedSq(SpeedCmPerSecond*SpeedCmPerSecond); }
+		});
+		F.FlushRegistration();
+	};
+	for (bool Substeps : {false,true}) for (bool Held : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		auto* Remote = F.Box(FVector(1500,400,0),FVector(5),true);
+		Remote->SetPhysicsLinearVelocity(FVector(100,0,0));
+		SetNativeCap(F,Remote,250);
+		F.EnableNativeClearance(false);
+		if (Held)
+		{
+			BeginHold(F,FTransform(FVector(-40,0,0))); F.Hold.Region.Planes.Reset();
+			TestTrue(TEXT("Remote active fixture binds the normal held route"),
+				F.Callback->ConfigureRelationBeforeDispatch(F.Hold.DesiredHolderPose,F.Hold.LocalGrabAnchor));
+		}
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true;
+		for (const auto& S : F.Samples)
+		{ Clear &= S.PreClearance == EStaticClearanceReason::Clear
+			&& S.IntegratedClearance == EStaticClearanceReason::Clear
+			&& S.SolvedClearance == EStaticClearanceReason::Clear; }
+		TestTrue(TEXT("Bounded independent remote motion stays certified at all native stages"),Clear);
+		TestTrue(TEXT("Unrelated moving body does not prevent the single held/free transfer"),
+			F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1 && F.FactsValid);
+		TestTrue(TEXT("Remote body keeps native motion without a portal write"),
+			Remote->GetComponentLocation().X > 1500 && Remote->GetPhysicsLinearVelocity().X > 0);
+	}
+	for (bool Substeps : {false,true})
+	{
+		FNativeScene F(Substeps,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		auto* Near = F.Box(FVector(1013,0,0),FVector(.25),true);
+		SetNativeCap(F,Near,250);
+		F.EnableNativeClearance(false); F.Advance(Substeps);
+		TestTrue(TEXT("Capped active body whose reach meets the exit is still blocked"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene
+				&& F.Samples.Last().Transfers == 0 && F.Samples[0].DisabledPairs == 0);
+	}
+	{
+		FNativeScene F(true,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		auto* Remote = F.Box(FVector(1500,400,0),FVector(5),true);
+		SetNativeCap(F,Remote,250);
+		auto* Proxy = Remote->BodyInstance.GetPhysicsActor();
+		F.EnableNativeClearance(false);
+		F.Callback->AfterIntegrateMutation = [Proxy]()
+		{ Proxy->GetHandle_LowLevel()->CastToRigidParticle()->SetMaxLinearSpeedSq(500*500); };
+		F.Advance(true);
+		TestTrue(TEXT("Changed native speed cap invalidates the first affected interval"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::Clear
+				&& F.Samples[0].IntegratedClearance == EStaticClearanceReason::UnsupportedScene
+				&& F.Samples[0].DisabledPairs == 0 && F.Samples[0].Transfers == 0);
+	}
+	{
+		FNativeScene F(false,true,true,true);
+		F.ProtectedBody->DestroyComponent(); F.ProtectedBody = nullptr;
+		auto* Remote = F.Box(FVector(1500,400,0),FVector(5),true);
+		Remote->SetPhysicsLinearVelocity(FVector(120,0,0));
+		SetNativeCap(F,Remote,250);
+		F.Box(FVector(1511.5,400,0),FVector(5),false);
+		F.FlushRegistration(); F.EnableNativeClearance(false);
+		F.Advance(false);
+		TestTrue(TEXT("Potential remote contact is rejected before integration rather than after support bypass"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene
+				&& F.Samples[0].DisabledPairs == 0 && F.Samples[0].Transfers == 0);
 	}
 	return true;
 }
@@ -1315,8 +1595,12 @@ bool FPortalSolverDormantWakeTest::RunTest(const FString& Parameters)
 			for (int32 I=0; I<3; ++I) { F.Advance(Substeps); }
 			TestTrue(TEXT("Dormant lease initially permits partial insertion"),FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,2.,1.e-6));
 			const int32 First = F.Samples.Num(); Sleeper->WakeAllRigidBodies();
+			auto* Unbounded = Sleeper->BodyInstance.GetPhysicsActor();
+			F.Scene->GetSolver()->EnqueueCommandImmediate([Unbounded]()
+			{ Unbounded->GetHandle_LowLevel()->CastToRigidParticle()->SetMaxLinearSpeedSq(TNumericLimits<float>::Max()); });
+			F.FlushRegistration();
 			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
-			TestTrue(TEXT("Wake invalidates clearance at the first affected PreIntegrate"),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
+			TestTrue(TEXT("Wake into unbounded active motion rejects at the first affected PreIntegrate"),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
 			TestTrue(TEXT("Wake rejection restores ordinary contacts without GT Recovery"),F.Body->GetComponentLocation().X > 6.8
 				&& F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
 			Sleeper->PutAllRigidBodiesToSleep(); const int32 Reacquire = F.Samples.Num(); F.Advance(Substeps);
@@ -1401,7 +1685,8 @@ bool FPortalSolverDormantLeaseTest::RunTest(const FString& Parameters)
 		auto* Sleeper = F.Box(FVector(1500,400,0),FVector(5),true); F.FlushRegistration();
 		if (Invalid == 2)
 		{
-			F.Box(FVector(1509,400,0),FVector(5),false); F.Advance(true);
+			auto* Contact = F.Box(FVector(1509,400,0),FVector(5),true);
+			Contact->SetSimulatePhysics(false); F.Advance(true);
 			// The warm-up also collided the traveller with its support; restore the
 			// declared normal-motion fixture so that it cannot mask the sleep gate.
 			F.Body->BodyInstance.SetBodyTransform(FTransform(FVector(8,0,0)),ETeleportType::TeleportPhysics);
@@ -1433,6 +1718,125 @@ bool FPortalSolverDormantLeaseTest::RunTest(const FString& Parameters)
 		const int32 First = F.Samples.Num(); F.Advance(true);
 		TestTrue(FString::Printf(TEXT("Invalid dormant profile %d (impulse / joint / contact) rejects; reason=%d"),Invalid,static_cast<int32>(F.Samples[First].PreClearance)),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
 		TestTrue(TEXT("Invalid sleep lease creates no transfer"),F.Samples.Last().Transfers == 0);
+	}
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalContactIslandStableTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ContactIslandStable", PortalBoundaryTestFlags)
+bool FPortalContactIslandStableTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (bool Stack : {false,true}) for (bool Held : {false,true})
+	{
+		FNativeSleepingContacts Fixture(Substeps,Stack); auto& F = Fixture.Scene;
+		TestTrue(TEXT("Fixture has actual sleeping native contact island and retained midphases"),Fixture.NativeSleepingIsland
+			&& Fixture.NativeIslandSize == (Stack ? 2 : 1) && Fixture.NativeMidphases > 0);
+		TArray<FTransform> Poses; for (auto* Member : Fixture.Members) { Poses.Add(Member->GetComponentTransform()); }
+		if (Held)
+		{
+			BeginHold(F,FTransform(FVector(-40,0,0))); F.Hold.Region.Planes.Reset();
+			TestTrue(TEXT("Held traveller uses the shared contact-island certificate"),F.Callback->ConfigureRelationBeforeDispatch(F.Hold.DesiredHolderPose,F.Hold.LocalGrabAnchor));
+		}
+		for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+		bool Clear = true, Material = true;
+		for (const auto& S : F.Samples)
+		{ Clear &= S.PreClearance == EStaticClearanceReason::Clear && S.IntegratedClearance == EStaticClearanceReason::Clear
+			&& S.SolvedClearance == EStaticClearanceReason::Clear; Material &= S.MaterialPreserved; }
+		TestTrue(FString::Printf(TEXT("Closed contact island certifies all stages: substeps=%d stack=%d held=%d; first=%d/%d/%d"),
+			Substeps,Stack,Held,static_cast<int32>(F.Samples[0].PreClearance),static_cast<int32>(F.Samples[0].IntegratedClearance),
+			static_cast<int32>(F.Samples[0].SolvedClearance)),Clear);
+		TestTrue(TEXT("Closed native contact island permits exactly one coherent held/free transfer"),F.Samples.Last().Transfers == 1
+			&& F.FactCursor->LastRevision() == 1 && F.FactsValid && Material);
+		for (int32 I=0; I<Fixture.Members.Num(); ++I)
+		{ TestTrue(TEXT("Verifier preserves sleeping furniture pose and state"),!Fixture.Members[I]->IsAnyRigidBodyAwake()
+			&& Fixture.Members[I]->GetComponentTransform().Equals(Poses[I],1.e-6)); }
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalContactIslandWakeTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ContactIslandWakeAndBlock", PortalBoundaryTestFlags)
+bool FPortalContactIslandWakeTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		{
+			FNativeSleepingContacts Fixture(Substeps,false,true); auto& F = Fixture.Scene;
+			TestTrue(TEXT("Blocked-exit fixture really has sleeping retained contacts"),Fixture.NativeSleepingIsland && Fixture.NativeMidphases > 0);
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Sleeping contact-island member inside mapped exit still blocks"),F.Samples[0].PreClearance == EStaticClearanceReason::DestinationBlocked
+				&& F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		}
+		{
+			FNativeSleepingContacts Fixture(Substeps,true); auto& F = Fixture.Scene;
+			for (int32 I=0; I<3; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Valid contact island initially permits partial insertion"),FMath::IsNearlyEqual(F.Body->GetComponentLocation().X,2.,1.e-6));
+			Fixture.Members.Last()->WakeAllRigidBodies(); const int32 First = F.Samples.Num();
+			for (int32 I=0; I<12; ++I) { F.Advance(Substeps); }
+			TestTrue(TEXT("Woken contact-island member denies first affected physical interval"),F.Samples[First].PreClearance == EStaticClearanceReason::UnsupportedScene);
+			TestTrue(TEXT("Contact-island wake restores ordinary blocking without GT Recovery"),F.Body->GetComponentLocation().X > 6.8
+				&& F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalContactIslandLeaseTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ContactIslandLeaseInvalidation", PortalBoundaryTestFlags)
+bool FPortalContactIslandLeaseTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true}) for (int32 Stage : {0,1,2})
+	{
+		FNativeSleepingContacts Fixture(Substeps,true); auto& F = Fixture.Scene;
+		auto Mutation = [Proxy=Fixture.Floor->BodyInstance.GetPhysicsActor(),Changed=false]() mutable
+		{
+			if (Changed) { return; } Changed = true;
+			auto* P = Proxy->GetHandle_LowLevel(); P->SetX(P->GetX()+Chaos::FVec3(0,0,1));
+		};
+		if (Stage == 0) { F.Scene->GetSolver()->EnqueueCommandImmediate(MoveTemp(Mutation)); }
+		else if (Stage == 1) { F.Callback->AfterIntegrateMutation = MoveTemp(Mutation); }
+		else { F.Callback->AfterSolveMutation = MoveTemp(Mutation); }
+		F.Advance(Substeps);
+		const auto& S = F.Samples[0];
+		if (Stage) { TestTrue(TEXT("Support mutation interval begins with valid native contact lease"),S.PreClearance == EStaticClearanceReason::Clear); }
+		TestTrue(TEXT("Stale cached static contact or changed interval support denies certification"),
+			(Stage == 0 ? S.PreClearance : Stage == 1 ? S.IntegratedClearance : S.SolvedClearance) == EStaticClearanceReason::UnsupportedScene);
+		TestTrue(TEXT("Stale or changed static contact cannot create a committed transfer fact"),F.Samples.Last().Transfers == 0 && F.FactCursor->LastRevision() == 0);
+		// Cancellation restored wall contacts, which can rotate the traveller.
+		// Restore only this fixture's normal approach before probing a fresh lease.
+		F.Body->BodyInstance.SetBodyTransform(FTransform(FVector(8,0,0)),ETeleportType::TeleportPhysics);
+		F.Body->SetPhysicsLinearVelocity(FVector(-120,0,0));
+		F.Body->SetPhysicsAngularVelocityInRadians(FVector::ZeroVector);
+		F.Advance(Substeps);
+		const auto FreshReason = F.Samples[F.Samples.Num()-(Substeps ? 2 : 1)].PreClearance;
+		TestTrue(FString::Printf(TEXT("Fresh interval cannot bootstrap from unchanged stale static manifold: substeps=%d stage=%d reason=%d"),Substeps,Stage,static_cast<int32>(FreshReason)),FreshReason == EStaticClearanceReason::UnsupportedScene);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalContactIslandUnsupportedTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.ContactIslandUnsupported", PortalBoundaryTestFlags)
+bool FPortalContactIslandUnsupportedTest::RunTest(const FString& Parameters)
+{
+	for (bool Substeps : {false,true})
+	{
+		{
+			FNativeSleepingContacts Fixture(Substeps,false,false,true); auto& F = Fixture.Scene;
+			TestTrue(TEXT("Kinematic support fixture retains actual native contact"),Fixture.NativeMidphases > 0);
+			F.Advance(Substeps);
+			TestTrue(TEXT("Retained kinematic contact remains outside stationary contact-island profile"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene
+				&& F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+		}
+		{
+			FNativeSleepingContacts Fixture(Substeps,true); auto& F = Fixture.Scene;
+			AActor* Owner = F.World->SpawnActor<AActor>(); auto* Joint = NewObject<UPhysicsConstraintComponent>(Owner);
+			Owner->SetRootComponent(Joint); Owner->AddInstanceComponent(Joint);
+			Joint->SetWorldLocation(Fixture.Members.Last()->GetComponentLocation()); Joint->RegisterComponent();
+			Joint->SetConstrainedComponents(Fixture.Members.Last(),NAME_None,Fixture.Floor,NAME_None);
+			for (auto* Member : Fixture.Members) { Member->PutAllRigidBodiesToSleep(); }
+			F.Advance(Substeps);
+			TestTrue(TEXT("Sleeping contact island cannot hide a persistent world joint"),F.Samples[0].PreClearance == EStaticClearanceReason::UnsupportedScene
+				&& F.Samples[0].DisabledPairs == 0 && F.Samples.Last().Transfers == 0);
+		}
 	}
 	return true;
 }

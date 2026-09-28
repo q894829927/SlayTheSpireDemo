@@ -197,10 +197,33 @@ retires the binding. Filtered-out dynamics are excluded. The subsequent
 isolated actual Sleeping particles by freezing native pose/geometry per physical
 interval and revalidating all three stages. No GT sleep claim or V*dt prediction
 can substitute for a native lease. Every simulation sleeper participates in wake
-analysis, including filtered-out intermediates; retained midphases, persistent
-joints, pending impulses and uncertified wake reach reject. Active dynamic and
-contact-island motion still requires contact/constraint-safe coverage or a bounded
-rejection policy. This does not certify arbitrary production scenes.
+analysis, including filtered-out intermediates. The subsequent
+[closed sleeping contact-island lease](InteriorPortalPhysicsContactIslandsPHY4.md)
+admits retained collision-only contacts only when the complete native island is
+sleeping, with bounded canonical member/partner topology and fixed static-contact
+pose/geometry. Cached static shape transforms must match native state; stale
+manifolds cannot bootstrap a new lease. Later stages revalidate the same topology
+and descriptors. No graph pointers or debug island IDs are persistent identities.
+Persistent joints, pending impulses, retained kinematic contacts, resim/cache,
+unknown geometry and uncertified wake reach reject. Active dynamic/awake-island
+motion still requires contact/constraint-safe coverage or a bounded rejection
+policy. The [bounded independent active-body profile](InteriorPortalPhysicsActiveReachPHY4.md)
+now leases a remote contact-free native dynamic only with a usable speed cap,
+whole-step corridor separation and preflight exclusion of possible static
+contacts. Any interacting non-static partner, CCD, joint or actual contact
+still rejects. A speed cap alone never certifies collision-solver displacement.
+This does not certify arbitrary production scenes.
+The [traveller gravity/contact preflight](InteriorPortalPhysicsGravityCancellationPHY4.md)
+requires a native integration speed cap on the travelling rigid body and rejects
+potential floor contact before disabling portal support contacts. The
+[cap lifecycle](InteriorPortalPhysicsSpeedCapLifecyclePHY4.md) installs it via
+UE's GT physics interface. Ordinary filter updates preserve it; actual body
+recreation retires the binding and requires a new cap. The original cancellation
+fixture had body gravity disabled; the [continuous-gravity follow-up](InteriorPortalPhysicsContinuousGravityPHY4.md)
+enables it, verifies downward integration and admits bounded sideways motion
+under the same whole-step reach proof. This establishes free fixed-orientation
+passage and near-floor safe denial in a narrow native fixture, not successful
+passage for a floor-supported or generally rotating body.
 The shared rigid half-turn is an exact quaternion, preserving an axial trajectory
 without float-angle lateral drift across physics and virtual-camera mapping.
 

@@ -1,7 +1,7 @@
 # Portal Physics P1 execution
 
 Updated: 2026-09-27.
-Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static, filter/kinematic and dormant profiles validated); production migration/Core OPEN**.
+Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static, filter/kinematic, dormant, closed sleeping contact and bounded independent active profiles validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
 Performance P1 acceptance. The user requested one commit after PHY-1 completion;
@@ -14,8 +14,12 @@ primitives are committed as `33492d01471b2025f7d068dc090c0e4b1ac2ee37`.
 The native static certificate is committed as `12f1fe81ef11cdc1ffc3403ae142782680f041e0`.
 The native filter/kinematic delivery is committed as
 `9d44f5b535ca4371a60892afbd9ba357d93d44ed`.
-Current native dormant-body lease continuation is uncommitted; see
-[its execution/evidence record](InteriorPortalPhysicsDormantCoveragePHY4.md).
+The native dormant-body lease delivery is committed as
+`fd825aca848de01f120bf346badd0eab6f161bc8`.
+Current closed sleeping contact-island continuation is uncommitted; see
+[its execution/evidence record](InteriorPortalPhysicsContactIslandsPHY4.md).
+The subsequent bounded independent active-body continuation is also uncommitted;
+see [its scope and evidence](InteriorPortalPhysicsActiveReachPHY4.md).
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -394,16 +398,41 @@ That delivery still rejected interacting Dynamic/Sleeping obstacles. The subsequ
 [native dormant-body lease](InteriorPortalPhysicsDormantCoveragePHY4.md) extends
 the provider to isolated native sleepers with per-step pose/geometry leases and
 bounded wake-partner checks, including sleepers filtered out against the traveller.
-Active dynamics and retained contact/joint islands remain rejected; arbitrary
-production scenes remain uncertified. Generation/build PASS; final affected
+That increment rejected active dynamics and retained contact/joint islands;
+arbitrary production scenes remained uncertified. Generation/build PASS; final affected
 PhysicsSolverClearance **11/11 PASS, zero test warnings**, including four new
 dormant gates and seven existing regressions. Dedicated record retains failed
 runs separately. No manual PIE performed or production carrying fix claimed.
 
+The [closed sleeping contact-island extension](InteriorPortalPhysicsContactIslandsPHY4.md)
+now proves one-body floor contact and two-body stack certification with actual
+native island sleep, member/partner topology, static contact pose/geometry and
+cached-transform validity. Waking a member, stale/moved support, kinematic retained
+contact or a persistent joint rejects. Generation/build PASS; initial affected
+14/15 PASS (all previous 11 gates passed), final ContactIsland 4/4 PASS, both zero
+test warnings; separate runs. New mutating code remains attached only in tests.
+Awake dynamics/islands and arbitrary production coverage remain unproved.
+
+The [gravity/contact cancellation increment](InteriorPortalPhysicsGravityCancellationPHY4.md)
+now proves a narrow pre-contact rejection path for the traveller itself: a
+native speed cap bounds integration, its all-orientation whole-step reach catches
+a reachable floor before support bypass. The follow-up
+[speed-cap lifecycle](InteriorPortalPhysicsSpeedCapLifecyclePHY4.md) installs the
+cap through the UE game-thread physics interface; ordinary filter updates retain
+it, while actual body recreation retires the old binding and requires a fresh
+cap installation. The original 17/17 and 18/18 fixture runs did **not** enable
+gravity on the travelling body, so their gravity-effect claims are superseded.
+The [continuous-gravity increment](InteriorPortalPhysicsContinuousGravityPHY4.md)
+enables native body gravity, checks downward integration, certifies bounded
+sideways travel and validates free passage plus near-floor/partial cancellation:
+final affected solver-clearance suite **19/19 PASS, zero warnings**. This does
+not certify a floor-supported or generally rotating body's successful passage
+and does not attach the provider to production.
+
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a
 bounded rejection policy that includes contact/constraint effects, then prove
-normal/exceptional cancellation, rotation/gravity/blocked
+exceptional cancellation, rotation/floor-supported passage/blocked
 exit support and final pending-fact handoff. The remaining full PHY-4 contract is:
 
 Implement the single held/free coordinator, certified query/topology snapshot

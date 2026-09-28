@@ -2,6 +2,9 @@
 
 Updated: 2026-09-27. Status: **DORMANT PROFILE VALIDATED; active dynamics/cutover/Core OPEN**.
 Source HEAD: `9d44f5b535ca4371a60892afbd9ba357d93d44ed` (native filters/kinematic coverage committed).
+This delivery is committed as `fd825aca848de01f120bf346badd0eab6f161bc8`.
+Its original isolated-sleeper scope is extended by the subsequent
+[closed sleeping contact-island record](InteriorPortalPhysicsContactIslandsPHY4.md).
 Authority: [PHY-4 ordering](InteriorPortalPhysicsPHY4.md),
 [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md).
 
@@ -13,6 +16,10 @@ profile avoids unproved active-force/contact extrapolation. The verifier reads
 native state only and never forces an obstacle to sleep or removes its contacts.
 Keep static supports, fixed-normal traveller motion, stage/step proof consumption
 and current pairwise Core obstruction policy unchanged.
+
+This was the original dormant-slice boundary; the later
+[continuous-gravity increment](InteriorPortalPhysicsContinuousGravityPHY4.md)
+extends the traveller to bounded lateral motion under the same native reach proof.
 
 An admitted sleeper must have bounded native geometry, finite positive mass,
 zero current velocity/acceleration/pending impulse, no persistent constraints and
@@ -84,7 +91,8 @@ manual gates remain after full provider coverage and atomic production cutover.
 
 ## Evidence and next action
 
-Implementation is uncommitted on the source HEAD above. Prescribed bundled UE 5.8
+The historical implementation described here is now committed as `fd825ac`.
+Prescribed bundled UE 5.8
 project generation and editor builds PASS. Final affected
 `SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance` run **11/11 PASS,
 zero test warnings**, 2026.09.26-17.14.46 UTC. This includes the four new dormant
