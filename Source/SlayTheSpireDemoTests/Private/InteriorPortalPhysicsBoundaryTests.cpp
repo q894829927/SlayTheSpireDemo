@@ -6,6 +6,7 @@
 #include "Interior/InteriorPortalChaosTransferAdapter.h"
 #include "Interior/InteriorPortalChaosStaticClearance.h"
 #include "Interior/InteriorPortalChaosSpeedCap.h"
+#include "Interior/InteriorPortalChaosPassageSession.h"
 #include "Interior/InteriorPortalPhysicsBinding.h"
 #include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
@@ -84,12 +85,12 @@ namespace
 		const uint64 Epoch = SolverEpochs.Increment();
 		bool ProbeAdapterRejections = false; // configured only before dispatch
 		bool NativeClearanceEnabled = false, ProbeClearanceProtocol = false;
+		FPassageSessionHandoff LastHandoff;
 		TFunction<void()> AfterIntegrateMutation, AfterSolveMutation; // editor fixture injections, configured before dispatch
-		void ConfigureClearanceBeforeDispatch(const FBoundaryCommand& C, const FTransform& Support0, const FTransform& Support1,
-			const InteriorPortalPhysics::FGeometry& Geometry0, const InteriorPortalPhysics::FGeometry& Geometry1)
+		void ConfigureClearanceBeforeDispatch(const FPreparedPhysicsBinding& Prepared)
 		{
-			Clearance = MakeUnique<FChaosStaticClearance>(static_cast<Chaos::FPBDRigidsSolver*>(GetSolver()),
-				Body,Supports[0],Supports[1],C,Epoch,Epoch,Support0,Support1,Geometry0,Geometry1);
+			check(Session->AttachClearance_Internal(Prepared));
+			Clearance = Session->Clearance();
 			NativeClearanceEnabled = true;
 		}
 		void ConfigureHoldBeforeDispatch(uint64 RouteRevision, uint64 RegionRevision)
@@ -98,11 +99,14 @@ namespace
 		{ return Coordinator->AcquireHold(17,{1,71,1},0,Desired,Anchor); }
 		void BindBeforeDispatch(Chaos::FSingleParticlePhysicsProxy* InBody,
 			Chaos::FSingleParticlePhysicsProxy* EntrySupport, Chaos::FSingleParticlePhysicsProxy* ExitSupport,
-			FTravellerHandle BodyToken, uint64 PairToken, const FTransform& EntryFrame, const FTransform& ExitFrame)
+			const FBoundaryCommand& BindingCommand)
 		{
-			Body = InBody; Supports[0] = EntrySupport; Supports[1] = ExitSupport; BoundBody = BodyToken; BoundPair = PairToken;
-			Coordinator = MakeUnique<FPassageCoordinator>(BodyToken,PairToken,Epoch,Epoch,EntryFrame,ExitFrame);
-			Adapter = MakeUnique<FChaosTransferAdapter>(InBody,BodyToken,PairToken,Epoch,Epoch,FVector::OneVector);
+			Body = InBody; Supports[0] = EntrySupport; Supports[1] = ExitSupport;
+			BoundBody = BindingCommand.Traveller.Handle; BoundPair = BindingCommand.PairGeneration;
+			Session = MakeUnique<FChaosPassageSession>(static_cast<Chaos::FPBDRigidsSolver*>(GetSolver()),
+				Body,Supports[0],Supports[1],BindingCommand,Epoch,Epoch);
+			check(!Session->IsRetired());
+			Coordinator = Session->Passage(); Adapter = Session->Transfer();
 		}
 		virtual FName GetFNameForStatId() const override { return TEXT("PortalBoundarySpike"); }
 	private:
@@ -117,13 +121,19 @@ namespace
 		FTravellerHandle BoundBody;
 		uint64 BoundPair = 0;
 		uint64 HoldRouteRevision = 0, HoldRegionRevision = 0;
-		TUniquePtr<FPassageCoordinator> Coordinator;
-		TUniquePtr<FChaosTransferAdapter> Adapter;
-		TUniquePtr<FChaosStaticClearance> Clearance;
+		TUniquePtr<FChaosPassageSession> Session;
+		FPassageCoordinator* Coordinator = nullptr;
+		FChaosTransferAdapter* Adapter = nullptr;
+		FChaosStaticClearance* Clearance = nullptr;
 		TOptional<FStaticClearanceProof> PreviousProof;
 		bool NativeIntervalEligible = false;
 		bool HasInput = false, BindingMatches = false;
 		FSpikeSample* Sample = nullptr;
+		void RetireBinding()
+		{
+			Retired = true;
+			LastHandoff = Session->Retire_Internal();
+		}
 		// UE registers evolution callbacks in its simulation list too. Presimulate
 		// is intentionally empty: interval work starts at the actual PreIntegrate hook.
 		virtual void OnPreSimulate_Internal() override {}
@@ -139,7 +149,7 @@ namespace
 			if (Stage == EClearanceStage::PostSolve) { Sample->SolvedClearance = Proof.Reason(); }
 			if (Proof.Reason() == EStaticClearanceReason::BindingChanged || Proof.Reason() == EStaticClearanceReason::Retired)
 			{
-				Retired = true; Sample->Retired = true; Coordinator->Retire(); Adapter->Retire_Internal();
+				RetireBinding(); Sample->Retired = true;
 			}
 			if (ProbeClearanceProtocol && Proof.Reason() == EStaticClearanceReason::Clear)
 			{
@@ -187,8 +197,8 @@ namespace
 			BindingMatches = Current.Traveller.Handle == BoundBody && Current.PairGeneration == BoundPair;
 			// Owner cancellation reaches the same marshalled boundary as physics removal.
 			// The native unregister callback is a second lifetime guard, not the sole cancellation signal.
-			if (HasInput && !BindingMatches) { Retired = true; }
-			if (Retired) { Coordinator->Retire(); Adapter->Retire_Internal(); if (Clearance) { Clearance->Retire_Internal(); } }
+			if (HasInput && !BindingMatches) { RetireBinding(); }
+			if (Retired) { LastHandoff = Session->Retire_Internal(); }
 			if (HasInput) { Coordinator->Acknowledge(Input->TransferAck); }
 			PortalIndex = Coordinator->BodyEndpoint();
 			if (Current.Revision > Revision) { Revision = Current.Revision; Reuse = 0; }
@@ -352,7 +362,7 @@ namespace
 						return Committed;
 					}
 					} Checked;
-					Checked.Native = Adapter.Get(); Checked.Owner = this;
+					Checked.Native = Adapter; Checked.Owner = this;
 					Coordinator->CommitSolved(Current,Solved,Sample->Receipt.Step,Checked);
 				Sample->MaterialPreserved = Handle->M() == Solved.MassKg && FVector(Handle->InvI()) == InvI
 					&& Handle->CenterOfMass() == Solved.LocalCOM && Handle->RotationOfMass() == Solved.RotationOfMass
@@ -367,10 +377,9 @@ namespace
 			for (const auto& Item : Proxies)
 			{
 				const auto* Proxy = Item.Get<1>();
-				if (Proxy == Body || Proxy == Supports[0] || Proxy == Supports[1])
+				if (Session->ReferencesProxy(Proxy))
 				{
-					Retired = true; UnregistrationObserved = true; Coordinator->Retire(); Adapter->Retire_Internal();
-					if (Clearance) { Clearance->Retire_Internal(); }
+					UnregistrationObserved = true; RetireBinding();
 				}
 			}
 		}
@@ -421,7 +430,7 @@ namespace
 			Callback = Scene->GetSolver()->CreateAndRegisterSimCallbackObject_External<FPortalBoundarySpike>();
 			Callback->BindBeforeDispatch(Body->BodyInstance.GetPhysicsActor(),
 				EntryWall->BodyInstance.GetPhysicsActor(), ExitWall->BodyInstance.GetPhysicsActor(),
-				Command.Traveller.Handle, Command.PairGeneration,Command.Entry,Command.Exit);
+				Command);
 			FactCursor = MakeUnique<FTransferFactCursor>(Command.Traveller.Handle,Callback->Epoch,Callback->Epoch);
 		}
 		~FNativeScene()
@@ -498,8 +507,7 @@ namespace
 			FPreparedPhysicsBinding Prepared;
 			check(PreparePhysicsBinding_GameThread(Request,Prepared) == EPhysicsBindingResult::Ready);
 			Command = Prepared.Command;
-			Callback->ConfigureClearanceBeforeDispatch(Command,Prepared.SupportPose[0],Prepared.SupportPose[1],
-				Prepared.SupportGeometry[0],Prepared.SupportGeometry[1]);
+			Callback->ConfigureClearanceBeforeDispatch(Prepared);
 			// Authoritative proof must replace these authored fixture claims at every stage.
 			Command.IsolatedStaticScope = false; Command.ExitCorridorCertified = false;
 		}
@@ -904,6 +912,32 @@ bool FPortalNativeCoordinatorDelayedTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Delayed fact consumed once, duplicate delivery harmless"),F.FactsValid && F.FactCursor->LastRevision() == 1);
 	F.Advance(true);
 	TestTrue(TEXT("Acknowledgment reaches solver boundary and retires journal prefix"),F.Samples.Last().Facts.IsEmpty());
+	return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalNativeSessionHandoffTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.RetiredFactHandoff", PortalBoundaryTestFlags)
+bool FPortalNativeSessionHandoffTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(true,true,true,true); F.DelayFacts = true; F.EnableNativeClearance();
+	for (int32 I=0; I<12; ++I) { F.Advance(true); }
+	TestTrue(TEXT("A native commit is still pending when topology is cancelled"),
+		F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 0
+		&& F.Samples.Last().Facts.Num() == 1);
+	const auto OriginalBody = F.Command.Traveller.Handle;
+	const uint64 OriginalPair = F.Command.PairGeneration;
+	++F.Command.PairGeneration; F.Advance(true);
+	const auto Handoff = F.Callback->LastHandoff;
+	TestTrue(TEXT("One session retires clearance and transfer writes before stale pair input can act"),
+		F.Samples.Last().Retired && !F.Samples.Last().Decision.BypassSupport
+		&& Handoff.Body == OriginalBody && Handoff.PendingFacts.Num() == 1
+		&& Handoff.PendingFacts[0].PairGeneration == OriginalPair);
+	F.ConsumeFacts(Handoff.PendingFacts); F.ConsumeFacts(Handoff.PendingFacts);
+	TestTrue(TEXT("Retired-session handoff can be consumed once without replaying body pose"),
+		F.FactsValid && F.FactCursor->LastRevision() == 1 && F.Samples.Last().Transfers == 1);
+	F.Advance(true);
+	TestTrue(TEXT("Acknowledgment drains the retired journal without reviving the binding"),
+		F.Callback->LastHandoff.PendingFacts.IsEmpty() && F.Samples.Last().Retired
+		&& !F.Samples.Last().Decision.BypassSupport);
 	return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalWorldPassageVolumeTest,

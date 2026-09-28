@@ -1,6 +1,6 @@
 # Portal Physics P1 execution
 
-Updated: 2026-09-27.
+Updated: 2026-09-29.
 Status: **PHY-0/PHY-1 COMPLETE; PHY-2/PHY-3 narrow profiles VALIDATED; PHY-4 IN PROGRESS (coordinator, world-observation/transfer primitives, native static, filter/kinematic, dormant, closed sleeping contact and bounded independent active profiles validated); production migration/Core OPEN**.
 Source baseline: `78057a34022e0f979be887a9ad7f97038c3350bf`. This delivery
 adds the diagnostics and identity/geometry foundation and records the sealed
@@ -16,10 +16,14 @@ The native filter/kinematic delivery is committed as
 `9d44f5b535ca4371a60892afbd9ba357d93d44ed`.
 The native dormant-body lease delivery is committed as
 `fd825aca848de01f120bf346badd0eab6f161bc8`.
-Current closed sleeping contact-island continuation is uncommitted; see
-[its execution/evidence record](InteriorPortalPhysicsContactIslandsPHY4.md).
-The subsequent bounded independent active-body continuation is also uncommitted;
-see [its scope and evidence](InteriorPortalPhysicsActiveReachPHY4.md).
+Closed sleeping contact-island and bounded independent active-body continuations
+are included in `48b753d`; see their
+[contact-island evidence](InteriorPortalPhysicsContactIslandsPHY4.md) and
+[active-reach evidence](InteriorPortalPhysicsActiveReachPHY4.md).
+The world-component binding preparation is committed as `2e1b3e4`. The
+[native session-lifecycle continuation](InteriorPortalPhysicsSessionLifecyclePHY4.md)
+is validated in the Editor Chaos fixture. Production binding,
+atomic cutover and actual-map Core gates remain open.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains

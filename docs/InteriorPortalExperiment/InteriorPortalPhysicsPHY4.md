@@ -1,8 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
-Updated: 2026-09-27. Status: **IN PROGRESS; COORDINATOR, STATIC, FILTER/KINEMATIC, DORMANT AND CLOSED SLEEPING CONTACT PROFILES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
-Source HEAD: `fd825aca848de01f120bf346badd0eab6f161bc8` (native dormant leases committed).
-Closed sleeping contact-island continuation is uncommitted; general slice 2 OPEN.
+Updated: 2026-09-29. Status: **IN PROGRESS; COORDINATOR, STATIC, FILTER/KINEMATIC, DORMANT AND CLOSED SLEEPING CONTACT PROFILES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
+Predecessor commit: `2e1b3e4` (world-component binding preparation).
+Native session-lifecycle work is validated; general slice 2 remains OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -247,8 +247,8 @@ retention inside this object alone does not implement whole-world shutdown.
 No manual gate applies to this isolated slice and no production fix/Core seal
 is claimed. Map hash remains
 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
-**Next unfinished work: slice 2 — actual-world certified query/topology provider
-and production adapter assembly**. Native-gravity free passage and partially
+**The next unfinished work remains slice 2 — actual-world certified query/topology
+provider and production adapter assembly**. Native-gravity free passage and partially
 inserted cancellation fixtures now pass. Resolve awake interacting islands,
 general rotating/held-body motion and remaining exceptional recovery cases.
 The production adapter must bind the current native body and install the speed
@@ -262,3 +262,11 @@ The editor Chaos fixture now uses this entry point before native binding; affect
 `PhysicsSolverClearance` is **20/20 PASS, zero warnings**. It does not attach the
 provider to the gameplay system or authorize a second writer. Production binding
 lifetime, held/free drive assembly and atomic cutover remain open.
+
+The [native session-lifecycle follow-up](InteriorPortalPhysicsSessionLifecyclePHY4.md)
+gives the coordinator, transfer adapter and clearance one binding owner and one
+retirement path. Its delayed-fact cancellation test keeps the old committed fact
+available after pair invalidation and drains it by typed acknowledgment. The
+affected Physics prefix is **44/44 PASS, 0 failures, 1 test with 2 existing
+foundation warnings**. This remains Editor-fixture-only; production ownership,
+cutover and Core acceptance are open.
