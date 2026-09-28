@@ -429,6 +429,12 @@ final affected solver-clearance suite **19/19 PASS, zero warnings**. This does
 not certify a floor-supported or generally rotating body's successful passage
 and does not attach the provider to production.
 
+The [binding-preparation follow-up](InteriorPortalPhysicsBindingPreparationPHY4.md)
+now derives the native request from registered world components and exact
+support collision instead of hand-assembling the test binding. Its regression
+suite is **20/20 PASS, zero warnings**. This is a prepared GT snapshot, not a
+substep certificate or production writer.
+
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a
 bounded rejection policy that includes contact/constraint effects, then prove

@@ -224,6 +224,10 @@ enables it, verifies downward integration and admits bounded sideways motion
 under the same whole-step reach proof. This establishes free fixed-orientation
 passage and near-floor safe denial in a narrow native fixture, not successful
 passage for a floor-supported or generally rotating body.
+The [binding-preparation step](InteriorPortalPhysicsBindingPreparationPHY4.md)
+derives the nonauthoritative GT request from registered body/support collision,
+pair identity, equal apertures and native COM before PT proof. It does not run
+beside or replace the legacy gameplay writers yet.
 The shared rigid half-turn is an exact quaternion, preserving an axial trajectory
 without float-angle lateral drift across physics and virtual-camera mapping.
 

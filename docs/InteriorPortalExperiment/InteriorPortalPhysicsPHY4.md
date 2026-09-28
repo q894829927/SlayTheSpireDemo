@@ -254,3 +254,11 @@ general rotating/held-body motion and remaining exceptional recovery cases.
 The production adapter must bind the current native body and install the speed
 cap through the GT physics interface after creation/recreation. Then perform
 atomic cutover and the required Core manual gate.
+
+The next [GT binding-preparation increment](InteriorPortalPhysicsBindingPreparationPHY4.md)
+builds an unprivileged command and support snapshot from actual registered
+components, matching endpoint apertures, collision geometry and native COM.
+The editor Chaos fixture now uses this entry point before native binding; affected
+`PhysicsSolverClearance` is **20/20 PASS, zero warnings**. It does not attach the
+provider to the gameplay system or authorize a second writer. Production binding
+lifetime, held/free drive assembly and atomic cutover remain open.

@@ -6,6 +6,7 @@
 #include "Interior/InteriorPortalChaosTransferAdapter.h"
 #include "Interior/InteriorPortalChaosStaticClearance.h"
 #include "Interior/InteriorPortalChaosSpeedCap.h"
+#include "Interior/InteriorPortalPhysicsBinding.h"
 #include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
@@ -489,10 +490,16 @@ namespace
 		{
 			if (RemoveOtherBody) { ProtectedBody->DestroyComponent(); ProtectedBody = nullptr; }
 			InstallNativeTravellerCap();
-			InteriorPortalPhysics::FGeometry Geometry0, Geometry1;
-			check(ExtractStaticSupportGeometry(EntryWall,Geometry0) == EGeometryResult::Fits);
-			check(ExtractStaticSupportGeometry(ExitWall,Geometry1) == EGeometryResult::Fits);
-			Callback->ConfigureClearanceBeforeDispatch(Command,EntryWall->GetComponentTransform(),ExitWall->GetComponentTransform(),Geometry0,Geometry1);
+			FPhysicsBindingRequest Request;
+			Request.World = World; Request.Body = Body; Request.Supports[0] = EntryWall; Request.Supports[1] = ExitWall;
+			Request.Registry = &Registry; Request.Command = Command; Request.Command.Revision = NextRevision;
+			Request.EndpointApertures[0] = FVector2D(Command.HalfWidth,Command.HalfHeight);
+			Request.EndpointApertures[1] = Request.EndpointApertures[0];
+			FPreparedPhysicsBinding Prepared;
+			check(PreparePhysicsBinding_GameThread(Request,Prepared) == EPhysicsBindingResult::Ready);
+			Command = Prepared.Command;
+			Callback->ConfigureClearanceBeforeDispatch(Command,Prepared.SupportPose[0],Prepared.SupportPose[1],
+				Prepared.SupportGeometry[0],Prepared.SupportGeometry[1]);
 			// Authoritative proof must replace these authored fixture claims at every stage.
 			Command.IsolatedStaticScope = false; Command.ExitCorridorCertified = false;
 		}
@@ -1216,6 +1223,34 @@ bool FPortalSolverContinuousGravityTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Continuous gravity without reachable contacts stays certified across one portal transfer"),
 			Clear && F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1 && F.FactsValid);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalPhysicsBindingPreparationTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.WorldBindingPreparation", PortalBoundaryTestFlags)
+bool FPortalPhysicsBindingPreparationTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(true,true,true,true);
+	FPhysicsBindingRequest R;
+	R.World = F.World; R.Body = F.Body; R.Supports[0] = F.EntryWall; R.Supports[1] = F.ExitWall;
+	R.Registry = &F.Registry; R.Command = F.Command; R.Command.Revision = 1;
+	FPreparedPhysicsBinding Prepared;
+	TestTrue(TEXT("Registered world components produce an unprivileged native binding snapshot"),
+		PreparePhysicsBinding_GameThread(R,Prepared) == EPhysicsBindingResult::Ready
+		&& Prepared.Command.Traveller.Handle == F.Command.Traveller.Handle
+		&& Prepared.Command.SupportHalfThicknessCm >= 2
+		&& !Prepared.Command.IsolatedStaticScope && !Prepared.Command.ExitCorridorCertified);
+	R.EndpointApertures[1].X += 1;
+	TestTrue(TEXT("Unequal endpoint apertures cannot be represented by this single-width certificate"),
+		PreparePhysicsBinding_GameThread(R,Prepared) == EPhysicsBindingResult::IncompatibleAperture);
+	R.EndpointApertures[1].X -= 1;
+	F.ExitWall->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	TestTrue(TEXT("Support without native collision cannot become a binding"),
+		PreparePhysicsBinding_GameThread(R,Prepared) == EPhysicsBindingResult::UnsupportedSupport);
+	F.ExitWall->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	F.Body->SetBoxExtent(FVector(6));
+	TestTrue(TEXT("Geometry changed after registry capture cannot become a binding"),
+		PreparePhysicsBinding_GameThread(R,Prepared) == EPhysicsBindingResult::StaleTraveller);
 	return true;
 }
 
