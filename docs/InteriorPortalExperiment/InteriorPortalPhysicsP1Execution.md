@@ -446,8 +446,13 @@ The [read-only real binding observer](InteriorPortalPhysicsRealBindingObservePHY
 now wires a prepared GT snapshot into a Chaos callback through the production
 actor behind a default-off diagnostic switch. It validates transport, pair
 retirement and proxy lifetime without granting passage or adding a writer.
-The affected Physics prefix is 46/46 PASS; map-specific support coverage,
-fact/ack delivery, held/free control and production cutover remain open.
+The affected Physics prefix is 46/46 PASS; at this stage map-specific support
+coverage, fact/ack delivery, held/free control and production cutover remained open.
+
+[Actual-map binding coverage](InteriorPortalPhysicsMapBindingCoveragePHY4.md)
+now confirms the authored scaled supports and cube can prepare and register a
+read-only native callback after correcting the GT scale-validation domain.
+The provider still must certify actual physics intervals before cutover.
 
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a

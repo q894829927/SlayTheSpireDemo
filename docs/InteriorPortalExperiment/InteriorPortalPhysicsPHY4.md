@@ -287,3 +287,11 @@ to GT. The affected Physics prefix is **46/46 PASS, 0 failures, 1 existing
 foundation test with 2 warnings**. This is not a permission or motion writer;
 actual-map support coverage, fact/ack transport, held/free control and atomic
 cutover remain open.
+
+The [actual-map binding coverage](InteriorPortalPhysicsMapBindingCoveragePHY4.md)
+found a coordinate-domain error for scaled support walls: GT geometry already
+baked component scale, but the span check used an unscaled native particle pose.
+GT validation now uses the component transform while PT keeps its native
+unit-scale pose. The authored map's registered cube reports `Ready` and can
+register a read-only Chaos callback; dedicated map 1/1 and affected Physics
+46/46 pass. This does not certify a physical interval or promote the writer.

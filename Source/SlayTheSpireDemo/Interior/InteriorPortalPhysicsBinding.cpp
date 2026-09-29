@@ -50,8 +50,12 @@ namespace InteriorPortalPhysics
 			if (ExtractStaticSupportGeometry(R.Supports[I],Prepared.SupportGeometry[I]) != EGeometryResult::Fits)
 			{ return EPhysicsBindingResult::UnsupportedSupport; }
 			const FTransform ComponentPose = R.Supports[I]->GetComponentTransform();
+			// ExtractStaticSupportGeometry bakes component scale into FGeometry.
+			// EvaluatePose still requires the matching component-scale identity;
+			// the later native verifier uses already-scaled Chaos bounds and an
+			// unscaled particle pose. Keep those two coordinate domains explicit.
 			Prepared.SupportPose[I] = FTransform(ComponentPose.GetRotation(),ComponentPose.GetLocation());
-			const auto Span = EvaluatePose(Prepared.SupportGeometry[I],Prepared.SupportPose[I],
+			const auto Span = EvaluatePose(Prepared.SupportGeometry[I],ComponentPose,
 				I == 0 ? R.Command.Entry : R.Command.Exit,1.e100,1.e100);
 			if (!Span.Fits() || Span.MinNormal > 0 || Span.MaxNormal < 0
 				|| !FMath::IsFinite(Span.MaxNormal))

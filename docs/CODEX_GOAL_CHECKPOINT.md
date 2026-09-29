@@ -1,5 +1,30 @@
 # Codex Goal Checkpoint — Interior Portals
 
+## PHY-4 actual-map binding coverage — 2026-09-29
+
+- Predecessor HEAD `067215d` on `portal/full-fidelity-p1` commits GT binding/fact
+  lifecycle and the read-only GT/PT bridge. This delivery includes the scaled-support
+  readiness fix, dedicated map test and this record. Preserve unrelated
+  renderer/lighting changes and the dirty user map; map SHA-256 remains
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- Actual-map PIE clone has two linked portals, 14 allowed surfaces and one
+  registered cube. Both supports have scaled simple collision. `PreparePhysicsBinding`
+  previously returned `UnsupportedSupport` because a unit-scale PT pose was
+  passed to GT `EvaluatePose` for scale-baked geometry. GT now validates with
+  full component transform while PT retains its unit-scale native pose. The
+  cube reports `Ready` and registers the read-only native callback.
+- UE 5.8 generation and Development Editor build PASS. Final dedicated map
+  Automation 1/1 PASS, no warnings; affected generic Physics 46/46 PASS,
+  zero failures, one existing test with two warnings. Evidence:
+  `Saved/Logs/PortalPhysicsPHY4MapCoverage{ProjectFiles,BuildFinal}.log`,
+  `Saved/AutomationReports/PortalPhysicsPHY4MapCoverage{Final2,PhysicsFinal2}/index.json`.
+  Intermediate prefix failure was a map-precondition test classification issue,
+  corrected before final evidence.
+- Next: actual-world per-substep clearance/rejection for the authored supports
+  and scene, then held/free input, fact/ack handoff, atomic old-writer removal
+  and Core automated/manual PIE. No new writer or physical-fix acceptance yet.
+  See [map binding record](InteriorPortalExperiment/InteriorPortalPhysicsMapBindingCoveragePHY4.md).
+
 ## PHY-4 real GT/PT read-only binding — 2026-09-29
 
 - Predecessor HEAD `d442f15` on `portal/full-fidelity-p1`; this commit includes

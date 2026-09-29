@@ -2,6 +2,26 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 actual-map binding coverage — 2026-09-29
+
+Predecessor HEAD `067215d`; [map coverage record](InteriorPortalExperiment/InteriorPortalPhysicsMapBindingCoveragePHY4.md)
+and scaled-support GT validation fix are included in this delivery. UE 5.8 bundled .NET
+project generation and Development Editor build PASS. Read-only PIE copy of
+`/Game/House/L_Interior_LivingKitchen`: dedicated
+`SlayTheSpireDemo.Interior.Portals.MapBindingCoverage` **1/1 PASS, 0 warnings**;
+both authored scaled supports have `FITS` geometry, the registered cube has
+`Ready` preparation and `nativeBound=1`. Affected generic
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0 failures; 1 existing
+foundation test with 2 warnings**. Final reports are dated 2026-09-29 05:46 UTC:
+`Saved/AutomationReports/PortalPhysicsPHY4MapCoverageFinal2/index.json` and
+`Saved/AutomationReports/PortalPhysicsPHY4MapCoveragePhysicsFinal2/index.json`;
+build evidence is `Saved/Logs/PortalPhysicsPHY4MapCoverageProjectFiles.log` and
+`Saved/Logs/PortalPhysicsPHY4MapCoverageBuildFinal.log`. Earlier diagnostic
+generic-prefix run failed only because the map-specific test then required a
+map that was not open; moving it to an independent prefix resolved the scope.
+No physical passage or manual visual Core acceptance is claimed. User map
+SHA-256 remains `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
 ## Interior portal PHY-4 real GT/PT binding observation — 2026-09-29
 
 [Read-only binding bridge](InteriorPortalExperiment/InteriorPortalPhysicsRealBindingObservePHY4.md)
