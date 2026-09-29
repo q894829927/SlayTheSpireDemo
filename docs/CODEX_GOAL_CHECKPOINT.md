@@ -1,5 +1,50 @@
 # Codex Goal Checkpoint — Interior Portals
 
+## PHY-4 real GT/PT read-only binding — 2026-09-29
+
+- Predecessor HEAD `d442f15` on `portal/full-fidelity-p1`; this commit includes
+  the GT binding/fact lifecycle and read-only GT/PT bridge. Preserve the dirty map and
+  unrelated renderer/lighting changes. Map SHA-256 remains
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- Opt-in `portal.PhysicsBindingObserve` (default 0) connects traveller/pair
+  snapshots from `AInteriorPortalSystem` to a read-only Chaos callback and
+  returns substep/retirement handoffs to GT. No physical write, clearance
+  permission, transfer fact or gameplay cutover is enabled.
+- UE 5.8 generation and Development Editor build PASS. Focused real callback
+  gate 1/1 PASS; affected Physics 46/46 PASS, 0 failures, one existing test
+  with 2 warnings. Evidence: `Saved/Logs/PortalPhysicsPHY4RealBridgeProjectFiles.log`,
+  `Saved/Logs/PortalPhysicsPHY4RealBridgeBuildFinal.log`,
+  `Saved/Logs/PortalPhysicsPHY4RealBridge{Focused,Final}.log`,
+  `Saved/AutomationReports/PortalPhysicsPHY4RealBridgeFinal/index.json`.
+- Next: inspect actual-map binding support/rejection coverage before designing
+  fact/ack transport, held/free production motion, atomic cutover and Core
+  automated/manual PIE. See
+  [read-only binding record](InteriorPortalExperiment/InteriorPortalPhysicsRealBindingObservePHY4.md).
+
+## PHY-4 GT binding/fact lifecycle — 2026-09-29
+
+- Current HEAD `d442f15` on `portal/full-fidelity-p1`; native session lifecycle
+  is committed. Current GT binding/fact lifecycle increment is uncommitted.
+  Preserve unrelated renderer/lighting changes and the dirty user map.
+- `FPassageBindingLifecycle` gives one traveller one active/retiring binding
+  domain, globally unique binding epochs and a cursor that advances only after
+  fact reconciliation succeeds. Rebinding waits for an old PT handoff with an
+  empty journal and exact final revision. A new test proves delayed old facts,
+  wrong-domain rejection, no double application and no reentrant owner mutation.
+- UE 5.8 bundled .NET project generation and Development Editor build PASS.
+  Affected `SlayTheSpireDemo.Interior.Portals.Physics` **45/45 PASS, 0 failed,
+  1 existing foundation test with 2 warnings** at 2026-09-28 17:54 UTC.
+  Evidence: `Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalProjectFiles.log`,
+  `Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalBuild.log`,
+  `Saved/AutomationReports/PortalPhysicsPHY4BindingLifecycleFinal/index.json`.
+  Map SHA-256 unchanged:
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- Next: actual GT/PT callback delivery of prepared bindings, held/free input,
+  cancellation, facts/ack and retirement; prove native world coverage, then
+  atomic removal of old writers and Core automated/manual PIE. No gameplay
+  cutover or carrying-defect acceptance yet.
+
+
 ## Current execution update — 2026-09-27
 
 - Verified HEAD: `9d44f5b535ca4371a60892afbd9ba357d93d44ed`, branch

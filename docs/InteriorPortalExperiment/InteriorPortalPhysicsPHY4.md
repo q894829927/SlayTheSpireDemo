@@ -1,8 +1,8 @@
 # PHY-4 — one passage coordinator and production cutover
 
 Updated: 2026-09-29. Status: **IN PROGRESS; COORDINATOR, STATIC, FILTER/KINEMATIC, DORMANT AND CLOSED SLEEPING CONTACT PROFILES VALIDATED; general actual-world provider/cutover/Core gates OPEN**.
-Predecessor commit: `2e1b3e4` (world-component binding preparation).
-Native session-lifecycle work is validated; general slice 2 remains OPEN.
+Latest physical commit: `d442f15` (native session lifecycle); prior binding
+preparation is `2e1b3e4`. General slice 2 remains OPEN.
 Authority: [rigid-body contract](InteriorPortalRigidBodyInteractionDesign.md),
 [Physics P1 ordering](InteriorPortalPhysicsP1Execution.md).
 
@@ -270,3 +270,20 @@ available after pair invalidation and drains it by typed acknowledgment. The
 affected Physics prefix is **44/44 PASS, 0 failures, 1 test with 2 existing
 foundation warnings**. This remains Editor-fixture-only; production ownership,
 cutover and Core acceptance are open.
+
+The [GT binding/fact lifecycle follow-up](InteriorPortalPhysicsBindingLifecyclePHY4.md)
+allocates a unique binding epoch, blocks replacement until a typed retired-PT
+handoff shows an empty journal and matching final revision, and commits a fact
+cursor only after successful reconciliation. The affected Physics prefix is
+**45/45 PASS, 0 failures, 1 test with 2 existing foundation warnings**. This
+value-only owner was not yet wired to the gameplay actor or solver callback at
+that stage.
+
+The [read-only real GT/PT binding bridge](InteriorPortalPhysicsRealBindingObservePHY4.md)
+now attaches prepared snapshots to an actual Chaos callback through the gameplay
+actor's opt-in observer (`portal.PhysicsBindingObserve`, default 0). Native
+substep observations, cancellation and typed empty-journal retirement return
+to GT. The affected Physics prefix is **46/46 PASS, 0 failures, 1 existing
+foundation test with 2 warnings**. This is not a permission or motion writer;
+actual-map support coverage, fact/ack transport, held/free control and atomic
+cutover remain open.

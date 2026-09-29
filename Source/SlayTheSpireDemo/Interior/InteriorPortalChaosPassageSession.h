@@ -14,7 +14,8 @@ namespace InteriorPortalPhysics
 	struct FPassageSessionHandoff
 	{
 		FTravellerHandle Body;
-		uint64 SolverEpoch = 0, BindingEpoch = 0;
+		uint64 SolverEpoch = 0, BindingEpoch = 0, PairGeneration = 0;
+		uint64 FinalCommittedRevision = 0;
 		TArray<FTransferFact> PendingFacts;
 	};
 

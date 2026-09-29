@@ -47,7 +47,7 @@ namespace InteriorPortalPhysics
 			Adapter->Retire_Internal();
 			if (ClearanceVerifier) { ClearanceVerifier->Retire_Internal(); }
 		}
-		return {Body,Epoch,Binding,Coordinator->PendingFacts()};
+		return {Body,Epoch,Binding,Pair,Coordinator->TransferRevision(),Coordinator->PendingFacts()};
 	}
 
 	bool FChaosPassageSession::ReferencesProxy(const Chaos::FSingleParticlePhysicsProxy* Proxy) const

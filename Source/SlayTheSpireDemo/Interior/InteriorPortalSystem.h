@@ -5,6 +5,7 @@
 #include "GameFramework/Actor.h"
 #include "SceneTypes.h"
 #include "InteriorPortalTravellerRegistry.h"
+#include "InteriorPortalPhysicsBindingBridge.h"
 #include "InteriorPortalSystem.generated.h"
 
 class AInteriorPortal;
@@ -189,6 +190,7 @@ private:
 	TArray<FPhysicsEndpointIdentity> CapturePhysicsPairIdentity() const;
 	bool PhysicsPairMatches(const TArray<FPhysicsEndpointIdentity>& Candidate) const;
 	void RefreshPhysicsPairIdentity();
+	void UpdatePhysicsBindingObservers();
 	bool FitsCharacter(const ACharacter* Character, const FVector& Center, const AInteriorPortal* Portal) const;
 	void RestoreIgnores();
 	void RecoverCharacterPassage();
@@ -219,6 +221,9 @@ private:
 	FVector PreviousEye = FVector::ZeroVector;
 	bool bHasPreviousEye = false;
 	TArray<FVector> PreviousBodyPositions;
+	/** Parallel to PhysicsTravellers; opt-in read-only GT/PT binding observers. */
+	TArray<TUniquePtr<InteriorPortalPhysics::FPortalPhysicsBindingBridge>> PhysicsBindingObservers;
+	uint64 NextPhysicsObserverRevision = 1;
 	TArray<FVector> LastSafeBodyPositions;
 	TArray<TWeakObjectPtr<AInteriorPortal>> BodyExits;
 	UPROPERTY(Transient)

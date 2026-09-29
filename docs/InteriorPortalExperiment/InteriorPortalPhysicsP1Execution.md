@@ -22,8 +22,11 @@ are included in `48b753d`; see their
 [active-reach evidence](InteriorPortalPhysicsActiveReachPHY4.md).
 The world-component binding preparation is committed as `2e1b3e4`. The
 [native session-lifecycle continuation](InteriorPortalPhysicsSessionLifecyclePHY4.md)
-is validated in the Editor Chaos fixture. Production binding,
+is committed as `d442f15` and validated in the Editor Chaos fixture. Production binding,
 atomic cutover and actual-map Core gates remain open.
+The [GT binding/fact lifecycle follow-up](InteriorPortalPhysicsBindingLifecyclePHY4.md)
+is validated as a value-only protocol. The later read-only GT/PT observer below
+delivers binding and retirement, while fact/ack delivery remains open.
 
 The authority for ownership, supported geometry, holding, contacts, transfer,
 recovery and cleanup remains
@@ -438,6 +441,13 @@ now derives the native request from registered world components and exact
 support collision instead of hand-assembling the test binding. Its regression
 suite is **20/20 PASS, zero warnings**. This is a prepared GT snapshot, not a
 substep certificate or production writer.
+
+The [read-only real binding observer](InteriorPortalPhysicsRealBindingObservePHY4.md)
+now wires a prepared GT snapshot into a Chaos callback through the production
+actor behind a default-off diagnostic switch. It validates transport, pair
+retirement and proxy lifetime without granting passage or adding a writer.
+The affected Physics prefix is 46/46 PASS; map-specific support coverage,
+fact/ack delivery, held/free control and production cutover remain open.
 
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a

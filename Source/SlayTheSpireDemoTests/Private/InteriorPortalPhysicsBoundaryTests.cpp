@@ -8,6 +8,7 @@
 #include "Interior/InteriorPortalChaosSpeedCap.h"
 #include "Interior/InteriorPortalChaosPassageSession.h"
 #include "Interior/InteriorPortalPhysicsBinding.h"
+#include "Interior/InteriorPortalPhysicsBindingBridge.h"
 #include "Interior/InteriorPortalWorldPassageQuery.h"
 #include "Interior/InteriorPortalMath.h"
 #include "Components/BoxComponent.h"
@@ -1257,6 +1258,39 @@ bool FPortalSolverContinuousGravityTest::RunTest(const FString& Parameters)
 		TestTrue(TEXT("Continuous gravity without reachable contacts stays certified across one portal transfer"),
 			Clear && F.Samples.Last().Transfers == 1 && F.FactCursor->LastRevision() == 1 && F.FactsValid);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalPhysicsBindingBridgeTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.RealBindingObserveLifecycle", PortalBoundaryTestFlags)
+bool FPortalPhysicsBindingBridgeTest::RunTest(const FString& Parameters)
+{
+	FNativeScene F(false,true,false);
+	F.Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+	FPhysicsBindingRequest R;
+	R.World = F.World; R.Body = F.Body; R.Supports[0] = F.EntryWall; R.Supports[1] = F.ExitWall;
+	R.Registry = &F.Registry; R.Command = F.Command; R.Command.Revision = 1;
+	FPortalPhysicsBindingBridge Bridge;
+	Bridge.Update_GameThread(&R);
+	TestTrue(TEXT("Actual registered Chaos proxies acquire one read-only binding"),
+		Bridge.HasLiveBinding() && Bridge.BoundPairGeneration() == 1);
+	F.Advance(false);
+	R.Command.Revision = 2;
+	Bridge.Update_GameThread(&R);
+	TestTrue(TEXT("Solver substep reaches the game-thread observer without a physics write"),
+		Bridge.ObservedPhysicsSteps() > 0 && F.Body->GetPhysicsLinearVelocity().IsNearlyZero());
+	R.Command.PairGeneration = 2; R.Command.Revision = 3;
+	Bridge.Update_GameThread(&R);
+	TestTrue(TEXT("Changed pair cannot replace the old PT binding before retirement"),
+		Bridge.BoundPairGeneration() == 1);
+	F.Advance(false);
+	Bridge.Update_GameThread(&R);
+	TestTrue(TEXT("Typed PT retirement permits a new pair binding"),
+		Bridge.HasLiveBinding() && Bridge.BoundPairGeneration() == 2);
+	Bridge.Update_GameThread(nullptr);
+	F.Advance(false);
+	Bridge.Update_GameThread(nullptr);
+	TestFalse(TEXT("Cancellation returns a PT handoff and removes the callback"),Bridge.HasLiveBinding());
 	return true;
 }
 

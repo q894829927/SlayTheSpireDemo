@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Interior/InteriorPortalPassageCoordinator.h"
+#include "Interior/InteriorPortalPassageBindingLifecycle.h"
 #include "Interior/InteriorPortalMath.h"
 
 namespace
@@ -163,6 +164,77 @@ bool FPortalCoordinatorJournalTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Consumer accepts next actual interval once"),Cursor.Consume(C.PendingFacts()[0]) == EFactResult::Consumed);
 	C.Retire();
 	TestTrue(TEXT("Retirement still permits committed-fact acknowledgment"),C.Acknowledge(Cursor.Acknowledgment()) && C.PendingFacts().IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalBindingLifecycleTest,
+	"SlayTheSpireDemo.Interior.Portals.PhysicsCoordinator.BindingLifecycleHandoff", CoordinatorTestFlags)
+bool FPortalBindingLifecycleTest::RunTest(const FString& Parameters)
+{
+	FCoordinatorFixture F;
+	FPassageBindingLifecycle Owner;
+	FPassageBindingDomain Old, New;
+	TestTrue(TEXT("One registered body and solver receive a unique binding domain"),
+		Owner.Open(F.C.Traveller.Handle,F.Step.SolverEpoch,F.C.PairGeneration,Old) && Owner.HasActive());
+	FPassageCoordinator First(F.C.Traveller.Handle,F.C.PairGeneration,F.Step.SolverEpoch,
+		Old.BindingEpoch,F.C.Entry,F.C.Exit);
+	FRecordingAdapter FirstAdapter;
+	First.EvaluateInterval(F.C,F.Start,F.Solved.Motion,F.Step,0,false);
+	TestTrue(TEXT("A physical commit creates a fact before topology retirement"),
+		First.CommitSolved(F.C,F.Solved,F.Step,FirstAdapter) == ETransferResult::Committed);
+	const FTransferFact OldFact = First.PendingFacts()[0];
+	TestTrue(TEXT("Retirement blocks opening a replacement before old PT completion"),
+		Owner.BeginRetirement(Old) && Owner.BeginRetirement(Old) && !Owner.HasActive()
+		&& Owner.HasRetiring() && !Owner.Open(F.C.Traveller.Handle,F.Step.SolverEpoch,F.C.PairGeneration,New));
+	FTransferAcknowledgment Ack;
+	TestTrue(TEXT("No acknowledgment is issued for an unapplied old fact"),
+		Owner.Acknowledgment(Old,Ack) && Ack.LastConsumedRevision == 0);
+	int32 Applications = 0;
+	const auto Apply = [&](const FTransferFact&) { ++Applications; return true; };
+	TestTrue(TEXT("Failed reconciliation retains the old fact without acknowledging it"),
+		Owner.ApplyFact(Old,OldFact,[](const FTransferFact&) { return false; }) == EBindingFactApplyResult::ApplyRejected
+		&& Owner.Acknowledgment(Old,Ack) && Ack.LastConsumedRevision == 0);
+	TestTrue(TEXT("Old-domain delivery reconciles once despite newer topology"),
+		Owner.ApplyFact(Old,OldFact,Apply) == EBindingFactApplyResult::Applied
+		&& Owner.ApplyFact(Old,OldFact,Apply) == EBindingFactApplyResult::Duplicate
+		&& Applications == 1 && Owner.Acknowledgment(Old,Ack) && Ack.LastConsumedRevision == 1);
+	First.Retire();
+	FPassageSessionHandoff Handoff{Old.Body,Old.SolverEpoch,Old.BindingEpoch,
+		Old.PairGeneration,First.TransferRevision(),First.PendingFacts()};
+	TestTrue(TEXT("Replacement waits for solver journal drain, not just GT consumption"),
+		!Owner.ConfirmRetired(Old,Handoff)
+		&& !Owner.Open(F.C.Traveller.Handle,F.Step.SolverEpoch,F.C.PairGeneration,New));
+	auto WrongHandoff = Handoff; ++WrongHandoff.BindingEpoch; WrongHandoff.PendingFacts.Reset();
+	TestFalse(TEXT("Another binding cannot confirm old PT retirement"),Owner.ConfirmRetired(Old,WrongHandoff));
+	WrongHandoff = Handoff; WrongHandoff.PendingFacts.Reset(); ++WrongHandoff.FinalCommittedRevision;
+	TestFalse(TEXT("An empty journal claim cannot hide an unconsumed final revision"),
+		Owner.ConfirmRetired(Old,WrongHandoff));
+	const bool SolverDrained = First.Acknowledge(Ack) && First.PendingFacts().IsEmpty();
+	Handoff.PendingFacts = First.PendingFacts();
+	TestTrue(TEXT("Old solver accepts only its typed acknowledgment and drains"),
+		SolverDrained && Owner.ConfirmRetired(Old,Handoff));
+	TestTrue(TEXT("Rebinding in the same body and solver cannot reuse the old fact domain"),
+		Owner.Open(F.C.Traveller.Handle,F.Step.SolverEpoch,F.C.PairGeneration,New)
+		&& New.BindingEpoch != Old.BindingEpoch && Owner.HasActive()
+		&& Owner.ApplyFact(New,OldFact,Apply) == EBindingFactApplyResult::WrongDomain
+		&& Applications == 1);
+	FPassageCoordinator Second(F.C.Traveller.Handle,F.C.PairGeneration,F.Step.SolverEpoch,
+		New.BindingEpoch,F.C.Entry,F.C.Exit);
+	FRecordingAdapter SecondAdapter;
+	Second.EvaluateInterval(F.C,F.Start,F.Solved.Motion,F.Step,0,false);
+	bool ReentrantRetirementBlocked = false;
+	const auto ApplyNew = [&](const FTransferFact&)
+	{
+		ReentrantRetirementBlocked = !Owner.BeginRetirement(New);
+		++Applications;
+		return true;
+	};
+	TestTrue(TEXT("New binding independently starts at transfer revision one"),
+		Second.CommitSolved(F.C,F.Solved,F.Step,SecondAdapter) == ETransferResult::Committed
+		&& Owner.ApplyFact(New,Second.PendingFacts()[0],ApplyNew) == EBindingFactApplyResult::Applied
+		&& ReentrantRetirementBlocked && Owner.HasActive()
+		&& Applications == 2 && Owner.Acknowledgment(New,Ack)
+		&& Ack.BindingEpoch == New.BindingEpoch && Ack.LastConsumedRevision == 1);
 	return true;
 }
 #endif

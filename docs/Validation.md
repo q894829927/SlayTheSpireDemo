@@ -2,6 +2,36 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 real GT/PT binding observation — 2026-09-29
+
+[Read-only binding bridge](InteriorPortalExperiment/InteriorPortalPhysicsRealBindingObservePHY4.md)
+integrates `AInteriorPortalSystem` with an opt-in Chaos callback (default off).
+UE 5.8 bundled .NET project generation and Development Editor build PASS.
+New real TaskGraph callback lifecycle gate **1/1 PASS, 0 warnings**. Affected
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0 failures; 1 existing
+foundation test with 2 warnings**, 2026-09-28 18:18 UTC. Evidence:
+`Saved/Logs/PortalPhysicsPHY4RealBridgeProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeBuildFinal.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeFocused.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeFinal.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4RealBridgeFinal/index.json`.
+No physical writer or actual-map PIE was enabled; Core acceptance remains open.
+
+## Interior portal PHY-4 GT binding/fact lifecycle — 2026-09-29
+
+Previous native passage session committed as `d442f15`; the
+[binding/fact lifecycle increment](InteriorPortalExperiment/InteriorPortalPhysicsBindingLifecyclePHY4.md)
+is included with the read-only bridge delivery. UE 5.8 bundled .NET project generation and Development Editor
+build PASS. Affected `SlayTheSpireDemo.Interior.Portals.Physics` **45/45 PASS,
+0 failures; 1 existing foundation test with 2 warnings** at 2026-09-28 17:54
+UTC. New `PhysicsCoordinator.BindingLifecycleHandoff` passed without warnings.
+Evidence: `Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalBuild.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4BindingLifecycleFinal/index.json`.
+This is a value-only protocol exercised in Automation, not actual-map PT wiring,
+PIE or Core acceptance. User map hash is unchanged.
+
 ## Interior portal PHY-4 native dormant-body leases — 2026-09-27
 
 Source HEAD `9d44f5b535ca4371a60892afbd9ba357d93d44ed` (filter/kinematic

@@ -43,6 +43,10 @@ namespace
 		TEXT("portal.PhysicsDiagnostics"), 0,
 		TEXT("Log JSON holding/passage/recovery observations. Game-thread boundaries only; does not identify Chaos substeps."),
 		ECVF_Default);
+	TAutoConsoleVariable<int32> CVarPortalPhysicsBindingObserve(
+		TEXT("portal.PhysicsBindingObserve"), 0,
+		TEXT("Opt in to read-only Chaos GT/PT passage binding observation. Does not change gameplay motion or collision."),
+		ECVF_Default);
 
 	void TraceVector(const TSharedPtr<FJsonObject>& Trace, const TCHAR* Name, const FVector& Value)
 	{
@@ -259,6 +263,9 @@ void AInteriorPortalSystem::BeginPlay()
 	// path order. Registration validates the supported solver contract and owns
 	// all parallel traversal/proxy arrays from this point onward.
 	const TArray<TObjectPtr<UPrimitiveComponent>> AuthoredTravellers = PhysicsTravellers;
+	for (auto& Observer : PhysicsBindingObservers)
+	{ if (Observer) { Observer->Shutdown_GameThread(); } }
+	PhysicsBindingObservers.Reset();
 	PhysicsTravellers.Reset();
 	for (UPrimitiveComponent* Traveller : AuthoredTravellers) { RegisterPhysicsTraveller(Traveller); }
 	DiscoverTaggedTravellers();
@@ -284,6 +291,7 @@ bool AInteriorPortalSystem::RegisterPhysicsTraveller(UPrimitiveComponent* Travel
 		return false;
 	}
 	const int32 Index = PhysicsTravellers.Add(Traveller);
+	PhysicsBindingObservers.Add(nullptr);
 	PreviousBodyPositions.Add(Traveller->GetComponentLocation());
 	LastSafeBodyPositions.Add(Traveller->GetComponentLocation());
 	BodyExits.Add(nullptr);
@@ -311,6 +319,8 @@ bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Trav
 {
 	const int32 Index = PhysicsTravellers.IndexOfByKey(Traveller);
 	if (Index == INDEX_NONE) { return false; }
+	if (PhysicsBindingObservers.IsValidIndex(Index) && PhysicsBindingObservers[Index])
+	{ PhysicsBindingObservers[Index]->Shutdown_GameThread(); }
 	TravellerRegistry.Unregister(Traveller);
 
 	if (GrabHandle && GrabHandle->GetGrabbedComponent() == Traveller) { GrabHandle->ReleaseComponent(); }
@@ -324,6 +334,7 @@ bool AInteriorPortalSystem::UnregisterPhysicsTraveller(UPrimitiveComponent* Trav
 	}
 
 	PhysicsTravellers.RemoveAt(Index);
+	PhysicsBindingObservers.RemoveAt(Index);
 	PreviousBodyPositions.RemoveAt(Index);
 	LastSafeBodyPositions.RemoveAt(Index);
 	BodyExits.RemoveAt(Index);
@@ -420,6 +431,43 @@ void AInteriorPortalSystem::RefreshPhysicsPairIdentity()
 
 uint64 AInteriorPortalSystem::GetPhysicsPairGeneration() const
 { return PhysicsPairMatches(CapturePhysicsPairIdentity()) ? PhysicsPairGeneration : 0; }
+
+void AInteriorPortalSystem::UpdatePhysicsBindingObservers()
+{
+	const bool bEnabled = CVarPortalPhysicsBindingObserve.GetValueOnGameThread() != 0;
+	const bool bReady = bEnabled && IsLinked() && GetPhysicsPairGeneration()
+		&& IsValid(BluePortal->Support) && IsValid(OrangePortal->Support);
+	for (int32 Index = 0; Index < PhysicsTravellers.Num(); ++Index)
+	{
+		auto& Observer = PhysicsBindingObservers[Index];
+		if (!bReady)
+		{
+			if (Observer) { Observer->Update_GameThread(nullptr); }
+			continue;
+		}
+		UPrimitiveComponent* Body = PhysicsTravellers[Index];
+		InteriorPortalPhysics::FTravellerSnapshot Traveller;
+		if (!IsValid(Body) || !CapturePhysicsTraveller(Body,Traveller))
+		{
+			if (Observer) { Observer->Update_GameThread(nullptr); }
+			continue;
+		}
+		if (!Observer) { Observer = MakeUnique<InteriorPortalPhysics::FPortalPhysicsBindingBridge>(); }
+		InteriorPortalPhysics::FPhysicsBindingRequest Request;
+		Request.World = GetWorld(); Request.Body = Body; Request.Registry = &TravellerRegistry;
+		Request.Supports[0] = BluePortal->Support; Request.Supports[1] = OrangePortal->Support;
+		Request.EndpointApertures[0] = FVector2D(BluePortal->HalfWidth,BluePortal->HalfHeight);
+		Request.EndpointApertures[1] = FVector2D(OrangePortal->HalfWidth,OrangePortal->HalfHeight);
+		Request.Command.Traveller = MoveTemp(Traveller);
+		Request.Command.PairGeneration = GetPhysicsPairGeneration();
+		Request.Command.Revision = NextPhysicsObserverRevision++;
+		Request.Command.Entry = BluePortal->GetLogicalFrame();
+		Request.Command.Exit = OrangePortal->GetLogicalFrame();
+		Request.Command.HalfWidth = BluePortal->HalfWidth;
+		Request.Command.HalfHeight = BluePortal->HalfHeight;
+		Observer->Update_GameThread(&Request);
+	}
+}
 
 bool AInteriorPortalSystem::IsFlashlightTraceThroughPortal(const FHitResult& Hit,
 	const FVector& TraceStart, const FVector& TraceEnd, const float TraceRadius) const
@@ -627,6 +675,7 @@ void AInteriorPortalSystem::Tick(float DeltaSeconds)
 	// tag. Discovering them before the pre-physics gates keeps registration and
 	// the first traversal sample in the same frame.
 	DiscoverTaggedTravellers();
+	UpdatePhysicsBindingObservers();
 	UpdateFidelityDiagnostics();
 	if (!IsLinked() && bWasRendererLinked)
 	{
@@ -2012,6 +2061,9 @@ void AInteriorPortalSystem::RestoreFidelityDiagnostics()
 
 void AInteriorPortalSystem::EndPlay(const EEndPlayReason::Type Reason)
 {
+	for (auto& Observer : PhysicsBindingObservers)
+	{ if (Observer) { Observer->Shutdown_GameThread(); } }
+	PhysicsBindingObservers.Reset();
 	if (MainViewStencilExtension)
 	{
 		MainViewStencilExtension->SetEnabled(false);
