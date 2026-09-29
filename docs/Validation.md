@@ -2,6 +2,25 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 native substep observation — 2026-09-29
+
+Predecessor HEAD `166962a`; [native observation record](InteriorPortalExperiment/InteriorPortalPhysicsNativeObservationPHY4.md)
+describes this delivery. UE 5.8 bundled .NET project generation and
+Development Editor build PASS. Authored-map read-only PIE copy
+`MapBindingCoverage` **1/1 PASS, 0 warnings** with three native substeps and
+zero binding mismatches; final step `0.016666699 s` is conservatively rejected
+as `UnsupportedMotion`, confirming lack of a native hard speed cap. An earlier
+run reached `InvalidInterval` at `0.016666900 s` against `1/60 s`. Affected
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0
+failures; 1 existing foundation test with 2 warnings**. Final evidence:
+`Saved/Logs/PortalPhysicsPHY4NativeObservationProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4NativeObservationBuildFinal5.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4NativeObserveMapFinal5/index.json`,
+`Saved/AutomationReports/PortalPhysicsPHY4NativeObservePhysicsFinal5/index.json`.
+No production physical writer, scene clearance grant or manual Core PIE
+acceptance is claimed. User map hash is unchanged:
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
 ## Interior portal PHY-4 actual-map binding coverage — 2026-09-29
 
 Predecessor HEAD `067215d`; [map coverage record](InteriorPortalExperiment/InteriorPortalPhysicsMapBindingCoveragePHY4.md)

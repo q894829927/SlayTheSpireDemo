@@ -1279,6 +1279,9 @@ bool FPortalPhysicsBindingBridgeTest::RunTest(const FString& Parameters)
 	Bridge.Update_GameThread(&R);
 	TestTrue(TEXT("Solver substep reaches the game-thread observer without a physics write"),
 		Bridge.ObservedPhysicsSteps() > 0 && F.Body->GetPhysicsLinearVelocity().IsNearlyZero());
+	TestTrue(TEXT("Uncapped native interval rejects only after matching its real body and supports"),
+		Bridge.ObservedClearanceSteps() > 0
+		&& Bridge.LastClearanceReason() == EStaticClearanceReason::UnsupportedMotion);
 	R.Command.PairGeneration = 2; R.Command.Revision = 3;
 	Bridge.Update_GameThread(&R);
 	TestTrue(TEXT("Changed pair cannot replace the old PT binding before retirement"),
@@ -1326,6 +1329,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalSolverUnsupportedSceneTest,
 	"SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance.UnsupportedSceneAndMotion", PortalBoundaryTestFlags)
 bool FPortalSolverUnsupportedSceneTest::RunTest(const FString& Parameters)
 {
+	{
+		FNativeScene F(false,true,true,true); F.EnableNativeClearance(false);
+		F.Command.MaxStepSeconds = 1. / 120.; F.Advance(false);
+		TestTrue(TEXT("A materially over-budget native step still rejects before any support bypass"),
+			F.Samples[0].PreClearance == EStaticClearanceReason::InvalidInterval
+				&& F.Samples[0].DisabledPairs == 0 && F.Samples[0].Transfers == 0);
+	}
 	{
 		FNativeScene F(true,true,true,true); F.EnableNativeClearance(false);
 		auto* Unbounded = F.ProtectedBody->BodyInstance.GetPhysicsActor();

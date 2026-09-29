@@ -1,6 +1,7 @@
 #pragma once
 
 #include "InteriorPortalPassageBindingLifecycle.h"
+#include "InteriorPortalChaosStaticClearance.h"
 
 class FPhysScene_Chaos;
 namespace Chaos { class FPBDRigidsSolver; class FSingleParticlePhysicsProxy; }
@@ -25,6 +26,12 @@ namespace InteriorPortalPhysics
 		void Shutdown_GameThread();
 		bool HasLiveBinding() const { return Callback != nullptr; }
 		uint64 ObservedPhysicsSteps() const { return ObservedSteps; }
+		uint64 ObservedClearanceSteps() const { return ClearanceSteps; }
+		uint64 BindingMismatchSteps() const { return MismatchSteps; }
+		EStaticClearanceReason LastClearanceReason() const { return ClearanceReason; }
+		ENativeBindingIssue LastBindingIssue() const { return BindingIssue; }
+		int32 LastBindingComponent() const { return BindingComponent; }
+		FPhysicsStepKey LastClearanceStep() const { return ClearanceStep; }
 		uint64 BoundPairGeneration() const { return Callback ? Domain.PairGeneration : 0; }
 	private:
 		bool Start_GameThread(const FPhysicsBindingRequest& Request, const FPreparedPhysicsBinding& Prepared);
@@ -36,6 +43,12 @@ namespace InteriorPortalPhysics
 		FPortalBindingObserveCallback* Callback = nullptr;
 		Chaos::FSingleParticlePhysicsProxy* Proxies[3] = {nullptr,nullptr,nullptr};
 		uint64 ObservedSteps = 0;
+		uint64 ClearanceSteps = 0;
+		uint64 MismatchSteps = 0;
+		EStaticClearanceReason ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		ENativeBindingIssue BindingIssue = ENativeBindingIssue::None;
+		int32 BindingComponent = -1;
+		FPhysicsStepKey ClearanceStep;
 		bool bCancelling = false;
 	};
 }

@@ -11,6 +11,7 @@
 #include "HAL/IConsoleManager.h"
 #include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "PBDRigidsSolver.h"
+#include <cfloat>
 
 namespace InteriorPortalPhysics
 {
@@ -49,6 +50,27 @@ namespace InteriorPortalPhysics
 				else { for (const auto& V : P.Vertices) { B += V; } }
 			}
 			return B;
+		}
+		bool SameNativeLocalBounds(const FBox& Native, const FBox& Prepared)
+		{
+			if (!Native.IsValid || !Prepared.IsValid) { return false; }
+			const double Magnitude = FMath::Max(FMath::Max(Native.Min.GetAbsMax(),Native.Max.GetAbsMax()),
+				FMath::Max(Prepared.Min.GetAbsMax(),Prepared.Max.GetAbsMax()));
+			// GT scale baking and Chaos float geometry may round the same authored
+			// bound differently. Accept at most two float ULPs, capped at .01 cm.
+			const double Tolerance = FMath::Min(.01,FMath::Max(1.e-6,2.*FLT_EPSILON*FMath::Max(1.,Magnitude)));
+			return FMath::IsFinite(Tolerance)
+				&& Native.Min.Equals(Prepared.Min,Tolerance) && Native.Max.Equals(Prepared.Max,Tolerance);
+		}
+		bool WithinNativeStepBudget(double DeltaSeconds, double MaxStepSeconds)
+		{
+			if (!FMath::IsFinite(DeltaSeconds) || DeltaSeconds <= 0
+				|| !FMath::IsFinite(MaxStepSeconds) || MaxStepSeconds <= 0) { return false; }
+			// UE's 1/60 solver step may arrive as 0.0166667 while the command
+			// encodes exact 1/60. This only absorbs timestep representation error;
+			// all reach and sweep calculations below use the actual DeltaSeconds.
+			const double Tolerance = FMath::Min(1.e-7,FMath::Max(1.e-9,32.*FLT_EPSILON*MaxStepSeconds));
+			return DeltaSeconds <= MaxStepSeconds + Tolerance;
 		}
 		template<typename TParticle> bool Simulates(const TParticle& P)
 		{ for (const auto& S : P.ShapesArray()) { if (Chaos::FilterHasSimEnabled(S.Get())) { return true; } } return false; }
@@ -177,15 +199,62 @@ namespace InteriorPortalPhysics
 		if (Sequence == MAX_uint64) { Retire_Internal(); }
 		Proof.Binding = Binding; Proof.Sequence = Sequence == MAX_uint64 ? Sequence : ++Sequence; Consumed = false;
 		Proof.Command = C; Proof.Start = A; Proof.End = B; Proof.Step = Step; Proof.Stage = Stage;
-		const auto Reject = [&](EStaticClearanceReason Reason) { Proof.Result = Reason; return Proof; };
+		ENativeBindingIssue Issue = ENativeBindingIssue::None;
+		int32 IssueComponent = -1;
+		const auto Reject = [&](EStaticClearanceReason Reason)
+		{ Proof.Result = Reason; Proof.Issue = Issue; Proof.Component = IssueComponent; return Proof; };
 		if (Retired) { return Reject(EStaticClearanceReason::Retired); }
 		const FTransform ExpectedEntry = Endpoint == 0 ? Bound.Entry : Bound.Exit, ExpectedExit = Endpoint == 0 ? Bound.Exit : Bound.Entry;
 		if (Endpoint < 0 || Endpoint > 1 || C.Traveller.Handle != Bound.Traveller.Handle || C.PairGeneration != Bound.PairGeneration
 			|| !(C.Traveller.Geometry == Bound.Traveller.Geometry) || !C.Entry.Equals(ExpectedEntry,0) || !C.Exit.Equals(ExpectedExit,0)
 			|| C.HalfWidth != Bound.HalfWidth || C.HalfHeight != Bound.HalfHeight)
-		{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		{ Issue = ENativeBindingIssue::Command; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		// Binding identity is independent of the current interval's time budget.
+		// Check native shapes/poses first, so a slow frame still reports a safe
+		// interval rejection without hiding a stale scaled support binding.
+		auto* H = Body->GetPhysicsThreadAPI(); auto* Particle = Body->GetHandle_LowLevel();
+		const auto* Rigid = Particle ? Particle->CastToRigidParticle() : nullptr;
+		FBox Local(ForceInit); const FBox Registered = RegisteredBounds(C.Traveller.Geometry);
+		if (!H || !Rigid || (H->ObjectState() != Chaos::EObjectStateType::Dynamic && H->ObjectState() != Chaos::EObjectStateType::Sleeping))
+		{ Issue = ENativeBindingIssue::BodyState; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		if (!Simulates(*Particle))
+		{ Issue = ENativeBindingIssue::BodyCollision; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		if (!NativeBounds(*Particle,Local) || !SameNativeLocalBounds(Local,Registered))
+		{ Issue = ENativeBindingIssue::BodyBounds; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		if (!FVector(H->CenterOfMass()).Equals(C.LocalAuthorityReference,1.e-6))
+		{ Issue = ENativeBindingIssue::BodyCOM; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		FBox SupportBounds[2];
+		for (int32 I=0; I<2; ++I)
+		{
+			const auto* P = Supports[I]->GetHandle_LowLevel();
+			IssueComponent = I;
+			if (!P || P->ObjectState() != Chaos::EObjectStateType::Static)
+			{ Issue = ENativeBindingIssue::SupportState; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+			if (!Simulates(*P) || !Interacts(Particle,P))
+			{ Issue = ENativeBindingIssue::SupportCollision; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+			if (!NativeBounds(*P,SupportBounds[I]) || !SameNativeLocalBounds(SupportBounds[I],BoundSupportBounds[I]))
+			{ Issue = ENativeBindingIssue::SupportBounds; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+			if (!FTransform(FQuat(P->GetR()),FVector(P->GetX())).Equals(SupportPoses[I],1.e-6))
+			{ Issue = ENativeBindingIssue::SupportPose; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+		}
+		IssueComponent = -1;
+		const Chaos::FImplicitObject* Geometries[3] = {Particle->GetGeometry(),Supports[0]->GetHandle_LowLevel()->GetGeometry(),Supports[1]->GetHandle_LowLevel()->GetGeometry()};
+		for (int32 I=0; I<3; ++I)
+		{
+			const uint32 Hash = Geometries[I]->GetTypeHash();
+			if (GeometryBound && (NativeGeometry[I] != Geometries[I] || GeometryHashes[I] != Hash))
+			{ Issue = ENativeBindingIssue::GeometryChanged; IssueComponent = I-1;
+			  Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
+			NativeGeometry[I] = Geometries[I]; GeometryHashes[I] = Hash;
+		}
+		GeometryBound = true;
+		const auto SourceSpan = EvaluatePose(BoxGeometry(SupportBounds[Endpoint]),SupportPoses[Endpoint],C.Entry,1.e100,1.e100);
+		const auto ExitSpan = EvaluatePose(BoxGeometry(SupportBounds[1-Endpoint]),SupportPoses[1-Endpoint],C.Exit,1.e100,1.e100);
+		if (!SourceSpan.Fits() || !ExitSpan.Fits() || SourceSpan.MinNormal > 0 || SourceSpan.MaxNormal < 0
+			|| ExitSpan.MinNormal > 0 || ExitSpan.MaxNormal < 0 || SourceSpan.MaxNormal > C.SupportHalfThicknessCm + 1.e-6)
+		{ Issue = ENativeBindingIssue::SupportSpan; Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
 		if (Step.SolverEpoch != Epoch || Step.SolverFrame != Solver->GetCurrentFrame() || !Step.EvolutionSerial
-			|| !C.Revision || !FMath::IsFinite(Step.DeltaSeconds) || Step.DeltaSeconds <= 0 || Step.DeltaSeconds > C.MaxStepSeconds + 1.e-9)
+			|| !C.Revision || !WithinNativeStepBudget(Step.DeltaSeconds,C.MaxStepSeconds))
 		{ return Reject(EStaticClearanceReason::InvalidInterval); }
 		if (Stage == EClearanceStage::PreIntegrate)
 		{
@@ -204,14 +273,6 @@ namespace InteriorPortalPhysics
 			{ return Reject(EStaticClearanceReason::InvalidInterval); }
 			LastStage = Stage;
 		}
-		auto* H = Body->GetPhysicsThreadAPI(); auto* Particle = Body->GetHandle_LowLevel();
-		const auto* Rigid = Particle ? Particle->CastToRigidParticle() : nullptr;
-		FBox Local(ForceInit); const FBox Registered = RegisteredBounds(C.Traveller.Geometry);
-		if (!H || !Rigid || (H->ObjectState() != Chaos::EObjectStateType::Dynamic && H->ObjectState() != Chaos::EObjectStateType::Sleeping)
-			|| !Simulates(*Particle) || !NativeBounds(*Particle,Local) || !Registered.IsValid
-			|| !Local.Min.Equals(Registered.Min,1.e-6) || !Local.Max.Equals(Registered.Max,1.e-6)
-			|| !FVector(H->CenterOfMass()).Equals(C.LocalAuthorityReference,1.e-6))
-		{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
 		// Persistent constraints can move/rotate the body after this hook; they
 		// are not collision constraints and are outside the independent-body profile.
 		if (!Particle->ParticleConstraints().IsEmpty()) { return Reject(EStaticClearanceReason::UnsupportedScene); }
@@ -245,35 +306,12 @@ namespace InteriorPortalPhysics
 			|| !FMath::IsFinite(ActualTravel) || ActualTravel > C.MaxTranslationCm
 			|| ActualTravel > StepReach + 1.e-4)
 		{ return Reject(EStaticClearanceReason::UnsupportedMotion); }
-		FBox SupportBounds[2];
-		for (int32 I=0; I<2; ++I)
-		{
-			const auto* P = Supports[I]->GetHandle_LowLevel();
-			if (!P || P->ObjectState() != Chaos::EObjectStateType::Static || !Simulates(*P) || !Interacts(Particle,P) || !NativeBounds(*P,SupportBounds[I])
-				|| !SupportBounds[I].Min.Equals(BoundSupportBounds[I].Min,1.e-6) || !SupportBounds[I].Max.Equals(BoundSupportBounds[I].Max,1.e-6)
-				|| !FTransform(FQuat(P->GetR()),FVector(P->GetX())).Equals(SupportPoses[I],1.e-6))
-			{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
-		}
-		const Chaos::FImplicitObject* Geometries[3] = {Particle->GetGeometry(),Supports[0]->GetHandle_LowLevel()->GetGeometry(),Supports[1]->GetHandle_LowLevel()->GetGeometry()};
-		for (int32 I=0; I<3; ++I)
-		{
-			const uint32 Hash = Geometries[I]->GetTypeHash();
-			if (GeometryBound && (NativeGeometry[I] != Geometries[I] || GeometryHashes[I] != Hash))
-			{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
-			NativeGeometry[I] = Geometries[I]; GeometryHashes[I] = Hash;
-		}
-		GeometryBound = true;
 		const FGeometry Box = BoxGeometry(Local,C.Traveller.Geometry.BakedScale);
 		FTransform AtPlane = B.Pose;
 		AtPlane.AddToTranslation(-Normal*C.Entry.InverseTransformPositionNoScale(B.Pose.TransformPositionNoScale(C.LocalAuthorityReference)).X);
 		const FQuat Map = InteriorPortalMath::Rotation(C.Entry,C.Exit);
 		const auto Mapped = [&](const FTransform& T)
 		{ return FTransform(Map*T.GetRotation(),InteriorPortalMath::Position(T.GetLocation(),C.Entry,C.Exit),C.Traveller.Geometry.BakedScale); };
-		const auto SourceSpan = EvaluatePose(BoxGeometry(SupportBounds[Endpoint]),SupportPoses[Endpoint],C.Entry,1.e100,1.e100);
-		const auto ExitSpan = EvaluatePose(BoxGeometry(SupportBounds[1-Endpoint]),SupportPoses[1-Endpoint],C.Exit,1.e100,1.e100);
-		if (!SourceSpan.Fits() || !ExitSpan.Fits() || SourceSpan.MinNormal > 0 || SourceSpan.MaxNormal < 0
-			|| ExitSpan.MinNormal > 0 || ExitSpan.MaxNormal < 0 || SourceSpan.MaxNormal > C.SupportHalfThicknessCm + 1.e-6)
-		{ Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
 		FTransform ExitClear = Mapped(AtPlane);
 		const auto Span = EvaluatePose(Box,ExitClear,C.Exit,C.HalfWidth,C.HalfHeight,C.MarginCm);
 		ExitClear.AddToTranslation(C.Exit.GetUnitAxis(EAxis::X)*(FMath::Max(0.,ExitSpan.MaxNormal-Span.MinNormal+C.MarginCm)+C.MaxTranslationCm));

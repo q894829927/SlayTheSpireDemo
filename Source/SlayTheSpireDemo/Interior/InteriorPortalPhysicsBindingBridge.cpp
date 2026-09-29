@@ -6,6 +6,7 @@
 #include "Physics/Experimental/PhysScene_Chaos.h"
 #include "Chaos/SimCallbackObject.h"
 #include "PBDRigidsSolver.h"
+#include "PhysicsProxy/SingleParticlePhysicsProxy.h"
 #include "HAL/ThreadSafeCounter64.h"
 
 namespace InteriorPortalPhysics
@@ -25,7 +26,15 @@ namespace InteriorPortalPhysics
 		FPassageSessionHandoff Handoff;
 		bool bRetired = false;
 		uint64 Steps = 0;
-		void Reset() { Domain = {}; Handoff = {}; bRetired = false; Steps = 0; }
+		bool bHasClearance = false;
+		EStaticClearanceReason ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		ENativeBindingIssue BindingIssue = ENativeBindingIssue::None;
+		int32 BindingComponent = -1;
+		FPhysicsStepKey ClearanceStep;
+		void Reset()
+		{ Domain = {}; Handoff = {}; bRetired = false; Steps = 0; bHasClearance = false;
+		  ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		  BindingIssue = ENativeBindingIssue::None; BindingComponent = -1; ClearanceStep = {}; }
 	};
 	class FPortalBindingObserveCallback final : public Chaos::TSimCallbackObject<FBindingObserveInput,
 		FBindingObserveOutput,Chaos::ESimCallbackOptions::PreIntegrate | Chaos::ESimCallbackOptions::ParticleUnregister>
@@ -36,14 +45,16 @@ namespace InteriorPortalPhysics
 			const FPreparedPhysicsBinding& Prepared, const FPassageBindingDomain& InDomain)
 		{
 			Domain = InDomain;
+			BodyProxy = Body;
 			Entry = Prepared.Command.Entry; Exit = Prepared.Command.Exit;
 			Session = MakeUnique<FChaosPassageSession>(static_cast<Chaos::FPBDRigidsSolver*>(GetSolver()),
 				Body,Support0,Support1,Prepared.Command,Domain.SolverEpoch,Domain.BindingEpoch);
-			if (!Session->IsRetired()) { Session->AttachClearance_Internal(Prepared); }
+			if (!Session->IsRetired() && !Session->AttachClearance_Internal(Prepared)) { Session->Retire_Internal(); }
 		}
 		virtual FName GetFNameForStatId() const override { return TEXT("PortalBindingObserve"); }
 	private:
 		FPassageBindingDomain Domain;
+		Chaos::FSingleParticlePhysicsProxy* BodyProxy = nullptr;
 		FTransform Entry, Exit;
 		TUniquePtr<FChaosPassageSession> Session;
 		uint64 Steps = 0;
@@ -60,6 +71,29 @@ namespace InteriorPortalPhysics
 			auto& Output = GetProducerOutputData_Internal();
 			Output.Domain = Domain;
 			Output.Steps = ++Steps;
+			if (!Session->IsRetired() && Input && Session->Clearance() && BodyProxy)
+			{
+				const auto* Handle = BodyProxy->GetPhysicsThreadAPI();
+				if (Handle)
+				{
+					FBoundaryState Start;
+					Start.Pose = FTransform(Handle->R(),Handle->X(),Input->Command.Traveller.Geometry.BakedScale);
+					Start.LinearVelocity = Handle->V(); Start.AngularVelocity = Handle->W();
+					FBoundaryState Predicted = Start;
+					const FPhysicsStepKey Step {Domain.SolverEpoch,
+						static_cast<Chaos::FPBDRigidsSolver*>(GetSolver())->GetCurrentFrame(),Steps,GetDeltaTime_Internal()};
+					Predicted.Pose.AddToTranslation((Handle->V() + Handle->Acceleration()*Step.DeltaSeconds)*Step.DeltaSeconds);
+					const auto Proof = Session->Clearance()->Certify_Internal(Input->Command,Start,Predicted,Step,
+						EClearanceStage::PreIntegrate,0);
+					Output.bHasClearance = true;
+					Output.ClearanceReason = Proof.Reason();
+					Output.BindingIssue = Proof.BindingIssue();
+					Output.BindingComponent = Proof.BindingComponent();
+					Output.ClearanceStep = Step;
+					if (Proof.Reason() == EStaticClearanceReason::BindingChanged || Proof.Reason() == EStaticClearanceReason::Retired)
+					{ Session->Retire_Internal(); }
+				}
+			}
 			Output.bRetired = Session->IsRetired();
 			if (Output.bRetired) { Output.Handoff = Session->Retire_Internal(); }
 		}
@@ -107,6 +141,15 @@ namespace InteriorPortalPhysics
 		{
 			if (!(Output->Domain == Domain)) { continue; }
 			ObservedSteps = FMath::Max(ObservedSteps,Output->Steps);
+			if (Output->bHasClearance)
+			{
+				++ClearanceSteps;
+				if (Output->ClearanceReason == EStaticClearanceReason::BindingChanged) { ++MismatchSteps; }
+				ClearanceReason = Output->ClearanceReason;
+				BindingIssue = Output->BindingIssue;
+				BindingComponent = Output->BindingComponent;
+				ClearanceStep = Output->ClearanceStep;
+			}
 			if (Output->bRetired)
 			{
 				Lifecycle.BeginRetirement(Domain);

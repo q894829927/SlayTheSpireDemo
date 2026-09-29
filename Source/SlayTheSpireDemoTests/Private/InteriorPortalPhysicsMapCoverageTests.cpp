@@ -40,6 +40,26 @@ namespace InteriorPortalPhysicsMapCoverage
 			FWorldContext* Context = GEditor ? GEditor->GetPIEWorldContext() : nullptr;
 			UWorld* World = Context ? Context->World() : nullptr;
 			if (!World) { return false; }
+			if (bObserving)
+			{
+				Observer.Update_GameThread(&ActiveRequest);
+				if (Observer.ObservedClearanceSteps() < 3 && ++ObservationTicks < 120) { return false; }
+				const auto Result = Observer.LastClearanceReason();
+				Test->AddInfo(FString::Printf(TEXT("nativeSubsteps=%llu clearanceSteps=%llu bindingMismatches=%llu lastClearance=%d bindingIssue=%d component=%d stepDt=%.9f maxDt=%.9f solverFrame=%d"),
+					Observer.ObservedPhysicsSteps(),Observer.ObservedClearanceSteps(),Observer.BindingMismatchSteps(),static_cast<int32>(Result),
+					static_cast<int32>(Observer.LastBindingIssue()),Observer.LastBindingComponent(),
+					Observer.LastClearanceStep().DeltaSeconds,ActiveRequest.Command.MaxStepSeconds,
+					Observer.LastClearanceStep().SolverFrame));
+				Test->TestTrue(TEXT("Authored map reaches repeated real Chaos clearance observations"),
+					Observer.ObservedClearanceSteps() >= 3);
+				Test->TestTrue(TEXT("Authored scaled supports remain native-bound; a variable step or uncapped motion rejects conservatively"),
+					Observer.BindingMismatchSteps() == 0
+					&& (Result == InteriorPortalPhysics::EStaticClearanceReason::InvalidInterval
+						|| Result == InteriorPortalPhysics::EStaticClearanceReason::UnsupportedMotion)
+					&& Observer.LastBindingIssue() == InteriorPortalPhysics::ENativeBindingIssue::None);
+				Observer.Shutdown_GameThread();
+				return true;
+			}
 			if (++ReadyTicks < 3) { return false; }
 			AInteriorPortalSystem* System = nullptr;
 			int32 Systems = 0;
@@ -89,7 +109,6 @@ namespace InteriorPortalPhysicsMapCoverage
 			int32 ReadyBindings = 0;
 			for (UPrimitiveComponent* Body : System->PhysicsTravellers)
 			{
-				FTravellerRegistry Registry;
 				EGeometryResult RegistrationResult = EGeometryResult::InvalidGeometry;
 				const bool bRegistered = Registry.Register(Body,RegistrationResult);
 				FTravellerSnapshot Snapshot;
@@ -114,10 +133,13 @@ namespace InteriorPortalPhysicsMapCoverage
 					BindingResult = PreparePhysicsBinding_GameThread(Request,Prepared);
 					if (BindingResult == EPhysicsBindingResult::Ready)
 					{
-						FPortalPhysicsBindingBridge Observer;
-						Observer.Update_GameThread(&Request);
-						bNativeBound = Observer.HasLiveBinding();
-						Observer.Shutdown_GameThread();
+						if (!bObserving)
+						{
+							ActiveRequest = Request;
+							Observer.Update_GameThread(&ActiveRequest);
+							bNativeBound = Observer.HasLiveBinding();
+							bObserving = bNativeBound;
+						}
 						if (bNativeBound) { ++ReadyBindings; }
 					}
 				}
@@ -127,11 +149,16 @@ namespace InteriorPortalPhysicsMapCoverage
 					int32(bRegistered),Reason(RegistrationResult),BindingResultName(BindingResult),int32(bNativeBound)));
 			}
 			Test->TestTrue(TEXT("Authored map has at least one prepared and native-bound traveller"),ReadyBindings > 0);
-			return true;
+			return !bObserving;
 		}
 	private:
 		FAutomationTestBase* Test;
+		InteriorPortalPhysics::FTravellerRegistry Registry;
+		InteriorPortalPhysics::FPortalPhysicsBindingBridge Observer;
+		InteriorPortalPhysics::FPhysicsBindingRequest ActiveRequest;
 		int32 ReadyTicks = 0;
+		int32 ObservationTicks = 0;
+		bool bObserving = false;
 	};
 }
 

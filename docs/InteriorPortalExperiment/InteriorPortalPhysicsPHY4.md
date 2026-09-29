@@ -295,3 +295,13 @@ GT validation now uses the component transform while PT keeps its native
 unit-scale pose. The authored map's registered cube reports `Ready` and can
 register a read-only Chaos callback; dedicated map 1/1 and affected Physics
 46/46 pass. This does not certify a physical interval or promote the writer.
+
+The [real native-substep observation](InteriorPortalPhysicsNativeObservationPHY4.md)
+now checks the immutable body/support native binding before interval gates,
+and sends typed clearance rejections back to GT without consuming a proof or
+writing physics. Float-native bounds and near-1/60 solver time use bounded
+representation tolerances; actual reach still uses the measured delta. On the
+authored map, three substeps yield zero binding mismatches and conservative
+`InvalidInterval`/`UnsupportedMotion` rejection. Dedicated map 1/1 and affected
+Physics 46/46 pass. Real-world scene clearance, hard speed-cap ownership,
+held/free drive and the one-writer cutover are still open.

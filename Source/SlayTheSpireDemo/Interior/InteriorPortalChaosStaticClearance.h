@@ -12,15 +12,24 @@ namespace InteriorPortalPhysics
 		Clear, Retired, InvalidInterval, BindingChanged, UnsupportedMotion,
 		UnsupportedScene, OutsideAperture, SourceBlocked, DestinationBlocked, UncertifiedDynamicInteraction
 	};
+	enum class ENativeBindingIssue : uint8
+	{
+		None, Command, BodyState, BodyCollision, BodyBounds, BodyCOM,
+		SupportState, SupportCollision, SupportBounds, SupportPose, GeometryChanged, SupportSpan
+	};
 	class FChaosStaticClearance;
 	/** Issued by a native solver scan, never constructible from GT query results. */
 	class FStaticClearanceProof
 	{
 	public:
 		EStaticClearanceReason Reason() const { return Result; }
+		ENativeBindingIssue BindingIssue() const { return Issue; }
+		int32 BindingComponent() const { return Component; } // -1 body/command, 0 entry support, 1 exit support.
 	private:
 		friend class FChaosStaticClearance;
 		EStaticClearanceReason Result = EStaticClearanceReason::InvalidInterval;
+		ENativeBindingIssue Issue = ENativeBindingIssue::None;
+		int32 Component = -1;
 		uint64 Binding = 0, Sequence = 0;
 		FBoundaryCommand Command;
 		FBoundaryState Start, End;

@@ -454,6 +454,14 @@ now confirms the authored scaled supports and cube can prepare and register a
 read-only native callback after correcting the GT scale-validation domain.
 The provider still must certify actual physics intervals before cutover.
 
+[Real native-substep observation](InteriorPortalPhysicsNativeObservationPHY4.md)
+now validates the body and scaled supports on PT before returning typed
+interval/motion rejection to GT. The actual map produced three consecutive
+observations without a native binding mismatch, but the variable PIE step and
+missing native hard speed cap prevent a clearance grant. No proof is consumed
+or collision permission changed. This is a conservative diagnostic boundary,
+not completion of actual-world scene certification or the one-writer cutover.
+
 Complete actual-world certification of general scene coverage and production
 adapter assembly: prove interacting dynamic obstacle interval coverage or a
 bounded rejection policy that includes contact/constraint effects, then prove

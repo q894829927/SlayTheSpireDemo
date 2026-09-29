@@ -1,5 +1,30 @@
 # Codex Goal Checkpoint — Interior Portals
 
+## PHY-4 real native-substep observation — 2026-09-29
+
+- Predecessor HEAD `166962a` on `portal/full-fidelity-p1` commits the preceding
+  scaled-support map binding fix; this delivery includes native-substep
+  observation. Preserve unrelated renderer/lighting changes and the dirty user
+  map; its SHA-256 remains
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- Read-only PT callback now checks native body/support identity before interval
+  gates and returns typed rejection plus binding subreason/step to GT. Actual
+  scaled map supports remain bound for three substeps with zero mismatches;
+  the final tested step reaches `UnsupportedMotion` because no production hard
+  speed cap exists. A prior run exceeded the `1/60 s` budget and returned
+  `InvalidInterval`.
+  Neither result grants collision permission or installs a second writer.
+- UE 5.8 project generation and final Development Editor build PASS. Final map
+  Automation 1/1 PASS, no warnings; affected Physics 46/46 PASS, zero failures,
+  one existing foundation item with two warnings. Evidence:
+  `Saved/Logs/PortalPhysicsPHY4NativeObservation{ProjectFiles,BuildFinal5}.log`,
+  `Saved/AutomationReports/PortalPhysicsPHY4NativeObserve{MapFinal5,PhysicsFinal5}/index.json`.
+- Next: design one production physical owner that supplies bounded solver steps,
+  native hard speed cap and held/free intent, then prove full actual-world
+  scene/contact clearance before atomic old-writer removal. Fact/ack handoff,
+  Core tests and manual PIE still gate acceptance. See
+  [native observation record](InteriorPortalExperiment/InteriorPortalPhysicsNativeObservationPHY4.md).
+
 ## PHY-4 actual-map binding coverage — 2026-09-29
 
 - Predecessor HEAD `067215d` on `portal/full-fidelity-p1` commits GT binding/fact

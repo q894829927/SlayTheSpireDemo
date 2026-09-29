@@ -8,4 +8,4 @@
 
 专用 `SlayTheSpireDemo.Interior.Portals.MapBindingCoverage` 自动化必须以目标地图启动编辑器；它只操作 PIE 副本并断言至少一个已注册 traveller 能完成准备及原生绑定，不保存地图。最终 UE 5.8 工程生成与 Development Editor 编译 PASS；目标地图自动化 **1/1 PASS、0 警告**（2026-09-29 05:46 UTC），通用 `SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS、0 失败；1 项既有 foundation 测试带 2 条警告**（05:46 UTC）。证据：`Saved/Logs/PortalPhysicsPHY4MapCoverageProjectFiles.log`、`Saved/Logs/PortalPhysicsPHY4MapCoverageBuildFinal.log`、`Saved/AutomationReports/PortalPhysicsPHY4MapCoverageFinal2/index.json`、`Saved/AutomationReports/PortalPhysicsPHY4MapCoveragePhysicsFinal2/index.json`。中间一次通用前缀运行失败，是专用地图测试当时位于该前缀下、却未打开目标地图；测试现已移到独立前缀，两项最终报告均通过。地图 SHA-256 保持 `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`。
 
-下一步是让实际世界 provider 对该地图的障碍、接触和支撑关系给出每个物理子步的许可或保守拒绝，并检查缩放墙的 native bounds 与准备快照一致。之后再做 held/free 输入、事实确认与关闭排空；不在本阶段启用第二写入者。视觉 Core PIE 仍留在一次性生产切换之后。
+后续 [真实子步只读检查](InteriorPortalPhysicsNativeObservationPHY4.md) 已核对缩放墙的 native bounds 与准备快照，并连续得到保守拒绝。实际场景障碍/接触的完整通行许可仍待单一生产写入者接入原生速度上限和受控步长后验证；之后再做 held/free 输入、事实确认与关闭排空。不在只读阶段启用第二写入者，视觉 Core PIE 仍留在一次性生产切换之后。
