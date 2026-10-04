@@ -1,0 +1,21 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
+Texture2D SourceDepthTexture;
+SCREEN_PASS_TEXTURE_VIEWPORT(Output)
+
+void MainPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float OutDepth : SV_Target0)
+{
+	// TSR color is upscaled into Output; depth still occupies the actual
+	// primary view rectangle. Texture allocation extent includes padding and
+	// pooled space and must never be used to infer that rectangle.
+	const float2 ViewUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
+	const int2 SourceMin = int2(View.ViewRectMinAndSize.xy);
+	const int2 SourceSize = int2(View.ViewRectMinAndSize.zw);
+	const int2 SourcePixel = clamp(SourceMin + int2(ViewUV * SourceSize),
+		SourceMin, SourceMin + SourceSize - 1);
+	OutDepth = SourceDepthTexture.Load(int3(SourcePixel, 0)).r;
+}

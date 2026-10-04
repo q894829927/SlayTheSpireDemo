@@ -1,0 +1,57 @@
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/ScreenPass.ush"
+
+SCREEN_PASS_TEXTURE_VIEWPORT(Output)
+float4 ScreenToPortalRow0;
+float4 ScreenToPortalRow1;
+float4 ScreenToPortalRow2;
+float OverlayPreExposure;
+
+// STEP 1B.12D-A isolation pass. Color/depth are untouched; the C++
+// depth-stencil state clears only the bounded feasibility bit (0x40).
+void ClearStencilPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION)
+{
+}
+
+// STEP 1B.12D-A: rasterize the exact projective portal aperture into main
+// stencil. Color/depth are untouched; the C++ depth-stencil state performs the
+// masked stencil replace after this shader discards non-aperture pixels.
+void MarkAperturePS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION)
+{
+	const float2 ViewportUV = (SvPosition.xy - Output_ViewportMin) * Output_ViewportSizeInverse;
+	const float3 ScreenPoint = float3(ViewportUV, 1.0);
+	const float3 PortalHomogeneous = float3(
+		dot(ScreenToPortalRow0.xyz, ScreenPoint),
+		dot(ScreenToPortalRow1.xyz, ScreenPoint),
+		dot(ScreenToPortalRow2.xyz, ScreenPoint));
+
+	// Negative/zero homogeneous W is behind the portal plane / invalid for the
+	// current view and must never claim aperture stencil ownership.
+	if (PortalHomogeneous.z <= 1.0e-8)
+	{
+		discard;
+	}
+
+	const float2 PortalLocal = PortalHomogeneous.xy / PortalHomogeneous.z;
+	if (dot(PortalLocal, PortalLocal) > 1.0)
+	{
+		discard;
+	}
+}
+
+// STEP 1B.12D-A verification overlay. The shader itself deliberately does not
+// recompute the aperture. The C++ pipeline uses a real stencil CF_Equal test.
+// AfterDOF SceneColor is still in the main pre-exposed HDR domain, so emit the
+// diagnostic cyan scaled by main pre-exposure instead of raw 1.0 HDR energy.
+void StencilOverlayPS(
+	in noperspective float4 UVAndScreenPos : TEXCOORD0,
+	float4 SvPosition : SV_POSITION,
+	out float4 OutColor : SV_Target0)
+{
+	const float P = max(OverlayPreExposure, 1.0e-6);
+	OutColor = float4(0.0, P, P, 1.0);
+}

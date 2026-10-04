@@ -13,9 +13,14 @@ public class SlayTheSpireDemoTests : ModuleRules
 			"AssetRegistry",
 			"Core",
 			"CoreUObject",
+			"Chaos",
+			"PhysicsCore",
 			"Engine",
 			"InputCore",
+			"RenderCore",
+			"RHI",
 			"UMG",
+			"UnrealEd",
 			"SlayTheSpireDemo"
 		});
 

@@ -1,0 +1,134 @@
+// Opt-in installed-engine capability probe. Opaque triangle visibility only.
+// No production GI, shadow, radiance-cache or material-opacity integration.
+#include "/Engine/Private/Common.ush"
+#include "/Engine/Private/SceneData.ush"
+
+RaytracingAccelerationStructure ProbeTLAS;
+static float4 Centers[2];
+#define Normals Scene.InteriorPortalLighting.Normals
+#define Rights Scene.InteriorPortalLighting.Rights
+#define Ups Scene.InteriorPortalLighting.Ups
+#define Identities Scene.InteriorPortalLighting.Identities
+RWStructuredBuffer<uint4> ProbeResults;
+
+bool Inside(uint E, float3 P)
+{
+    float3 Delta = P - Centers[E].xyz;
+    float2 UV = float2(dot(Delta, Rights[E].xyz) / Rights[E].w,
+                      dot(Delta, Ups[E].xyz) / Ups[E].w);
+    return dot(UV, UV) <= 1.0;
+}
+
+float3 MapVector(uint E, float3 V)
+{
+    uint X = 1 - E;
+    return -dot(V, Normals[E].xyz) * Normals[X].xyz
+           -dot(V, Rights[E].xyz) * Rights[X].xyz
+           +dot(V, Ups[E].xyz) * Ups[X].xyz;
+}
+
+bool TraceSegment(float3 O, float3 D, float Limit, int Entry, int Exit, bool Connect,
+                  out uint Primitive, out float Distance)
+{
+    RayDesc Ray;
+    Ray.Origin = O;
+    Ray.Direction = D;
+    Ray.TMin = 0;
+    Ray.TMax = Limit;
+    RayQuery<RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES> Query;
+    Query.TraceRayInline(ProbeTLAS, 0, 0xff, Ray);
+    while (Query.Proceed())
+    {
+        if (Query.CandidateType() != CANDIDATE_NON_OPAQUE_TRIANGLE) continue;
+        uint Id = GetInstanceSceneData(Query.CandidateInstanceID()).PrimitiveId;
+        float3 Point = O + D * Query.CandidateTriangleRayT();
+        bool Skip = false;
+        for (uint E = 0; E < 2; ++E)
+        {
+            // The opaque cosmetic fallback is not physical aperture geometry.
+            Skip |= Id == Identities[E].y && Inside(E, Point);
+            // Only a valid approaching/departing connection cuts its own support.
+            Skip |= Connect && (int(E) == Entry || int(E) == Exit)
+                    && Id == Identities[E].x && Inside(E, Point);
+        }
+        if (!Skip) Query.CommitNonOpaqueTriangleHit();
+    }
+    bool Hit = Query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    Primitive = Hit ? GetInstanceSceneData(Query.CommittedInstanceID()).PrimitiveId : 0xffffffff;
+    Distance = Hit ? Query.CommittedRayT() : Limit;
+    return Hit;
+}
+
+[numthreads(8, 1, 1)]
+void MainCS(uint3 Dispatch : SV_DispatchThreadID)
+{
+    uint Index = Dispatch.x;
+    if (Index == 0)
+    {
+        ProbeResults[8] = Scene.InteriorPortalLighting.Metadata;
+        ProbeResults[9] = Scene.InteriorPortalLighting.SceneEpoch;
+        ProbeResults[10] = uint4(Identities[0].xy, Identities[1].xy);
+    }
+    if (Scene.InteriorPortalLighting.Metadata.z != 2)
+    {
+        ProbeResults[Index] = uint4(3, 0xffffffff, 0, 0); // explicit empty/unconnected scene
+        return;
+    }
+    // Shared scene data is independent of camera crop, exposure and ViewState.
+    // TLAS coordinates can differ from this auxiliary camera's translated coordinates.
+    FDFVector3 TLASTranslation = MakeDFVector3(View.TLASPreViewTranslationHigh, View.TLASPreViewTranslationLow);
+    for (uint P = 0; P < 2; ++P)
+    {
+        Centers[P] = float4(DFFastToTranslatedWorld(MakeDFVector3(
+            Scene.InteriorPortalLighting.CentersHigh[P].xyz,
+            Scene.InteriorPortalLighting.CentersLow[P].xyz), TLASTranslation), 0);
+    }
+    uint E = Index / 4;
+    uint Case = Index % 4; // stock center, connected center, ellipse-outside, back
+    float3 O = Centers[E].xyz + Normals[E].xyz * (Case == 3 ? -50 : 50);
+    if (Case == 2) O += Rights[E].xyz * Rights[E].w * 1.2;
+    float3 D = Normals[E].xyz * (Case == 3 ? 1 : -1);
+    bool Connect = Case != 0;
+    float Remaining = 100, Total = 0;
+    int Departed = -1;
+    uint Status = 1, HitPrimitive = 0xffffffff, Hops = 0;
+    for (uint Iteration = 0; Iteration <= 4; ++Iteration)
+    {
+        float Limit = Remaining;
+        int Entry = -1;
+        for (uint P = 0; P < 2; ++P)
+        {
+            float X = dot(O - Centers[P].xyz, Normals[P].xyz);
+            float DX = dot(D, Normals[P].xyz);
+            if (!Connect || X < 0 || DX >= 0) continue;
+            float T = -X / DX;
+            if (T >= 0 && T < Limit && Inside(P, O + D * T))
+            {
+                Limit = T;
+                Entry = int(P);
+            }
+        }
+        float Distance;
+        if (TraceSegment(O, D, Limit, Entry, Departed, Connect, HitPrimitive, Distance))
+        {
+            Total += Distance;
+            Status = 0;
+            break;
+        }
+        Total += Limit;
+        Remaining -= Limit;
+        if (Entry < 0) break;
+        if (Iteration == 4)
+        {
+            Status = 2; // unresolved, never an unoccluded light/sky result
+            break;
+        }
+        uint Target = 1 - uint(Entry);
+        float3 Intersection = O + D * Limit;
+        O = Centers[Target].xyz + MapVector(Entry, Intersection - Centers[Entry].xyz);
+        D = MapVector(Entry, D);
+        Departed = int(Target);
+        ++Hops;
+    }
+    ProbeResults[Index] = uint4(Status, HitPrimitive, asuint(Total), Hops);
+}

@@ -2,6 +2,801 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal commit consolidation — 2026-10-05
+
+Commits `39e328b`, `749ab25` and `a29f6a9` grouped already documented PHY-4
+scene diagnostics, project-side light-path visibility and receiving depth/HDR
+changes. No build, Automation or manual PIE was rerun solely for these commits;
+the dated results below remain the evidence for their respective scopes. The
+production physics cutover, normal-lighting continuity and continuous visual
+gates remain open. Historical “uncommitted” statements below describe the
+working-tree state when those earlier results were recorded.
+
+## Interior portal PHY-4 actual-map native scene — 2026-09-29
+
+Predecessor HEAD `9ca52f5`; [native scene record](InteriorPortalExperiment/InteriorPortalPhysicsMapNativeScenePHY4.md)
+describes this test-owned, read-only continuation. UE 5.8 bundled .NET project
+generation and Development Editor build PASS. Authored-map PIE-copy
+`MapNativeSceneCoverage` **1/1 PASS, zero test warnings**: a separately owned,
+speed-capped body stays outside the legacy writer list and reaches three Chaos
+clearance substeps with zero binding mismatches. Final rejection is
+`UnsupportedScene`, issue mask `0x00000080` (`ActiveContact`), step
+`0.016666804 s`. Affected Physics prefix **46/46 PASS, zero failures; one
+existing foundation test has two warnings**. Evidence:
+`Saved/Logs/PortalPhysicsPHY4MapNativeSceneFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4MapNativeSceneFinal3Build.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4MapNativeSceneFinal3/index.json`,
+`Saved/AutomationReports/PortalPhysicsPHY4MapNativeScenePhysicsFinal/index.json`.
+No passage grant, production writer cutover or manual visual Core acceptance is
+claimed. The user map SHA-256 is unchanged:
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Interior portal PHY-4 native substep observation — 2026-09-29
+
+Predecessor HEAD `166962a`; [native observation record](InteriorPortalExperiment/InteriorPortalPhysicsNativeObservationPHY4.md)
+describes this delivery. UE 5.8 bundled .NET project generation and
+Development Editor build PASS. Authored-map read-only PIE copy
+`MapBindingCoverage` **1/1 PASS, 0 warnings** with three native substeps and
+zero binding mismatches; final step `0.016666699 s` is conservatively rejected
+as `UnsupportedMotion`, confirming lack of a native hard speed cap. An earlier
+run reached `InvalidInterval` at `0.016666900 s` against `1/60 s`. Affected
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0
+failures; 1 existing foundation test with 2 warnings**. Final evidence:
+`Saved/Logs/PortalPhysicsPHY4NativeObservationProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4NativeObservationBuildFinal5.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4NativeObserveMapFinal5/index.json`,
+`Saved/AutomationReports/PortalPhysicsPHY4NativeObservePhysicsFinal5/index.json`.
+No production physical writer, scene clearance grant or manual Core PIE
+acceptance is claimed. User map hash is unchanged:
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Interior portal PHY-4 actual-map binding coverage — 2026-09-29
+
+Predecessor HEAD `067215d`; [map coverage record](InteriorPortalExperiment/InteriorPortalPhysicsMapBindingCoveragePHY4.md)
+and scaled-support GT validation fix are included in this delivery. UE 5.8 bundled .NET
+project generation and Development Editor build PASS. Read-only PIE copy of
+`/Game/House/L_Interior_LivingKitchen`: dedicated
+`SlayTheSpireDemo.Interior.Portals.MapBindingCoverage` **1/1 PASS, 0 warnings**;
+both authored scaled supports have `FITS` geometry, the registered cube has
+`Ready` preparation and `nativeBound=1`. Affected generic
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0 failures; 1 existing
+foundation test with 2 warnings**. Final reports are dated 2026-09-29 05:46 UTC:
+`Saved/AutomationReports/PortalPhysicsPHY4MapCoverageFinal2/index.json` and
+`Saved/AutomationReports/PortalPhysicsPHY4MapCoveragePhysicsFinal2/index.json`;
+build evidence is `Saved/Logs/PortalPhysicsPHY4MapCoverageProjectFiles.log` and
+`Saved/Logs/PortalPhysicsPHY4MapCoverageBuildFinal.log`. Earlier diagnostic
+generic-prefix run failed only because the map-specific test then required a
+map that was not open; moving it to an independent prefix resolved the scope.
+No physical passage or manual visual Core acceptance is claimed. User map
+SHA-256 remains `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Interior portal PHY-4 real GT/PT binding observation — 2026-09-29
+
+[Read-only binding bridge](InteriorPortalExperiment/InteriorPortalPhysicsRealBindingObservePHY4.md)
+integrates `AInteriorPortalSystem` with an opt-in Chaos callback (default off).
+UE 5.8 bundled .NET project generation and Development Editor build PASS.
+New real TaskGraph callback lifecycle gate **1/1 PASS, 0 warnings**. Affected
+`SlayTheSpireDemo.Interior.Portals.Physics` **46/46 PASS, 0 failures; 1 existing
+foundation test with 2 warnings**, 2026-09-28 18:18 UTC. Evidence:
+`Saved/Logs/PortalPhysicsPHY4RealBridgeProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeBuildFinal.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeFocused.log`,
+`Saved/Logs/PortalPhysicsPHY4RealBridgeFinal.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4RealBridgeFinal/index.json`.
+No physical writer or actual-map PIE was enabled; Core acceptance remains open.
+
+## Interior portal PHY-4 GT binding/fact lifecycle — 2026-09-29
+
+Previous native passage session committed as `d442f15`; the
+[binding/fact lifecycle increment](InteriorPortalExperiment/InteriorPortalPhysicsBindingLifecyclePHY4.md)
+is included with the read-only bridge delivery. UE 5.8 bundled .NET project generation and Development Editor
+build PASS. Affected `SlayTheSpireDemo.Interior.Portals.Physics` **45/45 PASS,
+0 failures; 1 existing foundation test with 2 warnings** at 2026-09-28 17:54
+UTC. New `PhysicsCoordinator.BindingLifecycleHandoff` passed without warnings.
+Evidence: `Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalBuild.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingLifecycleFinalAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4BindingLifecycleFinal/index.json`.
+This is a value-only protocol exercised in Automation, not actual-map PT wiring,
+PIE or Core acceptance. User map hash is unchanged.
+
+## Interior portal PHY-4 native session lifecycle — 2026-09-29
+
+Previous binding preparation committed as `2e1b3e4`; the
+[session-lifecycle increment](InteriorPortalExperiment/InteriorPortalPhysicsSessionLifecyclePHY4.md)
+is committed as `d442f15`. UE 5.8 bundled .NET project generation and Development Editor
+build PASS. Affected `SlayTheSpireDemo.Interior.Portals.Physics` **44/44 PASS,
+0 failures; 1 existing foundation test carries 2 warnings**, 2026-09-28 17:20
+UTC. The new `PhysicsSolverClearance.RetiredFactHandoff` passed without warnings.
+Evidence: `Saved/Logs/PortalPhysicsPHY4SessionFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4SessionFinalBuild.log`,
+`Saved/Logs/PortalPhysicsPHY4SessionDiagnosticAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4SessionDiagnostic/index.json`.
+The new runtime owner is attached only in the Editor Chaos fixture; no production
+writer, actual-map PIE or Core acceptance is claimed. User map hash unchanged.
+
+## Interior portal PHY-4 world-component binding preparation — 2026-09-29
+
+Previous physical increments committed as `48b753d`; binding preparation is
+committed as `2e1b3e4`. [Contract and limits](InteriorPortalExperiment/InteriorPortalPhysicsBindingPreparationPHY4.md).
+UE 5.8 bundled .NET project generation and Development Editor build PASS.
+Affected `PhysicsSolverClearance` **20/20 PASS, 0 failures/warnings**, 2026-09-28
+17:05 UTC. Evidence: `Saved/Logs/PortalPhysicsPHY4BindingProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingBuild.log`,
+`Saved/Logs/PortalPhysicsPHY4BindingDiagnosticAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4BindingDiagnostic/index.json`.
+The runtime binding preparation is exercised by the existing native fixture;
+no production adapter, manual PIE or Core acceptance is claimed. The user map
+was not edited.
+
+## Interior portal PHY-4 continuous native gravity — 2026-09-28
+
+HEAD `fd825aca848de01f120bf346badd0eab6f161bc8`; changes uncommitted.
+[Dedicated contract and correction](InteriorPortalExperiment/InteriorPortalPhysicsContinuousGravityPHY4.md):
+earlier gravity tests left traveller gravity disabled, so their scene-gravity
+claims were invalid. Corrected tests assert actual downward integration. UE 5.8
+bundled .NET project generation and Development Editor build PASS. Final
+affected `PhysicsSolverClearance` **19/19 PASS, 0 failures, 0 warnings** at
+2026-09-28 13:41 UTC, including native gravity free passage, floor cancellation,
+bounded lateral passage and rim denial. Evidence:
+`Saved/Logs/PortalPhysicsPHY4ContinuousGravityFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4ContinuousGravityFinalBuild.log`,
+`Saved/Logs/PortalPhysicsPHY4ContinuousGravityFinalAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4ContinuousGravityFinal/index.json`.
+Initial 18/19 diagnostic failure is not final acceptance evidence. Map hash
+remained `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+Only an isolated native fixture ran; no production or manual PIE acceptance.
+
+## Interior portal PHY-4 speed-cap lifecycle and ordinary gravity — 2026-09-28
+
+HEAD `fd825aca848de01f120bf346badd0eab6f161bc8`; changes remain
+uncommitted. The [dedicated lifecycle record](InteriorPortalExperiment/InteriorPortalPhysicsSpeedCapLifecyclePHY4.md)
+documents the correction to the prior PT-only cap diagnosis and exact fixture
+scope. UE 5.8 bundled .NET project generation PASS, final Development Editor
+build PASS, and final affected `PhysicsSolverClearance` **18/18 PASS, 0 failed,
+0 test warnings** at 2026-09-28 13:19 UTC. Evidence:
+`Saved/Logs/PortalPhysicsPHY4SpeedCap{ProjectFiles,FinalBuild}.log`,
+`Saved/Logs/PortalPhysicsPHY4SpeedCapVerifiedAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4SpeedCapVerified/index.json`.
+Correction: the scene gravity was configured but the body gravity flag was off;
+this run proves conservative floor denial, not gravity-driven cancellation.
+Actual gravity behavior is verified by the newer 19/19 run above. Production cutover and
+manual PIE were not performed. Map SHA256 remained
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
+## Interior portal PHY-4 gravity/contact cancellation — 2026-09-28
+
+HEAD `fd825aca848de01f120bf346badd0eab6f161bc8`; changes remain
+uncommitted. The [dedicated record](InteriorPortalExperiment/InteriorPortalPhysicsGravityCancellationPHY4.md)
+separates the initial gravity diagnostic failure and intermediate regressions
+from final evidence. Unreal MCP read the LivingKitchen cube/portal/floor setup
+without saving assets; map SHA256 remained
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+Prescribed UE 5.8 project-file generation PASS and final Development Editor
+build PASS. Final affected `PhysicsSolverClearance` **17/17 PASS, 0 test
+warnings/errors**, 2026-09-28 12:49 UTC. Evidence:
+`Saved/Logs/PortalPhysicsPHY4Gravity{ProjectFiles,FinalBuild}.log`,
+`Saved/Logs/PortalPhysicsPHY4GravityVerifiedAutomation.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4GravityVerified/index.json`.
+This is an isolated native fixture, not production or manual PIE acceptance.
+The gravity claim in this historical run is superseded because body gravity
+was off; the newer 19/19 run checks actual downward integration.
+
+## Interior portal LT-3 source-consumer audit — 2026-09-28
+
+[LT-3 integration boundary](InteriorPortalExperiment/InteriorPortalLumenIntegrationLT3.md)
+records a read-only audit of the local 5.8.1 installed Engine Shader/Renderer
+consumers. The separate local source tree is 5.6.1 and cannot build this project.
+The user chose not to modify the engine now, so this integration is paused.
+The new document and navigation links passed whitespace/reference checks; the
+LivingKitchen map hash and project HEAD remain unchanged. This turn made no
+executable changes and ran no new UE build, Automation or PIE. The previous LT-2
+evidence below remains valid. Production Lumen lighting and the visible seam are
+still OPEN; no manual visual acceptance is claimed.
+
+## Interior portal scene-light connection publication — 2026-09-28
+
+HEAD remains `fd825aca848de01f120bf346badd0eab6f161bc8`; changes uncommitted.
+Contract and exact case table: [Light transport](InteriorPortalExperiment/InteriorPortalLightTransport.md).
+Project-only extensible Scene UB constants are sealed once per GT/RT frame, with
+logical ObjectKey/support identity, independent of cosmetic visibility and camera
+crop/exposure. Each native main/additional renderer gets the same connection.
+GPU consumers translate high/low world centers into the actual TLAS coordinates.
+No engine, association, dependency, build-setting, gameplay API or map changes.
+
+Prescribed UE 5.8 project generation PASS 5.41 s and runtime/editor build PASS
+19.76 s: `Saved/Logs/PortalLightConnection{ProjectFiles,Build}.log`.
+Actual D3D12 LivingKitchen PIE **10 cases / 30 view readbacks PASS**, completed=true,
+error=null, end UTC 2026-09-27 18:07:50. Views agree on sealed frame, session,
+generation, endpoint/support/cosmetic identities and per-ray hit/hop state; distance
+difference <0.01 cm. Covers offscreen persistence, 0.1 cm endpoint movement,
+support replacement/restoration, 0.1 cm exit blocker, clear/relink while cosmetics
+remain hidden, four recursive auxiliary views and observer stop/restart. The 240
+result slots include eight explicit inactive outcomes; not 240 active ray traces.
+Evidence: `Saved/AutomationReports/PortalLightConnection/sequence.json`,
+`Saved/Logs/PortalLightConnectionPIE.log`. Map SHA256 unchanged.
+
+Affected D3D12 Automation run selected 23 tests: **21 existing regressions PASS,
+zero test warnings/errors** (FullFidelity, MainViewOwnership, ViewExtensionLifecycle,
+ColorSampleExposure); the two new LightConnection fixtures incorrectly constructed
+abstract UObject and yielded one failure plus one warning-bearing success.
+`Saved/AutomationReports/PortalLightConnectionAutomation/index.json`, log of the
+same name, end UTC 18:09:45. This run is not 23/23 PASS.
+After fixing only test fixture identity construction, Editor test module rebuild
+PASS 6.33 s (`Saved/Logs/PortalLightConnectionTestFixtureBuild.log`), focused
+LightConnection **2/2 PASS, zero test warnings/errors**, end UTC 18:15:28:
+`Saved/AutomationReports/PortalLightConnectionFinalAutomation/index.json`,
+`Saved/Logs/PortalLightConnectionFinalAutomation.log`. Runtime DLL/Shader unchanged,
+so GPU and the 21 existing passes remain valid. Do not combine this split evidence
+with each other or previous 22/22, 2/2 or offline 14/14 as one final run.
+
+**Production lit seam remains OPEN.** This validates scene data and opaque
+visibility; it does not implement traveller AnyHit/material opacity, actual Lumen
+lighting, SurfaceCache/RadianceCache, shadows or reflections. Next is LT-3 actual
+consumers. Normal-lit continuous half-crossing/traversal/rapid-turn visual acceptance
+is USER ACTION REQUIRED when that production candidate exists; do not ask the user
+to accept the known remaining color seam now.
+
+## Interior portal lighting-path reference / installed-engine visibility — 2026-09-27
+
+HEAD remains `fd825aca848de01f120bf346badd0eab6f161bc8`; changes uncommitted.
+Contract: [Light transport](InteriorPortalExperiment/InteriorPortalLightTransport.md).
+Offline Python reference **14/14 PASS**; evidence
+`Saved/AutomationReports/PortalLightTransportReference/{tests,paths}.json`.
+It proves geometric/path counterexamples, not GPU/PIE or production lighting.
+
+Prescribed bundled UE 5.8 project generation and editor build PASS, with final
+build 9.39 s: `Saved/Logs/PortalLightVisibility{ProjectFiles,Build}.log`.
+No engine source, private include path, module dependency, association or build
+setting changes. A project shader/opt-in PostTLASBuild observer binds the actual
+main-view scene acceleration structure through public interfaces.
+
+Actual D3D12 LivingKitchen PIE **3 scenes / 24 GPU ray readbacks completed**,
+completed=true, error=null, end UTC 14:55:03. Raw/outside/back hit their precise
+support; connected center rays use one connection. A separate 0.1 cm thick
+obstacle, 0.1 cm in front of the exit, blocks the transported ray at 50.09965 cm
+and direct/opposite-connected rays at 49.79964 cm, same primitive identity.
+Stop/restore/restart recovers baseline. Evidence:
+`Saved/AutomationReports/PortalLightVisibility/sequence.json`,
+`Saved/Logs/PortalLightVisibilityPIE.log`.
+
+Same-build final focused D3D12 C++ Automation MainViewOwnership +
+ViewExtensionLifecycle **2/2 PASS, zero test warnings/errors**, UTC 14:57:18.
+`Saved/AutomationReports/PortalLightVisibilityAutomation/index.json`,
+`Saved/Logs/PortalLightVisibilityAutomation.log`. This separate two-test result
+is not added to the prior 22/22 or the offline/GPU ray counts.
+
+This is **opaque triangle visibility only**, not arbitrary masked-material,
+traveller AnyHit, BRDF, Lumen/shadow/cache or moving-topology acceptance.
+**Production lit color seam remains OPEN**; no normal-lighting output changed.
+Manual continuous normal-lit half-crossing/offscreen/traversal acceptance remains
+USER ACTION REQUIRED when a production lighting candidate exists. The prior
+22/22 renderer evidence remains separate; do not add it to offline/native counts.
+
+## Interior portal directed views / actual scene-linear HDR — 2026-09-27
+
+Source HEAD remains `fd825aca848de01f120bf346badd0eab6f161bc8`; changes uncommitted.
+Native planning, fallback visibility and shared color/rim/depth composition now
+require a front-facing actual receiver. The native and older single-view TSR
+auxiliary producers export post-TSR scene-linear HDR at ReplacingTonemapper;
+UE's Tonemap subscription is after-pass and must not label its output HDR.
+Shared viewport quality overrides and sealed, private per-submission exposure
+preserve the actual color domain. Contract/remaining gates:
+[Directed views and HDR](InteriorPortalExperiment/InteriorPortalSceneLinearHDRBoundary.md).
+
+Prescribed bundled UE 5.8 generation/editor build PASS. Final focused D3D12
+Automation **22/22 PASS, zero test warnings/errors**, UTC 2026.09.27-10.49.31.
+Scope: FullFidelity plus MainViewOwnership, ColorSampleExposure,
+ViewExtensionLifecycle and ObliqueProjection. Evidence:
+`Saved/Logs/PortalSceneLinearBoundaryFinal{ProjectFiles,Build,Automation}.log` and
+`Saved/AutomationReports/PortalSceneLinearBoundaryFinal/index.json`.
+The earlier directed-origin 21-test, show-flag 22-test and first HDR 22-test runs
+are separate intermediate evidence, not cumulative totals.
+
+Fresh D3D12 Ping-Pong 0/1 corrected-HDR probes complete **10 captures per mode**,
+2114x1173 receiver, 1920x1065 targets and 0.67 auxiliary primary fraction. Source
+simulation stays enabled; both live source/proxy SliceEnabled=1 are recorded.
+Back views publish mask 0, front orange 2, dual 3, actual four-level facing
+fixture mask 15. Inspected geometric coverage agrees; albedo controls have near
+matching raw HDR. Successful filtered GPU dumps corroborate the domain correction.
+**Normal-lighting color seam remains OPEN**, with a dominant Lumen diffuse
+indirect component measured before main Tonemap. Evidence:
+`Saved/AutomationReports/PortalReceivingPlaneP{0,1}SceneLinearHDR/` and
+`PortalReceivingPlaneP1SceneLinearHDRLighting/`, matching Probe logs.
+Final accessor/diagnostic alignment does not change native shader/crop/HDR mapping;
+reuse these unaffected captures. Final executable smoke is recorded in the linked
+document. Continuous held-motion/offscreen/traversal gate remains **USER ACTION
+REQUIRED**; static evidence does not accept normal-lighting color continuity.
+
+Same-world-point attribution control completed two captures with live slices,
+both supports/exit cosmetic hidden and common PreExposureOverride=1 only in
+disposable PIE. Mapped primary camera/normal light and raw HDR input are verified;
+auxiliary source cyan (0.578125,3.25,7.375), primary source (0.5703125,3.1875,7.375).
+This controlled scene has no large inherent primary/additional color multiplier;
+it does not accept normal-map lighting or eliminate visibility/history hypotheses.
+Evidence: `Saved/AutomationReports/PortalReceivingPlaneP1SameWorldLighting/`,
+`Saved/Logs/PortalSameWorldLightingProbe.log` (end UTC 10.59.34). No assets saved.
+
+Correction to historical seam claims below: simulation-disabled fixtures cause
+production traveller unregistration/proxy destruction/source slice restoration.
+Their intact cube PNGs prove ordinary foreground only. Withdraw their claimed
+half-crossing seam PASS; unrelated no-cube opening/recursive evidence remains
+historical. No map/assets saved, no physics/Core/P8 or performance acceptance.
+
+## Interior portal receiving-surface ownership — 2026-09-27
+
+The user rejected the prior seam candidate as a complete fix: second-portal
+visibility and recursive geometry regressed. Current source HEAD remains
+`fd825aca848de01f120bf346badd0eab6f161bc8`; renderer changes and preceding PHY-4
+work are uncommitted. Actual rasterized supporting-surface identity/depth now owns
+the aperture independently of ideal-plane foreground depth. The shared color/rim/
+propagated-depth rule and attachment/backend cleanup contract are documented in
+[Receiving ownership](InteriorPortalExperiment/InteriorPortalReceivingPlaneOwnership.md).
+
+Prescribed bundled UE 5.8 project generation and Development Editor build PASS.
+Initial final focused D3D12 scope: FullFidelity plus MainViewOwnership,
+ColorSampleExposure, ViewExtensionLifecycle and ObliqueProjection; **19/20 PASS,
+zero test warnings**, UTC 09.02.04. The sole failure was the new support lifecycle
+assertion: UE's SetWithCurrentPriority promoted a constructor-default source.
+Use explicit equal priority with normal notification and guard restoration by both
+value/source priority; rebuild PASS. Affected support lifecycle rerun **1/1 PASS,
+zero test warnings/errors**, UTC 09.05.51. Reuse the other 19 unaffected successes;
+these are separate runs, not an aggregate final-head 20/20. New coordinate and
+support gates cover translated origins, cropped/nonzero raster viewports, two
+publishers, stable/shared identities, later aliases, exhaustion, replacement,
+external mutation and teardown. No physics implementation changed in this interruption.
+
+Managed-renderer D3D12 PIE completed fresh Ping-Pong 0/1 sessions, **16 captures
+each**, 2112x1171 viewport, 1920x1065 targets, 0.67 primary fraction, CustomDepth=3,
+matching jitter=1 and unique support IDs 1/2. Inspected direct/dual openings,
+oblique recursive aperture and gun/floor foreground are intact;
+facing fixtures publish actual levels 1-4. Geometry agrees across modes. The first
+lease probe that skipped UE's mode-change callback still failed and is rejected;
+the constant-stencil success is attribution only. Subsequent unique-ID/priority
+guards do not alter the shader mapping. Current executable targeted Ping-Pong 1
+startup/dual/oblique/half-crossing/actual-depth-4 recheck completed **5 captures**,
+no script error; inspected opening defects remain absent (end UTC 09.09.14).
+Both older probes disabled body simulation; their split-traveller acceptance is
+withdrawn as explained above.
+
+Evidence: `Saved/Logs/PortalSupportOwnership{Final,Guard,Priority}ProjectFiles.log`
+and matching Build logs; `Saved/AutomationReports/PortalSupportOwnershipFinal`
+(19/20) and `PortalSupportOwnershipPriority` (1/1), matching Automation logs;
+`Saved/AutomationReports/PortalReceivingPlaneP{0,1}OwnershipFinal/sequence.json`
+and PNGs, `PortalSupportOwnershipAcceptedP{0,1}.log`; current-executable
+`PortalReceivingPlaneP1OwnershipPriority/sequence.json` and PNGs,
+`PortalSupportOwnershipPriorityPIE.log`. All fixture edits are disposable PIE only;
+user map SHA256 is unchanged. No startup/stop hitch, GPU memory/performance,
+physics cutover or full visual acceptance is claimed. **USER ACTION REQUIRED**
+for continuous held-cube motion, rapid turns/offscreen transitions and before/after
+traversal; use the linked map/actions/expected observations. Static captures do
+not replace that gate. Previous seam evidence below is historical and superseded.
+
+## Interior portal half-crossing visual seam — 2026-09-27
+
+Source HEAD `fd825aca848de01f120bf346badd0eab6f161bc8`; specific render fix and
+preceding contact-island work remain uncommitted. Prescribed bundled UE 5.8
+project generation and Development Editor build PASS. Initial full compile found
+a test-only TSharedRef/Reset misuse; correct fixture ownership to TSharedPtr and
+rebuild PASS. The earlier Live Coding rejection was resolved by closing the
+editor; the user also authorized closing it autonomously for future builds while
+preserving desired editor changes.
+
+Final focused **D3D12** Automation run: **17/17 PASS, zero test warnings/errors**,
+2026.09.27-04.30.49 UTC. Exact scope: `Portals.FullFidelity` plus
+`MainViewOwnership`, `ColorSampleExposure`, `ViewExtensionLifecycle` and
+`ObliqueProjection`. Includes the two new actual-request partition and per-view
+surface-exclusion gates. Existing unaffected physics evidence is not rerun or
+added to this total. Both changed global shaders `FInteriorPortalCompositionPS`
+and `FInteriorPortalDepthCandidatePS` actually compiled in the initial D3D12 run;
+the corrected exposure-normalized rim subsequently recompiled in D3D12 PIE. The
+final run uses their current shader cache. Initial 17-test PASS did not catch UE's
+late main-family marking: the fixed-pose probe still retained the opaque Surface.
+Move view exclusion from SetupView to BeginRenderViewFamily and strengthen the
+fixture's real lifecycle order. Intermediate affected 3-test PASS precedes the
+final complete 17-test run; do not combine totals. Final request partitions use
+only float-roundoff ties to exclude coplanar exit support, and transport the actual
+native projection with a truthful hardware-only clip flag. Rebuild PASS.
+This is shader/CPU contract evidence, not transient seam acceptance.
+
+Final scripted fixed-pose D3D12 PIE probes also completed in separate fresh
+LivingKitchen sessions, with Ping-Pong 0/1 set before PIE and actual modes
+recorded. Depth 1, 703x246 viewport, existing 40 cm cube with simulation disabled
+only in disposable PIE: five captures per mode cover head-on/oblique half
+crossing, center +/-10 cm from the seam and foreground diagnostic mode 4.
+Inspected final PNGs show ordinary cube foreground and a visible blue rim.
+**Withdraw the split-traveller acceptance**: simulation-disabled cubes are
+unregistered and no longer have active source/remote slices. Oblique diagnostic
+boundary noise remains; these limited fixed-pose captures do not prove actual
+half-crossing, held-body motion, full-resolution grazing,
+depth 4, rapid turns/offscreen stability or complete gun occlusion. Manual gate
+remains **USER ACTION REQUIRED**. No assets saved.
+Evidence: `Saved/AutomationReports/PortalTravellerVisualPIECompleteP{0,1}/`
+contains five PNGs and `sequence.json` per mode (completed=true, error=null);
+`Saved/Logs/PortalTravellerVisualPIECompleteP{0,1}.log`. Sessions ended on
+2026-09-27 at 04.31.58 / 04.33.35 UTC respectively.
+
+Evidence: `Saved/Logs/PortalTravellerVisualProjectFiles.log`,
+`PortalTravellerVisual{Initial,PreHook,Hook,}Build.log`,
+`PortalTravellerVisual{,Final,Complete}Automation.log`, and
+`Saved/AutomationReports/PortalTravellerVisual{,Final,Complete}/index.json`.
+[Specific contract/remaining visual gate](InteriorPortalExperiment/InteriorPortalTravellerSeamRegression.md).
+
+## Interior portal PHY-4 bounded independent active reach — 2026-09-28
+
+Source HEAD `fd825aca848de01f120bf346badd0eab6f161bc8`; current PHY-4
+continuation uncommitted. Bundled UE 5.8 project generation/editor build PASS.
+Final affected `SlayTheSpireDemo.Interior.Portals.PhysicsSolverClearance`
+**16/16 PASS, zero test warnings/errors**, 2026-09-28 12:06 UTC.
+Actual TaskGraph one/two-substep held/free transfers beside a capped remote
+moving rigid body commit once. Native unbounded speed, exit-reachable body,
+in-interval cap change and potential static contact reject before selective
+support bypass. Sleeping-island and prior filter/kinematic regressions are
+included in the same final run. Earlier failed fixture/assumption runs are
+recorded in the [active reach record](InteriorPortalExperiment/InteriorPortalPhysicsActiveReachPHY4.md);
+they are not combined with this final result. Evidence:
+`Saved/Logs/PortalPhysicsPHY4Active{ProjectFiles,FinalBuild}.log` and
+`Saved/AutomationReports/PortalPhysicsPHY4ActiveVerified/index.json`.
+No production writer/map change or manual PIE acceptance is claimed.
+
+## Interior portal PHY-4 closed sleeping contact islands — 2026-09-27
+
+Source HEAD `fd825aca848de01f120bf346badd0eab6f161bc8` (dormant leases committed);
+current contact-island continuation uncommitted. Prescribed bundled UE 5.8
+generation/editor builds PASS. Initial affected PhysicsSolverClearance **14/15
+PASS, zero test warnings**, 2026.09.26-17.34.26 UTC: all previous 11 regressions
+passed, plus three new contact-island gates. The lease test failed four next-
+interval reason assertions after restored wall contacts rotated the fixture
+traveller; all first affected-interval rejection assertions passed. Reset only
+fixture normal approach before probing a fresh lease. Add native container/node
+validity and constraint-budget guards; no runtime tolerance relaxation.
+Rebuild PASS; final affected ContactIsland **4/4 PASS, zero test warnings**,
+2026.09.26-17.37.00 UTC. Other 11 unchanged-profile regressions reuse the initial
+evidence. Runs are separate, not a 19-test aggregate or a final full 15-test run.
+
+Actual gravity/contact generation and synchronized native sleep verify one-/two-
+member collision islands and retained midphases. TaskGraph one/two-substep held/
+free floor/stack scenarios consume three stage proofs and commit exactly once,
+preserving traveller material and furniture pose/sleep. Sleeping exit obstruction,
+stacked-member wake during partial insertion, initially stale static manifold,
+native support changes at PostIntegrate/PostSolve, retained kinematic contact and
+a real persistent joint all reject. Wake cancellation restores original blocking
+without GT Recovery. Static support filtered out against the traveller still
+participates in its native contact descriptor.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4ContactIsland{,Final}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4ContactIsland{,Final}Automation.log`,
+`PortalPhysicsPHY4ContactIslandProjectFiles.log`,
+`PortalPhysicsPHY4ContactIsland{,Guard,Final}Build.log`.
+Scope/limits: [contact-island record](InteriorPortalExperiment/InteriorPortalPhysicsContactIslandsPHY4.md).
+No manual PIE performed; no manual gate applies to this isolated provider. Awake
+dynamics/islands, broader traveller motion, topology recovery, shutdown handoff
+and production cutover/Core remain OPEN. No map changes/new gameplay writer or
+carrying-defect/P8/P9 acceptance is claimed.
+
+## Interior portal PHY-4 native dormant-body leases — 2026-09-27
+
+Source HEAD `9d44f5b535ca4371a60892afbd9ba357d93d44ed` (filter/kinematic
+delivery committed); this historical dormant continuation is now committed as
+`fd825ac`. Prescribed bundled UE 5.8 generation/editor builds PASS.
+Final affected PhysicsSolverClearance
+**11/11 PASS, zero test warnings**, 2026.09.26-17.14.46 UTC: four new dormant
+tests plus all seven existing native static/filter/kinematic tests. Unchanged
+hold/coordinator/world-query/shared-mapping evidence is reused.
+
+Earlier runs are separate: initial 7/11 PASS, one warning (16.50.52 UTC; typed
+console data lookup caused an ensure for FAutoConsoleVariableRef); settings fix
+0/4 PASS, zero warnings (16.52.58; maximum velocity cap used as actual distance);
+native travel/corridor fix 3/4 PASS, two repeated console lookup warnings (16.55.50);
+diagnostic 0/1 PASS, zero warnings (17.11.32; retained-contact warm-up also collided
+and rotated the traveller, masking the intended sleep rejection). Read referenced
+console values through cached FindConsoleVariable pointers, use actual native
+travel inflation capped by detector limits and separate source/destination paths;
+reset fixture traveller motion and assert actual native retained-midphase count.
+Final all-sleeper wake analysis also prevents filtered intermediary wake chains.
+No results are combined across these runs.
+
+Actual TaskGraph one/two-step held/free scenes beside isolated 1 kg / 20 kg native
+sleepers consume all three current-stage proofs, commit once with fact revision 1
+and preserve material/sleep state. Sleeping PhysicsOnly exit obstruction, partial
+insertion followed by wake-up, direct/indirect wake partners, native PostIntegrate/
+PostSolve pose mutation, pending impulse, persistent joint and retained-contact
+rejections pass. Wake cancellation restores ordinary contacts without GT Recovery;
+valid newly sleeping native state can acquire a new interval lease. Active dynamics
+and contact islands still reject; no arbitrary production coverage is claimed.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Automation.log`,
+`PortalPhysicsPHY4DormantProjectFiles.log` and
+`PortalPhysicsPHY4Dormant{,Settings,Inflation,Diagnostic,Final}Build.log`.
+Scope/limits: [dormant provider record](InteriorPortalExperiment/InteriorPortalPhysicsDormantCoveragePHY4.md).
+No manual PIE performed; no manual gate applies to this isolated slice. No new
+production writer/Core/P8/P9 seal; carrying defect remains OPEN. Pre-existing map
+hash is unchanged and the map was excluded from the requested prior commit.
+
+## Interior portal PHY-4 native filters/kinematic coverage — 2026-09-27
+
+Source HEAD `12f1fe81ef11cdc1ffc3403ae142782680f041e0`; uncommitted continuation.
+This historical continuation is now committed as `9d44f5b`.
+Prescribed bundled UE 5.8 generation/editor builds PASS. Initial affected
+PhysicsSolverClearance 6/6 PASS, zero test warnings, 2026.09.26-16.06.09 UTC.
+Separate added Velocity-mode test initially 0/1 PASS, 16.08.40 UTC, zero warnings:
+four endpoint assertions read a stale GT BodyInstance transform. The fixture now
+enqueues a native PT read and waits through a zero-dt flush, proving actual motion.
+After native support-filter retirement guard and fixture correction, rebuild PASS;
+final affected **7/7 PASS, zero test warnings**, 2026.09.26-16.11.22 UTC. Initial,
+failed and final runs are separate, not cumulative totals. Unchanged mapping,
+coordinator, hold and world-query gates reuse prior passing evidence.
+
+Actual TaskGraph one/two-step coverage: bilateral Ignore, native simulation
+Overlap, query-only and filtered dynamic obstacles allow one transfer/fact;
+Ignore-to-Block during insertion cancels at the next PreIntegrate. Kinematic
+position targets and intermediate thin-box rotations reject before integration
+despite clear endpoint boxes. Unrelated kinematics allow passage. Native velocity
+mode with spin reaches actual PT Y=100.000003 / 30.000003 cm (clear/crossing),
+both step profiles; clear interval stages pass, crossing publishes no fact in the
+affected frame. Support response loss retires the binding and restoration cannot
+revive it. PhysicsOnly, certificate protocol, material/facts, geometry retirement
+and unsupported traveller-motion gates remain passing.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Kinematic{,Velocity,Final}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Kinematic{,Velocity,Final}Automation.log`,
+`PortalPhysicsPHY4Kinematic{ProjectFiles,Build,VelocityBuild,FinalBuild,NativeReadBuild}.log`.
+Full scope and limits: [native filter/kinematic record](InteriorPortalExperiment/InteriorPortalPhysicsKinematicCoveragePHY4.md).
+Interacting Dynamic/Sleeping motion, broad traveller cancellation, topology
+recovery, journal shutdown and production cutover/Core remain open. No manual
+PIE performed; no manual gate applies to the isolated provider. Map unchanged.
+
+## Interior portal PHY-4 solver-bound static certificate — 2026-09-26
+
+Source HEAD `33492d01471b2025f7d068dc090c0e4b1ac2ee37`; uncommitted continuation.
+This historical continuation is now committed as `12f1fe8`.
+Prescribed bundled UE 5.8 generation and editor builds PASS. Initial affected
+run 18/20 PASS (two failing tests; two warnings inside the static-wall movement
+fixture). Corrected the test's refused Static component move to a real native
+body transform; diagnostic rerun 1/2 PASS, zero test warnings. Post-transfer
+UnsupportedMotion exposed float-PI drift in the shared half-turn. Replaced that
+angle construction with exact `(0,0,1,0)`, preserving the existing tolerances and
+one mapping across physics/holding/cameras. Rebuild PASS.
+
+Final affected **29/29 PASS, zero test warnings**, 2026.09.26-15.31.28 UTC:
+PhysicsBoundary (4), PhysicsHold (4), PhysicsCoordinator (6), PhysicsSolverClearance
+(4), PhysicsWorldQuery (5), RigidMapping, QuaternionCamera, VirtualViewRequest,
+FullFidelity.RecursiveRenderRequest, FullFidelity.AnalyticApertureGeometry and
+PortalAwareQuery (one each). Separate initial/diagnostic/final runs, not a combined
+total. Shared mapping changed, so directly affected route/camera gates were rerun.
+
+Subsequent supported-motion review adds angular-acceleration and persistent-joint
+guards. Real bounded rotational drive from zero initial spin and a real world
+joint reject before integration/support bypass. Rebuild PASS; affected
+PhysicsSolverClearance **4/4 PASS, zero test warnings**, 2026.09.26-15.41.14 UTC.
+Other 25 unchanged gates reuse preceding evidence. This is a separate focused
+rerun, not a 33-test aggregate or a repeated full 29-test run.
+
+Actual TaskGraph one/two-step held/free static scenes each commit once; each
+interval consumes three fresh native stage proofs. Certificate replay and wrong
+step/stage/command/sample reject. Native PhysicsOnly obstacle is invisible to GT
+queries but cancels the next affected interval with zero transfer; partial
+insertion restores original wall blocking. Native support movement/body extent/
+aperture mutation retire the binding; stale restoration cannot revive it. Other
+dynamic/kinematic particles, tangent velocity and spin reject. This does not
+prove general scene filtering/moving-obstacle coverage, arbitrary straddling
+topology recovery, gravity/rotation, journal shutdown handoff or production Core.
+No new gameplay writer/map edits; common rigid-mapping precision is corrected.
+No manual PIE was performed. Scope/evidence:
+[native certificate record](InteriorPortalExperiment/InteriorPortalPhysicsSolverClearancePHY4.md).
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4Solver{,Diagnostic,Final,Motion}Automation.log`,
+`PortalPhysicsPHY4Solver{ProjectFiles,InitialBuild,Build,FinalBuild,MotionBuild}.log`.
+
+## Interior portal PHY-4 world-observation/transfer primitives — 2026-09-26
+
+Source HEAD `f6ed5dfd332c4ad083ba4439da411e7dc720033e`; uncommitted continuation.
+This historical continuation is now committed as `33492d0`.
+Prescribed bundled UE 5.8 generation PASS. Initial build exposed a unity helper
+name collision in committed hold/coordinator code; coordinator helper renamed,
+rebuild PASS, subsequent primitive-test build PASS.
+
+Focused NullRHI run **16/16 PASS**, 2026.09.26-14.54.24 UTC:
+PhysicsFoundation (4), PhysicsCoordinator (6), PhysicsWorldQuery (4),
+NativeContactAndSubsteps (1), NativeTransferAndRetirement (1). Fifteen tests have
+zero warnings; GenerationAndSharedQuery passes with two existing test-world
+`DestroyActor: World has no context` warnings. Added PrimitivesAndCompound,
+rebuilt and ran that test only: **1/1 PASS, zero warnings**,
+2026.09.26-14.57.19 UTC. Separate runs; preceding unchanged evidence is reused.
+
+Actual world queries prove volume/clearance blocking, responses, source overlap,
+same-owner sibling collision, stale geometry and sphere/rotated capsule/offset
+compound coverage. Native TaskGraph one/two-interval cancellation restores
+blocking, no transfer or test-side pose Recovery. Runtime adapter verifies
+solved P/Q/material and rejects malformed facts atomically before valid commit;
+held/free, delayed facts and retirement regressions pass. These do not certify
+game-thread observations for actual solver intervals, query-disabled collision,
+future dynamic obstacles, rotation/gravity, arbitrary straddling topology changes,
+exceptional recovery, production cutover or Core manual acceptance.
+See [complete slice evidence](InteriorPortalExperiment/InteriorPortalPhysicsWorldQueriesPHY4.md).
+Map hash unchanged; no active map/system physics writers replaced or added.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4World{,Shapes}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4World{,Shapes}Automation.log` and
+`PortalPhysicsPHY4World{ProjectFiles,InitialBuild,Build,ShapeBuild}.log`.
+
+## Interior portal PHY-4 coordinator slice — 2026-09-26
+
+Historical coordinator slice is now committed as `f6ed5df`.
+Source HEAD `6de308be4c4e9d2377674303390f1261df4d860f`; then-uncommitted coordinator
+slice, full PHY-4 IN PROGRESS. Prescribed bundled UE 5.8 generation/build PASS.
+Combined PhysicsBoundary + PhysicsHold + PhysicsCoordinator: **14/14 PASS,
+zero warnings** (2026.09.26-14.18.32 UTC). After introducing distinct binding
+epochs and typed acknowledgments, rebuild PASS; affected PhysicsCoordinator +
+NativeTransferAndRetirement rerun **7/7 PASS, zero warnings**
+(2026.09.26-14.21.42 UTC). Other unchanged motion/hold evidence is reused;
+these totals are separate runs.
+
+Actual TaskGraph one/two-step Chaos scenes prove one shared held/free transfer,
+preserved actual material/mass-frame/sleep state, immediate route rebinding and
+delayed/duplicate fact consumption plus boundary ack. Pure tests cover COM,
+atomic adapter failure, stale/unsupported input, holder ordering, retirement,
+binding-domain isolation and bounded journal. This does not prove a production
+adapter's atomicity, native journal-full/straddling cancellation, world providers,
+blocked exits, arbitrary rotation/gravity, recovery or visual/Core acceptance.
+The [dedicated PHY-4 record](InteriorPortalExperiment/InteriorPortalPhysicsPHY4.md)
+records complete scope and remaining slices. Production gameplay is unchanged.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY4{Coordinator,Binding}/index.json`,
+`Saved/Logs/PortalPhysicsPHY4{Coordinator,Binding}Automation.log` and
+`PortalPhysicsPHY4Coordinator{ProjectFiles,Build,FinalBuild}.log`.
+
+## Interior portal PHY-3 bounded drive and target profile — 2026-09-26
+
+Historical PHY-3 delivery below is now committed as `6de308b`.
+
+Source HEAD `b4dec6faafd19f8e234f2b7b6c4fd9fe59f91a95`; uncommitted PHY-3.
+Prescribed bundled UE 5.8 generation/build PASS, final affected-test rebuild PASS.
+Combined PhysicsBoundary + PhysicsHold NullRHI run initially **7/8 PASS, one
+failed, zero warnings**. The failed pure route assertion used rounded ideal
+coordinates instead of the existing frame quaternion precision. Only its
+reference was corrected, with tolerance unchanged; affected GeometryAndRoutes
+rerun **1/1 PASS, zero warnings**. The seven unchanged tests remain valid; totals
+are separate runs, not one combined 8/8 claim.
+
+Real TaskGraph Chaos scenes test one/two intervals per dispatch. Blocked 1 kg and 20 kg
+boxes retain collisions and capped force/torque, with final error 0.015443–
+0.144566 cm; centered 1 kg free rotation settles within 0.009990 degrees and
+passes actual impulse/work-plus-impulse energy bounds. The
+[dedicated record](InteriorPortalExperiment/InteriorPortalPhysicsHoldPHY3.md)
+defines thresholds and limited certified static-region query coverage.
+
+Evidence: `Saved/AutomationReports/PortalPhysicsPHY3/index.json`
+(2026.09.26-13.22.07 UTC), `PortalPhysicsPHY3Geometry/index.json`
+(2026.09.26-13.27.06 UTC), `Saved/Logs/PortalPhysicsPHY3{,Geometry}Automation.log`
+and `PortalPhysicsPHY3{ProjectFiles,Build,FinalBuild}.log`. This editor-only
+experiment does not fix production carrying or prove arbitrary-world queries,
+gravity/off-center/anisotropic behavior, visual PIE or Core acceptance. Next PHY-4.
+
+## Interior portal PHY-2 native Chaos boundary — 2026-09-26
+
+Historical PHY-2 delivery below is now committed as `b4dec6f`; current PHY-3
+evidence precedes it.
+
+Source HEAD `fb9d3f437e87c9778ce0c5d8459f83f8054b89ca`; uncommitted PHY-2
+continuation. Prescribed bundled UE 5.8 project generation and Development Editor
+build **PASS**. Focused
+`SlayTheSpireDemo.Interior.Portals.PhysicsBoundary` NullRHI Automation:
+**4/4 PASS, zero warnings** (`Saved/AutomationReports/PortalPhysicsPHY2/index.json`,
+2026.09.26-12.50.22 UTC; `Saved/Logs/PortalPhysicsPHY2Automation.log`).
+
+Native Chaos scenes prove exact pair contact timing for single/two-substep
+SingleThread/TaskGraph profiles, static approach cancellation, capped force
+application and one restricted endpoint transfer with teardown retirement.
+The [dedicated evidence](InteriorPortalExperiment/InteriorPortalPhysicsBoundarySpike.md)
+records fixtures, thresholds, failed development runs and the narrow support
+limits. This editor-only experiment is not attached to gameplay writers. No
+production carrying fix, general rotation/blocked-exit behavior, PIE/visual or
+Core acceptance is claimed. Next is PHY-3; unchanged PHY-1 evidence is reused.
+
+## Interior portal material recovery and runtime regression — 2026-09-13 (latest)
+
+An experimental uncommitted exposure-material graph used an invalid custom-node
+connection and produced a black portal surface. The portal material was restored
+to the last known-good graph, and `tools/setup_interior_portals.py` now checks for
+the required UE expression before clearing an existing graph. The map and portal
+runtime code were left intact.
+
+- MCP `CaptureEditorImage` after PIE restart: portal surface visible again in
+  `Saved/PortalRecoveryCapture.png` (supplemental visual evidence only).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **8/8 PASS**, 0 failed /
+  skipped (`Saved/AutomationReports/PortalRecoveryCurrent/index.json`).
+- Actual PIE player presentation check: **PASS**, five slice materials, three
+  remote visuals and one remote light (`Saved/PortalPlayerPresentationRuntime.json`).
+- Actual PIE physics wall-escape replay: **PASS**, two intended crossings and no
+  escape behind either support (`Saved/PortalPhysicsWallEscape.json`).
+- Capture pre-exposure state check: **PASS**, both endpoints report finite positive
+  runtime values (`Saved/PortalExposureNormalizationRuntime.json`). This is state
+  evidence only; direct-vs-portal exposure parity remains an open P2 visual gate.
+
+This recovery and verification used MCP plus the UE Python bridge; no desktop
+control input was used.
+
+## Interior portal player presentation pass — 2026-09-13
+
+The map-owned presentation component now covers tagged first-person meshes and
+the handheld flashlight's destination-side continuation.
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalPresentationFinalProjectFiles.log`,
+  `Saved/Logs/PortalPresentationFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **6/6 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalPresentationFinal/index.json`,
+  `Saved/Logs/PortalPresentationFinalTests.log`).
+- MCP/UE Python map setup: **PASS**; five player slice materials and the portal
+  flashlight light-function material were bound and the level was saved
+  (`Saved/PortalPlayerPresentationSetup.json`).
+- Actual `L_Interior_LivingKitchen` PIE runtime check: **PASS**; five bound slice
+  materials, three active remote player visuals and one active remote light at the
+  blue entry, followed by restoration of the original pose/light state
+  (`tools/validate_portal_player_presentation.py`,
+  `Saved/PortalPlayerPresentationRuntime.json`).
+- `Saved/PortalPresentationOverall.png` is supplemental visual evidence only;
+  manual near-plane, grazing-angle, held-item and exposure acceptance remains
+  `USER ACTION REQUIRED`.
+
+This pass used MCP and the UE Python bridge; it did not use desktop-control input.
+
+## Portal-aware interaction query pass — 2026-09-13
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalQueryFinalProjectFiles.log`, `Saved/Logs/PortalQueryFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **7/7 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalQueryFinal/index.json`,
+  `Saved/Logs/PortalQueryFinalTests.log`). The added `PortalAwareQuery` case covers
+  line and sphere continuation through a support wall, outside-aperture blocking,
+  and a nearer unrelated obstacle.
+- `TryGrab`, light-switch focus and entrance-door interaction now call the
+  bounded line-query path when an `InteriorPortalSystem` is available.
+
+This is state-level query evidence. The complete exploration weapon/projectile
+matrix and segmented debug-path diagnostics remain open.
+
+## Interior portal wall-stuck correction — 2026-09-13
+
+Scope: active player passage recovery when the capsule footprint becomes slightly invalid;
+strict aperture acquisition/transfer and ordinary wall collision remain enforced.
+
+- Bundled UE 5.8 project-file generation and Development Editor build: **PASS**
+  (`Saved/Logs/PortalWallStuckFinalProjectFiles.log`, `Saved/Logs/PortalWallStuckFinalBuild.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **6/6 PASS**, 0 failed / notRun
+  (`Saved/AutomationReports/PortalWallStuckFinal/index.json`, `Saved/Logs/PortalWallStuckFinalTests.log`).
+- Actual `L_Interior_LivingKitchen` PIE movement replay through MCP/UE Python:
+  **6/6 PASS** at 60 Hz simulation / 20 cm/s. Both endpoints cover slow entry with
+  entry/exit pauses, partial-entry retreat, and rim strafe then retreat
+  (`tools/validate_portal_player_wall_stuck.py`, `Saved/PortalPlayerWallStuck.json`).
+- Actual-map corrected-footprint probe: **PASS**. After a 0.25 cm correction at the rim,
+  outward movement advances 8 cm, centerward movement advances 10 cm, deeper wall
+  movement stays blocked, and passage state returns to `Outside`
+  (`Saved/PortalWallStuckFixedAcceptance.json`). Input is restored and walk speed is 260 cm/s.
+- Initial ad hoc baseline/fix probes are **discarded evidence**: UE Python unary
+  vector negation modified a reused direction. See the detailed account in
+  [InteriorPortalPlayerTraversal.md](InteriorPortalPlayerTraversal.md).
+
+These state assertions do not seal manual moving-camera, jump, floor/ceiling portal,
+exposure, visual slicing or Chaos contact acceptance. No desktop control or asset edits
+were used for this correction.
+
+## Portal-aware flashlight clearance — 2026-09-12
+
+The first-person flashlight clearance sweep now ignores a placed portal's supporting wall only
+when the sweep approaches the portal plane through its aperture. Ordinary wall hits and hits
+outside the aperture continue to retract the complete flashlight rig.
+
+- Bundled UE 5.8 project-file generation: **PASS**.
+- Development Editor Win64 build: **PASS** (`Saved/Logs/SlayTheSpireDemo.log`).
+- Focused `SlayTheSpireDemo.Interior.Portals` Automation: **3/3 PASS**, 0 failed, 0 notRun
+  (`Saved/Logs/FlashlightPortalFixAutomation.log`,
+  `Saved/AutomationReports/FlashlightPortalFix/index.json`).
+- Manual PIE visual confirmation: **USER ACTION REQUIRED**; see `docs/InteriorFlashlight.md`.
+
 ## Shipping packaging fix and Native HUD alignment — 2026-09-10
 
 `InteriorDayNightController.cpp` now uses the runtime-safe directional light component

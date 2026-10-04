@@ -1,8 +1,13 @@
 #include "InteriorPlayerController.h"
 #include "InteriorPortalSystem.h"
 #include "InteriorPortalCameraManager.h"
+#include "InteriorPortalFullFidelityRendererControl.h"
+#include "InteriorPortalFullSceneViewSubsystem.h"
+#include "InteriorPortalPresentation.h"
 #include "Components/InputComponent.h"
+#include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Character.h"
 #include "InputCoreTypes.h"
 
 bool AInteriorPlayerController::IsPortalGunEquipped() const { return bPortalGunEquipped && IsValid(PortalSystem); }
@@ -30,6 +35,47 @@ void AInteriorPlayerController::BeginPlay()
 		}
 		PortalSystem = *It;
 	}
+
+	SetFullFidelityRendererActive(
+		InteriorPortalFullFidelityRenderer::ShouldOwnRendering(PortalSystem));
+}
+
+void AInteriorPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	SetFullFidelityRendererActive(false);
+	Super::EndPlay(EndPlayReason);
+}
+
+void AInteriorPlayerController::SetFullFidelityRendererActive(const bool bEnable)
+{
+	if (bFullFidelityRendererActive == bEnable)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		bFullFidelityRendererActive = false;
+		return;
+	}
+
+	if (bEnable)
+	{
+		bFullFidelityRendererActive = InteriorPortalFullFidelityRenderer::Start(World);
+		if (bFullFidelityRendererActive)
+		{
+			UE_LOG(LogTemp, Display,
+				TEXT("PortalFullFidelityRenderer: lifecycle START from InteriorPlayerController; legacy RenderViews bypassed."));
+		}
+	}
+	else
+	{
+		InteriorPortalFullFidelityRenderer::Stop(World);
+		bFullFidelityRendererActive = false;
+		UE_LOG(LogTemp, Display,
+			TEXT("PortalFullFidelityRenderer: lifecycle STOP from InteriorPlayerController."));
+	}
 }
 
 void AInteriorPlayerController::SetupInputComponent()
@@ -56,10 +102,58 @@ void AInteriorPlayerController::ClearPortals()
 void AInteriorPlayerController::UpdateCameraManager(float DeltaSeconds)
 {
 	if (IsValid(PortalSystem)) { PortalSystem->UpdateTraversal(this); }
-	// Roll recovers after floor/wall transitions while preserving the mapped view at the crossing.
-	FRotator View = GetControlRotation();
-	View.Roll = FMath::FInterpTo(FRotator::NormalizeAxis(View.Roll), 0, DeltaSeconds, 3);
-	SetControlRotation(View);
+	if (PortalCamera.bActive) { SetControlRotation(PortalCamera.Orientation.Rotator()); }
 	Super::UpdateCameraManager(DeltaSeconds);
-	if (IsValid(PortalSystem)) { PortalSystem->RenderViews(this); }
+	if (IsValid(PortalSystem))
+	{
+		const bool bUseFullFidelity =
+			InteriorPortalFullFidelityRenderer::ShouldOwnRendering(PortalSystem);
+		SetFullFidelityRendererActive(bUseFullFidelity);
+
+		if (bUseFullFidelity)
+		{
+			// FullFidelity owns remote rendering. Keep only gameplay/presentation-side
+			// local visuals here; legacy SceneCapture and older spikes are mutually
+			// exclusive with this production path.
+			if (PortalSystem->PlayerPresentation)
+			{
+				PortalSystem->PlayerPresentation->Update(
+					PortalSystem,
+					Cast<ACharacter>(GetPawn()),
+					PortalSystem->GetPlayerGate());
+			}
+			return;
+		}
+
+		PortalSystem->RenderViews(this);
+		if (UWorld* World = GetWorld())
+		{
+			if (UInteriorPortalFullSceneViewSubsystem* FullSceneView = World->GetSubsystem<UInteriorPortalFullSceneViewSubsystem>())
+			{
+				FullSceneView->Render(this, PortalSystem);
+			}
+		}
+	}
+	else
+	{
+		// Runtime destruction/replacement of the system must not leave endpoint
+		// ViewStates or transient render targets alive until controller teardown.
+		SetFullFidelityRendererActive(false);
+	}
+}
+
+void AInteriorPlayerController::ApplyPortalView(const FQuat& Mapping)
+{
+	PortalCamera.Transfer(Mapping,GetControlRotation().Quaternion());
+	SetControlRotation(PortalCamera.Orientation.Rotator());
+}
+
+void AInteriorPlayerController::UpdateRotation(float DeltaSeconds)
+{
+	if (!PortalCamera.bActive) { Super::UpdateRotation(DeltaSeconds); return; }
+	PortalCamera.ApplyInput(RotationInput);
+	// Recovery starts only after the whole capsule clears; transfer-frame roll is preserved.
+	if (!IsValid(PortalSystem) || !PortalSystem->IsPlayerClearingPortal()) { PortalCamera.RecoverHorizon(DeltaSeconds); }
+	SetControlRotation(PortalCamera.Orientation.Rotator());
+	if (APawn* ControlledPawn=GetPawn()) { ControlledPawn->FaceRotation(FRotator(0,GetControlRotation().Yaw,0),DeltaSeconds); }
 }

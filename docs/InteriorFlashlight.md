@@ -15,7 +15,7 @@
 - `FlashlightFollowSpeed`：默认 14；值越大，转向跟随越快。滞后限制在约 4°，避免明显偏离视线。
 - `Flashlight` 组件中的亮度、颜色、衰减半径、锥角、阴影和散射设置。
 
-每帧从摄像机向灯头做半径 4 cm 的碰撞扫描，遇到阻挡时回收整组组件，保证光源仍在镜片前方。场景物体需阻挡 Visibility 通道才参与此检测。
+每帧从摄像机向灯头做半径 4 cm 的碰撞扫描，遇到阻挡时回收整组组件，保证光源仍在镜片前方。场景物体需阻挡 Visibility 通道才参与此检测；若命中已放置传送门开口内的支撑墙，则视为传送门通道，不回收手电筒。
 
 ## 验证
 
@@ -23,4 +23,4 @@ AUTOMATED GATES：UE 5.8 Development Editor 构建通过；`SlayTheSpireDemo.Int
 
 最终 PIE 夜间光斑已检查（`Saved/FlashlightFinal.png`）。靠墙运行时断言通过：Rig 回收 X=-13.62 cm，光源 Y=-398.29 cm 保持在墙内侧，和镜片间距仍为 0.3 cm。退出 PIE 后恢复临时后台性能设置，地图原灯具状态不受测试影响。
 
-MANUAL PIE GATES — USER ACTION REQUIRED：在 `/Game/House/L_Interior_LivingKitchen` 点击游戏视口获取焦点，按 Q 到夜晚，再按两次 F，预期光束与 HUD 的 ON/OFF 同步切换；转身、行走及靠墙，检查手持摆动与回收手感。实际桌面按键注入未可靠触发，本次只将 F 绑定自动化通过与运行时组件断言记为通过，不宣称实际键盘或持握手感已人工验收。
+MANUAL PIE GATES — USER ACTION REQUIRED：在 `/Game/House/L_Interior_LivingKitchen` 点击游戏视口获取焦点，按 Q 到夜晚，再按两次 F，预期光束与 HUD 的 ON/OFF 同步切换；转身、行走及靠墙，检查手持摆动与回收手感。再用 LMB/RMB 在可放置墙面建立一对传送门，站到传送门开口前，预期手电筒保持图一的长度和位置，不因传送门后方支撑墙命中而收回；将视线移到开口外的普通墙面，预期仍正常收回。实际桌面按键注入未可靠触发，本次只将 F 绑定自动化通过与运行时组件断言记为通过，不宣称实际键盘或持握手感已人工验收。
