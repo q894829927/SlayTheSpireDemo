@@ -1,5 +1,11 @@
 # Interior Portal — Observed Issues and Regression Targets
 
+The latest [PHY-4 actual-map scene check](InteriorPortalPhysicsMapNativeScenePHY4.md)
+reaches native Chaos clearance with a separate capped test body, then safely
+rejects an active dynamic contact (`UnsupportedScene / ActiveContact`). The
+contacting actor and its solver-side influence remain to be identified; the
+production carrying fix and Core PIE acceptance remain open.
+
 ## Held-body lateral oscillation — 2026-09-26
 
 Status: **OPEN / REPRODUCED / PHY-1 FOUNDATION AND PHY-2/PHY-3 NARROW PROFILES VALIDATED; PRODUCTION FIX PENDING**.
@@ -45,6 +51,13 @@ isolated actual sleepers, revalidates per-step native pose/geometry and rejects
 uncertified wake influence, including sleeping intermediates filtered out
 against the traveller. Active dynamic/contact-island coverage remains open;
 there is no new production writer.
+That sleeper delivery is committed as `fd825ac`. Its subsequent
+[closed sleeping contact-island extension](InteriorPortalPhysicsContactIslandsPHY4.md)
+supports verified native sleeping floor/stack contacts, while rejecting member
+wake-up, stale/moving static support, retained kinematic contacts and persistent
+joints. Initial affected 14/15 PASS; final focused ContactIsland 4/4 PASS, both
+zero test warnings; all previous 11 regressions passed in the initial run.
+Awake-dynamic/constraint coverage, production cutover and Core remain OPEN.
 General production coverage and atomic removal of
 legacy writers are still required; this does not close the carrying defect.
 See [world-observation/transfer evidence](InteriorPortalPhysicsWorldQueriesPHY4.md)
@@ -335,6 +348,69 @@ Across both bright->dark and dark->bright portal directions:
 ---
 
 ## 3. Partial-crossing player/held-item visual discontinuity
+
+2026-09-27: **COVERAGE/BACKFACE/HDR CONTRACTS CORRECTED; LIT COLOR SEAM / CONTINUOUS VISUAL GATE OPEN**.
+The half-crossing cube gap was confirmed by the user. The subsequent strict
+logical-plane seam candidate broke the second opening and oblique recursion;
+its depth-1 703x246 evidence was rejected as complete acceptance. SceneDepth and
+an ideal plane alone do not identify which geometry owns a pixel. The native
+compositor now obtains the supporting primitive's independent CustomDepth and
+unique CustomStencil in every receiving view, replacing that support only inside
+the legal aperture and only when both identity and depth match. Gun/cube foreground
+retains its depth ownership; color, rim and propagated depth share the rule.
+
+Support leases handle two/shared supports, attachment changes, conflicts/aliases,
+exhaustion, external changes and stop restoration. Backend depth/stencil and jitter
+requirements are enabled once at startup, with normal UE state-change notification.
+Ping-Pong, per-level temporal/exposure/publication lifetimes remain intact.
+Fresh D3D12 Ping-Pong 0/1 probes each completed 16 scenes at 2112x1171 with a
+1920x1065 target and 0.67 primary fraction. Two endpoints, inspected oblique
+recursive views show no reported disappearance/gap; facing fixtures exercise all
+four actual recursive levels. Their simulation-disabled cube was unregistered,
+so withdraw the previous half-crossing acceptance. Current contract, exact validation
+and USER ACTION REQUIRED gate: [Receiving ownership](InteriorPortalReceivingPlaneOwnership.md).
+No broader P8, PHY-4 or Core acceptance is implied.
+
+The user's next screenshot exposed back-wall visibility and a live sliced cube's
+diagonal brightness step. Front/back direction now belongs to each receiving
+view, enforced during planning, fallback exclusion and shared color/rim/depth
+composition. UE's Tonemap callback was also conclusively found to be after-pass;
+native and single-view TSR producers now export true pre-tonemap HDR through
+ReplacingTonemapper. Shared quality flags and sealed exposure prevent incompatible
+domains. Final build and focused D3D12 Automation 22/22 PASS; fresh Ping-Pong 0/1
+probes each complete 10 scenes with both real slices verified. Back masks 0,
+orange front 2, dual 3, actual depth-4 mask 15.
+
+**Color defect remains OPEN.** Albedo/raw HDR is near parity after the handoff
+correction, but the normal-lighting diagonal seam persists. Corrected raw GPU
+inputs show the difference before main Tonemap; disabling Lumen diffuse indirect
+strongly reduces it. This identifies a dominant indirect-lighting component, not
+yet its exact Lumen/lighting-representation cause. Do not disable GI or compensate
+brightness in production. Next distinguish same-world-point additional-view parity
+from missing portal-space light visibility/representation. Evidence, rejected
+fixtures and architecture boundary:
+[Directed views / scene-linear HDR](InteriorPortalSceneLinearHDRBoundary.md).
+
+The user's explicit continuation on 2026-09-27 starts the dedicated
+[lighting-path work](InteriorPortalLightTransport.md). Its 14/14 offline
+reference validates aperture-volume subtraction, close blockers, reciprocal
+rigid mapping, slices without invented caps and finite hop budgets. The installed
+UE exposes PostTLASBuild/native TLAS/SceneUniform access for project GPU visibility
+experiments; source-engine modifications are conditional, not automatically
+required by an installed build. This remains a visibility capability experiment:
+production Lumen/shadow/cache integration and the reported normal-lit color seam
+are still OPEN. No arbitrary gain, GI switch or material replacement is applied.
+
+Continuation 2026-09-28 now verifies actual shared Scene UB publication:
+10 native PIE cases / 30 view readbacks agree on frozen frame, generation,
+session, identities and opaque visibility across main/additional/recursive views.
+Moving/reattaching/clearing/relinking endpoints invalidate data; offscreen and
+observer restart preserve the connection. A retired cosmetic Surface is optional
+and cannot disconnect the logical light path. The four-layer fixture supplies
+main + four auxiliary families; this is not four-hop lighting acceptance.
+Existing 21 regressions passed; after correcting an abstract-object test fixture,
+new LightConnection 2/2 pass without warnings/errors (separate runs). Exact
+evidence and next LT-3 consumer/cache work are in the lighting-path contract.
 
 ### Observed symptom
 
