@@ -5,6 +5,7 @@
 #include "../Presentation/PresentationTypes.h"
 #include "../Presentation/PresentationG8Types.h"
 #include "../Presentation/PresentationDamageTiming.h"
+#include "BattleHUDBufferedPlayerInput.h"
 #include "BattleHUDWidgetBase.generated.h"
 
 class UBattleHUDViewModel;
@@ -38,6 +39,13 @@ class SLAYTHESPIREDEMO_API UBattleHUDWidgetBase : public UUserWidget
 	GENERATED_BODY()
 
 public:
+#if WITH_DEV_AUTOMATION_TESTS
+	FBattleHUDBufferedPlayerInput& GetBufferedPlayerInputShadowForTesting()
+	{
+		BufferedPlayerInput.Bind(this);
+		return BufferedPlayerInput;
+	}
+#endif
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD")
 	void SetViewModel(UBattleHUDViewModel* InViewModel);
 
@@ -232,6 +240,7 @@ protected:
 	void BP_OnViewModelChanged();
 
 private:
+	FBattleHUDBufferedPlayerInput BufferedPlayerInput;
 	void HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags);
 
 	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);

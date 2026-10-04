@@ -1,5 +1,22 @@
 # Validation
 
+## Selection Presentation G9-A authority foundation — 2026-10-05
+
+Status: **G9-A COMPLETE / VALIDATED / SHADOW ONLY; G9 NOT SEALED**.
+
+Scope, source boundaries and final gate evidence: [G9-A execution](SelectionPresentationG9AExecution.md).
+Implementation base HEAD: `15920e7f670308004fcaf497a6e1f2b615dc6dea`; G9-A implementation and validation documentation are delivered together on `codex/g9-a-authority-foundation`.
+
+AUTOMATED GATES:
+
+- Bundled UE 5.8 project-file generation and Development Editor Win64 build against the current worktree: **PASS**, exit 0 (`Saved/Logs/G9AFinalProjectFiles.log`, `Saved/Logs/G9AFinalBuild.log`).
+- One focused unattended `UnrealEditor-Cmd` / `-nullrhi` run: **G9-A 6/6 PASS; G8-B 9/9 PASS; Native FastInput 2/2 PASS**. These are disjoint prefixes in the same run. `Saved/AutomationReports/G9A/index.json` records 17 succeeded, 0 succeededWithWarnings, 0 failed and 0 notRun; process exit 0. Log: `Saved/Logs/G9AAutomation.log`.
+- `git diff --check` and a call-site scan proving no production G9 input activation: **PASS**.
+
+MANUAL PIE GATES: **none for G9-A**. Shadow evaluation never sends requests, selects a card, cancels production transient state or skips playback. G9-B still requires its own visual gate.
+
+The engine startup log reported eight package-summary errors for existing targeting/interior material assets before the test session. Inspection confirmed Git LFS pointer text for the targeting arrow and flashlight material in this worktree. This passing C++ evidence does not establish asset-load, Blueprint, PIE, packaged-game or Shipping acceptance. Required LFS assets must be materialized before later visual validation.
+
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
 ## Shipping packaging fix and Native HUD alignment — 2026-09-10

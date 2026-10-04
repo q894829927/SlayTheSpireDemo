@@ -15,7 +15,7 @@ selected RuntimeId has one visible frozen-data counterpart there; its historical
 Hand widget remains an input-disabled Hidden structural slot. Confirm preserves
 the SelectionArea object and its position, then G4 SingleRecord reparents that
 same object to the transition surface. Hand reconciliation does not position or
-recreate confirmed visuals. Safe simultaneous playback remains G6 work.
+recreate confirmed visuals. Safe simultaneous Group playback was completed in G6.
 
 The ViewModel commits Confirm after accepted submission, holds re-entrant
 snapshots/outcomes during that transaction, and arms exact G1 recorded/direct
@@ -23,7 +23,7 @@ receipts. One Native HUD synchronizes affected surfaces before public ownership
 or snapshot notifications; external multicast registration order is irrelevant.
 Missing correlation at a newer Ready edge is explicit UI-only unavailable
 recovery. It never manufactures a completion watermark or Gameplay fault.
-Scope and pending visual acceptance: `docs/SelectionPresentationG5Execution.md`.
+Scope and acceptance: `docs/SelectionPresentationG5Execution.md` and `docs/SelectionPresentationG6Execution.md`.
 
 ## 1. Battle Execution
 
@@ -50,6 +50,12 @@ Complex behavior must emerge from generic composition. Pommel Strike knows confi
 ### BattleManager
 
 Owns battle orchestration, turn transitions, battle-scoped identity/RNG allocation, public Query/Request boundaries and stable read publication.
+
+G9-A adds a read-only Gameplay player-turn identity, `BattleId + PlayerTurnSerial`.
+The serial resets at battle setup and increments once per successful formal PlayerTurn
+entry; same-turn StateRevision changes do not change it. It is independent of
+Presentation sessions. G9-A buffered input evaluation is Automation-only shadow
+infrastructure; production activation follows the dedicated G9 stage gates.
 
 ### Combatants
 

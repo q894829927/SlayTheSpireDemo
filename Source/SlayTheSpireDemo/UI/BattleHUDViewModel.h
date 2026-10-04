@@ -258,6 +258,7 @@ protected:
 	virtual void BeginDestroy() override;
 
 private:
+	friend class FBattleHUDBufferedPlayerInput;
 	void HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision);
 	bool ApplyLatestFrozenBaselineAndRefresh(bool bResetInteraction);
 	void RebuildLegalTargets(UCardInstance* Card);

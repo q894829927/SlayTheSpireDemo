@@ -2,7 +2,9 @@
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / IMPLEMENTATION NOT STARTED / NOT SEALED**
+Status: **DESIGN LOCKED / G9-A COMPLETE AND VALIDATED (SHADOW ONLY) / NOT SEALED**
+
+Current execution: [SelectionPresentationG9AExecution.md](SelectionPresentationG9AExecution.md).
 
 Authority baseline: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
 
@@ -2069,8 +2071,8 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 
 ```text
 G8    — COMPLETE / VALIDATED / SEALED
-G9    — DESIGN LOCKED / IMPLEMENTATION NOT STARTED / NOT SEALED
-G9-A  — NOT STARTED
+G9    — DESIGN LOCKED / G9-A COMPLETE AND VALIDATED / NOT SEALED
+G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — NOT STARTED
 G9-C  — NOT STARTED
 G9-D1 — NOT STARTED

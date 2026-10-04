@@ -4,6 +4,8 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
+- **G9-A — COMPLETE / VALIDATED / SHADOW ONLY (2026-10-05).** Gameplay player-turn identity, separate EndTurn acceptance/execution evaluation, exact sealed card-target credentials and one HUD-owned buffered-input arbiter passed the Development Editor build and G9-A 6/6, affected G8-B 9/9 and FastInput 2/2 Automation. Production input activation is unchanged. Authority and evidence: [G9-A execution](SelectionPresentationG9AExecution.md). G9-B is the next stage and is not active; G9 as a whole is not sealed.
+
 - **Ruined Citadel battle level — implemented, focused MCP PIE PASS (2026-09-10).**
   The user-supplied image is the battle backdrop in the new `L_Battle_RuinedCitadel`,
   now selected for both editor startup and game default. Native battle assembly is
@@ -34,15 +36,15 @@ This document records project progress, implementation history and durable phase
 
 - **Fan Hand / Attack Targeting — implemented, automated gates PASS, Native PIE pending (2026-09-10).** User-requested fan layout, raised/enlarged hover cards, gray/red single-enemy Attack arrow, mouse-right cancellation for ordinary selection and predicted Draw→Hand fan targets. Hand layout tuning is exposed to the Native HUD Blueprint. Imported the two requested local targeting textures. Scope, exact validation evidence and visual checklist: [Hand interaction](HandFanTargetingInteraction.md). Gameplay and G8 scheduling are unchanged.
 
-- **G8 — detailed design proposal recorded (2026-09-10); NOT IMPLEMENTED.** The user authorized design review and documentation only. [G8 detailed proposal](SelectionPresentationG8Design.md) defines DamageNumber-only detached jobs, exact input-mode readiness, transactional fallback, staged activation and acceptance. G0–G7 current status supersedes the historical bullets below per [G7 status amendment](SelectionPresentationG7SealAmendment.md); no implementation stage is automatically active.
+- **G8 — COMPLETE / VALIDATED / SEALED (2026-09-12).** [G8-F seal](SelectionPresentationG8FSeal.md) is the final authority. DamageNumber-only detached cosmetics do not own readiness or trigger FastInput Skip. Played-card Presentation remains Blocking until the separately staged G9 work changes it.
 
 - **Selection Presentation G0–G5 — COMPLETE / VALIDATED / SEALED (2026-09-09).** G0–G3 established the ownership/correlation/Controller protocol foundation. G4 introduced the generic SingleRecord transition engine; its isolated compatibility path failed visual PIE and remains historical. The coherent G4+G5 production migration activated persistent SelectionArea ownership and exact same-object transition consumption, passed automated gates, and passed the user-confirmed Native `L_BattleTest` PIE gate with no flashback, duplicate, ghost, clipping or stuck input. Authorities: `docs/SelectionPresentationG4Execution.md`, `docs/SelectionPresentationG5Execution.md`, `docs/Validation.md`.
 
-- **Selection Presentation G6 — NEXT ACTIVE STAGE.** Implement safe N-child simultaneous Group playback while preserving authoritative Gameplay order and chronological reducer order. G7 cleanup follows proven G6 equivalence; G8 early-input/pipelining remains a separate later initiative.
+- **Selection Presentation G6/G7 — COMPLETE / VALIDATED / SEALED.** Safe N-child Group playback preserves serial Gameplay and chronological reducer order. G7 cleanup is complete; do not restart G6/G7 from historical status text. Authorities: [G6 execution](SelectionPresentationG6Execution.md), [G7 seal amendment](SelectionPresentationG7SealAmendment.md).
 
 - **Selection Presentation production repair — historical / superseded by sealed G0–G5 architecture.** The earlier shared-selection subclass, explicit confirmation and compatibility visual handoff work remains useful implementation history, but its standalone manual gate is no longer the current forward authority. Current production behavior is governed by the sealed Selection Presentation lifecycle and `docs/CardSelectionPresentationConstraints.md`.
 
-- **Card Selection Refactor — implemented foundation retained.** Execute-time current-Hand capture, shared interactive boundary and explicit failure disposition remain the Gameplay-side selection authority. Forward Presentation work proceeds through G6; do not reopen the refactor solely because older checkpoint text described standalone manual acceptance as pending.
+- **Card Selection Refactor — implemented foundation retained.** Execute-time current-Hand capture, shared interactive boundary and explicit failure disposition remain the Gameplay-side selection authority. Selection Presentation G0–G8 is the sealed baseline; G9 follows its dedicated staged input/played-card contracts. Do not reopen the refactor solely because older checkpoint text described standalone manual acceptance as pending.
 
 - **Automatic Card Descriptions — implemented / automated gates PASS / manual PIE pending (2026-09-08).** User-requested refactor; Effect-ordered localized Chinese descriptions are the default, with automatic Exhaust and per-effect preview arguments. Editor build and 18 focused tests passed; after Chinese status-name asset edits, the affected existing-assets test alone passed again. Scope and acceptance: `docs/AutomaticCardDescriptions.md`.
 

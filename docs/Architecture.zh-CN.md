@@ -10,11 +10,11 @@
 
 ### Native 已选卡牌的视觉归属（G5）
 
-生产 Selection 使用一个持久存在的 Canvas-root `SelectionArea` Overlay。每个已选 `RuntimeId` 在其中拥有一个对应的、基于冻结数据的可见对象；它在历史 Hand Widget 中的对象仍作为禁用输入的 Hidden 结构槽位保留。Confirm 会保留 `SelectionArea` 对象及其位置，然后由 G4 SingleRecord 将同一个对象重新挂载到 transition surface。Hand reconciliation 不负责定位或重新创建已经确认的视觉对象。安全的并行播放仍属于 G6 工作范围。
+生产 Selection 使用一个持久存在的 Canvas-root `SelectionArea` Overlay。每个已选 `RuntimeId` 在其中拥有一个对应的、基于冻结数据的可见对象；它在历史 Hand Widget 中的对象仍作为禁用输入的 Hidden 结构槽位保留。Confirm 会保留 `SelectionArea` 对象及其位置，然后由 G4 SingleRecord 将同一个对象重新挂载到 transition surface。Hand reconciliation 不负责定位或重新创建已经确认的视觉对象。安全的 Group 同时播放已在 G6 完成。
 
 ViewModel 在提交被接受后提交 Confirm，在该事务期间暂存重入产生的 snapshots/outcomes，并准备精确的 G1 recorded/direct receipts。一个 Native HUD 会在公开 ownership 或 snapshot 通知之前同步受影响的 surface；外部 multicast 的注册顺序不影响结果。在更新的 Ready edge 上找不到 correlation 时，执行明确的、仅 UI 的 unavailable recovery；它不会伪造 completion watermark，也不会生成 Gameplay fault。
 
-范围和待完成的视觉验收记录在 `docs/SelectionPresentationG5Execution.md`。
+范围和验收记录在 `docs/SelectionPresentationG5Execution.md` 与 `docs/SelectionPresentationG6Execution.md`。
 
 ## 1. Battle 执行
 
@@ -41,6 +41,11 @@ CardData / CardInstance
 ### BattleManager
 
 负责 Battle 编排、回合转换、Battle 级 identity/RNG 分配、公开 Query/Request 边界以及稳定的 read 发布。
+
+G9-A 增加 Gameplay 拥有的只读玩家回合身份 `BattleId + PlayerTurnSerial`。
+serial 在战斗初始化时重置，每次正式成功进入 PlayerTurn 时只递增一次；
+同一回合的 StateRevision 变化不改变它，它也不依赖 Presentation session。
+G9-A 的缓冲输入评估仅在 Automation 中以影子模式运行；生产激活遵循 G9 专项阶段门禁。
 
 ### Combatants
 

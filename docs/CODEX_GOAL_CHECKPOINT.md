@@ -1,6 +1,22 @@
-# Codex Goal Checkpoint — Interior Portals (interrupted)
+# Codex Goal Checkpoint — Selection Presentation G9-A
 
-## Current resumable task — Interior portals, 2026-09-12
+## Current resumable task — G9-A authority foundation, 2026-10-05
+
+Implementation base HEAD: `15920e7f670308004fcaf497a6e1f2b615dc6dea`. Delivery branch: `codex/g9-a-authority-foundation`; G9-A implementation and validation documentation are delivered together in this change.
+
+User authorized the next G9 step. Current scope is G9-A shadow foundation only. Design authority: `docs/SelectionPresentationG9Design.md`; implementation/evidence: `docs/SelectionPresentationG9AExecution.md`. G8 is sealed by `docs/SelectionPresentationG8FSeal.md`. G9-B production input/hover changes are not active.
+
+Completed: Gameplay PlayerTurnAuthorityToken/serial, exact Controller card-target capture and chronology invalidation, one disabled-by-default HUD buffered-input owner, accept/execute separation, DirectBaseline EndTurn, accept-before-retire shadow arbitration, stale/mandatory-selection fences and focused G9-A Automation source. No assets, plugins, engine association or build settings changed. No production input replay or Gameplay requests from the shadow owner.
+
+Validation: bundled UE 5.8 project-file generation and Development Editor Win64 build against this worktree PASS (`Saved/Logs/G9AFinalProjectFiles.log`, `Saved/Logs/G9AFinalBuild.log`; initial full build `Saved/Logs/G9ABuild.log`). One focused Automation run PASS: G9-A 6/6, G8-B 9/9, Native FastInput 2/2; report `Saved/AutomationReports/G9A/index.json` has 17 succeeded / 0 warnings / 0 failed / 0 notRun, process exit 0 (`Saved/Logs/G9AAutomation.log`). `git diff --check` and production-call-site scan PASS. No visual PIE gate for G9-A; no Shipping/package/Blueprint visual acceptance claimed.
+
+G9-A is COMPLETE / VALIDATED / SHADOW ONLY. Next stage: G9-B event-driven production buffered-input activation, scoped target-choice EndTurn amendment and Hand hover/layout separation, followed by its own affected Automation/manual PIE gate. No remaining G9-A implementation or validation work. Known G9-B environment prerequisite: some existing assets are unmaterialized Git LFS pointers, causing eight startup package-summary errors in the headless run; hydrate required assets before visual validation. No G9-A gate is blocked by those asset errors.
+
+## Historical checkpoints below — superseded execution state
+
+The entries below retain prior navigation/history only. Their status/next-step wording must not override current dedicated acceptance documents or the G9-A state above.
+
+## Historical task — Interior portals, 2026-09-12
 
 HEAD: `18d4686d9113aacd9fb655426e3b7a7bfcfcd830`.
 
@@ -22,7 +38,7 @@ Last updated: **2026-09-11**
 
 Use `main` as the working branch unless a later explicit branch decision supersedes it.
 
-## Current resumable task — Awakened One Monster Animation
+## Historical task — Awakened One Monster Animation
 
 The Awakened One enemy profile is implemented in the Native combatant Presentation widget and
 is verified in `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`. The active profile uses

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PlayerTurnAuthority.h"
 #include "Containers/Ticker.h"
 #include "GameFramework/Actor.h"
 #include "BattleRequestTypes.h"
@@ -147,6 +148,7 @@ public:
 	) const;
 
 	FGameplayValidationResult QueryEndPlayerTurn() const;
+	bool TryGetCurrentPlayerTurnAuthorityToken(FPlayerTurnAuthorityToken& OutToken) const;
 	FGameplayRequestResult RequestEndPlayerTurn();
 
 	void GetLegalTargetsForCard(const UCardInstance* Card, TArray<ACombatant*>& OutTargets) const;
@@ -341,6 +343,7 @@ private:
 
 	FEnemyIntent CommittedEnemyIntent;
 	uint64 BattleId = 0;
+	uint64 PlayerTurnSerial = 0;
 	uint64 StateRevision = 0;
 	uint64 NextRuntimeSequence = 1;
 	uint64 LastPublishedBattleId = 0;

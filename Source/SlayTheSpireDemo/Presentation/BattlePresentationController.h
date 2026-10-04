@@ -5,6 +5,7 @@
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
 #include "PresentationG8Types.h"
+#include "PresentationG9Types.h"
 #include "BattlePresentationController.generated.h"
 
 class ABattleManager;
@@ -39,6 +40,10 @@ public:
 		FPresentationSessionToken& OutSessionToken,
 		int64& OutBattleId,
 		int64& OutExpectedCatchUpRevision) const;
+
+	// G9-A credentials only. Production input does not call these until G9-B.
+	bool TryCaptureBufferedCardTarget(int32 RuntimeId, FBufferedCardIntent& OutIntent) const;
+	bool IsBufferedCardTargetCurrent(const FBufferedCardIntent& Intent) const;
 
 	// Detached Damage feature control. Disabling it is not an authority/binding
 	// replacement, so it keeps the current PresentationSessionToken, retires
@@ -110,6 +115,7 @@ protected:
 	virtual void BeginDestroy() override;
 
 private:
+	friend class FBattleHUDBufferedPlayerInput;
 	enum class EDetachedDamageAttemptResult : uint8
 	{
 		DeclinedToBlocking,
@@ -134,6 +140,7 @@ private:
 	void MarkEntireBacklogCompletedExact(const FPresentationResolutionEnvelope* AdditionalEnvelope);
 
 	void EnsureControllerEpoch();
+	void InvalidateBufferedCardChronology();
 	bool IsPresentationOwnedMode() const;
 	void InvalidatePresentationSession(UBattleHUDWidgetBase* CleanupWidget = nullptr);
 	void EstablishPresentationSessionForCurrentBinding();
@@ -210,6 +217,7 @@ private:
 	int64 ControllerEpoch = 0;
 	int64 NextPresentationSessionGeneration = 1;
 	FPresentationSessionToken ActivePresentationSessionToken;
+	uint64 BufferedCardChronologyGeneration = 1;
 
 	// Detached Damage production switch. G8-D removed compatibility debt from the
 	// Controller; no duration/timer state is retained here in G8-E.

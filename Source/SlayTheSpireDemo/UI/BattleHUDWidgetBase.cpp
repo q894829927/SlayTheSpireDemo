@@ -123,6 +123,7 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 	}
 
 	ViewModel = InViewModel;
+	BufferedPlayerInput.Clear();
 	if (IsValid(ViewModel))
 	{
 		ViewModel->OnNativeChanged.AddUObject(
@@ -137,6 +138,7 @@ void UBattleHUDWidgetBase::SetPresentationController(
 	UBattlePresentationController* InController
 )
 {
+	if (PresentationController != InController) BufferedPlayerInput.Clear();
 	PresentationController = InController;
 }
 
@@ -505,6 +507,7 @@ void UBattleHUDWidgetBase::SkipPresentation()
 
 void UBattleHUDWidgetBase::NativeDestruct()
 {
+	BufferedPlayerInput.SetEnabled(false);
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
 

@@ -301,6 +301,7 @@ void ABattleManager::StartBattle()
 	Enemy->InitializeCombatant();
 
 	BattleState = EBattleState::BattleStart;
+	PlayerTurnSerial = 0;
 	Energy = 0;
 	CommittedEnemyIntent = FEnemyIntent{};
 
@@ -843,6 +844,18 @@ FGameplayValidationResult ABattleManager::QueryEndPlayerTurn() const
 	return ValidatePlayerCommandBase();
 }
 
+bool ABattleManager::TryGetCurrentPlayerTurnAuthorityToken(FPlayerTurnAuthorityToken& OutToken) const
+{
+	OutToken = FPlayerTurnAuthorityToken{};
+	if (BattleState != EBattleState::PlayerTurn || BattleId == 0 || PlayerTurnSerial == 0)
+	{
+		return false;
+	}
+	OutToken.BattleId = BattleId;
+	OutToken.PlayerTurnSerial = PlayerTurnSerial;
+	return true;
+}
+
 FGameplayRequestResult ABattleManager::RequestEndPlayerTurn()
 {
 	const FGameplayValidationResult Validation = ValidatePlayerCommandBase();
@@ -1183,6 +1196,10 @@ void ABattleManager::CompletePlayerTurnStart()
 	}
 
 	BattleState = EBattleState::PlayerTurn;
+	if (++PlayerTurnSerial == 0)
+	{
+		++PlayerTurnSerial;
+	}
 	AdvanceStateRevision();
 
 	UE_LOG(
