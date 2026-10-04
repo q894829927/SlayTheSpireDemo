@@ -2,6 +2,15 @@
 
 Date: **2026-09-16**
 
+Current correction (2026-09-27): the state block below records the historical
+2026-09-16 baseline. Subsequent sliced-traveller/recursive feedback reopens visual
+acceptance. See [Receiving ownership](InteriorPortalReceivingPlaneOwnership.md)
+and [Directed views / actual HDR handoff](InteriorPortalSceneLinearHDRBoundary.md).
+Backface visibility and after-Tonemap color misclassification are corrected;
+22/22 focused Automation and fresh Ping-Pong 0/1 geometry probes pass. Normal
+Lumen-lit traveller color discontinuity and continuous motion remain OPEN.
+Do not transfer the old seal to the current rendering candidate.
+
 State:
 
 ```text

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "SceneView.h"
+#include "SceneViewExtension.h"
 
 namespace InteriorPortalRendering
 {
@@ -20,11 +21,27 @@ namespace InteriorPortalRendering
 	{
 		explicit FColorSample(uint64 InSubmission) : Submission(InSubmission) {}
 		const uint64 Submission;
-		float PreExposure = 0.0f;
+		float GetPreExposure() const { return PreExposure; }
+
+		static bool IsSceneLinearExtractionPass(ISceneViewExtension::EPostProcessingPass Pass)
+		{
+			// Tonemap is an AFTER-pass callback in UE. Only the replacement
+			// hook receives the resolved, still pre-exposed scene-linear input.
+			return Pass == ISceneViewExtension::EPostProcessingPass::ReplacingTonemapper;
+		}
+
+		bool SealExtraction(ISceneViewExtension::EPostProcessingPass Pass, float Exposure)
+		{
+			if (bSceneLinearExtracted || !IsSceneLinearExtractionPass(Pass)
+				|| !FMath::IsFinite(Exposure) || Exposure <= 0.0f) return false;
+			PreExposure = Exposure;
+			bSceneLinearExtracted = true;
+			return true;
+		}
 
 		bool TryGetExposureScale(float MainPreExposure, float& OutScale) const
 		{
-			if (!FMath::IsFinite(PreExposure) || PreExposure <= 0.0f
+			if (!bSceneLinearExtracted || !FMath::IsFinite(PreExposure) || PreExposure <= 0.0f
 				|| !FMath::IsFinite(MainPreExposure) || MainPreExposure <= 0.0f)
 			{
 				return false;
@@ -32,5 +49,9 @@ namespace InteriorPortalRendering
 			OutScale = MainPreExposure / PreExposure;
 			return FMath::IsFinite(OutScale) && OutScale > 0.0f;
 		}
+
+	private:
+		float PreExposure = 0.0f;
+		bool bSceneLinearExtracted = false;
 	};
 }

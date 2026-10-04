@@ -2,6 +2,11 @@
 
 Status: **LEGACY DIAGNOSTIC / SUPERSEDED FOR NORMAL PRODUCTION VALIDATION**
 
+2026-09-27 correction: the secondary extraction is now ReplacingTonemapper,
+because UE's Tonemap hook is after-pass. Main exposure observation at Tonemap
+is unaffected; it is not an HDR texture extraction boundary. See
+[the actual HDR handoff](InteriorPortalSceneLinearHDRBoundary.md).
+
 ## Historical purpose
 
 The original exposure-authority experiment captured the player-main view state during `SetupView`, but runtime data showed `GetPreExposure()` remained `1.0` there while the real main-view Tonemap callback reported about `0.00205–0.00208` in the same run.

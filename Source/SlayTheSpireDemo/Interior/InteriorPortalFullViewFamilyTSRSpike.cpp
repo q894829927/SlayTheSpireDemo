@@ -3,6 +3,7 @@
 #include "InteriorPortalSystem.h"
 #include "InteriorPortal.h"
 #include "InteriorPortalMath.h"
+#include "InteriorPortalViewFamilyPolicy.h"
 
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasTypes.h"
@@ -120,11 +121,12 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 
 			// UE 5.8 TSR executes after DOF. The earlier BeforeDOF hook used by
 			// STEP 1B.6-1B.10A is therefore pre-TSR and cannot prove that the
-			// PortalTexture itself receives temporal reconstruction. Tonemap is a
-			// reliable post-TSR, pre-tonemap linear-HDR hook. Secondary motion blur
+			// PortalTexture itself receives temporal reconstruction. UE's Tonemap
+			// callback is after that pass; its replacement receives resolved HDR.
+			// Secondary motion blur
 			// and DOF are disabled for this spike so the main view remains the owner
 			// of those later presentation effects.
-			if (Pass != ISceneViewExtension::EPostProcessingPass::Tonemap
+			if (!InteriorPortalRendering::FColorSample::IsSceneLinearExtractionPass(Pass)
 				|| !InView.Family || !InView.Family->bAdditionalViewFamily
 				|| !ExtractionTarget)
 			{
@@ -132,7 +134,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			}
 
 			InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
-				[this](FRDGBuilder& GraphBuilder, const FSceneView& View,
+				[this, Pass](FRDGBuilder& GraphBuilder, const FSceneView& View,
 					const FPostProcessMaterialInputs& Inputs)
 				{
 					const FScreenPassTextureSlice SceneColorSlice =
@@ -229,11 +231,11 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 					}
 
 					// Do not expose an in-flight request to the main BeforeDOF compositor.
-					// The request becomes visible only after this secondary Tonemap callback
+					// The request becomes visible only after this pre-tonemap HDR callback
 					// has measured the exact exposure domain and queued the matching color/depth
 					// extraction work into this RDG graph. Render-command ordering then keeps
 					// the external targets and their FColorSample metadata coherent.
-					ColorSample->PreExposure = MeasuredPreExposure;
+					if (!ColorSample->SealExtraction(Pass, MeasuredPreExposure)) return SceneColor;
 					GLastExtractionFrame.Store(GFrameCounter);
 					CompositionExtension->PublishRequest(CompletedRequest);
 
@@ -381,7 +383,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 			Status = TEXT("RUNNING_TSR");
 			WriteReport();
 			UE_LOG(LogTemp, Display,
-				TEXT("PortalTSRSpike: started. PrimaryFraction=%.3f ExtractionPass=Tonemap DepthTransport=R32F."),
+				TEXT("PortalTSRSpike: started. PrimaryFraction=%.3f ExtractionPass=ReplacingTonemapper DepthTransport=R32F."),
 				PrimaryResolutionFraction);
 			return true;
 		}
@@ -777,18 +779,10 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 					World, PortalTargetResource, SecondaryDepthTargetResource, ExpectedPrimarySize,
 					Request.ColorSample.ToSharedRef(), CompositionExtension.ToSharedRef(), Request);
 
-			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
+			const FEngineShowFlags ViewportFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
 				: FEngineShowFlags(ESFIM_Game);
-			// Keep the secondary exposure policy in parity with the real game viewport.
-			// STEP 1B.14C proved that forcing EyeAdaptation off pins the persistent
-			// secondary pre-exposure at 1.0 and severely darkens indirect lighting.
-			// The copied viewport ShowFlags already carry the authoritative project
-			// EyeAdaptation state, so do not override it here.
-			ShowFlags.SetMotionBlur(false);
-			ShowFlags.SetDepthOfField(false);
-			ShowFlags.SetTemporalAA(true);
-			ShowFlags.SetScreenPercentage(true);
+			const FEngineShowFlags ShowFlags = InteriorPortalRendering::BuildAdditionalViewShowFlags(ViewportFlags);
 
 			FSceneViewFamilyContext ViewFamily(
 				FSceneViewFamily::ConstructionValues(FinalScratchResource, World->Scene, ShowFlags)
@@ -906,7 +900,7 @@ namespace InteriorPortalFullViewFamilyTSRSpikePrivate
 				TEXT("  \"targetSize\":[%d,%d],\n")
 				TEXT("  \"primaryResolutionFraction\":%.6f,\n")
 				TEXT("  \"expectedPrimarySize\":[%d,%d],\n")
-				TEXT("  \"extractionPass\":\"Tonemap (post-TSR / pre-tonemap linear HDR)\",\n")
+				TEXT("  \"extractionPass\":\"ReplacingTonemapper (post-TSR / pre-tonemap scene-linear HDR)\",\n")
 				TEXT("  \"extractionInputSize\":[%d,%d],\n")
 				TEXT("  \"secondaryDepthSourceSize\":[%d,%d],\n")
 				TEXT("  \"secondaryDepthTargetSize\":[%d,%d],\n")

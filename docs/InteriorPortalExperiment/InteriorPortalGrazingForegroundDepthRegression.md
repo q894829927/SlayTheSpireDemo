@@ -1,6 +1,19 @@
 # Interior Portal — Grazing Foreground-Depth Regression
+Current native ownership contract (2026-09-27):
+[Receiving-surface ownership](InteriorPortalReceivingPlaneOwnership.md).
+Both the cosmetic tolerance and the subsequent strict ideal-plane-only candidate
+are insufficient for sliced travellers plus oblique recursion. The native path
+uses actual supporting-surface depth AND identity; this document retains the
+historical diagnostic/legacy policy and evidence.
 
 Date: **2026-09-16**
+
+2026-09-27 production refinement: endpoint-owned FullFidelity now excludes the
+opaque fallback Surface from composited views and uses one logical plane for
+traveller slices, clipping and foreground ownership. The implementation below
+remains the legacy diagnostic policy; see the current
+[half-crossing seam regression](InteriorPortalTravellerSeamRegression.md) for
+the production contract and its still-open visual/build gates.
 
 State:
 

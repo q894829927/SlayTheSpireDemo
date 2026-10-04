@@ -1,0 +1,71 @@
+// One receiving-view geometry contract for aperture, color and propagated depth.
+// Includes Common.ush and declares the request uniforms before including this file.
+float3 PortalPlaneCenter(float PlaneBias)
+{
+    const float3 Center = LogicalPlaneComposition > 0.5
+        ? TranslatedPortalCenter
+        : ForegroundScreenToPortalRow0.xyz
+            + View.PreViewTranslationHigh + View.PreViewTranslationLow;
+    return Center + normalize(ForegroundScreenToPortalRow1.xyz) * PlaneBias;
+}
+
+bool IntersectAnalyticPortalPlane(float2 PixelPosition, float PlaneBias,
+    out float2 PortalLocal, out float DeviceZ, out float LinearDepthCm)
+{
+    PortalLocal = 0;
+    DeviceZ = 0;
+    LinearDepthCm = 0;
+    if (ForegroundDepthReferenceEnabled <= 0.5) return false;
+    const float3 Normal = normalize(ForegroundScreenToPortalRow1.xyz);
+    const float3 Center = PortalPlaneCenter(PlaneBias);
+    const float3 Origin = View.TranslatedWorldCameraOrigin;
+    // Identity identifies a component, not a directed opening. Its back face
+    // must never own aperture color, rim or propagated depth. This also guards
+    // a completed publication consumed after the camera has crossed the plane.
+    if (LogicalPlaneComposition > 0.5 && dot(Origin - Center, Normal) <= 0) return false;
+    // Match the raster depth sample's pixel center, viewport origin and jitter.
+    const float3 Direction = SvPositionToTranslatedWorld(float4(PixelPosition, 1, 1)) - Origin;
+    const float Denominator = dot(Direction, Normal);
+    if (abs(Denominator) <= 1.0e-8) return false;
+    const float T = dot(Center - Origin, Normal) / Denominator;
+    if (!(T > 0)) return false;
+    const float3 Hit = Origin + Direction * T;
+    const float3 Relative = Hit - Center;
+    PortalLocal = float2(
+        dot(Relative, normalize(ForegroundScreenToPortalRow2.xyz)) * ForegroundScreenToPortalRow0.w,
+        dot(Relative, normalize(ForegroundPortalClipZRow.xyz)) * ForegroundScreenToPortalRow1.w);
+    const float4 Clip = mul(float4(Hit, 1), View.TranslatedWorldToClip);
+    if (abs(Clip.w) <= 1.0e-8 || (ProjectiveNearClipW > 0 && Clip.w < ProjectiveNearClipW)) return false;
+    DeviceZ = saturate(Clip.z / Clip.w);
+    LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
+    return isfinite(LinearDepthCm) && LinearDepthCm > 0;
+}
+
+bool PortalHasForeground(float2 PixelPosition, float MainDeviceZ, float ReferenceDepthCm,
+    float LegacyToleranceCm)
+{
+    if (LogicalPlaneComposition <= 0.5)
+        return ConvertFromDeviceZ(MainDeviceZ) + max(LegacyToleranceCm, 0) < ReferenceDepthCm;
+    if (!(MainDeviceZ > 0) || !isfinite(MainDeviceZ)) return false;
+    if (SupportStencilId != 0)
+    {
+        const int3 Pixel = int3(int2(PixelPosition), 0);
+        const uint Stencil = SupportSceneStencilTexture.Load(Pixel) STENCIL_COMPONENT_SWIZZLE;
+        const float SupportZ = SupportSceneDepthTexture.Load(Pixel).r;
+        const float DepthTie = DepthQuantizationStep
+            + max(abs(MainDeviceZ), abs(SupportZ)) * 2.384185791e-7;
+        // Replace only this attachment's actually rasterized surface. Other
+        // geometry in front of it has a different depth and keeps ownership.
+        if (Stencil == SupportStencilId && SupportZ > 0
+            && abs(MainDeviceZ - SupportZ) <= DepthTie) return false;
+    }
+    // Compare in the raster's depth domain. Inverting raster depth to a world
+    // point and then subtracting the plane amplifies cancelling matrix terms.
+    // This affine equation uses the exact receiving projection/crop/jitter once.
+    if (ReceivingPlaneDepthEquation.w <= 0.5) return false;
+    const float3 Terms = float3(PixelPosition, 1) * ReceivingPlaneDepthEquation.xyz;
+    const float PlaneDeviceZ = Terms.x + Terms.y + Terms.z;
+    const float RasterError = DepthQuantizationStep
+        + 4.768374e-7 * (dot(abs(Terms), 1) + abs(MainDeviceZ));
+    return MainDeviceZ > PlaneDeviceZ + RasterError;
+}

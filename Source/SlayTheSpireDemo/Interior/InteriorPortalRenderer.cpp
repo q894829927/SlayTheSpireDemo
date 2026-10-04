@@ -27,6 +27,12 @@ namespace
 		TEXT("Portal composition diagnostic. 0=normal, 1=solid magenta aperture, 2=full-screen magenta, 3=BaseColor CRP, 4=main-depth visibility (green=open, red=foreground occluded), 5=secondary-depth remap (cyan=valid behind portal, magenta=invalid ordering, yellow=no remote depth), 6=STEP 1B.12C-A main-depth write verification (cyan=propagated, green=foreground preserved, yellow=no remote depth, red=write mismatch)."),
 		ECVF_RenderThreadSafe);
 
+	TAutoConsoleVariable<int32> CVarPortalCompositionDebugRecursionLevel(
+		TEXT("portal.CompositionDebugRecursionLevel"),
+		-1,
+		TEXT("Scope composition diagnostics to one receiving recursion level (0=player, 1..3=recursive); -1=all. Other levels compose normally."),
+		ECVF_RenderThreadSafe);
+
 	TAutoConsoleVariable<int32> CVarPortalPreExposureRebase(
 		TEXT("portal.PreExposureRebase"),
 		0,
@@ -149,6 +155,9 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PortalTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, PortalSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MainSceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SupportSceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<uint2>, SupportSceneStencilTexture)
+		SHADER_PARAMETER(uint32, SupportStencilId)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SecondaryDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SecondaryDepthSampler)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
@@ -172,6 +181,11 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(float, CompositionDebugMode)
 		SHADER_PARAMETER(float, PortalExposureScale)
 		SHADER_PARAMETER(float, StencilBypassShaderAperture)
+		SHADER_PARAMETER(float, LogicalPlaneComposition)
+		SHADER_PARAMETER(float, DepthQuantizationStep)
+		SHADER_PARAMETER(FVector4f, ReceivingPlaneDepthEquation)
+		SHADER_PARAMETER(FVector3f, TranslatedPortalCenter)
+		SHADER_PARAMETER(FVector4f, PortalRimColorAndTime)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -190,6 +204,9 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(FVector4f, OutputPixelToViewScreen)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MainSceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SupportSceneDepthTexture)
+		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D<uint2>, SupportSceneStencilTexture)
+		SHADER_PARAMETER(uint32, SupportStencilId)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SecondaryDepthTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SecondaryDepthSampler)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Output)
@@ -206,6 +223,10 @@ namespace InteriorPortalRenderer
 		SHADER_PARAMETER(float, ForegroundDepthReferenceEnabled)
 		SHADER_PARAMETER(float, ProjectiveNearClipW)
 		SHADER_PARAMETER(float, DepthOcclusionEpsilonCm)
+		SHADER_PARAMETER(float, LogicalPlaneComposition)
+		SHADER_PARAMETER(float, DepthQuantizationStep)
+		SHADER_PARAMETER(FVector4f, ReceivingPlaneDepthEquation)
+		SHADER_PARAMETER(FVector3f, TranslatedPortalCenter)
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
@@ -355,7 +376,21 @@ bool FInteriorPortalViewExtension::IsActiveThisFrame_Internal(
 
 void FInteriorPortalViewExtension::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
-	(void)InViewFamily;
+	const FInteriorPortalRenderRequest Request = GetPublishedRequest();
+	if (bEnabled && Request.IsValid() && Request.bLogicalPlaneComposition
+		&& Request.CompositedSurface.IsValid())
+	{
+		// GameViewportClient marks the main family AFTER LocalPlayer::SetupView.
+		// This GT hook runs with complete identity, BEFORE the renderer copies
+		// views. Exclude only this view's fallback, never the component globally.
+		for (const FSceneView* View : InViewFamily.Views)
+		{
+			if (View && InteriorPortalRendering::IsPlayerMainView(InViewFamily, *View))
+			{
+				Request.ApplyCompositionVisibility(*const_cast<FSceneView*>(View));
+			}
+		}
+	}
 }
 
 void FInteriorPortalViewExtension::PreRenderViewFamily_RenderThread(
@@ -447,7 +482,8 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	const FScreenPassTextureSlice SceneColorSlice =
 		Inputs.GetInput(EPostProcessMaterialInput::SceneColor);
 	FScreenPassTexture SceneColor = FScreenPassTexture::CopyFromSlice(GraphBuilder, SceneColorSlice);
-	if (!SceneColor.IsValid() || !Request.PortalRenderTarget)
+	if (!SceneColor.IsValid() || !Request.PortalRenderTarget
+		|| !Request.CanComposeFrom(InView.ViewMatrices.GetViewOrigin()))
 	{
 		if (PortalCompositionDiagnosticsEnabled())
 		{
@@ -491,11 +527,13 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		? Request.ViewRect
 		: PortalFullRect;
 	const FScreenPassTextureViewport PortalViewport(PortalTexture, PortalTextureViewRect);
-	const int32 CompositionDebugMode = CVarPortalCompositionDebugMode.GetValueOnRenderThread();
+	const int32 DebugLevel = CVarPortalCompositionDebugRecursionLevel.GetValueOnRenderThread();
+	const int32 CompositionDebugMode = DebugLevel < 0 || DebugLevel == Request.RecursionLevel
+		? CVarPortalCompositionDebugMode.GetValueOnRenderThread() : 0;
 
 	const bool bRebasePreExposure = CVarPortalPreExposureRebase.GetValueOnRenderThread() != 0;
 	const float SecondaryPreExposure = Request.ColorSample
-		? Request.ColorSample->PreExposure
+		? Request.ColorSample->GetPreExposure()
 		: FMath::Max(CVarPortalSecondaryPreExposure.GetValueOnRenderThread(), UE_SMALL_NUMBER);
 	const float MainPreExposure = InView.State
 		? FMath::Max(InView.State->GetPreExposure(), UE_SMALL_NUMBER)
@@ -540,6 +578,9 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		CVarPortalDepthOcclusionEpsilonCm.GetValueOnRenderThread(), 0.0f);
 
 	FRDGTextureRef MainSceneDepthTexture = SceneColor.Texture;
+	const auto SupportSceneTextures = CreateSceneTextureUniformBuffer(
+		GraphBuilder, InView, ESceneTextureSetupMode::CustomDepth);
+	const auto* SupportTextures = SupportSceneTextures->GetContents();
 	bool bMainSceneDepthValid = false;
 	if (bDepthAwareRequested || bStencilCompositionRequested)
 	{
@@ -655,6 +696,9 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 		CandidateParameters->OutputPixelToViewScreen =
 			InteriorPortalProjectedBounds::PixelToViewScreenTransform(SceneColor.ViewRect);
 		CandidateParameters->MainSceneDepthTexture = MainSceneDepthTexture;
+		CandidateParameters->SupportSceneDepthTexture = SupportTextures->CustomDepthTexture;
+		CandidateParameters->SupportSceneStencilTexture = SupportTextures->CustomStencilTexture;
+		CandidateParameters->SupportStencilId = Request.CompositedSupportStencil;
 		CandidateParameters->SecondaryDepthTexture = SecondaryDepthTexture;
 		CandidateParameters->SecondaryDepthSampler =
 			TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -675,6 +719,15 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 			bUseForegroundDepthReference ? 1.0f : 0.0f;
 		CandidateParameters->ProjectiveNearClipW = Request.ProjectiveNearClipW;
 		CandidateParameters->DepthOcclusionEpsilonCm = DepthOcclusionEpsilonCm;
+		CandidateParameters->LogicalPlaneComposition = Request.bLogicalPlaneComposition ? 1.0f : 0.0f;
+		CandidateParameters->DepthQuantizationStep =
+			GPixelFormats[MainSceneDepthTexture->Desc.Format].bIs24BitUnormDepthStencil
+				? 1.0f / 16777215.0f : 0.0f;
+		CandidateParameters->TranslatedPortalCenter = Request.GetTranslatedPlaneCenter(
+			InView.ViewMatrices.GetPreViewTranslation());
+		CandidateParameters->ReceivingPlaneDepthEquation = Request.GetReceivingPlaneDepthEquation(
+			FMatrix(FMatrix44f(InView.ViewMatrices.GetTranslatedWorldToClip())).Inverse(),
+			InView.ViewMatrices.GetPreViewTranslation(), SceneColor.ViewRect);
 		CandidateParameters->RenderTargets[0] = CandidateOutput.GetRenderTargetBinding();
 
 		TShaderMapRef<InteriorPortalRenderer::FInteriorPortalDepthCandidatePS> CandidatePixelShader(
@@ -879,6 +932,9 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->PortalSampler =
 		TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->MainSceneDepthTexture = MainSceneDepthTexture;
+	PassParameters->SupportSceneDepthTexture = SupportTextures->CustomDepthTexture;
+	PassParameters->SupportSceneStencilTexture = SupportTextures->CustomStencilTexture;
+	PassParameters->SupportStencilId = Request.CompositedSupportStencil;
 	PassParameters->SecondaryDepthTexture = SecondaryDepthTexture;
 	PassParameters->SecondaryDepthSampler =
 		TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
@@ -905,6 +961,17 @@ FScreenPassTexture FInteriorPortalViewExtension::ComposePortalIntoSceneColor(
 	PassParameters->CompositionDebugMode = float(CompositionDebugMode);
 	PassParameters->PortalExposureScale = PortalExposureScale;
 	PassParameters->StencilBypassShaderAperture = bBypassShaderAperture ? 1.0f : 0.0f;
+	PassParameters->LogicalPlaneComposition = Request.bLogicalPlaneComposition ? 1.0f : 0.0f;
+	PassParameters->DepthQuantizationStep =
+		GPixelFormats[MainSceneDepthTexture->Desc.Format].bIs24BitUnormDepthStencil
+			? 1.0f / 16777215.0f : 0.0f;
+	PassParameters->TranslatedPortalCenter = Request.GetTranslatedPlaneCenter(
+		InView.ViewMatrices.GetPreViewTranslation());
+	PassParameters->ReceivingPlaneDepthEquation = Request.GetReceivingPlaneDepthEquation(
+		FMatrix(FMatrix44f(InView.ViewMatrices.GetTranslatedWorldToClip())).Inverse(),
+		InView.ViewMatrices.GetPreViewTranslation(), SceneColor.ViewRect);
+	PassParameters->PortalRimColorAndTime = FVector4f(
+		Request.RimColor.R, Request.RimColor.G, Request.RimColor.B, Request.RimTimeSeconds);
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 
 	TShaderMapRef<InteriorPortalRenderer::FInteriorPortalCompositionPS> PixelShader(

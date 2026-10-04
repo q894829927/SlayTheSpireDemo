@@ -1,11 +1,15 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
+
 Texture2D SceneColorTexture;
 SamplerState SceneColorSampler;
 Texture2D PortalTexture;
 SamplerState PortalSampler;
 Texture2D MainSceneDepthTexture;
+Texture2D SupportSceneDepthTexture;
+Texture2D<uint2> SupportSceneStencilTexture;
+uint SupportStencilId;
 Texture2D SecondaryDepthTexture;
 SamplerState SecondaryDepthSampler;
 
@@ -31,60 +35,13 @@ float DepthOcclusionEpsilonCm;
 float CompositionDebugMode;
 float PortalExposureScale;
 float StencilBypassShaderAperture;
+float LogicalPlaneComposition;
+float DepthQuantizationStep;
+float4 ReceivingPlaneDepthEquation;
+float3 TranslatedPortalCenter;
+float4 PortalRimColorAndTime;
 
-bool IntersectAnalyticPortalPlane(
-	float2 ScreenSpacePos,
-	float PlaneBias,
-	out float2 PortalLocal,
-	out float DeviceZ,
-	out float LinearDepthCm)
-{
-	PortalLocal = float2(0.0, 0.0);
-	DeviceZ = 0.0;
-	LinearDepthCm = 0.0;
-	if (ForegroundDepthReferenceEnabled <= 0.5)
-	{
-		return false;
-	}
-
-	const float3 PortalCenterWorld = ForegroundScreenToPortalRow0.xyz;
-	const float InvHalfWidth = ForegroundScreenToPortalRow0.w;
-	const float3 PortalNormal = normalize(ForegroundScreenToPortalRow1.xyz);
-	const float InvHalfHeight = ForegroundScreenToPortalRow1.w;
-	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
-	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
-	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
-	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
-	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
-	const float3 RayDirection = mul(float4(ScreenSpacePos, 1.0, 0.0), View.ScreenToTranslatedWorld).xyz;
-	const float Denominator = dot(RayDirection, PortalNormal);
-	if (abs(Denominator) <= 1.0e-8)
-	{
-		return false;
-	}
-
-	const float RayT = dot(PlaneCenter - RayOrigin, PortalNormal) / Denominator;
-	if (!(RayT > 0.0))
-	{
-		return false;
-	}
-
-	const float3 HitTranslatedWorld = RayOrigin + RayDirection * RayT;
-	const float3 Relative = HitTranslatedWorld - PlaneCenter;
-	PortalLocal = float2(
-		dot(Relative, PortalAxisY) * InvHalfWidth,
-		dot(Relative, PortalAxisZ) * InvHalfHeight);
-
-	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
-	if (abs(Clip.w) <= 1.0e-8
-		|| (ProjectiveNearClipW > 0.0 && Clip.w < ProjectiveNearClipW))
-	{
-		return false;
-	}
-	DeviceZ = saturate(Clip.z / Clip.w);
-	LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
-	return isfinite(LinearDepthCm) && LinearDepthCm > 0.0;
-}
+#include "/Project/InteriorPortalDepthOwnership.ush"
 
 void MainPS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
@@ -119,7 +76,7 @@ void MainPS(
 	if (ProjectiveApertureEnabled > 0.5 && ForegroundDepthReferenceEnabled > 0.5)
 	{
 		bPortalPlaneDepthValid = IntersectAnalyticPortalPlane(
-			ScreenSpacePos, 0.0,
+			SvPosition.xy, 0.0,
 			AnalyticPortalLocal, PortalPlaneDeviceZ, PortalPlaneDepthCm);
 		if (bPortalPlaneDepthValid)
 		{
@@ -167,7 +124,6 @@ void MainPS(
 	}
 
 	const float4 MainColor = Texture2DSample(SceneColorTexture, SceneColorSampler, SceneUV);
-
 	if (CompositionDebugMode >= 6.5 && CompositionDebugMode < 7.5)
 	{
 		float4 PortalReference = Texture2DSample(PortalTexture, PortalSampler, PortalUV);
@@ -196,7 +152,7 @@ void MainPS(
 		float ForegroundDepthCm;
 		const float SurfaceBias = ForegroundScreenToPortalRow2.w;
 		if (IntersectAnalyticPortalPlane(
-			ScreenSpacePos, SurfaceBias,
+			SvPosition.xy, SurfaceBias,
 			IgnoredLocal, ForegroundDeviceZ, ForegroundDepthCm))
 		{
 			ForegroundReferenceDepthCm = ForegroundDepthCm;
@@ -213,7 +169,8 @@ void MainPS(
 		const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 		const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 		ForegroundOcclusionMask =
-			(MainDepthCm + max(DepthOcclusionEpsilonCm, 0.0) < ForegroundReferenceDepthCm)
+			PortalHasForeground(SvPosition.xy, MainDeviceZ, ForegroundReferenceDepthCm,
+				DepthOcclusionEpsilonCm)
 			? 1.0 : 0.0;
 	}
 
@@ -291,6 +248,24 @@ void MainPS(
 	if (CompositionDebugMode < 0.5)
 	{
 		PortalColor.rgb *= PortalExposureScale;
+		if (LogicalPlaneComposition > 0.5 && bPortalPlaneDepthValid)
+		{
+			// Preserve the existing rim appearance without an opaque mesh in
+			// front of the logical opening. The same foreground mask covers it.
+			const float R = length(AnalyticPortalLocal);
+			const float A = atan2(AnalyticPortalLocal.y, AnalyticPortalLocal.x);
+			const float T = PortalRimColorAndTime.w;
+			const float Filament = 0.5 + 0.5 * sin(A * 37 - T * 7 + sin(A * 13 + T * 3) * 2.2);
+			const float Ripple = 0.5 + 0.5 * sin(A * 19 + T * 4 + R * 80);
+			const float Ring = exp(-pow((R - 0.954) * 45, 2));
+			const float Core = exp(-pow((R - 0.950) * 150, 2));
+			const float Glow = Ring * (5 + Filament * 7 + Ripple * 3) + Core * 14;
+			// The authored unlit rim divides by EyeAdaptation before material
+			// pre-exposure. Keep that exposure-normalized appearance here;
+			// multiplying by PreExposure again would darken the replacement rim.
+			const float3 Rim = PortalRimColorAndTime.rgb * Glow + Core * 2;
+			PortalColor.rgb = lerp(PortalColor.rgb, Rim, smoothstep(0.925, 0.967, R));
+		}
 	}
 
 	const float DepthVisibleApertureMask = ApertureMask * (1.0 - ForegroundOcclusionMask);

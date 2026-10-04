@@ -74,7 +74,7 @@ namespace InteriorPortalProductionParityValidationPrivate
 			// Critical isolation rule: manually constructed portal families are
 			// additional view families. Do not subscribe to, copy from, or otherwise
 			// add work to their post-process graph from this world-scoped observer.
-			// The accepted TSR producer already owns the secondary Tonemap extraction
+			// The TSR producer owns the secondary pre-tonemap HDR extraction
 			// and its exact FColorSample metadata.
 			if (!InViewFamily.bIsMainViewFamily || InViewFamily.bAdditionalViewFamily)
 			{
@@ -176,7 +176,7 @@ namespace InteriorPortalProductionParityValidationPrivate
 			TEXT("  \"mainAAMethod\":%d,\n")
 			TEXT("  \"invalidMainExposureFrames\":%llu,\n")
 			TEXT("  \"mainCameraCutFrames\":%llu,\n")
-			TEXT("  \"secondaryTelemetrySource\":\"PortalFullViewFamilyTSRSpike producer-owned Tonemap extraction / exact FColorSample\",\n")
+			TEXT("  \"secondaryTelemetrySource\":\"PortalFullViewFamilyTSRSpike producer-owned ReplacingTonemapper scene-linear extraction / exact FColorSample\",\n")
 			TEXT("  \"secondaryObserverPolicy\":\"No world-scoped parity callback is registered into additional portal view families\",\n")
 			TEXT("  \"claimBoundary\":\"This report validates player-main-view ownership only. Pair it with PortalFullViewFamilyTSRSpike.json and the manual PIE visual gate for production parity.\"\n")
 			TEXT("}\n"),

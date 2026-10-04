@@ -44,6 +44,80 @@ struct SLAYTHESPIREDEMO_API FInteriorPortalRenderRequest
 	TSharedPtr<InteriorPortalRendering::FColorSample, ESPMode::ThreadSafe> ColorSample;
 	bool bEnabled = false;
 	bool bPlayerExposureAuthority = true;
+	/** Full-fidelity composition owns the logical opening and rim, not the opaque fallback mesh. */
+	bool bLogicalPlaneComposition = false;
+	FPrimitiveComponentId CompositedSurface;
+	uint32 CompositedSupportStencil = 0;
+	FLinearColor RimColor = FLinearColor::Black;
+	float RimTimeSeconds = 0.0f;
+
+	/** An attached portal is a directed opening on the frame's positive X side.
+	 * Test the receiving camera, never the transported child camera. */
+	static bool IsFrontFacing(const FTransform& Frame, const FVector& ReceivingOrigin)
+	{
+		const double Distance = FVector::DotProduct(
+			ReceivingOrigin - Frame.GetLocation(), Frame.GetUnitAxis(EAxis::X));
+		return FMath::IsFinite(Distance) && Distance > 0.0;
+	}
+
+	bool CanComposeFrom(const FVector& ReceivingOrigin) const
+	{
+		return !bLogicalPlaneComposition || IsFrontFacing(EntryFrame, ReceivingOrigin);
+	}
+
+	FVector3f GetTranslatedPlaneCenter(const FVector& PreViewTranslation) const
+	{
+		// Subtract the receiving camera in double precision BEFORE GPU encoding.
+		// World-space float geometry loses sub-centimeter slices before this step.
+		return FVector3f(EntryFrame.GetLocation() + PreViewTranslation);
+	}
+
+	void ApplyCompositionVisibility(FSceneView& ReceivingView) const
+	{
+		if (IsValid() && bLogicalPlaneComposition && CompositedSurface.IsValid()
+			&& CanComposeFrom(ReceivingView.ViewMatrices.GetViewOrigin()))
+		{
+			ReceivingView.HiddenPrimitives.Add(CompositedSurface);
+		}
+	}
+
+	FVector4f GetReceivingPlaneDepthEquation(const FMatrix& ClipToTranslatedWorld,
+		const FVector& PreViewTranslation, const FIntRect& ReceivingRect) const
+	{
+		const FVector Normal = EntryFrame.GetUnitAxis(EAxis::X);
+		const FVector Center = EntryFrame.GetLocation() + PreViewTranslation;
+		const FVector4 Plane = ClipToTranslatedWorld.GetTransposed().TransformFVector4(
+			FVector4(Normal, -FVector::DotProduct(Normal, Center)));
+		if (FMath::Abs(Plane.Z) <= UE_DOUBLE_SMALL_NUMBER
+			|| ReceivingRect.Width() <= 0 || ReceivingRect.Height() <= 0)
+		{
+			return FVector4f(0, 0, 0, 0);
+		}
+		// A planar raster's DeviceZ is affine in raster pixel coordinates. Build
+		// its coefficients in double, before GPU world reconstruction can cancel.
+		const double X = -Plane.X / Plane.Z;
+		const double Y = -Plane.Y / Plane.Z;
+		const double Px = 2.0 * X / ReceivingRect.Width();
+		const double Py = -2.0 * Y / ReceivingRect.Height();
+		return FVector4f(float(Px), float(Py), float(-Plane.W / Plane.Z - X + Y
+			- Px * ReceivingRect.Min.X - Py * ReceivingRect.Min.Y), 1.0f);
+	}
+
+	void UseLogicalPlaneComposition(FPrimitiveComponentId SurfaceId,
+		const FLinearColor& InRimColor, float InTimeSeconds)
+	{
+		bLogicalPlaneComposition = true;
+		CompositedSurface = SurfaceId;
+		RimColor = InRimColor;
+		RimTimeSeconds = InTimeSeconds;
+		ForegroundDepthReference.Row2.W = 0.0f;
+		// Strict-positive exit half-space: hardware clip keeps distance == 0,
+		// which would retain the coplanar host wall. Exclude numerical ties with
+		// a float-roundoff bound in translated view space, never cosmetic bias.
+		const double ClipRoundoffCm = FMath::Max(
+			(ExitFrame.GetLocation() - ViewLocation).Size() * 4.768371582e-7, 1.0e-4);
+		InteriorPortalMath::BuildPortalClipPlane(ExitFrame, ClipRoundoffCm, ExitClipPlane);
+	}
 
 	static uint64 MakeHistoryIdentity(int32 InEndpointIndex, int32 InRecursionLevel,
 		uint64 InRendererHistoryGeneration)

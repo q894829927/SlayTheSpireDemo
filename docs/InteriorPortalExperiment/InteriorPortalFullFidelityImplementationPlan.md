@@ -11,6 +11,25 @@ VISUAL + PHYSICS HARDENING REQUIRED /
 NOT YET FULL-FIDELITY ACCEPTED
 ```
 
+### Current rendering correction — 2026-09-27
+
+[Directed receiving views / scene-linear HDR boundary](InteriorPortalSceneLinearHDRBoundary.md)
+corrects two verified native defects: support identity did not impose front-side
+visibility, and UE's after-Tonemap callback was mislabeled pre-tonemap HDR.
+Native and single-view TSR auxiliary producers now hand off resolved HDR at
+ReplacingTonemapper; the receiving player owns final display color processing.
+Quality/show-flag overrides and sealed per-submission exposure are explicit.
+Backface, dual-view and actual depth-4 geometry pass static checks in Ping-Pong
+0/1; the normal-lighting half-crossing brightness seam remains OPEN. Older
+simulation-disabled cube screenshots do not validate a registered sliced body.
+The user's subsequent explicit request for cross-portal lighting is owned by
+[the lighting-path initiative](InteriorPortalLightTransport.md): an offline
+reference, installed-engine TLAS visibility and shared Scene UB publication are
+verified; 10 PIE cases / 30 view readbacks include moving/retired connections and
+four recursive auxiliary views. Actual Lumen/shadow/cache consumers remain next.
+Section 2.9 remains the original plan's non-goal;
+neither geometry, albedo nor a visibility probe seals lighting or Core/P8.
+
 ### Current execution snapshot — 2026-09-13
 
 | Area | State | Remaining gate |

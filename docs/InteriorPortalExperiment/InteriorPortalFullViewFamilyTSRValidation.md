@@ -1,5 +1,10 @@
 # Interior Portal — STEP 1B.10B TSR / Screen-Percentage Validation
 
+2026-09-27 correction: historical `Tonemap (post-TSR / pre-tonemap HDR)` wording
+below is incorrect for UE's after-pass callback. Current native and single-view
+TSR producers use ReplacingTonemapper and seal actual scene-linear metadata.
+See [HDR boundary and evidence](InteriorPortalSceneLinearHDRBoundary.md).
+
 Date: **2026-09-15**
 
 State:

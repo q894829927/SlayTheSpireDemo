@@ -38,9 +38,10 @@ bool FPortalColorSampleExposureTest::RunTest(const FString& Parameters)
 	float Scale = 0.0f;
 	TestFalse(TEXT("An unextracted submission cannot display a previous image"),
 		BeforeCut.TryGetExposureScale(0.002f, Scale));
-	BeforeCut.PreExposure = 0.0015f;
-	AfterCut.PreExposure = 1.0f;
-	AfterReentry.PreExposure = 0.0008f;
+	using EPass = ISceneViewExtension::EPostProcessingPass;
+	TestTrue(TEXT("Pre-tonemap HDR seals the exact submission exposure"), BeforeCut.SealExtraction(EPass::ReplacingTonemapper, 0.0015f));
+	TestTrue(TEXT("Exposure reset remains a valid scene-linear submission"), AfterCut.SealExtraction(EPass::ReplacingTonemapper, 1.0f));
+	TestTrue(TEXT("Reentry seals its own exposure"), AfterReentry.SealExtraction(EPass::ReplacingTonemapper, 0.0008f));
 	const float Radiance = 100.0f;
 	const float MainPreExposure = 0.002f;
 	const float ExpectedMainSceneColor = Radiance * MainPreExposure;
@@ -49,7 +50,7 @@ bool FPortalColorSampleExposureTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("Extracted color has a valid exposure domain"),
 			Sample->TryGetExposureScale(MainPreExposure, Scale));
-		const float RebasingResult = Radiance * Sample->PreExposure * Scale;
+		const float RebasingResult = Radiance * Sample->GetPreExposure() * Scale;
 		TestTrue(TEXT("Exposure reset does not change the same radiance in main SceneColor"),
 			FMath::IsNearlyEqual(
 				RebasingResult,
@@ -61,6 +62,14 @@ bool FPortalColorSampleExposureTest::RunTest(const FString& Parameters)
 		Missing.TryGetExposureScale(MainPreExposure, Scale));
 	TestFalse(TEXT("Invalid main exposure cannot generate a visible sample"),
 		BeforeCut.TryGetExposureScale(0.0f, Scale));
+	FColorSample DisplayColor(5);
+	TestFalse(TEXT("An after-Tonemap image cannot be labelled scene-linear HDR"),
+		DisplayColor.SealExtraction(EPass::Tonemap, 1.0f));
+	TestFalse(TEXT("Rejected display-referred color remains unconsumable"),
+		DisplayColor.TryGetExposureScale(MainPreExposure, Scale));
+	TestFalse(TEXT("Sealed color metadata cannot be overwritten by a later callback"),
+		BeforeCut.SealExtraction(EPass::ReplacingTonemapper, 1.0f));
+	TestEqual(TEXT("The submission retains its original HDR exposure"), BeforeCut.GetPreExposure(), 0.0015f);
 	return true;
 }
 #endif

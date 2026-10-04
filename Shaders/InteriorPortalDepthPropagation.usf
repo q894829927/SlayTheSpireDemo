@@ -1,7 +1,11 @@
 #include "/Engine/Private/Common.ush"
 #include "/Engine/Private/ScreenPass.ush"
 
+
 Texture2D MainSceneDepthTexture;
+Texture2D SupportSceneDepthTexture;
+Texture2D<uint2> SupportSceneStencilTexture;
+uint SupportStencilId;
 Texture2D SecondaryDepthTexture;
 SamplerState SecondaryDepthSampler;
 
@@ -20,59 +24,12 @@ float4 ForegroundPortalClipZRow;
 float ForegroundDepthReferenceEnabled;
 float ProjectiveNearClipW;
 float DepthOcclusionEpsilonCm;
+float LogicalPlaneComposition;
+float DepthQuantizationStep;
+float4 ReceivingPlaneDepthEquation;
+float3 TranslatedPortalCenter;
 
-bool IntersectAnalyticPortalPlane(
-	float2 ScreenSpacePos,
-	float PlaneBias,
-	out float2 PortalLocal,
-	out float DeviceZ,
-	out float LinearDepthCm)
-{
-	PortalLocal = float2(0.0, 0.0);
-	DeviceZ = 0.0;
-	LinearDepthCm = 0.0;
-	if (ForegroundDepthReferenceEnabled <= 0.5)
-	{
-		return false;
-	}
-
-	const float3 PortalCenterWorld = ForegroundScreenToPortalRow0.xyz;
-	const float InvHalfWidth = ForegroundScreenToPortalRow0.w;
-	const float3 PortalNormal = normalize(ForegroundScreenToPortalRow1.xyz);
-	const float InvHalfHeight = ForegroundScreenToPortalRow1.w;
-	const float3 PortalAxisY = normalize(ForegroundScreenToPortalRow2.xyz);
-	const float3 PortalAxisZ = normalize(ForegroundPortalClipZRow.xyz);
-	const float3 PreViewTranslation = View.PreViewTranslationHigh + View.PreViewTranslationLow;
-	const float3 PlaneCenter = PortalCenterWorld + PreViewTranslation + PortalNormal * PlaneBias;
-	const float3 RayOrigin = View.TranslatedWorldCameraOrigin;
-	const float3 RayDirection = mul(float4(ScreenSpacePos, 1.0, 0.0), View.ScreenToTranslatedWorld).xyz;
-	const float Denominator = dot(RayDirection, PortalNormal);
-	if (abs(Denominator) <= 1.0e-8)
-	{
-		return false;
-	}
-
-	const float RayT = dot(PlaneCenter - RayOrigin, PortalNormal) / Denominator;
-	if (!(RayT > 0.0))
-	{
-		return false;
-	}
-
-	const float3 HitTranslatedWorld = RayOrigin + RayDirection * RayT;
-	const float3 Relative = HitTranslatedWorld - PlaneCenter;
-	PortalLocal = float2(
-		dot(Relative, PortalAxisY) * InvHalfWidth,
-		dot(Relative, PortalAxisZ) * InvHalfHeight);
-	const float4 Clip = mul(float4(HitTranslatedWorld, 1.0), View.TranslatedWorldToClip);
-	if (abs(Clip.w) <= 1.0e-8
-		|| (ProjectiveNearClipW > 0.0 && Clip.w < ProjectiveNearClipW))
-	{
-		return false;
-	}
-	DeviceZ = saturate(Clip.z / Clip.w);
-	LinearDepthCm = ConvertFromDeviceZ(DeviceZ);
-	return isfinite(LinearDepthCm) && LinearDepthCm > 0.0;
-}
+#include "/Project/InteriorPortalDepthOwnership.ush"
 
 void BuildCandidatePS(
 	in noperspective float4 UVAndScreenPos : TEXCOORD0,
@@ -102,7 +59,7 @@ void BuildCandidatePS(
 	{
 		float PortalDeviceZ;
 		if (!IntersectAnalyticPortalPlane(
-			ScreenSpacePos, 0.0,
+			SvPosition.xy, 0.0,
 			PortalLocal, PortalDeviceZ, PortalPlaneDepthCm))
 		{
 			return;
@@ -116,7 +73,7 @@ void BuildCandidatePS(
 		float ForegroundDeviceZ;
 		ForegroundReferenceDepthCm = PortalPlaneDepthCm;
 		IntersectAnalyticPortalPlane(
-			ScreenSpacePos,
+			SvPosition.xy,
 			ForegroundScreenToPortalRow2.w,
 			IgnoredLocal,
 			ForegroundDeviceZ,
@@ -153,7 +110,8 @@ void BuildCandidatePS(
 	const float MainDeviceZ = MainSceneDepthTexture.Load(int3(ScenePixel, 0)).r;
 	const float MainDepthCm = ConvertFromDeviceZ(MainDeviceZ);
 	const float EpsilonCm = max(DepthOcclusionEpsilonCm, 0.0);
-	if (MainDepthCm + EpsilonCm < ForegroundReferenceDepthCm)
+	if (PortalHasForeground(SvPosition.xy, MainDeviceZ, ForegroundReferenceDepthCm,
+		EpsilonCm))
 	{
 		return;
 	}

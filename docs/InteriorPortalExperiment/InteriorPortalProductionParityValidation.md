@@ -1,5 +1,12 @@
 # Interior Portal — STEP 1B.14D-C Production TSR Parity Validation
 
+2026-09-27 correction: the historical secondary `Tonemap` extraction below
+receives after-pass output, not pre-tonemap HDR. Current auxiliary producers
+use ReplacingTonemapper and sealed scene-linear metadata; previous numerical
+exposure measurements do not prove the old texture's color domain. Historical
+manual observations are retained; current native traveller lighting remains OPEN.
+See [HDR boundary and evidence](InteriorPortalSceneLinearHDRBoundary.md).
+
 Date: **2026-09-16**
 
 State:

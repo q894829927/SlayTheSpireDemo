@@ -4,10 +4,14 @@
 #include "InteriorPortalMath.h"
 #include "InteriorPortalProjectedBounds.h"
 #include "InteriorPortalRecursionLifetime.h"
+#include "InteriorPortalSupportDepthOwnership.h"
+#include "InteriorPortalViewFamilyPolicy.h"
+#include "InteriorPortalLightConnection.h"
 
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasTypes.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
@@ -466,7 +470,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			bool bIsPassEnabled) override
 		{
 			(void)bIsPassEnabled;
-			if (Pass != ISceneViewExtension::EPostProcessingPass::Tonemap
+			if (!InteriorPortalRendering::FColorSample::IsSceneLinearExtractionPass(Pass)
 				|| !LayerState
 				|| !InView.Family
 				|| !InView.Family->bAdditionalViewFamily
@@ -477,7 +481,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 
 			InOutPassCallbacks.Add(FPostProcessingPassDelegate::CreateLambda(
-				[this](FRDGBuilder& GraphBuilder, const FSceneView& View,
+				[this, Pass](FRDGBuilder& GraphBuilder, const FSceneView& View,
 					const FPostProcessMaterialInputs& Inputs)
 				{
 					const FScreenPassTextureSlice SceneColorSlice =
@@ -586,7 +590,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 							CompletedRequest.EndpointIndex, CompletedRequest.RecursionLevel,
 							*SceneColor.ViewRect.ToString(), *DestinationRect.ToString());
 					}
-					ColorSample->PreExposure = MeasuredPreExposure;
+					// This owned auxiliary family hands off resolved scene-linear HDR
+					// instead of running its own display transform. Eye adaptation was
+					// computed earlier; the receiving view owns the final tonemap.
+					if (!ColorSample->SealExtraction(Pass, MeasuredPreExposure)) return SceneColor;
 					LayerState->LastExtractionFrame.Store(GFrameCounter);
 					LayerState->LastCompletedSubmission.Store(ColorSample->Submission);
 
@@ -668,6 +675,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			// Per-level temporal history remains independent; only endpoint output
 			// color/depth resources are shared between alternating recursion levels.
 			ActiveWorld = World;
+			LightingConnection = InteriorPortalLighting::Acquire(PortalSystem);
+			SupportDepthOwnership.Start(World);
 			PrimaryResolutionFraction = ReadPrimaryFraction();
 			LastMinRecursionScreenCoverage = ReadMinRecursionScreenCoverage();
 			LastRecursionCoverageHysteresisFraction =
@@ -709,6 +718,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 
 		void Stop()
 		{
+			SupportDepthOwnership.Reset();
 			if (!bRunning && !WorldPostActorTickHandle.IsValid())
 			{
 				RestoreBoundedComposition();
@@ -773,6 +783,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			}
 			ReleaseFinalScratch();
 			ActiveWorld.Reset();
+			LightingConnection.Reset();
 			bRunning = false;
 			Status = TEXT("STOPPED");
 			LastVisibleMask = 0;
@@ -1706,6 +1717,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				|| PortalSystem->RendererBackend != EInteriorPortalRendererBackend::SceneCapture
 				|| !PortalSystem->IsLinked())
 			{
+				SupportDepthOwnership.Refresh(World, nullptr, nullptr);
 				for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 				{
 					FEndpointState& Endpoint = *Endpoints[EndpointIndex];
@@ -1757,6 +1769,9 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			AInteriorPortal* Candidates[EndpointCount] = {
 				PortalSystem->BluePortal.Get(), PortalSystem->OrangePortal.Get()
 			};
+			SupportDepthOwnership.Refresh(World,
+				IsValid(Candidates[0]) ? Candidates[0]->Support.Get() : nullptr,
+				IsValid(Candidates[1]) ? Candidates[1]->Support.Get() : nullptr);
 
 			for (int32 EndpointIndex = 0; EndpointIndex < EndpointCount; ++EndpointIndex)
 			{
@@ -1782,6 +1797,13 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 				const int32 CoveragePadding = ReadBoundedCompositionPadding();
 				for (int32 Level = 0; Level < LastRequestedRecursionDepth; ++Level)
 				{
+					if (!FInteriorPortalRenderRequest::IsFrontFacing(
+						Entry->GetLogicalFrame(), ParentView.GetLocation()))
+					{
+						GeometryCutoffReason = TEXT("ENTRY_BACKFACE");
+						GeometryCutoffLevel = Level;
+						break;
+					}
 					FLayerState& Layer = *Endpoint.Layers[Level];
 					const uint64 GeometryGeneration = Layer.HistoryGeneration != 0
 						? Layer.HistoryGeneration : 1;
@@ -1796,7 +1818,7 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						ParentProjection,
 						ProjectionData.IsPerspectiveProjection(),
 						ProjectionData.GetNearPlaneFromProjectionMatrix(),
-						PortalSystem->ClipPlaneBias,
+						0.0, // Full-fidelity partitions the exact logical plane.
 						GeometryGeneration, Request)
 						|| !Request.IsValid() || !IsFiniteTransform(Request.VirtualView))
 					{
@@ -1805,9 +1827,14 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						break;
 					}
 
-					if (Request.ForegroundDepthReference.bValid)
+					Request.UseLogicalPlaneComposition(
+						Entry->Surface->GetPrimitiveSceneId(), Entry->PortalColor, World->GetTimeSeconds());
+					Request.CompositedSupportStencil = SupportDepthOwnership.GetStencil(Entry->Support);
+					if (Request.CompositedSupportStencil == 0)
 					{
-						Request.ForegroundDepthReference.Row2.W = Entry->SurfaceVisualBias;
+						GeometryCutoffReason = TEXT("SUPPORT_DEPTH_IDENTITY_UNAVAILABLE");
+						GeometryCutoffLevel = Level;
+						break;
 					}
 
 					FLayerRenderPlan Plan;
@@ -1839,7 +1866,6 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 							int64(Plan.RenderRect.Width()) * int64(Plan.RenderRect.Height());
 						Plan.Coverage = ParentPixels > 0
 							? float(double(RenderPixels) / double(ParentPixels)) : 1.0f;
-						Plan.Request.ProjectionMatrix = Plan.ProjectionMatrix;
 					}
 					else
 					{
@@ -1847,6 +1873,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 						Plan.ProjectionMatrix = ProjectionData.ProjectionMatrix;
 						Plan.Coverage = 1.0f;
 					}
+					Plan.Request.ProjectionMatrix = Plan.ProjectionMatrix;
+					Plan.Request.bExitClipEncodedInProjection = false;
 
 					Plans.Add(Plan);
 					ParentView = Request.VirtualView;
@@ -2114,13 +2142,10 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 					Request.ColorSample.ToSharedRef(),
 					MainPublisher, RecursivePublisher, Request);
 
-			FEngineShowFlags ShowFlags = GEngine && GEngine->GameViewport
+			const FEngineShowFlags ViewportFlags = GEngine && GEngine->GameViewport
 				? GEngine->GameViewport->EngineShowFlags
 				: FEngineShowFlags(ESFIM_Game);
-			ShowFlags.SetMotionBlur(false);
-			ShowFlags.SetDepthOfField(false);
-			ShowFlags.SetTemporalAA(true);
-			ShowFlags.SetScreenPercentage(true);
+			const FEngineShowFlags ShowFlags = InteriorPortalRendering::BuildAdditionalViewShowFlags(ViewportFlags);
 
 			FSceneViewFamilyContext ViewFamily(
 				FSceneViewFamily::ConstructionValues(FinalScratchResource, World->Scene, ShowFlags)
@@ -2134,10 +2159,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			ViewFamily.SetScreenPercentageInterface(
 				new FLegacyScreenPercentageDriver(ViewFamily, PrimaryResolutionFraction));
 			ViewFamily.ViewExtensions.Add(ExtractionExtension);
+			InteriorPortalLighting::Attach(LightingConnection, ViewFamily);
 
-			if (InteriorPortalRecursionLifetime::CanConsumeCurrentFrameChild(
+			const bool bHasChildComposition = InteriorPortalRecursionLifetime::CanConsumeCurrentFrameChild(
 					Level, EffectiveDepth, Endpoint.LastSubmittedLayerMask)
-				&& Endpoint.RecursiveCompositionExtensions[Level + 1])
+				&& Endpoint.RecursiveCompositionExtensions[Level + 1];
+			if (bHasChildComposition)
 			{
 				ViewFamily.ViewExtensions.Add(
 					Endpoint.RecursiveCompositionExtensions[Level + 1].ToSharedRef());
@@ -2166,6 +2193,12 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 			ViewInitOptions.bUseFieldOfViewForLOD = true;
 
 			HidePortalPrimitives(Exit, ViewInitOptions);
+			if (bHasChildComposition)
+			{
+				// Only the scheduled child's opening is compositor-owned. Preserve
+				// every other primitive and the terminal layer's fallback.
+				ViewInitOptions.HiddenPrimitives.Add(Request.CompositedSurface);
+			}
 
 			FSceneView* SceneView = new FSceneView(ViewInitOptions);
 			ViewFamily.Views.Add(SceneView);
@@ -2516,6 +2549,8 @@ namespace InteriorPortalMultiVisibleTSRPrivate
 		float LastMinRecursionScreenCoverage = 0.0f;
 		float LastRecursionCoverageHysteresisFraction = 0.10f;
 		TWeakObjectPtr<UWorld> ActiveWorld;
+		TSharedPtr<ISceneViewExtension, ESPMode::ThreadSafe> LightingConnection;
+		FInteriorPortalSupportDepthOwnership SupportDepthOwnership;
 		FDelegateHandle WorldPostActorTickHandle;
 		InteriorPortalRecursionLifetime::FLifetimeIdSource LifetimeIdSource;
 		TUniquePtr<FEndpointState> Endpoints[EndpointCount];
