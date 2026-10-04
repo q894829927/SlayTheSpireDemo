@@ -28,12 +28,14 @@ namespace InteriorPortalPhysics
 		uint64 Steps = 0;
 		bool bHasClearance = false;
 		EStaticClearanceReason ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		uint32 SceneIssueMask = 0;
 		ENativeBindingIssue BindingIssue = ENativeBindingIssue::None;
 		int32 BindingComponent = -1;
 		FPhysicsStepKey ClearanceStep;
 		void Reset()
 		{ Domain = {}; Handoff = {}; bRetired = false; Steps = 0; bHasClearance = false;
 		  ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		  SceneIssueMask = 0;
 		  BindingIssue = ENativeBindingIssue::None; BindingComponent = -1; ClearanceStep = {}; }
 	};
 	class FPortalBindingObserveCallback final : public Chaos::TSimCallbackObject<FBindingObserveInput,
@@ -87,6 +89,7 @@ namespace InteriorPortalPhysics
 						EClearanceStage::PreIntegrate,0);
 					Output.bHasClearance = true;
 					Output.ClearanceReason = Proof.Reason();
+					Output.SceneIssueMask = Proof.SceneIssueMask();
 					Output.BindingIssue = Proof.BindingIssue();
 					Output.BindingComponent = Proof.BindingComponent();
 					Output.ClearanceStep = Step;
@@ -128,6 +131,7 @@ namespace InteriorPortalPhysics
 		{ return false; }
 		Scene = NewScene; Prepared = InPrepared;
 		ObservedSteps = 0;
+		ClearanceSteps = 0; MismatchSteps = 0; SceneIssueMask = 0;
 		Proxies[0] = Body; Proxies[1] = Support0; Proxies[2] = Support1;
 		Callback = Solver->CreateAndRegisterSimCallbackObject_External<FPortalBindingObserveCallback>();
 		Callback->BindBeforeDispatch(Body,Support0,Support1,Prepared,Domain);
@@ -146,6 +150,7 @@ namespace InteriorPortalPhysics
 				++ClearanceSteps;
 				if (Output->ClearanceReason == EStaticClearanceReason::BindingChanged) { ++MismatchSteps; }
 				ClearanceReason = Output->ClearanceReason;
+				SceneIssueMask = Output->SceneIssueMask;
 				BindingIssue = Output->BindingIssue;
 				BindingComponent = Output->BindingComponent;
 				ClearanceStep = Output->ClearanceStep;

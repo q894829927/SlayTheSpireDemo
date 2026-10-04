@@ -201,8 +201,12 @@ namespace InteriorPortalPhysics
 		Proof.Command = C; Proof.Start = A; Proof.End = B; Proof.Step = Step; Proof.Stage = Stage;
 		ENativeBindingIssue Issue = ENativeBindingIssue::None;
 		int32 IssueComponent = -1;
+		uint32 SceneIssues = 0;
+		const auto MarkSceneIssue = [&](ENativeSceneIssue SceneIssue)
+		{ SceneIssues |= NativeSceneIssueBit(SceneIssue); };
 		const auto Reject = [&](EStaticClearanceReason Reason)
-		{ Proof.Result = Reason; Proof.Issue = Issue; Proof.Component = IssueComponent; return Proof; };
+		{ Proof.Result = Reason; Proof.Issue = Issue; Proof.Component = IssueComponent;
+		  Proof.SceneIssues = SceneIssues; return Proof; };
 		if (Retired) { return Reject(EStaticClearanceReason::Retired); }
 		const FTransform ExpectedEntry = Endpoint == 0 ? Bound.Entry : Bound.Exit, ExpectedExit = Endpoint == 0 ? Bound.Exit : Bound.Entry;
 		if (Endpoint < 0 || Endpoint > 1 || C.Traveller.Handle != Bound.Traveller.Handle || C.PairGeneration != Bound.PairGeneration
@@ -275,7 +279,8 @@ namespace InteriorPortalPhysics
 		}
 		// Persistent constraints can move/rotate the body after this hook; they
 		// are not collision constraints and are outside the independent-body profile.
-		if (!Particle->ParticleConstraints().IsEmpty()) { return Reject(EStaticClearanceReason::UnsupportedScene); }
+		if (!Particle->ParticleConstraints().IsEmpty())
+		{ MarkSceneIssue(ENativeSceneIssue::TravellerConstraint); return Reject(EStaticClearanceReason::UnsupportedScene); }
 		// The adapter must install a native hard speed cap before this interval.
 		// Arbitrary gravity/force rules are not represented by the submitted
 		// predicted pose; the Chaos integrator clamps V before updating P.
@@ -343,7 +348,8 @@ namespace InteriorPortalPhysics
 		bool WakeRisk = false;
 		TArray<const Chaos::FGeometryParticleHandle*> Sleepers;
 		bool SawSupports[2] = {false,false};
-		if (Solver->GetParticles().GetNonDisabledView().Num() > 4096) { return Reject(EStaticClearanceReason::UnsupportedScene); }
+		if (Solver->GetParticles().GetNonDisabledView().Num() > 4096)
+		{ MarkSceneIssue(ENativeSceneIssue::ParticleBudget); return Reject(EStaticClearanceReason::UnsupportedScene); }
 		const auto KinematicInterval = [&](const Chaos::FGeometryParticleHandle* P, const FBox& Bounds, FBox& World)
 		{
 			const int32 Key = P->UniqueIdx().Idx;
@@ -470,24 +476,42 @@ namespace InteriorPortalPhysics
 			const bool Dormant = P.ObjectState() == Chaos::EObjectStateType::Sleeping && Simulates(P);
 			if (!HitsTraveller && !Dormant) { continue; }
 			FBox Bounds(ForceInit);
-			if (!NativeBounds(P,Bounds)) { Unsupported = true; continue; }
+			if (!NativeBounds(P,Bounds))
+			{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::NativeBounds); continue; }
 			FBox World = WorldBounds(Bounds,FTransform(FQuat(P.GetR()),FVector(P.GetX())));
 			if (P.ObjectState() == Chaos::EObjectStateType::Kinematic)
 			{
-				if (!KinematicInterval(P.Handle(),Bounds,World)) { Unsupported = true; continue; }
+				if (!KinematicInterval(P.Handle(),Bounds,World))
+				{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::KinematicMotion); continue; }
 			}
 			else if (P.ObjectState() == Chaos::EObjectStateType::Dynamic)
 			{
 				++SeenActive;
-				if (!ActiveInterval(P.Handle(),Bounds,World)) { Unsupported = true; continue; }
+				if (!ActiveInterval(P.Handle(),Bounds,World))
+				{
+					Unsupported = true;
+					const uint32 PriorIssues = SceneIssues;
+					const auto* OtherRigid = P.CastToRigidParticle();
+					const double OtherSpeedSq = OtherRigid ? OtherRigid->MaxLinearSpeedSq() : 0;
+					if (OtherRigid && (!FMath::IsFinite(OtherSpeedSq) || OtherSpeedSq >= TNumericLimits<float>::Max()))
+					{ MarkSceneIssue(ENativeSceneIssue::UnboundedActive); }
+					if (OtherRigid && OtherRigid->CCDEnabled()) { MarkSceneIssue(ENativeSceneIssue::ActiveCCD); }
+					if (!P.ParticleConstraints().IsEmpty()) { MarkSceneIssue(ENativeSceneIssue::ActiveConstraint); }
+					if (P.ParticleCollisions().Num() != 0) { MarkSceneIssue(ENativeSceneIssue::ActiveContact); }
+					if (SceneIssues == PriorIssues) { MarkSceneIssue(ENativeSceneIssue::ActiveInvalidState); }
+					continue;
+				}
 			}
 			else if (P.ObjectState() == Chaos::EObjectStateType::Sleeping)
 			{
-				if (!StableDormant(P.Handle())) { Unsupported = true; continue; }
+				if (!StableDormant(P.Handle()))
+				{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::DormantBody); continue; }
 				const FTransform Pose(FQuat(P.GetR()),FVector(P.GetX())); const int32 Key = P.UniqueIdx().Idx;
-				if (Pose.ContainsNaN() || !Pose.GetRotation().IsNormalized()) { Unsupported = true; continue; }
+				if (Pose.ContainsNaN() || !Pose.GetRotation().IsNormalized())
+				{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::DormantBody); continue; }
 				FDormantLease CurrentLease{Bounds,Pose,P.GetGeometry(),P.GetGeometry()->GetTypeHash()};
-				if (!DormantTopology(P.Handle(),CurrentLease)) { Unsupported = true; continue; }
+				if (!DormantTopology(P.Handle(),CurrentLease))
+				{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::DormantBody); continue; }
 				if (Stage == EClearanceStage::PreIntegrate)
 				{ DormantLeases.Add(Key,MoveTemp(CurrentLease)); }
 				else
@@ -497,11 +521,13 @@ namespace InteriorPortalPhysics
 						|| !Lease->Local.Min.Equals(Bounds.Min,1.e-6) || !Lease->Local.Max.Equals(Bounds.Max,1.e-6)
 						|| !Lease->Pose.Equals(Pose,1.e-6) || Lease->IslandMembers != CurrentLease.IslandMembers
 						|| Lease->ContactPartners != CurrentLease.ContactPartners || Lease->StaticContacts != CurrentLease.StaticContacts
-						|| Lease->IslandConstraints != CurrentLease.IslandConstraints) { Unsupported = true; continue; }
+						|| Lease->IslandConstraints != CurrentLease.IslandConstraints)
+					{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::DormantBody); continue; }
 				}
 				Sleepers.Add(P.Handle());
 			}
-			else if (P.ObjectState() != Chaos::EObjectStateType::Static) { Unsupported = true; continue; }
+			else if (P.ObjectState() != Chaos::EObjectStateType::Static)
+			{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::OtherParticleState); continue; }
 			if (!HitsTraveller) { continue; }
 			if (P.PhysicsProxy() != Supports[Endpoint]) { SourceBlocked |= Source.Intersect(World); }
 			if (P.PhysicsProxy() != Supports[1-Endpoint]) { DestinationBlocked |= Destination.Intersect(World); }
@@ -517,7 +543,8 @@ namespace InteriorPortalPhysics
 			static const auto* Min = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Collision.MinCullDistanceScale"));
 			if (!Ref || !Min || !Settings.bFilteringEnabled || Settings.bDeferNarrowPhase
 				|| ActiveEnvelopes.Num() > 32 || ActiveEnvelopes.Num()*Solver->GetParticles().GetNonDisabledView().Num() > 16384)
-			{ Unsupported = true; }
+			{ Unsupported = true; MarkSceneIssue(!Ref || !Min || !Settings.bFilteringEnabled || Settings.bDeferNarrowPhase
+				? ENativeSceneIssue::CollisionSettings : ENativeSceneIssue::LeaseBudget); }
 			else for (auto& Moving : Solver->GetParticles().GetNonDisabledView())
 			{
 				const auto* Lease = ActiveEnvelopes.Find(Moving.UniqueIdx().Idx);
@@ -526,9 +553,11 @@ namespace InteriorPortalPhysics
 				{
 					if (Other.Handle() == Moving.Handle() || Other.PhysicsProxy() == Body
 						|| !Interacts(Moving.Handle(),Other.Handle())) { continue; }
-					if (Other.ObjectState() != Chaos::EObjectStateType::Static) { Unsupported = true; break; }
+					if (Other.ObjectState() != Chaos::EObjectStateType::Static)
+					{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::ActivePairInteraction); break; }
 					FBox OtherLocal(ForceInit);
-					if (!NativeBounds(Other,OtherLocal)) { Unsupported = true; break; }
+					if (!NativeBounds(Other,OtherLocal))
+					{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::NativeBounds); break; }
 					const double Size = FMath::Max(Lease->Local.GetSize().GetMax(),OtherLocal.GetSize().GetMax());
 					const double Travel = FMath::Sqrt(Lease->MaxLinearSpeedSq)*Step.DeltaSeconds;
 					const double Padding = Settings.BoundsExpansion*FMath::Max(Min->GetFloat(),Size*Ref->GetFloat())
@@ -537,7 +566,7 @@ namespace InteriorPortalPhysics
 					if (!FMath::IsFinite(Padding) || Padding < 0 || !FMath::IsFinite(Travel)
 						|| Lease->Reach.Intersect(WorldBounds(OtherLocal,
 							FTransform(FQuat(Other.GetR()),FVector(Other.GetX()))).ExpandBy(Padding)))
-					{ Unsupported = true; break; }
+					{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::ActiveStaticReach); break; }
 				}
 				if (Unsupported) { break; }
 			}
@@ -545,18 +574,18 @@ namespace InteriorPortalPhysics
 		if (!Sleepers.IsEmpty())
 		{
 			if (Sleepers.Num() > 32 || Sleepers.Num()*Solver->GetParticles().GetNonDisabledView().Num() > 16384)
-			{ return Reject(EStaticClearanceReason::UnsupportedScene); }
+			{ MarkSceneIssue(ENativeSceneIssue::LeaseBudget); return Reject(EStaticClearanceReason::UnsupportedScene); }
 			const auto& Settings = Solver->GetEvolution()->GetCollisionConstraints().GetDetectorSettings();
 			static const auto* Ref = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Collision.CullDistanceReferenceSize"));
 			static const auto* Min = IConsoleManager::Get().FindConsoleVariable(TEXT("p.Chaos.Collision.MinCullDistanceScale"));
 			if (!Ref || !Min || !Settings.bFilteringEnabled || Settings.bDeferNarrowPhase)
-			{ return Reject(EStaticClearanceReason::UnsupportedScene); }
+			{ MarkSceneIssue(ENativeSceneIssue::CollisionSettings); return Reject(EStaticClearanceReason::UnsupportedScene); }
 			const double Values[5] = {Settings.BoundsExpansion,FMath::Max(Settings.BoundsVelocityInflation,Settings.BoundsVelocityInflationMACD),
 				FMath::Max(Settings.MaxVelocityBoundsExpansion,Settings.MaxVelocityBoundsExpansionMACD),Ref->GetFloat(),Min->GetFloat()};
 			for (int32 I=0; I<5; ++I)
 			{
 				if (!FMath::IsFinite(Values[I]) || Values[I] < 0 || (Stage != EClearanceStage::PreIntegrate && DormantCollisionSettings[I] != Values[I]))
-				{ return Reject(EStaticClearanceReason::UnsupportedScene); }
+				{ MarkSceneIssue(ENativeSceneIssue::CollisionSettings); return Reject(EStaticClearanceReason::UnsupportedScene); }
 				DormantCollisionSettings[I] = Values[I];
 			}
 			for (const auto* Sleeper : Sleepers)
@@ -596,7 +625,8 @@ namespace InteriorPortalPhysics
 			}
 		}
 		if (!SawBody || !SawSupports[0] || !SawSupports[1]) { Retire_Internal(); return Reject(EStaticClearanceReason::BindingChanged); }
-		if (Stage != EClearanceStage::PreIntegrate && SeenActive != ActiveEnvelopes.Num()) { Unsupported = true; }
+		if (Stage != EClearanceStage::PreIntegrate && SeenActive != ActiveEnvelopes.Num())
+		{ Unsupported = true; MarkSceneIssue(ENativeSceneIssue::ActiveInvalidState); }
 		if (Unsupported) { return Reject(EStaticClearanceReason::UnsupportedScene); }
 		if (SourceBlocked) { return Reject(EStaticClearanceReason::SourceBlocked); }
 		if (DestinationBlocked) { return Reject(EStaticClearanceReason::DestinationBlocked); }

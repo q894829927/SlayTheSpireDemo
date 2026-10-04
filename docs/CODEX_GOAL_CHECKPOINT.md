@@ -1,5 +1,28 @@
 # Codex Goal Checkpoint — Interior Portals
 
+## PHY-4 actual-map native scene — 2026-09-29
+
+- Predecessor HEAD `9ca52f5` on `portal/full-fidelity-p1` commits the preceding
+  read-only native-substep observation. This delivery records the subsequent
+  scene-diagnostic continuation. Preserve unrelated renderer/lighting work and the dirty user
+  map; its SHA-256 is unchanged at
+  `0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+- A separate PIE-only capped box stays outside the legacy motion-writer list;
+  actual-map Chaos checks run for three steps with zero binding mismatches.
+  Current narrow active-body profile safely rejects a non-traveller dynamic
+  particle with native contact (`UnsupportedScene`, `ActiveContact`, mask
+  `0x00000080`). The owner of that particle is not yet identified. The typed
+  scene mask is diagnostic only, not a physics permission or writer.
+- UE 5.8 project generation/build PASS. Dedicated map 1/1 PASS without test
+  warnings; affected Physics 46/46 PASS, zero failures, one existing foundation
+  test with two warnings. Evidence is listed in the
+  [native scene record](InteriorPortalExperiment/InteriorPortalPhysicsMapNativeScenePHY4.md).
+- Next: identify the active contact participant and bound its solver-side
+  influence before considering a broader actual-world clearance profile.
+  Production held/free ownership, atomic writer cutover, fact/ack and Core
+  automated/manual PIE remain open. Do not grant support bypass from this
+  rejected observation.
+
 ## PHY-4 real native-substep observation — 2026-09-29
 
 - Predecessor HEAD `166962a` on `portal/full-fidelity-p1` commits the preceding

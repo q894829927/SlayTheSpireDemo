@@ -305,3 +305,13 @@ authored map, three substeps yield zero binding mismatches and conservative
 `InvalidInterval`/`UnsupportedMotion` rejection. Dedicated map 1/1 and affected
 Physics 46/46 pass. Real-world scene clearance, hard speed-cap ownership,
 held/free drive and the one-writer cutover are still open.
+
+The following [actual-map native scene observation](InteriorPortalPhysicsMapNativeScenePHY4.md)
+uses an independent PIE-only speed-capped body outside the legacy gameplay
+writer list. It reaches three real Chaos scene checks with zero binding
+mismatches. The current independent-active profile rejects a retained contact
+on another active dynamic particle (`UnsupportedScene`, `ActiveContact`), rather
+than granting an unsafe passage. A typed diagnostic mask exposes the reason;
+it changes no physics decision. UE generation/build PASS; dedicated map 1/1
+and affected Physics 46/46 PASS. Identify the participant and its solver-side
+influence before extending this profile or cutting over the production writer.

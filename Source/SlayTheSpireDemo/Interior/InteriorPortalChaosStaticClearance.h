@@ -17,6 +17,16 @@ namespace InteriorPortalPhysics
 		None, Command, BodyState, BodyCollision, BodyBounds, BodyCOM,
 		SupportState, SupportCollision, SupportBounds, SupportPose, GeometryChanged, SupportSpan
 	};
+	/** Diagnostic categories for fail-closed scene rejection. Several may apply in one scan. */
+	enum class ENativeSceneIssue : uint8
+	{
+		TravellerConstraint, ParticleBudget, NativeBounds, KinematicMotion,
+		UnboundedActive, ActiveCCD, ActiveConstraint, ActiveContact, ActiveInvalidState,
+		ActivePairInteraction, ActiveStaticReach,
+		DormantBody, OtherParticleState, LeaseBudget, CollisionSettings
+	};
+	constexpr uint32 NativeSceneIssueBit(ENativeSceneIssue Issue)
+	{ return 1u << static_cast<uint8>(Issue); }
 	class FChaosStaticClearance;
 	/** Issued by a native solver scan, never constructible from GT query results. */
 	class FStaticClearanceProof
@@ -25,11 +35,13 @@ namespace InteriorPortalPhysics
 		EStaticClearanceReason Reason() const { return Result; }
 		ENativeBindingIssue BindingIssue() const { return Issue; }
 		int32 BindingComponent() const { return Component; } // -1 body/command, 0 entry support, 1 exit support.
+		uint32 SceneIssueMask() const { return SceneIssues; }
 	private:
 		friend class FChaosStaticClearance;
 		EStaticClearanceReason Result = EStaticClearanceReason::InvalidInterval;
 		ENativeBindingIssue Issue = ENativeBindingIssue::None;
 		int32 Component = -1;
+		uint32 SceneIssues = 0;
 		uint64 Binding = 0, Sequence = 0;
 		FBoundaryCommand Command;
 		FBoundaryState Start, End;

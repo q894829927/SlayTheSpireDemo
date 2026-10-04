@@ -5,12 +5,16 @@
 #include "Tests/AutomationEditorCommon.h"
 #include "Editor.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "GameFramework/Actor.h"
+#include "PhysicsEngine/BodyInstance.h"
 #include "Interior/InteriorPortal.h"
 #include "Interior/InteriorPortalSystem.h"
 #include "Interior/InteriorPortalPhysicsBinding.h"
 #include "Interior/InteriorPortalPhysicsBindingBridge.h"
+#include "Interior/InteriorPortalChaosSpeedCap.h"
 #include "Interior/InteriorPortalBodyGeometry.h"
 
 namespace InteriorPortalPhysicsMapCoverage
@@ -160,6 +164,111 @@ namespace InteriorPortalPhysicsMapCoverage
 		int32 ObservationTicks = 0;
 		bool bObserving = false;
 	};
+
+	/** A separately owned PIE-only body exercises the authored scene without
+	 * entering the gameplay actor's legacy hold/recovery/transfer writer list. */
+	class FProbeNativeScene final : public IAutomationLatentCommand
+	{
+	public:
+		explicit FProbeNativeScene(FAutomationTestBase* InTest) : Test(InTest) {}
+		virtual bool Update() override
+		{
+			FWorldContext* Context = GEditor ? GEditor->GetPIEWorldContext() : nullptr;
+			UWorld* World = Context ? Context->World() : nullptr;
+			if (!World) { return false; }
+			using namespace InteriorPortalPhysics;
+			if (!Body)
+			{
+				if (++ReadyTicks < 3) { return false; }
+				AInteriorPortalSystem* System = nullptr;
+				for (TActorIterator<AInteriorPortalSystem> It(World); It; ++It)
+				{
+					if (System) { Test->AddError(TEXT("Expected one portal system for native scene probe")); return true; }
+					System = *It;
+				}
+				if (!IsValid(System) || !System->IsLinked() || !System->GetPhysicsPairGeneration()
+					|| !IsValid(System->BluePortal) || !IsValid(System->OrangePortal)
+					|| !IsValid(System->BluePortal->Support) || !IsValid(System->OrangePortal->Support))
+				{ Test->AddError(TEXT("Map has no linked, supported portal pair")); return true; }
+				LegacySystem = System;
+				const FTransform Entry = System->BluePortal->GetLogicalFrame();
+				ProbeActor = World->SpawnActor<AActor>();
+				if (!IsValid(ProbeActor)) { Test->AddError(TEXT("Could not spawn PIE-only native traveller")); return true; }
+				Body = NewObject<UBoxComponent>(ProbeActor);
+				ProbeActor->SetRootComponent(Body); ProbeActor->AddInstanceComponent(Body);
+				Body->SetBoxExtent(FVector(5)); Body->SetMobility(EComponentMobility::Movable);
+				Body->SetCollisionProfileName(TEXT("PhysicsActor"));
+				Body->BodyInstance.bContactModification = true;
+				ProbeActor->SetActorLocation(Entry.GetLocation()+Entry.GetUnitAxis(EAxis::X)*20.);
+				Body->SetEnableGravity(false); Body->RegisterComponent(); Body->SetSimulatePhysics(true);
+				Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
+				Test->TestFalse(TEXT("Native scene probe is not registered with legacy gameplay movement writer"),
+					System->PhysicsTravellers.Contains(Body));
+				Request.World = World; Request.Body = Body; Request.Registry = &Registry;
+				Request.Supports[0] = System->BluePortal->Support;
+				Request.Supports[1] = System->OrangePortal->Support;
+				Request.EndpointApertures[0] = FVector2D(System->BluePortal->HalfWidth,System->BluePortal->HalfHeight);
+				Request.EndpointApertures[1] = FVector2D(System->OrangePortal->HalfWidth,System->OrangePortal->HalfHeight);
+				Request.Command.PairGeneration = System->GetPhysicsPairGeneration();
+				Request.Command.Revision = 1;
+				Request.Command.Entry = Entry; Request.Command.Exit = System->OrangePortal->GetLogicalFrame();
+				Request.Command.HalfWidth = System->BluePortal->HalfWidth;
+				Request.Command.HalfHeight = System->BluePortal->HalfHeight;
+				Request.Command.MaxStepSeconds = 1. / 30.;
+				return false;
+			}
+			if (!bBound)
+			{
+				if (++WarmupTicks < 3) { return false; }
+				Test->TestTrue(TEXT("Native scene probe stays outside legacy writer after discovery ticks"),
+					LegacySystem.IsValid() && !LegacySystem->PhysicsTravellers.Contains(Body));
+				EGeometryResult GeometryResult;
+				if (!Registry.Register(Body,GeometryResult) || GeometryResult != EGeometryResult::Fits
+					|| !Registry.Capture(Body,Request.Command.Traveller)
+					|| !FChaosTravellerSpeedCap::Install_GameThread(Body->BodyInstance,250))
+				{ Test->AddError(TEXT("PIE-only traveller registration or native speed cap failed")); return Finish(); }
+				Observer.Update_GameThread(&Request);
+				bBound = Observer.HasLiveBinding();
+				if (!bBound) { Test->AddError(TEXT("PIE-only native scene binding failed")); return Finish(); }
+				return false;
+			}
+			Observer.Update_GameThread(&Request);
+			if (Observer.ObservedClearanceSteps() < 3 && ++ObservationTicks < 120) { return false; }
+			const EStaticClearanceReason Result = Observer.LastClearanceReason();
+			Test->AddInfo(FString::Printf(TEXT("nativeSceneProbe steps=%llu mismatches=%llu result=%d bindingIssue=%d sceneIssues=0x%08x dt=%.9f body=%s"),
+				Observer.ObservedClearanceSteps(),Observer.BindingMismatchSteps(),static_cast<int32>(Result),
+				static_cast<int32>(Observer.LastBindingIssue()),Observer.LastSceneIssueMask(),Observer.LastClearanceStep().DeltaSeconds,
+				*Body->GetComponentLocation().ToString()));
+			Test->TestTrue(TEXT("Independent actual-map body reaches repeated native scene checks"),
+				Observer.ObservedClearanceSteps() >= 3 && Observer.BindingMismatchSteps() == 0);
+			Test->TestTrue(TEXT("Native scene probe remains outside legacy writer while observed"),
+				LegacySystem.IsValid() && !LegacySystem->PhysicsTravellers.Contains(Body));
+			Test->TestTrue(TEXT("Capped native map probe reaches scene clearance or a scene-owned rejection"),
+				Result == EStaticClearanceReason::Clear || Result == EStaticClearanceReason::UnsupportedScene
+				|| Result == EStaticClearanceReason::SourceBlocked || Result == EStaticClearanceReason::DestinationBlocked
+				|| Result == EStaticClearanceReason::UncertifiedDynamicInteraction);
+			Test->TestTrue(TEXT("Unsupported native scene rejection carries a typed reason"),
+				Result != EStaticClearanceReason::UnsupportedScene || Observer.LastSceneIssueMask() != 0);
+			return Finish();
+		}
+	private:
+		bool Finish()
+		{
+			Observer.Shutdown_GameThread();
+			if (IsValid(ProbeActor)) { ProbeActor->Destroy(); }
+			Body = nullptr; ProbeActor = nullptr;
+			return true;
+		}
+		FAutomationTestBase* Test;
+		InteriorPortalPhysics::FTravellerRegistry Registry;
+		InteriorPortalPhysics::FPortalPhysicsBindingBridge Observer;
+		InteriorPortalPhysics::FPhysicsBindingRequest Request;
+		TWeakObjectPtr<AInteriorPortalSystem> LegacySystem;
+		AActor* ProbeActor = nullptr;
+		UBoxComponent* Body = nullptr;
+		int32 ReadyTicks = 0, WarmupTicks = 0, ObservationTicks = 0;
+		bool bBound = false;
+	};
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalPhysicsMapBindingCoverageTest,
@@ -182,6 +291,30 @@ bool FPortalPhysicsMapBindingCoverageTest::RunTest(const FString& Parameters)
 	}
 	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
 	ADD_LATENT_AUTOMATION_COMMAND(InteriorPortalPhysicsMapCoverage::FInspectPIEMap(this));
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPortalPhysicsMapNativeSceneCoverageTest,
+	"SlayTheSpireDemo.Interior.Portals.MapNativeSceneCoverage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FPortalPhysicsMapNativeSceneCoverageTest::RunTest(const FString& Parameters)
+{
+	if (!GEditor || GEditor->IsPlayingSessionInEditor())
+	{
+		AddError(TEXT("Map native scene coverage requires an idle Unreal Editor."));
+		return true;
+	}
+	UWorld* EditorWorld = GEditor->GetEditorWorldContext().World();
+	const FString CurrentMap = EditorWorld ? EditorWorld->GetOutermost()->GetName() : FString();
+	if (CurrentMap != InteriorPortalPhysicsMapCoverage::TargetMap)
+	{
+		AddError(FString::Printf(TEXT("Open %s before this PIE native scene test; current map: %s"),
+			InteriorPortalPhysicsMapCoverage::TargetMap,*CurrentMap));
+		return true;
+	}
+	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
+	ADD_LATENT_AUTOMATION_COMMAND(InteriorPortalPhysicsMapCoverage::FProbeNativeScene(this));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
 	return true;
 }

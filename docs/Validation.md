@@ -2,6 +2,25 @@
 
 This document records trusted historical validation evidence and the rules for making new validation claims.
 
+## Interior portal PHY-4 actual-map native scene — 2026-09-29
+
+Predecessor HEAD `9ca52f5`; [native scene record](InteriorPortalExperiment/InteriorPortalPhysicsMapNativeScenePHY4.md)
+describes this test-owned, read-only continuation. UE 5.8 bundled .NET project
+generation and Development Editor build PASS. Authored-map PIE-copy
+`MapNativeSceneCoverage` **1/1 PASS, zero test warnings**: a separately owned,
+speed-capped body stays outside the legacy writer list and reaches three Chaos
+clearance substeps with zero binding mismatches. Final rejection is
+`UnsupportedScene`, issue mask `0x00000080` (`ActiveContact`), step
+`0.016666804 s`. Affected Physics prefix **46/46 PASS, zero failures; one
+existing foundation test has two warnings**. Evidence:
+`Saved/Logs/PortalPhysicsPHY4MapNativeSceneFinalProjectFiles.log`,
+`Saved/Logs/PortalPhysicsPHY4MapNativeSceneFinal3Build.log`,
+`Saved/AutomationReports/PortalPhysicsPHY4MapNativeSceneFinal3/index.json`,
+`Saved/AutomationReports/PortalPhysicsPHY4MapNativeScenePhysicsFinal/index.json`.
+No passage grant, production writer cutover or manual visual Core acceptance is
+claimed. The user map SHA-256 is unchanged:
+`0436F682DCD867E43ECEA81E89D4916D8B8ECFB2E66CA9321997BC97038BE25C`.
+
 ## Interior portal PHY-4 native substep observation — 2026-09-29
 
 Predecessor HEAD `166962a`; [native observation record](InteriorPortalExperiment/InteriorPortalPhysicsNativeObservationPHY4.md)

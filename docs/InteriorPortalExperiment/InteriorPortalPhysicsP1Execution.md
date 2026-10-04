@@ -24,6 +24,12 @@ The world-component binding preparation is committed as `2e1b3e4`. The
 [native session-lifecycle continuation](InteriorPortalPhysicsSessionLifecyclePHY4.md)
 is committed as `d442f15` and validated in the Editor Chaos fixture. Production binding,
 atomic cutover and actual-map Core gates remain open.
+The [actual-map native scene observation](InteriorPortalPhysicsMapNativeScenePHY4.md)
+now separates safe scene rejection from binding or interval failure. An
+independent test-owned capped body reaches `UnsupportedScene` / `ActiveContact`
+in the authored map; the contacting participant still needs attribution and a
+proved contact-influence bound before production permission. The old gameplay
+writer remains unchanged and Core acceptance is open.
 The [GT binding/fact lifecycle follow-up](InteriorPortalPhysicsBindingLifecyclePHY4.md)
 is validated as a value-only protocol. The later read-only GT/PT observer below
 delivers binding and retirement, while fact/ack delivery remains open.

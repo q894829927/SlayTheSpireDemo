@@ -29,6 +29,7 @@ namespace InteriorPortalPhysics
 		uint64 ObservedClearanceSteps() const { return ClearanceSteps; }
 		uint64 BindingMismatchSteps() const { return MismatchSteps; }
 		EStaticClearanceReason LastClearanceReason() const { return ClearanceReason; }
+		uint32 LastSceneIssueMask() const { return SceneIssueMask; }
 		ENativeBindingIssue LastBindingIssue() const { return BindingIssue; }
 		int32 LastBindingComponent() const { return BindingComponent; }
 		FPhysicsStepKey LastClearanceStep() const { return ClearanceStep; }
@@ -46,6 +47,7 @@ namespace InteriorPortalPhysics
 		uint64 ClearanceSteps = 0;
 		uint64 MismatchSteps = 0;
 		EStaticClearanceReason ClearanceReason = EStaticClearanceReason::InvalidInterval;
+		uint32 SceneIssueMask = 0;
 		ENativeBindingIssue BindingIssue = ENativeBindingIssue::None;
 		int32 BindingComponent = -1;
 		FPhysicsStepKey ClearanceStep;
