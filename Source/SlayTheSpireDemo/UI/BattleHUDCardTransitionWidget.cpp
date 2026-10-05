@@ -2,6 +2,7 @@
 
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
+#include "../Presentation/BattlePresentationController.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -67,6 +68,14 @@ bool UBattleHUDCardTransitionWidget::BeginPresentationRecordPlayback_Implementat
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token)
 {
+	if (IsValid(PresentationController))
+	{
+		if (PresentationController->ConsumeVisuallyPresentedGroupRecordG6(Record, Token)) return false;
+		if (Record.Group.IsValid() && IsSupportedCardTransitionGroupKind(Record.Group.Kind)
+			&& Record.Group.ExpectedMemberCount > 1
+			&& (Record.Group.Kind != EPresentationGroupKind::TurnEndDiscard || IsBufferedPlayerInputEnabled())
+			&& PresentationController->TryActivatePresentationGroupG6(Record, Token)) return true;
+	}
 	if (Record.Type == EBattlePresentationRecordType::CardZoneChanged
 		&& Record.CardZoneChanged.FromZone == ECardZone::Hand
 		&& (Record.CardZoneChanged.ToZone == ECardZone::DrawPile
@@ -136,6 +145,7 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransition(
 	Instance.ToZone = Payload.ToZone;
 	Instance.HistoricalHandVisual = HistoricalHandCard;
 	Instance.HistoricalHandVisibility = HistoricalHandCard->GetVisibility();
+	Instance.bHistoricalHandWasEnabled = HistoricalHandCard->GetIsEnabled();
 	Instance.FallbackStartTranslation = HistoricalHandCard->GetRenderTransform().Translation;
 	if (Instance.FallbackStartTranslation.IsNearlyZero())
 	{
@@ -530,6 +540,14 @@ void UBattleHUDCardTransitionWidget::UpdateNativeCardTransitions(float DeltaSeco
 		}
 
 		Instance.ElapsedSeconds += FMath::Max(DeltaSeconds, 0.0f);
+		if (NativeCardTransitionToken.UnitKind == EPresentationPlaybackUnitKind::Group
+			&& Instance.SourceOwner == ECardPresentationOwner::Hand)
+		{
+			// Clones live outside Hand. Keep the frozen source center and rebase its
+			// path into the newly allotted PlayArea when the viewport changes.
+			Instance.StartTranslation = ResolveTransitionAnchorTranslation(Instance, Instance.StartAnchor, Instance.StartTranslation);
+			Instance.EndTranslation = ResolveTransitionAnchorTranslation(Instance, Instance.EndAnchor, Instance.EndTranslation);
+		}
 		const float LinearAlpha = FMath::Clamp(
 			Instance.ElapsedSeconds / NativeCardTransitionDurationSeconds,
 			0.0f,
@@ -623,7 +641,9 @@ void UBattleHUDCardTransitionWidget::FinishNativeCardTransitionVisuals()
 	{
 		if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
 		{
-			Historical->SetVisibility(ESlateVisibility::Collapsed);
+			Historical->SetVisibility(NativeCardTransitionToken.UnitKind == EPresentationPlaybackUnitKind::Group
+				? ESlateVisibility::Hidden : ESlateVisibility::Collapsed);
+			Historical->SetIsEnabled(false);
 		}
 		if (IsValid(Instance.MovingVisual))
 		{
@@ -641,6 +661,7 @@ void UBattleHUDCardTransitionWidget::CancelNativeCardTransitionVisuals()
 			if (Instance.SourceOwner == ECardPresentationOwner::Hand)
 			{
 				Historical->SetVisibility(Instance.HistoricalHandVisibility);
+				Historical->SetIsEnabled(Instance.bHistoricalHandWasEnabled);
 			}
 			else
 			{
@@ -678,6 +699,7 @@ void UBattleHUDCardTransitionWidget::CleanupNativeCardTransitionsOnDestruct()
 			if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
 			{
 				Historical->SetVisibility(Instance.HistoricalHandVisibility);
+				Historical->SetIsEnabled(Instance.bHistoricalHandWasEnabled);
 			}
 		}
 		if (IsValid(Instance.MovingVisual))

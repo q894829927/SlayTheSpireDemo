@@ -20,7 +20,7 @@ bool USelectionPresentationG6ControllerWidget::BeginPresentationRecordPlayback_I
 		}
 
 		if (Record.Group.IsValid()
-			&& Record.Group.Kind == EPresentationGroupKind::SelectionDestination
+			&& IsSupportedCardTransitionGroupKind(Record.Group.Kind)
 			&& Record.Group.ExpectedMemberCount > 1
 			&& PresentationController->TryActivatePresentationGroupG6(Record, Token))
 		{

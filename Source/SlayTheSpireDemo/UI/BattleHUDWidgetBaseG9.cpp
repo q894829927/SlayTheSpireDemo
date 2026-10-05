@@ -3,6 +3,7 @@
 #include "BattleHUDViewModel.h"
 #include "../Battle/BattleManager.h"
 #include "../Battle/BattleRequestTypes.h"
+#include "../Presentation/BattlePresentationController.h"
 #include "Containers/Ticker.h"
 
 void UBattleHUDWidgetBase::ReleaseBufferedPlayerInputBinding()
@@ -43,6 +44,7 @@ void UBattleHUDWidgetBase::SetBufferedPlayerInputEnabled(bool bEnabled)
 	if (!bEnabled)
 	{
 		RetirePendingFastCardRetry();
+		if (IsValid(PresentationController)) PresentationController->CancelTurnEndDiscardGroupPlayback();
 		if (IsValid(ViewModel))
 		{
 			TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);

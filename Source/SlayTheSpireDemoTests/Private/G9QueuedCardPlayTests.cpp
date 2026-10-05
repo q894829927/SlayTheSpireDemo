@@ -150,4 +150,18 @@ bool FG9QueueRemovedAndDeadTest::RunTest(const FString&)
 	}
 	return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9QueueClearFenceTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.ClearFence", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9QueueClearFenceTest::RunTest(const FString&)
+{
+	FShadowFixture F;
+	F.Widget->SetBufferedPlayerInputEnabled(true);
+	TestTrue(TEXT("Draft"), F.Input().BeginCardDraft(F.Card(TEXT("B"))->GetRuntimeId()));
+	TestTrue(TEXT("Confirm"), F.Input().ConfirmCardDraft(NAME_None));
+	FBufferedPlayerIntentDecision Taken;
+	TestTrue(TEXT("Exact ready item popped"), F.Input().TakeReadyIntent(Taken));
+	F.Widget->DiscardQueuedPlayerInput();
+	TestFalse(TEXT("Old busy result cannot restore across clear with same Session/turn"), F.Input().RestoreBusyPlay(Taken.Play));
+	TestEqual(TEXT("Old item remains retired"), F.Input().GetConfirmedPlayCount(), 0);
+	return true;
+}
 #endif

@@ -6,6 +6,13 @@ For historical Record/Envelope changes, consult `docs/Phase6UIA2Implementation.m
 
 Group rules below define the required design, not proof that Group playback is implemented or authorization to start its planned stages.
 
+The amended G9-B plan authorizes explicit TurnEndDiscard alongside Selection
+groups. Preserve enum values and serialized canonical-ID fields. Only intended
+turn-end discard Actions receive frozen Hand metadata; reaction Actions do not
+inherit it. Validate complete canonical order, shared reducer chronology and
+independence before any lookahead. Hand-source suppression belongs to exact
+Controller Group records, without fabricated Selection lifecycle entries.
+
 ## Core Principle
 
 Presentation represents committed historical facts. It is not authoritative Gameplay and Gameplay never waits for Presentation playback.

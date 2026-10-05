@@ -54,7 +54,7 @@ public:
 	void SetTestWorld(UWorld* InWorld);
 	void ConfigureSelectionSurfaces(
 		UBattleHUDViewModel* InViewModel,
-		UHorizontalBox* InHand,
+		UPanelWidget* InHand,
 		UOverlay* InPlayArea,
 		UTextBlock* InDrawCount,
 		UTextBlock* InDiscardCount,
@@ -66,6 +66,7 @@ public:
 	void DisableSyntheticSelectionGeometryForTesting() { bSyntheticSelectionGeometry = false; }
 	void DestructSelectionForTesting() { NativeDestruct(); }
 	UPanelWidget* GetHandForTesting() const { return HB_Hand; }
+	void ReconcileHandForTesting() { RefreshHand(); }
 	UOverlay* GetPlayAreaForTesting() const { return OV_PlayArea; }
 	void FinishNativeForTesting(const FPresentationPlaybackToken& Token)
 	{

@@ -6,6 +6,14 @@ Consult documents by changed contract: `docs/Phase6UIA3CardFacePreviewAmendment.
 
 Selection ownership/group rules below define the target design. Staged activation and acceptance remain governed by the implementation plan; they do not imply that all stages already exist or are authorized.
 
+G9-B TurnEndDiscard uses the shared card-transition dispatcher and child engine.
+Prepare every Hand clone, exact frozen source geometry and destination before
+activation. A failed preparation leaves formal members untouched. Keep Hidden
+historical slots and honor Controller suppression until each exact future
+member reduces. Do not create Selection generations for Hand-source groups.
+G9 disable retires this visual group via existing envelope recovery; ordinary
+Selection groups retain their independent activation contract.
+
 ## Legacy UI Preservation
 
 Use the Native battle UI only. Root `AGENTS.md` and `docs/LegacyUIPreservationPolicy.md` protect the retained Legacy assets: no new runtime/test use or parity dual-writing; production dependency count stays `0`; destructive removal and runtime recovery require separate explicit authorization.

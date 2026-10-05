@@ -1,15 +1,15 @@
 # Development Phases
 
-G9-B revision batches 2–3: Status front / Relic tail and confirmed input FIFO
-implemented; UE 5.8 Editor builds and affected Automation gates PASS. FIFO
-evidence covers 61 distinct cases across the initial run and repaired rerun.
-TurnEndDiscard is next; production visual gates remain pending. Native G9 is
+G9-B revision batches 2–4: Status front / Relic tail, confirmed input FIFO and
+explicit simultaneous TurnEndDiscard are implemented; UE 5.8 Editor builds and
+affected Automation gates PASS. Group evidence covers 94 distinct cases across
+initial/repaired runs; production visual gates remain pending. Native G9 is
 OPT-IN / NOT SEALED; original C–F have not started. See
 [actual evidence](G9BRevisionExecution.md).
 
 Current forward G9-B scope is the user-approved [confirmed FIFO / relic tails /
 turn-end discard amendment](QueuedCardPlayAndRelicTimingAmendment.md), based on
-`fe80565`. Remaining Group implementation and visual acceptance are pending; the selection-only
+`fe80565`. Visual acceptance is pending; the selection-only
 contract below is historical. Default off / NOT SEALED; C–F are not started.
 
 Native Hand architecture correction: **IMPLEMENTED / BUILD PASS / AFFECTED AUTOMATION PASS / FOCUSED PIE PASS**. Baseline is `5f7f4fc`, structure ownership `4237526`; the layout batch adds dedicated Hand Slot/Slate arrangement, exact-token geometry protection and tracked-receipt cancellation cleanup. Latest 55-case affected coverage passed across 53 initial successes (one expected warning) and two repaired R5 fixture recoveries. Earlier unaffected panel/frozen-face evidence is reused. Native MCP PIE covered play/draw, Selection handoff, viewport change, hover, playback stop/restart and same-HUD mid-draw/receipt-window Skip with fresh-card interaction. See [refactor evidence](NativeHandStructureRefactor.md). G9-B itself remains default off / PARTIAL PIE / NOT SEALED; its original enabled-input gates still require user action, and C–F remain gated.

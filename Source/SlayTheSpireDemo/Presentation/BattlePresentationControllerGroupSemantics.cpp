@@ -12,7 +12,7 @@ namespace
 			&& A.ExpectedMemberCount == B.ExpectedMemberCount;
 	}
 
-	bool TryGetEligibleSelectionDestinationRuntimeId(
+	bool TryGetEligibleCardTransitionRuntimeId(
 		const FPresentationRecord& Record,
 		int32& OutRuntimeId
 	)
@@ -26,6 +26,8 @@ namespace
 			return false;
 		}
 
+		if (Record.Group.Kind == EPresentationGroupKind::TurnEndDiscard
+			&& Record.CardZoneChanged.ToZone != ECardZone::DiscardPile) return false;
 		switch (Record.CardZoneChanged.ToZone)
 		{
 		case ECardZone::DiscardPile:
@@ -108,7 +110,7 @@ bool UBattlePresentationController::TryBuildSemanticPresentationGroupCandidate(
 
 	const FPresentationRecord& Leader = Envelope.Records[LeaderRecordIndex];
 	if (!Leader.Group.IsValid()
-		|| Leader.Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Leader.Group.Kind)
 		|| Leader.Group.ExpectedMemberCount <= 1)
 	{
 		return false;
@@ -128,7 +130,7 @@ bool UBattlePresentationController::TryBuildSemanticPresentationGroupCandidate(
 	if (MatchingDeclarationCount != 1
 		|| Declaration == nullptr
 		|| !AreGroupTagsEquivalent(Declaration->Group, Leader.Group)
-		|| Declaration->Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Declaration->Group.Kind)
 		|| Declaration->CanonicalSelectedRuntimeIds.Num() != Leader.Group.ExpectedMemberCount)
 	{
 		return false;
@@ -161,7 +163,7 @@ bool UBattlePresentationController::TryBuildSemanticPresentationGroupCandidate(
 		}
 
 		int32 RuntimeId = INDEX_NONE;
-		if (!TryGetEligibleSelectionDestinationRuntimeId(Record, RuntimeId)
+		if (!TryGetEligibleCardTransitionRuntimeId(Record, RuntimeId)
 			|| SeenMemberRuntimeIds.Contains(RuntimeId))
 		{
 			return false;
@@ -184,6 +186,13 @@ bool UBattlePresentationController::TryBuildSemanticPresentationGroupCandidate(
 		{
 			return false;
 		}
+	}
+	if (Leader.Group.Kind == EPresentationGroupKind::TurnEndDiscard)
+	{
+		TArray<int32> FrozenHandOrder;
+		for (const FBattleHUDCardView& Card : Baseline.HandCards) FrozenHandOrder.Add(Card.RuntimeId);
+		if (MemberRuntimeIds != Declaration->CanonicalSelectedRuntimeIds || MemberRuntimeIds != FrozenHandOrder)
+			return false;
 	}
 
 	const int32 LastMemberRecordIndex = MemberRecordIndices.Last();

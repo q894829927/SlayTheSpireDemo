@@ -243,6 +243,7 @@ protected:
 	bool IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const;
 	UBattleCardWidget* CreateNativePresentationCard(
 		const FPresentationCardSnapshot& Snapshot) const;
+	bool IsFormalHandVisualSuppressed(int32 RuntimeId) const;
 	void ConfigureNativeCardAnimation(
 		UBattleCardWidget* MovingCard,
 		UWidget* StartAnchor,

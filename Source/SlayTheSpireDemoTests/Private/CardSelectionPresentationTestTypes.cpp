@@ -36,7 +36,7 @@ void UCardSelectionPresentationHUDProbe::SetTestWorld(UWorld* InWorld)
 
 void UCardSelectionPresentationHUDProbe::ConfigureSelectionSurfaces(
 	UBattleHUDViewModel* InViewModel,
-	UHorizontalBox* InHand,
+	UPanelWidget* InHand,
 	UOverlay* InPlayArea,
 	UTextBlock* InDrawCount,
 	UTextBlock* InDiscardCount,

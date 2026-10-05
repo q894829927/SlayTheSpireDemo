@@ -377,7 +377,7 @@ bool UBattlePresentationRecorder::DeclarePresentationGroup(
 {
 	if (!IsWriterCurrentAndValid(WriterBattleId, WriterResolutionId)
 		|| !Declaration.Group.IsValid()
-		|| Declaration.Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Declaration.Group.Kind)
 		|| Declaration.Group.ExpectedMemberCount <= 0
 		|| Declaration.Group.ExpectedMemberCount != Declaration.CanonicalSelectedRuntimeIds.Num()
 		|| Declaration.Group.GroupId >= ActiveBuilder.NextPresentationGroupId)

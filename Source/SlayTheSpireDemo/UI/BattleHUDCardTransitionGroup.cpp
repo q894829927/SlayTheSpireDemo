@@ -20,7 +20,7 @@ bool UBattleHUDCardTransitionWidget::BeginPresentationGroupPlayback(
 	const FPresentationGroupTag& Group,
 	const FPresentationPlaybackToken& Token)
 {
-	if (Group.Kind == EPresentationGroupKind::SelectionDestination)
+	if (IsSupportedCardTransitionGroupKind(Group.Kind))
 	{
 		return BeginNativeOutgoingCardTransitionGroup(Records, Group, Token);
 	}
@@ -31,7 +31,7 @@ void UBattleHUDCardTransitionWidget::CancelPresentationGroupPlayback(
 	const FPresentationGroupTag& Group,
 	const FPresentationPlaybackToken& Token)
 {
-	if (Group.Kind == EPresentationGroupKind::SelectionDestination
+	if (IsSupportedCardTransitionGroupKind(Group.Kind)
 		&& Token.UnitKind == EPresentationPlaybackUnitKind::Group
 		&& Token == NativeCardTransitionToken
 		&& HasActiveNativePresentation()
@@ -58,7 +58,7 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 	const FPresentationPlaybackToken& Token)
 {
 	if (!Group.IsValid()
-		|| Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Group.Kind)
 		|| Group.ExpectedMemberCount <= 1
 		|| Records.Num() != Group.ExpectedMemberCount
 		|| !Token.IsValid()
@@ -70,7 +70,7 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 		|| !IsValid(ViewModel)
 		|| !IsValid(HB_Hand)
 		|| !IsValid(OV_PlayArea)
-		|| !IsValid(GetCardTransitionSelectionAreaHost())
+		|| (Group.Kind == EPresentationGroupKind::SelectionDestination && !IsValid(GetCardTransitionSelectionAreaHost()))
 		|| CardWidgetClass == nullptr)
 	{
 		return false;
@@ -120,7 +120,8 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 		PreparedInstances.Add(MoveTemp(Instance));
 	}
 
-	if (SelectionGeneration <= 0 || RuntimeIds.Num() != Group.ExpectedMemberCount)
+	if ((Group.Kind == EPresentationGroupKind::SelectionDestination && SelectionGeneration <= 0)
+		|| RuntimeIds.Num() != Group.ExpectedMemberCount)
 	{
 		return false;
 	}
@@ -142,14 +143,7 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 	{
 		if (!AttachTransitionVisualToPlayArea(Instance.MovingVisual.Get()))
 		{
-			RestorePreparedGroupSelectionAreaVisuals();
-			for (FNativeCardTransitionInstance& RestoreInstance : ActiveNativeCardTransitions)
-			{
-				if (UBattleCardWidget* Historical = RestoreInstance.HistoricalHandVisual.Get())
-				{
-					Historical->SetVisibility(RestoreInstance.HistoricalHandVisibility);
-				}
-			}
+			RollbackPreparedCardTransitionGroup();
 			ResetNativeCardTransitionState();
 			AbortNativePresentationStart();
 			return false;
@@ -177,20 +171,14 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 		if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
 		{
 			Historical->SetVisibility(ESlateVisibility::Hidden);
+			Historical->SetIsEnabled(false);
 		}
 	}
 
 	if (!StartNativeCardTransitionGroupFinishTimer(
 		NativeGroupCardTransitionDurationSeconds))
 	{
-		RestorePreparedGroupSelectionAreaVisuals();
-		for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
-		{
-			if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
-			{
-				Historical->SetVisibility(Instance.HistoricalHandVisibility);
-			}
-		}
+		RollbackPreparedCardTransitionGroup();
 		ResetNativeCardTransitionState();
 		AbortNativePresentationStart();
 		return false;
@@ -199,32 +187,28 @@ bool UBattleHUDCardTransitionWidget::BeginNativeOutgoingCardTransitionGroup(
 	// Mark every prepared child before the one batched publication. The Native
 	// surface synchronization callback may run synchronously, but it can only see
 	// the complete cohort after the ViewModel's all-or-nothing mutation succeeds.
-	for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
-	{
-		Instance.bSelectionAreaVisualTransferred = true;
-	}
-	if (!ViewModel->TryTransferCardPresentationOwnershipBatch(
-		SelectionGeneration,
-		RuntimeIds,
-		ECardPresentationOwner::SelectionArea,
-		ECardPresentationOwner::Transition))
+	if (Group.Kind == EPresentationGroupKind::SelectionDestination)
 	{
 		for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
 		{
-			Instance.bSelectionAreaVisualTransferred = false;
+			Instance.bSelectionAreaVisualTransferred = true;
 		}
-		ClearNativeCardTransitionFinishTimer();
-		RestorePreparedGroupSelectionAreaVisuals();
-		for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
+		if (!ViewModel->TryTransferCardPresentationOwnershipBatch(
+			SelectionGeneration,
+			RuntimeIds,
+			ECardPresentationOwner::SelectionArea,
+			ECardPresentationOwner::Transition))
 		{
-			if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
+			for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
 			{
-				Historical->SetVisibility(Instance.HistoricalHandVisibility);
+				Instance.bSelectionAreaVisualTransferred = false;
 			}
+			ClearNativeCardTransitionFinishTimer();
+			RollbackPreparedCardTransitionGroup();
+			ResetNativeCardTransitionState();
+			AbortNativePresentationStart();
+			return false;
 		}
-		ResetNativeCardTransitionState();
-		AbortNativePresentationStart();
-		return false;
 	}
 
 	if (ActiveNativeCardTransitions.IsEmpty() || NativeCardTransitionToken != Token)
@@ -281,6 +265,29 @@ bool UBattleHUDCardTransitionWidget::PrepareNativeOutgoingCardTransitionGroupMem
 	{
 		return false;
 	}
+	if (Record.Group.Kind == EPresentationGroupKind::TurnEndDiscard)
+	{
+		const FGeometry& Geometry = HistoricalHandCard->GetCachedGeometry();
+		if (Payload.ToZone != ECardZone::DiscardPile
+			|| ViewModel->GetCardPresentationOwner(Payload.Card.RuntimeId) != ECardPresentationOwner::Hand
+			|| !HistoricalHandCard->IsVisible() || Geometry.GetLocalSize().SizeSquared() <= 0.0f
+			|| OV_PlayArea->GetCachedGeometry().GetLocalSize().SizeSquared() <= 0.0f
+			|| !IsValid(Txt_DiscardCount)
+			|| Txt_DiscardCount->GetCachedGeometry().GetLocalSize().SizeSquared() <= 0.0f) return false;
+		OutInstance = FNativeCardTransitionInstance{};
+		OutInstance.RuntimeId = Payload.Card.RuntimeId;
+		OutInstance.FromZone = Payload.FromZone;
+		OutInstance.ToZone = Payload.ToZone;
+		OutInstance.HistoricalHandVisual = HistoricalHandCard;
+		OutInstance.HistoricalHandVisibility = HistoricalHandCard->GetVisibility();
+		OutInstance.bHistoricalHandWasEnabled = HistoricalHandCard->GetIsEnabled();
+		OutInstance.AbsoluteSourceCenter = Geometry.LocalToAbsolute(Geometry.GetLocalSize() * 0.5f);
+		OutInstance.bHasAbsoluteSourceCenter = true;
+		if (!ValidateNativeCardTransitionGroupDestination(Payload, OutInstance)) return false;
+		OutInstance.MovingVisual = CreateNativePresentationCard(Payload.Card);
+		OutInstance.bCreatedMovingVisual = true;
+		return IsValid(OutInstance.MovingVisual);
+	}
 
 	FCardPresentationOwnershipEntry OwnershipEntry;
 	if (!ViewModel->TryGetCardPresentationOwnershipEntry(
@@ -309,6 +316,7 @@ bool UBattleHUDCardTransitionWidget::PrepareNativeOutgoingCardTransitionGroupMem
 	OutInstance.SelectionGeneration = OwnershipEntry.SelectionGeneration;
 	OutInstance.HistoricalHandVisual = HistoricalHandCard;
 	OutInstance.HistoricalHandVisibility = HistoricalHandCard->GetVisibility();
+	OutInstance.bHistoricalHandWasEnabled = HistoricalHandCard->GetIsEnabled();
 	OutInstance.FallbackStartTranslation = HistoricalHandCard->GetRenderTransform().Translation;
 	if (OutInstance.FallbackStartTranslation.IsNearlyZero())
 	{
@@ -459,12 +467,12 @@ void UBattleHUDCardTransitionWidget::FinishNativeCardTransitionGroup(
 	// Selection surface's ownership listener validates live Transition children;
 	// after visual completion these children are intentionally no longer live.
 	ResetNativeCardTransitionState();
-	if (!IsValid(ViewModel)
+	if (SelectionGeneration > 0 && (!IsValid(ViewModel)
 		|| !ViewModel->TryTransferCardPresentationOwnershipBatch(
 			SelectionGeneration,
 			RuntimeIds,
 			ECardPresentationOwner::Transition,
-			ECardPresentationOwner::ConsumedPendingReducer))
+			ECardPresentationOwner::ConsumedPendingReducer)))
 	{
 		// Do not report successful Group completion. The Controller's independent
 		// exact Group timeout will cancel the remaining Native owner and reconcile
@@ -480,10 +488,17 @@ void UBattleHUDCardTransitionWidget::FinishNativeCardTransitionGroup(
 	NotifyPresentationGroupFinishedG6(ExpectedToken);
 }
 
-void UBattleHUDCardTransitionWidget::RestorePreparedGroupSelectionAreaVisuals()
+void UBattleHUDCardTransitionWidget::RollbackPreparedCardTransitionGroup()
 {
 	for (FNativeCardTransitionInstance& Instance : ActiveNativeCardTransitions)
 	{
+		if (UBattleCardWidget* Historical = Instance.HistoricalHandVisual.Get())
+		{
+			Historical->SetVisibility(Instance.HistoricalHandVisibility);
+			Historical->SetIsEnabled(Instance.bHistoricalHandWasEnabled);
+		}
+		if (Instance.SourceOwner == ECardPresentationOwner::Hand && IsValid(Instance.MovingVisual))
+			Instance.MovingVisual->RemoveFromParent();
 		if (Instance.SourceOwner == ECardPresentationOwner::SelectionArea
 			&& !Instance.bSelectionAreaVisualTransferred
 			&& IsValid(Instance.MovingVisual))

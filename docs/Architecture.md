@@ -1,5 +1,22 @@
 # Architecture
 
+Amended G9-B input is one HUD-owned draft / confirmed FIFO / EndTurn arbiter.
+Frozen display authorizes busy-time target affordances; only the caught-up
+ViewModel boundary resolves current bindings and requests Gameplay. Revision
+records intent provenance, while Battle/turn/Session/generation fence identity.
+Mandatory choices and destructive display/lifetime boundaries retire pending
+inputs. NativeTick cannot submit them.
+
+TurnEndDiscard uses explicit action-local metadata, with canonical IDs frozen
+from the complete turn-end Hand. The generic Controller/Base/card-transition
+engine accepts Hand sources without creating a Selection lifecycle. All clones
+prepare before activation, move together from their own frozen fan geometry,
+and retain input-disabled Hidden historical slots. Controller suppression is
+scoped to exact committed Group records; future members reduce only at their
+normal cursor. Invalid geometry/metadata/interference declines to serial
+playback. Cancel/timeout/disable retires all visuals before final-snapshot
+recovery and never faults Gameplay. Native activation shares the opt-in G9 flag.
+
 Relic scheduling amendment: Status reactions enter the ActionQueue front; Relic
 event reactions enter its back, atomically validated together. Card continuations
 retain dependency order, so actual Relic gains follow the current card's effects

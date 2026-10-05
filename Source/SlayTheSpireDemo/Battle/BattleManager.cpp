@@ -1705,17 +1705,38 @@ bool ABattleManager::BuildPlayerTurnEndBatch(TArray<UBattleAction*>& OutActions)
 		return false;
 	}
 
-	const TArray<TObjectPtr<UCardInstance>>& HandCards = DeckRuntime->GetHandCards();
-	OutActions.Reserve(HandCards.Num() + 1);
+	const TArray<TObjectPtr<UCardInstance>> HandCards = DeckRuntime->GetHandCards();
+	FPresentationGroupDeclaration Declaration;
+	TSet<int32> UniqueRuntimeIds;
 	for (const TObjectPtr<UCardInstance>& Card : HandCards)
 	{
-		if (!IsValid(Card.Get()))
+		if (!IsValid(Card.Get()) || Card->GetRuntimeId() == INDEX_NONE || UniqueRuntimeIds.Contains(Card->GetRuntimeId()))
 		{
 			return false;
 		}
+		UniqueRuntimeIds.Add(Card->GetRuntimeId());
+		Declaration.CanonicalSelectedRuntimeIds.Add(Card->GetRuntimeId());
+	}
+	const FPresentationRecordWriter Writer = GetActivePresentationRecordWriter();
+	if (HandCards.Num() > 1 && Writer.IsAvailable())
+	{
+		Declaration.Group.Kind = EPresentationGroupKind::TurnEndDiscard;
+		Declaration.Group.ExpectedMemberCount = HandCards.Num();
+		if (!Writer.TryAllocatePresentationGroupId(Declaration.Group.GroupId)
+			|| !Writer.TryDeclarePresentationGroup(Declaration))
+		{
+			// A metadata failure degrades recording only, never the turn request.
+			Writer.InvalidateCurrentResolution();
+			Declaration.Group = FPresentationGroupTag{};
+		}
+	}
 
+	OutActions.Reserve(HandCards.Num() + 1);
+	for (const TObjectPtr<UCardInstance>& Card : HandCards)
+	{
 		UDiscardCardAction* DiscardAction = NewObject<UDiscardCardAction>(ActionQueue.Get());
 		DiscardAction->Initialize(DeckRuntime.Get(), Card.Get(), Player.Get());
+		DiscardAction->SetTurnEndDiscardPresentationGroup(Declaration.Group, Card->GetRuntimeId());
 		OutActions.Add(DiscardAction);
 	}
 

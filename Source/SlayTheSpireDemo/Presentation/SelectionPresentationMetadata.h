@@ -9,8 +9,15 @@ UENUM(BlueprintType)
 enum class EPresentationGroupKind : uint8
 {
 	None UMETA(DisplayName = "None"),
-	SelectionDestination UMETA(DisplayName = "Selection Destination")
+	SelectionDestination UMETA(DisplayName = "Selection Destination"),
+	TurnEndDiscard UMETA(DisplayName = "Turn End Discard")
 };
+
+inline bool IsSupportedCardTransitionGroupKind(EPresentationGroupKind Kind)
+{
+	return Kind == EPresentationGroupKind::SelectionDestination
+		|| Kind == EPresentationGroupKind::TurnEndDiscard;
+}
 
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationGroupTag
@@ -35,8 +42,9 @@ struct SLAYTHESPIREDEMO_API FPresentationGroupTag
 };
 
 // Envelope-level declaration. Expected count alone is deliberately insufficient:
-// the canonical selected identities are frozen so G2 can reject omissions,
-// substitutions and duplicates without consulting mutable Gameplay/UI state.
+// canonical identities are frozen so preflight rejects omissions/substitutions.
+// CanonicalSelectedRuntimeIds keeps its serialized name for compatibility;
+// TurnEndDiscard stores the complete frozen Hand order in this same field.
 USTRUCT(BlueprintType)
 struct SLAYTHESPIREDEMO_API FPresentationGroupDeclaration
 {
@@ -62,7 +70,7 @@ struct SLAYTHESPIREDEMO_API FPresentationGroupSemanticCandidate
 	bool IsValid() const
 	{
 		return Group.IsValid()
-			&& Group.Kind == EPresentationGroupKind::SelectionDestination
+			&& IsSupportedCardTransitionGroupKind(Group.Kind)
 			&& Group.ExpectedMemberCount > 1
 			&& CanonicalSelectedRuntimeIds.Num() == Group.ExpectedMemberCount
 			&& MemberRecordIndices.Num() == Group.ExpectedMemberCount

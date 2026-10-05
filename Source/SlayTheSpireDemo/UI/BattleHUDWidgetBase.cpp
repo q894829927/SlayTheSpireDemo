@@ -283,7 +283,7 @@ bool UBattleHUDWidgetBase::PlayPresentationGroup(
 )
 {
 	if (!Group.IsValid()
-		|| Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Group.Kind)
 		|| Group.ExpectedMemberCount <= 1
 		|| Records.Num() != Group.ExpectedMemberCount
 		|| RecordIndices.Num() != Group.ExpectedMemberCount

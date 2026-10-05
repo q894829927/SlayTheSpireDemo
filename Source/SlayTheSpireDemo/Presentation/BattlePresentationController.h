@@ -72,6 +72,8 @@ public:
 	bool ConsumeVisuallyPresentedGroupRecordG6(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& OfferedSingleRecordToken);
+	bool IsHandCardVisuallySuppressedByGroup(int32 RuntimeId) const;
+	void CancelTurnEndDiscardGroupPlayback();
 
 	// Exact Group completion from the Base Widget. This is intentionally distinct
 	// from the historical G3 dormant Group callback in NotifyPresentationFinished.

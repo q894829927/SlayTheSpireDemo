@@ -42,8 +42,10 @@ namespace SelectionPresentationG2Test
 		Snapshot.MaxEnergy = 3;
 		Snapshot.Player.PresentationId = TEXT("Player");
 		Snapshot.Player.HP = 80;
+		Snapshot.Player.MaxHP = 80;
 		Snapshot.Enemy.PresentationId = TEXT("Enemy");
 		Snapshot.Enemy.HP = 100;
+		Snapshot.Enemy.MaxHP = 100;
 		for (const int32 RuntimeId : RuntimeIds)
 		{
 			Snapshot.HandCards.Add(MakeHandCard(RuntimeId));
@@ -100,6 +102,10 @@ namespace SelectionPresentationG2Test
 		Record.Type = EBattlePresentationRecordType::Damage;
 		Record.Damage.SourcePresentationId = TEXT("Player");
 		Record.Damage.TargetPresentationId = TEXT("Enemy");
+		Record.Damage.DamageKind = EDamageKind::Attack;
+		Record.Damage.IncomingDamage = 1;
+		Record.Damage.HPDamage = 1;
+		Record.Damage.BlockedDamage = 0;
 		Record.Damage.HPBefore = 100;
 		Record.Damage.HPAfter = 99;
 		Record.Damage.BlockBefore = 0;
@@ -301,6 +307,45 @@ bool FSelectionPresentationG2SequenceAndUnknownTest::RunTest(const FString& Para
 	UnknownInterleave.Add(MakeZoneRecord(3, 62, ECardZone::Hand, ECardZone::ExhaustPile, 0, 1, &Declaration.Group));
 	UnknownInterleave.Add(MakeZoneRecord(4, 63, ECardZone::Hand, ECardZone::ExhaustPile, 0, 2, &Declaration.Group));
 	TestFalse(TEXT("Unknown interleaved record is conservatively rejected"), Controller->TryBuildSemanticPresentationGroupCandidateForTesting(Baseline, MakeEnvelope(Baseline, UnknownInterleave, &Declaration), 0, Candidate));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9TurnEndGroupSemanticTest,
+	"SlayTheSpireDemo.SelectionPresentation.G9B.TurnEndDiscard.Semantics",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9TurnEndGroupSemanticTest::RunTest(const FString& Parameters)
+{
+	UBattlePresentationController* Controller = NewObject<UBattlePresentationController>();
+	const auto Baseline = MakeBaseline({91, 92, 93});
+	auto Declaration = MakeDeclaration(9, {91, 92, 93});
+	Declaration.Group.Kind = EPresentationGroupKind::TurnEndDiscard;
+	TArray<FPresentationRecord> Records;
+	for (int32 Index = 0; Index < 3; ++Index)
+		Records.Add(MakeZoneRecord(Index + 1, 91 + Index, ECardZone::Hand, ECardZone::DiscardPile, 0, Index, &Declaration.Group));
+	FPresentationGroupSemanticCandidate Candidate;
+	const auto Valid = MakeEnvelope(Baseline, Records, &Declaration);
+	TestTrue(TEXT("Complete explicit ordered Hand group"), Controller->TryBuildSemanticPresentationGroupCandidateForTesting(Baseline, Valid, 0, Candidate));
+	for (int32 Variant = 0; Variant < 6; ++Variant)
+	{
+		auto Bad = Valid;
+		switch (Variant)
+		{
+		case 0: Bad.Records.RemoveAt(2); break;
+		case 1: Bad.Records[1].CardZoneChanged.Card = Bad.Records[0].CardZoneChanged.Card; break;
+		case 2: Bad.PresentationGroups[0].CanonicalSelectedRuntimeIds.Swap(0, 1); break;
+		case 3: Bad.Records[2].CardZoneChanged.ToZone = ECardZone::ExhaustPile; break;
+		case 4: Bad.PresentationGroups.Reset(); break;
+		case 5:
+			Bad.Records[1].Group = FPresentationGroupTag{}; // interference moves future member
+			{ const auto Interference = Bad.Records[1]; Bad.Records.Insert(Interference, 2); }
+			Bad.Records[2].Group = Declaration.Group;
+			Bad.Records[2].PresentationSequence = 3; Bad.Records[3].PresentationSequence = 4;
+			break;
+		}
+		TestFalse(TEXT("Malformed / interfered group declines atomically"), Controller->TryBuildSemanticPresentationGroupCandidateForTesting(Baseline, Bad, 0, Candidate));
+		TestFalse(TEXT("Decline exposes no partial candidate"), Candidate.IsValid());
+	}
+	TestEqual(TEXT("Preflight leaves frozen Hand unchanged"), Baseline.HandCards.Num(), 3);
 	return true;
 }
 

@@ -14,7 +14,6 @@ void FBattleHUDBufferedPlayerInput::Bind(UBattleHUDWidgetBase* InOwner)
 		|| Battle.Get() != NewBattle || Controller.Get() != NewController)
 	{
 		Clear();
-		if (++BindingGeneration == 0) ++BindingGeneration;
 	}
 	Owner = InOwner;
 	ViewModel = NewViewModel;
@@ -30,6 +29,8 @@ void FBattleHUDBufferedPlayerInput::SetEnabled(bool bInEnabled)
 
 void FBattleHUDBufferedPlayerInput::Clear()
 {
+	// Clear is also an input lifetime boundary, even if Session/turn are unchanged.
+	if (++BindingGeneration == 0) ++BindingGeneration;
 	Pending = FBufferedPlayerIntentDecision{};
 	Draft.Reset();
 	ConfirmedPlays.Reset();

@@ -1,5 +1,12 @@
 # Selection Presentation Group + Parallel Animation Design
 
+2026-10-06 amendment: [approved G9-B revision](QueuedCardPlayAndRelicTimingAmendment.md)
+extends the completed shared Group engine with explicit TurnEndDiscard from
+formal Hand. It preserves Selection lifecycle/enum values, chronological reducer
+order, all-child visual transactions and sequential fallback. Hand groups do
+not synthesize Selection ownership; suppression uses exact Controller records.
+Current implementation/evidence: [G9-B revision execution](G9BRevisionExecution.md).
+
 G8 design refinement (2026-09-10): [G8 detailed proposal](SelectionPresentationG8Design.md)
 refines section 30's candidate token, DamageNumber-only scope, input-mode readiness,
 transaction and recovery contracts. Design/documentation only; G8 implementation

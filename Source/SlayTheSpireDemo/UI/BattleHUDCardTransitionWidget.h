@@ -29,6 +29,7 @@ struct FNativeCardTransitionInstance
 
 	TWeakObjectPtr<UBattleCardWidget> HistoricalHandVisual;
 	ESlateVisibility HistoricalHandVisibility = ESlateVisibility::Visible;
+	bool bHistoricalHandWasEnabled = true;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget> StartAnchor = nullptr;
@@ -162,7 +163,7 @@ private:
 	void FinishNativeCardTransitionVisuals();
 	void CancelNativeCardTransitionVisuals();
 	void RollbackPreparedSelectionAreaTransition();
-	void RestorePreparedGroupSelectionAreaVisuals();
+	void RollbackPreparedCardTransitionGroup();
 	void CleanupNativeCardTransitionsOnDestruct();
 	void ClearNativeCardTransitionFinishTimer();
 	void ResetNativeCardTransitionState();

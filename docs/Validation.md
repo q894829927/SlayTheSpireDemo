@@ -1,5 +1,18 @@
 # Validation
 
+## G9-B revision — simultaneous turn-end discard, 2026-10-06
+
+`b105fb1` plus the Group batch: prescribed generation and Development Editor
+build PASS. Initial 94-case run stopped after 83 completed cases with four
+failures and a test-fixture GC crash. Runtime/fixture repairs passed affected
+43-case coverage except the remaining old G2 fixture; its final targeted rerun
+passed 7/7. All 94 distinct selected cases have valid passing evidence across
+runs; no uninterrupted 94/94 claim. Includes real Hand-source Native groups,
+serial reducer, pure preflight, GC, viewport, cleanup and stale-token checks.
+Full scopes/logs/repairs: [revision evidence](G9BRevisionExecution.md).
+Production amended-B visual gates remain USER ACTION REQUIRED; default off,
+no Native activation or G9 seal.
+
 ## G9-B revision — confirmed play FIFO, 2026-10-05
 
 `6071c56` plus the FIFO batch: prescribed generation and Development Editor

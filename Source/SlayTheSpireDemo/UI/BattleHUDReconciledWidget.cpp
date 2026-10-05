@@ -64,7 +64,8 @@ void UBattleHUDReconciledWidget::HandleCardPresentationOwnershipChanged(const TA
 			}
 
 			FCardPresentationOwnershipEntry Entry;
-			const bool bExplicitNonHandOwner = ViewModel->TryGetCardPresentationOwnershipEntry(RuntimeId, Entry) && Entry.Owner != ECardPresentationOwner::Hand;
+			const bool bExplicitNonHandOwner = IsFormalHandVisualSuppressed(RuntimeId)
+				|| (ViewModel->TryGetCardPresentationOwnershipEntry(RuntimeId, Entry) && Entry.Owner != ECardPresentationOwner::Hand);
 			CardWidget->SetVisibility(bExplicitNonHandOwner ? ESlateVisibility::Hidden : ESlateVisibility::Visible);
 			CardWidget->SetIsEnabled(!bExplicitNonHandOwner);
 			break;
@@ -88,7 +89,8 @@ void UBattleHUDReconciledWidget::ApplyExplicitCardPresentationOwnershipToFormalH
 		}
 
 		FCardPresentationOwnershipEntry Entry;
-		if (ViewModel->TryGetCardPresentationOwnershipEntry(CardWidget->GetRuntimeId(), Entry) && Entry.Owner != ECardPresentationOwner::Hand)
+		if (IsFormalHandVisualSuppressed(CardWidget->GetRuntimeId())
+			|| (ViewModel->TryGetCardPresentationOwnershipEntry(CardWidget->GetRuntimeId(), Entry) && Entry.Owner != ECardPresentationOwner::Hand))
 		{
 			CardWidget->SetVisibility(ESlateVisibility::Hidden);
 			CardWidget->SetIsEnabled(false);

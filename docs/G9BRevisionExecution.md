@@ -79,4 +79,56 @@ turn ABA, removed cards, terminal target death and disabled G8-B fallback.
 
 Production-map FIFO/EndTurn/mandatory visual timelines remain **USER ACTION
 REQUIRED**, pending the combined final PIE pass. No visual PASS, default
-activation or G9 seal is claimed. TurnEndDiscard is the next batch.
+activation or G9 seal is claimed. TurnEndDiscard implementation follows below.
+
+## Batch 4 — simultaneous turn-end discard, 2026-10-06
+
+Source under test: `b105fb1` plus this batch. Turn-end freezes the complete Hand
+RuntimeId order, declares explicit `TurnEndDiscard` metadata and stamps only its
+discard Actions. The shared Controller reducer preflight and Native N-child
+engine now support formal Hand sources, without Selection generations. All
+clones and geometry prepare before activation. They start together from their
+individual fan positions; reducer commits remain chronological. Exact active /
+visually-consumed Group records suppress future Hand members through refresh.
+Viewport changes rebase each path from its frozen source to the current pile.
+Incomplete/interfered/unavailable groups decline to serial playback. Single-card
+Blocking completion retains its existing Collapsed behavior; grouped historical
+slots remain Hidden. Disable, Skip, timeout, new Battle, Widget replacement and
+destruction retire every child. Explicit input clear also advances the binding
+generation, preventing a popped Busy result from restoring an old queue.
+
+Final prescribed generation PASS (`Saved/Logs/G9TurnEndG2ProjectFiles.log`),
+Development Editor build PASS, 4.47 s (`Saved/Logs/G9TurnEndG2Build.log`), after
+the runtime repair build PASS, 39.61 s (`G9TurnEndGroupRepairBuild.log`). An early
+build was aborted after a concurrent header-comment edit invalidated generated
+macro line numbers; the stable rebuild then exposed test-module geometry linker
+imports. Test-only geometry injection now stays in the existing runtime SlateCore
+boundary, with no dependency change. Neither failed build is passing evidence.
+
+Initial Automation selected 94 cases: SelectionPresentation +
+CardSelection.Presentation + Phase6UIA2N.R8 + Phase6UIA2N.FastInput +
+HandInteraction + UIA3.CardPlayedRichHandoff. It completed 83 (79 Success,
+4 Fail) before a fixture GC crash; no complete report exported
+(`Saved/Logs/G9TurnEndGroupAutomation.log`). Three failures exposed the singleton
+visibility difference; one exposed incomplete historical Damage fixture fields.
+The native fixture now roots only its external dependencies, not moving children.
+
+Affected/unfinished rerun: CardSelection.Presentation + SelectionPresentation.G2
++ SelectionPresentation.G9B + Phase6UIA2N.R8 + UIA3.CardPlayedRichHandoff,
+**43 cases: 41 Success, one expected R8 warning, one Fail, zero NotRun**
+(`Saved/AutomationReports/G9TurnEndGroupRepair/index.json`). The remaining old G2
+fixture also needed valid MaxHP; final G2 + TurnEndDiscard.Semantics rerun is
+**7/7 Success, zero Fail/NotRun** (`Saved/AutomationReports/G9TurnEndG2/index.json`).
+All 94 distinct selected cases now have valid passing evidence across these
+runs; this is not a single 94/94 run. `G9TurnEndGroupPassingCases.txt` lists paths.
+
+New tests prove complete/missing/duplicate/wrong-order/wrong-destination and
+interfered groups, pure preflight, actual turn-end producer metadata, three
+independent Native Hand clones, formal Widget identity, no early reducer or fake
+Selection owner, future-member refresh suppression, GC, viewport rebasing,
+finish/Skip/timeout/disable/replacement/Battle restart/destruction, serial geometry
+decline and stale callbacks. Headless cached geometry is test input, not PIE proof.
+
+Production simultaneous-discard and all amended B visual timelines remain
+**USER ACTION REQUIRED**, pending the next MCP pass. G9 default remains false;
+this implementation batch does not enable Native defaults or seal G9.

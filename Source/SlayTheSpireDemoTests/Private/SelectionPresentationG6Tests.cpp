@@ -512,4 +512,46 @@ bool FSelectionPresentationG6SequentialFallbackTest::RunTest(const FString& Para
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9TurnEndGroupControllerTest,
+	"SlayTheSpireDemo.SelectionPresentation.G9B.TurnEndDiscard.Controller",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FG9TurnEndGroupControllerTest::RunTest(const FString& Parameters)
+{
+	for (bool bTimeout : {false, true})
+	{
+		FControllerFixture Fixture;
+		if (!TestTrue(TEXT("Controller fixture"), Fixture.IsReady())) return false;
+		FPresentationResolutionEnvelope Envelope = Fixture.MakeGroupEnvelope(3, true);
+		Envelope.PresentationGroups[0].Group.Kind = EPresentationGroupKind::TurnEndDiscard;
+		Envelope.FinalSnapshot.ExhaustCount = Fixture.Baseline.ExhaustCount;
+		Envelope.FinalSnapshot.DiscardCount = Fixture.Baseline.DiscardCount + 3;
+		for (FPresentationRecord& Record : Envelope.Records)
+			if (Record.Group.IsValid())
+			{
+				Record.Group.Kind = EPresentationGroupKind::TurnEndDiscard;
+				Record.CardZoneChanged.ToZone = ECardZone::DiscardPile;
+				Record.CardZoneChanged.ToIndex += Fixture.Baseline.DiscardCount - Fixture.Baseline.ExhaustCount;
+			}
+		FPresentationGroupSemanticCandidate Candidate;
+		TestTrue(TEXT("Hand group preflight"), Fixture.Controller->TryBuildSemanticPresentationGroupCandidateForTesting(Fixture.Baseline, Envelope, 0, Candidate));
+		TestEqual(TEXT("Pure preflight leaves display intact"), Fixture.ViewModel->HandCards.Num(), 3);
+		Fixture.Battle->OnPresentationResolutionReady.Broadcast(Envelope);
+		TestEqual(TEXT("One multi-member unit"), Fixture.Controller->GetActivePlaybackUnitKindForTesting(), EPresentationPlaybackUnitKind::Group);
+		const auto OldToken = Fixture.Widget->LastGroupToken;
+		for (const auto& Card : Fixture.Baseline.HandCards)
+			TestTrue(TEXT("Active Hand member suppressed without Selection lifecycle"), Fixture.Controller->IsHandCardVisuallySuppressedByGroup(Card.RuntimeId));
+		if (bTimeout) Fixture.Controller->ExpireActivePlaybackForTesting();
+		else { Fixture.Widget->CompleteAcceptedGroup(); FTSTicker::GetCoreTicker().Tick(0.0f); }
+		TestEqual(TEXT("Final Hand"), Fixture.ViewModel->HandCards.Num(), 0);
+		TestEqual(TEXT("All three serial reducers / final recovery"), Fixture.ViewModel->DiscardCount, Fixture.Baseline.DiscardCount + 3);
+		TestEqual(TEXT("Interleaved damage is retained"), Fixture.ViewModel->Enemy.HP, Envelope.FinalSnapshot.Enemy.HP);
+		for (const auto& Card : Fixture.Baseline.HandCards)
+			TestFalse(TEXT("Completion/recovery clears exact suppression"), Fixture.Controller->IsHandCardVisuallySuppressedByGroup(Card.RuntimeId));
+		Fixture.Controller->NotifyPresentationGroupFinishedG6(OldToken, {0, 2, 3});
+		TestEqual(TEXT("Old callback cannot repeat discard"), Fixture.ViewModel->DiscardCount, Fixture.Baseline.DiscardCount + 3);
+	}
+	return true;
+}
+
 #endif

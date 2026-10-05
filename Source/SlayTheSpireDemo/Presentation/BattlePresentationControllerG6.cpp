@@ -134,6 +134,44 @@ bool UBattlePresentationController::ConsumeVisuallyPresentedGroupRecordG6(
 	return true;
 }
 
+bool UBattlePresentationController::IsHandCardVisuallySuppressedByGroup(int32 RuntimeId) const
+{
+	if (!bHasActiveEnvelope || ActiveEnvelope.BattleId != CurrentBattleId) return false;
+	const auto Matches = [this, RuntimeId](int32 Index)
+	{
+		if (!ActiveEnvelope.Records.IsValidIndex(Index)) return false;
+		const FPresentationRecord& Record = ActiveEnvelope.Records[Index];
+		return Record.Group.Kind == EPresentationGroupKind::TurnEndDiscard
+			&& Record.Type == EBattlePresentationRecordType::CardZoneChanged
+			&& Record.BattleId == CurrentBattleId && Record.ResolutionId == ActiveEnvelope.ResolutionId
+			&& Record.CardZoneChanged.Card.RuntimeId == RuntimeId;
+	};
+	if (bWaitingForCompletion && ActivePlaybackToken.UnitKind == EPresentationPlaybackUnitKind::Group
+		&& ActiveG6Group.Kind == EPresentationGroupKind::TurnEndDiscard)
+		for (int32 Index : ActiveG6GroupRecordIndices) if (Matches(Index)) return true;
+	if (G6VisuallyPresentedResolutionId == ActiveEnvelope.ResolutionId)
+		for (int32 Index : G6VisuallyPresentedRecordIndices) if (Matches(Index)) return true;
+	return false;
+}
+
+void UBattlePresentationController::CancelTurnEndDiscardGroupPlayback()
+{
+	if (!bHasActiveEnvelope) return;
+	if (ActiveG6Group.Kind == EPresentationGroupKind::TurnEndDiscard)
+	{
+		ReconcileActiveEnvelopeToFinalSnapshot();
+		return;
+	}
+	if (G6VisuallyPresentedResolutionId == ActiveEnvelope.ResolutionId)
+		for (int32 Index : G6VisuallyPresentedRecordIndices)
+			if (ActiveEnvelope.Records.IsValidIndex(Index)
+				&& ActiveEnvelope.Records[Index].Group.Kind == EPresentationGroupKind::TurnEndDiscard)
+			{
+				ReconcileActiveEnvelopeToFinalSnapshot();
+				return;
+			}
+}
+
 void UBattlePresentationController::NotifyPresentationGroupFinishedG6(
 	const FPresentationPlaybackToken& Token,
 	const TArray<int32>& RecordIndices)
@@ -145,7 +183,7 @@ void UBattlePresentationController::NotifyPresentationGroupFinishedG6(
 		|| Token.LocalPlaybackGeneration != LocalPlaybackGeneration
 		|| Token.BattleId != CurrentBattleId
 		|| !ActiveG6Group.IsValid()
-		|| ActiveG6Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(ActiveG6Group.Kind)
 		|| ActiveG6Group.GroupId != Token.GroupId
 		|| RecordIndices != ActiveG6GroupRecordIndices
 		|| RecordIndices.IsEmpty()

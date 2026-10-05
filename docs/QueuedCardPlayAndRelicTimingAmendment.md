@@ -1,7 +1,8 @@
 # G9-B amendment — confirmed card FIFO, turn-end discard group, relic tails
 
 Date: **2026-10-05**. Branch: `codex/g9-buffered-input-detached-cards`.
-Implementation base: `fe80565`. Status: **AUTHORIZED / IMPLEMENTATION PENDING**.
+Implementation base: `fe80565`. Status: **IMPLEMENTED / AUTOMATED GATES PASS /
+VISUAL GATES PENDING / OPT-IN / NOT SEALED**.
 This user-approved amendment supersedes G9-B's selection-only buffer, single
 pending-intent limit, fresh confirmation after catch-up, and Relic reactions
 preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEALED.
@@ -92,7 +93,10 @@ observations, not a new controlled final-head validation receipt.
 ## Execution evidence
 
 - Contract batch: documentation only; no new build/Automation/PIE claimed.
-- Relic scheduling: pending.
-- Confirmed FIFO: pending.
-- Turn-end discard group: pending.
+- Relic scheduling: `6071c56`, focused build/54-case Automation PASS.
+- Confirmed FIFO: `b105fb1`, build and affected Automation PASS.
+- Turn-end discard group: implemented; build and 94 distinct affected cases have
+  valid passing evidence across initial/repaired runs, not one aggregate run.
+- Actual scopes, failures, repairs and pending visual gates:
+  [revision execution](G9BRevisionExecution.md).
 - Default enablement: gated.

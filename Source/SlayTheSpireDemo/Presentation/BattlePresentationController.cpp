@@ -1044,6 +1044,10 @@ void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 
 void UBattlePresentationController::CancelActivePlaybackUnit()
 {
+	// Retire future visual consumption before any final-snapshot publication.
+	G6VisuallyPresentedResolutionId = 0;
+	G6VisuallyPresentedRecordIndices.Reset();
+	ResetG6ActiveGroupState();
 	if (!bWaitingForCompletion)
 	{
 		return;
@@ -1502,7 +1506,7 @@ bool UBattlePresentationController::RebindActivePlaybackAsGroupForTesting(
 		|| !bWaitingForCompletion
 		|| !IsValid(Widget)
 		|| !Group.IsValid()
-		|| Group.Kind != EPresentationGroupKind::SelectionDestination
+		|| !IsSupportedCardTransitionGroupKind(Group.Kind)
 		|| Group.ExpectedMemberCount <= 1
 		|| RecordIndices.Num() != Group.ExpectedMemberCount)
 	{

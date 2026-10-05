@@ -19,6 +19,18 @@ void UDiscardCardAction::Initialize(
 	Deck = InDeck;
 	Card = InCard;
 	PresentationCardSource = InPresentationCardSource;
+	TurnEndDiscardGroup = FPresentationGroupTag{};
+	TurnEndDiscardRuntimeId = INDEX_NONE;
+}
+
+void UDiscardCardAction::SetTurnEndDiscardPresentationGroup(const FPresentationGroupTag& Group, int32 RuntimeId)
+{
+	if (Group.IsValid() && Group.Kind == EPresentationGroupKind::TurnEndDiscard
+		&& Group.ExpectedMemberCount > 1 && IsValid(Card) && Card->GetRuntimeId() == RuntimeId)
+	{
+		TurnEndDiscardGroup = Group;
+		TurnEndDiscardRuntimeId = RuntimeId;
+	}
 }
 
 void UDiscardCardAction::Execute(UBattleActionQueue* /*Queue*/)
@@ -59,6 +71,8 @@ void UDiscardCardAction::Execute(UBattleActionQueue* /*Queue*/)
 			FPresentationRecord Record;
 			Record.Type = EBattlePresentationRecordType::CardZoneChanged;
 			TryGetSelectionPresentationGroupForRuntimeId(CommitResult.CardRuntimeId, Record.Group);
+			if (TurnEndDiscardGroup.IsValid() && CommitResult.CardRuntimeId == TurnEndDiscardRuntimeId)
+				Record.Group = TurnEndDiscardGroup;
 			Record.CardZoneChanged.Card = MoveTemp(CardSnapshot);
 			Record.CardZoneChanged.FromZone = CommitResult.FromZone;
 			Record.CardZoneChanged.ToZone = CommitResult.ToZone;

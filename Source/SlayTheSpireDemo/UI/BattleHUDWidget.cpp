@@ -435,6 +435,11 @@ bool UBattleHUDWidget::CommitFormalHand()
 	{
 		UBattleCardWidget* Card = FormalHandCards[Index];
 		Card->SetCardView(FrozenHand[Index]);
+		if (IsFormalHandVisualSuppressed(FrozenHand[Index].RuntimeId))
+		{
+			Card->SetVisibility(ESlateVisibility::Hidden);
+			Card->SetIsEnabled(false);
+		}
 		Card->OnBattleCardRequested.AddUniqueDynamic(this, &UBattleHUDWidget::HandleCardRequested);
 	}
 	if (bAdoptIncoming)
@@ -446,6 +451,15 @@ bool UBattleHUDWidget::CommitFormalHand()
 	bFormalHandPreparationFailed = false;
 	AfterFormalHandCommit();
 	return true;
+}
+
+bool UBattleHUDWidget::IsFormalHandVisualSuppressed(int32 RuntimeId) const
+{
+	FPresentationSessionToken Session;
+	return IsValid(ViewModel) && IsValid(PresentationController)
+		&& PresentationController->TryGetPresentationSessionToken(Session)
+		&& Session.BattleId == ViewModel->BattleId
+		&& PresentationController->IsHandCardVisuallySuppressedByGroup(RuntimeId);
 }
 
 bool UBattleHUDWidget::PrepareIncomingHandAttachment(const FPresentationCardSnapshot& Card,

@@ -16,9 +16,13 @@ class SLAYTHESPIREDEMO_API UDiscardCardAction : public UBattleAction
 public:
 	void Initialize(UDeckRuntime* InDeck, UCardInstance* InCard);
 	void Initialize(UDeckRuntime* InDeck, UCardInstance* InCard, ACombatant* InPresentationCardSource);
+	void SetTurnEndDiscardPresentationGroup(const FPresentationGroupTag& Group, int32 RuntimeId);
 	virtual void Execute(UBattleActionQueue* Queue) override;
 
 private:
+	FPresentationGroupTag TurnEndDiscardGroup;
+	int32 TurnEndDiscardRuntimeId = INDEX_NONE;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UDeckRuntime> Deck = nullptr;
 

@@ -1,7 +1,7 @@
 # Checkpoint — amended G9-B
 
-Branch `codex/g9-buffered-input-detached-cards`; current HEAD `6071c56` plus
-validated FIFO batch awaiting its local commit. Resolve the next commit hash
+Branch `codex/g9-buffered-input-detached-cards`; current HEAD `b105fb1` plus
+validated TurnEndDiscard batch awaiting its local commit. Resolve the next commit hash
 from Git; implementation base `fe80565`, contract commit `fc0de47`.
 Authority: `docs/QueuedCardPlayAndRelicTimingAmendment.md`.
 
@@ -13,9 +13,12 @@ Final affected FIFO build PASS; G9 + G8B + FastInput 30/30 PASS. Combined valid
 FIFO coverage is 61 distinct cases across runs, not one run. Exact logs and
 failed/repaired gates: `docs/G9BRevisionExecution.md`.
 
-Next: commit this batch, implement explicit TurnEndDiscard metadata and shared
-Hand-source Group visuals without Selection lifecycle, focused build/tests,
-then its own commit. Final production MCP PIE must cover automatic B/C,
+TurnEndDiscard implemented: explicit producer metadata, shared Hand-source Group
+engine, exact suppression, transactional prepare, viewport/GC/lifecycle cleanup.
+Final generation/build PASS; all 94 distinct affected cases have valid passing
+evidence across repaired runs. See the execution document for actual counts.
+
+Next: commit this batch. Final production MCP PIE must cover automatic B/C,
 EndTurn tail, mandatory clear, simultaneous discard and deferred relic timing.
 Any unperformed visual gate remains USER ACTION REQUIRED.
 
