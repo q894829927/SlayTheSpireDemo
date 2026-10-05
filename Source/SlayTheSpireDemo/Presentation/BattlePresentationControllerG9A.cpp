@@ -4,6 +4,7 @@
 #include "../Battle/BattleReadSnapshot.h"
 #include "../Cards/CardInstance.h"
 #include "../UI/BattleHUDViewModel.h"
+#include "../UI/BattleHUDWidgetBase.h"
 
 void UBattlePresentationController::InvalidateBufferedCardChronology()
 {

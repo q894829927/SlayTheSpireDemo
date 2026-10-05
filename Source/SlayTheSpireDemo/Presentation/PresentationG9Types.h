@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "PresentationG8Types.h"
 #include "../Battle/PlayerTurnAuthority.h"
+#include "../Cards/CardTypes.h"
 
 class UCardInstance;
 
@@ -37,4 +38,20 @@ struct SLAYTHESPIREDEMO_API FBufferedEndTurnIntent
 	int64 CaptureStateRevision = 0; // provenance, never a replay credential
 	uint64 LocalIntentGeneration = 0;
 	TOptional<FPresentationSessionToken> PresentationFence;
+};
+
+// A confirmed command credential, not Gameplay or an energy reservation.
+// CaptureStateRevision describes its source; ordinary historical advancement
+// does not invalidate it. Runtime bindings are resolved only at submission.
+struct SLAYTHESPIREDEMO_API FQueuedCardPlayIntent
+{
+	FPlayerTurnAuthorityToken Turn;
+	TOptional<FPresentationSessionToken> PresentationFence;
+	uint64 BindingGeneration = 0;
+	uint64 InputSequence = 0;
+	int64 CaptureStateRevision = 0;
+	int32 RuntimeId = INDEX_NONE;
+	FName CardId;
+	FName TargetPresentationId;
+	ECardTargetType TargetType = ECardTargetType::None;
 };

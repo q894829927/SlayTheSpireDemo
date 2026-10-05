@@ -14,6 +14,7 @@ void FBattleHUDBufferedPlayerInput::Bind(UBattleHUDWidgetBase* InOwner)
 		|| Battle.Get() != NewBattle || Controller.Get() != NewController)
 	{
 		Clear();
+		if (++BindingGeneration == 0) ++BindingGeneration;
 	}
 	Owner = InOwner;
 	ViewModel = NewViewModel;
@@ -30,6 +31,9 @@ void FBattleHUDBufferedPlayerInput::SetEnabled(bool bInEnabled)
 void FBattleHUDBufferedPlayerInput::Clear()
 {
 	Pending = FBufferedPlayerIntentDecision{};
+	Draft.Reset();
+	ConfirmedPlays.Reset();
+	bAwaitingSubmittedPlay = false;
 }
 
 bool FBattleHUDBufferedPlayerInput::HasSafeBinding() const
@@ -99,11 +103,11 @@ FEndTurnIntentAcceptance FBattleHUDBufferedPlayerInput::TryAcceptEndTurn(bool bH
 
 	// No retirement is reported until exact Gameplay authority has been accepted.
 	Result.bAccepted = true;
-	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection;
+	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection || Draft.IsSet();
 	Result.bRetireFastInputRetry = bHasPendingFastInputRetry;
 	Result.bCancelTransientSelection = ViewModel->InteractionState == EBattleHUDInteractionState::ReadyToConfirm
 		|| ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget;
-	Clear();
+	Draft.Reset();
 	Pending.Kind = EBufferedPlayerIntentKind::EndTurn;
 	Pending.EndTurn = Intent;
 	return Result;
@@ -124,6 +128,19 @@ bool FBattleHUDBufferedPlayerInput::TryCaptureCard(int32 RuntimeId)
 
 EBufferedPlayerIntentEvaluation FBattleHUDBufferedPlayerInput::EvaluatePending()
 {
+	if (bConfirmedQueueMode)
+	{
+		if (bAwaitingSubmittedPlay && HasSafeBinding() && IsNormalSubmissionReady()) bAwaitingSubmittedPlay = false;
+		bool bCurrent = HasSafeBinding() && !ViewModel->HasAuthoritativePendingCardSelection();
+		if (bCurrent && Draft.IsSet()) bCurrent = IsQueuedIdentityCurrent(Draft.GetValue());
+		for (const FQueuedCardPlayIntent& Intent : ConfirmedPlays)
+			if (bCurrent) bCurrent = IsQueuedIdentityCurrent(Intent);
+		if (!bCurrent) { Clear(); return EBufferedPlayerIntentEvaluation::Dropped; }
+		if (Draft.IsSet() && !ViewModel->HandCards.ContainsByPredicate([this](const FBattleHUDCardView& Card)
+			{ return Card.RuntimeId == Draft->RuntimeId && Card.CardId == Draft->CardId; })) Draft.Reset();
+		if (!ConfirmedPlays.IsEmpty())
+			return IsNormalSubmissionReady() ? EBufferedPlayerIntentEvaluation::Ready : EBufferedPlayerIntentEvaluation::Waiting;
+	}
 	if (Pending.Kind == EBufferedPlayerIntentKind::None) return EBufferedPlayerIntentEvaluation::None;
 	bool bCurrent = HasSafeBinding();
 	bool bReady = false;
@@ -136,7 +153,7 @@ EBufferedPlayerIntentEvaluation FBattleHUDBufferedPlayerInput::EvaluatePending()
 			bCurrent = ViewModel->IsPresentationDisplayOwned() && Controller.IsValid()
 				&& Controller->IsCurrentPresentationSession(Pending.EndTurn.PresentationFence.GetValue());
 		}
-		bReady = bCurrent && Availability.bCanExecuteEndTurnNow;
+		bReady = bCurrent && Availability.bCanExecuteEndTurnNow && !bAwaitingSubmittedPlay;
 	}
 	else if (bCurrent)
 	{
@@ -163,7 +180,108 @@ bool FBattleHUDBufferedPlayerInput::TakeReadyIntent(FBufferedPlayerIntentDecisio
 {
 	OutDecision = FBufferedPlayerIntentDecision{};
 	if (EvaluatePending() != EBufferedPlayerIntentEvaluation::Ready) return false;
+	if (!ConfirmedPlays.IsEmpty())
+	{
+		OutDecision.Kind = EBufferedPlayerIntentKind::CardPlay;
+		OutDecision.Play = ConfirmedPlays[0];
+		ConfirmedPlays.RemoveAt(0); // pop BEFORE the request can publish/re-enter
+		bAwaitingSubmittedPlay = true;
+		return true;
+	}
 	OutDecision = Pending;
-	Clear(); // consumed before a future G9-B caller can publish/re-enter a request
+	Pending = FBufferedPlayerIntentDecision{};
+	return true;
+}
+
+bool FBattleHUDBufferedPlayerInput::IsQueuedIdentityCurrent(const FQueuedCardPlayIntent& Intent) const
+{
+	FPlayerTurnAuthorityToken Turn;
+	return HasSafeBinding() && Intent.BindingGeneration == BindingGeneration
+		&& Intent.InputSequence != 0 && Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn)
+		&& Turn == Intent.Turn && ViewModel->BattleId == static_cast<int64>(Turn.BattleId)
+		&& (!Intent.PresentationFence.IsSet() || (Controller.IsValid()
+			&& Controller->IsCurrentPresentationSession(Intent.PresentationFence.GetValue())));
+}
+
+bool FBattleHUDBufferedPlayerInput::IsNormalSubmissionReady() const
+{
+	const auto Ready = ViewModel->EvaluateInteractionReadinessShadow(Controller.Get());
+	return Ready.bReady && (Ready.Mode == EBattleHUDReadinessMode::NormalPlayerTurn
+		|| Ready.Mode == EBattleHUDReadinessMode::CardTargetChoice
+		|| Ready.Mode == EBattleHUDReadinessMode::CardReadyToConfirm);
+}
+
+bool FBattleHUDBufferedPlayerInput::CanBeginCardDraft(int32 RuntimeId) const
+{
+	FPlayerTurnAuthorityToken Turn;
+	if (!HasSafeBinding() || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
+		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32
+		|| !Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn)
+		|| ViewModel->BattleId != static_cast<int64>(Turn.BattleId)
+		|| ViewModel->GetCardPresentationOwner(RuntimeId) != ECardPresentationOwner::Hand
+		|| ConfirmedPlays.ContainsByPredicate([RuntimeId](const auto& I) { return I.RuntimeId == RuntimeId; })) return false;
+	const auto* Card = ViewModel->HandCards.FindByPredicate([RuntimeId](const FBattleHUDCardView& C) { return C.RuntimeId == RuntimeId; });
+	if (!Card || Card->CardId.IsNone() || Card->Cost < 0
+		|| (Card->TargetType != ECardTargetType::None && Card->TargetType != ECardTargetType::Enemy && Card->TargetType != ECardTargetType::Self)) return false;
+	// Frozen latest membership excludes an already-committed play still visible
+	// at its CardPlayed cursor. This is an immutable read, never a binding refresh.
+	FPresentationStateSnapshot Latest;
+	return Battle->TryGetLatestFrozenPresentationBaseline(Latest) && Latest.BattleId == ViewModel->BattleId
+		&& Latest.HandCards.ContainsByPredicate([Card](const FBattleHUDCardView& C) { return C.RuntimeId == Card->RuntimeId && C.CardId == Card->CardId; });
+}
+
+bool FBattleHUDBufferedPlayerInput::BeginCardDraft(int32 RuntimeId)
+{
+	if (!CanBeginCardDraft(RuntimeId)) return false;
+	if (GetDraftRuntimeId() == RuntimeId) { Draft.Reset(); return true; }
+	FQueuedCardPlayIntent Intent;
+	Battle->TryGetCurrentPlayerTurnAuthorityToken(Intent.Turn);
+	Intent.BindingGeneration = BindingGeneration;
+	Intent.InputSequence = NextIntentGeneration++;
+	if (NextIntentGeneration == 0) ++NextIntentGeneration;
+	Intent.CaptureStateRevision = ViewModel->StateRevision;
+	Intent.RuntimeId = RuntimeId;
+	const auto& Card = *ViewModel->HandCards.FindByPredicate([RuntimeId](const auto& C) { return C.RuntimeId == RuntimeId; });
+	Intent.CardId = Card.CardId; Intent.TargetType = Card.TargetType;
+	if (ViewModel->IsPresentationDisplayOwned())
+	{
+		FPresentationSessionToken Session;
+		if (!Controller.IsValid() || !Controller->TryGetPresentationSessionToken(Session)) return false;
+		Intent.PresentationFence = Session;
+	}
+	Draft = Intent;
+	return true;
+}
+
+bool FBattleHUDBufferedPlayerInput::TryGetDraftTarget(FName PresentationId, FBattleHUDTargetView& OutTarget) const
+{
+	OutTarget = FBattleHUDTargetView{};
+	if (!Draft.IsSet() || !IsQueuedIdentityCurrent(Draft.GetValue()) || ViewModel->HasAuthoritativePendingCardSelection()) return false;
+	const FBattleHUDCombatantView* Target = Draft->TargetType == ECardTargetType::Enemy ? &ViewModel->Enemy
+		: Draft->TargetType == ECardTargetType::Self ? &ViewModel->Player : nullptr;
+	if (!Target || Target->bDead || Target->HP <= 0 || PresentationId.IsNone() || Target->PresentationId != PresentationId) return false;
+	OutTarget.PresentationId = PresentationId;
+	OutTarget.TargetId = Target->bPlayer ? 1 : 2; // frozen HUD handle, never a Gameplay identity
+	OutTarget.bPlayer = Target->bPlayer; OutTarget.DisplayName = Target->DisplayName;
+	return true;
+}
+
+bool FBattleHUDBufferedPlayerInput::ConfirmCardDraft(FName TargetPresentationId)
+{
+	if (!Draft.IsSet() || !IsQueuedIdentityCurrent(Draft.GetValue()) || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
+		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
+	if (Draft->TargetType == ECardTargetType::None) { if (!TargetPresentationId.IsNone()) return false; }
+	else { FBattleHUDTargetView Target; if (!TryGetDraftTarget(TargetPresentationId, Target)) return false; }
+	Draft->TargetPresentationId = TargetPresentationId;
+	ConfirmedPlays.Add(Draft.GetValue());
+	Draft.Reset();
+	return true;
+}
+
+bool FBattleHUDBufferedPlayerInput::RestoreBusyPlay(const FQueuedCardPlayIntent& Intent)
+{
+	bAwaitingSubmittedPlay = false;
+	if (!IsQueuedIdentityCurrent(Intent) || ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
+	ConfirmedPlays.Insert(Intent, 0);
 	return true;
 }

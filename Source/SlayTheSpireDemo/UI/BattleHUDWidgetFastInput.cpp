@@ -150,10 +150,7 @@ bool UBattleHUDWidget::SelectCard(
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 	}
 	if (HasAcceptedBufferedEndTurn()) return false;
-	if (IsBufferedPlayerInputEnabled() && !ViewModel->bInputLocked
-		&& ViewModel->InteractionState != EBattleHUDInteractionState::Resolving)
-		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
-	if (TryBufferCardSelection(RuntimeId)) return true;
+	if (IsBufferedPlayerInputEnabled()) return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 
 	// Preserve the existing one-request behavior: another click before the next
 	// ticker retry only replaces the RuntimeId; it cannot replace the session or

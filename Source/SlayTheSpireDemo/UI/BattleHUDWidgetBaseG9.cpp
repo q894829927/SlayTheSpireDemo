@@ -2,6 +2,7 @@
 
 #include "BattleHUDViewModel.h"
 #include "../Battle/BattleManager.h"
+#include "../Battle/BattleRequestTypes.h"
 #include "Containers/Ticker.h"
 
 void UBattleHUDWidgetBase::ReleaseBufferedPlayerInputBinding()
@@ -38,11 +39,18 @@ void UBattleHUDWidgetBase::SetBufferedPlayerInputEnabled(bool bEnabled)
 {
 	bBufferedPlayerInputEnabled = bEnabled;
 	RebindBufferedPlayerInput();
+	if (bEnabled) BufferedPlayerInput.EnableConfirmedPlayQueue();
 	if (!bEnabled)
 	{
 		RetirePendingFastCardRetry();
+		if (IsValid(ViewModel))
+		{
+			TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
+			ViewModel->CancelSelection();
+		}
 		NativeOnBufferedPlayerInputChanged();
 	}
+	else RetirePendingFastCardRetry();
 	NotifyBufferedPlayerInputReadinessChanged();
 }
 
@@ -66,8 +74,26 @@ bool UBattleHUDWidgetBase::TryBufferCardSelection(int32 RuntimeId)
 	if (!bBufferedPlayerInputEnabled) return false;
 	RebindBufferedPlayerInput();
 	BufferedPlayerInput.EvaluatePending();
-	if (!BufferedPlayerInput.TryCaptureCard(RuntimeId)) return false;
+	if (!BufferedPlayerInput.BeginCardDraft(RuntimeId))
+	{
+		if (IsValid(ViewModel))
+		{
+			TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
+			ViewModel->ReportQueuedPlayFeedback(NSLOCTEXT("BattleHUD", "QueueDraftRejected", "无法排队：卡牌已入队、队列已满或当前不能出牌"));
+		}
+		return false;
+	}
 	RetirePendingFastCardRetry();
+	if (IsValid(ViewModel) && !ViewModel->bInputLocked)
+	{
+		TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
+		ViewModel->SelectCardByRuntimeId(RuntimeId); // retain caught-up Gameplay preview
+	}
+	else if (IsValid(ViewModel) && !ViewModel->LastFeedback.IsEmpty())
+	{
+		TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
+		ViewModel->ReportQueuedPlayFeedback(FText::GetEmpty());
+	}
 	NotifyBufferedPlayerInputReadinessChanged();
 	return true;
 }
@@ -113,13 +139,46 @@ void UBattleHUDWidgetBase::ProcessBufferedPlayerInput()
 	TGuardValue<bool> Guard(bBufferedInputProcessing, true);
 	TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
 	RebindBufferedPlayerInput();
-	FBufferedPlayerIntentDecision Decision;
-	if (BufferedPlayerInput.TakeReadyIntent(Decision) && IsValid(ViewModel))
+	for (int32 Attempt = 0; Attempt <= 32 && IsValid(ViewModel); ++Attempt)
 	{
+		FBufferedPlayerIntentDecision Decision;
+		if (!BufferedPlayerInput.TakeReadyIntent(Decision)) break;
+		if (Decision.Kind == EBufferedPlayerIntentKind::CardPlay)
+		{
+			const auto Result = ViewModel->RequestQueuedCardPlay(Decision.Play);
+			if (Result.IsAcceptedForResolution()) break;
+			BufferedPlayerInput.RetireRejectedPlayAttempt();
+			if (Result.FailureReason == EGameplayRequestFailureReason::BattleEnded
+				|| Result.FailureReason == EGameplayRequestFailureReason::InvalidBattle
+				|| Result.FailureReason == EGameplayRequestFailureReason::WrongTurn
+				|| Result.FailureReason == EGameplayRequestFailureReason::ResolutionFaulted)
+			{ BufferedPlayerInput.Clear(); break; }
+			if (Result.FailureReason == EGameplayRequestFailureReason::ResolutionBusy)
+			{ BufferedPlayerInput.RestoreBusyPlay(Decision.Play); break; }
+			continue;
+		}
 		if (Decision.Kind == EBufferedPlayerIntentKind::EndTurn)
 			ViewModel->RequestEndTurnForAcceptedIntent(Decision.EndTurn.Turn);
 		else if (Decision.Kind == EBufferedPlayerIntentKind::CardSelection)
 			ViewModel->SelectCardByRuntimeId(Decision.Card.RuntimeId);
+		break;
 	}
 	NativeOnBufferedPlayerInputChanged();
+}
+
+EBattleHUDInteractionState UBattleHUDWidgetBase::GetBufferedCardDraftState() const
+{
+	if (!IsBufferedPlayerInputEnabled() || GetBufferedCardDraftRuntimeId() == INDEX_NONE) return EBattleHUDInteractionState::Idle;
+	return BufferedPlayerInput.GetDraftTargetType() == ECardTargetType::None
+		? EBattleHUDInteractionState::ReadyToConfirm : EBattleHUDInteractionState::ChoosingTarget;
+}
+
+bool UBattleHUDWidgetBase::TryGetBufferedDraftTarget(FName PresentationId, FBattleHUDTargetView& OutTarget) const
+{
+	return IsBufferedPlayerInputEnabled() && BufferedPlayerInput.TryGetDraftTarget(PresentationId, OutTarget);
+}
+
+void UBattleHUDWidgetBase::DiscardQueuedPlayerInput()
+{
+	BufferedPlayerInput.Clear();
 }

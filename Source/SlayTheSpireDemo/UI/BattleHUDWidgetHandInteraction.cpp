@@ -66,21 +66,23 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 	}
 	const FVector2D Pointer = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
+	const int32 SelectedRuntimeId = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftRuntimeId() : ViewModel->SelectedCardRuntimeId;
+	const auto InputState = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftState() : ViewModel->InteractionState;
 	// The panel arranges independently of playback and Tick. Protected moving
 	// cards retain their base geometry; only eligible Hand cards receive hover.
 	if (FanHand)
 	{
 		const bool bAllowHover = (!HasTrackedPresentationPlayback() && !HasActiveNativePresentation()
 			&& (!ViewModel->bInputLocked || bPending)) || bBufferedHandHoverAvailable;
-		FanHand->UpdateHoverAffordance(Pointer, bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId, bAllowHover, DeltaTime);
+		FanHand->UpdateHoverAffordance(Pointer, bPending ? INDEX_NONE : SelectedRuntimeId, bAllowHover, DeltaTime);
 	}
 	if (!TargetingArrow) return;
 	UBattleCardWidget* Selected = nullptr;
 	if (HB_Hand)
 		for (UWidget* Child : HB_Hand->GetAllChildren())
-			if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child); Card && Card->GetRuntimeId() == ViewModel->SelectedCardRuntimeId) Selected = Card;
+				if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child); Card && Card->GetRuntimeId() == SelectedRuntimeId) Selected = Card;
 	if (!Selected || !Selected->IsVisible()
-		|| !UBattleTargetingArrowWidget::ShouldShow(Selected->GetCardView(), ViewModel->InteractionState, ViewModel->bInputLocked, bPending))
+		|| !UBattleTargetingArrowWidget::ShouldShow(Selected->GetCardView(), InputState, IsBufferedPlayerInputEnabled() ? false : ViewModel->bInputLocked, bPending))
 	{
 		TargetingArrow->SetVisibility(ESlateVisibility::Hidden);
 		return;
@@ -103,11 +105,14 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 		const FVector2D EnemyLocal = EnemyGeometry.AbsoluteToLocal(Pointer);
 		const bool bInsideEnemy = EnemyLocal.X >= 0.0 && EnemyLocal.Y >= 0.0
 			&& EnemyLocal.X <= EnemyGeometry.GetLocalSize().X && EnemyLocal.Y <= EnemyGeometry.GetLocalSize().Y;
-		bLegalEnemy = bInsideEnemy && ViewModel->LegalTargets.ContainsByPredicate([this](const FBattleHUDTargetView& Target)
+		FBattleHUDTargetView DraftTarget;
+		bLegalEnemy = bInsideEnemy && (IsBufferedPlayerInputEnabled()
+			? TryGetBufferedDraftTarget(Combatant_EnemyPresentation->CombatantView.PresentationId, DraftTarget)
+			: ViewModel->LegalTargets.ContainsByPredicate([this](const FBattleHUDTargetView& Target)
 		{
 			return !Target.bPlayer && Target.TargetId == Combatant_EnemyPresentation->TargetId
 				&& Target.PresentationId == Combatant_EnemyPresentation->CombatantView.PresentationId;
-		});
+		}));
 	}
 	TargetingArrow->SetAim(Start, ArrowGeometry.AbsoluteToLocal(Pointer), bLegalEnemy);
 	TargetingArrow->SetVisibility(ESlateVisibility::HitTestInvisible);

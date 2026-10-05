@@ -1,5 +1,15 @@
 # Validation
 
+## G9-B revision — confirmed play FIFO, 2026-10-05
+
+`6071c56` plus the FIFO batch: prescribed generation and Development Editor
+build PASS. Initial focused 60 cases included one failure; final affected
+G9 + G8B + FastInput rerun: 30 Success / zero Fail or NotRun. Unaffected initial
+passes remain valid, yielding 61 distinct passing cases across runs. Full
+scope, corrections, paths and limits: [revision evidence](G9BRevisionExecution.md).
+Production FIFO/EndTurn/mandatory PIE remains USER ACTION REQUIRED; default
+activation is off and no seal is claimed.
+
 ## G9-B revision — relic tails, 2026-10-05
 
 `fc0de47` plus relic scheduling changes: prescribed project generation and UE 5.8

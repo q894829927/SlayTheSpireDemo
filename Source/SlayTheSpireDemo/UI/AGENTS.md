@@ -318,6 +318,20 @@ Resolved combatant PresentationIds are non-empty, battle-scoped unique and immut
 
 ## Input and Interaction
 
+G9-B's confirmed amendment (`docs/QueuedCardPlayAndRelicTimingAmendment.md`)
+supersedes its original selection-only buffering contract when G9 is enabled.
+The HUD owns an orthogonal frozen-card draft, confirmed FIFO (maximum 32) and
+accepted EndTurn marker. Draft affordances may run during Resolving; they never
+unlock authoritative input, reserve energy or refresh live bindings. Only the
+complete confirmed intent is automatically submitted at a caught-up legal
+boundary. Pop before publication; future requests stay outside ActionQueue.
+Preserve captured target PresentationId and turn/session/binding identity across
+normal revision advancement; invalid entries report and skip without retargeting.
+EndTurn retires unconfirmed drafts, retains confirmed plays and blocks additions.
+Mandatory selection and recovery/Skip/disable/replacement retire all pending input.
+Consumption is coalesced/event-driven, never NativeTick, and enabled G9 never
+falls through to FastInput Skip. Disabled G9 retains the existing G8-B path.
+
 Phase 6UI-A uses explicit card selection followed by legal-target selection. Enemy-target and Self-target cards use Gameplay-provided public LegalTargets. Widget mapping uses PresentationId; Requests submit current runtime Gameplay identity and revalidate.
 
 Presentation may lock the View while Gameplay is request-eligible. Unlock only after Controller catches up to the newest matching revision and authoritative Gameplay remains request-eligible.

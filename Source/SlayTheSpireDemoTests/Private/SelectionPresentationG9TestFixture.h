@@ -19,7 +19,7 @@ namespace SelectionPresentationG9ATest
 		UPhase6UIA2APlaybackWidget* Widget = nullptr;
 		UBattlePresentationController* Controller = nullptr;
 
-		explicit FShadowFixture(bool bRecorded = true, bool bMandatoryA = false, ECardTargetType BTarget = ECardTargetType::None)
+		explicit FShadowFixture(bool bRecorded = true, bool bMandatoryA = false, ECardTargetType BTarget = ECardTargetType::None, bool bMandatoryB = false)
 		{
 			ABattleManager* Battle = Gameplay.Battle;
 			if (!IsValid(Battle)) return;
@@ -28,7 +28,7 @@ namespace SelectionPresentationG9ATest
 			for (const TCHAR* Name : {TEXT("A"), TEXT("B"), TEXT("C")})
 			{
 				UCardData* Definition = Phase6UIA1Test::CreateCard(Gameplay.World, Name, FString(Name) == TEXT("B") ? BTarget : ECardTargetType::None, 0);
-				if (bMandatoryA && Definition->CardId == TEXT("A"))
+				if ((bMandatoryA && Definition->CardId == TEXT("A")) || (bMandatoryB && Definition->CardId == TEXT("B")))
 				{
 					Definition->Effects.Add(NewObject<USelectExhaustHandCardEffect>(Definition));
 				}

@@ -24,17 +24,23 @@ bool FG9BCardReplayTest::RunTest(const FString&)
 	const int32 B = F.Card(TEXT("B"))->GetRuntimeId();
 	const int32 C = F.Card(TEXT("C"))->GetRuntimeId();
 	TestTrue(TEXT("B captures an already sealed target"), F.Widget->TryBufferCardSelection(B));
+	TestTrue(TEXT("B fully confirmed during playback"), F.Widget->ConfirmSelectedCard());
+	TestFalse(TEXT("Duplicate B cannot be enqueued"), F.Widget->TryBufferCardSelection(B));
 	TestTrue(TEXT("New physical click captures C"), F.Widget->TryBufferCardSelection(C));
+	TestTrue(TEXT("C fully confirmed during playback"), F.Widget->ConfirmSelectedCard());
 	TestTrue(TEXT("Buffer does not Skip A"), F.Controller->IsWaitingForCompletionForTesting());
 	TestEqual(TEXT("No early selection"), F.Gameplay.ViewModel->SelectedCardRuntimeId, INDEX_NONE);
 	F.FinishPlayback();
 	FTSTicker::GetCoreTicker().Tick(0.0f);
-	TestEqual(TEXT("Exact ready selects newest card"), F.Gameplay.ViewModel->SelectedCardRuntimeId, C);
-	TestEqual(TEXT("Fresh confirmation still required"), F.Gameplay.ViewModel->InteractionState, EBattleHUDInteractionState::ReadyToConfirm);
-	TestTrue(TEXT("Card remains in authoritative Hand"), F.Card(TEXT("C")) != nullptr);
+	TestTrue(TEXT("B executes automatically"), F.Card(TEXT("B")) == nullptr);
+	TestTrue(TEXT("C waits for B history"), F.Card(TEXT("C")) != nullptr);
+	F.Gameplay.FlushReady();
+	F.FinishPlayback();
+	FTSTicker::GetCoreTicker().Tick(0.0f);
+	TestTrue(TEXT("C executes automatically after B history"), F.Card(TEXT("C")) == nullptr);
 	F.Widget->NotifyBufferedPlayerInputReadinessChanged();
 	FTSTicker::GetCoreTicker().Tick(0.0f);
-	TestEqual(TEXT("Repeated event cannot toggle selection off"), F.Gameplay.ViewModel->SelectedCardRuntimeId, C);
+	TestEqual(TEXT("Repeated event cannot submit twice"), F.Gameplay.Battle->GetDeckRuntimeForTesting()->GetDiscardCount(), 3);
 	return true;
 }
 
@@ -85,6 +91,7 @@ bool FG9BEndTurnBusyTest::RunTest(const FString&)
 		FTSTicker::GetCoreTicker().Tick(0.0f);
 		F.Gameplay.FlushReady();
 		F.FinishPlayback();
+		FTSTicker::GetCoreTicker().Tick(0.0f); // revised EndTurn waits for Blocking history
 		FPlayerTurnAuthorityToken After;
 		TestTrue(TEXT("Same turn command reached next turn"), F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(After));
 		TestEqual(TEXT("Buffered EndTurn executes once"), After.PlayerTurnSerial, Before.PlayerTurnSerial + 1);

@@ -521,8 +521,8 @@ void UBattleHUDWidget::RefreshCombatants()
 	}
 
 	const bool bChoosingTarget =
-		ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget
-		&& !ViewModel->bInputLocked
+		(IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftState() == EBattleHUDInteractionState::ChoosingTarget
+			: ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget && !ViewModel->bInputLocked)
 		&& ViewModel->Outcome == EBattleHUDOutcome::None;
 
 	auto RefreshOneCombatant =
@@ -542,9 +542,8 @@ void UBattleHUDWidget::RefreshCombatants()
 			const bool bFoundLegalTarget =
 				bChoosingTarget
 				&& !Combatant.PresentationId.IsNone()
-				&& ViewModel->TryGetLegalTargetByPresentationId(
-					Combatant.PresentationId,
-					LegalTarget);
+				&& (IsBufferedPlayerInputEnabled() ? TryGetBufferedDraftTarget(Combatant.PresentationId, LegalTarget)
+					: ViewModel->TryGetLegalTargetByPresentationId(Combatant.PresentationId, LegalTarget));
 
 			Presentation->SetPresentationData(
 				Combatant,
@@ -813,10 +812,10 @@ void UBattleHUDWidget::RefreshInputState()
 		!ViewModel->bInputLocked
 		&& !bTerminalOrUnavailable
 		&& ViewModel->InteractionState != EBattleHUDInteractionState::Resolving;
-	const bool bShowConfirm =
-		ViewModel->InteractionState == EBattleHUDInteractionState::ReadyToConfirm;
+	const auto InputState = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftState() : ViewModel->InteractionState;
+	const bool bShowConfirm = InputState == EBattleHUDInteractionState::ReadyToConfirm;
 	const bool bShowCancel =
-		ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget
+		InputState == EBattleHUDInteractionState::ChoosingTarget
 		|| bShowConfirm;
 
 	if (IsValid(Btn_EndTurn))
@@ -829,21 +828,20 @@ void UBattleHUDWidget::RefreshInputState()
 	{
 		Btn_Confirm->SetVisibility(
 			bShowConfirm ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-		Btn_Confirm->SetIsEnabled(bInputAvailable && bShowConfirm);
+		Btn_Confirm->SetIsEnabled((IsBufferedPlayerInputEnabled() || bInputAvailable) && bShowConfirm);
 	}
 	if (IsValid(Btn_Cancel))
 	{
 		Btn_Cancel->SetVisibility(
 			bShowCancel ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-		Btn_Cancel->SetIsEnabled(bInputAvailable && bShowCancel);
+		Btn_Cancel->SetIsEnabled((IsBufferedPlayerInputEnabled() || bInputAvailable) && bShowCancel);
 	}
 	bBufferedHandHoverAvailable = false;
 	if (IsBufferedPlayerInputEnabled() && IsValid(PresentationController) && !HasAcceptedBufferedEndTurn())
 	{
 		for (const FBattleHUDCardView& Card : ViewModel->HandCards)
 		{
-			FBufferedCardIntent Credential;
-			if (PresentationController->TryCaptureBufferedCardTarget(Card.RuntimeId, Credential))
+			if (CanDraftBufferedCard(Card.RuntimeId))
 			{ bBufferedHandHoverAvailable = true; break; }
 		}
 	}
@@ -852,6 +850,7 @@ void UBattleHUDWidget::RefreshInputState()
 void UBattleHUDWidget::NativeOnBufferedPlayerInputChanged()
 {
 	RefreshInputState();
+	RefreshCombatants();
 }
 
 void UBattleHUDWidget::RefreshFeedback()

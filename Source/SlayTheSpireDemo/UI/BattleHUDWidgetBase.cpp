@@ -148,11 +148,18 @@ void UBattleHUDWidgetBase::SetPresentationController(
 
 bool UBattleHUDWidgetBase::SelectCard(int32 RuntimeId)
 {
+	if (bBufferedPlayerInputEnabled) return TryBufferCardSelection(RuntimeId);
 	return IsValid(ViewModel) && ViewModel->SelectCardByRuntimeId(RuntimeId);
 }
 
 void UBattleHUDWidgetBase::CancelSelection()
 {
+	TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, bBufferedPlayerInputEnabled || bSuppressPresentationCancellation);
+	if (bBufferedPlayerInputEnabled)
+	{
+		BufferedPlayerInput.CancelCardDraft();
+		NativeOnBufferedPlayerInputChanged();
+	}
 	if (IsValid(ViewModel))
 	{
 		ViewModel->CancelSelection();
@@ -166,12 +173,29 @@ bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 		return false;
 	}
 
+	if (bBufferedPlayerInputEnabled)
+	{
+		FBattleHUDTargetView Target;
+		const FName Id = TargetId == 1 ? ViewModel->Player.PresentationId : TargetId == 2 ? ViewModel->Enemy.PresentationId : NAME_None;
+		if (!BufferedPlayerInput.TryGetDraftTarget(Id, Target) || Target.TargetId != TargetId
+			|| !BufferedPlayerInput.ConfirmCardDraft(Id)) return false;
+		NotifyBufferedPlayerInputReadinessChanged();
+		ProcessBufferedPlayerInput();
+		return true;
+	}
 	ViewModel->ClearPreviewTarget();
 	return ViewModel->SelectTargetById(TargetId);
 }
 
 bool UBattleHUDWidgetBase::ConfirmSelectedCard()
 {
+	if (bBufferedPlayerInputEnabled)
+	{
+		if (!BufferedPlayerInput.ConfirmCardDraft(NAME_None)) return false;
+		NotifyBufferedPlayerInputReadinessChanged();
+		ProcessBufferedPlayerInput();
+		return true;
+	}
 	return IsValid(ViewModel) && ViewModel->ConfirmSelectedCard();
 }
 
@@ -182,6 +206,7 @@ bool UBattleHUDWidgetBase::EndTurn()
 		RebindBufferedPlayerInput();
 		const FEndTurnIntentAcceptance Acceptance = BufferedPlayerInput.TryAcceptEndTurn(HasPendingFastCardRetry());
 		if (!Acceptance.bAccepted) return false;
+		TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
 		if (Acceptance.bRetireFastInputRetry) RetirePendingFastCardRetry();
 		if (Acceptance.bCancelTransientSelection && IsValid(ViewModel)) ViewModel->CancelSelection();
 		ProcessBufferedPlayerInput();
@@ -511,6 +536,7 @@ void UBattleHUDWidgetBase::ForwardPresentationFinished(
 
 void UBattleHUDWidgetBase::SkipPresentation()
 {
+	DiscardQueuedPlayerInput();
 	CancelTrackedPresentationPlayback();
 
 	if (IsValid(PresentationController))
@@ -641,6 +667,11 @@ bool UBattleHUDWidgetBase::HandleRightMouseButtonCancelInput()
 
 bool UBattleHUDWidgetBase::HandleRightMouseButtonCancel()
 {
+	if (bBufferedPlayerInputEnabled && GetBufferedCardDraftRuntimeId() != INDEX_NONE)
+	{
+		CancelSelection();
+		return true;
+	}
 	if (!IsValid(ViewModel))
 	{
 		return false;

@@ -517,6 +517,7 @@ void UBattlePresentationController::NotifyPresentationFinished(const FPresentati
 
 void UBattlePresentationController::SkipPresentation()
 {
+	if (IsValid(Widget) && Widget->IsBufferedPlayerInputEnabled()) Widget->DiscardQueuedPlayerInput();
 	InvalidateBufferedCardChronology();
 	ABattleManager* Battle = BattleManager.Get();
 	if (IsValid(Battle) && !Battle->IsPresentationAvailable())
@@ -932,6 +933,7 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 
 void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 {
+	if (IsValid(Widget) && Widget->IsBufferedPlayerInputEnabled()) Widget->DiscardQueuedPlayerInput();
 	InvalidateBufferedCardChronology();
 	CancelActiveTimeout();
 	if (!bHasActiveEnvelope)
@@ -983,6 +985,7 @@ void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
 	const FPresentationResolutionEnvelope& Envelope
 )
 {
+	if (IsValid(Widget) && Widget->IsBufferedPlayerInputEnabled()) Widget->DiscardQueuedPlayerInput();
 	InvalidateBufferedCardChronology();
 	ABattleManager* Battle = BattleManager.Get();
 	if (IsValid(Battle) && !Battle->IsPresentationAvailable())

@@ -57,6 +57,11 @@ public:
 	bool CanAcceptEndTurnIntent();
 	bool HasAcceptedBufferedEndTurn();
 	bool TryBufferCardSelection(int32 RuntimeId);
+	int32 GetBufferedCardDraftRuntimeId() const { return BufferedPlayerInput.GetDraftRuntimeId(); }
+	EBattleHUDInteractionState GetBufferedCardDraftState() const;
+	bool TryGetBufferedDraftTarget(FName PresentationId, FBattleHUDTargetView& OutTarget) const;
+	bool CanDraftBufferedCard(int32 RuntimeId) const { return BufferedPlayerInput.CanBeginCardDraft(RuntimeId); }
+	void DiscardQueuedPlayerInput();
 	// Explicit chronology/readiness notification; never a cosmetic completion.
 	void NotifyBufferedPlayerInputReadinessChanged();
 

@@ -14,6 +14,8 @@ class ABattleManager;
 class ACombatant;
 class UBattlePresentationController;
 class UCardInstance;
+struct FQueuedCardPlayIntent;
+struct FGameplayRequestResult;
 struct FPendingCardSelectionReadView;
 struct FPresentationStateSnapshot;
 enum class EBattleState : uint8;
@@ -62,6 +64,8 @@ public:
 	bool RequestEndTurn();
 	// G9 accepted intent uses Gameplay turn authority independently of display lag.
 	bool RequestEndTurnForAcceptedIntent(const FPlayerTurnAuthorityToken& ExpectedTurn);
+	FGameplayRequestResult RequestQueuedCardPlay(const FQueuedCardPlayIntent& Intent);
+	void ReportQueuedPlayFeedback(const FText& Text);
 
 	// Wave 1C asynchronous Gameplay selection is intentionally separate from the
 	// normal caught-up card-play binding. These helpers query/submit through the
