@@ -21,14 +21,13 @@ class SLAYTHESPIREDEMO_API UBattleHUDReconciledWidget : public UBattleHUDWidget
 
 protected:
 	virtual void NativeDestruct() override;
-	virtual void NativeOnBattleHUDViewModelChanged() override;
-	virtual void RefreshHand() override;
+	virtual void BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) override;
+	virtual void AfterFormalHandCommit() override;
 	virtual void HandleCardPresentationOwnershipChanged(const TArray<int32>& RuntimeIds);
 
 private:
 	void EnsureOwnershipDelegateBinding();
 	void ApplyExplicitCardPresentationOwnershipToFormalHand();
-	void UnbindReconciledHandDelegates();
 
 	TWeakObjectPtr<UBattleHUDViewModel> OwnershipBoundViewModel;
 };

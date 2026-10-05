@@ -7,6 +7,8 @@
 #include "Engine/World.h"
 #include "Presentation/PresentationTypes.h"
 #include "UI/BattleHUDViewModel.h"
+#include "UObject/StrongObjectPtr.h"
+#include "UObject/GarbageCollection.h"
 
 namespace SelectionPresentationG0HUDTest
 {
@@ -205,11 +207,20 @@ bool FSelectionPresentationG0DrawAdoptionTest::RunTest(const FString& Parameters
 	FPresentationCardSnapshot Draw;
 	Draw.RuntimeId = 72;
 	Draw.CardId = TEXT("HUD_72");
-	UBattleCardWidget* Drawn = Fixture.HUD->CreateDrawVisualForTesting(Draw);
+	Draw.DisplayName = FText::FromString(TEXT("Card72"));
+	Draw.Cost = 1;
+	Draw.CardType = ECardType::Skill;
+	Draw.CardColor = ECardColor::Red;
+	FPresentationPlaybackToken Token;
+	Token.BattleId = 701; Token.ResolutionId = 1; Token.PresentationSequence = 1; Token.LocalPlaybackGeneration = 1;
+	UBattleCardWidget* Drawn = Fixture.HUD->PrepareDrawForTesting(Draw, Token, 1);
 	if (!TestNotNull(TEXT("Draw visual is created."), Drawn)) return false;
-	Fixture.Hand->AddChildToHorizontalBox(Drawn);
 	TestEqual(TEXT("In-flight draw is not hit-testable."), Drawn->GetVisibility(), ESlateVisibility::HitTestInvisible);
 	TestFalse(TEXT("In-flight draw has no Gameplay request binding."), Drawn->OnBattleCardRequested.IsBound());
+	FPresentationPlaybackToken Stale = Token;
+	++Stale.LocalPlaybackGeneration;
+	TestFalse(TEXT("Stale completion cannot authorize adoption."), Fixture.HUD->CompleteDrawForTesting(Stale));
+	TestTrue(TEXT("Exact completion authorizes the pending attachment."), Fixture.HUD->CompleteDrawForTesting(Token));
 
 	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(701, 2, { 71, 72 }), true);
 	TestTrue(TEXT("Reducer adopts the exact draw visual."), Fixture.HUD->FindFormalHandCardForTesting(72) == Drawn);
@@ -218,6 +229,7 @@ bool FSelectionPresentationG0DrawAdoptionTest::RunTest(const FString& Parameters
 	TestTrue(TEXT("Adopted draw is enabled."), Drawn->GetIsEnabled());
 	TestTrue(TEXT("Adopted draw has a formal request binding."), Drawn->OnBattleCardRequested.IsBound());
 	TestEqual(TEXT("Adoption leaves no duplicate slot."), Fixture.Hand->GetChildrenCount(), 2);
+	TestFalse(TEXT("Old cancel cannot remove the adopted formal card."), Fixture.HUD->CancelDrawForTesting(Token));
 
 	const int64 Generation = Fixture.ViewModel->BeginCardPresentationSelectionLifecycle(2);
 	TestTrue(TEXT("Adopted card can enter Selection ownership."), Fixture.ViewModel->SetPendingCardPresentationSelection(Generation, 72, true));
@@ -227,6 +239,83 @@ bool FSelectionPresentationG0DrawAdoptionTest::RunTest(const FString& Parameters
 	Fixture.ViewModel->CancelCardPresentationSelectionLifecycle(Generation);
 	TestEqual(TEXT("Ownership release restores adopted card hit testing."), Drawn->GetVisibility(), ESlateVisibility::Visible);
 	TestTrue(TEXT("Ownership release restores adopted card input."), Drawn->GetIsEnabled());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNativeHandStructureTransactionTest,
+	"SlayTheSpireDemo.HandStructure.Transaction", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FNativeHandStructureTransactionTest::RunTest(const FString& Parameters)
+{
+	using namespace SelectionPresentationG0HUDTest;
+	FProbeFixture Fixture;
+	if (!TestTrue(TEXT("Fixture exists"), Fixture.IsValidFixture())) return false;
+	Fixture.Initialize(MakeSnapshot(801, 1, {81, 82, 83}));
+	UBattleCardWidget* Card81 = Fixture.HUD->FindFormalHandCardForTesting(81);
+	UPanelSlot* Slot81 = Card81->Slot;
+	bool bPublishNested = true;
+	Fixture.HUD->OnAfterRefresh = [&]()
+	{
+		if (!bPublishNested) return;
+		bPublishNested = false;
+		Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(801, 3, {83, 81, 84}), true);
+	};
+	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(801, 2, {82, 81, 83}), true);
+	TestEqual(TEXT("Nested notifications drain after the outer refresh"), Fixture.HUD->MaxRefreshDepth, 1);
+	TestTrue(TEXT("Final frozen order is committed before publication returns"), Fixture.Hand->GetChildAt(1) == Card81);
+	TestTrue(TEXT("Reordering preserves the survivor slot"), Card81->Slot == Slot81);
+	TestEqual(TEXT("Final member count"), Fixture.Hand->GetChildrenCount(), 3);
+	FPresentationStateSnapshot Invalid = MakeSnapshot(801, 4, {81, 81, 85});
+	Fixture.ViewModel->ApplyPresentationSnapshot(Invalid, true);
+	TestTrue(TEXT("Invalid preparation preserves the last complete order"), Fixture.Hand->GetChildAt(1) == Card81);
+	TestNull(TEXT("Preparation failure never attaches a partial new member"), Fixture.HUD->FindFormalHandCardForTesting(85));
+	TestEqual(TEXT("Invalid frozen Hand disables Presentation without a Gameplay fault"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::PresentationUnavailable);
+	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(801, 5, {83, 81, 86}), true);
+	TestTrue(TEXT("Explicit recovery can commit a valid frozen Hand"), Fixture.HUD->FindFormalHandCardForTesting(86) != nullptr);
+	Fixture.HUD->CardWidgetClass = nullptr;
+	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(801, 6, {81, 87}), true);
+	TestEqual(TEXT("Missing Widget class preserves the complete member set"), Fixture.Hand->GetChildrenCount(), 3);
+	TestEqual(TEXT("Missing class also exposes unavailable state"), Fixture.ViewModel->InteractionState, EBattleHUDInteractionState::PresentationUnavailable);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNativeIncomingHandLifetimeTest,
+	"SlayTheSpireDemo.HandStructure.IncomingLifetime", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FNativeIncomingHandLifetimeTest::RunTest(const FString& Parameters)
+{
+	using namespace SelectionPresentationG0HUDTest;
+	FProbeFixture Fixture;
+	if (!TestTrue(TEXT("Fixture exists"), Fixture.IsValidFixture())) return false;
+	Fixture.Initialize(MakeSnapshot(901, 1, {91}));
+	TStrongObjectPtr<USelectionPresentationG0HUDProbe> KeepHUD(Fixture.HUD);
+	TStrongObjectPtr<UBattleHUDViewModel> KeepViewModel(Fixture.ViewModel);
+	FPresentationCardSnapshot Draw;
+	Draw.RuntimeId = 92; Draw.CardId = TEXT("HUD_92"); Draw.DisplayName = FText::FromString(TEXT("Card92"));
+	Draw.Cost = 1; Draw.CardType = ECardType::Skill; Draw.CardColor = ECardColor::Red;
+	FPresentationPlaybackToken Token;
+	Token.BattleId = 901; Token.ResolutionId = 1; Token.PresentationSequence = 1; Token.LocalPlaybackGeneration = 1;
+	TestNull(TEXT("Wrong target index declines with no attachment"), Fixture.HUD->PrepareDrawForTesting(Draw, Token, 0));
+	TestEqual(TEXT("Decline preserves formal membership"), Fixture.Hand->GetChildrenCount(), 1);
+	UBattleCardWidget* Drawn = Fixture.HUD->PrepareDrawForTesting(Draw, Token, 1);
+	if (!TestNotNull(TEXT("One temporary draw attaches"), Drawn)) return false;
+	TWeakObjectPtr<UBattleCardWidget> WeakDraw(Drawn);
+	CollectGarbage(RF_NoFlags);
+	TestTrue(TEXT("HUD roots incoming Widget through GC"), WeakDraw.IsValid());
+	Fixture.HUD->RefreshFormalHandForTesting();
+	TestTrue(TEXT("Unrelated refresh preserves in-flight attachment"), Fixture.Hand->GetChildAt(1) == Drawn);
+	TestNull(TEXT("A second temporary draw is rejected"), Fixture.HUD->PrepareDrawForTesting(Draw, Token, 1));
+	TestTrue(TEXT("Exact cancel retires only temporary draw"), Fixture.HUD->CancelDrawForTesting(Token));
+	TestEqual(TEXT("Cancel leaves one formal slot"), Fixture.Hand->GetChildrenCount(), 1);
+	FPresentationPlaybackToken NewToken = Token; ++NewToken.LocalPlaybackGeneration;
+	UBattleCardWidget* NewDraw = Fixture.HUD->PrepareDrawForTesting(Draw, NewToken, 1);
+	TestNotNull(TEXT("New generation can attach the same runtime identity"), NewDraw);
+	TestFalse(TEXT("Old cancel cannot retire new generation"), Fixture.HUD->CancelDrawForTesting(Token));
+	TestFalse(TEXT("Old completion cannot authorize new generation"), Fixture.HUD->CompleteDrawForTesting(Token));
+	Fixture.ViewModel->ApplyPresentationSnapshot(MakeSnapshot(902, 1, {91, 92}), true);
+	TestTrue(TEXT("Battle replacement creates a new formal owner"), Fixture.HUD->FindFormalHandCardForTesting(92) != NewDraw);
+	TestFalse(TEXT("Retired token cannot cancel replacement owner"), Fixture.HUD->CancelDrawForTesting(NewToken));
+	TestEqual(TEXT("Replacement has no ghost temporary slot"), Fixture.Hand->GetChildrenCount(), 2);
 	return true;
 }
 

@@ -33,7 +33,8 @@ protected:
 	virtual void NativeDestruct() override;
 	virtual bool HandleRightMouseButtonCancel() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-	virtual void NativeOnBattleHUDViewModelChanged() override;
+	virtual void BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) override;
+	virtual void AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) override;
 	virtual bool BeginPresentationRecordPlayback_Implementation(
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token) override;

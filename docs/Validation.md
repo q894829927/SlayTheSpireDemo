@@ -1,5 +1,16 @@
 # Validation
 
+## Native Hand structure ownership — 2026-10-05
+
+Source: `5f7f4fc` plus the structural refactor commit. Project generation and UE
+5.8 Development Editor build PASS. Initial run aborted in the obsolete R8 draw
+fixture after 16 completed cases; corrected exact-Battle/production-entry fixture
+passed the affected/unfinished 38-case recovery (37 success, one expected R8
+warning, zero failed/notRun). Union with unchanged initial cases: 50 distinct
+passes. Exact scope/logs: [refactor evidence](NativeHandStructureRefactor.md).
+No new PIE claim in this batch; focused layout acceptance follows separately.
+G9-B remains default off / PARTIAL PIE / NOT SEALED.
+
 ## Production Native Hand layout repair — 2026-10-05
 
 Status: **REPAIRED / BUILD PASS / AFFECTED AUTOMATION PASS / FOCUSED PIE PASS**. G9-B overall remains opt-in / partially visually validated / not sealed.

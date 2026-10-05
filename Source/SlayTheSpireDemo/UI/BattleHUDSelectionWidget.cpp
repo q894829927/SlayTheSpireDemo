@@ -228,7 +228,7 @@ bool UBattleHUDSelectionWidget::HandleRightMouseButtonCancel()
 	return Super::HandleRightMouseButtonCancel();
 }
 
-void UBattleHUDSelectionWidget::NativeOnBattleHUDViewModelChanged()
+void UBattleHUDSelectionWidget::BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
 {
 	if (SelectionBoundViewModel.Get() != ViewModel.Get())
 	{
@@ -238,7 +238,12 @@ void UBattleHUDSelectionWidget::NativeOnBattleHUDViewModelChanged()
 		PendingGeneration = PendingBattleId = PendingBoundaryRevision = 0;
 		SelectionBoundViewModel = ViewModel;
 	}
-	Super::NativeOnBattleHUDViewModelChanged();
+	Super::BeforeNativeHUDRefresh(DirtyFlags);
+}
+
+void UBattleHUDSelectionWidget::AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
+{
+	Super::AfterNativeHUDRefresh(DirtyFlags);
 	SynchronizeSelectionSurfaces({});
 	RefreshSharedSelectionPresentation();
 }

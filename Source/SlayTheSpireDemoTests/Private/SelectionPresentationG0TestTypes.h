@@ -31,10 +31,15 @@ public:
 		UBattleHUDViewModel* InViewModel,
 		UHorizontalBox* InHand);
 	void RefreshFormalHandForTesting() { RefreshHand(); }
-	UBattleCardWidget* CreateDrawVisualForTesting(const FPresentationCardSnapshot& Snapshot)
+	UBattleCardWidget* PrepareDrawForTesting(const FPresentationCardSnapshot& Snapshot, const FPresentationPlaybackToken& Token, int32 Index)
 	{
-		return CreateNativePresentationCard(Snapshot);
+		return PrepareIncomingHandAttachment(Snapshot, Token, Index) ? FindFormalHandCardForTesting(Snapshot.RuntimeId) : nullptr;
 	}
+	bool CompleteDrawForTesting(const FPresentationPlaybackToken& Token) { return CompleteIncomingHandAttachment(Token); }
+	bool CancelDrawForTesting(const FPresentationPlaybackToken& Token) { return CancelIncomingHandAttachment(Token); }
+	TFunction<void()> OnAfterRefresh;
+	int32 RefreshDepth = 0;
+	int32 MaxRefreshDepth = 0;
 	int32 GetFormalHandChildCountForTesting() const;
 	UBattleCardWidget* FindFormalHandCardForTesting(int32 RuntimeId) const;
 	virtual UWorld* GetWorld() const override;
@@ -43,6 +48,17 @@ protected:
 	// Tests exercise G0 Hand reconciliation/ownership only and deliberately avoid
 	// the full production Designer binding contract.
 	virtual void NativeOnInitialized() override {}
+	virtual void BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) override
+	{
+		Super::BeforeNativeHUDRefresh(DirtyFlags);
+		MaxRefreshDepth = FMath::Max(MaxRefreshDepth, ++RefreshDepth);
+	}
+	virtual void AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) override
+	{
+		Super::AfterNativeHUDRefresh(DirtyFlags);
+		if (OnAfterRefresh) OnAfterRefresh();
+		--RefreshDepth;
+	}
 
 private:
 	UPROPERTY(Transient)

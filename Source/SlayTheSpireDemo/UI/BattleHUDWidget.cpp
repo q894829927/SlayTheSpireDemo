@@ -18,6 +18,7 @@
 #include "Components/WrapBox.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Misc/ScopeExit.h"
 
 #define LOCTEXT_NAMESPACE "BattleHUDWidget"
 
@@ -270,103 +271,236 @@ void UBattleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 void UBattleHUDWidget::NativeOnBattleHUDViewModelChanged()
 {
-	RefreshHUDFromViewModel();
+	RequestNativeHUDRefresh(GetCurrentNativeViewModelDirtyFlags());
 }
 
 void UBattleHUDWidget::RefreshHUDFromViewModel()
 {
-	if (!bNativeBindingsValid || !IsValid(ViewModel))
-	{
-		return;
-	}
-
-	const EBattleHUDDirtyFlags Dirty = GetCurrentNativeViewModelDirtyFlags();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Hand)) RefreshHand();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input)) RefreshCombatants();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Statuses)) RefreshStatusRows();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Energy)) RefreshEnergy();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PileCounts)) RefreshPileCounts();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Hand | EBattleHUDDirtyFlags::Terminal | EBattleHUDDirtyFlags::PresentationAvailability)) RefreshInputState();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Feedback)) RefreshFeedback();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Intent)) RefreshEnemyIntent();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
-	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PresentationAvailability)) RefreshPresentationAvailabilityFromViewModel();
+	RequestNativeHUDRefresh(EBattleHUDDirtyFlags::All);
 }
 
 void UBattleHUDWidget::RefreshHand()
 {
-	if (!IsValid(ViewModel) || !IsValid(HB_Hand) || CardWidgetClass == nullptr)
-	{
-		return;
-	}
+	if (bFormalHandPreparationFailed && IsValid(ViewModel)
+		&& ViewModel->InteractionState == EBattleHUDInteractionState::PresentationUnavailable) return;
+	RequestNativeHUDRefresh(EBattleHUDDirtyFlags::Hand);
+}
 
-	TArray<TObjectPtr<UBattleCardWidget>> PreviousCards = FormalHandCards;
-	if (FormalHandBattleId == ViewModel->BattleId || FormalHandBattleId == 0)
+void UBattleHUDWidget::RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
+{
+	PendingNativeHUDDirtyFlags |= DirtyFlags;
+	if (bDrainingNativeHUDRefresh) return;
+	TGuardValue<bool> Guard(bDrainingNativeHUDRefresh, true);
+	while (PendingNativeHUDDirtyFlags != EBattleHUDDirtyFlags::None)
+	{
+		const EBattleHUDDirtyFlags Dirty = PendingNativeHUDDirtyFlags;
+		PendingNativeHUDDirtyFlags = EBattleHUDDirtyFlags::None;
+		BeforeNativeHUDRefresh(Dirty);
+		if (!IsValid(ViewModel)) continue;
+		// Each surface validates its own bindings. Partial, non-interactive HUDs
+		// can display a Hand without weakening the production request guard.
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Hand)) CommitFormalHand();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input)) RefreshCombatants();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Statuses)) RefreshStatusRows();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Energy)) RefreshEnergy();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PileCounts)) RefreshPileCounts();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Hand | EBattleHUDDirtyFlags::Terminal | EBattleHUDDirtyFlags::PresentationAvailability)) RefreshInputState();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Feedback)) RefreshFeedback();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Intent)) RefreshEnemyIntent();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
+		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PresentationAvailability)) RefreshPresentationAvailabilityFromViewModel();
+		AfterNativeHUDRefresh(Dirty);
+	}
+}
+
+void UBattleHUDWidget::FailFormalHandPreparation()
+{
+	PreparedHandCards.Reset();
+	if (!bFormalHandPreparationFailed && IsValid(ViewModel))
+	{
+		bFormalHandPreparationFailed = true;
+		ViewModel->EnterPresentationUnavailable(FText::FromString(TEXT("Native frozen Hand preparation failed.")));
+	}
+}
+
+bool UBattleHUDWidget::CommitFormalHand()
+{
+	if (!IsValid(ViewModel) || !IsValid(HB_Hand)) return false;
+	if (CardWidgetClass == nullptr) { FailFormalHandPreparation(); return false; }
+	const TObjectPtr<UBattleHUDViewModel> FrozenViewModel = ViewModel;
+	const int64 BattleId = ViewModel->BattleId;
+	const int64 Revision = ViewModel->StateRevision;
+	const TArray<FBattleHUDCardView> FrozenHand = ViewModel->HandCards;
+	TSet<int32> Ids;
+	for (const FBattleHUDCardView& Card : FrozenHand)
+	{
+		if (Card.RuntimeId == INDEX_NONE || Ids.Contains(Card.RuntimeId))
+		{
+			FailFormalHandPreparation();
+			return false;
+		}
+		Ids.Add(Card.RuntimeId);
+	}
+	const bool bSameSurface = HandBoundViewModel.Get() == ViewModel.Get()
+		&& HandBoundPanel.Get() == HB_Hand && FormalHandBattleId == BattleId;
+	TArray<TObjectPtr<UBattleCardWidget>> PreviousCards = bSameSurface ? FormalHandCards : TArray<TObjectPtr<UBattleCardWidget>>();
+	// Initial adoption supports already attached formal surfaces, once only.
+	if (FormalHandBattleId == 0 && HandBoundPanel == nullptr)
 	{
 		for (UWidget* Child : HB_Hand->GetAllChildren())
-			if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child)) PreviousCards.AddUnique(Card);
-	}
-	else PreviousCards.Reset();
-	// Keep survivors rooted while new Widgets are constructed and slots reattach.
-	FormalHandCards = PreviousCards;
-	TArray<TObjectPtr<UBattleCardWidget>> DesiredCards;
-	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
-	{
-		UBattleCardWidget* CardWidget = nullptr;
-		for (UBattleCardWidget* Existing : PreviousCards)
-			if (IsValid(Existing) && Existing->GetRuntimeId() == CardView.RuntimeId) { CardWidget = Existing; break; }
-		if (!CardWidget)
-			CardWidget = GetOwningPlayer() ? CreateWidget<UBattleCardWidget>(GetOwningPlayer(), CardWidgetClass)
-				: CreateWidget<UBattleCardWidget>(GetWorld(), CardWidgetClass);
-		if (!IsValid(CardWidget))
 		{
-			UE_LOG(
-				LogTemp,
-				Error,
-				TEXT("[BattleHUD][Native] Failed to create formal Hand card RuntimeId=%d CardId=%s."),
-				CardView.RuntimeId,
-				*CardView.CardId.ToString());
-			continue;
-		}
-
-		CardWidget->SetCardView(CardView);
-		FormalHandCards.AddUnique(CardWidget);
-		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
-			this,
-			&UBattleHUDWidget::HandleCardRequested);
-		DesiredCards.Add(CardWidget);
-	}
-	for (UBattleCardWidget* Existing : PreviousCards)
-		if (IsValid(Existing) && !DesiredCards.Contains(Existing)) Existing->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
-	bool bStructureChanged = HB_Hand->GetChildrenCount() != DesiredCards.Num();
-	for (int32 Index = 0; !bStructureChanged && Index < DesiredCards.Num(); ++Index)
-		bStructureChanged = HB_Hand->GetChildAt(Index) != DesiredCards[Index];
-	if (bStructureChanged)
-	{
-		if (FanHand && HB_Hand == FanHand)
-		{
-			// Removing every child destroys the surviving cards' SObjectWidgets.
-			// Reusing only their UObjects then rebuilds the card faces mid-playback.
-			// Keep each survivor's live Slate tree and Canvas slot attached instead.
-			for (UWidget* Child : HB_Hand->GetAllChildren())
-				if (!DesiredCards.Contains(Cast<UBattleCardWidget>(Child))) HB_Hand->RemoveChild(Child);
-			for (int32 Index = 0; Index < DesiredCards.Num(); ++Index)
+			UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child);
+			if (!IsValid(Card) || PreviousCards.ContainsByPredicate([Card](UBattleCardWidget* Existing) { return Existing->GetRuntimeId() == Card->GetRuntimeId(); }))
 			{
-				UBattleCardWidget* Card = DesiredCards[Index];
-				if (Card->GetParent() != HB_Hand) HB_Hand->AddChild(Card);
-				if (HB_Hand->GetChildAt(Index) != Card) HB_Hand->ShiftChild(Index, Card);
+				FailFormalHandPreparation();
+				return false;
 			}
-			FanHand->LayoutCards();
-		}
-		else
-		{
-			HB_Hand->ClearChildren();
-			for (UBattleCardWidget* Card : DesiredCards) HB_Hand->AddChild(Card);
+			PreviousCards.Add(Card);
 		}
 	}
-	FormalHandCards = MoveTemp(DesiredCards);
-	FormalHandBattleId = ViewModel->BattleId;
-	if (FanHand) FanHand->ReconcileLayout();
+	const bool bIncomingInScope = IsValid(IncomingHandAttachment.Widget)
+		&& IncomingHandAttachment.SurfaceGeneration == HandSurfaceGeneration
+		&& IncomingHandAttachment.BattleId == BattleId
+		&& HandBoundPanel.Get() == HB_Hand && HandBoundViewModel.Get() == ViewModel.Get();
+	bool bAdoptIncoming = false;
+	PreparedHandCards.Reset();
+	for (int32 Index = 0; Index < FrozenHand.Num(); ++Index)
+	{
+		const FBattleHUDCardView& CardView = FrozenHand[Index];
+		UBattleCardWidget* Card = nullptr;
+		for (UBattleCardWidget* Existing : PreviousCards)
+			if (IsValid(Existing) && Existing->GetRuntimeId() == CardView.RuntimeId) { Card = Existing; break; }
+		if (bIncomingInScope && CardView.RuntimeId == IncomingHandAttachment.Card.RuntimeId)
+		{
+			if (!IncomingHandAttachment.bCompleted || Index != IncomingHandAttachment.TargetIndex
+				|| !DoesNativeCardViewMatchSnapshot(CardView, IncomingHandAttachment.Card))
+			{
+				FailFormalHandPreparation();
+				return false;
+			}
+			Card = IncomingHandAttachment.Widget;
+			bAdoptIncoming = true;
+		}
+		if (!Card) Card = GetOwningPlayer() ? CreateWidget<UBattleCardWidget>(GetOwningPlayer(), CardWidgetClass)
+			: CreateWidget<UBattleCardWidget>(GetWorld(), CardWidgetClass);
+		if (!IsValid(Card)) { FailFormalHandPreparation(); return false; }
+		PreparedHandCards.Add(Card);
+	}
+	// Nothing above changes a surviving Widget, slot or binding. Reject an
+	// obsolete preparation before the single structural commit boundary.
+	if (ViewModel != FrozenViewModel || ViewModel->BattleId != BattleId || ViewModel->StateRevision != Revision)
+	{
+		PreparedHandCards.Reset();
+		PendingNativeHUDDirtyFlags |= EBattleHUDDirtyFlags::Hand;
+		return false;
+	}
+	if (!bSameSurface)
+	{
+		CancelIncomingHandAttachment();
+		for (UBattleCardWidget* Card : FormalHandCards)
+			if (IsValid(Card)) { Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested); Card->RemoveFromParent(); }
+		++HandSurfaceGeneration;
+	}
+	// An uncommitted incoming draw remains the sole extra child until history
+	// adopts it. A changed frozen prefix invalidates that attachment.
+	const bool bKeepIncoming = bIncomingInScope && !bAdoptIncoming
+		&& FrozenHand.Num() == IncomingHandAttachment.TargetIndex && PreviousCards == PreparedHandCards;
+	if (!bKeepIncoming && !bAdoptIncoming) CancelIncomingHandAttachment();
+	for (UWidget* Child : HB_Hand->GetAllChildren())
+		if (!PreparedHandCards.Contains(Cast<UBattleCardWidget>(Child))
+			&& !(bKeepIncoming && Child == IncomingHandAttachment.Widget)) HB_Hand->RemoveChild(Child);
+	for (UBattleCardWidget* Card : PreviousCards)
+		if (IsValid(Card) && !PreparedHandCards.Contains(Card)) Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+	for (int32 Index = 0; Index < PreparedHandCards.Num(); ++Index)
+	{
+		UBattleCardWidget* Card = PreparedHandCards[Index];
+		if (Card->GetParent() != HB_Hand) HB_Hand->AddChild(Card);
+		if (HB_Hand->GetChildAt(Index) != Card) HB_Hand->ShiftChild(Index, Card);
+	}
+	FormalHandCards = PreparedHandCards;
+	PreparedHandCards.Reset();
+	FormalHandBattleId = BattleId;
+	HandBoundViewModel = ViewModel;
+	HandBoundPanel = HB_Hand;
+	if (FanHand) FanHand->LayoutCards();
+	for (int32 Index = 0; Index < FormalHandCards.Num(); ++Index)
+	{
+		UBattleCardWidget* Card = FormalHandCards[Index];
+		Card->SetCardView(FrozenHand[Index]);
+		Card->OnBattleCardRequested.AddUniqueDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+	}
+	if (bAdoptIncoming)
+	{
+		IncomingHandAttachment.Widget->SetVisibility(ESlateVisibility::Visible);
+		IncomingHandAttachment.Widget->SetIsEnabled(true);
+		IncomingHandAttachment = FNativeIncomingHandAttachment{};
+	}
+	bFormalHandPreparationFailed = false;
+	AfterFormalHandCommit();
+	return true;
+}
+
+bool UBattleHUDWidget::PrepareIncomingHandAttachment(const FPresentationCardSnapshot& Card,
+	const FPresentationPlaybackToken& Token, int32 TargetIndex)
+{
+	if (bDrainingNativeHUDRefresh || !Token.IsValid() || !IsValid(ViewModel) || !IsValid(HB_Hand)
+		|| Token.BattleId != ViewModel->BattleId || IsValid(IncomingHandAttachment.Widget)
+		|| TargetIndex != ViewModel->HandCards.Num() || HB_Hand->GetChildrenCount() != TargetIndex
+		|| !IsNativeCardSnapshotValid(Card) || !IsRuntimeIdAbsentFromNativeCardVisuals(Card.RuntimeId)) return false;
+	ON_SCOPE_EXIT { RequestNativeHUDRefresh(EBattleHUDDirtyFlags::None); };
+	TGuardValue<bool> Guard(bDrainingNativeHUDRefresh, true);
+	const TObjectPtr<UBattleHUDViewModel> PreparedViewModel = ViewModel;
+	const TObjectPtr<UPanelWidget> PreparedPanel = HB_Hand;
+	const int64 Revision = ViewModel->StateRevision;
+	TArray<TObjectPtr<UBattleCardWidget>> InitialCards;
+	if (FormalHandBattleId == 0)
+		for (UWidget* Child : HB_Hand->GetAllChildren())
+		{
+			UBattleCardWidget* Existing = Cast<UBattleCardWidget>(Child);
+			if (!Existing) return false;
+			InitialCards.Add(Existing);
+		}
+	UBattleCardWidget* Widget = CreateNativePresentationCard(Card);
+	if (!IsValid(Widget) || ViewModel != PreparedViewModel || HB_Hand != PreparedPanel
+		|| ViewModel->StateRevision != Revision || ViewModel->BattleId != Token.BattleId) return false;
+	IncomingHandAttachment.Widget = Widget; // root before attachment builds Slate
+	IncomingHandAttachment.Card = Card;
+	IncomingHandAttachment.Token = Token;
+	IncomingHandAttachment.BattleId = Token.BattleId;
+	IncomingHandAttachment.SurfaceGeneration = HandSurfaceGeneration;
+	IncomingHandAttachment.TargetIndex = TargetIndex;
+	HandBoundPanel = HB_Hand;
+	HandBoundViewModel = ViewModel;
+	if (!HB_Hand->AddChild(Widget)) { CancelIncomingHandAttachment(); return false; }
+	if (FormalHandBattleId == 0) { FormalHandCards = InitialCards; FormalHandBattleId = ViewModel->BattleId; }
+	if (FanHand) FanHand->PrepareIncomingCardLayout();
+	return true;
+}
+
+bool UBattleHUDWidget::CompleteIncomingHandAttachment(const FPresentationPlaybackToken& Token)
+{
+	if (!IsValid(IncomingHandAttachment.Widget) || IncomingHandAttachment.Token != Token
+		|| IncomingHandAttachment.SurfaceGeneration != HandSurfaceGeneration
+		|| HandBoundViewModel.Get() != ViewModel.Get() || HandBoundPanel.Get() != HB_Hand
+		|| !IsValid(ViewModel) || ViewModel->BattleId != IncomingHandAttachment.BattleId) return false;
+	NormalizeNativeCardTransform(IncomingHandAttachment.Widget);
+	IncomingHandAttachment.bCompleted = true;
+	return true;
+}
+
+bool UBattleHUDWidget::CancelIncomingHandAttachment(const FPresentationPlaybackToken& Token)
+{
+	if (!IsValid(IncomingHandAttachment.Widget) || IncomingHandAttachment.Token != Token
+		|| IncomingHandAttachment.SurfaceGeneration != HandSurfaceGeneration) return false;
+	CancelIncomingHandAttachment();
+	return true;
+}
+
+void UBattleHUDWidget::CancelIncomingHandAttachment()
+{
+	if (IsValid(IncomingHandAttachment.Widget)) IncomingHandAttachment.Widget->RemoveFromParent();
+	IncomingHandAttachment = FNativeIncomingHandAttachment{};
+	if (FanHand) FanHand->LayoutCards();
 }
 
 void UBattleHUDWidget::RefreshCombatants()
@@ -1212,9 +1346,11 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 		return false;
 	}
 
-	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
-	if (!IsValid(PresentationCard) || !CommitNativePresentationOwnership(Record.Type, Token))
+	if (!PrepareIncomingHandAttachment(Payload.Card, Token, Payload.ToIndex)) return false;
+	UBattleCardWidget* PresentationCard = IncomingHandAttachment.Widget;
+	if (!CommitNativePresentationOwnership(Record.Type, Token))
 	{
+		CancelIncomingHandAttachment(Token);
 		return false;
 	}
 
@@ -1223,19 +1359,6 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 	ActiveNativeDrawCountBefore = ViewModel->DrawCount;
 	ActiveNativeDrawCountAfter = ViewModel->DrawCount - 1;
 	ActiveNativeCardDestinationIndex = Payload.ToIndex;
-	if (HB_Hand->AddChild(PresentationCard) == nullptr)
-	{
-		PresentationCard->RemoveFromParent();
-		ResetNativeCardRecordState();
-		AbortNativePresentationStart();
-		return false;
-	}
-	if (FanHand)
-	{
-		// The final hand count is known now. Resolve every card's destination
-		// slot and resting fan angle before the draw animation gets its first tick.
-		FanHand->PrepareIncomingCardLayout();
-	}
 	ConfigureNativeCardAnimation(
 		PresentationCard,
 		Txt_DrawCount,
@@ -1250,7 +1373,7 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
 	{
 		ApplyNativePileCounts(ActiveNativeDrawCountBefore, ViewModel->DiscardCount);
-		PresentationCard->RemoveFromParent();
+		CancelIncomingHandAttachment(Token);
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -2575,7 +2698,7 @@ void UBattleHUDWidget::FinishNativeCardPresentation(EBattlePresentationRecordTyp
 		ActiveNativeHistoricalHandCardWidget.Reset();
 		break;
 	case ENativeCardPresentationKind::DrawToHand:
-		NormalizeNativeCardTransform(ActiveNativeDrawnCardWidget.Get());
+		CompleteIncomingHandAttachment(ActiveNativePresentationToken);
 		ActiveNativeDrawnCardWidget.Reset();
 		break;
 	case ENativeCardPresentationKind::PlayAreaToDestination:
@@ -2634,10 +2757,7 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 			{
 				ApplyNativePileCounts(ActiveNativeDrawCountBefore, ViewModel->DiscardCount);
 			}
-			if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
-			{
-				DrawnCard->RemoveFromParent();
-			}
+			CancelIncomingHandAttachment(ActiveNativePresentationToken);
 			break;
 		case ENativeCardPresentationKind::PlayAreaToDestination:
 			if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
@@ -2663,10 +2783,7 @@ void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 			HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
 		}
 	}
-	if (UBattleCardWidget* DrawnCard = ActiveNativeDrawnCardWidget.Get())
-	{
-		DrawnCard->RemoveFromParent();
-	}
+	CancelIncomingHandAttachment();
 	if (UBattleCardWidget* ZoneCard = ActiveNativeZoneCardWidget.Get())
 	{
 		ZoneCard->RemoveFromParent();

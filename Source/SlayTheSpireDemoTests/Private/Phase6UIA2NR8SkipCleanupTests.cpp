@@ -50,6 +50,7 @@ bool FNativeR8SkipClearsRetainedPlayedCardTest::RunTest(const FString& Parameter
 	Probe->SetTestWorld(World);
 	Probe->SetViewModelForTesting(ViewModel);
 	Probe->ConfigureCardSurfaces(Hand, PlayArea, DrawCount, DiscardCount, Energy);
+	ViewModel->BattleId = BattleId;
 	ViewModel->Player.PresentationId = PlayerPresentationId;
 	ViewModel->Enemy.PresentationId = EnemyPresentationId;
 	ViewModel->Energy = 3;

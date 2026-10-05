@@ -153,6 +153,15 @@ The first command regenerates `.sln`/`.slnx` files; it does not compile the proj
 
 ## Documentation
 
+### Local commit batches
+
+For the current Native/G9 work and subsequent modifications, finish each coherent
+batch with its relevant tests and documentation, run the required checks, and
+create a separate local commit before starting the next batch. Manual acceptance
+may remain explicitly pending in an implementation commit; it must never be
+reported as completed or sealed. Preserve unrelated work, exclude generated/local
+files, and do not push unless the user requests it.
+
 `AGENTS.md` files define how work must be performed. The `docs/` directory defines what the project is, what has been implemented and how phases are accepted.
 
 When a meaningful phase changes:

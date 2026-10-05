@@ -1,5 +1,11 @@
 # Selection Presentation G9-B — Buffered Player Input and Stable Hand Hover
 
+2026-10-05 architecture correction: implementation baseline saved in `5f7f4fc`;
+subsequent structure/layout work is tracked in
+[Native Hand refactor](NativeHandStructureRefactor.md). This replaces the former
+uncommitted delivery state; historical run identities and remaining full B visual
+gates are retained. G9 input remains default off / NOT SEALED.
+
 Date: **2026-10-05**
 
 Status: **IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN; G9 NOT SEALED**

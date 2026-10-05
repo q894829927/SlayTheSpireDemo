@@ -142,6 +142,7 @@ namespace Phase6UIA2NR8Test
 			Probe->SetTestWorld(World);
 			Probe->SetViewModelForTesting(ViewModel);
 			Probe->ConfigureCardSurfaces(Hand, PlayArea, DrawCount, DiscardCount, Energy);
+			ViewModel->BattleId = TestBattleId;
 			ViewModel->Player.PresentationId = PlayerPresentationId;
 			ViewModel->Enemy.PresentationId = EnemyPresentationId;
 			ViewModel->Energy = 3;
@@ -211,19 +212,13 @@ namespace Phase6UIA2NR8Test
 					return View.RuntimeId == RuntimeId;
 				});
 			ViewModel->Energy -= Snapshot.Cost;
-			Hand->ClearChildren();
+			Probe->ReconcileHandForTesting();
 			SyncCountText();
 		}
 
 		void RebuildFormalHandWidgetsForTesting()
 		{
-			Hand->ClearChildren();
-			for (const FBattleHUDCardView& View : ViewModel->HandCards)
-			{
-				UPhase6UIA2NR8CardProbe* Card = NewObject<UPhase6UIA2NR8CardProbe>(Probe);
-				Card->SetCardView(View);
-				Hand->AddChild(Card);
-			}
+			Probe->ReconcileHandForTesting();
 		}
 	};
 

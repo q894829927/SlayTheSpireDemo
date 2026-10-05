@@ -24,6 +24,21 @@ class UWrapBox;
 class UWidget;
 enum class EBattleHUDCombatantAnimation : uint8;
 
+// One temporary Hand attachment; completion authorizes adoption only after the
+// matching frozen history arrives. This is visual state, never deck authority.
+USTRUCT()
+struct FNativeIncomingHandAttachment
+{
+	GENERATED_BODY()
+	UPROPERTY(Transient) FPresentationPlaybackToken Token;
+	UPROPERTY(Transient) FPresentationCardSnapshot Card;
+	UPROPERTY(Transient) TObjectPtr<UBattleCardWidget> Widget = nullptr;
+	int64 BattleId = 0;
+	uint64 SurfaceGeneration = 0;
+	int32 TargetIndex = INDEX_NONE;
+	bool bCompleted = false;
+};
+
 UENUM()
 enum class EDetachedDamageVisualLifecycleState : uint8
 {
@@ -120,7 +135,10 @@ protected:
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 	virtual void OnWidgetRebuilt() override;
 	virtual void BeginDestroy() override;
-	virtual void NativeOnBattleHUDViewModelChanged() override;
+	virtual void NativeOnBattleHUDViewModelChanged() override final;
+	virtual void BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) {}
+	virtual void AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) {}
+	virtual void AfterFormalHandCommit() {}
 	virtual void NativeOnBufferedPlayerInputChanged() override;
 	virtual bool HasPendingFastCardRetry() const override;
 	virtual void RetirePendingFastCardRetry() override;
@@ -360,7 +378,12 @@ protected:
 	}
 
 	void RefreshHUDFromViewModel();
-	virtual void RefreshHand();
+	// Requests the same serialized structural transaction as a ViewModel event.
+	void RefreshHand();
+	bool PrepareIncomingHandAttachment(const FPresentationCardSnapshot& Card,
+		const FPresentationPlaybackToken& Token, int32 TargetIndex);
+	bool CompleteIncomingHandAttachment(const FPresentationPlaybackToken& Token);
+	bool CancelIncomingHandAttachment(const FPresentationPlaybackToken& Token);
 	void RefreshCombatants();
 	void RefreshStatusRows();
 	void RefreshEnergy();
@@ -416,9 +439,6 @@ protected:
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleHandFanPanel> FanHand;
 
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UBattleCardWidget>> FormalHandCards;
-	int64 FormalHandBattleId = 0;
 	bool bBufferedHandHoverAvailable = false;
 
 	UPROPERTY(Transient)
@@ -504,6 +524,21 @@ protected:
 	TObjectPtr<UTextBlock> Txt_EnemyIntent;
 
 private:
+	void RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags);
+	bool CommitFormalHand();
+	void CancelIncomingHandAttachment();
+	void FailFormalHandPreparation();
+	EBattleHUDDirtyFlags PendingNativeHUDDirtyFlags = EBattleHUDDirtyFlags::None;
+	bool bDrainingNativeHUDRefresh = false;
+	bool bFormalHandPreparationFailed = false;
+	// All formal identities belong to this Battle; RuntimeId never crosses it.
+	UPROPERTY(Transient) TArray<TObjectPtr<UBattleCardWidget>> FormalHandCards;
+	UPROPERTY(Transient) TArray<TObjectPtr<UBattleCardWidget>> PreparedHandCards;
+	UPROPERTY(Transient) FNativeIncomingHandAttachment IncomingHandAttachment;
+	TWeakObjectPtr<UBattleHUDViewModel> HandBoundViewModel;
+	TWeakObjectPtr<UPanelWidget> HandBoundPanel;
+	int64 FormalHandBattleId = 0;
+	uint64 HandSurfaceGeneration = 1;
 	void RetryPendingFastCardSelection();
 
 	bool bNativeBindingsValid = false;
