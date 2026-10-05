@@ -1,5 +1,31 @@
 # Validation
 
+## Native Hand Slate layout — 2026-10-05
+
+Source: `4237526` plus this dedicated Hand Slot/Slate layout and cancellation
+retirement batch, on `codex/g9-buffered-input-detached-cards`. Prescribed bundled
+project generation and UE 5.8 Development Editor build PASS. Final affected
+run: 52 success / one expected R8 warning / two failed / zero notRun, 55 cases
+(`Saved/AutomationReports/HandSlateRetirement/index.json`). Both failures were
+old R5 fixtures with mismatched Record/Token sequences; after correcting the
+immutable fixture Records, only those two cases were rerun, 2/2 PASS
+(`Saved/AutomationReports/HandSlateR5Recovery/index.json`). Thus all 55 covered
+cases have valid passing evidence across those executions, not one uninterrupted
+55/55 run. The earlier unaffected HandInteraction/frozen-face evidence is reused;
+historical overlapping totals are not added together.
+
+MCP PIE used production `L_Battle_RuinedCitadel`, Native, D3D12, G9 false and
+150x210 cards. Play/draw during viewport resize, Selection select/deselect/confirm,
+post-draw hover and Resolving stop/restart were observed with coherent full-size
+Hand cards. The additional same-HUD FastInput/Skip check exposed retained
+PlayArea visuals after animation completion but before callback forwarding.
+Tracked-unit retirement now owns that cleanup. Repaired receipt-window Skip,
+active-draw Skip and new-card hover/selection passed actual MCP PIE. This
+refactor-specific visual gate is PASS. G9-B's original enabled-input visual
+gates remain USER ACTION REQUIRED; G9 stays OPT-IN / PARTIAL PIE / NOT SEALED.
+Exact scopes, logs, images and remaining actions:
+[refactor evidence](NativeHandStructureRefactor.md).
+
 ## Native Hand structure ownership — 2026-10-05
 
 Source: `5f7f4fc` plus the structural refactor commit. Project generation and UE

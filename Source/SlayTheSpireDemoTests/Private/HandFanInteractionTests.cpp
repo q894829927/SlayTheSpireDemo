@@ -5,7 +5,9 @@
 #include "UI/BattleTargetingArrowWidget.h"
 #include "UI/BattleCardWidget.h"
 #include "UI/BattleHUDWidget.h"
+#include "NativeHandLayoutTestUtils.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/CanvasPanel.h"
 #include "Components/Image.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
@@ -27,20 +29,73 @@ bool FHandFanFormalSlotTest::RunTest(const FString& Parameters)
 	}
 	Cards[2]->SetVisibility(ESlateVisibility::Hidden);
 	Cards[2]->SetIsEnabled(false);
-	Panel->LayoutCards();
+	Panel->CommitFrozenOrder();
+	const auto Wide = NativeHandLayoutTest::Arrange(Panel, FVector2D(900, 280));
+	const auto Narrow = NativeHandLayoutTest::Arrange(Panel, FVector2D(500, 280));
 	TestEqual(TEXT("Hidden selected slot remains structural"), Panel->GetChildrenCount(), 5);
 	for (int32 I = 0; I < 5; ++I)
 	{
 		TestTrue(TEXT("Fan preserves exact frozen index and object"), Panel->GetChildAt(I) == Cards[I]);
-		const auto* CanvasSlot = CastChecked<UCanvasPanelSlot>(Cards[I]->Slot);
-		const FVector2D Opposite = CastChecked<UCanvasPanelSlot>(Cards[4 - I]->Slot)->GetPosition();
-		TestTrue(TEXT("Fan is symmetric"), FMath::IsNearlyEqual(CanvasSlot->GetPosition().X, -Opposite.X));
+		const FGeometry* Geometry = NativeHandLayoutTest::Find(Wide, Cards[I]);
+		const FGeometry* Opposite = NativeHandLayoutTest::Find(Wide, Cards[4-I]);
+		if (!TestNotNull(TEXT("First Slate pass arranges the card"), Geometry) || !TestNotNull(TEXT("Opposite card"), Opposite)) return false;
+		TestTrue(TEXT("First layout uses full configured size"), FVector2D(Geometry->GetLocalSize()) == FVector2D(150, 210));
+		TestTrue(TEXT("Fan is bottom-centered and symmetric"), FMath::IsNearlyEqual(
+			NativeHandLayoutTest::Position(*Geometry).X + NativeHandLayoutTest::Position(*Opposite).X, 750.0));
+		TestEqual(TEXT("Frozen rank is explicit"), CastChecked<UBattleHandFanSlot>(Cards[I]->Slot)->GetFrozenIndex(), I);
 	}
+	TestTrue(TEXT("Allotted width changes arrangement without Tick"),
+		NativeHandLayoutTest::Position(*NativeHandLayoutTest::Find(Wide, Cards[0])) != NativeHandLayoutTest::Position(*NativeHandLayoutTest::Find(Narrow, Cards[0])));
 	TestEqual(TEXT("Layout cannot restore hidden ownership"), Cards[2]->GetVisibility(), ESlateVisibility::Hidden);
 	Panel->RemoveChild(Cards[0]);
+	Panel->CommitFrozenOrder();
 	TestTrue(TEXT("Removal retains remaining instance"), Panel->GetChildAt(0) == Cards[1]);
 	TestEqual(TEXT("One-card fan is upright"), UBattleHandFanPanel::GetFanAngle(0, 1), 0.0f);
 	TestTrue(TEXT("Narrow fan fits available width"), FMath::Abs(UBattleHandFanPanel::GetFanOffset(9, 10, 500.0f).X) <= 145.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FHandFanGeometryProtectionTest, "SlayTheSpireDemo.HandInteraction.GeometryProtection", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FHandFanGeometryProtectionTest::RunTest(const FString& Parameters)
+{
+	using namespace NativeHandLayoutTest;
+	UBattleHandFanPanel* Panel = NewObject<UBattleHandFanPanel>();
+	TArray<UBattleCardWidget*> Cards;
+	for (int32 I = 0; I < 3; ++I)
+	{
+		UBattleCardWidget* Card = NewObject<UBattleCardWidget>(Panel);
+		FBattleHUDCardView View; View.RuntimeId = 100 + I; Card->SetCardView(View);
+		Panel->AddChild(Card); Cards.Add(Card);
+	}
+	Panel->CommitFrozenOrder();
+	FPresentationPlaybackToken Token;
+	Token.BattleId = 1; Token.ResolutionId = 2; Token.PresentationSequence = 3; Token.LocalPlaybackGeneration = 4;
+	TestTrue(TEXT("Moving card accepts exact geometry lease"), Panel->ProtectCardGeometry(Cards[0], Token));
+	const auto Initial = Arrange(Panel, FVector2D(900, 280));
+	const auto Resized = Arrange(Panel, FVector2D(500, 360));
+	TestTrue(TEXT("Only moving card preserves frozen base position through resize"), Position(*Find(Initial, Cards[0])) == Position(*Find(Resized, Cards[0])));
+	TestTrue(TEXT("Other cards follow new allotted size"), Position(*Find(Initial, Cards[1])) != Position(*Find(Resized, Cards[1])));
+	FPresentationPlaybackToken Stale = Token; ++Stale.LocalPlaybackGeneration;
+	TestFalse(TEXT("Stale token cannot release protected geometry"), Panel->ReleaseCardGeometry(Cards[0], Stale));
+	TestTrue(TEXT("Exact token releases geometry"), Panel->ReleaseCardGeometry(Cards[0], Token));
+	const auto Released = Arrange(Panel, FVector2D(500, 360));
+	TestTrue(TEXT("Release immediately permits new arrangement without Tick"), Position(*Find(Released, Cards[0])) != Position(*Find(Initial, Cards[0])));
+	UPanelSlot* SurvivorSlot = Cards[1]->Slot;
+	TWeakPtr<SWidget> SurvivorSlate = Cards[1]->GetCachedWrappedWidget();
+	Panel->ShiftChild(0, Cards[2]); Panel->CommitFrozenOrder();
+	const auto Reordered = Arrange(Panel, FVector2D(900, 280));
+	TestTrue(TEXT("Slate uses frozen rank after UMG reorder"), Position(*Find(Reordered, Cards[2])).X < Position(*Find(Reordered, Cards[0])).X);
+	TestTrue(TEXT("Reorder retains slot and live Slate identity"), Cards[1]->Slot == SurvivorSlot && Cards[1]->GetCachedWrappedWidget() == SurvivorSlate.Pin());
+	CastChecked<UBattleHandFanSlot>(Cards[0]->Slot)->SetPaintLayer(1);
+	const auto Raised = Arrange(Panel, FVector2D(900, 280));
+	TestTrue(TEXT("Raised card is drawn after the frozen-order peers"), Raised[Raised.Num()-1].Key == Cards[0]);
+	const FVector2D BeforeHover = Position(*Find(Raised, Cards[0]));
+	Panel->UpdateHoverAffordance(FVector2D::ZeroVector, INDEX_NONE, true, 1);
+	TestTrue(TEXT("Hover never changes base geometry"), Position(*Find(Arrange(Panel, FVector2D(900, 280)), Cards[0])) == BeforeHover);
+	TestTrue(TEXT("A new exact lease starts after release"), Panel->ProtectCardGeometry(Cards[0], Stale));
+	TestFalse(TEXT("Old completion cannot release newer lease"), Panel->ReleaseCardGeometry(Cards[0], Token));
+	Panel->RemoveChild(Cards[0]); Panel->CommitFrozenOrder();
+	TestFalse(TEXT("Removed owner cannot affect a new slot"), Panel->ReleaseCardGeometry(Cards[0], Stale));
 	return true;
 }
 

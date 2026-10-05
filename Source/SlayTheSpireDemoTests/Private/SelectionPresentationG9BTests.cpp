@@ -3,10 +3,12 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Phase6UIA2NR8TestTypes.h"
 #include "UI/BattleHandFanPanel.h"
-#include "Components/CanvasPanelSlot.h"
+#include "NativeHandLayoutTestUtils.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
 #include "Engine/GameInstance.h"
+#include "TimerManager.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Containers/Ticker.h"
 
 using namespace SelectionPresentationG9ATest;
@@ -181,13 +183,16 @@ bool FG9BStableHandTest::RunTest(const FString&)
 	TestTrue(TEXT("Normal Gameplay play removes A"), F.Gameplay.Battle->RequestPlayCard(F.Card(TEXT("A")), nullptr).IsAcceptedForResolution());
 	F.Gameplay.FlushReady();
 	TestEqual(TEXT("Frozen Hand loses exactly the played card"), NativeHand->GetChildrenCount(), 2);
-	TestTrue(TEXT("Remaining B keeps its Canvas slot"), Before[1]->Slot == SurvivorSlot);
+	TestTrue(TEXT("Remaining B keeps its dedicated Hand slot"), Before[1]->Slot == SurvivorSlot);
 	TestTrue(TEXT("Remaining B keeps its live Slate tree"), SurvivorSlate.IsValid()
 		&& Before[1]->GetCachedWrappedWidget() == SurvivorSlate.Pin());
-	const UCanvasPanelSlot* RemainingSlot = CastChecked<UCanvasPanelSlot>(Before[1]->Slot);
-	TestTrue(TEXT("Remaining card retains the full configured size"), RemainingSlot->GetSize() == NativeHUD->HandCardSize);
-	TestTrue(TEXT("Remaining cards stay bottom-centered"), RemainingSlot->GetAnchors() == FAnchors(0.5f, 1.0f)
-		&& RemainingSlot->GetAlignment() == FVector2D(0.5f, 1.0f));
+	const auto Arranged = NativeHandLayoutTest::Arrange(NativeHand, FVector2D(900, 280));
+	const FGeometry* Remaining = NativeHandLayoutTest::Find(Arranged, Before[1]);
+	if (!TestNotNull(TEXT("Remaining card receives its first Slate arrangement without NativeTick"), Remaining)) return false;
+	TestTrue(TEXT("Remaining card retains the full configured size"), FVector2D(Remaining->GetLocalSize()) == NativeHUD->HandCardSize);
+	const FGeometry* Other = NativeHandLayoutTest::Find(Arranged, Before[2]);
+	TestTrue(TEXT("Remaining cards stay bottom-centered"), Other && FMath::IsNearlyEqual(
+		NativeHandLayoutTest::Position(*Remaining).X + NativeHandLayoutTest::Position(*Other).X, 900.0 - NativeHUD->HandCardSize.X));
 	UPhase6UIA2NR8HUDProbe* HUD = NewObject<UPhase6UIA2NR8HUDProbe>(F.Gameplay.World);
 	HUD->SetTestWorld(F.Gameplay.World);
 	UHorizontalBox* Hand = NewObject<UHorizontalBox>(HUD);
@@ -205,12 +210,85 @@ bool FG9BStableHandTest::RunTest(const FString&)
 	TestTrue(TEXT("Membership change reuses survivor"), Hand->GetChildAt(0) == Survivor);
 	UBattleHandFanPanel* Fan = NewObject<UBattleHandFanPanel>();
 	Fan->AddChild(Survivor);
-	Fan->ReconcileLayout();
-	UCanvasPanelSlot* Slot = CastChecked<UCanvasPanelSlot>(Survivor->Slot);
-	Slot->SetPosition(FVector2D(123, 456));
+	Fan->CommitFrozenOrder();
+	const auto BeforeHover = NativeHandLayoutTest::Arrange(Fan, FVector2D(900, 280));
+	const FVector2D Position = NativeHandLayoutTest::Position(*NativeHandLayoutTest::Find(BeforeHover, Survivor));
 	Fan->UpdateHoverAffordance(FVector2D::ZeroVector, INDEX_NONE, true, 1.0f);
-	TestTrue(TEXT("Hover cannot relayout structural slot"), Slot->GetPosition() == FVector2D(123, 456));
+	const auto AfterHover = NativeHandLayoutTest::Arrange(Fan, FVector2D(900, 280));
+	TestTrue(TEXT("Hover cannot relayout structural slot"), NativeHandLayoutTest::Position(*NativeHandLayoutTest::Find(AfterHover, Survivor)) == Position);
 	TestEqual(TEXT("Hover cannot reveal hidden owner"), Survivor->GetVisibility(), ESlateVisibility::Hidden);
+	return true;
+}
+namespace NativeHandProductionPlaybackTest
+{
+	struct FContext
+	{
+		FShadowFixture Fixture;
+		TStrongObjectPtr<UWorld> KeepWorld{Fixture.Gameplay.World};
+		TStrongObjectPtr<UBattleHUDWidget> HUD;
+		TSharedPtr<SWidget> LiveHUD;
+		TArray<UWidget*> Cards;
+		UPanelSlot* SurvivorSlot = nullptr;
+		TWeakPtr<SWidget> SurvivorSlate;
+		FAutomationTestBase* Test = nullptr;
+		int32 Step = 0;
+	};
+	class FObserveBlockingHand : public IAutomationLatentCommand
+	{
+	public:
+		explicit FObserveBlockingHand(TSharedRef<FContext> InContext) : Context(InContext) {}
+		virtual bool Update() override
+		{
+			FContext& C = *Context;
+			// First activate pending timers, then let the real HUD finish CardPlayed
+			// on a later engine frame. Never call NativeTick or bypass its finish.
+			C.Fixture.Gameplay.World->GetTimerManager().Tick(C.Step++ == 0 ? 0.0f : 0.6f);
+			if (C.Step == 1) return false;
+			FTSTicker::GetCoreTicker().Tick(0.0f); // normal deferred completion forwarding
+			UBattleHandFanPanel* Hand = CastChecked<UBattleHandFanPanel>(C.HUD->GetWidgetFromName(TEXT("FanHand")));
+			C.Test->TestEqual(TEXT("Real Blocking CardPlayed completion commits two survivors without NativeTick"), Hand->GetChildrenCount(), 2);
+			C.Test->TestTrue(TEXT("Production survivor retains exact Widget and slot"), Hand->GetChildAt(0) == C.Cards[1] && C.Cards[1]->Slot == C.SurvivorSlot);
+			C.Test->TestTrue(TEXT("Production survivor retains live Slate tree"), C.Cards[1]->GetCachedWrappedWidget() == C.SurvivorSlate.Pin());
+			for (const FVector2D Size : { FVector2D(500, 280), FVector2D(1200, 360) })
+			{
+				const auto Arranged = NativeHandLayoutTest::Arrange(Hand, Size);
+				const FGeometry* Geometry = NativeHandLayoutTest::Find(Arranged, C.Cards[1]);
+				C.Test->TestTrue(TEXT("First allotted-size arrangement is full card size during trailing playback"), Geometry && FVector2D(Geometry->GetLocalSize()) == C.HUD->HandCardSize);
+			}
+			C.Test->TestTrue(TEXT("Remaining Blocking destination still owns playback"), C.Fixture.Controller->IsWaitingForCompletionForTesting());
+			C.Fixture.Controller->Shutdown();
+			C.HUD->SetViewModel(nullptr);
+			return true;
+		}
+	private:
+		TSharedRef<FContext> Context;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9BNativeHandBlockingLayoutTest,
+	"SlayTheSpireDemo.SelectionPresentation.G9B.NativeHandBlockingWithoutTick",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9BNativeHandBlockingLayoutTest::RunTest(const FString& Parameters)
+{
+	using namespace NativeHandProductionPlaybackTest;
+	TSharedRef<FContext> Context = MakeShared<FContext>();
+	Context->Test = this;
+	Context->Fixture.Gameplay.World->SetGameInstance(NewObject<UGameInstance>(Context->Fixture.Gameplay.World));
+	UClass* NativeClass = LoadClass<UBattleHUDWidget>(nullptr,
+		TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C"));
+	Context->HUD.Reset(NativeClass ? CreateWidget<UBattleHUDWidget>(Context->Fixture.Gameplay.World, NativeClass) : nullptr);
+	if (!TestNotNull(TEXT("Production HUD loads"), Context->HUD.Get())) return false;
+	Context->HUD->SetViewModel(Context->Fixture.Gameplay.ViewModel);
+	Context->Fixture.Controller->Initialize(Context->Fixture.Gameplay.Battle, Context->Fixture.Gameplay.ViewModel, Context->HUD.Get());
+	Context->HUD->SetPresentationController(Context->Fixture.Controller);
+	Context->LiveHUD = Context->HUD->TakeWidget();
+	UBattleHandFanPanel* Hand = CastChecked<UBattleHandFanPanel>(Context->HUD->GetWidgetFromName(TEXT("FanHand")));
+	Context->Cards = Hand->GetAllChildren();
+	if (!TestEqual(TEXT("Frozen baseline has three cards"), Context->Cards.Num(), 3)) return false;
+	Context->SurvivorSlot = Context->Cards[1]->Slot;
+	Context->SurvivorSlate = Context->Cards[1]->GetCachedWrappedWidget();
+	if (!TestTrue(TEXT("Actual Native CardPlayed accepts Blocking playback"), Context->Fixture.PlayA())) return false;
+	ADD_LATENT_AUTOMATION_COMMAND(FObserveBlockingHand(Context));
 	return true;
 }
 #endif

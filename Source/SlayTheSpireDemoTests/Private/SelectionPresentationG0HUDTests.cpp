@@ -316,6 +316,12 @@ bool FNativeIncomingHandLifetimeTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Battle replacement creates a new formal owner"), Fixture.HUD->FindFormalHandCardForTesting(92) != NewDraw);
 	TestFalse(TEXT("Retired token cannot cancel replacement owner"), Fixture.HUD->CancelDrawForTesting(NewToken));
 	TestEqual(TEXT("Replacement has no ghost temporary slot"), Fixture.Hand->GetChildrenCount(), 2);
+	Draw.RuntimeId = 93; Draw.CardId = TEXT("HUD_93"); Draw.DisplayName = FText::FromString(TEXT("Card93"));
+	NewToken.BattleId = 902;
+	TestNotNull(TEXT("Replacement surface can prepare its own draw"), Fixture.HUD->PrepareDrawForTesting(Draw, NewToken, 2));
+	Fixture.HUD->SetViewModel(nullptr);
+	TestEqual(TEXT("ViewModel loss cancels the sole temporary attachment"), Fixture.Hand->GetChildrenCount(), 2);
+	TestFalse(TEXT("Detached surface rejects the old completion"), Fixture.HUD->CompleteDrawForTesting(NewToken));
 	return true;
 }
 

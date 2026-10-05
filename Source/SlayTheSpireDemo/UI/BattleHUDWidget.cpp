@@ -296,7 +296,15 @@ void UBattleHUDWidget::RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
 		const EBattleHUDDirtyFlags Dirty = PendingNativeHUDDirtyFlags;
 		PendingNativeHUDDirtyFlags = EBattleHUDDirtyFlags::None;
 		BeforeNativeHUDRefresh(Dirty);
-		if (!IsValid(ViewModel)) continue;
+		if (!IsValid(ViewModel))
+		{
+			CancelIncomingHandAttachment();
+			++HandSurfaceGeneration;
+			HandBoundViewModel.Reset();
+			for (UBattleCardWidget* Card : FormalHandCards)
+				if (IsValid(Card)) Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+			continue;
+		}
 		// Each surface validates its own bindings. Partial, non-interactive HUDs
 		// can display a Hand without weakening the production request guard.
 		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Hand)) CommitFormalHand();
@@ -422,7 +430,7 @@ bool UBattleHUDWidget::CommitFormalHand()
 	FormalHandBattleId = BattleId;
 	HandBoundViewModel = ViewModel;
 	HandBoundPanel = HB_Hand;
-	if (FanHand) FanHand->LayoutCards();
+	if (FanHand) FanHand->CommitFrozenOrder();
 	for (int32 Index = 0; Index < FormalHandCards.Num(); ++Index)
 	{
 		UBattleCardWidget* Card = FormalHandCards[Index];
@@ -473,7 +481,7 @@ bool UBattleHUDWidget::PrepareIncomingHandAttachment(const FPresentationCardSnap
 	HandBoundViewModel = ViewModel;
 	if (!HB_Hand->AddChild(Widget)) { CancelIncomingHandAttachment(); return false; }
 	if (FormalHandBattleId == 0) { FormalHandCards = InitialCards; FormalHandBattleId = ViewModel->BattleId; }
-	if (FanHand) FanHand->PrepareIncomingCardLayout();
+	if (FanHand) FanHand->CommitFrozenOrder();
 	return true;
 }
 
@@ -498,9 +506,11 @@ bool UBattleHUDWidget::CancelIncomingHandAttachment(const FPresentationPlaybackT
 
 void UBattleHUDWidget::CancelIncomingHandAttachment()
 {
+	ON_SCOPE_EXIT { RequestNativeHUDRefresh(EBattleHUDDirtyFlags::None); };
+	TGuardValue<bool> Guard(bDrainingNativeHUDRefresh, true);
 	if (IsValid(IncomingHandAttachment.Widget)) IncomingHandAttachment.Widget->RemoveFromParent();
 	IncomingHandAttachment = FNativeIncomingHandAttachment{};
-	if (FanHand) FanHand->LayoutCards();
+	if (FanHand) FanHand->CommitFrozenOrder();
 }
 
 void UBattleHUDWidget::RefreshCombatants()
@@ -1615,6 +1625,8 @@ void UBattleHUDWidget::ConfigureNativeCardAnimation(
 	float StartOpacity,
 	float EndOpacity)
 {
+	if (FanHand && MovingCard && MovingCard->GetParent() == FanHand)
+		FanHand->ProtectCardGeometry(MovingCard, ActiveNativePresentationToken);
 	ActiveNativeMovingCardWidget = MovingCard;
 	ActiveNativeCardAnimationStartAnchor = StartAnchor;
 	ActiveNativeCardAnimationEndAnchor = EndAnchor;
@@ -2420,6 +2432,18 @@ void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
 	ResetNativePresentationOwnership();
 }
 
+void UBattleHUDWidget::NativeOnTrackedPresentationPlaybackRetired(const FPresentationPlaybackToken& Token, bool bCancelled)
+{
+	if (!bCancelled) return;
+	// The tracked unit remains the sole completion-receipt owner after the
+	// animation ends. Retire attachments/cross-record visuals before derived
+	// cancellation hooks can publish or install a newer playback surface.
+	CancelIncomingHandAttachment(Token);
+	if (UBattleCardWidget* RetainedPlayedCard = NativePlayedCardWidget.Get())
+		RetainedPlayedCard->RemoveFromParent();
+	NativePlayedCardWidget.Reset();
+}
+
 bool UBattleHUDWidget::CommitNativePresentationOwnership(
 	EBattlePresentationRecordType RecordType,
 	const FPresentationPlaybackToken& Token)
@@ -2798,6 +2822,7 @@ void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 
 void UBattleHUDWidget::ResetNativeCardRecordState()
 {
+	if (FanHand) FanHand->ReleaseCardGeometry(ActiveNativeMovingCardWidget.Get(), ActiveNativePresentationToken);
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::None;
 	ActiveNativeHistoricalHandCardWidget.Reset();
 	ActiveNativeDrawnCardWidget.Reset();

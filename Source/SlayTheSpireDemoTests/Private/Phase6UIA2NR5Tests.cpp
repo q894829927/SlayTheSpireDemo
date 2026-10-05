@@ -18,12 +18,12 @@ namespace Phase6UIA2NR5Test
 		return Token;
 	}
 
-	FPresentationRecord MakeSyntheticRecord()
+	FPresentationRecord MakeSyntheticRecord(int64 Sequence = 1)
 	{
 		FPresentationRecord Record;
 		Record.BattleId = 101;
 		Record.ResolutionId = 202;
-		Record.PresentationSequence = 1;
+		Record.PresentationSequence = Sequence;
 		Record.Type = EBattlePresentationRecordType::Damage;
 		return Record;
 	}
@@ -149,7 +149,7 @@ bool FNativePlaybackExactCancelTest::RunTest(const FString& Parameters)
 
 	FTSTicker::GetCoreTicker().Tick(0.0f);
 
-	TestTrue(TEXT("Token B replacement is accepted"), Fixture.Probe->PlayPresentationRecord(Record, TokenB));
+	TestTrue(TEXT("Token B replacement is accepted"), Fixture.Probe->PlayPresentationRecord(MakeSyntheticRecord(2), TokenB));
 	TestEqual(
 		TEXT("Token B replacement still dispatches tracked Token A, proving Cancel did not Notify"),
 		Fixture.Probe->CancelDispatchCount,
@@ -196,7 +196,7 @@ bool FNativePlaybackFinishIsolationTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Duplicate Finish remains a no-op"), Fixture.Probe->IsLocalPresentationActive());
 
 	// Notify is deferred by the base. Before that callback runs, establish B.
-	TestTrue(TEXT("Token B can start after local A Finish"), Fixture.Probe->PlayPresentationRecord(Record, TokenB));
+	TestTrue(TEXT("Token B can start after local A Finish"), Fixture.Probe->PlayPresentationRecord(MakeSyntheticRecord(2), TokenB));
 	TestTrue(TEXT("Token B becomes active"), Fixture.Probe->ActiveLocalToken() == TokenB);
 
 	FTSTicker::GetCoreTicker().Tick(0.0f);
@@ -210,7 +210,7 @@ bool FNativePlaybackFinishIsolationTest::RunTest(const FString& Parameters)
 	// If the old deferred callback had erased the base tracked B token, starting C
 	// would not dispatch the exact B cancellation. This checks old/new isolation
 	// through the public PlayPresentationRecord ownership wrapper.
-	TestTrue(TEXT("Token C replacement is accepted"), Fixture.Probe->PlayPresentationRecord(Record, TokenC));
+	TestTrue(TEXT("Token C replacement is accepted"), Fixture.Probe->PlayPresentationRecord(MakeSyntheticRecord(3), TokenC));
 	TestEqual(TEXT("A replacement and B replacement each dispatch one tracked Cancel"), Fixture.Probe->CancelDispatchCount, 2);
 	TestTrue(TEXT("Token C replacement cancelled exact Token B"), Fixture.Probe->LastCancelDispatchToken == TokenB);
 	TestTrue(TEXT("Token C is the only local owner"), Fixture.Probe->ActiveLocalToken() == TokenC);

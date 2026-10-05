@@ -1,25 +1,40 @@
 # Codex Goal Checkpoint — Native Hand architecture correction
 
-Current source base: `5f7f4fca3fe46208d18042461cf9420ae18a49c5`, branch
-`codex/g9-buffered-input-detached-cards`. Baseline is committed; the structural
-batch in this commit implements a final shared dispatcher, private formal
-registry, serialized prepare/commit and exact-token incoming draw adoption.
+Branch: `codex/g9-buffered-input-detached-cards`. Completed commits: baseline
+`5f7f4fca3fe46208d18042461cf9420ae18a49c5`, structure `4237526`. This layout
+commit's tested parent is `4237526`; retrieve its final hash from Git history.
 
 Authority: `docs/NativeHandStructureRefactor.md` and the user-approved correction.
-Root AGENTS now requires a tested/documented local commit per coherent batch.
-No assets, Gameplay semantics, Legacy, plugins or dependencies changed.
+Root AGENTS requires a tested/documented local commit per coherent batch. No push,
+assets, Gameplay semantics, Legacy, plugins or dependencies changed.
 
-Validation: prescribed project generation PASS; Development Editor final build
-PASS. Initial run aborted after 16 completed cases in an obsolete R8 fixture.
-After correcting fixture BattleId and replacing its direct rebuild with production
-reconciliation, affected/unfinished recovery passed 38/38 (one expected warning).
-Union of valid distinct cases: 50. Exact scope/evidence in the dedicated document.
+Implemented: final shared notification dispatcher/restricted hooks, private
+GC-safe exact-Battle registry, serialized prepare/commit, exact-token incoming
+draw attachment/adoption/cancel; dedicated Hand Slot/private Slate SPanel,
+first-pass allotted-size arrangement, explicit layers/frozen ranks and exact-token
+moving-card geometry protection. Layout no longer depends on interaction Tick.
+Base tracked playback also owns exact cancellation retirement after animation
+completion, cleaning temporary draw and retained cross-record visuals before
+derived cancellation dispatch, without another pending token owner.
 
-Next: commit this structural batch, then implement dedicated Hand Slot/private
-Slate SPanel, current-allotted-size arrangement, deterministic layers and token
-geometry protection. Generate/build/focused Automation, production MCP PIE, docs,
-then independent local commit. No new batch-2 visual acceptance is claimed.
+Validation: prescribed project generation and UE 5.8 Development Editor build
+PASS. Structure batch: 50 distinct successful cases across initial/recovery runs.
+Layout batch initially covered 56 cases with a repaired production latent fixture;
+the later Skip finding required affected revalidation. Final 55-case receipt
+scope: 53 successful cases (one expected warning) plus two old R5 sequence-mismatch
+failures; corrected fixture Records passed a targeted 2/2 recovery. Unaffected
+panel/frozen-face evidence is reused. Exact scopes/logs are in the dedicated
+document; overlapping totals are not added together.
 
-G9-B remains OPT-IN / PARTIAL PIE / NOT SEALED. Default flag stays false; remaining
-full B visual gates in SelectionPresentationG9BExecution.md remain USER ACTION
-REQUIRED. Do not begin C–F before B acceptance.
+Native D3D12 MCP PIE with G9 false observed normal play/two draws, Selection
+select/deselect/confirm, viewport resize during playback, later hover and
+Resolving stop/restart/fresh hover. The additional same-HUD Skip check found a
+retained PlayArea ghost in the completion-receipt window. After tracked retirement
+cleanup, that exact reproduction and earlier moving-draw Skip passed, with fresh
+Defend/Twin Strike hover and exact ordinary selection. This refactor's focused
+visual gate is PASS. Editor sessions ended normally; no Content/Config changes.
+
+Next: collect the original full G9-B enabled-input/EndTurn visual gates (USER
+ACTION REQUIRED), then update evidence/status in a separate documented
+commit. G9-B remains OPT-IN / PARTIAL PIE / NOT SEALED, default false. Do not
+begin C–F or declare acceptance before all B gates are satisfied.

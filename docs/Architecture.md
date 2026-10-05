@@ -3,8 +3,15 @@
 Native HUD publications enter one final C++ dispatcher with restricted hooks.
 The HUD privately prepares and commits frozen membership; its GC-rooted registry
 is scoped by BattleId/RuntimeId. Incoming draw adoption requires matching frozen
-identity/index, exact playback token and HUD surface lifetime. The panel will own
-allotted-size layout independently of interaction Tick. See
+identity/index, exact playback token and HUD surface lifetime. UBattleHandFanPanel
+uses a dedicated Hand Slot and private Slate SPanel to arrange frozen ranks from
+the current allotted size on the first layout pass. Paint order uses explicit
+layer then frozen rank. A moving Hand card holds base geometry under its exact
+playback token; other cards follow viewport changes. Hover writes only eligible
+Hand-card render transforms/layers. No layout dirtiness or Tick repair remains.
+Animation completion retains an exact cancellable receipt until tracked playback
+forwards or cancels it; temporary draw adoption and retained PlayArea cleanup
+therefore cover the deferred-completion window too. See
 [Native Hand refactor](NativeHandStructureRefactor.md) for migration and evidence.
 
 This document is the durable architectural overview. The Chinese synchronized version is [`Architecture.zh-CN.md`](Architecture.zh-CN.md). Directory-level `AGENTS.md` files define implementation rules. The sealed UI-A2 contract is recorded in the Phase 6UI-A2 documents; current phase status is authoritative in `docs/DevelopmentPhases.md`, current Native UI details are in `docs/Phase6UIA2NNativeHUDRefactor.md` and `docs/WBPSavedBlueprintSnapshot.md`, and current selection-presentation details are in the `SelectionPresentationG*` and card-selection constraint documents. Older A2 implementation/validation files preserve phase evidence and must not be read as current pending work.

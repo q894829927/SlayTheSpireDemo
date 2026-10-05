@@ -66,11 +66,10 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 	}
 	const FVector2D Pointer = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
-	// Playback keeps its exact source/arrival transform. Fan updates resume only
-	// once the reducer has reconciled the structural Hand slots.
+	// The panel arranges independently of playback and Tick. Protected moving
+	// cards retain their base geometry; only eligible Hand cards receive hover.
 	if (FanHand)
 	{
-		if (!HasTrackedPresentationPlayback() && !HasActiveNativePresentation()) FanHand->ReconcileLayout();
 		const bool bAllowHover = (!HasTrackedPresentationPlayback() && !HasActiveNativePresentation()
 			&& (!ViewModel->bInputLocked || bPending)) || bBufferedHandHoverAvailable;
 		FanHand->UpdateHoverAffordance(Pointer, bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId, bAllowHover, DeltaTime);

@@ -573,6 +573,7 @@ bool UBattleHUDWidgetBase::CancelTrackedPresentationPlayback(
 	const FTrackedPresentationPlaybackUnit CancelledUnit = TrackedPresentationPlaybackUnit;
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	NativeOnTrackedPresentationPlaybackRetired(CancelledUnit.Token, true);
 	DispatchTrackedPresentationCancellation(CancelledUnit);
 	return true;
 }
@@ -587,6 +588,7 @@ void UBattleHUDWidgetBase::CancelTrackedPresentationPlayback()
 	const FTrackedPresentationPlaybackUnit CancelledUnit = TrackedPresentationPlaybackUnit;
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	NativeOnTrackedPresentationPlaybackRetired(CancelledUnit.Token, true);
 	DispatchTrackedPresentationCancellation(CancelledUnit);
 }
 
@@ -602,6 +604,7 @@ bool UBattleHUDWidgetBase::ClearTrackedPresentationPlayback(
 
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
+	NativeOnTrackedPresentationPlaybackRetired(Token, false);
 	return true;
 }
 

@@ -136,6 +136,7 @@ protected:
 	virtual void OnWidgetRebuilt() override;
 	virtual void BeginDestroy() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override final;
+	virtual void NativeOnTrackedPresentationPlaybackRetired(const FPresentationPlaybackToken& Token, bool bCancelled) override final;
 	virtual void BeforeNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) {}
 	virtual void AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) {}
 	virtual void AfterFormalHandCommit() {}

@@ -1,5 +1,9 @@
 # 整体架构说明
 
+Native HUD 通知进入一个不可覆盖的 C++ 调度入口，派生类通过受限钩子处理绑定、生命周期与 Selection 表面。HUD 私有维护 GC 安全的 `(BattleId, RuntimeId)` 注册表，先准备完整冻结 Hand，再串行提交成员与顺序；嵌套通知合并处理。抽牌只有一个临时附着项，必须同时满足精确播放 token、HUD 表面 generation、冻结身份与索引，且视觉完成和正式历史均已到达，才能接管同一个 Widget 并恢复请求绑定。
+
+`UBattleHandFanPanel` 使用专用 Hand Slot 与私有 Slate `SPanel`，在首次布局中根据当前分配尺寸和冻结序号计算基础几何，按显式绘制层级、冻结序号排序。仍附着 Hand 的移动卡牌以精确 token 保护基础几何，其余卡牌随视口变化正常布局；悬停只更新可见、Hand 所有者卡牌的变换与绘制层级。布局不依赖 Tick 或标脏后的补救。动画完成后，精确完成回执仍归 tracked playback 所有，直到正式转发或取消边界将它退役；抽牌附着接管与保留 PlayArea 视觉清理覆盖这个延迟完成窗口。迁移与实际验证记录见 [Native Hand 重构](NativeHandStructureRefactor.md)。
+
 本文是 [`Architecture.md`](Architecture.md) 的中文同步版，用于描述项目的持久化整体架构。目录级 `AGENTS.md` 文件定义具体实现规则。已封存的 UI-A2 契约记录在 Phase 6UI-A2 系列文档中；当前阶段状态以 `docs/DevelopmentPhases.md` 为准，当前 Native UI 细节以 `docs/Phase6UIA2NNativeHUDRefactor.md` 和 `docs/WBPSavedBlueprintSnapshot.md` 为准，当前选牌表现细节以 `SelectionPresentationG*` 和选牌约束文档为准。较早的 A2 实现/验证文件保留阶段证据，不应被当作当前待办。架构变更时应同步维护中英文两份说明，代码类名、函数名、结构体名和资源路径保持英文原文。
 
 ## 当前 Hand 选牌执行

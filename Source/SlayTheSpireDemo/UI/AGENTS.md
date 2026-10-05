@@ -52,6 +52,12 @@ Formal Hand presentation preserves frozen Hand ordering and historical slot/inde
 
 Hand Widget identity is keyed by `(BattleId, RuntimeId)`; surviving cards within that Battle should be reconciled/reused rather than destroyed through unconditional `HB_Hand->ClearChildren()` + recreate-all behavior. Reattaching a Widget does not imply recreating it, but geometry and slot state must be revalidated after attachment.
 
+Native publications use the final shared dispatcher and restricted before/after hooks. `RefreshHand` is the nonvirtual structural request entry; only the HUD's private prepare/commit and incoming-attachment protocol may mutate Hand membership/order. Prepare the complete frozen candidate before altering survivors; merge nested notifications through the outer drain. Selection updates ownership/visibility and requests this entry, without writing the Hand child list. Preserve surviving Widget, slot and live Slate identity and Hidden historical slots.
+
+The dedicated Hand panel/slot/private Slate panel owns current-allotted-size base geometry and deterministic paint order. Do not restore cached-size layout writes or Tick-based structural repair. Hover writes only eligible Hand-card render transforms/layers. Moving attached cards protect base geometry under an exact playback token and release it on completion/cancel.
+
+An incoming draw remains a GC-safe, exact-token temporary attachment until visual completion and matching formal history jointly authorize adoption. Tracked playback owns the completion receipt even after the animation stops; exact cancellation retirement must clean temporary attachments and retained cross-record visuals before derived cancellation dispatch. Do not use an animation-active flag as proof that those lifetime obligations ended.
+
 When a completed draw visual is adopted as a formal Hand card, retire its presentation-only hit-test suppression and bind normal requests. A visible card must permit child button hit testing (`Visible` or `SelfHitTestInvisible`); `HitTestInvisible` suppresses children too. Apply explicit non-Hand ownership afterward, preserving Hidden/input-disabled structural slots. Do not globally reset playback visibility on every dirty event.
 
 Required distinction:

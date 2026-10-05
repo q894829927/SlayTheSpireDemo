@@ -4,7 +4,11 @@
 subsequent structure/layout work is tracked in
 [Native Hand refactor](NativeHandStructureRefactor.md). This replaces the former
 uncommitted delivery state; historical run identities and remaining full B visual
-gates are retained. G9 input remains default off / NOT SEALED.
+gates are retained. Structure ownership was committed in `4237526`; the subsequent
+Slate implementation has build/focused Automation and refactor-specific Native
+PIE acceptance, including same-HUD draw Skip and the deferred-completion window.
+The original full G9-B enabled-input gates remain pending. G9 input remains
+default off / NOT SEALED.
 
 Date: **2026-10-05**
 
@@ -18,7 +22,7 @@ Design authority: [G9 design](SelectionPresentationG9Design.md). Delivery branch
 - An accepted EndTurn retires the previous card intent and pending Native FastInput retry before normal transient-selection cancellation. The ViewModel forwards the captured exact Gameplay player-turn token independently of displayed revision and calls the existing Gameplay Request. It preserves frozen display chronology and does not Skip active playback.
 - Card input prefers the normal current surface, then the exact already-sealed G9 played-card lag window, then existing G8 FastInput. Buffered selection is taken before normal selection; confirmation/target input still requires a fresh action.
 - Mandatory-selection, battle/turn/session/binding changes and runtime disable retire old G9 intent. A queued callback cannot migrate across HUD binding generations. Original ViewModel EndTurn semantics, including the G8 target-choice rejection, remain the disabled fallback.
-- Native refresh consumes dirty flags. The production Reconciled/Selection HUD shares base formal Hand reconciliation: surviving fan cards retain Widgets, Canvas slots and live Slate trees in frozen order. Membership changes immediately update structural layout, including during Blocking playback; hidden source slots remain. Hover updates are separate from structural fan layout and ignore hidden/disabled sources.
+- Native refresh consumes dirty flags through one final dispatcher. The production Reconciled/Selection HUD uses private prepare/commit Hand reconciliation: surviving fan cards retain Widgets, dedicated Hand slots and live Slate trees in frozen order. The private Slate panel arranges current allotted-size geometry on its first pass, including during Blocking playback; Hidden source slots remain. Exact-token geometry protection isolates moving Hand cards. Hover updates transforms/layers without structural layout writes and ignores hidden/disabled/protected sources.
 - `bEnableG9BufferedPlayerInput` is the Native startup option and remains **false pending the visual gate**. `SetBufferedPlayerInputEnabled` controls the existing HUD instance at runtime. The generic/test Base Widget remains disabled by default.
 
 ## Automated gates
