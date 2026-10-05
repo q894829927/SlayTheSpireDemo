@@ -350,6 +350,13 @@ G8 overlap is a deferred design extension, not an exception currently enabled he
 
 ## Preview Phase Boundary
 
+The user-authorized ordinary-card pointer/source amendment is defined in
+`docs/NativePointerCardPresentation.md`. Skill/Power and untargeted Attack drafts
+may use Hand-attached render transforms and left-click Self/None confirmation.
+This does not create SelectionArea ownership or relax mandatory-selection rules.
+Pointer/FIFO origins are cosmetic receipts, never Gameplay/history state;
+CardPlayed installs its proven first pose during prepare, before Slate paint.
+
 UI-A2E and UI-A3 are sealed. The Preview contracts below remain applicable; `docs/Phase6UIA3CardFacePreviewAmendment.md` controls visible A3-5 behavior where it differs from the original implementation document. Current task scope comes from the user request and applicable current design.
 
 Use the name **Target-Specific Current-State Preview**. Preview construction belongs to a Gameplay/read Query boundary. ViewModel/UMG own selection, preview-target nomination, hover/focus, clearing and display only; they must not iterate CardEffects or reimplement Damage/Block/Energy legality rules.

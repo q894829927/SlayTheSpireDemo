@@ -147,7 +147,9 @@ void UBattleHUDWidgetBase::ProcessBufferedPlayerInput()
 		if (!BufferedPlayerInput.TakeReadyIntent(Decision)) break;
 		if (Decision.Kind == EBufferedPlayerIntentKind::CardPlay)
 		{
+			NativeOnCardPlayRequestStarting(Decision.Play.RuntimeId, &Decision.Play);
 			const auto Result = ViewModel->RequestQueuedCardPlay(Decision.Play);
+			NativeOnCardPlayRequestFinished(Result.IsAcceptedForResolution());
 			if (Result.IsAcceptedForResolution()) break;
 			BufferedPlayerInput.RetireRejectedPlayAttempt();
 			if (Result.FailureReason == EGameplayRequestFailureReason::BattleEnded

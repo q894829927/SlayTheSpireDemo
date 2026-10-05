@@ -10,6 +10,8 @@
 #include "Engine/World.h"
 #include "UI/BattleHUDViewModel.h"
 
+SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FNativeR8SkipClearsRetainedPlayedCardTest,
 	"SlayTheSpireDemo.Phase6UIA2N.R8.Zone.SkipClearsRetainedPlayedCard",
@@ -86,6 +88,7 @@ bool FNativeR8SkipClearsRetainedPlayedCardTest::RunTest(const FString& Parameter
 		UPhase6UIA2NR8CardProbe* FormalCard = NewObject<UPhase6UIA2NR8CardProbe>(Probe);
 		FormalCard->SetCardView(FormalView);
 		Hand->AddChild(FormalCard);
+		CacheG9TestWidgetGeometry(FormalCard, FGeometry::MakeRoot(FVector2D(150,210), FSlateLayoutTransform(FVector2D(60,420))));
 
 		FPresentationRecord PlayedRecord;
 		PlayedRecord.BattleId = BattleId;

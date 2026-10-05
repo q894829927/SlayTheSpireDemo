@@ -10,6 +10,9 @@
 #include "TimerManager.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Containers/Ticker.h"
+#include "Blueprint/WidgetTree.h"
+
+SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
 
 using namespace SelectionPresentationG9ATest;
 
@@ -294,6 +297,13 @@ bool FG9BNativeHandBlockingLayoutTest::RunTest(const FString& Parameters)
 	if (!TestEqual(TEXT("Frozen baseline has three cards"), Context->Cards.Num(), 3)) return false;
 	Context->SurvivorSlot = Context->Cards[1]->Slot;
 	Context->SurvivorSlate = Context->Cards[1]->GetCachedWrappedWidget();
+	// A production playback now requires the first Slate source allocation. This
+	// supplies allotted geometry, not NativeTick or a HUD layout repair.
+	const FGeometry Root = FGeometry::MakeRoot(FVector2D(1200,720), FSlateLayoutTransform());
+	CacheG9TestWidgetGeometry(Context->HUD->WidgetTree->RootWidget, Root);
+	CacheG9TestWidgetGeometry(Hand, Root.MakeChild(FVector2D(912,280), FSlateLayoutTransform(FVector2D(144,440))));
+	CacheG9TestWidgetGeometry(Context->HUD->GetWidgetFromName(TEXT("OV_PlayArea")),
+		Root.MakeChild(FVector2D(400,300), FSlateLayoutTransform(FVector2D(400,160))));
 	if (!TestTrue(TEXT("Actual Native CardPlayed accepts Blocking playback"), Context->Fixture.PlayA())) return false;
 	ADD_LATENT_AUTOMATION_COMMAND(FObserveBlockingHand(Context));
 	return true;

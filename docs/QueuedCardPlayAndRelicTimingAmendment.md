@@ -9,6 +9,12 @@ preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEA
 
 ## Input contract
 
+The 2026-10-06 user extension [Native pointer/source presentation](NativePointerCardPresentation.md)
+adds Skill/Power/untargeted-Attack mouse following and left-click Self/None
+confirmation. Enemy-target requests and mandatory-selection isolation remain.
+Confirmed pointer origins travel as optional cosmetics, without energy or zone
+reservation. It supersedes the older Self-only-player-click UX on the Native HUD.
+
 The sole HUD input arbiter owns one unconfirmed card/target draft, a confirmed
 FIFO (capacity 32), and one accepted EndTurn marker. No queue region, numbering
 or queue-management buttons are added. A confirmed exact card cannot be queued

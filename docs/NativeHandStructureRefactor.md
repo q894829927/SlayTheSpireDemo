@@ -1,5 +1,10 @@
 # Native Hand structure and layout refactor
 
+The ordinary-card source/pointer extension is documented in
+[Native pointer/source presentation](NativePointerCardPresentation.md). It keeps
+the structural owner and allotted-size layout contracts here; pointer following
+uses render transforms, and CardPlayed installs its source pose during prepare.
+
 Authority: the user-approved G9-B architecture correction, 2026-10-05. G9 input
 remains opt-in/default off; C–F cannot begin before the full B acceptance gate.
 Gameplay authority, historical reducers, Selection protocol and Blocking timing

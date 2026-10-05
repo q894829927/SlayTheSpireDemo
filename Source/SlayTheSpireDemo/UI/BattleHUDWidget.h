@@ -11,6 +11,7 @@ class UBattleStatusWidget;
 class UBattleHUDCombatantPresentationWidgetBase;
 class UBattleImmediatePreviewTextBlock;
 class UButton;
+class UBorder;
 class UCanvasPanel;
 class UHorizontalBox;
 class UPanelWidget;
@@ -127,6 +128,7 @@ public:
 	// retries the latest card RuntimeId on the next CoreTicker turn. The inherited
 	// one-parameter Blueprint UFUNCTION remains unchanged.
 	virtual bool SelectCard(int32 RuntimeId, bool bAllowFastPresentationCatchUp = true);
+	static bool CardFollowsPointer(const FBattleHUDCardView& Card);
 
 protected:
 	virtual void NativeOnInitialized() override;
@@ -141,6 +143,15 @@ protected:
 	virtual void AfterNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags) {}
 	virtual void AfterFormalHandCommit() {}
 	virtual void NativeOnBufferedPlayerInputChanged() override;
+	virtual TOptional<FCardPlayVisualOrigin> CaptureCardPlayVisualOrigin(int32 RuntimeId) const override;
+	virtual void NativeOnCardPlayRequestStarting(int32 RuntimeId, const FQueuedCardPlayIntent* Intent) override;
+	virtual void NativeOnCardPlayRequestFinished(bool bAccepted) override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
+	bool ConfirmPointerCard();
+	void RefreshCardInputVisuals();
+	void UpdatePointerCardVisuals(const FVector2D& Pointer);
+	const FGeometry& GetCardInputRootGeometry() const;
+	void InitializeCardPlayedMotion(UBattleCardWidget* Card, const FCardPlayVisualOrigin& Origin);
 	virtual bool HasPendingFastCardRetry() const override;
 	virtual void RetirePendingFastCardRetry() override;
 	void EnsureHandInteractionSurfaces();
@@ -526,6 +537,15 @@ protected:
 	TObjectPtr<UTextBlock> Txt_EnemyIntent;
 
 private:
+	UPROPERTY(Transient) TObjectPtr<UBorder> PointerInputBackdrop;
+	TOptional<FQueuedCardPlayIntent> SubmittedCardVisual;
+	TWeakObjectPtr<UBattleHUDViewModel> SubmittedCardViewModel;
+	TWeakObjectPtr<UBattlePresentationController> SubmittedCardController;
+	TOptional<FCardPlayVisualOrigin> ActiveCardPlayedOrigin;
+	FVector2D ActiveCardPlayedDesiredSize = FVector2D::ZeroVector;
+	FVector2D ActiveCardPlayedStartScale = FVector2D(1.0f);
+	float ActiveCardPlayedStartAngle = 0.0f;
+	bool bCardPlayRequestInFlight = false;
 	void RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags);
 	bool CommitFormalHand();
 	void CancelIncomingHandAttachment();

@@ -9,11 +9,29 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
 #include "Components/CanvasPanelSlot.h"
+#include "Components/Border.h"
+#include "Components/Button.h"
+#include "Components/Overlay.h"
+#include "../Presentation/BattlePresentationController.h"
+#include "InputCoreTypes.h"
 
 void UBattleHUDWidget::EnsureHandInteractionSurfaces()
 {
 	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
 	if (!Root) return;
+	if (!PointerInputBackdrop)
+	{
+		// Below every authored control: blank viewport clicks still enter the
+		// HUD preview route, while EndTurn/Selection/buttons keep their routes.
+		int32 BackdropZ = 0;
+		for (UWidget* Child : Root->GetAllChildren())
+			if (const UCanvasPanelSlot* ChildCanvasSlot = Cast<UCanvasPanelSlot>(Child->Slot)) BackdropZ = FMath::Min(BackdropZ, ChildCanvasSlot->GetZOrder());
+		PointerInputBackdrop = WidgetTree->ConstructWidget<UBorder>();
+		PointerInputBackdrop->SetBrushColor(FLinearColor::Transparent);
+		UCanvasPanelSlot* BackdropSlot = Root->AddChildToCanvas(PointerInputBackdrop);
+		BackdropSlot->SetAnchors(FAnchors(0, 0, 1, 1)); BackdropSlot->SetOffsets(FMargin(0)); BackdropSlot->SetZOrder(BackdropZ - 1);
+		PointerInputBackdrop->SetVisibility(ESlateVisibility::Hidden);
+	}
 
 	// G8-A host creation is infrastructure-only. No production Damage path uses
 	// it yet, but creating it alongside the other runtime Canvas surfaces makes
@@ -65,6 +83,7 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 		return;
 	}
 	const FVector2D Pointer = UWidgetLayoutLibrary::GetMousePositionOnPlatform();
+	UpdatePointerCardVisuals(Pointer);
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
 	const int32 SelectedRuntimeId = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftRuntimeId() : ViewModel->SelectedCardRuntimeId;
 	const auto InputState = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftState() : ViewModel->InteractionState;
@@ -116,4 +135,137 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 	}
 	TargetingArrow->SetAim(Start, ArrowGeometry.AbsoluteToLocal(Pointer), bLegalEnemy);
 	TargetingArrow->SetVisibility(ESlateVisibility::HitTestInvisible);
+}
+
+bool UBattleHUDWidget::CardFollowsPointer(const FBattleHUDCardView& Card)
+{
+	return Card.RuntimeId != INDEX_NONE && (Card.CardType == ECardType::Skill || Card.CardType == ECardType::Power
+		|| (Card.CardType == ECardType::Attack && Card.TargetType == ECardTargetType::None));
+}
+
+const FGeometry& UBattleHUDWidget::GetCardInputRootGeometry() const
+{
+	return WidgetTree && WidgetTree->RootWidget ? WidgetTree->RootWidget->GetCachedGeometry()
+		: OV_PlayArea ? OV_PlayArea->GetCachedGeometry() : GetCachedGeometry();
+}
+
+TOptional<FCardPlayVisualOrigin> UBattleHUDWidget::CaptureCardPlayVisualOrigin(int32 RuntimeId) const
+{
+	if (!HB_Hand) return {};
+	const FGeometry& RootGeometry = GetCardInputRootGeometry();
+	const FVector2D RootSize = RootGeometry.GetLocalSize();
+	if (RootSize.X <= 0 || RootSize.Y <= 0) return {};
+	for (UWidget* Child : HB_Hand->GetAllChildren())
+	{
+		const UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child);
+		if (!Card || Card->GetRuntimeId() != RuntimeId || !Card->IsVisible()) continue;
+		FGeometry Geometry = Card->GetCachedGeometry();
+		if (FanHand && !FanHand->GetCardVisualGeometry(Child, Geometry)) return {};
+		const FVector2D Size = Geometry.GetLocalSize();
+		if (Size.X <= 0 || Size.Y <= 0) return {};
+		FCardPlayVisualOrigin Origin;
+		const FVector2D Center = RootGeometry.AbsoluteToLocal(Geometry.LocalToAbsolute(Size * 0.5f));
+		const FVector2D X = FVector2D(RootGeometry.AbsoluteToLocal(Geometry.LocalToAbsolute(FVector2D(Size.X, Size.Y * 0.5f)))) - Center;
+		const FVector2D Y = FVector2D(RootGeometry.AbsoluteToLocal(Geometry.LocalToAbsolute(FVector2D(Size.X * 0.5f, Size.Y)))) - Center;
+		Origin.Center = Center / RootSize;
+		Origin.Size = FVector2D(X.Size() * 2.0, Y.Size() * 2.0);
+		Origin.Angle = FMath::RadiansToDegrees(FMath::Atan2(X.Y, X.X));
+		Origin.bPointerHeld = CardFollowsPointer(Card->GetCardView());
+		return Origin;
+	}
+	return {};
+}
+
+void UBattleHUDWidget::NativeOnCardPlayRequestStarting(int32 RuntimeId, const FQueuedCardPlayIntent* Intent)
+{
+	SubmittedCardVisual.Reset();
+	bCardPlayRequestInFlight = true;
+	if (!ViewModel) return;
+	FQueuedCardPlayIntent Receipt = Intent ? *Intent : FQueuedCardPlayIntent{};
+	if (!Intent)
+	{
+		Receipt.Turn.BattleId = ViewModel->BattleId;
+		Receipt.RuntimeId = RuntimeId;
+		if (const auto* Card = ViewModel->HandCards.FindByPredicate([RuntimeId](const auto& C) { return C.RuntimeId == RuntimeId; })) { Receipt.CardId = Card->CardId; Receipt.TargetType = Card->TargetType; }
+		FPresentationSessionToken Session;
+		if (PresentationController && PresentationController->TryGetPresentationSessionToken(Session)) Receipt.PresentationFence = Session;
+	}
+	if (!Receipt.VisualOrigin.IsSet()) Receipt.VisualOrigin = CaptureCardPlayVisualOrigin(RuntimeId);
+	SubmittedCardVisual = Receipt;
+	SubmittedCardViewModel = ViewModel;
+	SubmittedCardController = PresentationController;
+}
+
+void UBattleHUDWidget::NativeOnCardPlayRequestFinished(bool bAccepted)
+{
+	bCardPlayRequestInFlight = false;
+	if (!bAccepted) SubmittedCardVisual.Reset();
+	RefreshCardInputVisuals();
+}
+
+void UBattleHUDWidget::RefreshCardInputVisuals()
+{
+	if (SubmittedCardVisual.IsSet() && (!ViewModel || SubmittedCardViewModel.Get() != ViewModel.Get()
+		|| SubmittedCardController.Get() != PresentationController.Get()
+		|| SubmittedCardVisual->Turn.BattleId != static_cast<uint64>(ViewModel->BattleId)
+		|| (SubmittedCardVisual->PresentationFence.IsSet() && (!PresentationController
+			|| !PresentationController->IsCurrentPresentationSession(SubmittedCardVisual->PresentationFence.GetValue())))
+		|| (!bCardPlayRequestInFlight && !ViewModel->bInputLocked && ViewModel->SelectedCardRuntimeId == INDEX_NONE))) SubmittedCardVisual.Reset();
+	const int32 Selected = ViewModel && !ViewModel->HasAuthoritativePendingCardSelection()
+		? (IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftRuntimeId() : ViewModel->SelectedCardRuntimeId) : INDEX_NONE;
+	bool bPointerDraft = false;
+	TSet<int32> Visuals;
+	if (ViewModel && (IsBufferedPlayerInputEnabled() || !ViewModel->bInputLocked))
+		if (const auto* Card = ViewModel->HandCards.FindByPredicate([Selected](const auto& C) { return C.RuntimeId == Selected; });
+			Card && CardFollowsPointer(*Card) && ViewModel->GetCardPresentationOwner(Selected) == ECardPresentationOwner::Hand)
+		{ Visuals.Add(Selected); bPointerDraft = true; }
+	if (IsBufferedPlayerInputEnabled())
+		for (const auto& Intent : GetBufferedPlayerInput().GetConfirmedPlays())
+			if (Intent.VisualOrigin.IsSet() && Intent.VisualOrigin->bPointerHeld) Visuals.Add(Intent.RuntimeId);
+	if (SubmittedCardVisual.IsSet() && SubmittedCardVisual->VisualOrigin.IsSet()
+		&& SubmittedCardVisual->VisualOrigin->bPointerHeld) Visuals.Add(SubmittedCardVisual->RuntimeId);
+	if (FanHand) FanHand->SetInputVisualCards(Visuals);
+	if (PointerInputBackdrop) PointerInputBackdrop->SetVisibility(bPointerDraft ? ESlateVisibility::Visible : ESlateVisibility::Hidden);
+}
+
+void UBattleHUDWidget::UpdatePointerCardVisuals(const FVector2D& Pointer)
+{
+	RefreshCardInputVisuals();
+	if (!ViewModel || !FanHand) return;
+	const FGeometry& RootGeometry = GetCardInputRootGeometry();
+	auto MoveReceipt = [&](const FQueuedCardPlayIntent& Intent)
+	{
+		if (Intent.VisualOrigin.IsSet()) FanHand->MoveInputVisualTo(Intent.RuntimeId,
+			RootGeometry.LocalToAbsolute(Intent.VisualOrigin->Center * FVector2D(RootGeometry.GetLocalSize())));
+	};
+	if (IsBufferedPlayerInputEnabled()) for (const auto& Intent : GetBufferedPlayerInput().GetConfirmedPlays()) MoveReceipt(Intent);
+	if (SubmittedCardVisual.IsSet()) MoveReceipt(SubmittedCardVisual.GetValue());
+	FanHand->MoveInputVisualTo(IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftRuntimeId() : ViewModel->SelectedCardRuntimeId, Pointer);
+}
+
+bool UBattleHUDWidget::ConfirmPointerCard()
+{
+	if (!ViewModel || ViewModel->HasAuthoritativePendingCardSelection() || (!IsBufferedPlayerInputEnabled() && ViewModel->bInputLocked)) return false;
+	const int32 RuntimeId = IsBufferedPlayerInputEnabled() ? GetBufferedCardDraftRuntimeId() : ViewModel->SelectedCardRuntimeId;
+	const auto* Card = ViewModel->HandCards.FindByPredicate([RuntimeId](const auto& C) { return C.RuntimeId == RuntimeId; });
+	if (!Card || !CardFollowsPointer(*Card)) return false;
+	if (Card->TargetType == ECardTargetType::Self) return SelectTarget(1);
+	return Card->TargetType == ECardTargetType::None && ConfirmSelectedCard();
+}
+
+FReply UBattleHUDWidget::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	if (Event.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		auto Contains = [&Event](UWidget* Widget)
+		{
+			return Widget && Widget->IsVisible() && Widget->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition());
+		};
+		if (!Contains(Btn_EndTurn) && !Contains(Btn_Cancel) && !Contains(Btn_Confirm))
+		{
+			UpdatePointerCardVisuals(Event.GetScreenSpacePosition());
+			if (ConfirmPointerCard()) return FReply::Handled();
+		}
+	}
+	return Super::NativeOnPreviewMouseButtonDown(Geometry, Event);
 }

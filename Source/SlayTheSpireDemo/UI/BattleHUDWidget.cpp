@@ -201,6 +201,8 @@ void UBattleHUDWidget::NativeConstruct()
 
 void UBattleHUDWidget::NativeDestruct()
 {
+	SubmittedCardVisual.Reset();
+	if (FanHand) FanHand->SetInputVisualCards({});
 	ClearNativePresentationFinishTimer();
 	CleanupNativePresentationVisualsOnDestruct();
 	ResetNativePresentationOwnership();
@@ -318,6 +320,7 @@ void UBattleHUDWidget::RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
 		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
 		if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PresentationAvailability)) RefreshPresentationAvailabilityFromViewModel();
 		AfterNativeHUDRefresh(Dirty);
+		RefreshCardInputVisuals();
 	}
 }
 
@@ -865,6 +868,7 @@ void UBattleHUDWidget::NativeOnBufferedPlayerInputChanged()
 {
 	RefreshInputState();
 	RefreshCombatants();
+	RefreshCardInputVisuals();
 }
 
 void UBattleHUDWidget::RefreshFeedback()
@@ -1146,6 +1150,17 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	{
 		return false;
 	}
+	TOptional<FCardPlayVisualOrigin> Origin;
+	if (SubmittedCardVisual.IsSet() && SubmittedCardVisual->Turn.BattleId == static_cast<uint64>(Record.BattleId)
+		&& SubmittedCardVisual->RuntimeId == Payload.Card.RuntimeId && SubmittedCardVisual->CardId == Payload.Card.CardId
+		&& (SubmittedCardVisual->InputSequence == 0 || SubmittedCardVisual->TargetPresentationId == Payload.TargetPresentationId)
+		&& SubmittedCardViewModel.Get() == ViewModel.Get() && SubmittedCardController.Get() == PresentationController.Get()
+		&& (!SubmittedCardVisual->PresentationFence.IsSet() || (PresentationController
+			&& PresentationController->IsCurrentPresentationSession(SubmittedCardVisual->PresentationFence.GetValue())))) Origin = SubmittedCardVisual->VisualOrigin;
+	if (!Origin.IsSet()) Origin = CaptureCardPlayVisualOrigin(Payload.Card.RuntimeId);
+	// Every host must prove a visible source before hiding it. A missing first
+	// layout declines via the existing Controller fallback, never a fixed origin.
+	if (!Origin.IsSet() || OV_PlayArea->GetCachedGeometry().GetLocalSize().IsNearlyZero()) return false;
 
 	UBattleCardWidget* PresentationCard = CreateNativePresentationCard(Payload.Card);
 	if (!IsValid(PresentationCard))
@@ -1172,17 +1187,17 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	}
 	PlayAreaSlot->SetHorizontalAlignment(HAlign_Center);
 	PlayAreaSlot->SetVerticalAlignment(VAlign_Center);
-	const bool bFanSource = Cast<UBattleHandFanPanel>(HistoricalHandCard->GetParent()) != nullptr;
 	ConfigureNativeCardAnimation(
 		PresentationCard,
-		HistoricalHandCard,
 		nullptr,
-		NativeHandCardFallbackTranslation,
+		nullptr,
 		FVector2D::ZeroVector,
-		bFanSource ? HistoricalHandCard->GetRenderTransform().Scale.X : 0.88f,
+		FVector2D::ZeroVector,
 		1.0f,
-		bFanSource ? 1.0f : 0.0f,
+		1.0f,
+		1.0f,
 		1.0f);
+	InitializeCardPlayedMotion(PresentationCard, Origin.GetValue());
 	HistoricalHandCard->SetVisibility(ESlateVisibility::Hidden);
 
 	if (!StartNativePresentationFinishTimer(NativePresentationDurationSeconds))
@@ -1202,6 +1217,7 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 			Payload.SourcePresentationId,
 			EBattleHUDCombatantAnimation::Attack);
 	}
+	SubmittedCardVisual.Reset();
 	return true;
 }
 
@@ -1652,6 +1668,7 @@ void UBattleHUDWidget::ConfigureNativeCardAnimation(
 	ActiveNativeCardAnimationStartOpacity = StartOpacity;
 	ActiveNativeCardAnimationEndOpacity = EndOpacity;
 	ActiveNativeCardAnimationElapsedSeconds = 0.0f;
+	ActiveCardPlayedOrigin.Reset();
 	bNativeCardAnimationInitialized = false;
 	if (IsValid(MovingCard))
 	{
@@ -1711,6 +1728,18 @@ void UBattleHUDWidget::UpdateNativeCardAnimation(float DeltaSeconds)
 		0.0f,
 		1.0f);
 	const float EasedAlpha = FMath::InterpEaseOut(0.0f, 1.0f, LinearAlpha, 3.0f);
+	if (ActiveCardPlayedOrigin.IsSet())
+	{
+		const FGeometry& PlayGeometry = OV_PlayArea->GetCachedGeometry();
+		const FGeometry& RootGeometry = GetCardInputRootGeometry();
+		const FVector2D Start = FVector2D(PlayGeometry.AbsoluteToLocal(RootGeometry.LocalToAbsolute(
+			ActiveCardPlayedOrigin->Center * FVector2D(RootGeometry.GetLocalSize())))) - FVector2D(PlayGeometry.GetLocalSize()) * 0.5f;
+		MovingCard->SetRenderTranslation(Start * (1.0f - EasedAlpha));
+		MovingCard->SetRenderScale(FMath::Lerp(ActiveCardPlayedStartScale, FVector2D(1.0f), EasedAlpha));
+		MovingCard->SetRenderTransformAngle(FMath::Lerp(ActiveCardPlayedStartAngle, 0.0f, EasedAlpha));
+		MovingCard->SetRenderOpacity(1.0f);
+		return;
+	}
 	MovingCard->SetRenderTranslation(FMath::Lerp(
 		ActiveNativeCardAnimationStartTranslation,
 		ActiveNativeCardAnimationEndTranslation,
@@ -1724,6 +1753,20 @@ void UBattleHUDWidget::UpdateNativeCardAnimation(float DeltaSeconds)
 		ActiveNativeCardAnimationStartOpacity,
 		ActiveNativeCardAnimationEndOpacity,
 		EasedAlpha));
+}
+
+void UBattleHUDWidget::InitializeCardPlayedMotion(UBattleCardWidget* Card, const FCardPlayVisualOrigin& Origin)
+{
+	Card->ForceLayoutPrepass();
+	ActiveCardPlayedDesiredSize = Card->GetDesiredSize();
+	if (ActiveCardPlayedDesiredSize.X <= 0 || ActiveCardPlayedDesiredSize.Y <= 0) ActiveCardPlayedDesiredSize = Origin.Size;
+	ActiveCardPlayedOrigin = Origin;
+	ActiveCardPlayedStartScale = Origin.Size / ActiveCardPlayedDesiredSize;
+	ActiveCardPlayedStartAngle = Origin.Angle;
+	Card->SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
+	bNativeCardAnimationInitialized = true;
+	// Install the complete first pose now, before Slate can paint the clone.
+	UpdateNativeCardAnimation(0.0f);
 }
 
 void UBattleHUDWidget::NormalizeNativeCardTransform(UBattleCardWidget* CardWidget) const
@@ -2835,6 +2878,7 @@ void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 
 void UBattleHUDWidget::ResetNativeCardRecordState()
 {
+	ActiveCardPlayedOrigin.Reset();
 	if (FanHand) FanHand->ReleaseCardGeometry(ActiveNativeMovingCardWidget.Get(), ActiveNativePresentationToken);
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::None;
 	ActiveNativeHistoricalHandCardWidget.Reset();

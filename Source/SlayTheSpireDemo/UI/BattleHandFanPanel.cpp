@@ -144,7 +144,7 @@ void UBattleHandFanPanel::CommitFrozenOrder()
 		if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(HandSlot->Content))
 		{
 			Card->SetRenderTransformPivot(FVector2D(0.5f, 1.0f));
-			if (!HandSlot->bGeometryProtected && Card->GetRuntimeId() != HoveredRuntimeId)
+			if (!HandSlot->bGeometryProtected && Card->GetRuntimeId() != HoveredRuntimeId && !InputVisualCards.Contains(Card->GetRuntimeId()))
 			{
 				FWidgetTransform Transform = Card->GetRenderTransform();
 				Transform.Angle = GetFanAngle(Index, Slots.Num());
@@ -257,7 +257,7 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 	for (int32 Index = 0; bAllowHover && Index < GetChildrenCount(); ++Index)
 	{
 		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
-		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled() || CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
+		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled() || InputVisualCards.Contains(Card->GetRuntimeId()) || CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
 		const FVector2D Bottom = FVector2D(Geometry.GetLocalSize().X * 0.5f, Geometry.GetLocalSize().Y)
 			+ GetFanOffset(
 				Index,
@@ -279,7 +279,7 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 	{
 		for (UWidget* Child : GetAllChildren())
 			if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child);
-				Card && Card->IsVisible() && Card->GetIsEnabled() && !CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected() && Card->GetRuntimeId() == PreviousHover)
+				Card && Card->IsVisible() && Card->GetIsEnabled() && !InputVisualCards.Contains(Card->GetRuntimeId()) && !CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected() && Card->GetRuntimeId() == PreviousHover)
 			{
 				const FGeometry& CardGeometry = Card->GetCachedGeometry();
 				const FVector2D Local = CardGeometry.AbsoluteToLocal(AbsolutePointer);
@@ -291,7 +291,7 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 	for (int32 Index = 0; Index < GetChildrenCount(); ++Index)
 	{
 		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
-		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled() || CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
+		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled() || InputVisualCards.Contains(Card->GetRuntimeId()) || CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
 		const bool bRaised = Card->IsVisible() && Card->GetIsEnabled()
 			&& (Card->GetRuntimeId() == HoveredRuntimeId || Card->GetRuntimeId() == SelectedRuntimeId);
 		CastChecked<UBattleHandFanSlot>(Card->Slot)->SetPaintLayer(bRaised ? 1 : 0);
@@ -301,4 +301,60 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 		Transform.Translation = FMath::Lerp(Transform.Translation, FVector2D(0.0f, bRaised ? -72.0f : 0.0f), Alpha);
 		Card->SetRenderTransform(Transform);
 	}
+}
+
+void UBattleHandFanPanel::SetInputVisualCards(const TSet<int32>& RuntimeIds)
+{
+	for (int32 Index = 0; Index < GetChildrenCount(); ++Index)
+		if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
+			Card && InputVisualCards.Contains(Card->GetRuntimeId()) && !RuntimeIds.Contains(Card->GetRuntimeId()))
+		{
+			UBattleHandFanSlot* HandSlot = CastChecked<UBattleHandFanSlot>(Card->Slot);
+			if (!HandSlot->IsGeometryProtected())
+			{
+				FWidgetTransform Rest;
+				Rest.Angle = GetFanAngle(Index, GetChildrenCount());
+				Card->SetRenderTransform(Rest);
+				HandSlot->SetPaintLayer(0);
+				if (Card->GetVisibility() == ESlateVisibility::HitTestInvisible) Card->SetVisibility(ESlateVisibility::Visible);
+			}
+		}
+	InputVisualCards = RuntimeIds;
+}
+
+bool UBattleHandFanPanel::GetCardVisualGeometry(UWidget* Card, FGeometry& OutGeometry) const
+{
+	if (GetCachedGeometry().GetLocalSize().IsNearlyZero()) return false;
+	TArray<TPair<UWidget*, FGeometry>> Arranged;
+	GetArrangedCardGeometries(GetCachedGeometry(), Arranged);
+	for (const auto& Entry : Arranged)
+		if (Entry.Key == Card) { OutGeometry = Entry.Value; return true; }
+	return false;
+}
+
+bool UBattleHandFanPanel::MoveInputVisualTo(int32 RuntimeId, const FVector2D& AbsoluteCenter)
+{
+	if (!InputVisualCards.Contains(RuntimeId)) return false;
+	for (int32 Index = 0; Index < GetChildrenCount(); ++Index)
+	{
+		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
+		if (!Card || Card->GetRuntimeId() != RuntimeId || !Card->IsVisible()
+			|| CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
+		const FGeometry& ParentGeometry = GetCachedGeometry();
+		if (ParentGeometry.GetLocalSize().IsNearlyZero()) return false;
+		const FVector2D BaseBottom = FVector2D(ParentGeometry.GetLocalSize().X * 0.5f, ParentGeometry.GetLocalSize().Y)
+			+ GetFanOffset(Index, GetChildrenCount(), ParentGeometry.GetLocalSize().X,
+				MaxHorizontalStep, BaseVerticalOffset, EdgeVerticalDrop, CardSize.X);
+		FWidgetTransform Transform;
+		Transform.Scale = FVector2D(1.15f);
+		// Hand cards pivot at bottom-center. Align the *rendered* center to the
+		// pointer without touching the slot or feeding back cached transforms.
+		Transform.Translation = FVector2D(ParentGeometry.AbsoluteToLocal(AbsoluteCenter))
+			- BaseBottom + FVector2D(0, CardSize.Y * Transform.Scale.Y * 0.5f);
+		Card->SetRenderTransform(Transform);
+		Card->SetVisibility(ESlateVisibility::HitTestInvisible);
+		CastChecked<UBattleHandFanSlot>(Card->Slot)->SetPaintLayer(2);
+		return true;
+	}
+	return false;
 }

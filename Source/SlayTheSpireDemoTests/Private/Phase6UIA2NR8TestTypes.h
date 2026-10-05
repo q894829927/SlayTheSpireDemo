@@ -13,6 +13,7 @@ class UBattleHUDViewModel;
 class URichTextBlock;
 class UTextBlock;
 class UWorld;
+class UBattleHandFanPanel;
 
 UCLASS(Transient)
 class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2NR8CardProbe : public UBattleCardWidget
@@ -86,6 +87,10 @@ public:
 	void InvokeCancelForTesting(const FPresentationPlaybackToken& Token);
 	void InvokeNativeTickForTesting(float DeltaSeconds);
 	void InvokeNativeDestructForTesting();
+	void ConfigureFanForTesting(UBattleHandFanPanel* Fan);
+	void PointerForTesting(FVector2D Pointer) { UpdatePointerCardVisuals(Pointer); }
+	bool ConfirmPointerForTesting() { return ConfirmPointerCard(); }
+	TOptional<FCardPlayVisualOrigin> OriginForTesting(int32 RuntimeId) const { return CaptureCardPlayVisualOrigin(RuntimeId); }
 
 private:
 	UPROPERTY(Transient)

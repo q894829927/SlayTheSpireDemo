@@ -178,25 +178,32 @@ bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 		FBattleHUDTargetView Target;
 		const FName Id = TargetId == 1 ? ViewModel->Player.PresentationId : TargetId == 2 ? ViewModel->Enemy.PresentationId : NAME_None;
 		if (!BufferedPlayerInput.TryGetDraftTarget(Id, Target) || Target.TargetId != TargetId
-			|| !BufferedPlayerInput.ConfirmCardDraft(Id)) return false;
+			|| !BufferedPlayerInput.ConfirmCardDraft(Id, CaptureCardPlayVisualOrigin(GetBufferedCardDraftRuntimeId()))) return false;
 		NotifyBufferedPlayerInputReadinessChanged();
 		ProcessBufferedPlayerInput();
 		return true;
 	}
 	ViewModel->ClearPreviewTarget();
-	return ViewModel->SelectTargetById(TargetId);
+	NativeOnCardPlayRequestStarting(ViewModel->SelectedCardRuntimeId, nullptr);
+	const bool bAccepted = ViewModel->SelectTargetById(TargetId);
+	NativeOnCardPlayRequestFinished(bAccepted);
+	return bAccepted;
 }
 
 bool UBattleHUDWidgetBase::ConfirmSelectedCard()
 {
 	if (bBufferedPlayerInputEnabled)
 	{
-		if (!BufferedPlayerInput.ConfirmCardDraft(NAME_None)) return false;
+		if (!BufferedPlayerInput.ConfirmCardDraft(NAME_None, CaptureCardPlayVisualOrigin(GetBufferedCardDraftRuntimeId()))) return false;
 		NotifyBufferedPlayerInputReadinessChanged();
 		ProcessBufferedPlayerInput();
 		return true;
 	}
-	return IsValid(ViewModel) && ViewModel->ConfirmSelectedCard();
+	if (!IsValid(ViewModel)) return false;
+	NativeOnCardPlayRequestStarting(ViewModel->SelectedCardRuntimeId, nullptr);
+	const bool bAccepted = ViewModel->ConfirmSelectedCard();
+	NativeOnCardPlayRequestFinished(bAccepted);
+	return bAccepted;
 }
 
 bool UBattleHUDWidgetBase::EndTurn()

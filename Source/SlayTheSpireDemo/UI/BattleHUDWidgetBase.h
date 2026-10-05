@@ -235,6 +235,10 @@ protected:
 	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
 	virtual void NativeOnBattleHUDViewModelChanged();
 	virtual void NativeOnBufferedPlayerInputChanged() {}
+	virtual TOptional<FCardPlayVisualOrigin> CaptureCardPlayVisualOrigin(int32 RuntimeId) const { return {}; }
+	virtual void NativeOnCardPlayRequestStarting(int32 RuntimeId, const FQueuedCardPlayIntent* Intent) {}
+	virtual void NativeOnCardPlayRequestFinished(bool bAccepted) {}
+	const FBattleHUDBufferedPlayerInput& GetBufferedPlayerInput() const { return BufferedPlayerInput; }
 	// Tracked playback owns the visual-completion receipt until forwarding or
 	// cancellation, even after the animation itself has stopped.
 	virtual void NativeOnTrackedPresentationPlaybackRetired(const FPresentationPlaybackToken& Token, bool bCancelled) {}

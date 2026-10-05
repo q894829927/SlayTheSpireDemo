@@ -1,5 +1,24 @@
 # Validation
 
+## Native ordinary-card source / pointer extension — 2026-10-06
+
+Implementation base `de75414`, same G9 branch. Prescribed UE 5.8 project generation
+and Development Editor build PASS (`G9PointerProjectFiles.log`, final
+`G9PointerFinalBuild.log`, 6.93 s). Actual source, pointer transform isolation,
+first pose, failed prepare, exact-token cleanup, queued origin and Self/None
+single Request behavior are automated. 69 distinct cases have valid passing
+evidence across initial and affected repair runs, including G8-B/FastInput/R8
+and affected Selection contracts; no single 69/69 run claim.
+
+Final affected receipts: R8 5 success / one expected warning / zero fail;
+Self/None Request 1/1; source/decline 1/1. Complete scopes, earlier failures and
+report/log paths: [pointer/source evidence](NativePointerCardPresentation.md).
+Actual Native MCP PIE/draft readback was performed, but additional inputs and
+PIE stopping prevented controlled motion proof. Full Hand-origin, pointer cancel /
+left play, FIFO source/resize and mandatory-isolation recordings are **USER
+ACTION REQUIRED**. G9 default off remains unchanged; preserved user asset is
+excluded. No C–F acceptance or G9 seal.
+
 ## G9-B revision — focused production Native PIE, 2026-10-06
 
 Committed HEAD `72a564a`, Native Selection HUD, D3D12, Ruined Citadel map, preserved

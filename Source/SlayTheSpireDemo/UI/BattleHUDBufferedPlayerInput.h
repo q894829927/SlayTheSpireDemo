@@ -46,7 +46,9 @@ public:
 	void Clear();
 	void EnableConfirmedPlayQueue() { bConfirmedQueueMode = true; }
 	bool BeginCardDraft(int32 RuntimeId);
-	bool ConfirmCardDraft(FName TargetPresentationId);
+	bool ConfirmCardDraft(FName TargetPresentationId, const TOptional<FCardPlayVisualOrigin>& Origin = {});
+	const TArray<FQueuedCardPlayIntent>& GetConfirmedPlays() const { return ConfirmedPlays; }
+	uint64 GetBindingGeneration() const { return BindingGeneration; }
 	void CancelCardDraft() { Draft.Reset(); }
 	bool CanBeginCardDraft(int32 RuntimeId) const;
 	int32 GetDraftRuntimeId() const { return Draft.IsSet() ? Draft->RuntimeId : INDEX_NONE; }

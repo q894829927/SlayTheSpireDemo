@@ -10,6 +10,8 @@
 #include "Engine/World.h"
 #include "UI/BattleHUDViewModel.h"
 
+SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
+
 namespace Phase6UIA2NR8Test
 {
 	constexpr int64 TestBattleId = 801;
@@ -201,6 +203,7 @@ namespace Phase6UIA2NR8Test
 			Card->SetVisibility(Visibility);
 			ViewModel->HandCards.Add(View);
 			Hand->AddChild(Card);
+			CacheG9TestWidgetGeometry(Card, FGeometry::MakeRoot(FVector2D(150,210), FSlateLayoutTransform(FVector2D(60,420))));
 			return Card;
 		}
 
@@ -288,9 +291,7 @@ bool FNativeR8CardPlayedLifecycleTest::RunTest(const FString& Parameters)
 		Fixture.Probe->DrawAnimationInitializedForTesting());
 	if (IsValid(PlayedCard))
 	{
-		TestTrue(TEXT("Hand-to-PlayArea movement fades the frozen card toward the PlayArea"),
-			PlayedCard->GetRenderOpacity() > 0.0f
-				&& PlayedCard->GetRenderOpacity() < 1.0f);
+		TestEqual(TEXT("Hand-to-PlayArea preserves the already visible frozen card opacity"), PlayedCard->GetRenderOpacity(), 1.0f);
 	}
 
 	Fixture.Probe->InvokeFinishForTesting(StaleToken);

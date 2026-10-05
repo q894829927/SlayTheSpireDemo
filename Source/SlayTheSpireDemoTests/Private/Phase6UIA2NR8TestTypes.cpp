@@ -7,6 +7,11 @@
 #include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 #include "Engine/World.h"
+#include "UI/BattleHandFanPanel.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/CanvasPanel.h"
+
+SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
 
 void UPhase6UIA2NR8CardProbe::NativeOnInitialized()
 {
@@ -47,6 +52,10 @@ void UPhase6UIA2NR8HUDProbe::ConfigureCardSurfaces(
 	Txt_DiscardCount = InDiscardCount;
 	Txt_Energy = InEnergy;
 	CardWidgetClass = UPhase6UIA2NR8CardProbe::StaticClass();
+	// The panel retains each SObjectWidget wrapper before geometry is injected;
+	// a standalone UserWidget TakeWidget temporary does not own its Slate tree.
+	HB_Hand->TakeWidget();
+	CacheG9TestWidgetGeometry(OV_PlayArea, FGeometry::MakeRoot(FVector2D(500,400), FSlateLayoutTransform()));
 }
 
 UWorld* UPhase6UIA2NR8HUDProbe::GetWorld() const
@@ -81,4 +90,11 @@ void UPhase6UIA2NR8HUDProbe::InvokeNativeTickForTesting(float DeltaSeconds)
 void UPhase6UIA2NR8HUDProbe::InvokeNativeDestructForTesting()
 {
 	NativeDestruct();
+}
+
+void UPhase6UIA2NR8HUDProbe::ConfigureFanForTesting(UBattleHandFanPanel* Fan)
+{
+	FanHand = Fan; HB_Hand = Fan;
+	if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this);
+	WidgetTree->RootWidget = WidgetTree->ConstructWidget<UCanvasPanel>();
 }

@@ -106,7 +106,13 @@ Ready, Controller and ViewModel notifications drive coalesced non-reentrant
 consumption; cosmetic NativeTick does not poll Gameplay readiness. Formal Hand
 Widgets retain `(BattleId, RuntimeId)` identity, frozen order and hidden structural
 slots; hover changes transforms/layers separately from structural layout.
-Card playback remains Blocking. See `docs/SelectionPresentationG9BExecution.md`.
+Card playback remains Blocking. Ordinary Skill/Power/untargeted-Attack drafts
+can follow the mouse through Hand render transforms, without reparenting formal
+Widgets or changing panel layout. An optional queued cosmetic source receipt
+feeds the exact accepted CardPlayed visual; Gameplay never reads it. Source
+geometry is established before first Slate paint, not recovered by Tick. This
+is independent of mandatory SelectionArea ownership. See
+`docs/NativePointerCardPresentation.md` and `docs/SelectionPresentationG9BExecution.md`.
 
 ### Combatants
 

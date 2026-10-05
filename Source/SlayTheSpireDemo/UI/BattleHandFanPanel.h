@@ -38,6 +38,9 @@ class SLAYTHESPIREDEMO_API UBattleHandFanPanel : public UPanelWidget
 public:
 	void CommitFrozenOrder();
 	void UpdateHoverAffordance(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime);
+	void SetInputVisualCards(const TSet<int32>& RuntimeIds);
+	bool MoveInputVisualTo(int32 RuntimeId, const FVector2D& AbsoluteCenter);
+	bool GetCardVisualGeometry(UWidget* Card, FGeometry& OutGeometry) const;
 	void SetLayoutParameters(const FVector2D& InCardSize, float InMaxHorizontalStep,
 		float InBaseVerticalOffset, float InEdgeVerticalDrop);
 	bool ProtectCardGeometry(UWidget* Card, const FPresentationPlaybackToken& Token);
@@ -60,6 +63,7 @@ protected:
 private:
 	void SynchronizeLayoutParameters();
 	int32 HoveredRuntimeId = INDEX_NONE;
+	TSet<int32> InputVisualCards;
 	FVector2D CardSize = FVector2D(150.0f, 210.0f);
 	float MaxHorizontalStep = 100.0f;
 	float BaseVerticalOffset = 24.0f;

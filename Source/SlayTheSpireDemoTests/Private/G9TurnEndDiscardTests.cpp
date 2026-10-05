@@ -28,6 +28,7 @@ namespace G9TurnEndDiscardTest
 		UOverlay* Area = nullptr;
 		UTextBlock* Discard = nullptr;
 		FPresentationResolutionEnvelope Captured;
+		FDelegateHandle CaptureHandle;
 		TArray<UObject*> FixtureRoots;
 		FNativeFixture()
 		{
@@ -47,11 +48,15 @@ namespace G9TurnEndDiscardTest
 			HUD->SetBufferedPlayerInputEnabled(true);
 			HUD->ReconcileHandForTesting();
 			Layout(FVector2D(1280, 210));
-			Source.Gameplay.Battle->OnPresentationResolutionReady.AddLambda([this](const auto& Envelope) { Captured = Envelope; });
+			CaptureHandle = Source.Gameplay.Battle->OnPresentationResolutionReady.AddLambda([this](const auto& Envelope) { Captured = Envelope; });
 		}
 		~FNativeFixture()
 		{
-			HUD->SkipPresentation(); HUD->RemoveFromRoot();
+			// Retire callback captures before member storage dies or deferred Ready
+			// publication / World teardown can enter another fixture iteration.
+			Source.Gameplay.Battle->OnPresentationResolutionReady.Remove(CaptureHandle);
+			Source.Controller->Shutdown();
+			HUD->DestructSelectionForTesting(); HUD->RemoveFromRoot();
 			for (UObject* Object : FixtureRoots) Object->RemoveFromRoot();
 		}
 		void Layout(FVector2D Size)

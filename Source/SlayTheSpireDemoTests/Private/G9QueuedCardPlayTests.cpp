@@ -13,6 +13,26 @@ namespace
 	}
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9QueueVisualOriginTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.VisualOriginReceipt", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9QueueVisualOriginTest::RunTest(const FString&)
+{
+	FShadowFixture F; F.Widget->SetBufferedPlayerInputEnabled(true);
+	if (!TestTrue(TEXT("A Blocking"), F.PlayA())) return false;
+	const int32 B = F.Card(TEXT("B"))->GetRuntimeId();
+	TestTrue(TEXT("B draft"), F.Widget->SelectCard(B));
+	FCardPlayVisualOrigin Origin; Origin.Center = FVector2D(.3,.4); Origin.Size = FVector2D(172.5,241.5); Origin.bPointerHeld = true;
+	TestTrue(TEXT("UI receipt travels with confirmed intent"), F.Input().ConfirmCardDraft(NAME_None, Origin));
+	TestTrue(TEXT("Confirmation preserves exact origin"), F.Input().GetConfirmedPlays()[0].VisualOrigin->Center == Origin.Center);
+	F.FinishPlayback(); F.Gameplay.FlushReady();
+	FBufferedPlayerIntentDecision Decision;
+	if (!TestTrue(TEXT("Receipt delivered only at ready boundary"), F.Input().TakeReadyIntent(Decision))) return false;
+	TestTrue(TEXT("Popped command retains origin and input identity"), Decision.Play.InputSequence != 0 && Decision.Play.VisualOrigin->Center == Origin.Center);
+	TestTrue(TEXT("Busy retry retains same receipt"), F.Input().RestoreBusyPlay(Decision.Play));
+	F.Input().Clear();
+	TestFalse(TEXT("Old receipt cannot restore a cleared generation"), F.Input().RestoreBusyPlay(Decision.Play));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9FullTargetTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.FrozenTargets", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FG9FullTargetTest::RunTest(const FString&)
 {

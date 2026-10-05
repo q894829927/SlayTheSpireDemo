@@ -1,33 +1,37 @@
-# Checkpoint — amended G9-B
+# Checkpoint — Native pointer/source extension of amended G9-B
 
-Branch `codex/g9-buffered-input-detached-cards`; implementation HEAD `72a564a`
-plus the final Native PIE documentation receipt. Resolve the receipt commit hash
-from Git; implementation base `fe80565`, contract commit `fc0de47`.
-Authority: `docs/QueuedCardPlayAndRelicTimingAmendment.md`.
+Branch: `codex/g9-buffered-input-detached-cards`. HEAD at this batch's start:
+`de75414`. This checkpoint accompanies the local implementation commit titled
+`feat(native-ui): play cards from visible source and follow pointer drafts`;
+resolve the exact current receipt hash with `git log -1 --format='%h %s'`.
+Authority: `docs/NativePointerCardPresentation.md`, alongside the existing
+confirmed FIFO / relic-tail / simultaneous-discard amendment.
 
-Completed: Native Hand refactor; amended contract; relic scheduling commit
-`6071c56` (54-case focused PASS). FIFO implemented and validated: frozen draft,
-confirmed plays, exact targets, automatic one-at-a-time requests, invalid-item
-feedback/skip, EndTurn marker, mandatory/lifecycle cleanup, disabled fallback.
-Final affected FIFO build PASS; G9 + G8B + FastInput 30/30 PASS. Combined valid
-FIFO coverage is 61 distinct cases across runs, not one run. Exact logs and
-failed/repaired gates: `docs/G9BRevisionExecution.md`.
+Completed in this batch: synchronous proven CardPlayed first pose, no fixed-origin
+fallback; Skill/Power/untargeted-Attack pointer render transforms, immediate right
+cancel, Self/None left confirmation through normal Requests; optional queued
+cosmetic origins and per-submission receipt with identity/session checks. Formal
+Hand identity, slot/base geometry, Gameplay, history and Blocking ownership stay
+in their existing owners. No queued input is consumed by NativeTick.
 
-TurnEndDiscard implemented: explicit producer metadata, shared Hand-source Group
-engine, exact suppression, transactional prepare, viewport/GC/lifecycle cleanup.
-Final generation/build PASS; all 94 distinct affected cases have valid passing
-evidence across repaired runs. See the execution document for actual counts.
+Prescribed UE 5.8 project generation and final Development Editor build PASS,
+6.93 s. 69 distinct tests have valid passing evidence across initial/affected
+repair runs. Final source/decline 1/1, Self/None normal+G9 Request 1/1, affected
+R8 5 success plus one expected warning. Complete failures, repairs, exact scope
+and report/log names: `docs/NativePointerCardPresentation.md`.
 
-At `72a564a`, Native production PIE passed confirmed FIFO, EndTurn tail,
-simultaneous five-card discard and draw/shuffle followed by relic reward.
-Mandatory EndTurn isolation observed. Full queued-mandatory clearing remains
-USER ACTION REQUIRED; minimal steps and actual configuration are in
-`docs/G9BRevisionNativePIE.md`. Next: obtain that one complete natural time line,
-then a separately built/tested default-enable commit and production readback.
+MCP actually started production Native PIE. Draft readback and fan/PlayArea were
+observed, but additional inputs and PIE stopping prevented controlled motion
+proof. USER ACTION REQUIRED: the four recording checks in the dedicated document
+(Hand-origin Attack; Skill/Power follow, right cancel and left play; FIFO source
+and viewport continuity; mandatory isolation). Editor is closed after build.
 
-Preserve/exclude the externally saved Native HUD Content asset modification.
-Editor reopened, PIE stopped, observer removed. Native user asset/live G9=true
-was tested without modifying or saving it. No asset/config/plugin/dependency/generated files
-belong in these commits. Each complete batch has docs/tests and an independent
-local commit; never push. G9 C++ default stays false until amended B gates pass.
-Original G9-C–F remain unstarted; no G9 seal.
+Earlier commits remain valid: `6071c56` relic tails, `b105fb1` confirmed FIFO,
+`72a564a` simultaneous discard, `de75414` partial Native PIE receipt. Its full
+queued-mandatory clearing gate is still pending in `G9BRevisionNativePIE.md`.
+Obtain pending visual receipts before the independent default-enable batch.
+G9 C++ default remains false. Original C–F remain unstarted; no G9 seal.
+
+Preserve/exclude the externally saved Native HUD Content modification. Its
+SHA256 still matches the pre-batch user asset. No assets, Config, Legacy,
+plugins, dependencies or generated/local files belong in this commit. No push.

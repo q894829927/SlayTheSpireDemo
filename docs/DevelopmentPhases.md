@@ -1,5 +1,14 @@
 # Development Phases
 
+Native ordinary-card source/pointer extension (base `de75414`): **IMPLEMENTED /
+BUILD PASS / AFFECTED AUTOMATION PASS / PARTIAL PIE / USER ACTION REQUIRED**.
+CardPlayed prepares its actual first pose; Skill/Power/untargeted-Attack drafts
+follow the mouse, right click restores the fan, and left click forwards Self/None
+through existing Requests. Optional FIFO cosmetics preserve confirmed pointer
+origins. All 69 distinct selected/added tests have valid passing evidence across
+repaired runs. Full controlled visual timelines remain pending. No default
+activation or C–F/seal change. [Contract and evidence](NativePointerCardPresentation.md).
+
 G9-B revision batches 2–4: Status front / Relic tail, confirmed input FIFO and
 explicit simultaneous TurnEndDiscard are implemented; UE 5.8 Editor builds and
 affected Automation gates PASS. Group evidence covers 94 distinct cases across

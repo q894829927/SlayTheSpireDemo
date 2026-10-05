@@ -7,6 +7,16 @@
 
 class UCardInstance;
 
+// Optional UI receipt only. Gameplay never reads it and history never records
+// it. Normalized HUD coordinates survive a queued wait and viewport resizing.
+struct SLAYTHESPIREDEMO_API FCardPlayVisualOrigin
+{
+	FVector2D Center = FVector2D::ZeroVector;
+	FVector2D Size = FVector2D::ZeroVector;
+	float Angle = 0.0f;
+	bool bPointerHeld = false;
+};
+
 struct SLAYTHESPIREDEMO_API FBufferedCardWindowIdentity
 {
 	int64 SourceResolutionId = 0;
@@ -54,4 +64,5 @@ struct SLAYTHESPIREDEMO_API FQueuedCardPlayIntent
 	FName CardId;
 	FName TargetPresentationId;
 	ECardTargetType TargetType = ECardTargetType::None;
+	TOptional<FCardPlayVisualOrigin> VisualOrigin;
 };

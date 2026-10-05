@@ -267,13 +267,16 @@ bool FBattleHUDBufferedPlayerInput::TryGetDraftTarget(FName PresentationId, FBat
 	return true;
 }
 
-bool FBattleHUDBufferedPlayerInput::ConfirmCardDraft(FName TargetPresentationId)
+bool FBattleHUDBufferedPlayerInput::ConfirmCardDraft(FName TargetPresentationId, const TOptional<FCardPlayVisualOrigin>& Origin)
 {
 	if (!Draft.IsSet() || !IsQueuedIdentityCurrent(Draft.GetValue()) || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
 		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
 	if (Draft->TargetType == ECardTargetType::None) { if (!TargetPresentationId.IsNone()) return false; }
 	else { FBattleHUDTargetView Target; if (!TryGetDraftTarget(TargetPresentationId, Target)) return false; }
 	Draft->TargetPresentationId = TargetPresentationId;
+	// Resting/arrow cards use their current Hand position when submitted. Only
+	// pointer-confirmed cards retain a frozen pose during the FIFO wait.
+	Draft->VisualOrigin = Origin.IsSet() && Origin->bPointerHeld ? Origin : TOptional<FCardPlayVisualOrigin>{};
 	ConfirmedPlays.Add(Draft.GetValue());
 	Draft.Reset();
 	return true;
