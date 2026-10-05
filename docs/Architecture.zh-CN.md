@@ -1,5 +1,11 @@
 # 整体架构说明
 
+遗物时序修订：Status 反应进入 ActionQueue 队首，Relic 事件反应进入队尾，
+两端批次一并原子预检。卡牌 continuation 保持依赖顺序；遗物实际收益在当前
+卡牌效果与去向之后结算。后续玩家出牌在当前卡牌、遗物和 Blocking 播放完成前
+留在输入 FIFO，不进入 ActionQueue。此规则取代 Relic 先于 RetryDraw 的旧约定；
+pre-commit Modifier 不变。详见 `QueuedCardPlayAndRelicTimingAmendment.md`。
+
 Native HUD 通知进入一个不可覆盖的 C++ 调度入口，派生类通过受限钩子处理绑定、生命周期与 Selection 表面。HUD 私有维护 GC 安全的 `(BattleId, RuntimeId)` 注册表，先准备完整冻结 Hand，再串行提交成员与顺序；嵌套通知合并处理。抽牌只有一个临时附着项，必须同时满足精确播放 token、HUD 表面 generation、冻结身份与索引，且视觉完成和正式历史均已到达，才能接管同一个 Widget 并恢复请求绑定。
 
 `UBattleHandFanPanel` 使用专用 Hand Slot 与私有 Slate `SPanel`，在首次布局中根据当前分配尺寸和冻结序号计算基础几何，按显式绘制层级、冻结序号排序。仍附着 Hand 的移动卡牌以精确 token 保护基础几何，其余卡牌随视口变化正常布局；悬停只更新可见、Hand 所有者卡牌的变换与绘制层级。布局不依赖 Tick 或标脏后的补救。动画完成后，精确完成回执仍归 tracked playback 所有，直到正式转发或取消边界将它退役；抽牌附着接管与保留 PlayArea 视觉清理覆盖这个延迟完成窗口。迁移与实际验证记录见 [Native Hand 重构](NativeHandStructureRefactor.md)。

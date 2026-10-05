@@ -58,6 +58,23 @@ bool UBattleActionQueue::AddBatchToFrontPreserveOrder(const TArray<UBattleAction
 	return true;
 }
 
+bool UBattleActionQueue::AddBatchesToFrontAndBackPreserveOrder(
+	const TArray<UBattleAction*>& Front, const TArray<UBattleAction*>& Back)
+{
+	TArray<UBattleAction*> Combined = Front;
+	Combined.Append(Back);
+	FString Reason;
+	if (!ValidateBatchForInsertion(Combined, Reason))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[ActionQueue] Atomic front/back rejected: %s"), *Reason);
+		return false;
+	}
+	for (int32 Index = Front.Num() - 1; Index >= 0; --Index)
+		PendingActions.Insert(Front[Index], 0);
+	for (UBattleAction* Action : Back) PendingActions.Add(Action);
+	return true;
+}
+
 bool UBattleActionQueue::StartProcessing()
 {
 	if (bResolutionFaulted || bResolutionFaultRequested)

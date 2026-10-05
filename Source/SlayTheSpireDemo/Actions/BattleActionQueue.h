@@ -31,6 +31,10 @@ public:
 	// subject to the normal atomic validation and QueueEmpty non-reentrancy guard.
 	bool AddBatchToBackPreserveOrder(const TArray<UBattleAction*>& Actions);
 	bool AddBatchToFrontPreserveOrder(const TArray<UBattleAction*>& Actions);
+	// Both ends are validated as one batch before any insertion (including
+	// duplicate identities across the ends). No processing occurs here.
+	bool AddBatchesToFrontAndBackPreserveOrder(
+		const TArray<UBattleAction*>& Front, const TArray<UBattleAction*>& Back);
 	bool StartProcessing();
 
 	// On an explicitly validated synchronous interactive boundary, a read-only

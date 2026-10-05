@@ -332,10 +332,11 @@ namespace Phase7BTriggerSources
 		));
 		TestTrue(TEXT("Combined reaction queue starts"), Queue->StartProcessing());
 
-		// Priority wins first. With Priority=5 tied, battle-wide RuntimeSequence
-		// orders RelicA before the later Status, and LocalTriggerIndex orders the
-		// two RelicA triggers.
-		ExpectValues(*this, Recorder, {20, 10, 11, 30});
+		// G9-B amendment: Status executes at the front; Relics execute at the
+		// tail. Within each scheduling class retain the existing deterministic
+		// Priority / RuntimeSequence / LocalTriggerIndex order. Eligibility trace
+		// remains the original sorted, synchronous read-only decision sequence.
+		ExpectValues(*this, Recorder, {30, 20, 10, 11});
 
 		if (!TestEqual(TEXT("Four eligible triggers"), Trace.Num(), 4)) return false;
 

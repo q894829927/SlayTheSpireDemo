@@ -1,5 +1,13 @@
 # Architecture
 
+Relic scheduling amendment: Status reactions enter the ActionQueue front; Relic
+event reactions enter its back, atomically validated together. Card continuations
+retain dependency order, so actual Relic gains follow the current card's effects
+and destination. Future player card requests remain outside ActionQueue until
+that command/relic work and Blocking playback finish. This replaces Relic-before-
+RetryDraw scheduling; pre-commit Modifiers remain unchanged. See
+`QueuedCardPlayAndRelicTimingAmendment.md` (2026-10-05).
+
 Native HUD publications enter one final C++ dispatcher with restricted hooks.
 The HUD privately prepares and commits frozen membership; its GC-rooted registry
 is scoped by BattleId/RuntimeId. Incoming draw adoption requires matching frozen

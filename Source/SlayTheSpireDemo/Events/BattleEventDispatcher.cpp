@@ -263,6 +263,7 @@ bool UBattleEventDispatcher::Dispatch(
 	);
 
 	TArray<UBattleAction*> FinalReactionBatch;
+	TArray<UBattleAction*> DeferredRelicBatch;
 
 	for (const FTriggerCandidate& Candidate : Candidates)
 	{
@@ -314,19 +315,24 @@ bool UBattleEventDispatcher::Dispatch(
 			continue;
 		}
 
-		FinalReactionBatch.Append(LocalBatch);
+		// Event eligibility/build remain synchronous. Relic effects run after
+		// the current command's already-authored work, never inside RetryDraw.
+		if (Candidate.RuntimeSource.Kind == ETriggerRuntimeSourceKind::Relic)
+			DeferredRelicBatch.Append(LocalBatch);
+		else
+			FinalReactionBatch.Append(LocalBatch);
 	}
 
-	if (FinalReactionBatch.Num() == 0)
+	if (FinalReactionBatch.Num() == 0 && DeferredRelicBatch.Num() == 0)
 	{
 		return true;
 	}
 
-	if (!Queue->AddBatchToFrontPreserveOrder(FinalReactionBatch))
+	if (!Queue->AddBatchesToFrontAndBackPreserveOrder(FinalReactionBatch, DeferredRelicBatch))
 	{
 		const FString Reason = FString::Printf(
 			TEXT("Dispatcher failed final atomic reaction insertion. Reactions=%d Candidates=%d."),
-			FinalReactionBatch.Num(),
+			FinalReactionBatch.Num() + DeferredRelicBatch.Num(),
 			Candidates.Num()
 		);
 		Queue->RequestResolutionFault(Reason);
@@ -337,7 +343,7 @@ bool UBattleEventDispatcher::Dispatch(
 		LogTemp,
 		Log,
 		TEXT("[Event] Dispatch built %d reactions from %d eligible triggers."),
-		FinalReactionBatch.Num(),
+		FinalReactionBatch.Num() + DeferredRelicBatch.Num(),
 		Candidates.Num()
 	);
 	return true;

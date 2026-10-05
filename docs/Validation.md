@@ -1,5 +1,15 @@
 # Validation
 
+## G9-B revision — relic tails, 2026-10-05
+
+`fc0de47` plus relic scheduling changes: prescribed project generation and UE 5.8
+Development Editor build PASS. Focused Phase6A + Phase6C + Phase7 Automation:
+54 cases, 28 Success / 26 SuccessWithWarnings / zero Fail or NotRun. This proves
+card draws/destination before deferred actual rewards, mixed Status/Relic
+scheduling, atomic insertion and existing relic contracts. Manual relic timing
+in production PIE remains USER ACTION REQUIRED. Exact configuration, paths and
+limitations: [revision evidence](G9BRevisionExecution.md).
+
 ## Native Hand Slate layout — 2026-10-05
 
 Source: `4237526` plus this dedicated Hand Slot/Slate layout and cancellation

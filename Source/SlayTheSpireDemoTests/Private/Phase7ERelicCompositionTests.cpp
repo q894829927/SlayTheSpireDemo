@@ -7,6 +7,7 @@
 #include "Actions/BattleActionQueue.h"
 #include "Actions/GainBlockAction.h"
 #include "Actions/GainEnergyAction.h"
+#include "Actions/ShuffleDeckAction.h"
 #include "Battle/BattleManager.h"
 #include "Combat/Combatant.h"
 #include "Deck/DeckRuntime.h"
@@ -21,6 +22,14 @@
 #include "Relics/RelicData.h"
 #include "Relics/RelicInstance.h"
 #include "Engine/World.h"
+#include "Phase6ATestTypes.h"
+#include "Phase6UIA0TestTypes.h"
+#include "Phase6UIA1TestFixture.h"
+#include "Cards/CardData.h"
+#include "Cards/CardInstance.h"
+#include "Cards/Effects/DrawCardEffect.h"
+#include "Status/StatusContainer.h"
+#include "Status/StatusData.h"
 
 namespace Phase7E
 {
@@ -326,6 +335,146 @@ namespace Phase7E
 		TestEqual(TEXT("Stale membership does not mutate Counter"), Relic->GetCounter(), 0);
 		TestEqual(TEXT("Stale membership grants no Block"), Fixture.Player->Block, BlockBefore);
 		TestEqual(TEXT("Stale membership grants no Energy"), Fixture.Battle->Energy, EnergyBefore);
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRelicTailCardDrawTest,
+		"SlayTheSpireDemo.Phase7E.Tail.CardDrawAndStatusOrder",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	bool FRelicTailCardDrawTest::RunTest(const FString& Parameters)
+	{
+		for (bool bRecorded : {false, true})
+		{
+			FCompositionFixture F;
+			if (!TestTrue(TEXT("Fixture ready"), F.IsReady())) return false;
+			F.Battle->FlushScheduledReadStateReadyForTesting();
+			F.Battle->bEnableCommittedPresentationRecording = bRecorded;
+			UDeckRuntime* Deck = F.Battle->GetDeckRuntimeForTesting();
+			UBattleActionQueue* Q = F.Battle->GetActionQueueForTesting();
+			URelicInstance* CountedRelic = F.GetRuntimeRelic();
+			UCardData* DrawTwo = Phase6UIA1Test::CreateCard(F.World, TEXT("TailDrawTwo"), ECardTargetType::None, 1);
+			UDrawCardEffect* Effect = NewObject<UDrawCardEffect>(DrawTwo);
+			Effect->DrawCount = Effect->UpgradedDrawCount = 2;
+			DrawTwo->Effects.Add(Effect);
+			Deck->InitializeFromDefinitions({DrawTwo, DrawTwo, DrawTwo}, 1337);
+			UCardInstance* Played = nullptr;
+			UCardInstance* Discarded = nullptr;
+			TestTrue(TEXT("Setup played card"), Deck->TryDrawTopCard(Played));
+			TestTrue(TEXT("Setup discard card"), Deck->TryDrawTopCard(Discarded) && Deck->TryDiscardCard(Discarded));
+			TestTrue(TEXT("First count"), F.DispatchShuffle(Deck));
+			TestTrue(TEXT("Second count"), F.DispatchShuffle(Deck));
+
+			// A second reward relic and a read-only Relic probe share the real event.
+			URelicData* Abacus = NewObject<URelicData>(F.World);
+			Abacus->RelicId = TEXT("TailBlock");
+			UDeckShuffledCountTrigger* BlockTrigger = NewObject<UDeckShuffledCountTrigger>(Abacus);
+			BlockTrigger->RequiredCount = 1;
+			UGainBlockRelicEffect* Block = NewObject<UGainBlockRelicEffect>(BlockTrigger);
+			Block->Amount = 6;
+			BlockTrigger->Effects.Add(Block); Abacus->Triggers.Add(BlockTrigger);
+			TestTrue(TEXT("Additional relic"), F.Battle->GetPlayerRelicContainer()->AddRelic(Abacus).WasAdded());
+			UPhase6ATestExecutionRecorder* Probe = NewObject<UPhase6ATestExecutionRecorder>(F.World);
+			UStatusData* Status = NewObject<UStatusData>(F.World);
+			Status->StatusId = TEXT("TailStatusProbe");
+			UPhase6ATestRecordTrigger* Immediate = NewObject<UPhase6ATestRecordTrigger>(Status);
+			Immediate->InitializeForDeckShuffled(Probe, Deck); Status->Triggers.Add(Immediate);
+			bool bCreated = false;
+			F.Player->GetStatusContainer()->ApplyStatus(Status, 1, F.Battle->AllocateRuntimeSequence(), bCreated);
+			URelicData* ProbeRelic = NewObject<URelicData>(F.World);
+			ProbeRelic->RelicId = TEXT("TailRelicProbe");
+			UPhase6ATestRecordTrigger* Deferred = NewObject<UPhase6ATestRecordTrigger>(ProbeRelic);
+			Deferred->InitializeForDeckShuffled(Probe, Deck); ProbeRelic->Triggers.Add(Deferred);
+			TestTrue(TEXT("Probe relic"), F.Battle->GetPlayerRelicContainer()->AddRelic(ProbeRelic).WasAdded());
+			F.Battle->Energy = 1;
+			FPresentationResolutionEnvelope Captured;
+			const FDelegateHandle Handle = F.Battle->OnPresentationResolutionReady.AddLambda(
+				[&Captured](const FPresentationResolutionEnvelope& E) { Captured = E; });
+			TestTrue(TEXT("Real card request accepted"), F.Battle->RequestPlayCard(Played, nullptr).IsAcceptedForResolution());
+			F.Battle->FlushScheduledReadStateReadyForTesting();
+			F.Battle->OnPresentationResolutionReady.Remove(Handle);
+			TestEqual(TEXT("Both draws completed"), Deck->GetHandCount(), 2);
+			TestEqual(TEXT("Card destination completed"), Deck->GetDiscardCount(), 1);
+			TestEqual(TEXT("Threshold energy available to next card"), F.Battle->Energy, 1);
+			TestEqual(TEXT("Both relic rewards"), F.Player->Block, 12);
+			TestEqual(TEXT("Counter reset"), CountedRelic->GetCounter(), 0);
+			if (TestEqual(TEXT("Immediate and deferred probes"), Probe->GetValues().Num(), 2))
+			{
+				TestEqual(TEXT("Status observes shuffled pile before retry"), Probe->GetValues()[0], 1);
+				TestEqual(TEXT("Relic observes completed draw"), Probe->GetValues()[1], 0);
+			}
+			TestTrue(TEXT("Queue settled"), !Q->IsBusy());
+			TestTrue(TEXT("Next card can spend reward"), F.Battle->QueryPlayCard(Deck->GetFirstHandCard(), nullptr).bAllowed);
+			if (bRecorded && TestEqual(TEXT("Exact history"), Captured.Records.Num(), 8))
+			{
+				TestTrue(TEXT("Second draw precedes reward"), Captured.Records[3].Type == EBattlePresentationRecordType::CardZoneChanged
+					&& Captured.Records[3].CardZoneChanged.ToZone == ECardZone::Hand);
+				TestTrue(TEXT("Destination precedes rewards"), Captured.Records[4].Type == EBattlePresentationRecordType::CardZoneChanged
+					&& Captured.Records[4].CardZoneChanged.FromZone == ECardZone::PlayArea);
+				TestTrue(TEXT("Prepared composite rewards remain consecutive"), Captured.Records[5].Type == EBattlePresentationRecordType::BlockChanged
+					&& Captured.Records[6].Type == EBattlePresentationRecordType::EnergyChanged
+					&& Captured.Records[7].Type == EBattlePresentationRecordType::BlockChanged);
+			}
+		}
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRelicTailMultipleEventsTest,
+		"SlayTheSpireDemo.Phase7E.Tail.MultipleEvents",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	bool FRelicTailMultipleEventsTest::RunTest(const FString& Parameters)
+	{
+		FCompositionFixture F;
+		if (!TestTrue(TEXT("Fixture"), F.IsReady())) return false;
+		UDeckRuntime* Deck = F.Battle->GetDeckRuntimeForTesting();
+		Deck->InitializeFromDefinitions({}, 71);
+		TestTrue(TEXT("Seed counter one"), F.DispatchShuffle(Deck));
+		TestTrue(TEXT("Seed counter two"), F.DispatchShuffle(Deck));
+		const int32 Energy = F.Battle->Energy;
+		UBattleActionQueue* Q = F.Battle->GetActionQueueForTesting();
+		UBattleEventDispatcher* Dispatcher = nullptr;
+		TArray<ACombatant*> Combatants;
+		if (!TestTrue(TEXT("Dispatch context"), F.Battle->TryBuildEventDispatchContext(Dispatcher, Combatants))) return false;
+		auto MakeShuffle = [Q, Deck, Dispatcher, &Combatants]()
+		{
+			auto* Action = NewObject<UShuffleDeckAction>(Q);
+			Action->Initialize(Deck, Dispatcher, Combatants);
+			return Action;
+		};
+		auto* Hold = NewObject<UPhase6UIA0ManualFinishAction>(Q);
+		TestTrue(TEXT("One logical command with two events"), Q->AddBatchToBackPreserveOrder({MakeShuffle(), MakeShuffle(), Hold}));
+		TestTrue(TEXT("Start"), Q->StartProcessing());
+		TestTrue(TEXT("Card continuation reached before relics"), Hold->HasExecuted());
+		TestEqual(TEXT("Both counter reactions are still deferred"), F.GetRuntimeRelic()->GetCounter(), 2);
+		TestEqual(TEXT("No early energy"), F.Battle->Energy, Energy);
+		TestEqual(TEXT("No early block"), F.Player->Block, 0);
+		Hold->CompleteManually();
+		TestEqual(TEXT("Event order: threshold then next count"), F.GetRuntimeRelic()->GetCounter(), 1);
+		TestEqual(TEXT("Exactly one energy reward"), F.Battle->Energy, Energy + 1);
+		TestEqual(TEXT("Exactly one block reward"), F.Player->Block, 6);
+		TestFalse(TEXT("Queue settled"), Q->IsBusy());
+		TestFalse(TEXT("No framework fault"), Q->IsResolutionFaulted());
+		return true;
+	}
+
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAtomicQueueEndsTest,
+		"SlayTheSpireDemo.Phase7E.Tail.AtomicQueueEnds",
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	bool FAtomicQueueEndsTest::RunTest(const FString& Parameters)
+	{
+		FCompositionFixture F;
+		if (!TestTrue(TEXT("Fixture"), F.IsReady())) return false;
+		UBattleActionQueue* Q = F.Battle->GetActionQueueForTesting();
+		UPhase6ATestExecutionRecorder* R = NewObject<UPhase6ATestExecutionRecorder>(F.World);
+		auto Make = [Q, R](int32 Value) { auto* A = NewObject<UPhase6ATestRecordAction>(Q); A->Initialize(R, Value); return A; };
+		auto* Middle = Make(2); auto* Front = Make(1); auto* Back = Make(3);
+		TestTrue(TEXT("Existing work"), Q->AddToBack(Middle));
+		TestFalse(TEXT("Invalid back cannot partially insert front"), Q->AddBatchesToFrontAndBackPreserveOrder({Front}, {nullptr}));
+		TestEqual(TEXT("No partial mutation"), Q->GetPendingCount(), 1);
+		TestFalse(TEXT("Cross-end duplicates rejected"), Q->AddBatchesToFrontAndBackPreserveOrder({Front}, {Front}));
+		TestEqual(TEXT("Duplicate leaves original queue"), Q->GetPendingCount(), 1);
+		TestTrue(TEXT("Atomic insertion"), Q->AddBatchesToFrontAndBackPreserveOrder({Front}, {Back}));
+		TestTrue(TEXT("Execute"), Q->StartProcessing());
+		TestTrue(TEXT("Both ends preserve order"), R->GetValues() == TArray<int32>({1, 2, 3}));
 		return true;
 	}
 }

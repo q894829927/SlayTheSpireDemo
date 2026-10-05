@@ -1,5 +1,9 @@
 # Phase 7 — Relics
 
+2026-10-05: `QueuedCardPlayAndRelicTimingAmendment.md` supersedes the old immediate
+Relic reaction scheduling. Event dispatch still occurs after shuffle commit;
+Relic gains run at the command tail, after the current card effects/destination.
+
 Date: **2026-09-02**
 
 Status: **DESIGN SEALED / 7A IMPLEMENTATION AUTHORIZED**

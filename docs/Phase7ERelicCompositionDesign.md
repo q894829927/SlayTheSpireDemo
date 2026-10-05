@@ -1,5 +1,10 @@
 # Phase 7E —— 遗物反应组合化设计
 
+2026-10-05 timing amendment: Relic event reaction batches now enter ActionQueue's
+back; Status reactions remain immediate. Counter/reward composition and per-event
+deterministic order remain. The old Relic-before-RetryDraw scheduling is superseded
+by `QueuedCardPlayAndRelicTimingAmendment.md`; historical 7E evidence stays historical.
+
 日期：**2026-09-03**
 
 状态：**设计草案 / 尚未授权实施**

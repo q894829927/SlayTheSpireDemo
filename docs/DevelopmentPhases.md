@@ -1,5 +1,11 @@
 # Development Phases
 
+G9-B revision batch 2: Status front / Relic tail scheduling implemented; UE 5.8
+Editor build and 54-case focused Automation PASS. Confirmed input FIFO and
+TurnEndDiscard are next; production visual gates remain pending. Native G9 is
+OPT-IN / NOT SEALED; original C–F have not started. See
+[actual evidence](G9BRevisionExecution.md).
+
 Current forward G9-B scope is the user-approved [confirmed FIFO / relic tails /
 turn-end discard amendment](QueuedCardPlayAndRelicTimingAmendment.md), based on
 `fe80565`. Implementation and affected acceptance are pending; the selection-only

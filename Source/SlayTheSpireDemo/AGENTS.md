@@ -58,7 +58,16 @@ Trigger eligibility uses snapshot semantics while resulting Actions validate liv
 
 Do not add `TriggerPhase` or a persistent Trigger Registry before a real mechanic/source requires it.
 
-`FDeckShuffledEvent` emits only after a successful discard-to-draw shuffle commit. Reactions precede RetryDraw. Initial battle setup shuffle consumes battle RNG but emits no Gameplay or Presentation shuffle record; opening-hand setup draws likewise emit no Presentation draw records.
+`FDeckShuffledEvent` emits only after a successful discard-to-draw shuffle commit.
+Status reactions enter the Queue front; Relic event reactions enter its back,
+with atomic validation across both batches. Card continuations preserve dependency
+order; future player card requests remain outside ActionQueue until the preceding
+command/relics and Blocking history finish. Relic gains therefore follow all current
+card effects/destination and precede the next card. New Relic event reactions use
+this policy, without concrete Relic/Card checks; pre-commit Modifiers remain in
+their typed pipelines. See `docs/QueuedCardPlayAndRelicTimingAmendment.md`.
+Initial battle setup shuffle consumes battle RNG but emits no Gameplay or
+Presentation shuffle record; opening-hand draws emit no Presentation draw records.
 
 ## Public Gameplay Boundary
 
