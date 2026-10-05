@@ -1,5 +1,10 @@
 # Selection Presentation G9 — Buffered Player Input + Detached Card Presentation
 
+2026-10-05 authority amendment: [confirmed FIFO / relic tails / turn-end group](QueuedCardPlayAndRelicTimingAmendment.md)
+supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and its
+16.1 input gate. Original text remains historical context. New B gates follow the
+amendment; C–F are not started or accepted.
+
 Date: **2026-09-13**
 
 Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B IMPLEMENTED, AUTOMATION PASS, PARTIAL PIE (OPT-IN / USER ACTION REQUIRED) / NOT SEALED**

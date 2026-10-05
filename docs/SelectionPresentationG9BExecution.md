@@ -1,5 +1,11 @@
 # Selection Presentation G9-B — Buffered Player Input and Stable Hand Hover
 
+2026-10-05 user-approved scope revision: [confirmed FIFO / relic tails / turn-end
+discard group](QueuedCardPlayAndRelicTimingAmendment.md). Delivered selection-only
+behavior and old manual gates below are historical; amended implementation and
+affected acceptance are pending. User EndTurn/mandatory observations and their
+evidence limitations are recorded in the amendment. Default off / NOT SEALED.
+
 2026-10-05 architecture correction: implementation baseline saved in `5f7f4fc`;
 subsequent structure/layout work is tracked in
 [Native Hand refactor](NativeHandStructureRefactor.md). This replaces the former
