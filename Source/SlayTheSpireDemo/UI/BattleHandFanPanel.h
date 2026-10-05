@@ -13,6 +13,8 @@ class SLAYTHESPIREDEMO_API UBattleHandFanPanel : public UCanvasPanel
 public:
 	void UpdateInteraction(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime);
 	void LayoutCards();
+	void ReconcileLayout();
+	void UpdateHoverAffordance(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime);
 	// Apply the final slot geometry and fan angles before an incoming card's
 	// presentation starts. This keeps the target deterministic while the card
 	// itself animates from its source pile.
@@ -37,6 +39,8 @@ protected:
 	virtual void OnSlotRemoved(UPanelSlot* InSlot) override;
 private:
 	int32 HoveredRuntimeId = INDEX_NONE;
+	bool bLayoutDirty = true;
+	float LastLayoutWidth = -1.0f;
 	FVector2D CardSize = FVector2D(150.0f, 210.0f);
 	float MaxHorizontalStep = 100.0f;
 	float BaseVerticalOffset = 24.0f;

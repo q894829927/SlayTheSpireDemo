@@ -68,10 +68,12 @@ void UBattleHUDWidget::UpdateHandInteraction(float DeltaTime)
 	const bool bPending = ViewModel->HasAuthoritativePendingCardSelection();
 	// Playback keeps its exact source/arrival transform. Fan updates resume only
 	// once the reducer has reconciled the structural Hand slots.
-	if (FanHand && !HasTrackedPresentationPlayback() && !HasActiveNativePresentation()
-		&& (!ViewModel->bInputLocked || bPending))
+	if (FanHand)
 	{
-		FanHand->UpdateInteraction(Pointer, bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId, true, DeltaTime);
+		if (!HasTrackedPresentationPlayback() && !HasActiveNativePresentation()) FanHand->ReconcileLayout();
+		const bool bAllowHover = (!HasTrackedPresentationPlayback() && !HasActiveNativePresentation()
+			&& (!ViewModel->bInputLocked || bPending)) || bBufferedHandHoverAvailable;
+		FanHand->UpdateHoverAffordance(Pointer, bPending ? INDEX_NONE : ViewModel->SelectedCardRuntimeId, bAllowHover, DeltaTime);
 	}
 	if (!TargetingArrow) return;
 	UBattleCardWidget* Selected = nullptr;

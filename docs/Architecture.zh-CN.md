@@ -45,7 +45,16 @@ CardData / CardInstance
 G9-A 增加 Gameplay 拥有的只读玩家回合身份 `BattleId + PlayerTurnSerial`。
 serial 在战斗初始化时重置，每次正式成功进入 PlayerTurn 时只递增一次；
 同一回合的 StateRevision 变化不改变它，它也不依赖 Presentation session。
-G9-A 的缓冲输入评估仅在 Automation 中以影子模式运行；生产激活遵循 G9 专项阶段门禁。
+G9-A 建立影子评估；G9-B 增加可选启用的生产消费路径，默认开启仍受其视觉门禁约束。
+
+开启后，一个 HUD 拥有的仲裁器最多保存一个玩家物理输入意图。已接受的精确回合
+EndTurn 优先于缓冲选牌与 Native FastInput 重试。ViewModel 通过已有 Gameplay Request
+转发该回合 token，不要求历史显示已经追平，也不从实时状态重建历史显示。
+选牌只缓冲已经封存的精确 Presentation 目标，仍需新的确认或目标输入。
+Ready、Controller 和 ViewModel 通知驱动合并且非重入的消费；视觉 NativeTick 不轮询
+Gameplay readiness。正式 Hand Widget 保持 `(BattleId, RuntimeId)` 身份、冻结顺序和
+Hidden 历史槽位；悬停变换/层级与结构布局分离。卡牌播放仍为 Blocking。
+执行证据见 `docs/SelectionPresentationG9BExecution.md`。
 
 ### Combatants
 

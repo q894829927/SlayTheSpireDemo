@@ -2,9 +2,9 @@
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / G9-A COMPLETE AND VALIDATED (SHADOW ONLY) / NOT SEALED**
+Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B IMPLEMENTED, AUTOMATION PASS, PARTIAL PIE (OPT-IN / USER ACTION REQUIRED) / NOT SEALED**
 
-Current execution: [SelectionPresentationG9AExecution.md](SelectionPresentationG9AExecution.md).
+Current execution: [SelectionPresentationG9BExecution.md](SelectionPresentationG9BExecution.md). G9-A checkpoint evidence: [SelectionPresentationG9AExecution.md](SelectionPresentationG9AExecution.md).
 
 Authority baseline: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
 
@@ -2073,7 +2073,7 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 G8    — COMPLETE / VALIDATED / SEALED
 G9    — DESIGN LOCKED / G9-A COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
-G9-B  — NOT STARTED
+G9-B  — IMPLEMENTED / AUTOMATION PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN
 G9-C  — NOT STARTED
 G9-D1 — NOT STARTED
 G9-D2 — NOT STARTED

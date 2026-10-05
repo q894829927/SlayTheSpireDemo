@@ -430,6 +430,29 @@ bool UBattleHUDViewModel::RequestEndTurn()
 	return true;
 }
 
+bool UBattleHUDViewModel::RequestEndTurnForAcceptedIntent(const FPlayerTurnAuthorityToken& ExpectedTurn)
+{
+	ABattleManager* Battle = BattleManager.Get();
+	FPlayerTurnAuthorityToken CurrentTurn;
+	if (!IsValid(Battle) || !Battle->IsPresentationAvailable()
+		|| Outcome != EBattleHUDOutcome::None
+		|| InteractionState == EBattleHUDInteractionState::PresentationUnavailable
+		|| HasAuthoritativePendingCardSelection()
+		|| !Battle->TryGetCurrentPlayerTurnAuthorityToken(CurrentTurn) || CurrentTurn != ExpectedTurn)
+	{
+		return false;
+	}
+	const FGameplayRequestResult Result = Battle->RequestEndPlayerTurn();
+	if (!Result.IsAcceptedForResolution()) return false;
+	// Input state only. Historical display remains on its own frozen chronology.
+	ClearSelectionInternal();
+	ClearFeedback();
+	ClearLiveInputBindings();
+	SetResolving();
+	BroadcastChanged(EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Feedback);
+	return true;
+}
+
 bool UBattleHUDViewModel::TryGetLegalTargetByPresentationId(FName PresentationId, FBattleHUDTargetView& OutTarget) const
 {
 	OutTarget = FBattleHUDTargetView{};

@@ -54,8 +54,20 @@ Owns battle orchestration, turn transitions, battle-scoped identity/RNG allocati
 G9-A adds a read-only Gameplay player-turn identity, `BattleId + PlayerTurnSerial`.
 The serial resets at battle setup and increments once per successful formal PlayerTurn
 entry; same-turn StateRevision changes do not change it. It is independent of
-Presentation sessions. G9-A buffered input evaluation is Automation-only shadow
-infrastructure; production activation follows the dedicated G9 stage gates.
+Presentation sessions. G9-A introduced the shadow evaluator. G9-B adds opt-in
+production consumption; default activation still depends on its visual gate.
+
+When enabled, one HUD-owned arbiter stores at most one physical player intent.
+An accepted exact-turn EndTurn takes priority over buffered card selection and
+Native FastInput retry. Its ViewModel forwarding boundary calls the existing
+Gameplay Request without requiring displayed history to be current and without
+rebuilding that history from live state. Card selection buffers only an exact
+already-sealed Presentation target and still requires fresh Confirm/Target input.
+Ready, Controller and ViewModel notifications drive coalesced non-reentrant
+consumption; cosmetic NativeTick does not poll Gameplay readiness. Formal Hand
+Widgets retain `(BattleId, RuntimeId)` identity, frozen order and hidden structural
+slots; hover changes transforms/layers separately from structural layout.
+Card playback remains Blocking. See `docs/SelectionPresentationG9BExecution.md`.
 
 ### Combatants
 

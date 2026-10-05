@@ -85,6 +85,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
 	TSubclassOf<UBattleStatusWidget> StatusWidgetClass;
 
+	// Opt-in until the G9-B visual gate passes.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle HUD|Input")
+	bool bEnableG9BufferedPlayerInput = false;
+
 	// Runtime FanHand is created from Native code, so these values are the
 	// Blueprint-facing layout contract for the generated Hand surface.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "400.0"))
@@ -117,6 +121,9 @@ protected:
 	virtual void OnWidgetRebuilt() override;
 	virtual void BeginDestroy() override;
 	virtual void NativeOnBattleHUDViewModelChanged() override;
+	virtual void NativeOnBufferedPlayerInputChanged() override;
+	virtual bool HasPendingFastCardRetry() const override;
+	virtual void RetirePendingFastCardRetry() override;
 	void EnsureHandInteractionSurfaces();
 	void UpdateHandInteraction(float DeltaTime);
 	virtual bool BeginPresentationRecordPlayback_Implementation(
@@ -408,6 +415,11 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleHandFanPanel> FanHand;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UBattleCardWidget>> FormalHandCards;
+	int64 FormalHandBattleId = 0;
+	bool bBufferedHandHoverAvailable = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UBattleTargetingArrowWidget> TargetingArrow;

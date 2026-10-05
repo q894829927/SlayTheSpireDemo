@@ -5,6 +5,7 @@
 #include "BattleStatusWidget.h"
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 #include "BattleHUDViewModel.h"
+#include "../Presentation/BattlePresentationController.h"
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
@@ -163,6 +164,7 @@ void UBattleHUDWidget::NativeOnInitialized()
 void UBattleHUDWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	SetBufferedPlayerInputEnabled(bEnableG9BufferedPlayerInput && bNativeBindingsValid);
 
 	if (!bNativeBindingsValid)
 	{
@@ -278,16 +280,17 @@ void UBattleHUDWidget::RefreshHUDFromViewModel()
 		return;
 	}
 
-	RefreshHand();
-	RefreshCombatants();
-	RefreshStatusRows();
-	RefreshEnergy();
-	RefreshPileCounts();
-	RefreshInputState();
-	RefreshFeedback();
-	RefreshEnemyIntent();
-	RefreshTerminalFromViewModel();
-	RefreshPresentationAvailabilityFromViewModel();
+	const EBattleHUDDirtyFlags Dirty = GetCurrentNativeViewModelDirtyFlags();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Hand)) RefreshHand();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Combatants | EBattleHUDDirtyFlags::Input)) RefreshCombatants();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Statuses)) RefreshStatusRows();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Energy)) RefreshEnergy();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PileCounts)) RefreshPileCounts();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Hand | EBattleHUDDirtyFlags::Terminal | EBattleHUDDirtyFlags::PresentationAvailability)) RefreshInputState();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Feedback)) RefreshFeedback();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Intent)) RefreshEnemyIntent();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
+	if (EnumHasAnyFlags(Dirty, EBattleHUDDirtyFlags::PresentationAvailability)) RefreshPresentationAvailabilityFromViewModel();
 }
 
 void UBattleHUDWidget::RefreshHand()
@@ -297,22 +300,24 @@ void UBattleHUDWidget::RefreshHand()
 		return;
 	}
 
-	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
+	TArray<TObjectPtr<UBattleCardWidget>> PreviousCards = FormalHandCards;
+	if (FormalHandBattleId == ViewModel->BattleId || FormalHandBattleId == 0)
 	{
-		if (UBattleCardWidget* ExistingCard = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
-		{
-			ExistingCard->OnBattleCardRequested.RemoveDynamic(
-				this,
-				&UBattleHUDWidget::HandleCardRequested);
-		}
+		for (UWidget* Child : HB_Hand->GetAllChildren())
+			if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child)) PreviousCards.AddUnique(Card);
 	}
-	HB_Hand->ClearChildren();
-
+	else PreviousCards.Reset();
+	// Keep survivors rooted while new Widgets are constructed and slots reattach.
+	FormalHandCards = PreviousCards;
+	TArray<TObjectPtr<UBattleCardWidget>> DesiredCards;
 	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
 	{
-		UBattleCardWidget* CardWidget = CreateWidget<UBattleCardWidget>(
-			GetOwningPlayer(),
-			CardWidgetClass);
+		UBattleCardWidget* CardWidget = nullptr;
+		for (UBattleCardWidget* Existing : PreviousCards)
+			if (IsValid(Existing) && Existing->GetRuntimeId() == CardView.RuntimeId) { CardWidget = Existing; break; }
+		if (!CardWidget)
+			CardWidget = GetOwningPlayer() ? CreateWidget<UBattleCardWidget>(GetOwningPlayer(), CardWidgetClass)
+				: CreateWidget<UBattleCardWidget>(GetWorld(), CardWidgetClass);
 		if (!IsValid(CardWidget))
 		{
 			UE_LOG(
@@ -325,11 +330,43 @@ void UBattleHUDWidget::RefreshHand()
 		}
 
 		CardWidget->SetCardView(CardView);
+		FormalHandCards.AddUnique(CardWidget);
 		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
 			this,
 			&UBattleHUDWidget::HandleCardRequested);
-		HB_Hand->AddChild(CardWidget);
+		DesiredCards.Add(CardWidget);
 	}
+	for (UBattleCardWidget* Existing : PreviousCards)
+		if (IsValid(Existing) && !DesiredCards.Contains(Existing)) Existing->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+	bool bStructureChanged = HB_Hand->GetChildrenCount() != DesiredCards.Num();
+	for (int32 Index = 0; !bStructureChanged && Index < DesiredCards.Num(); ++Index)
+		bStructureChanged = HB_Hand->GetChildAt(Index) != DesiredCards[Index];
+	if (bStructureChanged)
+	{
+		if (FanHand && HB_Hand == FanHand)
+		{
+			// Removing every child destroys the surviving cards' SObjectWidgets.
+			// Reusing only their UObjects then rebuilds the card faces mid-playback.
+			// Keep each survivor's live Slate tree and Canvas slot attached instead.
+			for (UWidget* Child : HB_Hand->GetAllChildren())
+				if (!DesiredCards.Contains(Cast<UBattleCardWidget>(Child))) HB_Hand->RemoveChild(Child);
+			for (int32 Index = 0; Index < DesiredCards.Num(); ++Index)
+			{
+				UBattleCardWidget* Card = DesiredCards[Index];
+				if (Card->GetParent() != HB_Hand) HB_Hand->AddChild(Card);
+				if (HB_Hand->GetChildAt(Index) != Card) HB_Hand->ShiftChild(Index, Card);
+			}
+			FanHand->LayoutCards();
+		}
+		else
+		{
+			HB_Hand->ClearChildren();
+			for (UBattleCardWidget* Card : DesiredCards) HB_Hand->AddChild(Card);
+		}
+	}
+	FormalHandCards = MoveTemp(DesiredCards);
+	FormalHandBattleId = ViewModel->BattleId;
+	if (FanHand) FanHand->ReconcileLayout();
 }
 
 void UBattleHUDWidget::RefreshCombatants()
@@ -641,7 +678,8 @@ void UBattleHUDWidget::RefreshInputState()
 	if (IsValid(Btn_EndTurn))
 	{
 		Btn_EndTurn->SetVisibility(ESlateVisibility::Visible);
-		Btn_EndTurn->SetIsEnabled(bInputAvailable && ViewModel->bCanEndTurn);
+		Btn_EndTurn->SetIsEnabled(IsBufferedPlayerInputEnabled()
+			? CanAcceptEndTurnIntent() : bInputAvailable && ViewModel->bCanEndTurn);
 	}
 	if (IsValid(Btn_Confirm))
 	{
@@ -655,6 +693,21 @@ void UBattleHUDWidget::RefreshInputState()
 			bShowCancel ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		Btn_Cancel->SetIsEnabled(bInputAvailable && bShowCancel);
 	}
+	bBufferedHandHoverAvailable = false;
+	if (IsBufferedPlayerInputEnabled() && IsValid(PresentationController) && !HasAcceptedBufferedEndTurn())
+	{
+		for (const FBattleHUDCardView& Card : ViewModel->HandCards)
+		{
+			FBufferedCardIntent Credential;
+			if (PresentationController->TryCaptureBufferedCardTarget(Card.RuntimeId, Credential))
+			{ bBufferedHandHoverAvailable = true; break; }
+		}
+	}
+}
+
+void UBattleHUDWidget::NativeOnBufferedPlayerInputChanged()
+{
+	RefreshInputState();
 }
 
 void UBattleHUDWidget::RefreshFeedback()

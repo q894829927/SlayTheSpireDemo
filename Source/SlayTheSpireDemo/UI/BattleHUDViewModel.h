@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "../Battle/BattleImmediatePreview.h"
+#include "../Battle/PlayerTurnAuthority.h"
 #include "../Selection/SelectionTypes.h"
 #include "BattleHUDTypes.h"
 #include "BattleHUDInteractionReadiness.h"
@@ -59,6 +60,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool RequestEndTurn();
+	// G9 accepted intent uses Gameplay turn authority independently of display lag.
+	bool RequestEndTurnForAcceptedIntent(const FPlayerTurnAuthorityToken& ExpectedTurn);
 
 	// Wave 1C asynchronous Gameplay selection is intentionally separate from the
 	// normal caught-up card-play binding. These helpers query/submit through the
@@ -259,6 +262,7 @@ protected:
 
 private:
 	friend class FBattleHUDBufferedPlayerInput;
+	friend class UBattleHUDWidgetBase;
 	void HandleReadStateReady(uint64 InBattleId, uint64 InStateRevision);
 	bool ApplyLatestFrozenBaselineAndRefresh(bool bResetInteraction);
 	void RebuildLegalTargets(UCardInstance* Card);

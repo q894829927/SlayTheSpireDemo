@@ -146,8 +146,14 @@ bool UBattleHUDWidget::SelectCard(
 
 	if (!bAllowFastPresentationCatchUp)
 	{
+		if (HasAcceptedBufferedEndTurn()) return false;
 		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
 	}
+	if (HasAcceptedBufferedEndTurn()) return false;
+	if (IsBufferedPlayerInputEnabled() && !ViewModel->bInputLocked
+		&& ViewModel->InteractionState != EBattleHUDInteractionState::Resolving)
+		return UBattleHUDWidgetBase::SelectCard(RuntimeId);
+	if (TryBufferCardSelection(RuntimeId)) return true;
 
 	// Preserve the existing one-request behavior: another click before the next
 	// ticker retry only replaces the RuntimeId; it cannot replace the session or
@@ -220,6 +226,7 @@ bool UBattleHUDWidget::SelectCard(
 void UBattleHUDWidget::RetryPendingFastCardSelection()
 {
 	PruneDeadFastCardCredentials();
+	if (HasAcceptedBufferedEndTurn()) { RetirePendingFastCardRetry(); return; }
 	if (!bFastCardSelectionRetryScheduled)
 	{
 		return;
@@ -271,4 +278,16 @@ void UBattleHUDWidget::RetryPendingFastCardSelection()
 	}
 
 	UBattleHUDWidgetBase::SelectCard(RuntimeId);
+}
+
+bool UBattleHUDWidget::HasPendingFastCardRetry() const
+{
+	return bFastCardSelectionRetryScheduled;
+}
+
+void UBattleHUDWidget::RetirePendingFastCardRetry()
+{
+	PendingFastCardRuntimeId = INDEX_NONE;
+	bFastCardSelectionRetryScheduled = false;
+	GPendingFastCardCredentials.Remove(this);
 }

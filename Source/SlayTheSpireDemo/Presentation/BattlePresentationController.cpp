@@ -852,6 +852,7 @@ void UBattlePresentationController::StartNextRecord()
 	}
 
 	ScheduleActiveTimeout();
+	if (IsValid(Widget)) Widget->NotifyBufferedPlayerInputReadinessChanged();
 }
 
 void UBattlePresentationController::CompleteActiveRecord()

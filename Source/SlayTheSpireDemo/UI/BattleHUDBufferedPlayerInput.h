@@ -33,8 +33,9 @@ struct SLAYTHESPIREDEMO_API FEndTurnIntentAcceptance
 	bool bCancelTransientSelection = false;
 };
 
-// One value-owned input arbiter per HUD. G9-A invokes it only in Automation;
-// it returns shadow decisions and never calls SelectCard/Request/Skip/Cancel.
+// One value-owned input arbiter per HUD. It returns decisions; the HUD alone
+// consumes them through normal selection/request boundaries. The arbiter never
+// calls SelectCard/Request/Skip/Cancel itself.
 class SLAYTHESPIREDEMO_API FBattleHUDBufferedPlayerInput
 {
 public:

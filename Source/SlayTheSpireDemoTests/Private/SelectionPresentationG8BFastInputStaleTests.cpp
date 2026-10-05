@@ -180,4 +180,27 @@ bool FSelectionPresentationG8BFastInputRevisionStaleTest::RunTest(const FString&
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9BFastInputRetirementTest,
+	"SlayTheSpireDemo.SelectionPresentation.G9B.EndTurnRetiresFastInputRetry",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9BFastInputRetirementTest::RunTest(const FString&)
+{
+	Phase6UIA1Test::FHUDTestFixture Fixture(ECardTargetType::None, 0, 0);
+	Fixture.DrainInitialReady();
+	UBattleHUDViewModel* ViewModel = nullptr;
+	UPhase6UIA2NR5HUDProbe* Probe = nullptr;
+	UBattlePresentationController* Controller = nullptr;
+	FPresentationStateSnapshot Baseline;
+	int32 RuntimeId = INDEX_NONE;
+	if (!SelectionPresentationG8BFastInputStaleTest::BeginDeferredClick(
+		*this, Fixture, ViewModel, Probe, Controller, Baseline, RuntimeId)) return false;
+	Probe->SetBufferedPlayerInputEnabled(true);
+	TestTrue(TEXT("G9 accepts EndTurn before old retry fires"), Probe->EndTurn());
+	FTSTicker::GetCoreTicker().Tick(0.0f);
+	TestEqual(TEXT("Retired FastInput cannot select after EndTurn"), ViewModel->SelectedCardRuntimeId, INDEX_NONE);
+	Controller->Shutdown();
+	ViewModel->Shutdown();
+	return true;
+}
+
 #endif

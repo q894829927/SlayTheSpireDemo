@@ -1,5 +1,30 @@
 # Validation
 
+## Production Native Hand layout repair — 2026-10-05
+
+Status: **REPAIRED / BUILD PASS / AFFECTED AUTOMATION PASS / FOCUSED PIE PASS**. G9-B overall remains opt-in / partially visually validated / not sealed.
+
+HEAD `cafe7bf6c0d484433cf7737b9b299fb3cb69271b` plus the uncommitted G9-B worktree. The production Reconciled/Selection HUD now uses shared incremental fan reconciliation, preserving surviving Canvas slots and Slate trees and applying membership layout during Blocking playback. The extended production-asset Hand test first failed against the missed subclass override, then passed after its repair.
+
+- Bundled UE 5.8 project generation and Development Editor Win64 build: **PASS**, exit 0; final repair build 15 actions.
+- Final affected run: **38 succeeded / 1 succeededWithWarnings / 0 failed / 0 notRun**, 39 distinct tests (`Saved/AutomationReports/G9BHandRepairFinal/index.json`). The warning is an expected R8 invalid-identity rejection. The scope includes G9-B, HandInteraction, R8, G6, frozen CardPlayed rich handoff, Native FastInput, G4, G5 and G0. This total is separate from the earlier G9-B run.
+- UE MCP on production `L_Battle_RuinedCitadel`, Native HUD, default D3D12/SM6, G9 startup disabled: played Twin Strike and observed four remaining cards in the bottom fan during Resolving and after Idle; surviving Uppercut hover also displays normally. This is focused acceptance of the reported Hand defect, not full enabled-G9 timing acceptance.
+- `git diff --check`: **PASS**; no Content/Config changes. Detailed failure/repair evidence, logs, configuration and images: [G9-B execution — Hand repair](SelectionPresentationG9BExecution.md#production-hand-regression-repair--2026-10-05).
+
+## Selection Presentation G9-B opt-in input activation — 2026-10-05
+
+Status: **IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN; G9 NOT SEALED**.
+
+Actual HEAD: `cafe7bf6c0d484433cf7737b9b299fb3cb69271b` plus the uncommitted G9-B worktree on `codex/g9-buffered-input-detached-cards`. Exact scope, repair details, MCP configuration, evidence paths and remaining manual gates: [G9-B execution](SelectionPresentationG9BExecution.md).
+
+- Bundled UE 5.8 project-file generation and Development Editor builds: **PASS**. The final production amendments were built; the later G6 fixture repair also compiled successfully.
+- Initial focused Automation: **35 succeeded / 1 succeededWithWarnings / 1 failed / 0 notRun**, 37 tests (`Saved/AutomationReports/G9B/index.json`). All seven new G9-B tests passed. The R8 invalid-identity negative test has four expected rejection warnings. The only failed test was a G6 interleaved-Damage fixture missing current required numeric fields.
+- After fixing that fixture, the invalidated G6 test alone passed: **1 succeeded / 0 warnings / 0 failed / 0 notRun** (`Saved/AutomationReports/G9B_G6Repair/index.json`). Other passing evidence remains valid. All **37 distinct tests** have passing evidence across these runs; the initial run itself was not green.
+- `git diff --check`: **PASS**. No persisted Content/Config changes, new Legacy dependency, plugin, engine association or build-setting change.
+- MCP Native PIE supplied partial observations of hover/buffer replay, CardPlayed EndTurn, ChoosingTarget replacement, mandatory rejection and startup-disabled fallback. D3D12 crashed in the Slate screenshot/rendering path; subsequent observations used temporary D3D11. This is **not full G9-B visual acceptance**. No packaged/Shipping acceptance is claimed.
+
+**USER ACTION REQUIRED:** the remaining continuous-timeline, Damage/Draw/Shuffle EndTurn, busy/DirectBaseline, ReadyToConfirm, runtime-disable and player-turn ABA visual gates are listed in the execution document with the exact map, configuration and expected observations. The B -> C dependency remains closed; the Native startup option remains false, C/D1/D2/E/F have not started, and G9 must not be sealed.
+
 ## Selection Presentation G9-A authority foundation — 2026-10-05
 
 Status: **G9-A COMPLETE / VALIDATED / SHADOW ONLY; G9 NOT SEALED**.

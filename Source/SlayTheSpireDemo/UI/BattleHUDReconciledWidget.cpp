@@ -3,8 +3,6 @@
 #include "BattleCardWidget.h"
 #include "BattleHUDViewModel.h"
 #include "Components/HorizontalBox.h"
-#include "Engine/World.h"
-#include "GameFramework/PlayerController.h"
 
 void UBattleHUDReconciledWidget::NativeDestruct()
 {
@@ -14,7 +12,6 @@ void UBattleHUDReconciledWidget::NativeDestruct()
 	}
 	OwnershipBoundViewModel.Reset();
 	UnbindReconciledHandDelegates();
-	ReconciledHandBattleId = 0;
 	Super::NativeDestruct();
 }
 
@@ -38,7 +35,7 @@ void UBattleHUDReconciledWidget::NativeOnBattleHUDViewModelChanged()
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Statuses)) RefreshStatusRows();
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Energy)) RefreshEnergy();
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::PileCounts)) RefreshPileCounts();
-	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Input)) RefreshInputState();
+	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Input | EBattleHUDDirtyFlags::Hand | EBattleHUDDirtyFlags::Terminal | EBattleHUDDirtyFlags::PresentationAvailability)) RefreshInputState();
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Feedback)) RefreshFeedback();
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Intent)) RefreshEnemyIntent();
 	if (EnumHasAnyFlags(DirtyFlags, EBattleHUDDirtyFlags::Terminal)) RefreshTerminalFromViewModel();
@@ -51,13 +48,6 @@ void UBattleHUDReconciledWidget::RefreshHand()
 	{
 		return;
 	}
-
-	if (ReconciledHandBattleId != 0 && ReconciledHandBattleId != ViewModel->BattleId)
-	{
-		UnbindReconciledHandDelegates();
-		HB_Hand->ClearChildren();
-	}
-	ReconciledHandBattleId = ViewModel->BattleId;
 
 	TSet<int32> DesiredRuntimeIds;
 	DesiredRuntimeIds.Reserve(ViewModel->HandCards.Num());
@@ -73,64 +63,28 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		DesiredRuntimeIds.Add(CardView.RuntimeId);
 	}
 
-	TMap<int32, UBattleCardWidget*> ExistingByRuntimeId;
+	TSet<int32> ExistingRuntimeIds;
 	for (int32 Index = 0; Index < HB_Hand->GetChildrenCount(); ++Index)
 	{
 		UBattleCardWidget* Existing = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index));
-		if (!IsValid(Existing) || Existing->GetRuntimeId() == INDEX_NONE || ExistingByRuntimeId.Contains(Existing->GetRuntimeId()))
+		if (!IsValid(Existing) || Existing->GetRuntimeId() == INDEX_NONE || ExistingRuntimeIds.Contains(Existing->GetRuntimeId()))
 		{
 			UE_LOG(LogTemp, Error, TEXT("[BattleHUD][G0-B] Hand reconcile found malformed formal Hand children."));
 			Super::RefreshHand();
 			ApplyExplicitCardPresentationOwnershipToFormalHand();
 			return;
 		}
-		ExistingByRuntimeId.Add(Existing->GetRuntimeId(), Existing);
+		ExistingRuntimeIds.Add(Existing->GetRuntimeId());
 	}
 
-	auto CreateFormalCard = [this]() -> UBattleCardWidget*
+	// The production Selection HUD inherits this override. Share the base
+	// reconciliation so membership changes preserve surviving Slate trees and
+	// restore new fan slots immediately, including during blocking playback.
+	Super::RefreshHand();
+	for (UWidget* Child : HB_Hand->GetAllChildren())
 	{
-		if (APlayerController* OwningPlayer = GetOwningPlayer())
-		{
-			return CreateWidget<UBattleCardWidget>(OwningPlayer, CardWidgetClass);
-		}
-		if (UWorld* World = GetWorld(); IsValid(World))
-		{
-			return CreateWidget<UBattleCardWidget>(World, CardWidgetClass);
-		}
-		return nullptr;
-	};
-
-	TArray<UBattleCardWidget*> DesiredWidgets;
-	DesiredWidgets.Reserve(ViewModel->HandCards.Num());
-	for (const FBattleHUDCardView& CardView : ViewModel->HandCards)
-	{
-		UBattleCardWidget* CardWidget = nullptr;
-		if (UBattleCardWidget** Existing = ExistingByRuntimeId.Find(CardView.RuntimeId))
-		{
-			CardWidget = *Existing;
-		}
-		else
-		{
-			CardWidget = CreateFormalCard();
-		}
-		if (!IsValid(CardWidget))
-		{
-			UE_LOG(LogTemp, Error, TEXT("[BattleHUD][G0-B] Hand reconcile could not create RuntimeId %d (%s)."), CardView.RuntimeId, *CardView.CardId.ToString());
-			Super::RefreshHand();
-			ApplyExplicitCardPresentationOwnershipToFormalHand();
-			return;
-		}
-		DesiredWidgets.Add(CardWidget);
-	}
-
-	UnbindReconciledHandDelegates();
-	HB_Hand->ClearChildren();
-
-	for (int32 Index = 0; Index < ViewModel->HandCards.Num(); ++Index)
-	{
-		UBattleCardWidget* CardWidget = DesiredWidgets[Index];
-		const FBattleHUDCardView& CardView = ViewModel->HandCards[Index];
-		CardWidget->SetCardView(CardView);
+		UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(Child);
+		if (!IsValid(CardWidget)) continue;
 		// Completed draws leave their presentation-only Widget in HB_Hand.
 		// The reducer now authorizes this RuntimeId as a formal card, so adoption
 		// must retire its hit-test suppression as well as bind its request delegate.
@@ -139,10 +93,6 @@ void UBattleHUDReconciledWidget::RefreshHand()
 		{
 			CardWidget->SetVisibility(ESlateVisibility::Visible);
 		}
-		CardWidget->OnBattleCardRequested.AddUniqueDynamic(
-			this,
-			&UBattleHUDReconciledWidget::HandleCardRequested);
-		HB_Hand->AddChild(CardWidget);
 	}
 
 	ApplyExplicitCardPresentationOwnershipToFormalHand();

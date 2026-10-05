@@ -4,7 +4,9 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
-- **G9-A — COMPLETE / VALIDATED / SHADOW ONLY (2026-10-05).** Gameplay player-turn identity, separate EndTurn acceptance/execution evaluation, exact sealed card-target credentials and one HUD-owned buffered-input arbiter passed the Development Editor build and G9-A 6/6, affected G8-B 9/9 and FastInput 2/2 Automation. Production input activation is unchanged. Authority and evidence: [G9-A execution](SelectionPresentationG9AExecution.md). G9-B is the next stage and is not active; G9 as a whole is not sealed.
+- **G9-B — IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN (2026-10-05).** Production buffered-input consumption, scoped EndTurn replacement, dirty-aware stable Hand reconciliation and hover/layout separation are implemented. A reported bottom-left Hand regression exposed a production override that bypassed shared reconciliation; it is repaired, with a fresh Editor build, 39 affected Automation tests passing (one expected-warning negative test), and D3D12 Native PIE confirming stable Hand placement during playback and later hover. Earlier MCP buffered-input/EndTurn observations remain partial; continuous timing and busy/DirectBaseline/ABA manual gates remain. Native startup activation remains off, and G9-C through G9-F have not started. Authority: [G9-B execution](SelectionPresentationG9BExecution.md).
+
+- **G9-A — COMPLETE / VALIDATED AT ITS SHADOW CHECKPOINT (2026-10-05).** Gameplay player-turn identity, separate EndTurn acceptance/execution evaluation, exact sealed card-target credentials and one HUD-owned buffered-input arbiter passed the Development Editor build and G9-A 6/6, affected G8-B 9/9 and FastInput 2/2 Automation. Authority and historical evidence: [G9-A execution](SelectionPresentationG9AExecution.md). Production activation now follows the separate G9-B gate; G9 as a whole is not sealed.
 
 - **Ruined Citadel battle level — implemented, focused MCP PIE PASS (2026-09-10).**
   The user-supplied image is the battle backdrop in the new `L_Battle_RuinedCitadel`,

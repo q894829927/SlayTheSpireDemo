@@ -31,5 +31,4 @@ private:
 	void UnbindReconciledHandDelegates();
 
 	TWeakObjectPtr<UBattleHUDViewModel> OwnershipBoundViewModel;
-	int64 ReconciledHandBattleId = 0;
 };

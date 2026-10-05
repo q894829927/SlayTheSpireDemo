@@ -52,6 +52,15 @@ public:
 	void SetPresentationController(UBattlePresentationController* InController);
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
+	void SetBufferedPlayerInputEnabled(bool bEnabled);
+	bool IsBufferedPlayerInputEnabled() const { return bBufferedPlayerInputEnabled; }
+	bool CanAcceptEndTurnIntent();
+	bool HasAcceptedBufferedEndTurn();
+	bool TryBufferCardSelection(int32 RuntimeId);
+	// Explicit chronology/readiness notification; never a cosmetic completion.
+	void NotifyBufferedPlayerInputReadinessChanged();
+
+	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	bool SelectCard(int32 RuntimeId);
 
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
@@ -220,6 +229,9 @@ protected:
 	// Native extension point for concrete HUD implementations. The base default
 	// preserves the sealed Legacy WBP contract by forwarding to BP_OnViewModelChanged.
 	virtual void NativeOnBattleHUDViewModelChanged();
+	virtual void NativeOnBufferedPlayerInputChanged() {}
+	virtual bool HasPendingFastCardRetry() const { return false; }
+	virtual void RetirePendingFastCardRetry() {}
 
 	// Exact dirty payload for the Native change currently being dispatched. It is
 	// scoped to the synchronous Native delegate callback and is never sourced from
@@ -241,6 +253,16 @@ protected:
 
 private:
 	FBattleHUDBufferedPlayerInput BufferedPlayerInput;
+	void RebindBufferedPlayerInput();
+	void ReleaseBufferedPlayerInputBinding();
+	void ProcessBufferedPlayerInput();
+	void HandleBufferedInputReadReady(uint64 BattleId, uint64 StateRevision);
+	void HandleBufferedInputResolutionReady(const FPresentationResolutionEnvelope& Envelope);
+	TWeakObjectPtr<ABattleManager> BufferedInputBattle;
+	bool bBufferedPlayerInputEnabled = false;
+	bool bBufferedInputProcessing = false;
+	bool bBufferedInputEvaluationScheduled = false;
+	uint64 BufferedInputBindingGeneration = 1;
 	void HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags);
 
 	void ForwardPresentationFinished(const FPresentationPlaybackToken& Token);

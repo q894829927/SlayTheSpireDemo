@@ -49,6 +49,7 @@ class SLAYTHESPIREDEMOTESTS_API UPhase6UIA2NR8HUDProbe : public UBattleHUDWidget
 
 public:
 	void SetTestWorld(UWorld* InWorld);
+	void ReconcileHandForTesting() { RefreshHand(); }
 	void SetViewModelForTesting(UBattleHUDViewModel* InViewModel) { ViewModel = InViewModel; }
 	void ConfigureCardSurfaces(
 		UHorizontalBox* InHand,

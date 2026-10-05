@@ -122,8 +122,10 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 		ViewModel->OnNativeChanged.RemoveAll(this);
 	}
 
+	ReleaseBufferedPlayerInputBinding();
 	ViewModel = InViewModel;
 	BufferedPlayerInput.Clear();
+	RebindBufferedPlayerInput();
 	if (IsValid(ViewModel))
 	{
 		ViewModel->OnNativeChanged.AddUObject(
@@ -138,8 +140,10 @@ void UBattleHUDWidgetBase::SetPresentationController(
 	UBattlePresentationController* InController
 )
 {
-	if (PresentationController != InController) BufferedPlayerInput.Clear();
+	if (PresentationController != InController) ReleaseBufferedPlayerInputBinding();
 	PresentationController = InController;
+	RebindBufferedPlayerInput();
+	NotifyBufferedPlayerInputReadinessChanged();
 }
 
 bool UBattleHUDWidgetBase::SelectCard(int32 RuntimeId)
@@ -173,6 +177,17 @@ bool UBattleHUDWidgetBase::ConfirmSelectedCard()
 
 bool UBattleHUDWidgetBase::EndTurn()
 {
+	if (bBufferedPlayerInputEnabled)
+	{
+		RebindBufferedPlayerInput();
+		const FEndTurnIntentAcceptance Acceptance = BufferedPlayerInput.TryAcceptEndTurn(HasPendingFastCardRetry());
+		if (!Acceptance.bAccepted) return false;
+		if (Acceptance.bRetireFastInputRetry) RetirePendingFastCardRetry();
+		if (Acceptance.bCancelTransientSelection && IsValid(ViewModel)) ViewModel->CancelSelection();
+		ProcessBufferedPlayerInput();
+		NativeOnBufferedPlayerInputChanged();
+		return true;
+	}
 	return IsValid(ViewModel) && ViewModel->RequestEndTurn();
 }
 
@@ -507,6 +522,7 @@ void UBattleHUDWidgetBase::SkipPresentation()
 
 void UBattleHUDWidgetBase::NativeDestruct()
 {
+	ReleaseBufferedPlayerInputBinding();
 	BufferedPlayerInput.SetEnabled(false);
 	bHasTrackedPresentationPlayback = false;
 	TrackedPresentationPlaybackUnit = FTrackedPresentationPlaybackUnit{};
@@ -536,6 +552,7 @@ void UBattleHUDWidgetBase::HandleNativeViewModelChanged(EBattleHUDDirtyFlags Dir
 		CurrentNativeViewModelDirtyFlags,
 		DirtyFlags);
 	NativeOnBattleHUDViewModelChanged();
+	NotifyBufferedPlayerInputReadinessChanged();
 }
 
 void UBattleHUDWidgetBase::NativeOnBattleHUDViewModelChanged()

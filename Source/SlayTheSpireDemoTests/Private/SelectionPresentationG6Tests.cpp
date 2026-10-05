@@ -240,6 +240,12 @@ namespace SelectionPresentationG6Tests
 					Damage.Damage.HPAfter = FMath::Max(0, Baseline.Enemy.HP - 1);
 					Damage.Damage.BlockBefore = Baseline.Enemy.Block;
 					Damage.Damage.BlockAfter = Baseline.Enemy.Block;
+					// Interleaving must be a complete producer-valid Damage fact;
+					// the shared G8 reducer rejects omitted numeric damage fields.
+					Damage.Damage.DamageKind = EDamageKind::Attack;
+					Damage.Damage.IncomingDamage = 1;
+					Damage.Damage.HPDamage = Damage.Damage.HPBefore - Damage.Damage.HPAfter;
+					Damage.Damage.BlockedDamage = 0;
 					Envelope.Records.Add(Damage);
 					Envelope.FinalSnapshot.Enemy.HP = Damage.Damage.HPAfter;
 					Envelope.FinalSnapshot.Enemy.bDead = Damage.Damage.HPAfter <= 0;

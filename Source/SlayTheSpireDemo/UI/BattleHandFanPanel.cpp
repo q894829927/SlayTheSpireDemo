@@ -46,6 +46,8 @@ void UBattleHandFanPanel::LayoutCards()
 {
 	const float ActualWidth = GetCachedGeometry().GetLocalSize().X;
 	const float Width = ActualWidth > KINDA_SMALL_NUMBER ? ActualWidth : 900.0f;
+	LastLayoutWidth = Width;
+	bLayoutDirty = false;
 	for (int32 Index = 0; Index < GetChildrenCount(); ++Index)
 	{
 		UWidget* Card = GetChildAt(Index);
@@ -83,10 +85,17 @@ void UBattleHandFanPanel::PrepareIncomingCardLayout()
 	}
 }
 
+void UBattleHandFanPanel::ReconcileLayout()
+{
+	const float ActualWidth = GetCachedGeometry().GetLocalSize().X;
+	const float Width = ActualWidth > KINDA_SMALL_NUMBER ? ActualWidth : 900.0f;
+	if (bLayoutDirty || !FMath::IsNearlyEqual(Width, LastLayoutWidth)) LayoutCards();
+}
+
 void UBattleHandFanPanel::OnSlotAdded(UPanelSlot* InSlot)
 {
 	Super::OnSlotAdded(InSlot);
-	LayoutCards();
+	bLayoutDirty = true;
 }
 
 void UBattleHandFanPanel::OnSlotRemoved(UPanelSlot* InSlot)
@@ -94,12 +103,17 @@ void UBattleHandFanPanel::OnSlotRemoved(UPanelSlot* InSlot)
 	if (const UBattleCardWidget* Card = Cast<UBattleCardWidget>(InSlot->Content);
 		Card && Card->GetRuntimeId() == HoveredRuntimeId) HoveredRuntimeId = INDEX_NONE;
 	Super::OnSlotRemoved(InSlot);
-	LayoutCards();
+	bLayoutDirty = true;
 }
 
 void UBattleHandFanPanel::UpdateInteraction(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime)
 {
-	LayoutCards();
+	ReconcileLayout();
+	UpdateHoverAffordance(AbsolutePointer, SelectedRuntimeId, bAllowHover, DeltaTime);
+}
+
+void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer, int32 SelectedRuntimeId, bool bAllowHover, float DeltaTime)
+{
 	const FGeometry& Geometry = GetCachedGeometry();
 	if (Geometry.GetLocalSize().IsNearlyZero()) return;
 	const FVector2D Pointer = Geometry.AbsoluteToLocal(AbsolutePointer);
@@ -145,7 +159,7 @@ void UBattleHandFanPanel::UpdateInteraction(const FVector2D& AbsolutePointer, in
 	for (int32 Index = 0; Index < GetChildrenCount(); ++Index)
 	{
 		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
-		if (!Card) continue;
+		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled()) continue;
 		const bool bRaised = Card->IsVisible() && Card->GetIsEnabled()
 			&& (Card->GetRuntimeId() == HoveredRuntimeId || Card->GetRuntimeId() == SelectedRuntimeId);
 		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Card->Slot)) CanvasSlot->SetZOrder(bRaised ? 1000 + Index : Index);
