@@ -3,7 +3,10 @@
 2026-10-05 user-approved scope revision: [confirmed FIFO / relic tails / turn-end
 discard group](QueuedCardPlayAndRelicTimingAmendment.md). Delivered selection-only
 behavior and old manual gates below are historical; amended implementation and
-affected acceptance are pending. User EndTurn/mandatory observations and their
+affected acceptance follow [revision execution](G9BRevisionExecution.md) and
+[final focused Native PIE](G9BRevisionNativePIE.md): implementation/build/affected
+Automation PASS, partial PIE, queued-mandatory clearing USER ACTION REQUIRED.
+User EndTurn/mandatory observations and their
 evidence limitations are recorded in the amendment. Default off / NOT SEALED.
 
 2026-10-05 architecture correction: implementation baseline saved in `5f7f4fc`;

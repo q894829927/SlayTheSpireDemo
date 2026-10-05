@@ -3,13 +3,15 @@
 G9-B revision batches 2–4: Status front / Relic tail, confirmed input FIFO and
 explicit simultaneous TurnEndDiscard are implemented; UE 5.8 Editor builds and
 affected Automation gates PASS. Group evidence covers 94 distinct cases across
-initial/repaired runs; production visual gates remain pending. Native G9 is
+initial/repaired runs. Native PIE passed FIFO, EndTurn tail, simultaneous discard
+and deferred relic reward; queued-mandatory clearing remains USER ACTION REQUIRED.
+Native G9 is
 OPT-IN / NOT SEALED; original C–F have not started. See
 [actual evidence](G9BRevisionExecution.md).
 
 Current forward G9-B scope is the user-approved [confirmed FIFO / relic tails /
 turn-end discard amendment](QueuedCardPlayAndRelicTimingAmendment.md), based on
-`fe80565`. Visual acceptance is pending; the selection-only
+`fe80565`. One visual time line remains pending; the selection-only
 contract below is historical. Default off / NOT SEALED; C–F are not started.
 
 Native Hand architecture correction: **IMPLEMENTED / BUILD PASS / AFFECTED AUTOMATION PASS / FOCUSED PIE PASS**. Baseline is `5f7f4fc`, structure ownership `4237526`; the layout batch adds dedicated Hand Slot/Slate arrangement, exact-token geometry protection and tracked-receipt cancellation cleanup. Latest 55-case affected coverage passed across 53 initial successes (one expected warning) and two repaired R5 fixture recoveries. Earlier unaffected panel/frozen-face evidence is reused. Native MCP PIE covered play/draw, Selection handoff, viewport change, hover, playback stop/restart and same-HUD mid-draw/receipt-window Skip with fresh-card interaction. See [refactor evidence](NativeHandStructureRefactor.md). G9-B itself remains default off / PARTIAL PIE / NOT SEALED; its original enabled-input gates still require user action, and C–F remain gated.
@@ -18,7 +20,7 @@ This document records project progress, implementation history and durable phase
 
 ## Current State
 
-- **G9-B — IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN (2026-10-05).** Production buffered-input consumption, scoped EndTurn replacement, dirty-aware stable Hand reconciliation and hover/layout separation are implemented. A reported bottom-left Hand regression exposed a production override that bypassed shared reconciliation; it is repaired, with a fresh Editor build, 39 affected Automation tests passing (one expected-warning negative test), and D3D12 Native PIE confirming stable Hand placement during playback and later hover. Earlier MCP buffered-input/EndTurn observations remain partial; continuous timing and busy/DirectBaseline/ABA manual gates remain. Native startup activation remains off, and G9-C through G9-F have not started. Authority: [G9-B execution](SelectionPresentationG9BExecution.md).
+- **Amended G9-B — IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN (2026-10-06).** Relic tail scheduling, confirmed-card FIFO and explicit simultaneous turn-end discard are committed in `6071c56`, `b105fb1`, `72a564a`. Builds and affected Automation pass. Production Native PIE proves automatic FIFO, queued EndTurn ordering, simultaneous discard and draw/shuffle before relic reward. Mandatory EndTurn isolation is observed; the full queued-mandatory clearing time line remains pending. C++ default stays false; the preserved user asset was tested with G9=true. Original C–F have not started. Authority: [revision execution](G9BRevisionExecution.md), [Native PIE receipt](G9BRevisionNativePIE.md). The earlier selection-only B implementation and repaired Hand regression are historical evidence in [original B execution](SelectionPresentationG9BExecution.md).
 
 - **G9-A — COMPLETE / VALIDATED AT ITS SHADOW CHECKPOINT (2026-10-05).** Gameplay player-turn identity, separate EndTurn acceptance/execution evaluation, exact sealed card-target credentials and one HUD-owned buffered-input arbiter passed the Development Editor build and G9-A 6/6, affected G8-B 9/9 and FastInput 2/2 Automation. Authority and historical evidence: [G9-A execution](SelectionPresentationG9AExecution.md). Production activation now follows the separate G9-B gate; G9 as a whole is not sealed.
 

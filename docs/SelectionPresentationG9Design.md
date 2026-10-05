@@ -9,7 +9,10 @@ Date: **2026-09-13**
 
 Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B IMPLEMENTED, AUTOMATION PASS, PARTIAL PIE (OPT-IN / USER ACTION REQUIRED) / NOT SEALED**
 
-Current execution: [SelectionPresentationG9BExecution.md](SelectionPresentationG9BExecution.md). G9-A checkpoint evidence: [SelectionPresentationG9AExecution.md](SelectionPresentationG9AExecution.md).
+Current amended B execution: [revision evidence](G9BRevisionExecution.md) and
+[Native PIE receipt](G9BRevisionNativePIE.md). The original selection-only B
+execution below is historical. G9-A checkpoint evidence:
+[SelectionPresentationG9AExecution.md](SelectionPresentationG9AExecution.md).
 
 Authority baseline: [`SelectionPresentationG8FSeal.md`](SelectionPresentationG8FSeal.md).
 

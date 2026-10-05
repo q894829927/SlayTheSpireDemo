@@ -132,3 +132,14 @@ decline and stale callbacks. Headless cached geometry is test input, not PIE pro
 Production simultaneous-discard and all amended B visual timelines remain
 **USER ACTION REQUIRED**, pending the next MCP pass. G9 default remains false;
 this implementation batch does not enable Native defaults or seal G9.
+
+## Final focused Native PIE receipt
+
+At committed HEAD `72a564a`, actual Native/D3D12 production PIE passed confirmed
+automatic FIFO, queued EndTurn ordering, simultaneous five-card discard and
+draw-two across shuffle followed by Abacus reward. Mandatory EndTurn isolation
+was observed; the stronger queued-mandatory clearing time line remains USER
+ACTION REQUIRED. Actual asset/live G9 readback was true from the preserved user
+asset; C++ default remains false. Configuration, artifact paths, failed tool
+attempts and the one remaining manual time line:
+[Native PIE receipt](G9BRevisionNativePIE.md). No default activation or seal.

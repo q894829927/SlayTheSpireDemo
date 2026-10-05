@@ -2,7 +2,7 @@
 
 Date: **2026-10-05**. Branch: `codex/g9-buffered-input-detached-cards`.
 Implementation base: `fe80565`. Status: **IMPLEMENTED / AUTOMATED GATES PASS /
-VISUAL GATES PENDING / OPT-IN / NOT SEALED**.
+PARTIAL PIE / USER ACTION REQUIRED / OPT-IN / NOT SEALED**.
 This user-approved amendment supersedes G9-B's selection-only buffer, single
 pending-intent limit, fresh confirmation after catch-up, and Relic reactions
 preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEALED.
@@ -99,4 +99,7 @@ observations, not a new controlled final-head validation receipt.
   valid passing evidence across initial/repaired runs, not one aggregate run.
 - Actual scopes, failures, repairs and pending visual gates:
   [revision execution](G9BRevisionExecution.md).
+- Group implementation commit: `72a564a`. Production FIFO/EndTurn/discard/relic
+  visual checks PASS; full queued-mandatory clearing still pending. Actual
+  configuration and remaining action: [Native PIE receipt](G9BRevisionNativePIE.md).
 - Default enablement: gated.

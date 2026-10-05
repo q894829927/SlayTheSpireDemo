@@ -1,5 +1,16 @@
 # Validation
 
+## G9-B revision — focused production Native PIE, 2026-10-06
+
+Committed HEAD `72a564a`, Native Selection HUD, D3D12, Ruined Citadel map, preserved
+user asset/live G9=true. Actual interaction/captures pass confirmed automatic
+FIFO, queued EndTurn tail, simultaneous five-card discard and draw-two across
+shuffle before Abacus reward. Mandatory EndTurn isolation passes, but the full
+queued-card/old-EndTurn clearing time line is USER ACTION REQUIRED. The C++
+default remains false, no activation/seal claim. Exact configuration, artifacts,
+tool-attempt limits and minimal remaining actions:
+[Native PIE receipt](G9BRevisionNativePIE.md).
+
 ## G9-B revision — simultaneous turn-end discard, 2026-10-06
 
 `b105fb1` plus the Group batch: prescribed generation and Development Editor
