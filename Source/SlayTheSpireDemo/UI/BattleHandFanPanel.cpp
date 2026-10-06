@@ -250,8 +250,7 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 	if (Geometry.GetLocalSize().IsNearlyZero()) return;
 	const FVector2D Pointer = Geometry.AbsoluteToLocal(AbsolutePointer);
 	const int32 PreviousHover = HoveredRuntimeId;
-	const bool bPointerDraft = SelectedRuntimeId != INDEX_NONE && InputVisualCards.Contains(SelectedRuntimeId);
-	bAllowHover &= !bPointerDraft;
+	const bool bCardSelected = SelectedRuntimeId != INDEX_NONE;
 	HoveredRuntimeId = INDEX_NONE;
 	float Closest = TNumericLimits<float>::Max();
 	// Resting horizontal strips determine which overlapping card is inspected.
@@ -295,10 +294,11 @@ void UBattleHandFanPanel::UpdateHoverAffordance(const FVector2D& AbsolutePointer
 		UBattleCardWidget* Card = Cast<UBattleCardWidget>(GetChildAt(Index));
 		if (!Card || !Card->IsVisible() || !Card->GetIsEnabled() || InputVisualCards.Contains(Card->GetRuntimeId()) || CastChecked<UBattleHandFanSlot>(Card->Slot)->IsGeometryProtected()) continue;
 		const bool bRaised = Card->IsVisible() && Card->GetIsEnabled()
-			&& (Card->GetRuntimeId() == HoveredRuntimeId || Card->GetRuntimeId() == SelectedRuntimeId);
+			&& (Card->GetRuntimeId() == SelectedRuntimeId
+				|| (!bCardSelected && Card->GetRuntimeId() == HoveredRuntimeId));
 		CastChecked<UBattleHandFanSlot>(Card->Slot)->SetPaintLayer(bRaised ? 1 : 0);
 		FWidgetTransform Transform = Card->GetRenderTransform();
-		const float VisualAlpha = bPointerDraft ? 1.0f : Alpha;
+		const float VisualAlpha = bCardSelected ? 1.0f : Alpha;
 		Transform.Angle = FMath::Lerp(Transform.Angle, bRaised ? 0.0f : GetFanAngle(Index, GetChildrenCount()), VisualAlpha);
 		Transform.Scale = FMath::Lerp(Transform.Scale, FVector2D(bRaised ? 1.35f : 1.0f), VisualAlpha);
 		Transform.Translation = FMath::Lerp(Transform.Translation, FVector2D(0.0f, bRaised ? -72.0f : 0.0f), VisualAlpha);

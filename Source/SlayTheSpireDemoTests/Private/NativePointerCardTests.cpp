@@ -62,7 +62,7 @@ bool FPointerHandPoseTest::RunTest(const FString&)
 	TestTrue(TEXT("Source comes from current arrangement, before a card Tick"), Fan->GetCardVisualGeometry(Card, Visual));
 	TestTrue(TEXT("Rendered center equals pointer under DPI"), FVector2D(Visual.LocalToAbsolute(Visual.GetLocalSize() * .5f)).Equals(Pointer, .01));
 	Fan->UpdateHoverAffordance(NeighborPointer, 1, true, .001f);
-	TestEqual(TEXT("Pointer draft suppresses neighbor hover hit"), Fan->GetHoveredRuntimeId(), INDEX_NONE);
+	TestEqual(TEXT("Pointer draft preserves resting-strip hit routing"), Fan->GetHoveredRuntimeId(), 2);
 	TestTrue(TEXT("Already raised neighbor returns immediately"), Neighbor->GetRenderTransform().Translation.IsNearlyZero() && Neighbor->GetRenderTransform().Scale.Equals(FVector2D(1)));
 	TestEqual(TEXT("Neighbor paint layer returns to frozen order"), CastChecked<UBattleHandFanSlot>(Neighbor->Slot)->GetPaintLayer(), 0);
 	Fan->GetCardVisualGeometry(Card, Visual);
@@ -77,6 +77,15 @@ bool FPointerHandPoseTest::RunTest(const FString&)
 	CacheG9TestWidgetGeometry(Fan, Parent);
 	Fan->UpdateHoverAffordance(NeighborPointer, INDEX_NONE, true, 1);
 	TestEqual(TEXT("Cancel restores neighbor hover"), Fan->GetHoveredRuntimeId(), 2);
+	FBattleHUDCardView Attack = View; Attack.CardType = ECardType::Attack; Attack.TargetType = ECardTargetType::Enemy;
+	Card->SetCardView(Attack);
+	Fan->UpdateHoverAffordance(NeighborPointer, 1, true, .001f);
+	TestEqual(TEXT("Attack aiming preserves resting-strip card switching"), Fan->GetHoveredRuntimeId(), 2);
+	TestTrue(TEXT("Attack aiming immediately restores neighbors"), Neighbor->GetRenderTransform().Translation.IsNearlyZero() && Neighbor->GetRenderTransform().Scale.Equals(FVector2D(1)));
+	TestTrue(TEXT("Selected attack keeps its own raised aim pose"), Card->GetRenderTransform().Translation.Equals(FVector2D(0,-72)) && Card->GetRenderTransform().Scale.Equals(FVector2D(1.35)));
+	Fan->UpdateHoverAffordance(NeighborPointer, INDEX_NONE, true, 1);
+	TestEqual(TEXT("Cancel attack aiming restores neighbor hover"), Fan->GetHoveredRuntimeId(), 2);
+	Card->SetCardView(View);
 	Fan->SetInputVisualCards({1});
 	Fan->UpdateHoverAffordance(NeighborPointer, INDEX_NONE, true, 1);
 	TestEqual(TEXT("A queued frozen pointer pose alone does not suppress new hover"), Fan->GetHoveredRuntimeId(), 2);

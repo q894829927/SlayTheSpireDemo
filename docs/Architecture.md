@@ -7,11 +7,14 @@ records intent provenance, while Battle/turn/Session/generation fence identity.
 Mandatory choices and destructive display/lifetime boundaries retire pending
 inputs. NativeTick cannot submit them.
 
-EndTurn accepts exact authority before cancelling all unsubmitted card commands.
+EndTurn accepts exact authority, preserves earlier confirmed commands and their
+busy retries, then executes after them; it rejects later card additions and
+cancels only the unconfirmed draft/FastInput retry.
 Its submitted-turn receipt survives pending-input cleanup and prevents accepting
 future-turn commands while old history is still visible. A different player turn
 must be visibly caught up and normally ready before fresh input is available.
-Pointer drafts suppress other cards' hover lift/scale, without changing slots.
+Any ordinary selection, including attack aiming, suppresses other cards' hover
+lift/scale while retaining resting-strip hit routing and slot identity.
 See `NativeInputHoverAndEndTurnRevision.md` for the 2026-10-06 user revision.
 
 TurnEndDiscard uses explicit action-local metadata, with canonical IDs frozen

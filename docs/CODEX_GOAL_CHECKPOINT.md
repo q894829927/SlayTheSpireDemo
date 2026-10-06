@@ -1,6 +1,37 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
-## 当前继续点：持牌悬停与结束回合修订
+## 当前继续点：攻击瞄准与结束回合队尾澄清
+
+本批起点 HEAD `925aff2`，继续分支 `codex/g9-buffered-input-detached-cards`。
+本检查点随独立本地提交
+`fix(g9-b): preserve pre-end-turn plays and suppress aiming hover` 保存，精确
+最新提交用 `git log -1 --format='%h %s'` 核实。
+
+已完成：所有普通选中牌（包括 Enemy 攻击瞄准）都抑制其他牌突出，保留
+静止命中切换和选中攻击自身抬升／箭头；结束回合保留此前确认 FIFO 和
+已取出但忙碌的早期精确重试，禁止屏障后追加，只取消未确认草稿；此前
+命令完成后结束一次。提交回合凭据继续防发布重入／旧历史重复点击；
+强制选择清空未执行 FIFO、草稿和旧结束意图。上一批取消确认牌约定失效。
+
+规定工程生成／Development Editor 构建通过：初次 6.23 秒，最终 5.85 秒。
+聚焦 53 项为 52 成功、1 预期 R8 警告、0 失败／未运行；最终保留命中切换
+后，仅受影响 HandInteraction／G9B.StableHandAndHover 8/8 通过。53 个不同
+测试均有有效通过证据，没有最终版本一次 53/53 运行的声明。
+
+生产 Native PIE 打击瞄准、移到邻牌仍不突出、右键取消恢复普通悬停通过。
+实例读回 G9=true，C++ 默认 false。完整队尾轨迹的实际操作未受控，仍待
+人工验收。PIE 已停止并读回 false，观察器移除，编辑器保持打开。
+
+下一步：使用 `docs/NativeInputHoverAndEndTurnRevision.md` 文末最新中文
+B／C／D 清单复验队列先完成再结束、重复点击完整阶段矩阵、战吼强制选择
+清空后续确认牌与旧结束意图。A 的打击窄场景已通过。旧取消队列清单不再
+执行；不进入 C–F，不启用默认或封板。完整执行范围、日志、配置及限制均
+在专用文档。用户 Native 资产 SHA256 保持原状，仍为唯一排除的外部改动；
+没有资产／配置／Legacy／插件／依赖修改，没有 push。
+
+以下为上一批的历史继续点，不再代表当前行为或待办：
+
+## 历史继续点：持牌悬停与结束回合修订（925aff2）
 
 本批起点 HEAD `fee0790`，源实现 `792f6e2`。本检查点随独立本地提交
 `fix(g9-b): cancel queued plays and fence repeated end turn` 保存，精确最新

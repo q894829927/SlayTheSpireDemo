@@ -106,15 +106,13 @@ FEndTurnIntentAcceptance FBattleHUDBufferedPlayerInput::TryAcceptEndTurn(bool bH
 
 	// No retirement is reported until exact Gameplay authority has been accepted.
 	Result.bAccepted = true;
-	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection || Draft.IsSet() || !ConfirmedPlays.IsEmpty();
+	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection || Draft.IsSet();
 	Result.bRetireFastInputRetry = bHasPendingFastInputRetry;
 	Result.bCancelTransientSelection = ViewModel->InteractionState == EBattleHUDInteractionState::ReadyToConfirm
 		|| ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget;
 	Draft.Reset();
-	ConfirmedPlays.Reset();
-	// Retire a popped-but-busy command too, without forgetting an already
-	// submitted card's completion obligation or the submitted EndTurn receipt.
-	if (++BindingGeneration == 0) ++BindingGeneration;
+	// This is an ordering barrier: keep earlier confirmed/popped commands and
+	// their generation. Only later additions and the unconfirmed draft retire.
 	Pending.Kind = EBufferedPlayerIntentKind::EndTurn;
 	Pending.EndTurn = Intent;
 	return Result;
@@ -308,7 +306,9 @@ bool FBattleHUDBufferedPlayerInput::ConfirmCardDraft(FName TargetPresentationId,
 bool FBattleHUDBufferedPlayerInput::RestoreBusyPlay(const FQueuedCardPlayIntent& Intent)
 {
 	bAwaitingSubmittedPlay = false;
-	if (!IsQueuedIdentityCurrent(Intent) || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
+	if (!IsQueuedIdentityCurrent(Intent) || (Pending.Kind == EBufferedPlayerIntentKind::EndTurn
+		&& Intent.InputSequence >= Pending.EndTurn.LocalIntentGeneration)
+		|| IsSubmittedEndTurnBlockingInput(Intent.Turn)
 		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
 	ConfirmedPlays.Insert(Intent, 0);
 	return true;
