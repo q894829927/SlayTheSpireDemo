@@ -18,6 +18,9 @@ Resolving state must not reactivate a completed fence. The shared event-driven
 input evaluation owns this lifecycle transition.
 Any ordinary selection, including attack aiming, suppresses other cards' hover
 lift/scale while retaining resting-strip hit routing and slot identity.
+Native card clicks and holds share the UButton OnPressed selection request.
+Release has no second selection/confirmation effect; the HUD remains the input
+owner. See `NativeCardPressSelection.md` for the acceptance scope.
 See `NativeInputHoverAndEndTurnRevision.md` for the 2026-10-06 user revision.
 
 TurnEndDiscard uses explicit action-local metadata, with canonical IDs frozen

@@ -6,6 +6,10 @@ activation and remaining mandatory-choice acceptance gates remain pending.
 
 ## Behavior and ownership
 
+最新用户要求：点击和长按统一使用按钮按下的选牌入口，松开不会再次选牌
+或确认出牌。既有指针、目标与右键取消协议沿用；当前证据与中文清单见
+[点击／长按选牌](NativeCardPressSelection.md)。
+
 CardPlayed starts at the visible source pose, established during preparation,
 before the first Slate paint. Use current arranged Hand geometry (including
 hover/pointer render transforms), never the fixed Hand fallback as a production

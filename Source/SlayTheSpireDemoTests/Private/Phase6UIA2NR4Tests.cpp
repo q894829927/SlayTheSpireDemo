@@ -96,4 +96,72 @@ bool FNativeCardWidgetDTOAndRequestTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FNativeCardPressSelectionTest,
+	"SlayTheSpireDemo.HandInteraction.CardPress.ClickAndHoldSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FNativeCardPressSelectionTest::RunTest(const FString&)
+{
+	UPhase6UIA2NR4CardProbe* Card = NewObject<UPhase6UIA2NR4CardProbe>();
+	UButton* Button = NewObject<UButton>(Card);
+	Card->ConfigureSurfaces(Button, NewObject<UTextBlock>(Card), NewObject<UTextBlock>(Card),
+		NewObject<URichTextBlock>(Card), NewObject<UTextBlock>(Card), NewObject<UImage>(Card));
+	UPhase6UIA2NR4RequestSink* Sink = NewObject<UPhase6UIA2NR4RequestSink>(Card);
+	Card->OnBattleCardRequested.AddUniqueDynamic(Sink, &UPhase6UIA2NR4RequestSink::HandleCardRequested);
+	Card->InitializeBindingsForTesting();
+	Card->ConstructBindingsForTesting();
+	Card->ConstructBindingsForTesting();
+
+	int32 ExpectedRequests = 0;
+	for (ECardType Type : {ECardType::Attack, ECardType::Skill, ECardType::Power})
+	{
+		FBattleHUDCardView View;
+		View.RuntimeId = 100 + ExpectedRequests;
+		View.CardId = TEXT("PressSelection");
+		View.CardType = Type;
+		View.TargetType = Type == ECardType::Attack ? ECardTargetType::Enemy : ECardTargetType::Self;
+		View.bGameplayPlayable = false; // advisory frozen hints do not own selection
+		Card->SetCardView(View);
+		Button->OnPressed.Broadcast();
+		++ExpectedRequests;
+		TestEqual(TEXT("Selection occurs on press, before any release"), Sink->CallCount, ExpectedRequests);
+		TestEqual(TEXT("Press carries exact current card identity"), Sink->LastRuntimeId, View.RuntimeId);
+
+		// A held button has no further press edge. A history refresh or release
+		// must not turn that original gesture into a request for the new DTO.
+		++View.RuntimeId;
+		Card->SetCardView(View);
+		Button->OnReleased.Broadcast();
+		Button->OnClicked.Broadcast();
+		TestEqual(TEXT("Release/click cannot select a second time or cross a refreshed identity"), Sink->CallCount, ExpectedRequests);
+		TestEqual(TEXT("Original selection is still the pressed identity"), Sink->LastRuntimeId, View.RuntimeId - 1);
+
+		Button->OnPressed.Broadcast();
+		++ExpectedRequests;
+		TestEqual(TEXT("A fresh click uses the same single press path"), Sink->CallCount, ExpectedRequests);
+		TestEqual(TEXT("Fresh press may select the new identity"), Sink->LastRuntimeId, View.RuntimeId);
+		Button->OnReleased.Broadcast();
+		Button->OnClicked.Broadcast();
+		TestEqual(TEXT("Fresh click release emits no duplicate"), Sink->CallCount, ExpectedRequests);
+	}
+	FBattleHUDCardView Invalid;
+	Card->SetCardView(Invalid);
+	Button->OnPressed.Broadcast();
+	TestEqual(TEXT("Missing RuntimeId cannot select"), Sink->CallCount, ExpectedRequests);
+
+	Card->DestructBindingsForTesting();
+	Invalid.RuntimeId = 800;
+	Card->SetCardView(Invalid);
+	Button->OnPressed.Broadcast();
+	Button->OnReleased.Broadcast();
+	Button->OnClicked.Broadcast();
+	TestEqual(TEXT("Retired button events cannot restore a selection"), Sink->CallCount, ExpectedRequests);
+	Card->ConstructBindingsForTesting();
+	Button->OnPressed.Broadcast();
+	TestEqual(TEXT("Reconstructed surface has one request binding"), Sink->CallCount, ExpectedRequests + 1);
+	Card->DestructBindingsForTesting();
+	return true;
+}
+
 #endif

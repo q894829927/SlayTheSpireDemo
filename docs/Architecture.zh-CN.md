@@ -10,6 +10,10 @@
 鼠标命中切换，不改变槽位或基础布局。
 详见 `NativeInputHoverAndEndTurnRevision.md`。
 
+Native 卡牌点击与长按统一在原生按钮按下时请求选牌，松开不再次选牌或
+确认；仍由 HUD 处理既有选牌／排队协议，不增加长按计时器或 Tick 消费。
+本批验收见 `NativeCardPressSelection.md`。
+
 G9-B 修订后的输入由 HUD 唯一仲裁器持有草稿、已确认 FIFO 和结束回合标记。
 播放期间的目标交互只使用冻结显示；追平后的 ViewModel 入口解析当前绑定并
 请求 Gameplay。Revision 记录来源，Battle、回合 serial、Session 与 generation

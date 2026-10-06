@@ -139,7 +139,9 @@ void UBattleCardWidget::NativeConstruct()
 		return;
 	}
 
-	Btn_Card->OnClicked.AddUniqueDynamic(this, &UBattleCardWidget::HandleCardClicked);
+	// Click and hold share the same press edge. Release/click must not select
+	// again after the HUD has already established a draft on this mouse down.
+	Btn_Card->OnPressed.AddUniqueDynamic(this, &UBattleCardWidget::HandleCardClicked);
 	bCardDelegateBound = true;
 
 	// CreateWidget constructs the Designer before the HUD supplies its DTO. Keep
@@ -152,7 +154,7 @@ void UBattleCardWidget::NativeDestruct()
 {
 	if (bCardDelegateBound && IsValid(Btn_Card))
 	{
-		Btn_Card->OnClicked.RemoveDynamic(this, &UBattleCardWidget::HandleCardClicked);
+		Btn_Card->OnPressed.RemoveDynamic(this, &UBattleCardWidget::HandleCardClicked);
 		bCardDelegateBound = false;
 	}
 

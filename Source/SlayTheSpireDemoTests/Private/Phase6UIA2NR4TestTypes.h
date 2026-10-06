@@ -24,6 +24,9 @@ public:
 		UImage* InArt);
 
 	void InvokeCardClickForTesting();
+	void InitializeBindingsForTesting() { NativeOnInitialized(); }
+	void ConstructBindingsForTesting() { NativeConstruct(); }
+	void DestructBindingsForTesting() { NativeDestruct(); }
 };
 
 UCLASS(Transient)
