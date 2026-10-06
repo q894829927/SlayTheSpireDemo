@@ -9,6 +9,13 @@ preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEA
 
 ## Input contract
 
+2026-10-06 最新用户修订取代下文早期“结束回合保留已确认队列”的规则：
+结束回合验权成功后，立即撤销未执行的已确认出牌、临时草稿及 FastInput
+重试；已提交 Gameplay 的当前牌正常完成。结束回合一经提交，输入所有者
+保留该回合凭据，禁止在旧回合演出期间接受下一回合的结束回合或出牌。
+只有新玩家回合已显示追平且输入重新合法后，才允许新的操作；不使用时间
+冷却或动画帧数判断。持牌跟随鼠标时，其余手牌不进行悬停抬升／放大。
+
 The 2026-10-06 user extension [Native pointer/source presentation](NativePointerCardPresentation.md)
 adds Skill/Power/untargeted-Attack mouse following and left-click Self/None
 confirmation. Enemy-target requests and mandatory-selection isolation remain.
@@ -36,9 +43,10 @@ turn or authority mismatch clears all input. Ready/Presentation/ViewModel change
 schedule merged non-reentrant evaluation; NativeTick never consumes the FIFO.
 Enabled card input never invokes FastInput Skip; disabled preserves G8-B.
 
-EndTurn permission is accepted before draft/FastInput cancellation. Confirmed
-cards remain; no more cards may be added after acceptance. EndTurn executes once
-after them, in the same turn. Mandatory choice immediately clears draft/FIFO/old
+EndTurn permission is accepted before cancellation of drafts, confirmed pending
+cards and FastInput. No more cards may be added after acceptance. EndTurn executes
+once for that exact turn; a submitted-turn receipt fences further input until a
+different player turn is visibly caught up and normally ready. Mandatory choice immediately clears draft/FIFO/old
 EndTurn, including before choice display; old input never returns. Disable,
 explicit Skip/recovery, replacement/destruction clear pending input without
 undoing accepted Gameplay. Stale callbacks cannot repopulate it.

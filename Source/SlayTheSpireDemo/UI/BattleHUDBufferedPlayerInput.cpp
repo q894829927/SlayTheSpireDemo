@@ -14,6 +14,7 @@ void FBattleHUDBufferedPlayerInput::Bind(UBattleHUDWidgetBase* InOwner)
 		|| Battle.Get() != NewBattle || Controller.Get() != NewController)
 	{
 		Clear();
+		SubmittedEndTurn.Reset();
 	}
 	Owner = InOwner;
 	ViewModel = NewViewModel;
@@ -81,6 +82,7 @@ FEndTurnIntentAvailability FBattleHUDBufferedPlayerInput::EvaluateEndTurnAvailab
 	FEndTurnIntentAvailability Result;
 	Result.bCanAcceptEndTurnIntent = TryGetEndTurnAuthority(Result);
 	Result.bCanAcceptEndTurnIntent &= Pending.Kind != EBufferedPlayerIntentKind::EndTurn;
+	Result.bCanAcceptEndTurnIntent &= !IsSubmittedEndTurnBlockingInput(Result.Turn);
 	return Result;
 }
 
@@ -104,11 +106,15 @@ FEndTurnIntentAcceptance FBattleHUDBufferedPlayerInput::TryAcceptEndTurn(bool bH
 
 	// No retirement is reported until exact Gameplay authority has been accepted.
 	Result.bAccepted = true;
-	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection || Draft.IsSet();
+	Result.bRetireCardIntent = Pending.Kind == EBufferedPlayerIntentKind::CardSelection || Draft.IsSet() || !ConfirmedPlays.IsEmpty();
 	Result.bRetireFastInputRetry = bHasPendingFastInputRetry;
 	Result.bCancelTransientSelection = ViewModel->InteractionState == EBattleHUDInteractionState::ReadyToConfirm
 		|| ViewModel->InteractionState == EBattleHUDInteractionState::ChoosingTarget;
 	Draft.Reset();
+	ConfirmedPlays.Reset();
+	// Retire a popped-but-busy command too, without forgetting an already
+	// submitted card's completion obligation or the submitted EndTurn receipt.
+	if (++BindingGeneration == 0) ++BindingGeneration;
 	Pending.Kind = EBufferedPlayerIntentKind::EndTurn;
 	Pending.EndTurn = Intent;
 	return Result;
@@ -116,8 +122,10 @@ FEndTurnIntentAcceptance FBattleHUDBufferedPlayerInput::TryAcceptEndTurn(bool bH
 
 bool FBattleHUDBufferedPlayerInput::TryCaptureCard(int32 RuntimeId)
 {
+	FPlayerTurnAuthorityToken Turn;
 	if (!HasSafeBinding() || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
-		|| !Controller.IsValid()) return false;
+		|| !Controller.IsValid() || !Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn)
+		|| IsSubmittedEndTurnBlockingInput(Turn)) return false;
 	FBufferedCardIntent Intent;
 	if (!Controller->TryCaptureBufferedCardTarget(RuntimeId, Intent)) return false;
 	// Every click re-captures the whole credential; never reuse an old target.
@@ -190,8 +198,22 @@ bool FBattleHUDBufferedPlayerInput::TakeReadyIntent(FBufferedPlayerIntentDecisio
 		return true;
 	}
 	OutDecision = Pending;
+	if (Pending.Kind == EBufferedPlayerIntentKind::EndTurn) SubmittedEndTurn = Pending.EndTurn;
 	Pending = FBufferedPlayerIntentDecision{};
 	return true;
+}
+
+bool FBattleHUDBufferedPlayerInput::IsSubmittedEndTurnBlockingInput(const FPlayerTurnAuthorityToken& Turn) const
+{
+	return SubmittedEndTurn.IsSet() && SubmittedEndTurn->Turn.BattleId == Turn.BattleId
+		&& (SubmittedEndTurn->Turn == Turn || !IsNormalSubmissionReady());
+}
+
+void FBattleHUDBufferedPlayerInput::CompleteEndTurnSubmission(const FBufferedEndTurnIntent& Intent, bool bAccepted)
+{
+	if (!bAccepted && SubmittedEndTurn.IsSet()
+		&& SubmittedEndTurn->LocalIntentGeneration == Intent.LocalIntentGeneration
+		&& SubmittedEndTurn->Turn == Intent.Turn) SubmittedEndTurn.Reset();
 }
 
 bool FBattleHUDBufferedPlayerInput::IsQueuedIdentityCurrent(const FQueuedCardPlayIntent& Intent) const
@@ -218,6 +240,7 @@ bool FBattleHUDBufferedPlayerInput::CanBeginCardDraft(int32 RuntimeId) const
 	if (!HasSafeBinding() || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
 		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32
 		|| !Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn)
+		|| IsSubmittedEndTurnBlockingInput(Turn)
 		|| ViewModel->BattleId != static_cast<int64>(Turn.BattleId)
 		|| ViewModel->GetCardPresentationOwner(RuntimeId) != ECardPresentationOwner::Hand
 		|| ConfirmedPlays.ContainsByPredicate([RuntimeId](const auto& I) { return I.RuntimeId == RuntimeId; })) return false;
@@ -285,7 +308,8 @@ bool FBattleHUDBufferedPlayerInput::ConfirmCardDraft(FName TargetPresentationId,
 bool FBattleHUDBufferedPlayerInput::RestoreBusyPlay(const FQueuedCardPlayIntent& Intent)
 {
 	bAwaitingSubmittedPlay = false;
-	if (!IsQueuedIdentityCurrent(Intent) || ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
+	if (!IsQueuedIdentityCurrent(Intent) || Pending.Kind == EBufferedPlayerIntentKind::EndTurn
+		|| ViewModel->HasAuthoritativePendingCardSelection() || ConfirmedPlays.Num() >= 32) return false;
 	ConfirmedPlays.Insert(Intent, 0);
 	return true;
 }

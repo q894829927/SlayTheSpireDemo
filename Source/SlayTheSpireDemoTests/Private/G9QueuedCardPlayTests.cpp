@@ -66,7 +66,7 @@ bool FG9FullTargetTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9QueueEndTurnTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.EndTurnAfterConfirmed", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9QueueEndTurnTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.EndTurnCancelsConfirmed", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FG9QueueEndTurnTest::RunTest(const FString&)
 {
 	FShadowFixture F;
@@ -74,17 +74,27 @@ bool FG9QueueEndTurnTest::RunTest(const FString&)
 	if (!TestTrue(TEXT("A Blocking"), F.PlayA())) return false;
 	TestTrue(TEXT("B draft"), F.Widget->SelectCard(F.Card(TEXT("B"))->GetRuntimeId()));
 	TestTrue(TEXT("B confirmed"), F.Widget->ConfirmSelectedCard());
-	TestTrue(TEXT("C unconfirmed draft"), F.Widget->SelectCard(F.Card(TEXT("C"))->GetRuntimeId()));
+	const int32 CId = F.Card(TEXT("C"))->GetRuntimeId();
+	TestTrue(TEXT("C unconfirmed draft"), F.Widget->SelectCard(CId));
+	int32 LaterCardPlays = 0;
+	const auto Capture = F.Gameplay.Battle->OnPresentationResolutionReady.AddLambda([&](const auto& Envelope)
+	{
+		for (const auto& Record : Envelope.Records)
+			if (Record.Type == EBattlePresentationRecordType::CardPlayed && Record.CardPlayed.Card.CardId != TEXT("A")) ++LaterCardPlays;
+	});
 	TestTrue(TEXT("EndTurn accepted"), F.Widget->EndTurn());
 	TestEqual(TEXT("Draft retired"), F.Widget->GetBufferedCardDraftRuntimeId(), INDEX_NONE);
-	TestEqual(TEXT("Confirmed B retained"), F.Input().GetConfirmedPlayCount(), 1);
-	TestFalse(TEXT("No additions after EndTurn"), F.Widget->SelectCard(F.Card(TEXT("C"))->GetRuntimeId()));
+	TestEqual(TEXT("Confirmed B cancelled"), F.Input().GetConfirmedPlayCount(), 0);
+	TestFalse(TEXT("No additions after EndTurn"), F.Widget->SelectCard(CId));
 	F.FinishPlayback(); FTSTicker::GetCoreTicker().Tick(0.0f);
 	FPlayerTurnAuthorityToken Turn;
 	F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
-	TestEqual(TEXT("B request precedes EndTurn"), Turn.PlayerTurnSerial, uint64(1));
-	TestTrue(TEXT("B played"), F.Card(TEXT("B")) == nullptr);
+	TestEqual(TEXT("Only one EndTurn request"), Turn.PlayerTurnSerial, uint64(2));
+	// B/C are discarded by EndTurn, not played. No second PlayArea destination.
+	TestEqual(TEXT("Current A plus discarded B/C, no queued play"), F.Gameplay.Battle->GetDeckRuntimeForTesting()->GetDiscardCount(), 3);
 	Drain(F);
+	F.Gameplay.Battle->OnPresentationResolutionReady.Remove(Capture);
+	TestEqual(TEXT("Cancelled B/C produce no CardPlayed"), LaterCardPlays, 0);
 	F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
 	TestEqual(TEXT("EndTurn executes exactly once afterwards"), Turn.PlayerTurnSerial, uint64(2));
 	TestFalse(TEXT("EndTurn consumed"), F.Widget->HasAcceptedBufferedEndTurn());
@@ -103,10 +113,10 @@ bool FG9QueueIsolationTest::RunTest(const FString&)
 		F.Widget->SelectCard(F.Card(TEXT("C"))->GetRuntimeId()); F.Widget->ConfirmSelectedCard();
 		if (Mode == 0)
 		{
-			F.Widget->EndTurn(); F.FinishPlayback(); FTSTicker::GetCoreTicker().Tick(0.0f); F.Gameplay.FlushReady();
+			F.FinishPlayback(); FTSTicker::GetCoreTicker().Tick(0.0f); F.Gameplay.FlushReady();
 			TestTrue(TEXT("B enters mandatory choice"), F.Gameplay.ViewModel->HasAuthoritativePendingCardSelection());
 			TestEqual(TEXT("Mandatory clears future C"), F.Input().GetConfirmedPlayCount(), 0);
-			TestFalse(TEXT("Mandatory drops old EndTurn"), F.Widget->HasAcceptedBufferedEndTurn());
+			TestFalse(TEXT("Mandatory stores no EndTurn"), F.Widget->HasAcceptedBufferedEndTurn());
 			TestFalse(TEXT("Mandatory cannot end turn"), F.Widget->EndTurn());
 			Drain(F);
 			TestTrue(TEXT("Complete mandatory through normal API"), F.Gameplay.ViewModel->SubmitPendingCardSelectionByRuntimeIds({F.Card(TEXT("C"))->GetRuntimeId()}));
@@ -119,6 +129,72 @@ bool FG9QueueIsolationTest::RunTest(const FString&)
 		TestEqual(TEXT("No stale queue restored"), F.Input().GetConfirmedPlayCount(), 0);
 		TestEqual(TEXT("No stale draft restored"), F.Widget->GetBufferedCardDraftRuntimeId(), INDEX_NONE);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9EndTurnRepeatFenceTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.EndTurnRepeatFence", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9EndTurnRepeatFenceTest::RunTest(const FString&)
+{
+	FShadowFixture F;
+	F.Widget->SetBufferedPlayerInputEnabled(true);
+	if (!TestTrue(TEXT("A remains in Blocking history"), F.PlayA())) return false;
+	F.Widget->SelectCard(F.Card(TEXT("B"))->GetRuntimeId()); F.Widget->ConfirmSelectedCard();
+	F.Widget->SelectCard(F.Card(TEXT("C"))->GetRuntimeId()); F.Widget->ConfirmSelectedCard();
+	int32 ReentrantChecks = 0;
+	const auto Handle = F.Gameplay.ViewModel->OnNativeChanged.AddLambda([&](EBattleHUDDirtyFlags)
+	{
+		FPlayerTurnAuthorityToken Turn;
+		if (F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn) && Turn.PlayerTurnSerial == 2
+			&& F.Gameplay.ViewModel->bInputLocked)
+		{ ++ReentrantChecks; TestFalse(TEXT("Publication cannot accept a future-turn click"), F.Widget->EndTurn()); }
+	});
+	TestTrue(TEXT("One EndTurn accepted"), F.Widget->EndTurn());
+	F.Gameplay.FlushReady();
+	for (int32 Click = 0; Click < 20; ++Click)
+	{
+		TestFalse(TEXT("Repeated clicks during old history are rejected"), F.Widget->EndTurn());
+		TestFalse(TEXT("Button remains unavailable after pending storage is consumed"), F.Widget->CanAcceptEndTurnIntent());
+	}
+	F.Widget->DiscardQueuedPlayerInput();
+	TestFalse(TEXT("Pending-input cleanup cannot release a submitted-turn fence"), F.Widget->EndTurn());
+	FPlayerTurnAuthorityToken Turn; F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
+	TestEqual(TEXT("No chained player turns"), Turn.PlayerTurnSerial, uint64(2));
+	TestEqual(TEXT("All unsubmitted cards cleared"), F.Input().GetConfirmedPlayCount(), 0);
+	Drain(F);
+	F.Gameplay.ViewModel->OnNativeChanged.Remove(Handle);
+	TestTrue(TEXT("Synchronous publication was checked"), ReentrantChecks > 0);
+	F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
+	TestEqual(TEXT("Drain does not resurrect another EndTurn"), Turn.PlayerTurnSerial, uint64(2));
+	TestTrue(TEXT("New displayed ready turn permits a fresh click"), F.Widget->CanAcceptEndTurnIntent());
+	TestTrue(TEXT("Fresh next-turn click accepted"), F.Widget->EndTurn());
+	F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
+	TestEqual(TEXT("Only the fresh click ends the next turn"), Turn.PlayerTurnSerial, uint64(3));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9EndTurnReceiptTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.EndTurnReceiptAndBusyRetirement", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9EndTurnReceiptTest::RunTest(const FString&)
+{
+	FShadowFixture F(false); F.Widget->SetBufferedPlayerInputEnabled(true);
+	F.Widget->SelectCard(F.Card(TEXT("B"))->GetRuntimeId());
+	F.Input().ConfirmCardDraft(NAME_None);
+	FBufferedPlayerIntentDecision Play;
+	TestTrue(TEXT("Pop a not-yet-submitted card"), F.Input().TakeReadyIntent(Play));
+	TestTrue(TEXT("EndTurn accepts before retirement"), F.Input().TryAcceptEndTurn(false).bAccepted);
+	TestFalse(TEXT("Busy card cannot restore after EndTurn acceptance"), F.Input().RestoreBusyPlay(Play.Play));
+	F.Input().RetireRejectedPlayAttempt();
+	FBufferedPlayerIntentDecision First;
+	TestTrue(TEXT("Take exact EndTurn receipt"), F.Input().TakeReadyIntent(First));
+	TestFalse(TEXT("Consumed same-turn receipt still rejects duplicates"), F.Input().EvaluateEndTurnAvailability().bCanAcceptEndTurnIntent);
+	F.Input().Clear();
+	TestFalse(TEXT("Clear keeps submitted receipt"), F.Input().EvaluateEndTurnAvailability().bCanAcceptEndTurnIntent);
+	F.Input().CompleteEndTurnSubmission(First.EndTurn, false);
+	TestTrue(TEXT("Exact rejected submission allows retry"), F.Input().TryAcceptEndTurn(false).bAccepted);
+	FBufferedPlayerIntentDecision Second; F.Input().TakeReadyIntent(Second);
+	F.Input().CompleteEndTurnSubmission(First.EndTurn, false);
+	TestFalse(TEXT("Old rejection cannot retire the new receipt"), F.Input().EvaluateEndTurnAvailability().bCanAcceptEndTurnIntent);
+	F.Input().CompleteEndTurnSubmission(Second.EndTurn, false);
+	TestTrue(TEXT("Current rejection releases its own receipt"), F.Input().EvaluateEndTurnAvailability().bCanAcceptEndTurnIntent);
 	return true;
 }
 

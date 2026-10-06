@@ -7,6 +7,13 @@ records intent provenance, while Battle/turn/Session/generation fence identity.
 Mandatory choices and destructive display/lifetime boundaries retire pending
 inputs. NativeTick cannot submit them.
 
+EndTurn accepts exact authority before cancelling all unsubmitted card commands.
+Its submitted-turn receipt survives pending-input cleanup and prevents accepting
+future-turn commands while old history is still visible. A different player turn
+must be visibly caught up and normally ready before fresh input is available.
+Pointer drafts suppress other cards' hover lift/scale, without changing slots.
+See `NativeInputHoverAndEndTurnRevision.md` for the 2026-10-06 user revision.
+
 TurnEndDiscard uses explicit action-local metadata, with canonical IDs frozen
 from the complete turn-end Hand. The generic Controller/Base/card-transition
 engine accepts Hand sources without creating a Selection lifecycle. All clones

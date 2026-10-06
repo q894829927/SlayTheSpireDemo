@@ -335,7 +335,11 @@ complete confirmed intent is automatically submitted at a caught-up legal
 boundary. Pop before publication; future requests stay outside ActionQueue.
 Preserve captured target PresentationId and turn/session/binding identity across
 normal revision advancement; invalid entries report and skip without retargeting.
-EndTurn retires unconfirmed drafts, retains confirmed plays and blocks additions.
+EndTurn first accepts authority, then retires drafts and confirmed pending plays
+and blocks additions. Retain the exact submitted-turn receipt across pending-input
+cleanup; suppress new commands while the next Gameplay turn is not yet visibly
+caught up. Rejected submission may release only its own exact receipt. Pointer
+drafts suppress other Hand cards' hover lift/scale, preserving base layout.
 Mandatory selection and recovery/Skip/disable/replacement retire all pending input.
 Consumption is coalesced/event-driven, never NativeTick, and enabled G9 never
 falls through to FastInput Skip. Disabled G9 retains the existing G8-B path.

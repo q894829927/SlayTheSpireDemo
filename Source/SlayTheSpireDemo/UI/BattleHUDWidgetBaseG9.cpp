@@ -162,7 +162,10 @@ void UBattleHUDWidgetBase::ProcessBufferedPlayerInput()
 			continue;
 		}
 		if (Decision.Kind == EBufferedPlayerIntentKind::EndTurn)
-			ViewModel->RequestEndTurnForAcceptedIntent(Decision.EndTurn.Turn);
+		{
+			const bool bAccepted = ViewModel->RequestEndTurnForAcceptedIntent(Decision.EndTurn.Turn);
+			BufferedPlayerInput.CompleteEndTurnSubmission(Decision.EndTurn, bAccepted);
+		}
 		else if (Decision.Kind == EBufferedPlayerIntentKind::CardSelection)
 			ViewModel->SelectCardByRuntimeId(Decision.Card.RuntimeId);
 		break;

@@ -1,12 +1,23 @@
 # Development Phases
 
+2026-10-06 用户反馈上一清单 1／3／4／6／7 无问题，2／5 原标准通过。
+当前新增范围为持牌时抑制其他悬停、结束回合取消未执行队列，以及防止
+旧历史期间的重复点击连续结束未来回合。原人工反馈记录为用户反馈通过；
+新增行为独立验收，不启用默认，也不进入 C–F。当前约定与中文清单：
+[持牌悬停与结束回合修订](NativeInputHoverAndEndTurnRevision.md)。
+
+本轮修订已实现：工程生成／Editor 构建通过，77 个不同的受影响测试在
+初次与单项修复重跑后取得有效通过证据。Native 快速三次结束回合点击
+仅推进一次的窄场景通过；持牌悬停、队列取消和完整阶段矩阵仍需新增人工
+验收。G9 默认与 C–F／封板状态不变。
+
 Native ordinary-card source/pointer extension (base `de75414`): **IMPLEMENTED /
 BUILD PASS / AFFECTED AUTOMATION PASS / PARTIAL PIE / USER ACTION REQUIRED**.
 CardPlayed prepares its actual first pose; Skill/Power/untargeted-Attack drafts
 follow the mouse, right click restores the fan, and left click forwards Self/None
 through existing Requests. Optional FIFO cosmetics preserve confirmed pointer
 origins. All 69 distinct selected/added tests have valid passing evidence across
-repaired runs. Full controlled visual timelines remain pending. No default
+repaired runs. 原清单已获得用户人工通过反馈，新增规则的验收仍待完成。No default
 activation or C–F/seal change. [Contract and evidence](NativePointerCardPresentation.md).
 
 G9-B revision batches 2–4: Status front / Relic tail, confirmed input FIFO and

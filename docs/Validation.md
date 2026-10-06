@@ -1,5 +1,20 @@
 # Validation
 
+## 用户人工反馈与新增输入规则 — 2026-10-06
+
+用户反馈 Native 原清单 1／3／4／6／7 没有问题，2／5 原标准通过，记为
+**USER_REPORTED_PASS**。未提供的实际提交、配置、视口及录像不补写。
+新增要求为持牌抑制其他悬停、结束回合取消未执行队列，以及阻止重复点击
+连续结束回合。旧 EndTurn 保留 FIFO 的验收不证明新增取消规则。
+本轮实现、实际执行证据与中文新增清单见
+[持牌悬停与结束回合修订](NativeInputHoverAndEndTurnRevision.md)。
+
+本轮规定工程生成和 Editor 构建通过；聚焦 77 项初次 75 成功、1 预期
+警告、1 失败。旧 Hand→Draw 夹具补齐起点 Slate 准备后，仅该项重跑 1/1
+通过，77 个不同测试均有有效通过证据。Native 生产按钮快速连续三次点击
+只推进一次回合，演出后停在新回合；其余新增交互时间线仍为 USER ACTION
+REQUIRED。确切范围、报告和本轮 PIE 配置在上述专用文档，不宣称封板。
+
 ## Native ordinary-card source / pointer extension — 2026-10-06
 
 Implementation base `de75414`, same G9 branch. Prescribed UE 5.8 project generation

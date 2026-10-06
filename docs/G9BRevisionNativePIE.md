@@ -62,6 +62,12 @@ do not yet satisfy the default-enable gate.
 
 ## 待人工验收：强制选择清空队列（USER ACTION REQUIRED）
 
+更新（2026-10-06）：用户反馈上一清单项目 7 没有问题，记录为用户人工
+通过反馈，未补写缺失的实际运行配置。下列时间线是旧“结束回合保留确认
+队列”行为的历史清单，已被最新取消规则取代。当前操作请使用
+[最新中文验收清单](NativeInputHoverAndEndTurnRevision.md)，不要按旧时间线
+期待已被结束回合取消的 Warcry 自动执行。
+
 仍需完成一条完整的 Native 时间线：在强制选择出现前，确实存在已确认的
 出牌队列和结束回合标记。历史 MCP 点击尝试返回成功，但 ViewModel 仍为 Idle，
 因此既不能计为通过，也不能据此判断运行时失败。较窄的强制选择隔离、同时

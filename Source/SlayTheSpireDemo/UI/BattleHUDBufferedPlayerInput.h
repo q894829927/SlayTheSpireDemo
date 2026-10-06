@@ -62,6 +62,7 @@ public:
 	bool TryCaptureCard(int32 RuntimeId);
 	EBufferedPlayerIntentEvaluation EvaluatePending();
 	bool TakeReadyIntent(FBufferedPlayerIntentDecision& OutDecision);
+	void CompleteEndTurnSubmission(const FBufferedEndTurnIntent& Intent, bool bAccepted);
 	EBufferedPlayerIntentKind GetPendingKind() const { return Pending.Kind; }
 
 private:
@@ -69,12 +70,14 @@ private:
 	bool TryGetEndTurnAuthority(FEndTurnIntentAvailability& OutAvailability) const;
 	bool IsQueuedIdentityCurrent(const FQueuedCardPlayIntent& Intent) const;
 	bool IsNormalSubmissionReady() const;
+	bool IsSubmittedEndTurnBlockingInput(const FPlayerTurnAuthorityToken& Turn) const;
 
 	TWeakObjectPtr<UBattleHUDWidgetBase> Owner;
 	TWeakObjectPtr<UBattleHUDViewModel> ViewModel;
 	TWeakObjectPtr<ABattleManager> Battle;
 	TWeakObjectPtr<UBattlePresentationController> Controller;
 	FBufferedPlayerIntentDecision Pending;
+	TOptional<FBufferedEndTurnIntent> SubmittedEndTurn;
 	uint64 NextIntentGeneration = 1;
 	bool bEnabled = false;
 	bool bConfirmedQueueMode = false;

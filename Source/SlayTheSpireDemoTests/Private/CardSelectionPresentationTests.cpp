@@ -11,6 +11,8 @@
 #include "Engine/World.h"
 #include "UI/BattleHUDViewModel.h"
 
+SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
+
 namespace CardSelectionPresentationTest
 {
 	constexpr int64 TestBattleId = 9201;
@@ -187,7 +189,10 @@ bool FSharedSelectionHandToDrawPresentationTest::RunTest(const FString& Paramete
 	Fixture.ViewModel->Player.PresentationId = TEXT("Player");
 	Fixture.ViewModel->Energy = 3;
 	Fixture.ViewModel->MaxEnergy = 3;
-	Fixture.AddFormalCard(PlayedSnapshot);
+	UBattleCardWidget* PlayedSource = Fixture.AddFormalCard(PlayedSnapshot);
+	Fixture.Hand->TakeWidget();
+	CacheG9TestWidgetGeometry(Fixture.PlayArea, FGeometry::MakeRoot(FVector2D(500,400), FSlateLayoutTransform()));
+	CacheG9TestWidgetGeometry(PlayedSource, FGeometry::MakeRoot(FVector2D(150,210), FSlateLayoutTransform(FVector2D(60,420))));
 	FPresentationRecord PlayedRecord;
 	PlayedRecord.BattleId = TestBattleId;
 	PlayedRecord.ResolutionId = TestResolutionId;

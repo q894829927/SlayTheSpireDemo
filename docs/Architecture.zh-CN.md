@@ -1,5 +1,11 @@
 # 整体架构说明
 
+2026-10-06 输入修订：结束回合先验权，再取消所有尚未提交的出牌命令。
+已提交的回合凭据在 Pending 清理后继续保留，阻止旧历史演出期间预订未来
+回合的命令；只有不同的玩家回合已经显示追平并正常就绪，才开放新输入。
+持牌跟随鼠标时关闭其他手牌的悬停抬升／放大，不改变槽位或基础布局。
+详见 `NativeInputHoverAndEndTurnRevision.md`。
+
 G9-B 修订后的输入由 HUD 唯一仲裁器持有草稿、已确认 FIFO 和结束回合标记。
 播放期间的目标交互只使用冻结显示；追平后的 ViewModel 入口解析当前绑定并
 请求 Gameplay。Revision 记录来源，Battle、回合 serial、Session 与 generation

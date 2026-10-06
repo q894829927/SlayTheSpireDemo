@@ -1,5 +1,31 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
+## 当前继续点：持牌悬停与结束回合修订
+
+本批起点 HEAD `fee0790`，源实现 `792f6e2`。本检查点随独立本地提交
+`fix(g9-b): cancel queued plays and fence repeated end turn` 保存，精确最新
+提交用 `git log -1 --format='%h %s'` 核实。
+
+已完成：持牌期间禁止其他手牌悬停突出；结束回合验权后取消未执行 FIFO；
+取出结束意图前保存精确提交凭据，防止旧显示窗口接受未来回合命令；
+Pending 清理保持凭据，当前拒绝回执可释放自己的凭据。没有 Tick 消费或
+时间冷却。原清单 1／3／4／6／7、2／5 原标准已获用户反馈通过；新增规则
+取代旧“结束回合保留确认牌”约定。
+
+本轮工程生成／Editor 构建通过：初次 75.99 秒，最终夹具构建 6.51 秒。
+聚焦 77 项：75 成功、1 预期警告、1 失败；旧 Hand→Draw 起点布局夹具
+修复后仅该项 1/1 通过，77 个不同测试均有有效通过证据。没有一次
+77/77 运行的声明。Native 开场、G9=true 读回及快速连续三次点击只结束
+一次的窄场景通过。PIE 停止、观察器移除、编辑器保持打开。
+
+下一步：按 `docs/NativeInputHoverAndEndTurnRevision.md` 的中文 A／B／C／D
+清单获取新增视觉反馈。旧第 7 项“提前结束回合仍执行 Warcry”步骤已被
+取消队列规则取代，不能继续使用。默认仍关闭；不进入 C–F，不封板。
+完整证据与失败／修复记录见该专用文档。原 Native 资产修改及 SHA256 均
+保持原状，不纳入提交；没有 push。
+
+下文为之前源实现批次的历史继续点，不代表本轮仍需重跑的范围。
+
 Branch: `codex/g9-buffered-input-detached-cards`. Implementation HEAD: `792f6e2`
 (`feat(native-ui): play cards from visible source and follow pointer drafts`),
 based on `de75414`. The subsequent documentation-only batch translates the
