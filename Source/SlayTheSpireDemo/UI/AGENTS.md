@@ -339,7 +339,9 @@ EndTurn first accepts authority, then retires unconfirmed drafts and blocks late
 additions. Preserve earlier confirmed plays and their busy retries; submit EndTurn
 after their normal completion. Retain the exact submitted-turn receipt across pending-input
 cleanup; suppress new commands while the next Gameplay turn is not yet visibly
-caught up. Rejected submission may release only its own exact receipt. Ordinary
+caught up. Retire that receipt once a different same-Battle turn has a proven
+normal Ready display boundary; later playback cannot reactivate it. Rejected
+submission may release only its own exact receipt. Ordinary
 card selection, including attack aiming, suppresses other Hand cards' hover
 lift/scale, preserving base layout.
 Mandatory selection and recovery/Skip/disable/replacement retire all pending input.

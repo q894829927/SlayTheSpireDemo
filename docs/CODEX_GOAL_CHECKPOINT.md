@@ -1,5 +1,31 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
+## 当前继续点：第二回合连续出牌修复
+
+基线 `6b0ab9c`，继续当前分支。本检查点随独立本地提交
+`fix(g9-b): retire completed end-turn input fences` 保存；用
+`git log -1 --format='%h %s'` 核实精确最新 HEAD。
+
+完成：旧结束凭据在同 Battle 的不同 PlayerTurnSerial 达到精确正常 Ready
+显示边界时退役一次，后续出牌忙碌不能恢复旧阻断。保留相同回合／旧演出
+窗口防重、当前队尾规则和强制选择清空，没有 Tick 消费或 Gameplay 改动。
+
+新回归在旧实现上单项复现失败；修复后规定工程生成／Editor 构建通过，
+54.56 秒。一次聚焦 54 项为 53 成功、1 预期 R8 警告、0 失败／未运行。
+覆盖有历史和无历史模式的第二、第三回合连续 A／B／C 与队尾结束一次。
+准确范围、日志和第二／第三回合中文清单在 `G9NextTurnInputFenceFix.md`。
+
+生产 Native 第二回合连续多次出牌及第三回合继续两张攻击实际通过，VM
+均恢复 Idle／解锁且反馈为空。实例 G9=true，普通连续点击不代替动画期间
+B／C 完整排队录像；该轨迹及队列后结束仍待人工复验。PIE 停止、观察器
+移除、编辑器关闭。配置、数值、截图记录与限制均在专用文档。
+
+下一步：按 `G9NextTurnInputFenceFix.md` 中文 A／B／C 清单取得播放期间
+完整排队与队尾录像；此前其他未完成的时间线按最新输入修订清单继续。
+C++ 默认仍 false，不进入 C–F、不启用默认、不封板。用户 Native 资产
+SHA256 保持原状并排除；不 push。以下均为此前执行历史，不是当前 HEAD
+或下一步。
+
 ## 当前继续点：攻击瞄准与结束回合队尾澄清
 
 本批起点 HEAD `925aff2`，继续分支 `codex/g9-buffered-input-detached-cards`。

@@ -70,6 +70,7 @@ private:
 	bool TryGetEndTurnAuthority(FEndTurnIntentAvailability& OutAvailability) const;
 	bool IsQueuedIdentityCurrent(const FQueuedCardPlayIntent& Intent) const;
 	bool IsNormalSubmissionReady() const;
+	void RetireSubmittedEndTurnAtReadyBoundary();
 	bool IsSubmittedEndTurnBlockingInput(const FPlayerTurnAuthorityToken& Turn) const;
 
 	TWeakObjectPtr<UBattleHUDWidgetBase> Owner;

@@ -223,6 +223,71 @@ bool FG9EndTurnReceiptTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9NextTurnContinuousQueueTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.NextTurnContinuousQueue", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FG9NextTurnContinuousQueueTest::RunTest(const FString&)
+{
+	for (bool bRecorded : {true, false})
+	{
+		FShadowFixture F(bRecorded, false, ECardTargetType::Enemy);
+		for (auto& Definition : F.Gameplay.Battle->DebugStartingDeck) Definition->BaseCost = 1;
+		F.Gameplay.Battle->PlayerTurnDrawCount = 3;
+		F.Gameplay.Battle->StartBattle(); F.Gameplay.FlushReady(); F.FinishPlayback();
+		F.Widget->SetBufferedPlayerInputEnabled(true);
+		if (!TestTrue(TEXT("First turn ends once"), F.Widget->EndTurn())) return false;
+		for (uint64 ExpectedTurn : {uint64(2), uint64(3)})
+		{
+			Drain(F);
+			FPlayerTurnAuthorityToken Turn;
+			F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
+			TestEqual(TEXT("Exact later player turn"), Turn.PlayerTurnSerial, ExpectedTurn);
+			TestFalse(TEXT("New turn is visibly ready"), F.Gameplay.ViewModel->bInputLocked);
+			if (!TestNotNull(TEXT("A redrawn"), F.Card(TEXT("A")))
+				|| !TestNotNull(TEXT("B redrawn"), F.Card(TEXT("B")))
+				|| !TestNotNull(TEXT("C redrawn"), F.Card(TEXT("C")))) return false;
+			TArray<FName> Plays;
+			bool bAllCardCostsCommitted = false;
+			const auto CostCapture = F.Gameplay.Battle->OnReadStateReady.AddLambda([&](uint64, uint64)
+			{
+				FPlayerTurnAuthorityToken CurrentTurn;
+				if (F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(CurrentTurn)
+					&& CurrentTurn.PlayerTurnSerial == ExpectedTurn && F.Gameplay.Battle->Energy == F.Gameplay.Battle->MaxEnergy - 3)
+					bAllCardCostsCommitted = true;
+			});
+			const auto Capture = F.Gameplay.Battle->OnPresentationResolutionReady.AddLambda([&](const auto& Envelope)
+			{
+				for (const auto& Record : Envelope.Records)
+					if (Record.Type == EBattlePresentationRecordType::CardPlayed) Plays.Add(Record.CardPlayed.Card.CardId);
+			});
+			const int32 BId = F.Card(TEXT("B"))->GetRuntimeId();
+			const int32 CId = F.Card(TEXT("C"))->GetRuntimeId();
+			TestTrue(TEXT("First new-turn card selected"), F.Widget->SelectCard(F.Card(TEXT("A"))->GetRuntimeId()));
+			TestTrue(TEXT("First new-turn card submitted"), F.Widget->ConfirmSelectedCard());
+			F.Gameplay.FlushReady();
+			UPhase6UIA0ManualFinishAction* Hold = bRecorded ? nullptr : F.HoldQueue();
+			if (bRecorded) TestTrue(TEXT("A history is still playing"), F.Controller->IsWaitingForCompletionForTesting());
+			TestTrue(TEXT("Later-turn animation/busy edge accepts B"), F.Widget->SelectCard(BId));
+			TestTrue(TEXT("B target fully confirmed"), F.Widget->SelectTarget(2));
+			TestFalse(TEXT("Duplicate queued B rejected"), F.Widget->SelectCard(BId));
+			TestTrue(TEXT("Later-turn animation/busy edge accepts C"), F.Widget->SelectCard(CId));
+			TestTrue(TEXT("C fully confirmed"), F.Widget->ConfirmSelectedCard());
+			TestEqual(TEXT("B/C wait without early Gameplay requests"), F.Input().GetConfirmedPlayCount(), 2);
+			TestTrue(TEXT("Fresh EndTurn can wait behind B/C during later-turn A"), F.Widget->EndTurn());
+			for (int32 Click = 0; Click < 4; ++Click)
+				TestFalse(TEXT("Current-turn repeat remains blocked"), F.Widget->EndTurn());
+			if (Hold) Hold->CompleteManually();
+			Drain(F);
+			F.Gameplay.Battle->OnPresentationResolutionReady.Remove(Capture);
+			F.Gameplay.Battle->OnReadStateReady.Remove(CostCapture);
+			TestTrue(TEXT("All three card costs committed before EndTurn"), bAllCardCostsCommitted);
+			if (bRecorded) TestTrue(TEXT("Exactly A/B/C in order"), Plays == TArray<FName>{FName(TEXT("A")), FName(TEXT("B")), FName(TEXT("C"))});
+			F.Gameplay.Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn);
+			TestEqual(TEXT("Only fresh EndTurn advances after prior cards"), Turn.PlayerTurnSerial, ExpectedTurn + 1);
+			TestEqual(TEXT("No command left pending"), F.Input().GetConfirmedPlayCount(), 0);
+		}
+	}
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FG9QueueInvalidSkipTest, "SlayTheSpireDemo.SelectionPresentation.G9B.Queue.InvalidSkip", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FG9QueueInvalidSkipTest::RunTest(const FString&)
 {

@@ -13,6 +13,9 @@ cancels only the unconfirmed draft/FastInput retry.
 Its submitted-turn receipt survives pending-input cleanup and prevents accepting
 future-turn commands while old history is still visible. A different player turn
 must be visibly caught up and normally ready before fresh input is available.
+At that proven boundary the prior-turn receipt retires once. A later card's
+Resolving state must not reactivate a completed fence. The shared event-driven
+input evaluation owns this lifecycle transition.
 Any ordinary selection, including attack aiming, suppresses other cards' hover
 lift/scale while retaining resting-strip hit routing and slot identity.
 See `NativeInputHoverAndEndTurnRevision.md` for the 2026-10-06 user revision.

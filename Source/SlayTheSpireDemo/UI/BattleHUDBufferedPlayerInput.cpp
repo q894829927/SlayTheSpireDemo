@@ -135,6 +135,7 @@ bool FBattleHUDBufferedPlayerInput::TryCaptureCard(int32 RuntimeId)
 
 EBufferedPlayerIntentEvaluation FBattleHUDBufferedPlayerInput::EvaluatePending()
 {
+	RetireSubmittedEndTurnAtReadyBoundary();
 	if (bConfirmedQueueMode)
 	{
 		if (bAwaitingSubmittedPlay && HasSafeBinding() && IsNormalSubmissionReady()) bAwaitingSubmittedPlay = false;
@@ -201,10 +202,23 @@ bool FBattleHUDBufferedPlayerInput::TakeReadyIntent(FBufferedPlayerIntentDecisio
 	return true;
 }
 
+void FBattleHUDBufferedPlayerInput::RetireSubmittedEndTurnAtReadyBoundary()
+{
+	if (!SubmittedEndTurn.IsSet() || !HasSafeBinding()) return;
+	FPlayerTurnAuthorityToken Turn;
+	if (Battle->TryGetCurrentPlayerTurnAuthorityToken(Turn)
+		&& Turn.BattleId == SubmittedEndTurn->Turn.BattleId
+		&& Turn != SubmittedEndTurn->Turn && IsNormalSubmissionReady())
+	{
+		// A proven next-turn Ready edge completes this fence's lifetime once.
+		// Later card playback must not reactivate a completed prior-turn fence.
+		SubmittedEndTurn.Reset();
+	}
+}
+
 bool FBattleHUDBufferedPlayerInput::IsSubmittedEndTurnBlockingInput(const FPlayerTurnAuthorityToken& Turn) const
 {
-	return SubmittedEndTurn.IsSet() && SubmittedEndTurn->Turn.BattleId == Turn.BattleId
-		&& (SubmittedEndTurn->Turn == Turn || !IsNormalSubmissionReady());
+	return SubmittedEndTurn.IsSet() && SubmittedEndTurn->Turn.BattleId == Turn.BattleId;
 }
 
 void FBattleHUDBufferedPlayerInput::CompleteEndTurnSubmission(const FBufferedEndTurnIntent& Intent, bool bAccepted)
