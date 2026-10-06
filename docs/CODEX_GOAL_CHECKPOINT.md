@@ -1,9 +1,10 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
-Branch: `codex/g9-buffered-input-detached-cards`. HEAD at this batch's start:
-`de75414`. This checkpoint accompanies the local implementation commit titled
-`feat(native-ui): play cards from visible source and follow pointer drafts`;
-resolve the exact current receipt hash with `git log -1 --format='%h %s'`.
+Branch: `codex/g9-buffered-input-detached-cards`. Implementation HEAD: `792f6e2`
+(`feat(native-ui): play cards from visible source and follow pointer drafts`),
+based on `de75414`. The subsequent documentation-only batch translates the
+pending checklists into Chinese and records the future language rule in root
+AGENTS.md. Resolve the latest documentation receipt with `git log -1 --format='%h %s'`.
 Authority: `docs/NativePointerCardPresentation.md`, alongside the existing
 confirmed FIFO / relic-tail / simultaneous-discard amendment.
 

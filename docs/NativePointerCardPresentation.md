@@ -99,25 +99,42 @@ run. Evidence: `Saved/Logs/G9PointerPIE.log`, `G9PointerStartPIE.json`,
 conversation. The final non-fan contract tightening does not replace missing
 visual proof. Editor is closed after the required final build.
 
-**USER ACTION REQUIRED:** on that map, retain one continuous recording showing:
+## 中文人工验收清单
 
-1. Strike aims at the enemy and travels from its visible Hand location into
-   PlayArea, with no initial flash from a fixed position.
-2. Warcry and Inflame follow the cursor to two different locations. Right click
-   restores the same card to its fan slot; selecting again and left clicking a
-   blank battle location plays from that cursor position. Only one Request/cost
-   occurs. Enemy-target Skills still require their exact enemy click.
-3. During A's playback, confirm a pointer card B, optionally C, then move the
-   cursor away. B waits at its confirmed center and starts from that center when
-   its turn arrives. Resize during the wait/playback and verify continuous
-   placement, later hover and unchanged Hand order.
-4. Enter a mandatory choice and verify ordinary mouse following/left confirmation
-   cannot bypass it. The previously pending full queued-mandatory clearing gate
-   remains in `G9BRevisionNativePIE.md`.
+**待人工验收（USER ACTION REQUIRED）。** 实现提交为 `792f6e2`；本次清单
+中文化仅修改文档，不改变运行行为，也不将待办标记为通过。
 
-Record commit HEAD, actual G9 option, viewport and result. Future AOE Gameplay
-content is absent; its None-target pointer policy is automated, not a visual
-content acceptance claim. No G9 default activation, C–F work or seal.
+打开生产地图 `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`，进入 PIE。
+使用 Native HUD；排队项目需要实际启用 `Enable G9 Buffered Player Input`。
+C++ 默认仍为关闭，不要仅凭按钮或悬停现象推断该开关已启用。记录实际
+运行提交、开关状态和视口尺寸。每项保留完整操作录像；静态截图不能证明
+出牌起点和连续轨迹。
+
+| 项目 | 操作步骤 | 通过条件 |
+|---|---|---|
+| 1. 攻击牌实际起点 | 悬停并选中 Strike，再左键点击敌人出牌。 | 保留目标箭头；牌从刚才可见的手牌位置连续移向出牌区，没有从固定位置闪现、重复牌或幽灵牌。 |
+| 2. 技能／能力牌跟随 | 分别选中 Warcry 和 Inflame，将鼠标移动到战场内两个不同位置。 | 选中牌跟随鼠标；其余手牌保留正常扇形顺序，没有一起移动或叠到左下角。 |
+| 3. 右键归位 | 在项目 2 中，移动后按右键。 | 同一张牌立即回到原来的扇形槽位；未扣能量、未执行效果，也未进入弃牌／消耗堆；后续仍能悬停和选中。 |
+| 4. 从鼠标位置出牌 | 再次选中上述牌，移动到不同位置，在战场空白处左键确认。Warcry 后续的强制选牌按正常流程完成。 | 牌从确认时的位置连续进入出牌区；只执行一次效果和一次对应扣费。需要敌人目标的技能仍必须点击合法敌人。 |
+| 5. 排队起点与顺序 | 打出 A（例如 PommelStrike），在其播放期间确认 B（例如 Inflame）；可再确认 C（例如 Warcry），然后移开鼠标。 | 当前动画不中断；确认时不提前扣费或执行效果；B 保留确认位置，轮到它时自动从该位置出牌；C 按确认顺序执行。Warcry 产生强制选牌时进入正常选择流程。 |
+| 6. 视口变化与后续交互 | 分别在跟随鼠标、排队等待和出牌运动期间调整窗口／视口大小，再操作剩余手牌。 | 本次演出没有新增的起点跳变、错位、重复或残留；剩余手牌顺序正确，悬停、选中及右键取消仍正常。历史扇形裁切调优不在本次验收范围。 |
+| 7. 强制选择清空旧输入 | 按下述时间线，先确认后续牌和结束回合，再让 Warcry 进入强制选择。 | 普通鼠标跟随／空白处左键不能绕过强制选择；结束回合不可点击；未执行的后续牌和旧结束回合意图被清空，完成选择后不恢复。 |
+
+项目 7 是前一轮仍未完成的完整时间线，具体操作为：
+
+1. 打出 PommelStrike，在其历史播放期间选中 Warcry，左键确认；随后
+   将另一张攻击牌按原目标点击流程确认入队，再点击结束回合。
+2. 等到 Warcry 的强制置顶选择出现。此时结束回合保持不可点击，不能通过
+   普通出牌输入继续执行那张排队攻击牌。
+3. 完成选择时，选择另一张牌，**不要选择刚才排队的攻击牌**，以免混淆
+   “被选择效果移出手牌”和“排队命令执行”的结果。
+4. 等待演出完成。那张攻击牌仍在手牌中，没有自动攻击旧目标；旧结束回合
+   不自动执行，仍处于同一个玩家回合。原有证据见 `G9BRevisionNativePIE.md`。
+
+反馈格式：`项目编号：通过／失败；操作用牌；实际开关；视口尺寸；现象；录像`。
+失败时说明卡牌在何处出现、是否重复扣费／出牌，以及能否继续操作。
+未来 AOE 卡牌尚未实装，其无目标跟随策略已有自动化，本次不要求验证不存在
+的内容。以上待办通过前不启用 G9 默认，不进入 C–F，也不宣称 G9 封板。
 
 Final source/decline receipt: **1/1 PASS**, zero failures/notRun
 (`G9PointerSourceFinal`). Across the initial scope, repaired affected runs and

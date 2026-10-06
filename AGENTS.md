@@ -153,6 +153,12 @@ The first command regenerates `.sln`/`.slnx` files; it does not compile the proj
 
 ## Documentation
 
+### 验收清单语言
+
+今后新增或更新的验收清单必须使用中文，包括操作步骤、预期现象、
+通过条件、待办说明及面向用户的验收反馈。代码标识符、资产路径、
+命令、提交编号和 `USER ACTION REQUIRED` 等固定状态标记可保留原文。
+
 ### Local commit batches
 
 For the current Native/G9 work and subsequent modifications, finish each coherent

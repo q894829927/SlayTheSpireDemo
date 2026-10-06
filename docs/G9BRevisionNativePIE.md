@@ -60,26 +60,24 @@ do not yet satisfy the default-enable gate.
   exactly-once/order guarantees remain Automation evidence; no third-shuffle
   energy reward is claimed from this one-shuffle visual run.
 
-## Pending gate — USER ACTION REQUIRED
+## 待人工验收：强制选择清空队列（USER ACTION REQUIRED）
 
-Complete one natural Native time line with a known pending FIFO and EndTurn
-marker before mandatory choice. Attempts using MCP Slate refs after window
-activation returned true without actually delivering the intended clicks; their
-VM readbacks remained Idle. These attempts are not a PASS or a runtime failure.
-Screenshot-backed input successfully proved the narrower mandatory surface and
-discard/relic gates. The short complete queued-mandatory time line remains
-unperformed; automation already proves its identities and clearing behavior.
+仍需完成一条完整的 Native 时间线：在强制选择出现前，确实存在已确认的
+出牌队列和结束回合标记。历史 MCP 点击尝试返回成功，但 ViewModel 仍为 Idle，
+因此既不能计为通过，也不能据此判断运行时失败。较窄的强制选择隔离、同时
+弃牌和遗物表现已有证据；完整清空时间线仍待人工确认。
 
-On the same production map and G9=true:
+在生产地图 `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel` 开启 G9 后：
 
-1. Play PommelStrike, then while its history is playing confirm Warcry against
-   the player, confirm another attack against the enemy, and click EndTurn.
-2. When Warcry reaches its mandatory put-on-top choice, EndTurn must remain
-   unavailable. The later attack and old EndTurn intent must be retired.
-3. Finish the choice and wait for playback. The later attack must remain in Hand,
-   no old enemy target may fire, and the same player turn must remain active.
-4. Record actual HEAD, G9 flag and a short video or before/during/after captures.
+1. 打出 PommelStrike。在其播放期间确认 Warcry，再将另一张攻击牌按敌人
+   目标点击流程确认入队，随后点击结束回合。`792f6e2` 起 Warcry 支持选中后
+   在空白处左键确认；原玩家目标点击入口仍有效。
+2. Warcry 的强制置顶选择出现时，结束回合保持不可点击；后续攻击牌及旧
+   结束回合意图应被清空，普通出牌输入不能绕过当前选择。
+3. 选择另一张牌完成强制选择，不要选择刚才排队的攻击牌。等待演出结束，
+   确认那张攻击牌仍在手牌，没有自动攻击旧目标，也没有自动结束当前玩家回合。
+4. 记录实际提交、G9 开关、视口尺寸及完整操作录像，反馈通过／失败和具体现象。
 
-Only after this gate passes may a separate tested C++ default-enable commit
-start. Original G9-C–F and whole-G9 seal remain outside this amendment. PIE was
-stopped and its observer removed; the editor remains open for this check.
+当前完整中文清单见 [Native 出牌起点与鼠标跟随验收](NativePointerCardPresentation.md)。
+此门槛通过后才可开始独立的默认启用提交。G9-C–F 和整体封板仍不在本轮范围内。
+历史验收记录中的编辑器状态仅描述当时环境；当前状态以检查点为准。
