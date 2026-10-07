@@ -79,6 +79,15 @@ public:
 	{
 		return IsNativeCardAnimationInitialized();
 	}
+	int32 HostedPlayedCountForTesting() const { return GetPlayedCardVisualJobCount(); }
+	void RetireHostedCollisionsForTesting() { RetireCollidingPlayedCardVisualJobs(); }
+	void HideHostedForSelectionForTesting(bool bHidden) { SetPlayedCardVisualsSelectionHidden(bHidden); }
+	FDetachedCardVisualToken HostedPlayedTokenForTesting(int32 Index = 0) const { return GetPlayedCardVisualToken(Index); }
+	bool CompleteHostedForTesting(const FDetachedCardVisualToken& Token, const FPresentationPlaybackToken& Blocking)
+	{ return CompletePlayedCardVisualJob(Token,Blocking); }
+	bool PrepareHostedForTesting(const FPresentationRecord& Record, const FPresentationPlaybackToken& Blocking,
+		const FPlayedCardPresentationLifecycleToken& Life, const FCardPlayVisualOrigin& Origin, FDetachedCardVisualToken& Token)
+	{ return PreparePlayedCardVisualJob(Record,Blocking,Life,Origin,nullptr,Token); }
 
 	bool InvokeBeginDirectForTesting(
 		const FPresentationRecord& Record,

@@ -19,6 +19,7 @@ void UBattleHUDWidget::EnsureHandInteractionSurfaces()
 {
 	UCanvasPanel* Root = WidgetTree ? Cast<UCanvasPanel>(WidgetTree->RootWidget) : nullptr;
 	if (!Root) return;
+	EnsureDetachedCardVFXHost();
 	if (!PointerInputBackdrop)
 	{
 		// Below every authored control: blank viewport clicks still enter the
@@ -205,6 +206,7 @@ void UBattleHUDWidget::NativeOnCardPlayRequestFinished(bool bAccepted)
 
 void UBattleHUDWidget::RefreshCardInputVisuals()
 {
+	RetireCollidingPlayedCardVisualJobs();
 	if (HandPointerGesture.IsSet() && !IsHandPointerGestureCurrent(HandPointerGesture.GetValue())) HandPointerGesture.Reset();
 	if (SubmittedCardVisual.IsSet() && (!ViewModel || SubmittedCardViewModel.Get() != ViewModel.Get()
 		|| SubmittedCardController.Get() != PresentationController.Get()

@@ -388,8 +388,7 @@ void UBattleHUDSelectionWidget::ReleaseSelectionAreaVisuals()
 
 void UBattleHUDSelectionWidget::SetPlayedCardSelectionHidden(bool bHidden)
 {
-	if (UBattleCardWidget* Card = GetNativePlayedCardWidget())
-		Card->SetVisibility(bHidden ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible);
+	SetPlayedCardVisualsSelectionHidden(bHidden);
 }
 void UBattleHUDSelectionWidget::OnNativeCardTransitionAccepted(int32 RuntimeId) { SetPlayedCardSelectionHidden(true); }
 void UBattleHUDSelectionWidget::OnNativeCardTransitionEnded(int32 RuntimeId, bool bCancelled)

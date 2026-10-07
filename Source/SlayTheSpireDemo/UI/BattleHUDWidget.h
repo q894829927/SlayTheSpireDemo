@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "BattlePlayedCardVisualJob.h"
 #include "BattleHUDWidgetBase.h"
 #include "BattleHUDTypes.h"
 #include "TimerManager.h"
@@ -276,6 +277,27 @@ protected:
 		const FPresentationRecord& Record,
 		const FPresentationPlaybackToken& Token);
 	bool IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const;
+	bool BeginBlockingFallbackCardPlayed(const FPresentationRecord& Record, const FPresentationPlaybackToken& Token);
+	bool BeginBlockingFallbackPlayAreaDestination(const FPresentationRecord& Record, const FPresentationPlaybackToken& Token);
+	bool BeginHostedCardPlayed(const FPresentationRecord& Record, const FPresentationPlaybackToken& Token,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle);
+	bool BeginHostedCardDestination(const FPresentationRecord& Record, const FPresentationPlaybackToken& Token,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle);
+	bool EnsureDetachedCardVFXHost();
+	bool PreparePlayedCardVisualJob(const FPresentationRecord& Record, const FPresentationPlaybackToken& BlockingToken,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle, const FCardPlayVisualOrigin& Origin,
+		UBattleCardWidget* Source, FDetachedCardVisualToken& OutToken);
+	void UpdatePlayedCardVisualJobs(float DeltaSeconds);
+	void RetirePlayedCardVisualJob(int32 Index, bool bRestoreSource = false);
+	bool CompletePlayedCardVisualJob(const FDetachedCardVisualToken& VisualToken, const FPresentationPlaybackToken& BlockingToken);
+	void RetireCollidingPlayedCardVisualJobs();
+	UBattleCardWidget* FindPreferredPlayedCardVisual() const;
+	void SetPlayedCardVisualsSelectionHidden(bool bHidden);
+	virtual void NativeCancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session) override;
+	virtual void NativeCancelAllPlayedCardVisuals() override;
+	int32 GetPlayedCardVisualJobCount() const { return PlayedCardVisualJobs.Num(); }
+	FDetachedCardVisualToken GetPlayedCardVisualToken(int32 Index) const
+	{ return PlayedCardVisualJobs.IsValidIndex(Index) ? PlayedCardVisualJobs[Index].Token : FDetachedCardVisualToken{}; }
 	bool DoesNativeCardViewMatchSnapshot(
 		const FBattleHUDCardView& View,
 		const FPresentationCardSnapshot& Snapshot) const;
@@ -384,7 +406,7 @@ protected:
 	}
 	UBattleCardWidget* GetNativePlayedCardWidget() const
 	{
-		return NativePlayedCardWidget.Get();
+		return FindPreferredPlayedCardVisual();
 	}
 	UBattleCardWidget* GetNativeDrawnCardWidget() const
 	{
@@ -569,6 +591,12 @@ protected:
 	TObjectPtr<UTextBlock> Txt_EnemyIntent;
 
 private:
+	UPROPERTY(Transient) TObjectPtr<UCanvasPanel> DetachedCardVFXHost;
+	UPROPERTY(Transient) TArray<FNativePlayedCardVisualJob> PlayedCardVisualJobs;
+	int64 NextCardVisualGeneration = 1;
+	FPlayedCardPresentationLifecycleToken BlockingFallbackPlayedLifecycle;
+	FDetachedCardVisualToken ActivePlayedCardVisualToken;
+	bool bPlayedCardVisualsSelectionHidden = false;
 	UPROPERTY(Transient) TObjectPtr<UBorder> PointerInputBackdrop;
 	TOptional<FNativeHandPointerGesture> HandPointerGesture;
 	FReply HandleHandCardPointerPressed(UBattleCardWidget* Card, const FPointerEvent& Event);
@@ -651,14 +679,14 @@ private:
 	int32 ActiveDamageBlockAfter = 0;
 	int32 ActiveDamageMaxHP = 0;
 
-	// R8 owns only presentation Widgets. NativePlayedCardWidget intentionally
+	// R8 owns only presentation Widgets. NativeBlockingFallbackPlayedCardWidget intentionally
 	// survives CardPlayed Finish so the later PlayArea zone Record can retire the
 	// same frozen transient. Draw-to-Hand owns exactly one transient until its
 	// exact Token finishes; the Controller's per-Record snapshot refresh then
 	// replaces it with the formal Hand Widget before starting the next draw.
 	ENativeCardPresentationKind ActiveNativeCardPresentationKind =
 		ENativeCardPresentationKind::None;
-	TWeakObjectPtr<UBattleCardWidget> NativePlayedCardWidget;
+	TWeakObjectPtr<UBattleCardWidget> NativeBlockingFallbackPlayedCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeHistoricalHandCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeDrawnCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeZoneCardWidget;

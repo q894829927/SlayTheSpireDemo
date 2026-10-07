@@ -202,6 +202,7 @@ void UBattleHUDWidget::NativeConstruct()
 
 void UBattleHUDWidget::NativeDestruct()
 {
+	NativeCancelAllPlayedCardVisuals();
 	HandPointerGesture.Reset();
 	SubmittedCardVisual.Reset();
 	if (FanHand) FanHand->SetInputVisualCards({});
@@ -1125,7 +1126,7 @@ bool UBattleHUDWidget::BeginPresentationRecordPlayback_Implementation(
 	}
 }
 
-bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
+bool UBattleHUDWidget::BeginBlockingFallbackCardPlayed(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token)
 {
@@ -1151,7 +1152,7 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 		&& Payload.CostPaid == Payload.EnergyBefore - Payload.EnergyAfter
 		&& Payload.CostPaid == Payload.Card.Cost
 		&& ViewModel->Energy == Payload.EnergyBefore
-		&& !NativePlayedCardWidget.IsValid()
+		&& !NativeBlockingFallbackPlayedCardWidget.IsValid()
 		&& !ActiveNativeDrawnCardWidget.IsValid()
 		&& OV_PlayArea->GetChildrenCount() == Payload.PlayAreaIndexAfter
 		&& FindExactHistoricalHandCard(Payload.Card, Payload.HandIndexBefore, HistoricalHandCard);
@@ -1185,11 +1186,11 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::CardPlayed;
 	ActiveNativeHistoricalHandCardWidget = HistoricalHandCard;
 	ActiveNativeHistoricalHandVisibility = HistoricalHandCard->GetVisibility();
-	NativePlayedCardWidget = PresentationCard;
+	NativeBlockingFallbackPlayedCardWidget = PresentationCard;
 	UOverlaySlot* PlayAreaSlot = OV_PlayArea->AddChildToOverlay(PresentationCard);
 	if (!IsValid(PlayAreaSlot))
 	{
-		NativePlayedCardWidget.Reset();
+		NativeBlockingFallbackPlayedCardWidget.Reset();
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -1213,7 +1214,7 @@ bool UBattleHUDWidget::BeginNativeCardPlayedPresentation(
 	{
 		HistoricalHandCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
 		PresentationCard->RemoveFromParent();
-		NativePlayedCardWidget.Reset();
+		NativeBlockingFallbackPlayedCardWidget.Reset();
 		ResetNativeCardRecordState();
 		AbortNativePresentationStart();
 		return false;
@@ -1273,7 +1274,7 @@ bool UBattleHUDWidget::BeginNativeHandToDiscardPresentation(
 		|| !IsValid(Txt_DiscardCount)
 		|| CardWidgetClass == nullptr
 		|| Payload.ToIndex != ViewModel->DiscardCount
-		|| NativePlayedCardWidget.IsValid()
+		|| NativeBlockingFallbackPlayedCardWidget.IsValid()
 		|| ActiveNativeZoneCardWidget.IsValid()
 		|| !FindExactHistoricalHandCard(Payload.Card, Payload.FromIndex, HistoricalHandCard))
 	{
@@ -1429,12 +1430,12 @@ bool UBattleHUDWidget::BeginNativeDrawToHandPresentation(
 	return true;
 }
 
-bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
+bool UBattleHUDWidget::BeginBlockingFallbackPlayAreaDestination(
 	const FPresentationRecord& Record,
 	const FPresentationPlaybackToken& Token)
 {
 	const FCardZoneChangedPresentationPayload& Payload = Record.CardZoneChanged;
-	UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get();
+	UBattleCardWidget* PlayedCard = NativeBlockingFallbackPlayedCardWidget.Get();
 	bool bDestinationIndexValid = false;
 	if (IsValid(ViewModel))
 	{
@@ -1558,8 +1559,10 @@ bool UBattleHUDWidget::FindExactHistoricalHandCard(
 
 bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const
 {
+	for (const auto& Job : PlayedCardVisualJobs)
+		if (Job.Token.Lifecycle.RuntimeId == RuntimeId) return false;
 	if (RuntimeId == INDEX_NONE
-		|| (NativePlayedCardWidget.IsValid() && NativePlayedCardWidget->GetRuntimeId() == RuntimeId)
+		|| (NativeBlockingFallbackPlayedCardWidget.IsValid() && NativeBlockingFallbackPlayedCardWidget->GetRuntimeId() == RuntimeId)
 		|| (ActiveNativeDrawnCardWidget.IsValid() && ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId)
 		|| (ActiveNativeZoneCardWidget.IsValid() && ActiveNativeZoneCardWidget->GetRuntimeId() == RuntimeId))
 	{
@@ -1651,6 +1654,7 @@ void UBattleHUDWidget::ConfigureNativeCardAnimation(
 
 void UBattleHUDWidget::UpdateNativeCardAnimation(float DeltaSeconds)
 {
+	UpdatePlayedCardVisualJobs(DeltaSeconds);
 	if (!bHasActiveNativePresentation)
 	{
 		return;
@@ -2449,26 +2453,28 @@ void UBattleHUDWidget::CancelPresentationRecordPlayback_Implementation(
 
 	const EBattlePresentationRecordType CancelledType = ActiveNativePresentationType;
 	ClearNativePresentationFinishTimer();
+	NativeCancelAllPlayedCardVisuals();
 	CancelNativePresentationVisual(CancelledType);
 
-	if (UBattleCardWidget* RetainedPlayedCard = NativePlayedCardWidget.Get())
+	if (UBattleCardWidget* RetainedPlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 	{
 		RetainedPlayedCard->RemoveFromParent();
 	}
-	NativePlayedCardWidget.Reset();
+	NativeBlockingFallbackPlayedCardWidget.Reset();
 	ResetNativePresentationOwnership();
 }
 
 void UBattleHUDWidget::NativeOnTrackedPresentationPlaybackRetired(const FPresentationPlaybackToken& Token, bool bCancelled)
 {
 	if (!bCancelled) return;
+	NativeCancelAllPlayedCardVisuals();
 	// The tracked unit remains the sole completion-receipt owner after the
 	// animation ends. Retire attachments/cross-record visuals before derived
 	// cancellation hooks can publish or install a newer playback surface.
 	CancelIncomingHandAttachment(Token);
-	if (UBattleCardWidget* RetainedPlayedCard = NativePlayedCardWidget.Get())
+	if (UBattleCardWidget* RetainedPlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 		RetainedPlayedCard->RemoveFromParent();
-	NativePlayedCardWidget.Reset();
+	NativeBlockingFallbackPlayedCardWidget.Reset();
 }
 
 bool UBattleHUDWidget::CommitNativePresentationOwnership(
@@ -2721,10 +2727,15 @@ void UBattleHUDWidget::ResetNativeStatusPresentationState()
 
 void UBattleHUDWidget::FinishNativeCardPresentation(EBattlePresentationRecordType RecordType)
 {
+	if (ActivePlayedCardVisualToken.IsValid()
+		&& CompletePlayedCardVisualJob(ActivePlayedCardVisualToken,ActiveNativePresentationToken))
+	{
+		ActiveNativeHistoricalHandCardWidget.Reset(); ResetNativeCardRecordState(); return;
+	}
 	if (RecordType == EBattlePresentationRecordType::CardPlayed
 		&& ActiveNativeCardPresentationKind == ENativeCardPresentationKind::CardPlayed)
 	{
-		NormalizeNativeCardTransform(NativePlayedCardWidget.Get());
+		NormalizeNativeCardTransform(NativeBlockingFallbackPlayedCardWidget.Get());
 		ActiveNativeHistoricalHandCardWidget.Reset();
 		ResetNativeCardRecordState();
 		return;
@@ -2753,11 +2764,11 @@ void UBattleHUDWidget::FinishNativeCardPresentation(EBattlePresentationRecordTyp
 		ActiveNativeDrawnCardWidget.Reset();
 		break;
 	case ENativeCardPresentationKind::PlayAreaToDestination:
-		if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+		if (UBattleCardWidget* PlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 		{
 			PlayedCard->RemoveFromParent();
 		}
-		NativePlayedCardWidget.Reset();
+		NativeBlockingFallbackPlayedCardWidget.Reset();
 		break;
 	default:
 		break;
@@ -2774,11 +2785,11 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 		{
 			HistoricalCard->SetVisibility(ActiveNativeHistoricalHandVisibility);
 		}
-		if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+		if (UBattleCardWidget* PlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 		{
 			PlayedCard->RemoveFromParent();
 		}
-		NativePlayedCardWidget.Reset();
+		NativeBlockingFallbackPlayedCardWidget.Reset();
 		ResetNativeCardRecordState();
 		return;
 	}
@@ -2811,11 +2822,11 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 			CancelIncomingHandAttachment(ActiveNativePresentationToken);
 			break;
 		case ENativeCardPresentationKind::PlayAreaToDestination:
-			if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+			if (UBattleCardWidget* PlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 			{
 				PlayedCard->RemoveFromParent();
 			}
-			NativePlayedCardWidget.Reset();
+			NativeBlockingFallbackPlayedCardWidget.Reset();
 			break;
 		default:
 			break;
@@ -2826,6 +2837,7 @@ void UBattleHUDWidget::CancelNativeCardPresentation(EBattlePresentationRecordTyp
 
 void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 {
+	NativeCancelAllPlayedCardVisuals();
 	if (ActiveNativeCardPresentationKind == ENativeCardPresentationKind::HandToExhaust)
 	{
 		if (UBattleCardWidget* HistoricalCard = ActiveNativeHistoricalHandCardWidget.Get())
@@ -2839,16 +2851,17 @@ void UBattleHUDWidget::CleanupNativeCardPresentationOnDestruct()
 	{
 		ZoneCard->RemoveFromParent();
 	}
-	if (UBattleCardWidget* PlayedCard = NativePlayedCardWidget.Get())
+	if (UBattleCardWidget* PlayedCard = NativeBlockingFallbackPlayedCardWidget.Get())
 	{
 		PlayedCard->RemoveFromParent();
 	}
-	NativePlayedCardWidget.Reset();
+	NativeBlockingFallbackPlayedCardWidget.Reset();
 	ResetNativeCardRecordState();
 }
 
 void UBattleHUDWidget::ResetNativeCardRecordState()
 {
+	ActivePlayedCardVisualToken = {};
 	ActiveCardPlayedOrigin.Reset();
 	if (FanHand) FanHand->ReleaseCardGeometry(ActiveNativeMovingCardWidget.Get(), ActiveNativePresentationToken);
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::None;

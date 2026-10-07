@@ -1,4 +1,26 @@
-# Checkpoint — Native pointer/source extension of amended G9-B
+# Checkpoint — G9-C Native played-card ownership
+
+## 当前继续点：G9-C 已实施，仅待运动帧内视口验收
+
+2026-10-08，历史语义批次 `c69b0ac`；第二批提交标题
+`refactor(g9-c): own played-card visuals in scoped native jobs`，提交后准确
+HEAD 用 `git log -1` 核实。独立 host、多实例强引用 job、独立视觉 generation、
+Blocking 完成适配、Selection 宿主隐藏及解绑／替换／Session 即时清理已实施。
+保留原卡牌时序与已验收 B 默认 true。
+
+最后规定生成／构建通过（4.31／7.01 秒）。本批首轮 86 项通过（1 预期
+警告），最后受影响 59 项通过（1 预期警告），不相加，不宣称最终一次
+86/86。生产 Native PIE 已观察 Hosted 主路径、实际来源、抽牌／能力、
+战吼跨选择、保留 job 视口变化、精确播放中 Skip 和新牌完成。最终 Idle／
+解锁／空反馈，编辑器关闭，无资产保存。
+
+唯一待办：按 `SelectionPresentationG9CExecution.md` 的中文步骤，取得
+“卡牌仍移动时调整窗口”无裁切、突跳、幽灵且后续可交互的人工反馈。
+工具缩放后画面及交互已正常，但未证明动作落在运动帧内，不能代替此门槛。
+C 为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE；本项通过前不进入
+D1／D2。无需重跑已通过的 B 验收或未受影响构建／自动化。外部 Native HUD
+资产 SHA256 保持并排除提交，不 push。详细范围／日志／读回在 C 执行文档。
+以下为历史状态。
 
 ## 当前继续点：G9-C 首批历史语义完成，继续视觉所有权
 

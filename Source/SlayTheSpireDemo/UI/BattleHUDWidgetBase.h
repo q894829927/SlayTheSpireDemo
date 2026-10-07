@@ -54,6 +54,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Battle HUD|Input")
 	void SetBufferedPlayerInputEnabled(bool bEnabled);
 	bool IsBufferedPlayerInputEnabled() const { return bBufferedPlayerInputEnabled; }
+	void CancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session);
+	void CancelAllPlayedCardVisuals();
 	bool CanAcceptEndTurnIntent();
 	bool HasAcceptedBufferedEndTurn();
 	bool TryBufferCardSelection(int32 RuntimeId);
@@ -214,6 +216,8 @@ public:
 	TObjectPtr<UBattlePresentationController> PresentationController = nullptr;
 
 protected:
+	virtual void NativeCancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session) {}
+	virtual void NativeCancelAllPlayedCardVisuals() {}
 	// Class-scope name lookup intentionally shadows the old translation-unit-local
 	// 0.5s constant used by Native playback member functions. Both legacy Blocking
 	// Damage and G8-C debt now resolve through the same Presentation timing value

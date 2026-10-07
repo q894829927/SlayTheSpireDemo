@@ -1,5 +1,17 @@
 # Architecture
 
+G9-C Native played cards use a HUD-owned, noninteractive DetachedCardVFXHost.
+Each GC-safe job owns its frozen clone, exact play occurrence plus independent
+visual generation, binding/surface identity, geometry, elapsed time and phase.
+Blocking completion still requires the current record token and visual token;
+animation Tick neither reduces history nor requests Gameplay. Visible formal
+Hand ownership retires an older visual of the same RuntimeId even when input is
+disabled. Session invalidation, Skip/recovery and destruction clean private jobs.
+Preparation is bounded at 32 and has no formal side effects. Resource decline
+retains the sealed Native Blocking fallback; a bound Controller with invalid
+history/lifecycle never uses that fallback. Standalone renderer tests retain the
+existing R8 contract. D1/D2 nonblocking timing is not enabled by this migration.
+
 G9-C card history uses one atomic pure reducer for Blocking commits, record
 preflight and Group candidates. Controller owns exact unresolved play occurrences;
 normal envelope completion retains them across mandatory-choice continuation.

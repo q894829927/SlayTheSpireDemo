@@ -1,5 +1,22 @@
 # Validation
 
+## G9-C Native 独立视觉所有权 — 2026-10-08
+
+实施基线 `c69b0ac` 加第二批代码。规定最后生成／Editor 构建通过
+（4.31／7.01 秒）；首轮 86 项为 85 成功、1 预期警告，最终修改仅重跑
+受影响 59 项，58 成功、1 预期警告，均零失败／未运行。另一次 Selection
+接口调整回归 27 项通过；各轮不能相加，86 个不同案例有有效证据。
+新增四项覆盖主 Controller 路径、GC、容量、纯准备、视觉丢失、正式所有者、
+解绑无 Tick 及旧 Session／回调隔离。完整范围及编译修复如实记录在
+[G9-C 执行](SelectionPresentationG9CExecution.md)。
+
+生产 Native 浮动窗口 PIE，D3D12／SM6、G9=true。真实操作确认 Hosted
+主路径、实际持牌来源、抽牌／能力、战吼跨选择、保留 job 视口变化及
+Resolving 0.2 秒时调用既有 HUD Skip 后的新牌完成。最终 Idle、解锁、
+反馈为空，无残留。PIE 停止并关闭编辑器，无资产保存。卡牌仍在运动的
+帧内调整视口尚无精确证据，**USER ACTION REQUIRED**；C 为 IMPLEMENTED／
+AUTOMATED GATES PASS／PARTIAL PIE，不进入 D1／D2，不封板。B 验收保持关闭。
+
 ## G9-C 共享历史语义首批 — 2026-10-08
 
 基线 `2c29025`，纯 card reducer、一次发生关联及候选状态预检实施，Blocking

@@ -3,7 +3,8 @@
 2026-10-05 authority amendment: [confirmed FIFO / relic tails / turn-end group](QueuedCardPlayAndRelicTimingAmendment.md)
 supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and its
 16.1 input gate. Original text remains historical context. New B gates follow the
-amendment. G9-C is now in progress under [C execution](SelectionPresentationG9CExecution.md);
+amendment. G9-C is implemented with automated gates passed and one remaining
+moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
 D1–F are not started or accepted.
 
 Date: **2026-09-13**

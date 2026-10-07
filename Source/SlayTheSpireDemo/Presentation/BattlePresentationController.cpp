@@ -422,6 +422,7 @@ void UBattlePresentationController::Shutdown()
 	if (IsValid(Widget))
 	{
 		Widget->CancelAllDetachedDamageVisuals();
+		Widget->CancelAllPlayedCardVisuals();
 	}
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
@@ -1125,6 +1126,7 @@ void UBattlePresentationController::InvalidatePresentationSession(
 		if (IsValid(Owner))
 		{
 			Owner->CancelDetachedDamageVisualsForSession(OldToken);
+			Owner->CancelPlayedCardVisualsForSession(OldToken);
 		}
 	}
 }

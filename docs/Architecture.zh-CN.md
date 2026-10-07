@@ -1,5 +1,14 @@
 # 整体架构说明
 
+G9-C Native 已打出卡牌使用 HUD 持有、不可交互的 DetachedCardVFXHost。
+每个 GC 安全 job 保存冻结 Widget、准确出牌发生与独立视觉 generation、
+绑定／表面身份、几何、时间及阶段。Blocking 完成仍同时核对当前记录和
+视觉 token；动画 Tick 不提交历史、不请求 Gameplay。相同 RuntimeId 的
+新正式 Hand 所有者即使禁止输入，也立即退役旧视觉。Session 失效、Skip／
+恢复和销毁清理私有 job。准备容量为 32，不产生正式副作用；资源不足保留
+既有 Native Blocking 回退，Controller 历史／生命周期无效时不得回退。
+无 Controller 的独立 renderer 测试保留 R8 契约，本迁移不启用 D1／D2 时序。
+
 G9-C 卡牌历史由一个原子的纯 reducer 处理正式 Blocking 提交、单记录和
 Group 预检。Controller 保存准确的未完成出牌发生；正常 Envelope 完成保留
 跨强制选择继续的关联，去向只消费一次。视觉丢失不消费关联，恢复在发布

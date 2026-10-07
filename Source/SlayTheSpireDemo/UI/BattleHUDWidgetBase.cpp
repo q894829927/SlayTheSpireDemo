@@ -116,6 +116,7 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 		HandleNativeViewModelChanged(EBattleHUDDirtyFlags::All);
 		return;
 	}
+	CancelAllPlayedCardVisuals();
 
 	if (IsValid(ViewModel))
 	{
@@ -140,7 +141,11 @@ void UBattleHUDWidgetBase::SetPresentationController(
 	UBattlePresentationController* InController
 )
 {
-	if (PresentationController != InController) ReleaseBufferedPlayerInputBinding();
+	if (PresentationController != InController)
+	{
+		CancelAllPlayedCardVisuals();
+		ReleaseBufferedPlayerInputBinding();
+	}
 	PresentationController = InController;
 	RebindBufferedPlayerInput();
 	NotifyBufferedPlayerInputReadinessChanged();
