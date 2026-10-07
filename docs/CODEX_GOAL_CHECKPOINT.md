@@ -1,5 +1,18 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
+## 当前继续点：拖放人工验收通过
+
+2026-10-07，核实实现 HEAD 为 `e62cdbd`，分支
+`codex/g9-buffered-input-detached-cards`。用户在该批交付后确认“人工验收通过”，
+`NativeCardDragRelease.md` 中文 A–E 项及本批原剩余拖放门槛记为
+USER_REPORTED_PASS。本次为独立文档提交，精确当前 HEAD 用 `git log -1`
+核实；不改 C++ 或资产，不重新构建／测试／PIE，复用最终构建和 55 项证据。
+
+下一步：原 G9 的队尾结束、防重复结束和含旧结束意图的强制选择清空完整
+时间线仍按 `NativeInputHoverAndEndTurnRevision.md` 单独验收；不要重复请求
+本批拖放 A–E。当前不启用默认、不进入 C–F、不封板。预存 Native HUD
+资产改动继续保留并排除本次提交，不 push。以下为历史执行状态。
+
 ## 当前继续点：持牌拖动与区域释放
 
 基线 `7c73884`，继续当前分支，随独立本地提交
