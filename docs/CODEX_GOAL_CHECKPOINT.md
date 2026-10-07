@@ -2,9 +2,10 @@
 
 ## 当前继续点：G9-C 已实施，仅待运动帧内视口验收
 
-2026-10-08，历史语义批次 `c69b0ac`；第二批提交标题
-`refactor(g9-c): own played-card visuals in scoped native jobs`，提交后准确
-HEAD 用 `git log -1` 核实。独立 host、多实例强引用 job、独立视觉 generation、
+2026-10-08，当前已验证实现 HEAD 为 `5f1d4aa`，历史语义批次 `c69b0ac`；
+第二批为 `refactor(g9-c): own played-card visuals in scoped native jobs`。
+本次后续文档提交仅记录此实现 HEAD，不改变已验证代码。独立 host、多实例
+强引用 job、独立视觉 generation、
 Blocking 完成适配、Selection 宿主隐藏及解绑／替换／Session 即时清理已实施。
 保留原卡牌时序与已验收 B 默认 true。
 

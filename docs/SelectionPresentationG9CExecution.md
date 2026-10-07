@@ -82,7 +82,7 @@ Wave1CC1.DrawPileTop.Presentation 与 UIA2A.Hardening。
 
 ## 第二批：Native 独立视觉所有权
 
-实施基线 `c69b0ac` 加本批未提交变更；提交标题为
+验证时基线为 `c69b0ac` 加本批未提交变更；已交付实现提交 `5f1d4aa`，标题为
 `refactor(g9-c): own played-card visuals in scoped native jobs`。
 HUD 私有 `DetachedCardVFXHost` 是覆盖根 Canvas 的不可交互宿主；正式 Hand
 及 `OV_PlayArea` 不再保存主要已出牌视觉。每个 job 保存独立 Widget、原点、
