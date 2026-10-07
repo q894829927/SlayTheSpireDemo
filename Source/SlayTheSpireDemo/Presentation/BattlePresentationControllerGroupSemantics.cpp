@@ -211,30 +211,24 @@ bool UBattlePresentationController::TryBuildSemanticPresentationGroupCandidate(
 		PreviousPresentationSequence = Record.PresentationSequence;
 	}
 
-	// Use the production reducer itself as the G2 chronological dry-run. Only
-	// temporary Controller reducer state is swapped; no ViewModel or Widget is
-	// touched, and every field is restored before the result is observed.
-	const FPresentationStateSnapshot SavedWorkingSnapshot = WorkingPresentationSnapshot;
-	const FPresentationResolutionEnvelope SavedActiveEnvelope = ActiveEnvelope;
-	const bool bSavedHasWorkingSnapshot = bHasWorkingPresentationSnapshot;
-
-	WorkingPresentationSnapshot = Baseline;
-	ActiveEnvelope = Envelope;
-	bHasWorkingPresentationSnapshot = true;
+	// Production semantics run solely on candidates, including correlations.
+	// No formal Controller fields are temporarily replaced, even on failure.
+	FPresentationStateSnapshot CandidateSnapshot = Baseline;
+	FCardPresentationHistoryState CandidateHistory = Baseline.BattleId == CurrentBattleId
+		? CardHistoryState : FCardPresentationHistoryState{};
+	const FPresentationSessionToken CandidateSession = Baseline.BattleId == CurrentBattleId
+		? ActivePresentationSessionToken : FPresentationSessionToken{};
 
 	bool bDryRunSucceeded = true;
 	for (int32 RecordIndex = LeaderRecordIndex; RecordIndex <= LastMemberRecordIndex; ++RecordIndex)
 	{
-		if (!ApplyRecordToWorkingSnapshot(Envelope.Records[RecordIndex]))
+		if (!ApplyRecordToSnapshot(CandidateSnapshot, CandidateHistory, Envelope.Records[RecordIndex], Envelope.FinalSnapshot, CandidateSession))
 		{
 			bDryRunSucceeded = false;
 			break;
 		}
 	}
 
-	WorkingPresentationSnapshot = SavedWorkingSnapshot;
-	ActiveEnvelope = SavedActiveEnvelope;
-	bHasWorkingPresentationSnapshot = bSavedHasWorkingSnapshot;
 	if (!bDryRunSucceeded)
 	{
 		return false;

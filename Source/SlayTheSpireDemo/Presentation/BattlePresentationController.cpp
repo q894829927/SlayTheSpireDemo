@@ -438,6 +438,7 @@ void UBattlePresentationController::Shutdown()
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
 	DisplayedPresentationSnapshot = FPresentationStateSnapshot{};
+	CardHistoryState.ClearCorrelations();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasDisplayedPresentationSnapshot = false;
@@ -551,6 +552,7 @@ void UBattlePresentationController::SkipPresentation()
 
 	if (Newest)
 	{
+		CardHistoryState.ClearCorrelations();
 		ApplyDisplayedSnapshot(Newest->FinalSnapshot, false);
 		MarkEntireBacklogCompletedExact(nullptr);
 		LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Newest->ResolutionId);
@@ -558,6 +560,7 @@ void UBattlePresentationController::SkipPresentation()
 
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	CardHistoryState.ClearCorrelations();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -783,7 +786,18 @@ void UBattlePresentationController::StartNextRecord()
 		return;
 	}
 
-	if (Record.Type == EBattlePresentationRecordType::Damage)
+	if (Record.Type == EBattlePresentationRecordType::CardPlayed || Record.Type == EBattlePresentationRecordType::CardZoneChanged)
+	{
+		auto Candidate = WorkingPresentationSnapshot;
+		auto CandidateHistory = CardHistoryState;
+		if (!bHasWorkingPresentationSnapshot || !PresentationCardReducer::TryApplyRecord(
+			Candidate, CandidateHistory, Record, ActivePresentationSessionToken))
+		{
+			ReconcileActiveEnvelopeToFinalSnapshot();
+			return;
+		}
+	}
+	else if (Record.Type == EBattlePresentationRecordType::Damage)
 	{
 		if (!bHasWorkingPresentationSnapshot)
 		{
@@ -957,6 +971,7 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
 
+	CardHistoryState.ClearCorrelations();
 	ApplyDisplayedSnapshot(RecoveredEnvelope.FinalSnapshot, false);
 	MarkPresentationResolutionCompletedExact(RecoveredEnvelope);
 	LastCompletedResolutionId = FMath::Max(
@@ -964,6 +979,7 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 		RecoveredEnvelope.ResolutionId);
 
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	CardHistoryState.ClearCorrelations();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1004,12 +1020,14 @@ void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
 
+	CardHistoryState.ClearCorrelations();
 	ApplyDisplayedSnapshot(Envelope.FinalSnapshot, false);
 	MarkEntireBacklogCompletedExact(&Envelope);
 	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Envelope.ResolutionId);
 
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	CardHistoryState.ClearCorrelations();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1034,6 +1052,7 @@ void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 	}
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
+	CardHistoryState.ClearCorrelations();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1096,6 +1115,7 @@ bool UBattlePresentationController::IsPresentationOwnedMode() const
 void UBattlePresentationController::InvalidatePresentationSession(
 	UBattleHUDWidgetBase* CleanupWidget)
 {
+	CardHistoryState.ClearCorrelations();
 	const FPresentationSessionToken OldToken = ActivePresentationSessionToken;
 	// Invalidate first so any synchronous cleanup callback already observes stale.
 	ActivePresentationSessionToken = FPresentationSessionToken{};
@@ -1219,7 +1239,15 @@ void UBattlePresentationController::EnterDirectBaselineMode()
 
 bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record)
 {
-	if (!bHasWorkingPresentationSnapshot)
+	return bHasWorkingPresentationSnapshot && ApplyRecordToSnapshot(WorkingPresentationSnapshot,
+		CardHistoryState, Record, ActiveEnvelope.FinalSnapshot, ActivePresentationSessionToken);
+}
+
+bool UBattlePresentationController::ApplyRecordToSnapshot(FPresentationStateSnapshot& Snapshot,
+	FCardPresentationHistoryState& History, const FPresentationRecord& Record,
+	const FPresentationStateSnapshot& FinalSnapshot, const FPresentationSessionToken& Session) const
+{
+	if (Snapshot.BattleId <= 0)
 	{
 		return false;
 	}
@@ -1228,12 +1256,12 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 	{
 	case EBattlePresentationRecordType::Damage:
 		return PresentationDamageReducer::TryApplyDamageRecord(
-			WorkingPresentationSnapshot,
+			Snapshot,
 			Record.Damage);
 
 	case EBattlePresentationRecordType::BlockChanged:
 	{
-		FBattleHUDCombatantView* Target = FindCombatantView(WorkingPresentationSnapshot, Record.BlockChanged.TargetPresentationId);
+		FBattleHUDCombatantView* Target = FindCombatantView(Snapshot, Record.BlockChanged.TargetPresentationId);
 		if (Target == nullptr)
 		{
 			return false;
@@ -1242,142 +1270,35 @@ bool UBattlePresentationController::ApplyRecordToWorkingSnapshot(const FPresenta
 		return true;
 	}
 
-	case EBattlePresentationRecordType::CardPlayed:
-	{
-		const FPresentationCardSnapshot& Card = Record.CardPlayed.Card;
-		if (Card.RuntimeId == INDEX_NONE || Card.CardId.IsNone()
-			|| WorkingPresentationSnapshot.Energy != Record.CardPlayed.EnergyBefore)
-		{
-			return false;
-		}
-		const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
-		if (HandIndex == INDEX_NONE
-			|| HandIndex != Record.CardPlayed.HandIndexBefore
-			|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
-		{
-			return false;
-		}
-		WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
-		WorkingPresentationSnapshot.Energy = Record.CardPlayed.EnergyAfter;
-		return true;
-	}
-
 	case EBattlePresentationRecordType::EnergyChanged:
-		if (WorkingPresentationSnapshot.Energy != Record.EnergyChanged.EnergyBefore)
+		if (Snapshot.Energy != Record.EnergyChanged.EnergyBefore)
 		{
 			return false;
 		}
-		WorkingPresentationSnapshot.Energy = Record.EnergyChanged.EnergyAfter;
+		Snapshot.Energy = Record.EnergyChanged.EnergyAfter;
 		return true;
 
+	case EBattlePresentationRecordType::CardPlayed:
 	case EBattlePresentationRecordType::CardZoneChanged:
-	{
-		const FPresentationCardSnapshot& Card = Record.CardZoneChanged.Card;
-		if (Card.RuntimeId == INDEX_NONE || Card.CardId.IsNone())
-		{
-			return false;
-		}
-
-		if (Record.CardZoneChanged.FromZone == ECardZone::DrawPile
-			&& Record.CardZoneChanged.ToZone == ECardZone::Hand)
-		{
-			if (WorkingPresentationSnapshot.DrawCount <= 0
-				|| FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId) != INDEX_NONE
-				|| Record.CardZoneChanged.ToIndex < 0
-				|| Record.CardZoneChanged.ToIndex > WorkingPresentationSnapshot.HandCards.Num())
-			{
-				return false;
-			}
-			--WorkingPresentationSnapshot.DrawCount;
-			WorkingPresentationSnapshot.HandCards.Insert(
-				PresentationCardView::MakePresentationOnlyCardView(Card),
-				Record.CardZoneChanged.ToIndex);
-			return true;
-		}
-
-		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
-			&& Record.CardZoneChanged.ToZone == ECardZone::DiscardPile)
-		{
-			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
-			if (HandIndex == INDEX_NONE
-				|| HandIndex != Record.CardZoneChanged.FromIndex
-				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId)
-			{
-				return false;
-			}
-			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
-			++WorkingPresentationSnapshot.DiscardCount;
-			return true;
-		}
-
-		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
-			&& Record.CardZoneChanged.ToZone == ECardZone::DrawPile)
-		{
-			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
-			if (HandIndex == INDEX_NONE
-				|| HandIndex != Record.CardZoneChanged.FromIndex
-				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId
-				|| Record.CardZoneChanged.ToIndex != WorkingPresentationSnapshot.DrawCount)
-			{
-				return false;
-			}
-			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
-			++WorkingPresentationSnapshot.DrawCount;
-			return true;
-		}
-
-		if (Record.CardZoneChanged.FromZone == ECardZone::Hand
-			&& Record.CardZoneChanged.ToZone == ECardZone::ExhaustPile)
-		{
-			const int32 HandIndex = FindHandCardIndexByRuntimeId(WorkingPresentationSnapshot.HandCards, Card.RuntimeId);
-			if (HandIndex == INDEX_NONE
-				|| HandIndex != Record.CardZoneChanged.FromIndex
-				|| WorkingPresentationSnapshot.HandCards[HandIndex].CardId != Card.CardId
-				|| Record.CardZoneChanged.ToIndex != WorkingPresentationSnapshot.ExhaustCount)
-			{
-				return false;
-			}
-			WorkingPresentationSnapshot.HandCards.RemoveAt(HandIndex);
-			++WorkingPresentationSnapshot.ExhaustCount;
-			return true;
-		}
-
-		if (Record.CardZoneChanged.FromZone == ECardZone::PlayArea)
-		{
-			switch (Record.CardZoneChanged.ToZone)
-			{
-			case ECardZone::DiscardPile:
-				++WorkingPresentationSnapshot.DiscardCount;
-				return true;
-			case ECardZone::ExhaustPile:
-				++WorkingPresentationSnapshot.ExhaustCount;
-				return true;
-			case ECardZone::RemovedPile:
-				return true;
-			default:
-				return false;
-			}
-		}
-		return false;
-	}
+		return PresentationCardReducer::TryApplyRecord(Snapshot, History, Record, Session);
 
 	case EBattlePresentationRecordType::DeckShuffled:
-		if (WorkingPresentationSnapshot.DrawCount != Record.DeckShuffled.DrawCountBefore
-			|| WorkingPresentationSnapshot.DiscardCount != Record.DeckShuffled.DiscardCountBefore)
+		if (Snapshot.DrawCount != Record.DeckShuffled.DrawCountBefore
+			|| Snapshot.DiscardCount != Record.DeckShuffled.DiscardCountBefore)
 		{
 			return false;
 		}
-		WorkingPresentationSnapshot.DrawCount = Record.DeckShuffled.DrawCountAfter;
-		WorkingPresentationSnapshot.DiscardCount = Record.DeckShuffled.DiscardCountAfter;
+		Snapshot.DrawCount = Record.DeckShuffled.DrawCountAfter;
+		Snapshot.DiscardCount = Record.DeckShuffled.DiscardCountAfter;
 		return true;
 
 	case EBattlePresentationRecordType::StatusChanged:
-		return ApplyStatusChangedRecord(WorkingPresentationSnapshot, Record.StatusChanged);
+		return ApplyStatusChangedRecord(Snapshot, Record.StatusChanged);
 
 	case EBattlePresentationRecordType::ResolutionFault:
 	case EBattlePresentationRecordType::Victory:
 	case EBattlePresentationRecordType::Defeat:
-		return ApplyTerminalRecord(WorkingPresentationSnapshot, ActiveEnvelope.FinalSnapshot, Record);
+		return ApplyTerminalRecord(Snapshot, FinalSnapshot, Record);
 
 	case EBattlePresentationRecordType::None:
 	default:
@@ -1578,31 +1499,18 @@ bool UBattlePresentationController::ReduceEnvelopeForTesting(
 	FPresentationStateSnapshot& OutReducedSnapshot
 )
 {
-	const FPresentationStateSnapshot SavedWorking = WorkingPresentationSnapshot;
-	const FPresentationResolutionEnvelope SavedEnvelope = ActiveEnvelope;
-	const bool bSavedHasWorking = bHasWorkingPresentationSnapshot;
-
-	WorkingPresentationSnapshot = Baseline;
-	ActiveEnvelope = Envelope;
-	bHasWorkingPresentationSnapshot = true;
-
+	FPresentationStateSnapshot Candidate = Baseline;
+	FCardPresentationHistoryState CandidateHistory;
 	bool bSucceeded = true;
 	for (const FPresentationRecord& Record : Envelope.Records)
 	{
-		if (!ApplyRecordToWorkingSnapshot(Record))
+		if (!ApplyRecordToSnapshot(Candidate, CandidateHistory, Record, Envelope.FinalSnapshot, {}))
 		{
 			bSucceeded = false;
 			break;
 		}
 	}
-	if (bSucceeded)
-	{
-		OutReducedSnapshot = WorkingPresentationSnapshot;
-	}
-
-	WorkingPresentationSnapshot = SavedWorking;
-	ActiveEnvelope = SavedEnvelope;
-	bHasWorkingPresentationSnapshot = bSavedHasWorking;
+	if (bSucceeded) OutReducedSnapshot = Candidate;
 	return bSucceeded;
 }
 #endif

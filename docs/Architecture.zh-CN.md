@@ -1,5 +1,10 @@
 # 整体架构说明
 
+G9-C 卡牌历史由一个原子的纯 reducer 处理正式 Blocking 提交、单记录和
+Group 预检。Controller 保存准确的未完成出牌发生；正常 Envelope 完成保留
+跨强制选择继续的关联，去向只消费一次。视觉丢失不消费关联，恢复在发布
+前清理被折叠的关联，generation 不复用。
+
 通过验收的 Native 启动默认开启修订后的 G9-B 缓冲输入。运行时关闭仍使用
 G8-B 回退；通用／测试 Base HUD 保持显式启用。启用证据见 `G9BClosure.md`。
 

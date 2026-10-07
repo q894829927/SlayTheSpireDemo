@@ -3,7 +3,8 @@
 2026-10-05 authority amendment: [confirmed FIFO / relic tails / turn-end group](QueuedCardPlayAndRelicTimingAmendment.md)
 supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and its
 16.1 input gate. Original text remains historical context. New B gates follow the
-amendment; C–F are not started or accepted.
+amendment. G9-C is now in progress under [C execution](SelectionPresentationG9CExecution.md);
+D1–F are not started or accepted.
 
 Date: **2026-09-13**
 
@@ -11,7 +12,7 @@ Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAU
 
 2026-10-07：用户确认 G9-B 全部人工验收完成，旧待验状态已关闭；当前
 门槛与独立默认启用通过证据见 [G9-B 收口](G9BClosure.md)。C 的进入条件
-已满足，C–F 尚未实施。下述旧运行保留历史。
+已满足，C 正在实施，D1–F 尚未实施。下述旧运行保留历史。
 
 Current amended B execution: [revision evidence](G9BRevisionExecution.md) and
 [Native PIE receipt](G9BRevisionNativePIE.md). The original selection-only B
@@ -2086,7 +2087,7 @@ G8    — COMPLETE / VALIDATED / SEALED
 G9    — DESIGN LOCKED / G9-A + G9-B COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
-G9-C  — NOT STARTED
+G9-C  — IN PROGRESS / CANONICAL HISTORY BATCH VALIDATED / VISUAL OWNERSHIP NEXT
 G9-D1 — NOT STARTED
 G9-D2 — NOT STARTED
 G9-E  — NOT STARTED

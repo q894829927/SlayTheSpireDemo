@@ -1,5 +1,19 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
+## 当前继续点：G9-C 首批历史语义完成，继续视觉所有权
+
+2026-10-08，起点 `2c29025`。首批以
+`refactor(g9-c): unify card history reduction and play lifecycles` 独立提交，精确
+当前 HEAD 用 Git 核实。共享纯 reducer、准确出牌关联、跨 Envelope 强制
+选择继续、无正式状态替换的 Group 预检已实施，Blocking 时序保留。
+规定生成／构建通过；初轮夹具失败／断言修复后，60 个不同测试有有效
+通过证据，详情见 `SelectionPresentationG9CExecution.md`。本批没有 PIE。
+
+下一步继续 C 第二批：独立 DetachedCardVFXHost、GC 安全的多实例 job、
+独立视觉 generation／阶段／几何／时间，以及精确 Blocking 完成适配。
+不得启用 D1／D2 时序；C 完整视觉门槛尚未运行，G9 未封板。外部 Native
+HUD 资产 SHA256 保持并排除提交，不 push。以下为历史状态。
+
 ## 当前继续点：G9-B 完成、默认启用；下一阶段 G9-C
 
 2026-10-07，人工收口提交 `a6b4877`，独立启用批次标题

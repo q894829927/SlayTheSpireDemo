@@ -1,5 +1,11 @@
 # Architecture
 
+G9-C card history uses one atomic pure reducer for Blocking commits, record
+preflight and Group candidates. Controller owns exact unresolved play occurrences;
+normal envelope completion retains them across mandatory-choice continuation.
+Destination consumes one correlation; cosmetic loss cannot consume it. Recovery
+clears collapsed correlations before publication without reusing generations.
+
 Validated Native startup enables amended G9-B buffered input by default.
 Runtime disable retains the G8-B fallback; generic/test Base HUDs remain disabled
 until explicitly enabled. See `G9BClosure.md` for activation evidence.

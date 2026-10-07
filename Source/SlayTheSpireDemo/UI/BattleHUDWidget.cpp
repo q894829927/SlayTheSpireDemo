@@ -6,6 +6,7 @@
 #include "BattleHUDCombatantPresentationWidgetBase.h"
 #include "BattleHUDViewModel.h"
 #include "../Presentation/BattlePresentationController.h"
+#include "../Presentation/PresentationCardReducer.h"
 #include "Components/Button.h"
 #include "Components/HorizontalBox.h"
 #include "Components/Overlay.h"
@@ -1502,51 +1503,13 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(
 
 bool UBattleHUDWidget::IsNativeCardSnapshotValid(const FPresentationCardSnapshot& Snapshot) const
 {
-	const bool bCardTypeValid = Snapshot.CardType == ECardType::Attack
-		|| Snapshot.CardType == ECardType::Skill
-		|| Snapshot.CardType == ECardType::Power
-		|| Snapshot.CardType == ECardType::Status
-		|| Snapshot.CardType == ECardType::Curse;
-	const bool bRarityValid = Snapshot.Rarity == ECardRarity::Basic
-		|| Snapshot.Rarity == ECardRarity::Common
-		|| Snapshot.Rarity == ECardRarity::Uncommon
-		|| Snapshot.Rarity == ECardRarity::Rare
-		|| Snapshot.Rarity == ECardRarity::Special
-		|| Snapshot.Rarity == ECardRarity::Curse;
-	const bool bCardColorValid = Snapshot.CardColor == ECardColor::Red
-		|| Snapshot.CardColor == ECardColor::Green
-		|| Snapshot.CardColor == ECardColor::Blue
-		|| Snapshot.CardColor == ECardColor::Purple
-		|| Snapshot.CardColor == ECardColor::Colorless
-		|| Snapshot.CardColor == ECardColor::Curse;
-	const bool bTargetTypeValid = Snapshot.TargetType == ECardTargetType::None
-		|| Snapshot.TargetType == ECardTargetType::Self
-		|| Snapshot.TargetType == ECardTargetType::Enemy;
-	return Snapshot.RuntimeId != INDEX_NONE
-		&& !Snapshot.CardId.IsNone()
-		&& !Snapshot.DisplayName.IsEmpty()
-		&& Snapshot.Cost >= 0
-		&& bCardTypeValid
-		&& bRarityValid
-		&& bCardColorValid
-		&& bTargetTypeValid;
+	return PresentationCardReducer::IsCardSnapshotValid(Snapshot);
 }
 
-bool UBattleHUDWidget::DoesNativeCardViewMatchSnapshot(
-	const FBattleHUDCardView& View,
+bool UBattleHUDWidget::DoesNativeCardViewMatchSnapshot(const FBattleHUDCardView& View,
 	const FPresentationCardSnapshot& Snapshot) const
 {
-	return View.RuntimeId == Snapshot.RuntimeId
-		&& View.CardId == Snapshot.CardId
-		&& View.DisplayName.EqualTo(Snapshot.DisplayName)
-		&& View.bUpgraded == Snapshot.bUpgraded
-		&& View.Cost == Snapshot.Cost
-		&& View.CardType == Snapshot.CardType
-		&& View.Rarity == Snapshot.Rarity
-		&& View.CardColor == Snapshot.CardColor
-		&& View.TargetType == Snapshot.TargetType
-		&& View.Description.EqualTo(Snapshot.Description)
-		&& View.CardArt.Get() == Snapshot.CardArt.Get();
+	return PresentationCardReducer::DoesCardViewMatch(View, Snapshot);
 }
 
 bool UBattleHUDWidget::FindExactHistoricalHandCard(

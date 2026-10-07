@@ -1,5 +1,12 @@
 # Development Phases
 
+2026-10-08 G9-C 进行中：首批共享 card reducer、Controller 生命周期关联及
+无正式状态替换的 Group 预检已实施；规定构建通过，60 个不同受影响测试
+有有效通过证据，含初轮中止／夹具修复后的分范围重跑，不是一次 60/60。
+首批保留 Blocking 时序，无新增视觉 gate；提交后继续 job／host 迁移。
+详情见 [G9-C 执行记录](SelectionPresentationG9CExecution.md)。B 已完成且
+默认启用；C 未验收完成，D1／D2／E／F 未实施，G9 整体未封板。
+
 2026-10-07 G9-B 已完成收口及默认启用：全部人工门槛获用户确认通过，
 Native C++ 启动默认 true，规定生成／Editor 构建通过，一次聚焦 45/45 成功。
 UE MCP 生产读回 Native C++ 默认、Blueprint 默认和实际 HUD 均为 true，

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PresentationCardReducer.h"
 #include "Containers/Ticker.h"
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
@@ -44,6 +45,10 @@ public:
 	// G9-A credentials only. Production input does not call these until G9-B.
 	bool TryCaptureBufferedCardTarget(int32 RuntimeId, FBufferedCardIntent& OutIntent) const;
 	bool IsBufferedCardTargetCurrent(const FBufferedCardIntent& Intent) const;
+	// Pure exact occurrence lookup for the currently offered card record. Visual
+	// preparation cannot mutate or retire the Controller-owned formal correlation.
+	bool TryGetPlayedCardLifecycleForRecord(const FPresentationRecord& Record,
+		FPlayedCardPresentationLifecycleToken& OutToken) const;
 
 	// Detached Damage feature control. Disabling it is not an authority/binding
 	// replacement, so it keeps the current PresentationSessionToken, retires
@@ -167,6 +172,9 @@ private:
 	void AdvancePlaybackGeneration();
 	bool IsEnvelopeForCurrentBattle(const FPresentationResolutionEnvelope& Envelope) const;
 	bool ApplyRecordToWorkingSnapshot(const FPresentationRecord& Record);
+	bool ApplyRecordToSnapshot(FPresentationStateSnapshot& Snapshot, FCardPresentationHistoryState& History,
+		const FPresentationRecord& Record, const FPresentationStateSnapshot& FinalSnapshot,
+		const FPresentationSessionToken& Session) const;
 	void ApplyDisplayedSnapshot(const FPresentationStateSnapshot& Snapshot, bool bRefreshBindings);
 	void ResetG6ActiveGroupState();
 
@@ -199,6 +207,7 @@ private:
 
 	UPROPERTY(Transient)
 	FPresentationStateSnapshot WorkingPresentationSnapshot;
+	UPROPERTY(Transient) FCardPresentationHistoryState CardHistoryState;
 
 	bool bHasActiveEnvelope = false;
 	bool bHasDisplayedPresentationSnapshot = false;

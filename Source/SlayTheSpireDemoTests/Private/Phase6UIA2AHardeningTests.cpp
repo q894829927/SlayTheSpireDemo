@@ -253,7 +253,11 @@ bool FPhase6UIA2APresentationIdentityAndDirectModeTest::RunTest(const FString& P
 	UBattleHUDViewModel* LatchedVM = NewObject<UBattleHUDViewModel>(LatchedFixture.World);
 	TestTrue(TEXT("Latched-config Controller-owned ViewModel initializes"), LatchedVM->Initialize(LatchedFixture.Battle, true));
 	UBattlePresentationController* LatchedController = NewObject<UBattlePresentationController>(LatchedFixture.World);
-	TestTrue(TEXT("Latched-config Controller initializes"), LatchedController->Initialize(LatchedFixture.Battle, LatchedVM, nullptr));
+	// Caught-up input requires the existing valid Presentation session. Supply a
+	// declining playback surface; a missing Widget deliberately cannot unlock it.
+	UPhase6UIA2APlaybackWidget* LatchedWidget = NewObject<UPhase6UIA2APlaybackWidget>(LatchedFixture.World);
+	LatchedWidget->bAcceptAsyncPlayback = false;
+	TestTrue(TEXT("Latched-config Controller initializes"), LatchedController->Initialize(LatchedFixture.Battle, LatchedVM, LatchedWidget));
 	const int64 LatchedOldRevision = LatchedVM->StateRevision;
 
 	LatchedFixture.Battle->bEnableCommittedPresentationRecording = false;
