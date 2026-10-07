@@ -1,5 +1,8 @@
 # Native card source and pointer selection amendment
 
+2026-10-07：用户确认 G9-B 全部人工门槛通过，当前按
+[收口与默认启用记录](G9BClosure.md) 处理；下文待验状态为历史。
+
 Date: 2026-10-06. Implementation base: `de75414`, current branch unchanged.
 User-authorized extension of amended G9-B. G9-C–F remain unstarted; default
 activation and remaining mandatory-choice acceptance gates remain pending.

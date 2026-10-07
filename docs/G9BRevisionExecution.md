@@ -1,5 +1,8 @@
 # G9-B revision execution
 
+2026-10-07：用户确认修订后的 G9-B 全部人工验收完成，当前门槛已关闭；
+独立默认启用批次见 [G9-B 收口](G9BClosure.md)。下文各批待验状态为历史。
+
 Authority: [confirmed plan](QueuedCardPlayAndRelicTimingAmendment.md).
 Branch: `codex/g9-buffered-input-detached-cards`; base `fe80565`.
 Contract amendment commit: `fc0de47`. Original G9-C–F are outside this task.

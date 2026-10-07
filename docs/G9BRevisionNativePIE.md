@@ -1,5 +1,9 @@
 # Amended G9-B Native PIE — 2026-10-06
 
+2026-10-07：用户已确认包含旧队列／结束意图的强制选择清空等剩余验收
+全部完成。下文原待验门槛已关闭，见 [G9-B 收口](G9BClosure.md)；历史
+代理实测范围不改写为新的代理运行。
+
 Source HEAD: `72a564a` (`codex/g9-buffered-input-detached-cards`). UE 5.8
 Development Editor, D3D12, production
 `/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`. Native Blueprint parent

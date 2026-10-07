@@ -1,5 +1,8 @@
 # Native 持牌拖动与区域释放
 
+2026-10-07 后续确认：用户明确剩余 G9-B 组合验收也全部完成，当前阶段
+以 [G9-B 收口](G9BClosure.md) 为准；下文“不同时间线仍待验”说明为较早记录。
+
 日期：2026-10-07，基线 `7c73884`，继续当前 G9 分支。实现提交为 `e62cdbd`
 （`feat(native-ui): play dragged pointer cards on release outside hand`），仅
 Native C++、测试与文档；后续人工通过反馈随独立文档提交保存。

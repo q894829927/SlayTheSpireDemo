@@ -7,7 +7,10 @@ amendment; C–F are not started or accepted.
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B IMPLEMENTED, AUTOMATION PASS, PARTIAL PIE (OPT-IN / USER ACTION REQUIRED) / NOT SEALED**
+Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B IMPLEMENTED, AUTOMATION PASS, MANUAL PASS, DEFAULT ACTIVATION PENDING / G9 NOT SEALED**
+
+2026-10-07：用户确认 G9-B 全部人工验收完成，旧待验状态已关闭；当前
+门槛与独立默认启用批次见 [G9-B 收口](G9BClosure.md)。下述旧运行保留历史。
 
 Current amended B execution: [revision evidence](G9BRevisionExecution.md) and
 [Native PIE receipt](G9BRevisionNativePIE.md). The original selection-only B
@@ -2081,7 +2084,7 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 G8    — COMPLETE / VALIDATED / SEALED
 G9    — DESIGN LOCKED / G9-A COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
-G9-B  — IMPLEMENTED / AUTOMATION PASS / PARTIAL PIE / USER ACTION REQUIRED / OPT-IN
+G9-B  — IMPLEMENTED / AUTOMATION PASS / MANUAL PASS / DEFAULT ACTIVATION PENDING
 G9-C  — NOT STARTED
 G9-D1 — NOT STARTED
 G9-D2 — NOT STARTED

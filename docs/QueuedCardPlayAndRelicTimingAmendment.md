@@ -2,12 +2,15 @@
 
 Date: **2026-10-05**. Branch: `codex/g9-buffered-input-detached-cards`.
 Implementation base: `fe80565`. Status: **IMPLEMENTED / AUTOMATED GATES PASS /
-PARTIAL PIE / USER ACTION REQUIRED / OPT-IN / NOT SEALED**.
+MANUAL PASS / DEFAULT ACTIVATION PENDING / G9 NOT SEALED**.
 This user-approved amendment supersedes G9-B's selection-only buffer, single
 pending-intent limit, fresh confirmation after catch-up, and Relic reactions
 preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEALED.
 
 ## Input contract
+
+2026-10-07：用户确认剩余组合验收全部完成，G9-B 人工门槛已关闭，独立
+默认启用批次可以开始。[G9-B 收口](G9BClosure.md) 覆盖下文历史待验状态。
 
 2026-10-06 最新用户澄清：结束回合保留按钮之前已经确认的出牌，按序完成
 后结束一次；只禁止按钮之后追加出牌，取消未确认草稿与 FastInput 重试。
