@@ -91,6 +91,11 @@ public:
 	void PointerForTesting(FVector2D Pointer) { UpdatePointerCardVisuals(Pointer); }
 	bool ConfirmPointerForTesting() { return ConfirmPointerCard(); }
 	TOptional<FCardPlayVisualOrigin> OriginForTesting(int32 RuntimeId) const { return CaptureCardPlayVisualOrigin(RuntimeId); }
+	bool BeginDragForTesting(int32 RuntimeId, FVector2D Position, uint32 Pointer = 0) { return BeginHandCardDrag(RuntimeId, Position, Pointer); }
+	bool MoveDragForTesting(FVector2D Position, bool bLeftDown = true, uint32 Pointer = 0) { return UpdateHandCardDrag(Position, bLeftDown, Pointer); }
+	bool ReleaseDragForTesting(FVector2D Position, uint32 Pointer = 0) { return ReleaseHandCardDrag(Position, Pointer); }
+	void ConfigureDragControlsForTesting(UButton* EndTurn, UButton* Cancel, UButton* Confirm)
+	{ Btn_EndTurn = EndTurn; Btn_Cancel = Cancel; Btn_Confirm = Confirm; }
 
 private:
 	UPROPERTY(Transient)

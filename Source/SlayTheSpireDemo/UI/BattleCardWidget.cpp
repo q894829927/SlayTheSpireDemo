@@ -139,6 +139,9 @@ void UBattleCardWidget::NativeConstruct()
 		return;
 	}
 
+	// The button is an intent source, not the drag capture owner. DownAndUp
+	// captures move/up at the leaf button, preventing the HUD from owning drag.
+	Btn_Card->SetClickMethod(EButtonClickMethod::MouseDown);
 	// Click and hold share the same press edge. Release/click must not select
 	// again after the HUD has already established a draft on this mouse down.
 	Btn_Card->OnPressed.AddUniqueDynamic(this, &UBattleCardWidget::HandleCardClicked);
@@ -159,6 +162,16 @@ void UBattleCardWidget::NativeDestruct()
 	}
 
 	Super::NativeDestruct();
+}
+
+FReply UBattleCardWidget::NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	if (bNativeBindingsValid && bCardDelegateBound && OnNativePointerPressed.IsBound())
+	{
+		FReply Reply = OnNativePointerPressed.Execute(this, Event);
+		if (Reply.IsEventHandled()) return Reply;
+	}
+	return Super::NativeOnPreviewMouseButtonDown(Geometry, Event);
 }
 
 void UBattleCardWidget::SetCardView(const FBattleHUDCardView& View)

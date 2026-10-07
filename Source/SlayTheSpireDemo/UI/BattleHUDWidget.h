@@ -25,6 +25,32 @@ class UWrapBox;
 class UWidget;
 enum class EBattleHUDCombatantAnimation : uint8;
 
+// HUD-owned mouse metadata, never a second selection or Gameplay model.
+struct FNativeHandPointerPress
+{
+	FVector2D Position = FVector2D::ZeroVector;
+	uint32 PointerIndex = 0;
+	int32 UserIndex = 0;
+	TWeakObjectPtr<UBattleHUDViewModel> ViewModel;
+};
+
+struct FNativeHandPointerGesture
+{
+	FNativeHandPointerPress Press;
+	TWeakObjectPtr<UBattleCardWidget> Card;
+	TWeakObjectPtr<UPanelWidget> Panel;
+	TWeakObjectPtr<UBattlePresentationController> Controller;
+	TOptional<FPresentationSessionToken> Session;
+	int64 BattleId = 0;
+	int32 RuntimeId = INDEX_NONE;
+	FName CardId;
+	uint64 InputGeneration = 0;
+	uint64 SurfaceGeneration = 0;
+	bool bBuffered = false;
+	bool bDisplayOwned = false;
+	bool bDragged = false;
+};
+
 // One temporary Hand attachment; completion authorizes adoption only after the
 // matching frozen history arrives. This is visual state, never deck authority.
 USTRUCT()
@@ -147,11 +173,17 @@ protected:
 	virtual void NativeOnCardPlayRequestStarting(int32 RuntimeId, const FQueuedCardPlayIntent* Intent) override;
 	virtual void NativeOnCardPlayRequestFinished(bool bAccepted) override;
 	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
+	virtual FReply NativeOnMouseMove(const FGeometry& Geometry, const FPointerEvent& Event) override;
+	virtual FReply NativeOnMouseButtonUp(const FGeometry& Geometry, const FPointerEvent& Event) override;
+	virtual void NativeOnMouseCaptureLost(const FCaptureLostEvent& Event) override;
 	bool ConfirmPointerCard();
 	void RefreshCardInputVisuals();
 	void UpdatePointerCardVisuals(const FVector2D& Pointer);
 	const FGeometry& GetCardInputRootGeometry() const;
 	void InitializeCardPlayedMotion(UBattleCardWidget* Card, const FCardPlayVisualOrigin& Origin);
+	bool BeginHandCardDrag(int32 RuntimeId, const FVector2D& PressPosition, uint32 PointerIndex = 0, int32 UserIndex = 0);
+	bool UpdateHandCardDrag(const FVector2D& Position, bool bLeftDown, uint32 PointerIndex = 0, int32 UserIndex = 0);
+	bool ReleaseHandCardDrag(const FVector2D& Position, uint32 PointerIndex = 0, int32 UserIndex = 0);
 	virtual bool HasPendingFastCardRetry() const override;
 	virtual void RetirePendingFastCardRetry() override;
 	void EnsureHandInteractionSurfaces();
@@ -538,6 +570,12 @@ protected:
 
 private:
 	UPROPERTY(Transient) TObjectPtr<UBorder> PointerInputBackdrop;
+	TOptional<FNativeHandPointerGesture> HandPointerGesture;
+	FReply HandleHandCardPointerPressed(UBattleCardWidget* Card, const FPointerEvent& Event);
+	int32 ResolveHandCardRequest(int32 RuntimeId) const;
+	void UnbindHandCardRequests(UBattleCardWidget* Card);
+	bool IsHandPointerGestureCurrent(const FNativeHandPointerGesture& Gesture) const;
+	bool IsExplicitPointerControlAt(const FVector2D& Position) const;
 	TOptional<FQueuedCardPlayIntent> SubmittedCardVisual;
 	TWeakObjectPtr<UBattleHUDViewModel> SubmittedCardViewModel;
 	TWeakObjectPtr<UBattlePresentationController> SubmittedCardController;

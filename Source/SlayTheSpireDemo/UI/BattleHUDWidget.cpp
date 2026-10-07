@@ -201,6 +201,7 @@ void UBattleHUDWidget::NativeConstruct()
 
 void UBattleHUDWidget::NativeDestruct()
 {
+	HandPointerGesture.Reset();
 	SubmittedCardVisual.Reset();
 	if (FanHand) FanHand->SetInputVisualCards({});
 	ClearNativePresentationFinishTimer();
@@ -254,9 +255,7 @@ void UBattleHUDWidget::NativeDestruct()
 		{
 			if (UBattleCardWidget* CardWidget = Cast<UBattleCardWidget>(HB_Hand->GetChildAt(Index)))
 			{
-				CardWidget->OnBattleCardRequested.RemoveDynamic(
-					this,
-					&UBattleHUDWidget::HandleCardRequested);
+				UnbindHandCardRequests(CardWidget);
 			}
 		}
 	}
@@ -304,7 +303,7 @@ void UBattleHUDWidget::RequestNativeHUDRefresh(EBattleHUDDirtyFlags DirtyFlags)
 			++HandSurfaceGeneration;
 			HandBoundViewModel.Reset();
 			for (UBattleCardWidget* Card : FormalHandCards)
-				if (IsValid(Card)) Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+				UnbindHandCardRequests(Card);
 			continue;
 		}
 		// Each surface validates its own bindings. Partial, non-interactive HUDs
@@ -409,7 +408,7 @@ bool UBattleHUDWidget::CommitFormalHand()
 	{
 		CancelIncomingHandAttachment();
 		for (UBattleCardWidget* Card : FormalHandCards)
-			if (IsValid(Card)) { Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested); Card->RemoveFromParent(); }
+			if (IsValid(Card)) { UnbindHandCardRequests(Card); Card->RemoveFromParent(); }
 		++HandSurfaceGeneration;
 	}
 	// An uncommitted incoming draw remains the sole extra child until history
@@ -421,7 +420,7 @@ bool UBattleHUDWidget::CommitFormalHand()
 		if (!PreparedHandCards.Contains(Cast<UBattleCardWidget>(Child))
 			&& !(bKeepIncoming && Child == IncomingHandAttachment.Widget)) HB_Hand->RemoveChild(Child);
 	for (UBattleCardWidget* Card : PreviousCards)
-		if (IsValid(Card) && !PreparedHandCards.Contains(Card)) Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+		if (IsValid(Card) && !PreparedHandCards.Contains(Card)) UnbindHandCardRequests(Card);
 	for (int32 Index = 0; Index < PreparedHandCards.Num(); ++Index)
 	{
 		UBattleCardWidget* Card = PreparedHandCards[Index];
@@ -444,6 +443,7 @@ bool UBattleHUDWidget::CommitFormalHand()
 			Card->SetIsEnabled(false);
 		}
 		Card->OnBattleCardRequested.AddUniqueDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+		Card->OnNativePointerPressed.BindUObject(this, &UBattleHUDWidget::HandleHandCardPointerPressed);
 	}
 	if (bAdoptIncoming)
 	{
@@ -940,18 +940,26 @@ void UBattleHUDWidget::HandleCardRequested(int32 RuntimeId)
 {
 	if (bNativeBindingsValid && RuntimeId != INDEX_NONE)
 	{
-		// Overlapping raised cards must submit the same card that the stable
-		// resting-strip hover resolver presents under this pointer.
-		UBattleCardWidget* ClickSource = nullptr;
-		if (FanHand)
-			for (UWidget* Child : FanHand->GetAllChildren())
-				if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child); Card && Card->GetRuntimeId() == RuntimeId) ClickSource = Card;
-		if (ClickSource && ClickSource->IsHovered() && FanHand->GetHoveredRuntimeId() != INDEX_NONE)
-		{
-			RuntimeId = FanHand->GetHoveredRuntimeId();
-		}
-		SelectCard(RuntimeId);
+		SelectCard(ResolveHandCardRequest(RuntimeId));
 	}
+}
+
+int32 UBattleHUDWidget::ResolveHandCardRequest(int32 RuntimeId) const
+{
+	// Pointer capture and ordinary OnPressed share the existing stable identity.
+	UBattleCardWidget* ClickSource = nullptr;
+	if (FanHand)
+		for (UWidget* Child : FanHand->GetAllChildren())
+			if (UBattleCardWidget* Card = Cast<UBattleCardWidget>(Child); Card && Card->GetRuntimeId() == RuntimeId) ClickSource = Card;
+	return ClickSource && ClickSource->IsHovered() && FanHand->GetHoveredRuntimeId() != INDEX_NONE
+		? FanHand->GetHoveredRuntimeId() : RuntimeId;
+}
+
+void UBattleHUDWidget::UnbindHandCardRequests(UBattleCardWidget* Card)
+{
+	if (!IsValid(Card)) return;
+	Card->OnBattleCardRequested.RemoveDynamic(this, &UBattleHUDWidget::HandleCardRequested);
+	if (Card->OnNativePointerPressed.IsBoundToObject(this)) Card->OnNativePointerPressed.Unbind();
 }
 
 void UBattleHUDWidget::HandleEndTurnClicked()

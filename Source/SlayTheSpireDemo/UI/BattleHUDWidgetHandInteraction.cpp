@@ -205,6 +205,7 @@ void UBattleHUDWidget::NativeOnCardPlayRequestFinished(bool bAccepted)
 
 void UBattleHUDWidget::RefreshCardInputVisuals()
 {
+	if (HandPointerGesture.IsSet() && !IsHandPointerGestureCurrent(HandPointerGesture.GetValue())) HandPointerGesture.Reset();
 	if (SubmittedCardVisual.IsSet() && (!ViewModel || SubmittedCardViewModel.Get() != ViewModel.Get()
 		|| SubmittedCardController.Get() != PresentationController.Get()
 		|| SubmittedCardVisual->Turn.BattleId != static_cast<uint64>(ViewModel->BattleId)
@@ -257,11 +258,8 @@ FReply UBattleHUDWidget::NativeOnPreviewMouseButtonDown(const FGeometry& Geometr
 {
 	if (Event.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
-		auto Contains = [&Event](UWidget* Widget)
-		{
-			return Widget && Widget->IsVisible() && Widget->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition());
-		};
-		if (!Contains(Btn_EndTurn) && !Contains(Btn_Cancel) && !Contains(Btn_Confirm))
+		HandPointerGesture.Reset();
+		if (!IsExplicitPointerControlAt(Event.GetScreenSpacePosition()))
 		{
 			UpdatePointerCardVisuals(Event.GetScreenSpacePosition());
 			if (ConfirmPointerCard()) return FReply::Handled();

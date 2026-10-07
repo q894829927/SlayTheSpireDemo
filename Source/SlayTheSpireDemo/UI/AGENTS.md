@@ -354,10 +354,19 @@ Presentation may lock the View while Gameplay is request-eligible. Unlock only a
 
 A single physical input event must not cross Presentation/Selection/Confirm state boundaries.
 
-Native card selection uses one UButton OnPressed request edge for both clicks
-and holds. Release/OnClicked must not select again or confirm a newly selected
-draft. Keep the existing HUD routing and exact RuntimeId; no hold timer or Tick
-consumer. Native lifetime cleanup removes the same press binding.
+Native card clicks and holds share one press request. A formal pointer card
+forwards its native preview press/reply to the HUD; the HUD selects once and
+captures immediately, before leaf OnPressed or the next Slate pass. Unclaimed
+attack/mandatory presses retain UButton OnPressed. Button Release/OnClicked
+never selects or confirms again. Do not wait for a move or re-capture on moves.
+The HUD may
+confirm one exact ordinary pointer-card drag on release outside the current Hand
+region, consuming its scoped gesture before publication; an inside release keeps
+pointer following. Single-target Attacks aim in Hand, mandatory choices never
+drag, explicit controls keep their own routes. Capture loss/cancellation cannot
+submit. Keep normal requests and identities, with no hold timer or Tick consumer.
+Native lifetime cleanup removes both formal request routes; the native owner
+delegate is weak and retired cards cannot forward presses.
 
 G8 overlap is a deferred design extension, not an exception currently enabled here. Before activating it, define how detached visual-job lifetime differs from G0-G7 Hand-absence cleanup and Resolution completion; see the Group design section 30.5. Do not let an old job write current formal HUD values or reclaim a newly drawn instance of the same RuntimeId.
 

@@ -18,9 +18,14 @@ Resolving state must not reactivate a completed fence. The shared event-driven
 input evaluation owns this lifecycle transition.
 Any ordinary selection, including attack aiming, suppresses other cards' hover
 lift/scale while retaining resting-strip hit routing and slot identity.
-Native card clicks and holds share the UButton OnPressed selection request.
-Release has no second selection/confirmation effect; the HUD remains the input
-owner. See `NativeCardPressSelection.md` for the acceptance scope.
+Native card clicks and holds share one press request: formal pointer cards
+forward native preview press/reply to the HUD for immediate capture; unclaimed
+attack/mandatory presses retain UButton OnPressed. Capture never waits for the
+next Slate pass and moves never re-capture.
+Button release has no second selection effect. The HUD owns an exact pointer-card
+drag gesture and may confirm once on release outside current Hand geometry;
+inside release keeps following, single-target Attacks only aim. No Tick request
+or target guess. See `NativeCardDragRelease.md` for the current acceptance scope.
 See `NativeInputHoverAndEndTurnRevision.md` for the 2026-10-06 user revision.
 
 TurnEndDiscard uses explicit action-local metadata, with canonical IDs frozen

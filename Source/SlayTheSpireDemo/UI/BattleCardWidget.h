@@ -11,6 +11,10 @@ class UCardFaceStyleSet;
 class UImage;
 class URichTextBlock;
 class UTextBlock;
+class UBattleCardWidget;
+
+// The formal Hand owner may claim a press/capture before its leaf button.
+DECLARE_DELEGATE_RetVal_TwoParams(FReply, FNativeCardPointerPressReply, UBattleCardWidget*, const FPointerEvent&);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
 	FOnBattleCardRequested,
@@ -64,11 +68,13 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Battle HUD|Card")
 	FOnBattleCardRequested OnBattleCardRequested;
+	FNativeCardPointerPressReply OnNativePointerPressed;
 
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
 
 	void RefreshFromCardView();
 	void RefreshCardArtwork();
@@ -123,6 +129,9 @@ protected:
 	TObjectPtr<UImage> Img_CostOrb;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend struct FNativeCardPointerPressTestProbe;
+#endif
 	// Use a native-only name distinct from the duplicated Legacy Blueprint's
 	// retained `CardView` member variable. R4 takes runtime ownership without
 	// requiring a binary asset edit solely to remove that inert migration residue.

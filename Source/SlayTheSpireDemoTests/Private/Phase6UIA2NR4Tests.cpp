@@ -8,6 +8,7 @@
 #include "Components/RichTextBlock.h"
 #include "Components/TextBlock.h"
 #include "Engine/Texture2D.h"
+SLAYTHESPIREDEMO_API uint32 ProbeNativeCardPointerPress(UBattleCardWidget* Card, int32& Requests);
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FNativeCardWidgetDTOAndRequestTest,
@@ -112,6 +113,7 @@ bool FNativeCardPressSelectionTest::RunTest(const FString&)
 	Card->InitializeBindingsForTesting();
 	Card->ConstructBindingsForTesting();
 	Card->ConstructBindingsForTesting();
+	TestEqual(TEXT("Card button leaves drag capture to the HUD"), Button->GetClickMethod(), EButtonClickMethod::MouseDown);
 
 	int32 ExpectedRequests = 0;
 	for (ECardType Type : {ECardType::Attack, ECardType::Skill, ECardType::Power})
@@ -161,6 +163,32 @@ bool FNativeCardPressSelectionTest::RunTest(const FString&)
 	Button->OnPressed.Broadcast();
 	TestEqual(TEXT("Reconstructed surface has one request binding"), Sink->CallCount, ExpectedRequests + 1);
 	Card->DestructBindingsForTesting();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNativeCardPressCaptureTest,
+	"SlayTheSpireDemo.HandInteraction.CardDrag.PressCaptureRouting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FNativeCardPressCaptureTest::RunTest(const FString&)
+{
+	UPhase6UIA2NR4CardProbe* Card = NewObject<UPhase6UIA2NR4CardProbe>();
+	UButton* Button = NewObject<UButton>(Card);
+	Card->ConfigureSurfaces(Button, NewObject<UTextBlock>(Card), NewObject<UTextBlock>(Card),
+		NewObject<URichTextBlock>(Card), NewObject<UTextBlock>(Card), NewObject<UImage>(Card));
+	Card->InitializeBindingsForTesting(); Card->ConstructBindingsForTesting();
+	FBattleHUDCardView View; View.RuntimeId = 42; View.CardId = TEXT("PointerPress");
+	Card->SetCardView(View);
+	int32 NativeRequests = 0;
+	const uint32 Result = ProbeNativeCardPointerPress(Card, NativeRequests);
+	TestTrue(TEXT("Press is claimed before leaf button and before any move"), (Result & 1) != 0);
+	TestTrue(TEXT("The owner's capture reply survives card forwarding"), (Result & 2) != 0);
+	TestTrue(TEXT("Native press preserves formal identity and original pointer coordinates"), (Result & 4) != 0);
+	TestEqual(TEXT("One press dispatches once"), NativeRequests, 1);
+	TestTrue(TEXT("Unclaimed attack/mandatory press can reach the ordinary button"), (Result & 8) != 0);
+	Card->DestructBindingsForTesting();
+	NativeRequests = 0;
+	TestTrue(TEXT("Retired card cannot forward a native press"), (ProbeNativeCardPointerPress(Card, NativeRequests) & 1) == 0);
+	TestEqual(TEXT("Retirement cannot restore the old owner"), NativeRequests, 0);
 	return true;
 }
 
