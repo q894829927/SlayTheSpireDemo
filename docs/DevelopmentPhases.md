@@ -1,5 +1,13 @@
 # Development Phases
 
+2026-10-07 G9-B 已完成收口及默认启用：全部人工门槛获用户确认通过，
+Native C++ 启动默认 true，规定生成／Editor 构建通过，一次聚焦 45/45 成功。
+UE MCP 生产读回 Native C++ 默认、Blueprint 默认和实际 HUD 均为 true，
+VM 初始 Idle／解锁／无反馈，运行时关闭回退保留。状态为
+**G9-B COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED**；G9 整体未封板。
+G9-C 的进入条件已满足，C–F 尚未实施；当前详情见 [G9-B 收口](G9BClosure.md)，
+以下 OPT-IN／默认关闭／待验说明均为各批执行历史。
+
 2026-10-07 G9-B 收口：用户确认剩余三组组合验收全部完成，修订后的 G9-B
 人工门槛均为 USER_REPORTED_PASS；既有构建／自动化证据有效。当前准备
 独立默认启用批次，不再重复要求 B 人工验收。G9-C–F 未实施，G9 整体

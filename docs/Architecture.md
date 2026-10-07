@@ -1,5 +1,9 @@
 # Architecture
 
+Validated Native startup enables amended G9-B buffered input by default.
+Runtime disable retains the G8-B fallback; generic/test Base HUDs remain disabled
+until explicitly enabled. See `G9BClosure.md` for activation evidence.
+
 Amended G9-B input is one HUD-owned draft / confirmed FIFO / EndTurn arbiter.
 Frozen display authorizes busy-time target affordances; only the caught-up
 ViewModel boundary resolves current bindings and requests Gameplay. Revision

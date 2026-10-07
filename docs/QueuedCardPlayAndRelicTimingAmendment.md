@@ -2,7 +2,7 @@
 
 Date: **2026-10-05**. Branch: `codex/g9-buffered-input-detached-cards`.
 Implementation base: `fe80565`. Status: **IMPLEMENTED / AUTOMATED GATES PASS /
-MANUAL PASS / DEFAULT ACTIVATION PENDING / G9 NOT SEALED**.
+MANUAL PASS / NATIVE DEFAULT ENABLED / G9-B COMPLETE / G9 NOT SEALED**.
 This user-approved amendment supersedes G9-B's selection-only buffer, single
 pending-intent limit, fresh confirmation after catch-up, and Relic reactions
 preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEALED.
@@ -10,7 +10,8 @@ preceding RetryDraw. G9-C–F are not part of this amendment; G9 remains NOT SEA
 ## Input contract
 
 2026-10-07：用户确认剩余组合验收全部完成，G9-B 人工门槛已关闭，独立
-默认启用批次可以开始。[G9-B 收口](G9BClosure.md) 覆盖下文历史待验状态。
+默认启用批次已通过构建、45 项聚焦自动化及生产启动读回。
+[G9-B 收口](G9BClosure.md) 覆盖下文历史待验／默认关闭状态。
 
 2026-10-06 最新用户澄清：结束回合保留按钮之前已经确认的出牌，按序完成
 后结束一次；只禁止按钮之后追加出牌，取消未确认草稿与 FastInput 重试。
@@ -122,4 +123,4 @@ observations, not a new controlled final-head validation receipt.
 - Group implementation commit: `72a564a`. Production FIFO/EndTurn/discard/relic
   visual checks PASS; full queued-mandatory clearing still pending. Actual
   configuration and remaining action: [Native PIE receipt](G9BRevisionNativePIE.md).
-- Default enablement: gated.
+- Default enablement: completed; actual evidence in [G9-B closure](G9BClosure.md).

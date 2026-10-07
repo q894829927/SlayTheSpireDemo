@@ -1,7 +1,7 @@
 # Selection Presentation G9-B — Buffered Player Input and Stable Hand Hover
 
 2026-10-07：用户确认修订后的 G9-B 全部人工验收通过，当前为自动化／
-人工门槛通过、独立默认启用待实施。见 [G9-B 收口](G9BClosure.md)。下文
+人工门槛通过、独立 Native 默认启用已完成。见 [G9-B 收口](G9BClosure.md)。下文
 PARTIAL PIE／待验说明及关闭默认均为各批历史，G9 整体仍未封板。
 
 2026-10-05 user-approved scope revision: [confirmed FIFO / relic tails / turn-end
@@ -25,7 +25,7 @@ default off / NOT SEALED.
 
 Date: **2026-10-05**
 
-Status: **IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PASS / DEFAULT ACTIVATION PENDING; G9 NOT SEALED**
+Status: **G9-B COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED; G9 NOT SEALED**
 
 Design authority: [G9 design](SelectionPresentationG9Design.md). Delivery branch: `codex/g9-buffered-input-detached-cards`, based on `cafe7bf`.
 

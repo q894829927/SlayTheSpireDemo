@@ -1,5 +1,21 @@
 # Checkpoint — Native pointer/source extension of amended G9-B
 
+## 当前继续点：G9-B 完成、默认启用；下一阶段 G9-C
+
+2026-10-07，人工收口提交 `a6b4877`，独立启用批次标题
+`feat(g9-b): enable validated native buffered input by default`；精确当前 HEAD
+用 `git log -1` 核实。Native 默认 true，运行时关闭及 G8-B 回退保留。
+规定生成 7.31 秒、Editor 构建 162.50 秒通过；聚焦 45/45 成功，无警告或失败。
+UE MCP 生产地图读取 Native C++ 默认／Blueprint 默认／HUD 实例均 true；
+初始 Idle、未锁定、可结束回合、反馈为空。PIE 停止、编辑器关闭，无资产保存。
+证据与当前状态见 `G9BClosure.md`。外部 Native HUD 资产原 SHA256 保持，
+排除提交；不 push。
+
+全部 B 人工门槛已通过，不要重复要求。G9-B COMPLETE／VALIDATED／默认启用，
+G9 整体 NOT SEALED。下一步为锁定设计的 G9-C：统一 card reducer、出牌
+生命周期 token 和多实例视觉所有权，保留 Blocking 时序。C–F 尚未实施，
+后续实现继续分批构建／测试／文档／本地提交。以下为历史执行状态。
+
 ## 当前继续点：G9-B 全部人工验收通过，准备默认启用
 
 2026-10-07，本批文档起点 HEAD `d2db956`，实现为 `e62cdbd`。用户明确

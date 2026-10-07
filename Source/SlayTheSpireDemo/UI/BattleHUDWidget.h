@@ -127,9 +127,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Battle HUD|Widgets")
 	TSubclassOf<UBattleStatusWidget> StatusWidgetClass;
 
-	// Opt-in until the G9-B visual gate passes.
+	// G9-B validated Native startup default; runtime disable retains G8-B fallback.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle HUD|Input")
-	bool bEnableG9BufferedPlayerInput = false;
+	bool bEnableG9BufferedPlayerInput = true;
 
 	// Runtime FanHand is created from Native code, so these values are the
 	// Blueprint-facing layout contract for the generated Hand surface.
