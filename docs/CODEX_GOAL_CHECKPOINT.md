@@ -1,5 +1,25 @@
 # Checkpoint — G9-C Native played-card ownership
 
+## 当前继续点：G9-C 验收完成，下一阶段 D1
+
+2026-10-09，收口前 HEAD `dc88bd6`，代码实现 `5f1d4aa`／`c69b0ac`。
+用户针对唯一剩余的运动帧内视口检查明确回复“验证通过”，记为
+USER_REPORTED_PASS。G9-C COMPLETE／VALIDATED，所有 C 人工待办已关闭。
+用户未补单独执行 HEAD、配置或影像；记录关联最近交付，不虚构新运行。
+
+本次仅文档收口，既有规定构建、86 个不同案例的有效证据、最后受影响
+59 项回归及生产 Native PIE 继续有效；未重跑 UE。Binding 构建为 7.01 秒，
+最后回归 58 成功／1 预期警告／零失败，不能与早轮重叠计数相加。
+详情见 `SelectionPresentationG9CExecution.md`。外部 Native HUD 资产 SHA256
+保持并排除提交，其他工作区改动只有该保留资产；不 push。
+
+下一开发阶段：D1 的 PlayArea→Discard／Exhaust／Removed 尾部演出解耦。
+按锁定设计先明确提交／视觉准备事务、回退、关联保留与完成适配，再分批
+实施、规定生成／构建、聚焦自动化、中文 PIE 验收及本地提交。
+CardPlayed 入场仍 Blocking；D1／D2／E／F 尚未实施，G9 整体 NOT SEALED。
+无需重复 C／B 人工验收。本次不修改运行时代码或默认开关。
+以下为历史状态。
+
 ## 当前继续点：G9-C 已实施，仅待运动帧内视口验收
 
 2026-10-08，当前已验证实现 HEAD 为 `5f1d4aa`，历史语义批次 `c69b0ac`；

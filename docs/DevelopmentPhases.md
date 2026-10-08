@@ -1,5 +1,13 @@
 # Development Phases
 
+2026-10-09 **G9-C COMPLETE / VALIDATED**：用户确认唯一剩余的“卡牌仍在
+移动时调整窗口”人工验收通过，记为 USER_REPORTED_PASS。代码实现为
+`c69b0ac`／`5f1d4aa`，交付证据 HEAD 为 `dc88bd6`；既有构建、自动化和
+生产 PIE 证据复用，本次仅做文档收口并独立本地提交。Blocking 时序及
+B 默认启用保持不变；D1 的进入条件已满足，D1／D2／E／F 尚未实施，
+G9 整体未封板。当前状态见 [G9-C 执行记录](SelectionPresentationG9CExecution.md)。
+下列旧待验状态为各批次执行历史。
+
 2026-10-08 G9-C 代码已实施，自动化门槛通过，PARTIAL PIE：首批
 `c69b0ac` 统一 card reducer／生命周期；第二批迁移独立 Native host／
 GC 安全 job／精确 Blocking 完成及事件驱动清理，保留原时序。第二批

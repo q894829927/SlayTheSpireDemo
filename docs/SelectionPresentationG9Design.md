@@ -3,13 +3,17 @@
 2026-10-05 authority amendment: [confirmed FIFO / relic tails / turn-end group](QueuedCardPlayAndRelicTimingAmendment.md)
 supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and its
 16.1 input gate. Original text remains historical context. New B gates follow the
-amendment. G9-C is implemented with automated gates passed and one remaining
+amendment. G9-C is complete and validated, including the user-confirmed final
 moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
 D1–F are not started or accepted.
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9 NOT SEALED**
+Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9-C COMPLETE, VALIDATED / G9 NOT SEALED**
+
+2026-10-09：用户确认 C 的唯一剩余人工门槛通过，G9-C COMPLETE／VALIDATED。
+Blocking 时序保持不变；D1 已具备进入条件，D1–F 尚未实施，G9 未封板。
+收口证据见 [G9-C 执行记录](SelectionPresentationG9CExecution.md)。
 
 2026-10-07：用户确认 G9-B 全部人工验收完成，旧待验状态已关闭；当前
 门槛与独立默认启用通过证据见 [G9-B 收口](G9BClosure.md)。C 的进入条件
@@ -2085,10 +2089,10 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 
 ```text
 G8    — COMPLETE / VALIDATED / SEALED
-G9    — DESIGN LOCKED / G9-A + G9-B COMPLETE AND VALIDATED / NOT SEALED
+G9    — DESIGN LOCKED / G9-A + G9-B + G9-C COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
-G9-C  — IN PROGRESS / CANONICAL HISTORY BATCH VALIDATED / VISUAL OWNERSHIP NEXT
+G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
 G9-D1 — NOT STARTED
 G9-D2 — NOT STARTED
 G9-E  — NOT STARTED

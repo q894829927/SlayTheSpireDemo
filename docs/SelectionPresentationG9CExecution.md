@@ -3,8 +3,9 @@
 日期：2026-10-08，分支 `codex/g9-buffered-input-detached-cards`，起点 `2c29025`。
 G9-B 已通过并默认启用，不重新要求 B 人工验收。依据锁定的
 [G9 设计](SelectionPresentationG9Design.md) 实施 C，不启用 D1／D2 的非阻塞时序。
-当前为 **IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE**，C 的全部视觉
-门槛尚未关闭，不进入 D1／D2，不宣称 G9 整体封板。
+当前为 **G9-C COMPLETE / VALIDATED**。2026-10-09 用户确认最后一项
+运动帧内视口人工验收通过，C 门槛全部关闭。Blocking 时序保留，D1 已具备
+进入条件但尚未实施；G9 整体未封板。
 
 ## 实施批次与职责
 
@@ -134,7 +135,7 @@ G6、CardSelection.Presentation、G4，报告 `G9CVisualFinal/index.json`：
 未受影响的首轮通过证据复用，本批 **86 个不同案例有有效证据**；不能把
 86、27、59 相加，也不能表述为最终代码一次 86/86。首批历史证据另列。
 
-## 第二批生产 Native PIE 与剩余人工门槛
+## 第二批生产 Native PIE 与人工门槛收口
 
 最终实际运行基线为 `c69b0ac` 加本批代码，UE 5.8 Development Editor，
 生产 `L_Battle_RuinedCitadel`，浮动窗口，D3D12／SM6；HUD 实例
@@ -151,7 +152,7 @@ UE MCP 负责会话及公开状态读回，computer-use 技能负责真实鼠标
 | 播放中 Skip 后再出牌 | 临时 Saved Python 探针观察 Resolving 后 0.2 秒调用已有 HUD.SkipPresentation；日志确认 Runtime=2／Visual=4 在 Entering 阶段退役，随后打击使用 Visual=5 正常完成并清理。 | 聚焦通过 |
 | 最终状态 | 新牌完成后 Energy=1、DiscardCount=3、Idle、未锁定、反馈为空，无残留演出牌。 | 读回及画面通过 |
 | 不同视口与保留 job | 1433×870、1283×773、1163×707 三种窗口下排列／选择／后续出牌正常，选择暂停期间保留同一宿主槽位。 | 聚焦通过 |
-| 卡牌仍移动时缩放 | 缩放动作后的画面正确，但未取得动作落在尚未完成运动帧内的精确证据。 | **USER ACTION REQUIRED** |
+| 卡牌仍移动时缩放 | 代理此前只取得缩放后的正确画面；2026-10-09 用户针对唯一剩余人工项目确认“验证通过”。 | **USER_REPORTED_PASS** |
 
 临时探针 `Saved/G9CVisualPIESkip.py` 仅调用现有 HUD 的公开 Skip 接口，
 一次触发后自行注销；未改 Gameplay、正式历史、资产或插件。
@@ -161,12 +162,25 @@ UE MCP 负责会话及公开状态读回，computer-use 技能负责真实鼠标
 日志同时确认主路径 Hosted arrival／destination；没有将 Blocking 回退的
 正常画面当作新宿主证据。停止 PIE 后 `IsPIERunning=false`，关闭本次编辑器。
 
-剩余人工检查只属于本次 C，不重开已通过的 B：
+最后一项人工检查已获用户确认，不重开已通过的 B：
 
 1. 在生产地图打出剑柄打击或其他带抽牌的牌，卡牌仍在移动时调整 PIE 窗口
    尺寸，随后悬停并继续出牌。
 2. 通过条件：移动卡牌无裁切、突跳、重复或幽灵；剩余手牌正常排列并可
-   继续选择，演出完成后正常解锁。反馈是否通过，并注明实际测试的提交。
+   继续选择，演出完成后正常解锁。
 
-本项未通过前，C 保持 PARTIAL PIE，不进入 D1／D2，不宣称 COMPLETE 或
-G9 SEALED。运行时输入默认仍为已验收的 B=true。
+## 人工验收收口 — 2026-10-09
+
+用户在上一条交付说明只保留上述一项人工检查后，明确回复“验证通过”。
+因此运动帧内视口门槛记为 USER_REPORTED_PASS，C 的人工待办全部关闭。
+收口前实际 HEAD 为 `dc88bd6`，对应代码实现 `5f1d4aa`、历史语义实现
+`c69b0ac`；用户反馈关联最近交付版本，未单独提供执行 HEAD、运行配置、
+截图或录像，不补写这些信息，也不冒充代理重跑此项 PIE。
+
+本次仅修改文档。既有构建、受影响自动化及生产 PIE 证据继续有效；未运行
+新构建／测试／PIE。文档一致性及 diff 检查后独立本地提交，不 push。
+外部 Native HUD 资产保持原 SHA256，并排除提交。
+
+G9-C 当前为 COMPLETE／VALIDATED，保留 Blocking 时序及已验收的 B=true。
+下一阶段为 D1：先解耦 PlayArea→Discard／Exhaust／Removed 的尾部演出，
+CardPlayed 入场继续 Blocking。D1／D2／E／F 尚未实施，G9 整体 NOT SEALED。

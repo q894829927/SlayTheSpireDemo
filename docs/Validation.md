@@ -1,5 +1,17 @@
 # Validation
 
+## G9-C 最后一项人工验收收口 — 2026-10-09
+
+用户明确回复“验证通过”，对应上一条交付中唯一剩余的运动帧内窗口缩放
+检查。此项记为 **USER_REPORTED_PASS**，C 的全部人工门槛关闭；状态更新为
+**G9-C COMPLETE / VALIDATED**。收口前 HEAD 为 `dc88bd6`，代码实现为
+`5f1d4aa`／`c69b0ac`。用户未另行提供执行 HEAD、配置或影像，不将反馈
+扩写成代理新增 PIE／构建／自动化运行。
+
+本次仅更新文档，复用下列有效通过证据；diff 与状态一致性检查后独立本地
+提交。Blocking 时序不变，D1 进入条件满足但尚未实施，G9 整体未封板。
+完整边界见 [G9-C 执行记录](SelectionPresentationG9CExecution.md)。
+
 ## G9-C Native 独立视觉所有权 — 2026-10-08
 
 实施基线 `c69b0ac` 加第二批代码。规定最后生成／Editor 构建通过
