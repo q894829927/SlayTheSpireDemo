@@ -1,10 +1,10 @@
-# Checkpoint — G9-C Native played-card ownership
+# Checkpoint — G9-D1 detached card destinations
 
 ## 当前继续点：G9-D1 实施及自动化通过，等待解锁后的 Native PIE
 
-2026-10-09，契约 HEAD `a211cd2`；实现提交标题
-`feat(g9-d1): detach committed card destination tails`，精确交付 HEAD 提交后
-用 Git 核实。Controller 原子候选提交／准确已提交收据／发布重入复核、
+2026-10-09，契约 HEAD `a211cd2`；已核实实现 HEAD `96de67b`，提交标题
+`feat(g9-d1): detach committed card destination tails`。本次后续提交仅补齐
+交付编号，不改变已验证代码。Controller 原子候选提交／准确已提交收据／发布重入复核、
 Base 准备与激活保护、Native 无 Blocking timer 的尾部、独立默认关闭开关
 及全局清理已实施。入场仍 Blocking，B=true 保持，D2／E／F 未开始。
 

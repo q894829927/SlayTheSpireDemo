@@ -85,7 +85,9 @@ py import unreal; unreal.find_object(None, "/Engine/Transient.UnrealEdEngine_0:G
 
 ## 当前证据
 
-契约批次 `a211cd2` 仅保存执行约定，无新 UE 运行。下列为实现批次实际证据。
+契约批次 `a211cd2` 仅保存执行约定，无新 UE 运行。实现已提交为 `96de67b`
+（`feat(g9-d1): detach committed card destination tails`）；下列为该代码
+批次实际证据。后续交付编号记录仅改文档，无新 UE 构建、自动化或 PIE。
 
 ### 实现及协议验证
 

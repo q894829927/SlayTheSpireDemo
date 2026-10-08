@@ -1,7 +1,8 @@
 # Development Phases
 
 2026-10-09 G9-D1 IMPLEMENTED／AUTOMATED GATES PASS／USER ACTION REQUIRED：
-契约提交 `a211cd2` 后实施正式去向事务及独立尾部，入场仍 Blocking。
+契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，
+入场仍 Blocking。
 规定构建通过，首轮 91 项及最后受影响 10 项零失败；重叠范围不相加。
 生产 Native MCP 启动读回 B=true、D1=false。Windows 锁屏导致本次实际
 视觉门槛未执行，D1 默认继续关闭；中文待验与完整证据见
