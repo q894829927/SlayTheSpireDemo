@@ -1,9 +1,12 @@
 # Development Phases
 
-2026-10-09 G9-D1 IN PROGRESS：用户明确要求开始尾部去向解耦，起点
-`04124e2`。C 已验收完成，D1 保留 CardPlayed 入场 Blocking，验收前独立
-开关默认关闭。本批先保存执行约定，未改代码或运行新 UE；实施和中文
-验收见 [D1 执行](SelectionPresentationG9D1Execution.md)。D2／E／F 未开始。
+2026-10-09 G9-D1 IMPLEMENTED／AUTOMATED GATES PASS／USER ACTION REQUIRED：
+契约提交 `a211cd2` 后实施正式去向事务及独立尾部，入场仍 Blocking。
+规定构建通过，首轮 91 项及最后受影响 10 项零失败；重叠范围不相加。
+生产 Native MCP 启动读回 B=true、D1=false。Windows 锁屏导致本次实际
+视觉门槛未执行，D1 默认继续关闭；中文待验与完整证据见
+[D1 执行](SelectionPresentationG9D1Execution.md)。C／B 保持已验收，
+D2／E／F 未开始，G9 整体未封板。
 
 2026-10-09 **G9-C COMPLETE / VALIDATED**：用户确认唯一剩余的“卡牌仍在
 移动时调整窗口”人工验收通过，记为 USER_REPORTED_PASS。代码实现为

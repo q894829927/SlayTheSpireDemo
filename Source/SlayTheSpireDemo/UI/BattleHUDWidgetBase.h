@@ -5,6 +5,7 @@
 #include "../Presentation/PresentationTypes.h"
 #include "../Presentation/PresentationG8Types.h"
 #include "../Presentation/PresentationDamageTiming.h"
+#include "../Presentation/PresentationCardVisualTypes.h"
 #include "BattleHUDBufferedPlayerInput.h"
 #include "BattleHUDWidgetBase.generated.h"
 
@@ -56,6 +57,12 @@ public:
 	bool IsBufferedPlayerInputEnabled() const { return bBufferedPlayerInputEnabled; }
 	void CancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session);
 	void CancelAllPlayedCardVisuals();
+	bool PrepareDetachedCardDestination(const FPresentationRecord& Record,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle, FDetachedCardDestinationToken& OutToken);
+	bool ActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token);
+	void CancelPreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token);
+	void RetireDetachedCardDestination(const FDetachedCardDestinationToken& Token);
+	void CancelDetachedCardDestinationVisuals();
 	bool CanAcceptEndTurnIntent();
 	bool HasAcceptedBufferedEndTurn();
 	bool TryBufferCardSelection(int32 RuntimeId);
@@ -218,6 +225,14 @@ public:
 protected:
 	virtual void NativeCancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session) {}
 	virtual void NativeCancelAllPlayedCardVisuals() {}
+	virtual bool NativePrepareDetachedCardDestination(const FPresentationRecord&, const FPlayedCardPresentationLifecycleToken&,
+		FDetachedCardDestinationToken&) { return false; }
+	virtual bool NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken&) { return false; }
+	virtual bool NativeIsPreparedDetachedCardDestinationCurrent(const FDetachedCardDestinationToken&) const { return false; }
+	virtual void NativeCancelPreparedDetachedCardDestination(const FDetachedCardDestinationToken&) {}
+	virtual void NativeRetireDetachedCardDestination(const FDetachedCardDestinationToken&) {}
+	virtual void NativeCancelDetachedCardDestinationVisuals() {}
+	virtual void NativeOnPresentationControllerChanged() {}
 	// Class-scope name lookup intentionally shadows the old translation-unit-local
 	// 0.5s constant used by Native playback member functions. Both legacy Blocking
 	// Damage and G8-C debt now resolve through the same Presentation timing value

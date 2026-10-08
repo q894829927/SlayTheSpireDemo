@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "PresentationCardReducer.h"
+#include "PresentationCardVisualTypes.h"
 #include "Containers/Ticker.h"
 #include "UObject/Object.h"
 #include "PresentationTypes.h"
@@ -55,6 +56,9 @@ public:
 	// current-session cosmetics, and routes later Damage through Blocking.
 	void SetDetachedDamageG8CEnabled(bool bEnabled);
 	bool IsDetachedDamageG8CEnabled() const { return bDetachedDamageG8CEnabled; }
+	void SetDetachedCardDestinationD1Enabled(bool bEnabled);
+	bool IsDetachedCardDestinationD1Enabled() const { return bDetachedCardDestinationD1Enabled; }
+	bool IsCommittedCardDestinationCurrent(const FDetachedCardDestinationToken& Token) const;
 
 	// Intentionally C++-only. Blueprint completion/skip must pass through
 	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
@@ -123,7 +127,7 @@ protected:
 
 private:
 	friend class FBattleHUDBufferedPlayerInput;
-	enum class EDetachedDamageAttemptResult : uint8
+	enum class EDetachedRecordAttemptResult : uint8
 	{
 		DeclinedToBlocking,
 		Consumed
@@ -153,16 +157,18 @@ private:
 	void EstablishPresentationSessionForCurrentBinding();
 
 	// G8 detached Damage transaction.
-	EDetachedDamageAttemptResult TryCommitDetachedDamageRecord(
+	EDetachedRecordAttemptResult TryCommitDetachedDamageRecord(
 		const FPresentationRecord& Record);
-	bool IsDetachedDamageCommitContextCurrent(
+	bool IsDetachedRecordCommitContextCurrent(
 		const FPresentationRecord& Record,
 		int32 ExpectedRecordIndex,
 		UBattleHUDWidgetBase* ExpectedWidget,
 		const FPresentationSessionToken& ExpectedSession) const;
-	void AdvancePastCommittedDetachedDamageRecord();
+	void AdvancePastCommittedDetachedRecord();
 	void RefreshInputIfPresentationCaughtUp();
 	void CancelCurrentSessionDetachedDamageVisuals();
+	EDetachedRecordAttemptResult TryCommitDetachedCardDestinationRecord(const FPresentationRecord& Record);
+	void CancelCurrentSessionPlayedCardVisuals();
 
 	void EnterPresentationUnavailableFailSafe();
 	void EnterDirectBaselineMode();
@@ -233,6 +239,8 @@ private:
 	// Detached Damage production switch. G8-D removed compatibility debt from the
 	// Controller; no duration/timer state is retained here in G8-E.
 	bool bDetachedDamageG8CEnabled = true;
+	bool bDetachedCardDestinationD1Enabled = false;
+	FDetachedCardDestinationToken CommittedCardDestinationReceipt;
 
 	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
 	// record order; future member indices are merely remembered as already shown

@@ -147,6 +147,7 @@ void UBattleHUDWidgetBase::SetPresentationController(
 		ReleaseBufferedPlayerInputBinding();
 	}
 	PresentationController = InController;
+	NativeOnPresentationControllerChanged();
 	RebindBufferedPlayerInput();
 	NotifyBufferedPlayerInputReadinessChanged();
 }

@@ -82,6 +82,12 @@ public:
 	int32 HostedPlayedCountForTesting() const { return GetPlayedCardVisualJobCount(); }
 	void RetireHostedCollisionsForTesting() { RetireCollidingPlayedCardVisualJobs(); }
 	void HideHostedForSelectionForTesting(bool bHidden) { SetPlayedCardVisualsSelectionHidden(bHidden); }
+	bool bRejectDetachedPreparation = false;
+	bool bRejectDetachedActivation = false;
+	TFunction<void()> DetachedPreparationHook;
+	TFunction<void()> DetachedActivationHook;
+	FDetachedCardDestinationToken LastDetachedPreparation;
+	FPresentationRecord LastDetachedDestinationRecord;
 	FDetachedCardVisualToken HostedPlayedTokenForTesting(int32 Index = 0) const { return GetPlayedCardVisualToken(Index); }
 	bool CompleteHostedForTesting(const FDetachedCardVisualToken& Token, const FPresentationPlaybackToken& Blocking)
 	{ return CompletePlayedCardVisualJob(Token,Blocking); }
@@ -105,6 +111,11 @@ public:
 	bool ReleaseDragForTesting(FVector2D Position, uint32 Pointer = 0) { return ReleaseHandCardDrag(Position, Pointer); }
 	void ConfigureDragControlsForTesting(UButton* EndTurn, UButton* Cancel, UButton* Confirm)
 	{ Btn_EndTurn = EndTurn; Btn_Cancel = Cancel; Btn_Confirm = Confirm; }
+
+protected:
+	virtual bool NativePrepareDetachedCardDestination(const FPresentationRecord& Record,
+		const FPlayedCardPresentationLifecycleToken& Life, FDetachedCardDestinationToken& OutToken) override;
+	virtual bool NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
 
 private:
 	UPROPERTY(Transient)

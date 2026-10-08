@@ -23,7 +23,7 @@ void UBattlePresentationController::SetDetachedDamageG8CEnabled(bool bEnabled)
 	}
 }
 
-UBattlePresentationController::EDetachedDamageAttemptResult
+UBattlePresentationController::EDetachedRecordAttemptResult
 UBattlePresentationController::TryCommitDetachedDamageRecord(
 	const FPresentationRecord& Record)
 {
@@ -37,7 +37,7 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		|| !ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex)
 		|| ActiveEnvelope.FinalStateRevision <= 0)
 	{
-		return EDetachedDamageAttemptResult::DeclinedToBlocking;
+		return EDetachedRecordAttemptResult::DeclinedToBlocking;
 	}
 
 	const int32 ExpectedRecordIndex = ActiveRecordIndex;
@@ -50,7 +50,7 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		Record.Damage))
 	{
 		ReconcileActiveEnvelopeToFinalSnapshot();
-		return EDetachedDamageAttemptResult::Consumed;
+		return EDetachedRecordAttemptResult::Consumed;
 	}
 
 	// DamageNumber keeps the historical 0.5s value only as a finite cosmetic
@@ -60,7 +60,7 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 	if (!FMath::IsFinite(DamageNumberVisualDuration)
 		|| DamageNumberVisualDuration <= 0.0f)
 	{
-		return EDetachedDamageAttemptResult::DeclinedToBlocking;
+		return EDetachedRecordAttemptResult::DeclinedToBlocking;
 	}
 
 	FDetachedDamageToken DetachedToken;
@@ -71,18 +71,18 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		DamageNumberVisualDuration,
 		DetachedToken))
 	{
-		return EDetachedDamageAttemptResult::DeclinedToBlocking;
+		return EDetachedRecordAttemptResult::DeclinedToBlocking;
 	}
 
 	if (!bDetachedDamageG8CEnabled
-		|| !IsDetachedDamageCommitContextCurrent(
+		|| !IsDetachedRecordCommitContextCurrent(
 			Record,
 			ExpectedRecordIndex,
 			ExpectedWidget,
 			ExpectedSession))
 	{
 		ExpectedWidget->CancelDetachedDamageVisual(DetachedToken);
-		return EDetachedDamageAttemptResult::Consumed;
+		return EDetachedRecordAttemptResult::Consumed;
 	}
 
 	// Formal commit has no compatibility-wait bookkeeping. Publication may
@@ -95,14 +95,14 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		ViewModel->ApplyPresentationSnapshot(WorkingPresentationSnapshot, true);
 	}
 
-	if (!IsDetachedDamageCommitContextCurrent(
+	if (!IsDetachedRecordCommitContextCurrent(
 		Record,
 		ExpectedRecordIndex,
 		ExpectedWidget,
 		ExpectedSession))
 	{
 		ExpectedWidget->CancelDetachedDamageVisual(DetachedToken);
-		return EDetachedDamageAttemptResult::Consumed;
+		return EDetachedRecordAttemptResult::Consumed;
 	}
 
 	if (bDetachedDamageG8CEnabled)
@@ -119,11 +119,11 @@ UBattlePresentationController::TryCommitDetachedDamageRecord(
 		ExpectedWidget->CancelDetachedDamageVisual(DetachedToken);
 	}
 
-	AdvancePastCommittedDetachedDamageRecord();
-	return EDetachedDamageAttemptResult::Consumed;
+	AdvancePastCommittedDetachedRecord();
+	return EDetachedRecordAttemptResult::Consumed;
 }
 
-bool UBattlePresentationController::IsDetachedDamageCommitContextCurrent(
+bool UBattlePresentationController::IsDetachedRecordCommitContextCurrent(
 	const FPresentationRecord& Record,
 	int32 ExpectedRecordIndex,
 	UBattleHUDWidgetBase* ExpectedWidget,
@@ -143,13 +143,13 @@ bool UBattlePresentationController::IsDetachedDamageCommitContextCurrent(
 
 	const FPresentationRecord& CurrentRecord =
 		ActiveEnvelope.Records[ExpectedRecordIndex];
-	return CurrentRecord.Type == EBattlePresentationRecordType::Damage
+	return CurrentRecord.Type == Record.Type
 		&& CurrentRecord.BattleId == Record.BattleId
 		&& CurrentRecord.ResolutionId == Record.ResolutionId
 		&& CurrentRecord.PresentationSequence == Record.PresentationSequence;
 }
 
-void UBattlePresentationController::AdvancePastCommittedDetachedDamageRecord()
+void UBattlePresentationController::AdvancePastCommittedDetachedRecord()
 {
 	if (!bHasActiveEnvelope
 		|| !ActiveEnvelope.Records.IsValidIndex(ActiveRecordIndex))

@@ -1,5 +1,25 @@
 # Checkpoint — G9-C Native played-card ownership
 
+## 当前继续点：G9-D1 实施及自动化通过，等待解锁后的 Native PIE
+
+2026-10-09，契约 HEAD `a211cd2`；实现提交标题
+`feat(g9-d1): detach committed card destination tails`，精确交付 HEAD 提交后
+用 Git 核实。Controller 原子候选提交／准确已提交收据／发布重入复核、
+Base 准备与激活保护、Native 无 Blocking timer 的尾部、独立默认关闭开关
+及全局清理已实施。入场仍 Blocking，B=true 保持，D2／E／F 未开始。
+
+规定生成／构建通过，首轮 91 项（87 成功、4 预期警告）、最后受影响
+10 项（全部成功）均零失败，重叠范围不相加。准确日志／报告／用例在
+`SelectionPresentationG9D1Execution.md`，不得重跑未受影响门槛。
+
+生产 MCP PIE 启动读回 B=true、D1=false；computer-use 截图确认 Windows
+锁屏，停止窗口输入。未实际出牌或取得尾部视觉证据，已发解锁提示。
+本次 PIE 停止、编辑器关闭，无资产保存。下一步解锁后明确启用 D1，按
+专用文档四项中文清单验证重叠、尾部期间结束回合、选择去向及清理／回退。
+全部门槛通过后才以独立提交启用默认并核实生产启动；当前不得标 COMPLETE
+或进入 D2。外部 Native HUD 原 SHA256 保持，只有该保留资产排除提交；
+不 push。以下为历史状态。
+
 ## 当前继续点：G9-D1 契约就绪，开始去向事务与私有尾部
 
 2026-10-09，起点 HEAD `04124e2`。用户明确要求开始 D1；C 的人工门槛

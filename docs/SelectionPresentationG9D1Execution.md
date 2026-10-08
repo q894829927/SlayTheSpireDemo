@@ -1,7 +1,8 @@
 # G9-D1：出牌去向尾部演出解耦
 
 日期：2026-10-09。分支 `codex/g9-buffered-input-detached-cards`，起点 `04124e2`。
-G9-C 已 COMPLETE／VALIDATED。当前 D1 为 IN PROGRESS；不实施 D2／E／F。
+G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **IMPLEMENTED / AUTOMATED GATES
+PASS / USER ACTION REQUIRED / NATIVE DEFAULT OFF**；不实施 D2／E／F。
 
 ## 实施边界与提交批次
 
@@ -63,6 +64,15 @@ Skip、恢复、Session／HUD／Controller／Battle 替换和销毁都清理准�
 地图：`/Game/SlayTheSpireDemo/Maps/L_Battle_RuinedCitadel`，生产 Native HUD，
 B=true，D1=true（验收期间显式启用），D2 尚未实施。
 
+无需修改资产；在新编辑器首次 PIE 的 UE 控制台调用原生运行时入口：
+
+```text
+py import unreal; unreal.find_object(None, "/Engine/Transient.UnrealEdEngine_0:GameInstance_0.WBP_BattleHUD_Native_C_0").set_detached_card_destination_d1_enabled(True)
+```
+
+该 HUD 路径来自本次 MCP 实际读回；后续 PIE 若实例编号变化，以实际 HUD
+路径为准。关闭时将 True 改为 False。开关只改变当前运行策略，不保存资产。
+
 | 项目 | 操作步骤 | 通过条件 |
 |---|---|---|
 | 尾部与后续出牌重叠 | 播放 A 时确认 B，观察 A 飞往弃牌后 B 开始入场。 | A 未被 Skip；A 尾部与 B 入场共存，A 去向数值只增加一次。 |
@@ -75,4 +85,57 @@ B=true，D1=true（验收期间显式启用），D2 尚未实施。
 
 ## 当前证据
 
-本批仅保存执行契约及继续点，未改代码，未运行新 UE 构建／测试／PIE。
+契约批次 `a211cd2` 仅保存执行约定，无新 UE 运行。下列为实现批次实际证据。
+
+### 实现及协议验证
+
+实现验证基线为 `a211cd2` 加本批代码。正式卡牌视觉 token 移到 Presentation
+的共享类型头，Base 与 Controller 不依赖具体 Native job 的类型定义。
+准备收据额外带去向身份及独立 preparation generation，避免重试后的旧
+收据清理新准备。Controller 仅在候选快照及已消费关联安装后开放准确的
+已提交收据；Base 拒绝提前激活。原 Damage 与 D1 共用准确游标复核和推进
+方法，不引入时间债务。正式事务跨回调固定 UObject GC 存续。
+
+Native Blocking 与 D1 共用去向几何准备；D1 job 自行结束，无 timer 或
+Controller 回调。关闭只清理已解耦尾部和准备，不删除必要正式关联。
+原 C 测试的真实 Controller／Native HUD 夹具抽为共享测试头，并增加多牌
+及不同去向参数；没有新增运行时测试入口或 Gameplay 内容组合分支。
+
+规定生成 `Saved/Logs/G9D1ProjectFiles.log`：通过，10.06 秒。
+Development Editor 构建 `G9D1Build.log`：通过，313.27 秒。
+首轮聚焦报告 `Saved/AutomationReports/G9D1/index.json`：**87 成功、
+4 带警告通过、0 失败／未运行，共 91 项**。实际范围为 G9D1、G9C、
+Native R8、G9B、G8B、FastInput、G6、CardSelection.Presentation、G8D、
+G8A、冻结 CardPlayed 卡面及 HandInteraction；精确案例以报告为准。
+警告为一个 R8 无效身份预期拒绝及三个 G8A 空测试牌组提示。
+
+复核补充正式发布后视口失效，以及非有限私有几何的安全清理：规定生成
+`G9D1GeometryProjectFiles.log`（7.12 秒）、构建 `G9D1GeometryBuild.log`
+（9.07 秒）通过。仅重跑受影响的 G9D1 与 G9C.Visual，报告
+`Saved/AutomationReports/G9D1Geometry/index.json`：**10 成功、0 警告／
+失败／未运行**。未受影响首轮证据复用，91 个不同案例有有效证据，不能
+把两轮相加或宣称最后版本一次 91/91。
+
+六项新增用例包含多个实际边界：入场 Blocking、准确准备／禁止提前激活、
+纯准备、资源 decline、A 尾部与 B 入场／GC、私有结束零发布、发布／激活
+重入 Skip／关闭／替换、提交后视觉或视口失效、三种正式去向、无活动
+unit 的全局清理、关闭保留关联、正常回合流程同 RuntimeId 再抽回并出牌。
+
+### 生产启动检查与当前视觉限制
+
+UE MCP 在生产地图启动实际 Native 浮动窗口 PIE，默认 D3D12／SM6。
+公开读回 `Saved/G9D1InitialHUD.json` 确认 B=true、D1=false，并绑定生产
+ViewModel；未临时改开关。日志 `Saved/Logs/G9D1PIE.log`。这只证明加载与
+启动配置，不证明本次尾部重叠视觉行为。
+
+computer-use 首次激活窗口失败；重新获取窗口后截图确认 Windows 锁屏。
+按该技能引用的操作规则停止窗口输入，没有尝试解锁或绕过锁屏。
+本轮未实际出牌、未启用 D1、未取得新的尾部视觉通过证据；上述四项
+Native PIE 均为 **USER ACTION REQUIRED**。已通过的 C／B 不重复要求。
+用户已收到解锁提示；解锁后从这些具体门槛继续，不重跑未受影响自动化。
+
+本次启动的 PIE 已由 MCP 停止，查询为 false，编辑器已关闭；没有资产保存。
+证据为 `G9D1StoppedPIE.json`、`G9D1PIEStopped.json`、`G9D1EditorClosed.json`。
+外部 Native HUD 资产 SHA256 保持
+`F896F7B59A91D4EC86AD73973451E19012B7523EE7D1D1ECEE2B570894E20F81`，
+排除提交。D1 视觉门槛通过前不启用默认、不进入 D2，不宣称阶段完成或封板。

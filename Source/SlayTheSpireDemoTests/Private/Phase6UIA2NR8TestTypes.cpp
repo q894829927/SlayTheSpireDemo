@@ -98,3 +98,22 @@ void UPhase6UIA2NR8HUDProbe::ConfigureFanForTesting(UBattleHandFanPanel* Fan)
 	if (!WidgetTree) WidgetTree = NewObject<UWidgetTree>(this);
 	WidgetTree->RootWidget = WidgetTree->ConstructWidget<UCanvasPanel>();
 }
+
+bool UPhase6UIA2NR8HUDProbe::NativePrepareDetachedCardDestination(const FPresentationRecord& Record,
+	const FPlayedCardPresentationLifecycleToken& Life, FDetachedCardDestinationToken& OutToken)
+{
+	LastDetachedDestinationRecord = Record;
+	if (bRejectDetachedPreparation) { OutToken = {}; return false; }
+	const bool bPrepared = Super::NativePrepareDetachedCardDestination(Record,Life,OutToken);
+	LastDetachedPreparation = OutToken;
+	auto Hook = MoveTemp(DetachedPreparationHook); if (Hook) Hook();
+	return bPrepared;
+}
+
+bool UPhase6UIA2NR8HUDProbe::NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token)
+{
+	if (bRejectDetachedActivation) return false;
+	const bool bActivated = Super::NativeActivatePreparedDetachedCardDestination(Token);
+	auto Hook = MoveTemp(DetachedActivationHook); if (Hook) Hook();
+	return bActivated;
+}

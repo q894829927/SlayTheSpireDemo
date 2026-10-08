@@ -1,5 +1,18 @@
 # 整体架构说明
 
+G9-D1 去向尾部是独立、Native 默认关闭的策略。Controller 对复制的封存
+记录及候选快照／生命周期做证明，准备有界视觉收据，正式候选同时安装后
+才发布；只有当前已提交的收据可以授权激活，准备或过期收据不能启动演出。
+发布／激活重入复核准确游标、Widget 和 Session，提交后失败只删除视觉。
+事务跨回调固定 Controller／Widget 的 GC 存续，不持有可能被回调释放的
+Envelope 内部引用。
+
+Native 尾部复用 C 的 GC 安全 job，冻结归一化端点并独立计时，没有 Blocking
+timer、完成回执、输入债务或 Gameplay 请求。同 RuntimeId 正常抽回时，新
+正式 Hand 优先；Selection 临时隐藏不控制已解耦尾部。关闭清理尾部／准备
+及待执行输入，不替换 Session／回合权限或删除必要的正式关联。Skip／恢复
+即使没有活动 Blocking unit，也清理留存视觉。CardPlayed 入场仍 Blocking。
+
 G9-C Native 已打出卡牌使用 HUD 持有、不可交互的 DetachedCardVFXHost。
 每个 GC 安全 job 保存冻结 Widget、准确出牌发生与独立视觉 generation、
 绑定／表面身份、几何、时间及阶段。Blocking 完成仍同时核对当前记录和

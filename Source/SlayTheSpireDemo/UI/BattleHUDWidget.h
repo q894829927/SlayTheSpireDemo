@@ -132,6 +132,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle HUD|Input")
 	bool bEnableG9BufferedPlayerInput = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle Presentation|G9")
+	bool bEnableDetachedCardDestinationD1 = false;
+	UFUNCTION(BlueprintCallable, Category = "Battle Presentation|G9")
+	void SetDetachedCardDestinationD1Enabled(bool bEnabled);
+
 	// Runtime FanHand is created from Native code, so these values are the
 	// Blueprint-facing layout contract for the generated Hand surface.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Battle HUD|Hand Layout", meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "400.0"))
@@ -293,6 +298,16 @@ protected:
 	void RetireCollidingPlayedCardVisualJobs();
 	UBattleCardWidget* FindPreferredPlayedCardVisual() const;
 	void SetPlayedCardVisualsSelectionHidden(bool bHidden);
+	bool BuildPlayedCardDestinationVisual(const FNativePlayedCardVisualJob& Job, const FPresentationRecord& Record,
+		FPreparedCardDestinationVisual& OutSpec) const;
+	virtual bool NativePrepareDetachedCardDestination(const FPresentationRecord& Record,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle, FDetachedCardDestinationToken& OutToken) override;
+	virtual bool NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
+	virtual bool NativeIsPreparedDetachedCardDestinationCurrent(const FDetachedCardDestinationToken& Token) const override;
+	virtual void NativeCancelPreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
+	virtual void NativeRetireDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
+	virtual void NativeCancelDetachedCardDestinationVisuals() override;
+	virtual void NativeOnPresentationControllerChanged() override;
 	virtual void NativeCancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session) override;
 	virtual void NativeCancelAllPlayedCardVisuals() override;
 	int32 GetPlayedCardVisualJobCount() const { return PlayedCardVisualJobs.Num(); }
@@ -594,6 +609,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UCanvasPanel> DetachedCardVFXHost;
 	UPROPERTY(Transient) TArray<FNativePlayedCardVisualJob> PlayedCardVisualJobs;
 	int64 NextCardVisualGeneration = 1;
+	int64 NextCardDestinationPreparationGeneration = 1;
 	FPlayedCardPresentationLifecycleToken BlockingFallbackPlayedLifecycle;
 	FDetachedCardVisualToken ActivePlayedCardVisualToken;
 	bool bPlayedCardVisualsSelectionHidden = false;

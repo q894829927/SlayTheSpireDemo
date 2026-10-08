@@ -537,6 +537,7 @@ void UBattlePresentationController::SkipPresentation()
 	// identity intentionally remains unchanged here. Current-session detached
 	// cosmetics are retired because Skip collapses their source chronology.
 	CancelCurrentSessionDetachedDamageVisuals();
+	CancelCurrentSessionPlayedCardVisuals();
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -755,7 +756,7 @@ void UBattlePresentationController::StartNextRecord()
 		return;
 	}
 
-	// G8 detached Damage is the only production split: eligible Damage commits
+	// Eligible detached records commit
 	// formally through the Controller-owned detached transaction. A pre-commit
 	// visual eligibility decline falls through to the unchanged Blocking path;
 	// a consumed attempt has already advanced/reconciled exact chronology.
@@ -764,10 +765,16 @@ void UBattlePresentationController::StartNextRecord()
 		&& IsPresentationOwnedMode())
 	{
 		if (TryCommitDetachedDamageRecord(Record)
-			== EDetachedDamageAttemptResult::Consumed)
+			== EDetachedRecordAttemptResult::Consumed)
 		{
 			return;
 		}
+	}
+	if (Record.Type == EBattlePresentationRecordType::CardZoneChanged
+		&& Record.CardZoneChanged.FromZone == ECardZone::PlayArea
+		&& bDetachedCardDestinationD1Enabled && IsPresentationOwnedMode())
+	{
+		if (TryCommitDetachedCardDestinationRecord(Record) == EDetachedRecordAttemptResult::Consumed) return;
 	}
 
 	const bool bRecordSupportsVisiblePlayback =
@@ -948,6 +955,7 @@ void UBattlePresentationController::CompleteActiveEnvelope()
 
 void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 {
+	CancelCurrentSessionPlayedCardVisuals();
 	if (IsValid(Widget) && Widget->IsBufferedPlayerInputEnabled()) Widget->DiscardQueuedPlayerInput();
 	InvalidateBufferedCardChronology();
 	CancelActiveTimeout();
@@ -1017,6 +1025,7 @@ void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
 	}
 
 	CancelCurrentSessionDetachedDamageVisuals();
+	CancelCurrentSessionPlayedCardVisuals();
 	CancelActiveTimeout();
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
@@ -1118,6 +1127,7 @@ void UBattlePresentationController::InvalidatePresentationSession(
 {
 	CardHistoryState.ClearCorrelations();
 	const FPresentationSessionToken OldToken = ActivePresentationSessionToken;
+	CommittedCardDestinationReceipt = {};
 	// Invalidate first so any synchronous cleanup callback already observes stale.
 	ActivePresentationSessionToken = FPresentationSessionToken{};
 	if (OldToken.IsValid())

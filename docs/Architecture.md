@@ -1,5 +1,22 @@
 # Architecture
 
+G9-D1 destination tails are an independent, default-off Native policy. The
+Controller proves a copied sealed card record with candidate snapshot/history,
+prepares a bounded visual receipt, then installs both formal candidates before
+publication. Only that current committed receipt authorizes activation; prepared
+or stale receipts cannot start animation. Publication/activation reentry rechecks
+the exact cursor, Widget and Session. Post-commit failures drop only cosmetics.
+The frame pins Controller/Widget lifetimes across callbacks and never retains a
+reference into an Envelope that a callback may free.
+
+Native tails reuse C's GC-safe jobs with frozen normalized endpoints and their
+own elapsed time; they have no Blocking timer, tracked completion, input debt or
+Gameplay request. New formal Hand ownership wins over an old tail, including
+normal redraw of the same RuntimeId. Selection hiding excludes detached tails.
+Disable retires tails/preparations and pending input without replacing Session,
+turn authority or unresolved formal correlations. Skip/recovery clears retained
+visuals even with no active Blocking unit. CardPlayed arrival remains Blocking.
+
 G9-C Native played cards use a HUD-owned, noninteractive DetachedCardVFXHost.
 Each GC-safe job owns its frozen clone, exact play occurrence plus independent
 visual generation, binding/surface identity, geometry, elapsed time and phase.

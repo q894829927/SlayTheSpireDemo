@@ -1,5 +1,19 @@
 # Validation
 
+## G9-D1 去向尾部实施 — 2026-10-09
+
+基线 `a211cd2` 加实现代码。规定生成及 Editor 构建通过（首轮 10.06／
+313.27 秒）；聚焦 91 项为 87 成功、4 带预期夹具警告通过、零失败／未运行。
+补充视口失效／私有几何防护后生成／构建通过（7.12／9.07 秒），仅重跑
+受影响 G9D1／G9C.Visual，10 项成功、零警告／失败。首轮未受影响证据复用；
+准确范围及说明见 [D1 执行](SelectionPresentationG9D1Execution.md)。
+
+生产 Native MCP 浮动 PIE 启动，HUD 读回 B=true、D1=false；Windows 锁屏
+阻止实际窗口操作，本次未启用 D1 或出牌，不能宣称尾部视觉通过。
+四项中文 Native PIE 门槛为 USER ACTION REQUIRED。PIE 已停止、编辑器
+关闭，无资产保存。D1 IMPLEMENTED／AUTOMATED GATES PASS／DEFAULT OFF，
+不得宣称 COMPLETE 或进入 D2；C／B 验收不重开，G9 未封板。
+
 ## G9-C 最后一项人工验收收口 — 2026-10-09
 
 用户明确回复“验证通过”，对应上一条交付中唯一剩余的运动帧内窗口缩放

@@ -1,5 +1,5 @@
 #pragma once
-#include "../Presentation/PresentationCardReducer.h"
+#include "../Presentation/PresentationCardVisualTypes.h"
 #include "../Presentation/PresentationG9Types.h"
 #include "Components/SlateWrapperTypes.h"
 #include "BattlePlayedCardVisualJob.generated.h"
@@ -10,14 +10,15 @@ UENUM()
 enum class ECardVisualPhase : uint8 { Prepared, EnteringPlayArea, AtPlayArea, DestinationTail };
 
 USTRUCT()
-struct FDetachedCardVisualToken
+struct FPreparedCardDestinationVisual
 {
 	GENERATED_BODY()
-	UPROPERTY() FPlayedCardPresentationLifecycleToken Lifecycle;
-	UPROPERTY() int64 LocalVisualGeneration = 0;
-	bool IsValid() const { return Lifecycle.IsValid() && LocalVisualGeneration > 0; }
-	bool operator==(const FDetachedCardVisualToken& Other) const
-	{ return Lifecycle == Other.Lifecycle && LocalVisualGeneration == Other.LocalVisualGeneration; }
+	UPROPERTY() FDetachedCardDestinationToken Token;
+	UPROPERTY() FVector2D StartCenter = FVector2D::ZeroVector;
+	UPROPERTY() FVector2D EndCenter = FVector2D::ZeroVector;
+	UPROPERTY() float EndScale = 0.72f;
+	UPROPERTY() float EndOpacity = 0;
+	UPROPERTY() float Duration = 0.5f;
 };
 
 USTRUCT()
@@ -32,6 +33,10 @@ struct FNativePlayedCardVisualJob
 	UPROPERTY() uint64 SurfaceGeneration = 0;
 	UPROPERTY() ESlateVisibility SourceVisibility = ESlateVisibility::Visible;
 	UPROPERTY() ECardVisualPhase Phase = ECardVisualPhase::Prepared;
+	UPROPERTY() bool bDetachedDestination = false;
+	UPROPERTY() FPreparedCardDestinationVisual PreparedDestination;
+	UPROPERTY() FDetachedCardDestinationToken LastDestinationPreparationToken;
+	UPROPERTY() FVector2D DetachedStartCenter = FVector2D::ZeroVector;
 	FCardPlayVisualOrigin Origin;
 	UPROPERTY() FVector2D DesiredSize = FVector2D::ZeroVector;
 	UPROPERTY() FVector2D DestinationCenter = FVector2D::ZeroVector;
