@@ -1,5 +1,15 @@
 # Checkpoint — G9-C Native played-card ownership
 
+## 当前继续点：G9-D1 契约就绪，开始去向事务与私有尾部
+
+2026-10-09，起点 HEAD `04124e2`。用户明确要求开始 D1；C 的人工门槛
+全部关闭，既有通过证据有效。执行契约保存在 `SelectionPresentationG9D1Execution.md`，
+本批仅文档，无新构建／测试／PIE。下一步实现 Controller 候选 reducer／
+发布重入复核、Base 受限准备／激活／清理及 Native 独立尾部，保留入场
+Blocking。D1 独立开关验收前默认 false，B 默认 true 不变。按批次验证、
+记录实际证据并本地提交，不 push。外部 Native HUD 资产保持原 SHA256
+且排除提交；D2／E／F 未开始，G9 未封板。以下为历史状态。
+
 ## 当前继续点：G9-C 验收完成，下一阶段 D1
 
 2026-10-09，收口前 HEAD `dc88bd6`，代码实现 `5f1d4aa`／`c69b0ac`。

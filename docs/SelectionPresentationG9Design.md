@@ -5,7 +5,8 @@ supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and i
 16.1 input gate. Original text remains historical context. New B gates follow the
 amendment. G9-C is complete and validated, including the user-confirmed final
 moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
-D1–F are not started or accepted.
+D1 is in progress under [D1 execution](SelectionPresentationG9D1Execution.md).
+D2–F are not started or accepted.
 
 Date: **2026-09-13**
 
@@ -2093,7 +2094,7 @@ G9    — DESIGN LOCKED / G9-A + G9-B + G9-C COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
-G9-D1 — NOT STARTED
+G9-D1 — IN PROGRESS / NATIVE DEFAULT OFF UNTIL VALIDATED
 G9-D2 — NOT STARTED
 G9-E  — NOT STARTED
 G9-F  — NOT STARTED

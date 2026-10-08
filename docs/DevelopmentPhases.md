@@ -1,5 +1,10 @@
 # Development Phases
 
+2026-10-09 G9-D1 IN PROGRESS：用户明确要求开始尾部去向解耦，起点
+`04124e2`。C 已验收完成，D1 保留 CardPlayed 入场 Blocking，验收前独立
+开关默认关闭。本批先保存执行约定，未改代码或运行新 UE；实施和中文
+验收见 [D1 执行](SelectionPresentationG9D1Execution.md)。D2／E／F 未开始。
+
 2026-10-09 **G9-C COMPLETE / VALIDATED**：用户确认唯一剩余的“卡牌仍在
 移动时调整窗口”人工验收通过，记为 USER_REPORTED_PASS。代码实现为
 `c69b0ac`／`5f1d4aa`，交付证据 HEAD 为 `dc88bd6`；既有构建、自动化和
