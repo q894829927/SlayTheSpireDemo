@@ -1,5 +1,18 @@
 # Checkpoint — G9-D2 detached card arrival
 
+## 当前继续点：D2 全部验收通过，独立启用 Native 默认
+
+2026-10-09，交付 HEAD `557fceb`，代码 `ab07abb`。用户回复“验证通过”，
+关闭唯一剩余的运动中缩放窗口门槛，记为 USER_REPORTED_PASS。D2 COMPLETE／
+VALIDATED。既有构建、97 个不同自动化案例有效通过证据和其他生产 PIE
+继续有效，本收口批次仅文档，无新 UE 执行。
+
+下一独立批次把 Native D2 默认设为 true，明确 Blocking 专用测试的关闭
+策略，按规定生成／构建、聚焦自动化，读取生产 C++／Blueprint CDO／实际
+HUD 的默认配置再提交。不重跑已通过视觉，不进入 E／F，不宣称 G9 封板。
+当前编辑器进程为用户重新启动的 PID 75732，不能按旧 PID 80756 管理。
+外部 Native HUD 资产原 SHA256 保持，仍排除提交，不 push。以下为历史状态。
+
 ## 当前继续点：D2 实施与自动化通过，唯一运动中缩放视觉待办
 
 2026-10-09，当前代码 HEAD `ab07abb`，本检查点交付文档为其后继，不再改

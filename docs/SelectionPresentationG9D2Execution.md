@@ -1,7 +1,7 @@
 # G9-D2：出牌入场与提前去向衔接
 
 2026-10-09，分支 `codex/g9-buffered-input-detached-cards`，起点 `04d835b`。
-D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE／默认关闭；
+D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 COMPLETE／VALIDATED／默认开启待独立验证；
 本轮仅 D2，不进入 E／F，不宣称 G9 封板。保留外部 Native HUD 资产原样，
 只改 Native C++、测试及文档；每个完整批次本地提交，不 push。
 
@@ -71,8 +71,9 @@ B=true、D1=true、D2 验收期间显式开启。不得修改资产或延长动�
 
 契约基线 `04d835b`，契约提交 `931eb30`，实现提交 `ab07abb`。以下构建／Automation／PIE 均在
 `931eb30` 加本批 Native C++／测试工作区上实际执行，D2 默认 false。
-当前为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE，不能标记
-COMPLETE／VALIDATED 或进入 E。C／D1／B 原验收不重开，G9 NOT SEALED。
+实现批次原状态为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE。
+用户在交付 `557fceb` 后确认最后缩放门槛通过，当前 D2 COMPLETE／VALIDATED，
+默认开启为下一独立批次。C／D1／B 原验收不重开，G9 NOT SEALED。
 
 ## 实现和自动化证据 — 2026-10-09
 
@@ -134,20 +135,21 @@ B=true、D1=true、D2=false；当前 PIE 通过运行时 setter 显式开启 D2�
 临时脚本只调用公开 HUD 输入、运行时策略及读取冻结 DTO／Widget，不写
 Gameplay、不访问私有 job、不改资产；运行日志未发现资产加载或运行错误。
 
-## 唯一剩余人工门槛：USER ACTION REQUIRED
+## 最后一项人工门槛已关闭：USER_REPORTED_PASS
 
-无法用当前逐步窗口操作在 0.5 秒入场窗口内确定完成缩放，所以未声称此项
-通过，也没有延长动画或用 C／D1 旧视觉证据代替本次 D2。实际同实例回手后
+实施批次无法用逐步窗口操作在 0.5 秒入场窗口内确定完成缩放，当时正确保留
+人工待办，没有延长动画或用 C／D1 旧视觉证据代替本次 D2。实际同实例回手后
 可交互已观察；“旧 job 尚未结束时新正式所有者获胜”由自动化证明。
 
 | 操作步骤 | 预期现象／通过条件 | 需要的反馈 |
 |---|---|---|
-| 当前生产 PIE 已临时开启 D2。打出一张牌，在牌仍向出牌区移动或尚未完成续接时立即拖动窗口边缘改变大小；动画结束后悬停并再次打牌。 | 原卡随视口正确定位，入场到尾部连续，无跳到端点、闪回、重复牌、裁切或残留；其余手牌排列正常，后续悬停／出牌正常。 | 说明入场中／尾部衔接时实际调整了大小，及是否出现上述异常；必要时附截图。 |
+| 生产 PIE 显式开启 D2。打出一张牌，在牌仍向出牌区移动或尚未完成续接时立即拖动窗口边缘改变大小；动画结束后悬停并再次打牌。 | 原卡随视口正确定位，入场到尾部连续，无跳到端点、闪回、重复牌、裁切或残留；其余手牌排列正常，后续悬停／出牌正常。 | 用户在 `557fceb` 交付后回复“验证通过”，记为 USER_REPORTED_PASS；本项关闭。 |
 
-本次保留现有浮动 PIE，D2=true 仅该运行实例，源码／Blueprint 默认仍 false。
+实施批次保留浮动 PIE，D2=true 仅该运行实例，源码／Blueprint 默认仍 false。
 最后读回 `Saved/G9D2ManualReadyHUD.json`／`G9D2ManualReadyVM.json`：
 Idle、未锁定、可结束回合、无反馈、能量 2；手牌有剑柄打击、防御、坚毅、
 怒火。临时 Python 观察器与 Slate observer 均已退出，编辑器 PID 80756 保留。
-新启动 PIE 需显式调用 HUD 的 `SetDetachedCardArrivalD2Enabled(true)`；不得
-保存资产来开启。该人工门槛通过后，才以独立提交启用 Native 默认并读回
-生产配置；E／F 另行开发，G9 整体不封板。
+2026-10-09 用户针对唯一剩余缩放待办回复“验证通过”。不虚构新的截图、
+配置或构建记录；原自动化、构建及其余视觉证据继续有效，全部 D2 人工门槛
+关闭。下一独立批次启用 Native 默认、规定验证并读回生产配置；E／F 未开始，
+G9 整体不封板。默认开启前新启动 PIE 仍需显式 setter，不能保存资产来开启。

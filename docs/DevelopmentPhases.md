@@ -1,15 +1,15 @@
 # Development Phases
 
-2026-10-09 **G9-D2 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE**：
+2026-10-09 **G9-D2 COMPLETE／VALIDATED／DEFAULT ACTIVATION PENDING**：
 起点 `04d835b`，契约 `931eb30`，实现 `ab07abb`。当前封存 Envelope 纯预检、入场正式事务、
 准确去向收据、提前去向与连续尾部、独立多 job 及关闭／恢复清理已实施。
 规定生成／Development Editor 构建通过；聚焦运行及仅受影响修正重跑后，
 97 个不同案例有有效通过证据（4 个既有预期警告案例），不累加重叠报告。
 生产 Native PIE 已观察普通入场／FIFO 重叠／一次 EndTurn／战吼 Blocking
-回退及选择／关闭／Skip／同实例下一回合再出牌。唯一剩余实际运动中
-窗口缩放为 USER ACTION REQUIRED，详见 [D2 执行](SelectionPresentationG9D2Execution.md)。
-D2 源码与生产 Blueprint 默认关闭，当前 PIE 临时开启供验收；B／D1
-默认开启保持。未宣称 D2 COMPLETE，不进入 E／F，G9 整体未封板。
+回退及选择／关闭／Skip／同实例下一回合再出牌。用户在 `557fceb` 交付后
+确认唯一剩余的运动中窗口缩放“验证通过”，记为 USER_REPORTED_PASS，
+全部 D2 人工门槛关闭，详见 [D2 执行](SelectionPresentationG9D2Execution.md)。
+D2 默认开启待独立代码／验证批次；B／D1 默认开启保持。E／F 未开始，G9 未封板。
 
 2026-10-09 **G9-D1 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，
