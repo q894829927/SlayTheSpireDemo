@@ -1,5 +1,26 @@
 # Checkpoint — G9-D1 detached card destinations
 
+## 当前继续点：D1 完成、默认启用；下一开发阶段 D2
+
+2026-10-09，人工收口提交 `1cc58de`，原代码实现 `96de67b`，独立启用批次
+标题 `feat(g9-d1): enable validated native destination tails by default`；提交后
+用 `git log -1` 核实精确 HEAD。只改 Native 默认 true 和旧 Blocking 回退
+用例的显式关闭策略，原断言保留。全部人工门槛已通过，不重复要求。
+
+规定生成／构建通过（8.43／201.97 秒）；首轮 65 项仅旧 Blocking 默认依赖
+用例失败。修正后再规定生成／构建（3.83／6.96 秒），只重跑该项 1/1 成功。
+其余 64 项有效，65 个不同案例有通过证据，含 1 个 R8 预期警告案例；
+不相加、不重复未受影响门槛。精确范围／报告见 D1 执行文档。
+
+新编辑器生产 Native MCP 启动读回 C++ CDO、Blueprint CDO、实际 HUD 均
+B=true／D1=true，无临时覆盖；Idle、未锁定、可结束回合、反馈空。
+PIE 已停止、查询 false、编辑器关闭，无资产保存；外部 Native HUD 原
+SHA256 保持并排除提交，不 push。D1 COMPLETE／VALIDATED／默认启用，
+CardPlayed 入场仍 Blocking。D2／E／F 未实施，G9 整体 NOT SEALED。
+
+下一开发阶段为 D2：完整预检后解耦 CardPlayed，支持去向先提交及连续尾部；
+本轮不实施。后续按锁定设计与独立批次继续。以下为历史状态。
+
 ## 当前继续点：D1 全部人工验收通过，开始独立默认启用批次
 
 2026-10-09，收口前 HEAD `2fd0992`，代码实现 `96de67b`。用户针对唯一剩余

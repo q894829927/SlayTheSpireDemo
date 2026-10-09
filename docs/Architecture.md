@@ -1,7 +1,8 @@
 # Architecture
 
-G9-D1 destination tails are an independent, default-off Native policy. The
-Controller proves a copied sealed card record with candidate snapshot/history,
+G9-D1 destination tails are an independent, validated default-on Native policy
+with a runtime disable path. The Controller proves a copied sealed card record
+with candidate snapshot/history,
 prepares a bounded visual receipt, then installs both formal candidates before
 publication. Only that current committed receipt authorizes activation; prepared
 or stale receipts cannot start animation. Publication/activation reentry rechecks

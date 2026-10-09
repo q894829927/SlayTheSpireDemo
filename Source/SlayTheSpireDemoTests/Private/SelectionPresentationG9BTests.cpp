@@ -288,6 +288,8 @@ bool FG9BNativeHandBlockingLayoutTest::RunTest(const FString& Parameters)
 		TEXT("/Game/SlayTheSpireDemo/UI/Widgets/WBP_BattleHUD_Native.WBP_BattleHUD_Native_C"));
 	Context->HUD.Reset(NativeClass ? CreateWidget<UBattleHUDWidget>(Context->Fixture.Gameplay.World, NativeClass) : nullptr);
 	if (!TestNotNull(TEXT("Production HUD loads"), Context->HUD.Get())) return false;
+	// This case explicitly exercises the disabled-D1 Blocking fallback.
+	Context->HUD->SetDetachedCardDestinationD1Enabled(false);
 	Context->HUD->SetViewModel(Context->Fixture.Gameplay.ViewModel);
 	Context->Fixture.Controller->Initialize(Context->Fixture.Gameplay.Battle, Context->Fixture.Gameplay.ViewModel, Context->HUD.Get());
 	Context->HUD->SetPresentationController(Context->Fixture.Controller);

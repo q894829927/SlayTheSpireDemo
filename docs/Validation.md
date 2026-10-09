@@ -1,5 +1,23 @@
 # Validation
 
+## G9-D1 独立 Native 默认启用 — 2026-10-09
+
+起点 `1cc58de`（人工收口），代码批次仅启用原生 D1 默认和明确旧 Blocking
+回退测试的关闭策略。规定生成／Editor 构建通过：8.43／201.97 秒。
+首轮实际 65 项为 63 成功、1 带预期警告通过、1 失败；唯一失败案例
+`G9B.NativeHandBlockingWithoutTick` 隐式依赖旧默认，改为已有运行时入口
+显式关闭 D1，原断言全部保留。修正后规定生成／构建 3.83／6.96 秒通过，
+仅该项重跑 1/1 成功、零警告／失败。其余 64 项证据复用，65 个不同案例
+有有效通过证据，不相加、不宣称最终版本一次 65/65。范围／报告见
+[D1 执行](SelectionPresentationG9D1Execution.md)。
+
+MCP 生产 Native 地图新启动，无临时覆盖，C++ CDO、Blueprint CDO、HUD
+实例均读回 B=true／D1=true；初始 Idle、未锁定、可结束回合、无反馈。
+PIE 停止／查询 false、编辑器关闭，无资产保存，保留外部 Native HUD 原
+SHA256 并排除提交。用户已关闭全部人工门槛，不重复播放或要求验收。
+D1 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED；入场仍 Blocking，
+D2／E／F 未开始，G9 整体 NOT SEALED。不 push。
+
 ## G9-D1 最后一项人工验收收口 — 2026-10-09
 
 用户在交付 `2fd0992` 后确认“验收通过”，对应唯一剩余的尾部运动中缩放

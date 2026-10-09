@@ -5,14 +5,15 @@ supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and i
 16.1 input gate. Original text remains historical context. New B gates follow the
 amendment. G9-C is complete and validated, including the user-confirmed final
 moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
-D1 is implemented with automated and all Native PIE gates passed, including the
-user-confirmed final moving-tail viewport gate. Default enablement is the next batch
+D1 is complete and validated with all automated and Native PIE gates passed,
+including the user-confirmed final moving-tail viewport gate. Its independently
+validated Native default is enabled
 under [D1 execution](SelectionPresentationG9D1Execution.md).
 D2–F are not started or accepted.
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9-C COMPLETE, VALIDATED / G9 NOT SEALED**
+Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9-C COMPLETE, VALIDATED / G9-D1 COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9 NOT SEALED**
 
 2026-10-09：用户确认 C 的唯一剩余人工门槛通过，G9-C COMPLETE／VALIDATED。
 Blocking 时序保持不变；D1 已具备进入条件，D1–F 尚未实施，G9 未封板。
@@ -2092,11 +2093,11 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 
 ```text
 G8    — COMPLETE / VALIDATED / SEALED
-G9    — DESIGN LOCKED / G9-A + G9-B + G9-C COMPLETE AND VALIDATED / NOT SEALED
+G9    — DESIGN LOCKED / G9-A + G9-B + G9-C + G9-D1 COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
-G9-D1 — IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE GATES PASS / DEFAULT ENABLEMENT PENDING
+G9-D1 — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED / CARDPLAYED ARRIVAL BLOCKING
 G9-D2 — NOT STARTED
 G9-E  — NOT STARTED
 G9-F  — NOT STARTED

@@ -1,13 +1,16 @@
 # Development Phases
 
-2026-10-09 G9-D1 IMPLEMENTED／AUTOMATED GATES PASS／MANUAL PIE GATES PASS：
+2026-10-09 **G9-D1 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，
 入场仍 Blocking。
 规定构建通过，首轮 91 项及最后受影响 10 项零失败；重叠范围不相加。
 解锁后生产 Native PIE 显式开启 D1，重叠、尾部期间结束回合、选择／消耗、
 关闭／Blocking 回退／Skip 已观察通过；用户针对唯一剩余的尾部运动中缩放
 窗口回复“验收通过”，记为 USER_REPORTED_PASS，全部人工待办关闭。
-D1 默认暂关闭，下一批独立启用并验证生产默认；完整证据见
+D1 独立默认启用批次规定生成／构建通过；首轮失败的旧 Blocking 专用测试
+改为显式关闭 D1，原断言保留，仅该项重跑通过，65 个不同案例有有效通过
+证据（1 个预期警告案例）。生产 C++／Blueprint 默认／实际 HUD 均 true，
+初始 Idle、未锁定、可结束回合、无反馈。完整证据见
 [D1 执行](SelectionPresentationG9D1Execution.md)。C／B 保持已验收，
 D2／E／F 未开始，G9 整体未封板。
 

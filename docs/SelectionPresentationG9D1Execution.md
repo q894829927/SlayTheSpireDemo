@@ -1,9 +1,9 @@
 # G9-D1：出牌去向尾部演出解耦
 
 日期：2026-10-09。分支 `codex/g9-buffered-input-detached-cards`，起点 `04124e2`。
-G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **IMPLEMENTED / AUTOMATED GATES
-PASS / MANUAL PIE GATES PASS / DEFAULT ENABLEMENT PENDING**；不实施 D2／E／F。
-用户确认最后一项尾部运动中缩放窗口验收通过，全部 D1 人工门槛已关闭。
+G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **COMPLETE / VALIDATED / NATIVE
+DEFAULT ENABLED**；不实施 D2／E／F，G9 整体未封板。用户确认最后一项尾部
+运动中缩放窗口验收通过，全部 D1 人工门槛已关闭；独立默认启用验证通过。
 
 ## 实施边界与提交批次
 
@@ -39,7 +39,8 @@ Controller 复制当前封存记录、候选快照及生命周期状态，使用
 
 ## 运行时开关与清理
 
-D1 提供独立运行时开关，验收前 Native 默认 false；B 默认 true 保持不变。
+D1 提供独立运行时开关，验收前 Native 默认 false，全部门槛通过后独立
+启用为 true；B 默认 true 保持不变。
 关闭清理待执行输入、已解耦尾部及未激活准备，不改回合 serial／Session，
 也不删除尚待正式去向消费的关联。后续去向回到 Blocking 路径。
 Skip、恢复、Session／HUD／Controller／Battle 替换和销毁都清理准确私有
@@ -163,7 +164,7 @@ false，D2 未实施。此次仅 PIE 与证据文档，无新 C++ 改动、构�
 | 尾部期间结束回合 | 剑柄打击 RuntimeId=6 完成伤害及两次抽牌，正式弃牌为 2、尾部仍可见时调用 EndTurn。首次 true，重复 false；尾部继续运动，回合正常推进一次。第二回合打击 RuntimeId=4 重新抽回后可选中并出牌。 | AGENT_OBSERVED_PASS；`EndTurnTailAndTurn.png`、`EndTurnComplete.png`、`EndTurnTimeline.json`及随后 `DisableTimeline.json`。 |
 | 消耗／能力与强制选择交接 | 燃烧去向后淡出并退役；另一次干净 PIE 鼠标打出战吼，选择打击置于抽牌堆顶部并确认。选择期间 retained 出牌视觉 Hidden；确认后战吼消耗数为 1，尾部恢复可见、无需等待尾部即可 Idle，随后完全清理，无闪回或卡死。 | AGENT_OBSERVED_PASS；`SelectionExhaustTail.png`、`SelectionComplete.png`、`SelectionTimeline.json`；正式三种去向数值／身份仍由自动化证明。 |
 | 关闭、Blocking 回退及 Skip | 第二回合打击尾部期间关闭 D1，立即清理 host，正式弃牌保持 1；随后双重打击正常走 Blocking 去向，直到尾部结束才提交弃牌。再启用 D1，上勾拳正式去向后、Idle 且尾部仍可见时 Skip，host 立即为空、数值不回滚；之后坚毅正常出牌／消耗手牌并回到 Idle。 | AGENT_OBSERVED_PASS；`DisableTimeline.json`、`FallbackBlockingTail.png`、`FallbackTimeline.json`、`SkipTimeline.json`、`G9D1DisabledHUD.json`、`G9D1PostSkipSkillFinalVM.json`。 |
-| 尾部运动中缩放窗口 | 工具尝试燃烧播放后立即拖动窗口边缘，但时间线证明 tail 已在旧尺寸结束，才完成缩放，不能作为本门槛通过证据。缩放后实际选中并打出剑柄打击，最终 Idle、未锁定、无反馈，卡牌布局正常。 | **USER ACTION REQUIRED**；`ViewportTimeline.json`证明未命中运动区间；`G9D1ResizedSelectionVM.json`、`G9D1ResizedPlayFinalVM.json`只证明缩放后交互正常。 |
+| 尾部运动中缩放窗口 | 工具尝试燃烧播放后立即拖动窗口边缘，但时间线证明 tail 已在旧尺寸结束，才完成缩放，不能作为本门槛通过证据。缩放后实际选中并打出剑柄打击，最终 Idle、未锁定、无反馈，卡牌布局正常；随后用户完成最后人工项并确认“验收通过”。 | **USER_REPORTED_PASS（2026-10-09）**；以用户收口反馈关闭。`ViewportTimeline.json`仍只证明工具未命中运动区间，未改写其证据含义。 |
 
 PNG／时间线均位于 `Saved/G9D1VisualEvidence/`，配置及文件 SHA256 清单为
 `Manifest.json`。上述独立 JSON 读回位于 `Saved/`；不纳入 Git 提交。
@@ -171,13 +172,13 @@ PNG／时间线均位于 `Saved/G9D1VisualEvidence/`，配置及文件 SHA256 �
 判断 Native 游戏画面失败或通过。有效重叠帧已实际查看；时间线／自动化
 补充正式身份及顺序，不能替代尚缺的运动帧内缩放观察。
 
-当前保留 GameInstance_2 的生产浮动 PIE 供用户完成唯一剩余项，HUD 为
+当时保留 GameInstance_2 的生产浮动 PIE 供用户完成唯一剩余项，HUD 为
 `/Engine/Transient.UnrealEdEngine_0:GameInstance_2.WBP_BattleHUD_Native_C_0`，
 D1 仅当前实例 true；观察回调已结束，所有私有卡牌视觉已清理。最后读回
 Idle、bInputLocked=false、反馈为空、能量 3、弃牌 1、消耗 1。没有资产保存，
 外部 Native HUD 原 SHA256 保持。后续若用户改变会话，以最新实际读回为准。
 
-**唯一剩余人工步骤：**在当前 PIE 打出一张牌，在卡牌仍飞向弃牌堆或仍
+**当时唯一剩余人工步骤（现已关闭）：**在当前 PIE 打出一张牌，在卡牌仍飞向弃牌堆或仍
 淡出时立即拖动窗口边缘缩放；确认没有裁切、突跳、幽灵卡，并验证之后
 仍可悬停和出牌。已向用户发送该具体待验请求。无需重做其余已通过项。
 本项通过后才独立默认启用、规定生成／构建／受影响验证及生产启动读回。
@@ -194,3 +195,44 @@ Idle、bInputLocked=false、反馈为空、能量 3、弃牌 1、消耗 1。没�
 本批仅文档收口，既有构建、自动化及 Native PIE 证据保持有效；无新 UE
 构建／测试。下一批独立启用 Native D1 默认，按规定生成／Editor 构建、
 受影响自动化及生产默认启动读回后提交。无需重复人工清单，D2／E／F 未开始。
+
+### 独立默认启用批次 — 2026-10-09（通过）
+
+起点为人工收口提交 `1cc58de`，仅将 Native `bEnableDetachedCardDestinationD1`
+初值设为 true，运行时关闭入口及 Controller 原有策略边界保留。没有资产
+修改、入场解耦或 Gameplay／历史语义变化。
+
+规定生成 `Saved/Logs/G9D1EnableProjectFiles.log`（8.43 秒）、Development
+Editor 构建 `G9D1EnableBuild.log`（201.97 秒）通过。聚焦报告
+`Saved/AutomationReports/G9D1Enable/index.json` 实际 65 项：63 成功、1 带
+预期警告通过、1 失败。范围为 G9D1、G9C.Visual、Native R8、G9B、G8B、
+FastInput、HandInteraction、G6。警告案例为 R8 的无效身份预期拒绝。
+
+失败仅为 `G9B.NativeHandBlockingWithoutTick`：该用例专门验证 Blocking
+回退，却隐式依赖原 Native 默认关闭；新默认令正式去向按 D1 正常提前提交。
+用已有运行时入口在该用例初始化时显式关闭 D1，原布局／存续身份／仍然
+Blocking 的断言全部保留，没有修改生产协议或放宽断言。
+
+修正后规定生成 `G9D1EnableFallbackProjectFiles.log`（3.83 秒）、构建
+`G9D1EnableFallbackBuild.log`（6.96 秒）通过。只重跑受影响案例，报告
+`Saved/AutomationReports/G9D1EnableFallback/index.json`：1 成功、零警告／
+失败／未运行。其余 64 项通过证据有效；本批 65 个不同案例都有有效通过
+证据，不把两轮相加，也不宣称最后版本一次 65/65。
+
+UE MCP 在生产 `L_Battle_RuinedCitadel` 重新启动新编辑器、新 Native 浮动
+PIE，D3D12／SM6，无临时运行时开关覆盖。C++ CDO、生产 Blueprint CDO、
+实际 HUD 实例均读回 B=true、D1=true；ViewModel 为 Idle、未锁定、可结束
+回合、反馈为空、Revision=4、能量 5。这只验证默认生产启动；已通过的
+动画人工门槛不重跑。日志 `Saved/Logs/G9D1DefaultPIE.log`，MCP 读回为
+`G9D1DefaultNativeCDO.json`、`G9D1DefaultBlueprintCDO.json`、
+`G9D1DefaultRuntimeHUD.json`、`G9D1DefaultReadyVM.json`（均在 `Saved/`）。
+
+PIE 已停止并查询 false，编辑器已关闭，无资产保存；读回
+`G9D1DefaultStopPIE.json`、`G9D1DefaultStopped.json`、
+`G9D1DefaultEditorClosed.json`。外部 Native HUD SHA256 保持
+`F896F7B59A91D4EC86AD73973451E19012B7523EE7D1D1ECEE2B570894E20F81`，
+排除提交；无生成文件、Legacy、插件或依赖变更，不 push。
+
+独立启用提交标题 `feat(g9-d1): enable validated native destination tails by default`，
+精确交付编号以提交后 Git 为准。D1 COMPLETE／VALIDATED／Native 默认启用；
+CardPlayed 入场仍 Blocking。D2 是下一开发阶段，尚未实施；G9 整体 NOT SEALED。
