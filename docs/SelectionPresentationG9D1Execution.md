@@ -2,8 +2,8 @@
 
 日期：2026-10-09。分支 `codex/g9-buffered-input-detached-cards`，起点 `04124e2`。
 G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **IMPLEMENTED / AUTOMATED GATES
-PASS / PARTIAL PIE / USER ACTION REQUIRED / NATIVE DEFAULT OFF**；不实施 D2／E／F。
-解锁后已完成本页其余 Native PIE 门槛；唯一剩余项是尾部仍在运动时缩放窗口。
+PASS / MANUAL PIE GATES PASS / DEFAULT ENABLEMENT PENDING**；不实施 D2／E／F。
+用户确认最后一项尾部运动中缩放窗口验收通过，全部 D1 人工门槛已关闭。
 
 ## 实施边界与提交批次
 
@@ -182,3 +182,15 @@ Idle、bInputLocked=false、反馈为空、能量 3、弃牌 1、消耗 1。没�
 仍可悬停和出牌。已向用户发送该具体待验请求。无需重做其余已通过项。
 本项通过后才独立默认启用、规定生成／构建／受影响验证及生产启动读回。
 在此之前 D1 为 PARTIAL PIE／默认关闭，不进入 D2、不宣称 COMPLETE。
+
+### 最后一项人工验收收口 — 2026-10-09
+
+交付 HEAD `2fd0992`，代码实现 `96de67b`。用户在唯一剩余的“卡牌尾部仍
+在运动时缩放窗口，无裁切、突跳、幽灵且后续可交互”清单交付后明确回复
+“验收通过”，记为 **USER_REPORTED_PASS**，关闭该项及全部 D1 人工待办。
+用户未另外提供执行 HEAD、配置或影像；反馈关联最近交付与保留的生产 PIE，
+不虚构代理新增运行，也不将原未命中的工具缩放记录改写为通过证据。
+
+本批仅文档收口，既有构建、自动化及 Native PIE 证据保持有效；无新 UE
+构建／测试。下一批独立启用 Native D1 默认，按规定生成／Editor 构建、
+受影响自动化及生产默认启动读回后提交。无需重复人工清单，D2／E／F 未开始。

@@ -5,8 +5,8 @@ supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and i
 16.1 input gate. Original text remains historical context. New B gates follow the
 amendment. G9-C is complete and validated, including the user-confirmed final
 moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
-D1 is implemented with automated gates passed and partial Native PIE acceptance;
-only resizing during a moving destination tail remains pending. Its default is off
+D1 is implemented with automated and all Native PIE gates passed, including the
+user-confirmed final moving-tail viewport gate. Default enablement is the next batch
 under [D1 execution](SelectionPresentationG9D1Execution.md).
 D2–F are not started or accepted.
 
@@ -2096,7 +2096,7 @@ G9    — DESIGN LOCKED / G9-A + G9-B + G9-C COMPLETE AND VALIDATED / NOT SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
-G9-D1 — IMPLEMENTED / AUTOMATED GATES PASS / PARTIAL PIE / USER ACTION REQUIRED / NATIVE DEFAULT OFF
+G9-D1 — IMPLEMENTED / AUTOMATED GATES PASS / MANUAL PIE GATES PASS / DEFAULT ENABLEMENT PENDING
 G9-D2 — NOT STARTED
 G9-E  — NOT STARTED
 G9-F  — NOT STARTED
