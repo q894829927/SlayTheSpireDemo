@@ -157,7 +157,7 @@ G9 整体不封板。默认开启前新启动 PIE 仍需显式 setter，不能�
 
 ## 独立 Native 默认开启批次 — 2026-10-09
 
-人工收口提交 `a40335f` 后，Native 的 `bEnableDetachedCardArrivalD2` 默认设为
+人工收口提交 `a40335f` 后，默认开启交付 `a6bc659`。Native 的 `bEnableDetachedCardArrivalD2` 默认设为
 true，保留现有运行时关闭入口；通用 Base／Controller 不改默认，仍由生产
 Native 绑定同步策略。共享 C／D1 卡牌夹具显式关闭 D2，D2 案例自行开启，
 继续验证原 Blocking 断言，没有把旧用例改成解耦断言。

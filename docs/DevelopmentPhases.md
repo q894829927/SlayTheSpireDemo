@@ -9,7 +9,7 @@
 回退及选择／关闭／Skip／同实例下一回合再出牌。用户在 `557fceb` 交付后
 确认唯一剩余的运动中窗口缩放“验证通过”，记为 USER_REPORTED_PASS，
 全部 D2 人工门槛关闭，详见 [D2 执行](SelectionPresentationG9D2Execution.md)。
-人工收口 `a40335f` 后独立启用 Native D2 默认。规定生成／Editor 构建
+人工收口 `a40335f` 后独立启用 Native D2 默认，交付 `a6bc659`。规定生成／Editor 构建
 8.73／186.53 秒通过；一次聚焦 85 项，84 成功、1 个预期警告通过、无
 失败／未运行。生产 C++／Blueprint CDO／实际 HUD 无覆盖读回 B／D1／D2
 均 true，初始 Idle、正常输入；PIE 已停止。B／D1 默认开启保持；E／F
