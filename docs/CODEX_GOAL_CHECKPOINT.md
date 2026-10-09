@@ -1,4 +1,17 @@
-# Checkpoint — G9-D1 detached card destinations
+# Checkpoint — G9-D2 detached card arrival
+
+## 当前继续点：D2 契约就绪，开始完整入场事务
+
+2026-10-09，起点 HEAD `04d835b`。用户要求进行下一步，即已交付的下一
+阶段 D2。D1 已完成／默认开启，既有验收不重开。D2 的准入、纯预检、
+准确收据／生命周期保留、提前去向及回退契约见
+`SelectionPresentationG9D2Execution.md`。当前仅文档，无新 UE 运行。
+
+下一步实施 Controller／Base／Native 和协议测试；D2 默认 false，B／D1
+默认 true。修正目录旧可见播放顺序说明，保持正式 reducer 串行。规定
+生成／构建、聚焦测试及中文生产 PIE 后独立提交；不 push，不改外部
+Native HUD 资产，原 SHA256 保持并排除提交。E／F 未开始，G9 未封板。
+以下为历史状态。
 
 ## 当前继续点：D1 完成、默认启用；下一开发阶段 D2
 

@@ -9,7 +9,8 @@ D1 is complete and validated with all automated and Native PIE gates passed,
 including the user-confirmed final moving-tail viewport gate. Its independently
 validated Native default is enabled
 under [D1 execution](SelectionPresentationG9D1Execution.md).
-D2–F are not started or accepted.
+D2 is in progress with its default off under [D2 execution](SelectionPresentationG9D2Execution.md).
+E–F are not started or accepted.
 
 Date: **2026-09-13**
 
@@ -2098,7 +2099,7 @@ G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
 G9-D1 — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED / CARDPLAYED ARRIVAL BLOCKING
-G9-D2 — NOT STARTED
+G9-D2 — IN PROGRESS / NATIVE DEFAULT OFF
 G9-E  — NOT STARTED
 G9-F  — NOT STARTED
 ```

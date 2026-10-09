@@ -1,5 +1,9 @@
 # Development Phases
 
+2026-10-09 G9-D2 IN PROGRESS：从 `04d835b` 开始入场解耦，执行契约见
+[D2 执行](SelectionPresentationG9D2Execution.md)。D2 验收前默认关闭，
+B／D1 已验收默认开启保持；E／F 未开始，G9 未封板。本契约批次仅文档。
+
 2026-10-09 **G9-D1 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，
 入场仍 Blocking。
