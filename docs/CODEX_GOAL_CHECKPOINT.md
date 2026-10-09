@@ -1,5 +1,29 @@
 # Checkpoint — G9-D1 detached card destinations
 
+## 当前继续点：D1 其余 PIE 通过，仅待尾部运动中缩放窗口
+
+2026-10-09，执行 HEAD `b9dec42`，代码实现 `96de67b`。用户解锁后继续，
+生产 Native、RuinedCitadel、D3D12／SM6、B=true、D1 临时 true。
+实际重叠、尾部期间一次结束回合、同 RuntimeId 第二回合再出牌、战吼选择／
+消耗、关闭／Blocking 回退／Skip／后续正常出牌已观察通过，详见
+`SelectionPresentationG9D1Execution.md`。此次无 C++ 变化，不重跑有效
+构建／自动化；保存 JSON／PNG／SHA256 manifest 在 `Saved/G9D1VisualEvidence/`。
+排除误截黑色编辑器的 `OverlapLater.png`。
+
+唯一剩余：卡牌尾部仍运动时缩放窗口，确认无裁切、突跳、幽灵且后续可交互。
+工具缩放晚于尾部结束，未证明本门槛；只证明缩放后布局与实际出牌正常。
+已发中文人工请求，不能恢复“四项全部未验”或重复要求其余已通过门槛。
+
+编辑器 PID `55900`、GameInstance_2 PIE 保留给用户，HUD 路径
+`/Engine/Transient.UnrealEdEngine_0:GameInstance_2.WBP_BattleHUD_Native_C_0`。
+观察回调已结束，最后 Idle、未锁定、反馈空、能量 3、弃牌 1、消耗 1，
+私有 host 已清理。恢复时先核实实际会话，用户可能继续操作。没有资产保存，
+外部 Native HUD 原 SHA256 保持并排除提交，不 push。
+
+D1 为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE／默认关闭；D2／E／F
+未开始，G9 未封板。最后人工门槛通过后才独立默认启用批次，规定生成／
+Editor 构建、受影响验证和生产默认读回，然后本地提交。以下为历史状态。
+
 ## 当前继续点：G9-D1 实施及自动化通过，等待解锁后的 Native PIE
 
 2026-10-09，契约 HEAD `a211cd2`；已核实实现 HEAD `96de67b`，提交标题

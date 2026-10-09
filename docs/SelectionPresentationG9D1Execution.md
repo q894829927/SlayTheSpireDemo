@@ -2,7 +2,8 @@
 
 日期：2026-10-09。分支 `codex/g9-buffered-input-detached-cards`，起点 `04124e2`。
 G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **IMPLEMENTED / AUTOMATED GATES
-PASS / USER ACTION REQUIRED / NATIVE DEFAULT OFF**；不实施 D2／E／F。
+PASS / PARTIAL PIE / USER ACTION REQUIRED / NATIVE DEFAULT OFF**；不实施 D2／E／F。
+解锁后已完成本页其余 Native PIE 门槛；唯一剩余项是尾部仍在运动时缩放窗口。
 
 ## 实施边界与提交批次
 
@@ -123,7 +124,7 @@ G8A、冻结 CardPlayed 卡面及 HandInteraction；精确案例以报告为准�
 重入 Skip／关闭／替换、提交后视觉或视口失效、三种正式去向、无活动
 unit 的全局清理、关闭保留关联、正常回合流程同 RuntimeId 再抽回并出牌。
 
-### 生产启动检查与当前视觉限制
+### 首次生产启动与锁屏限制（历史）
 
 UE MCP 在生产地图启动实际 Native 浮动窗口 PIE，默认 D3D12／SM6。
 公开读回 `Saved/G9D1InitialHUD.json` 确认 B=true、D1=false，并绑定生产
@@ -141,3 +142,43 @@ Native PIE 均为 **USER ACTION REQUIRED**。已通过的 C／B 不重复要求�
 外部 Native HUD 资产 SHA256 保持
 `F896F7B59A91D4EC86AD73973451E19012B7523EE7D1D1ECEE2B570894E20F81`，
 排除提交。D1 视觉门槛通过前不启用默认、不进入 D2，不宣称阶段完成或封板。
+
+### 解锁后的生产 Native PIE — 2026-10-09
+
+用户明确告知已解锁并继续。实际执行 HEAD `b9dec42`，运行时代码 `96de67b`，
+同一生产地图、Native HUD、D3D12／SM6、B=true、D1 显式临时 true；默认仍
+false，D2 未实施。此次仅 PIE 与证据文档，无新 C++ 改动、构建或 Automation；
+上述有效构建／自动化证据继续复用。本次编辑器 PID `55900`，日志
+`Saved/Logs/G9D1UnlockedPIE.log`。
+
+从干净的 GameInstance_1 开始有效时间线；GameInstance_2 检查强制选择及
+视口。初次控制台聚焦尝试未用于验收。临时观察脚本曾因读取私有 job 属性
+被 Python 拒绝，随后改为公开 frozen ViewModel、host 的子项及 Widget 接口，
+没有修改运行时代码或绕过访问边界。排队、结束回合、关闭和 Skip 均使用
+已有 HUD 正常入口，不直接修改 Gameplay、reducer、动画时长或参数。
+
+| 门槛 | 实际操作与观察 | 结果及证据 |
+|---|---|---|
+| 尾部与后续出牌重叠 | 鼠标打出打击 RuntimeId=4；在它播放时，通过正常 HUD 入口选中并确认燃烧 RuntimeId=5。打击正式弃牌已显示 1，燃烧仍在 Blocking 入场；两张卡同时可见。随后燃烧结算及尾部清理，最终 Idle、能量 3、无反馈、host 为空。 | AGENT_OBSERVED_PASS；`OverlapStart.png`、`OverlapComplete.png`、`OverlapTimeline.json`。 |
+| 尾部期间结束回合 | 剑柄打击 RuntimeId=6 完成伤害及两次抽牌，正式弃牌为 2、尾部仍可见时调用 EndTurn。首次 true，重复 false；尾部继续运动，回合正常推进一次。第二回合打击 RuntimeId=4 重新抽回后可选中并出牌。 | AGENT_OBSERVED_PASS；`EndTurnTailAndTurn.png`、`EndTurnComplete.png`、`EndTurnTimeline.json`及随后 `DisableTimeline.json`。 |
+| 消耗／能力与强制选择交接 | 燃烧去向后淡出并退役；另一次干净 PIE 鼠标打出战吼，选择打击置于抽牌堆顶部并确认。选择期间 retained 出牌视觉 Hidden；确认后战吼消耗数为 1，尾部恢复可见、无需等待尾部即可 Idle，随后完全清理，无闪回或卡死。 | AGENT_OBSERVED_PASS；`SelectionExhaustTail.png`、`SelectionComplete.png`、`SelectionTimeline.json`；正式三种去向数值／身份仍由自动化证明。 |
+| 关闭、Blocking 回退及 Skip | 第二回合打击尾部期间关闭 D1，立即清理 host，正式弃牌保持 1；随后双重打击正常走 Blocking 去向，直到尾部结束才提交弃牌。再启用 D1，上勾拳正式去向后、Idle 且尾部仍可见时 Skip，host 立即为空、数值不回滚；之后坚毅正常出牌／消耗手牌并回到 Idle。 | AGENT_OBSERVED_PASS；`DisableTimeline.json`、`FallbackBlockingTail.png`、`FallbackTimeline.json`、`SkipTimeline.json`、`G9D1DisabledHUD.json`、`G9D1PostSkipSkillFinalVM.json`。 |
+| 尾部运动中缩放窗口 | 工具尝试燃烧播放后立即拖动窗口边缘，但时间线证明 tail 已在旧尺寸结束，才完成缩放，不能作为本门槛通过证据。缩放后实际选中并打出剑柄打击，最终 Idle、未锁定、无反馈，卡牌布局正常。 | **USER ACTION REQUIRED**；`ViewportTimeline.json`证明未命中运动区间；`G9D1ResizedSelectionVM.json`、`G9D1ResizedPlayFinalVM.json`只证明缩放后交互正常。 |
+
+PNG／时间线均位于 `Saved/G9D1VisualEvidence/`，配置及文件 SHA256 清单为
+`Manifest.json`。上述独立 JSON 读回位于 `Saved/`；不纳入 Git 提交。
+`OverlapLater.png` 截到了黑色编辑器视口，明确排除游戏视觉证据，不能据此
+判断 Native 游戏画面失败或通过。有效重叠帧已实际查看；时间线／自动化
+补充正式身份及顺序，不能替代尚缺的运动帧内缩放观察。
+
+当前保留 GameInstance_2 的生产浮动 PIE 供用户完成唯一剩余项，HUD 为
+`/Engine/Transient.UnrealEdEngine_0:GameInstance_2.WBP_BattleHUD_Native_C_0`，
+D1 仅当前实例 true；观察回调已结束，所有私有卡牌视觉已清理。最后读回
+Idle、bInputLocked=false、反馈为空、能量 3、弃牌 1、消耗 1。没有资产保存，
+外部 Native HUD 原 SHA256 保持。后续若用户改变会话，以最新实际读回为准。
+
+**唯一剩余人工步骤：**在当前 PIE 打出一张牌，在卡牌仍飞向弃牌堆或仍
+淡出时立即拖动窗口边缘缩放；确认没有裁切、突跳、幽灵卡，并验证之后
+仍可悬停和出牌。已向用户发送该具体待验请求。无需重做其余已通过项。
+本项通过后才独立默认启用、规定生成／构建／受影响验证及生产启动读回。
+在此之前 D1 为 PARTIAL PIE／默认关闭，不进入 D2、不宣称 COMPLETE。

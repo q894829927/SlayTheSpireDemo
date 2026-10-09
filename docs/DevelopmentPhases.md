@@ -1,11 +1,12 @@
 # Development Phases
 
-2026-10-09 G9-D1 IMPLEMENTED／AUTOMATED GATES PASS／USER ACTION REQUIRED：
+2026-10-09 G9-D1 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE／USER ACTION REQUIRED：
 契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，
 入场仍 Blocking。
 规定构建通过，首轮 91 项及最后受影响 10 项零失败；重叠范围不相加。
-生产 Native MCP 启动读回 B=true、D1=false。Windows 锁屏导致本次实际
-视觉门槛未执行，D1 默认继续关闭；中文待验与完整证据见
+解锁后生产 Native PIE 显式开启 D1，重叠、尾部期间结束回合、选择／消耗、
+关闭／Blocking 回退／Skip 已观察通过；仅尾部运动中缩放窗口仍待人工。
+D1 默认继续关闭；中文待验与完整证据见
 [D1 执行](SelectionPresentationG9D1Execution.md)。C／B 保持已验收，
 D2／E／F 未开始，G9 整体未封板。
 

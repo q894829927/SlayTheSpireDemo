@@ -8,10 +8,17 @@
 受影响 G9D1／G9C.Visual，10 项成功、零警告／失败。首轮未受影响证据复用；
 准确范围及说明见 [D1 执行](SelectionPresentationG9D1Execution.md)。
 
-生产 Native MCP 浮动 PIE 启动，HUD 读回 B=true、D1=false；Windows 锁屏
-阻止实际窗口操作，本次未启用 D1 或出牌，不能宣称尾部视觉通过。
-四项中文 Native PIE 门槛为 USER ACTION REQUIRED。PIE 已停止、编辑器
-关闭，无资产保存。D1 IMPLEMENTED／AUTOMATED GATES PASS／DEFAULT OFF，
+首次启动被 Windows 锁屏阻止。用户解锁后在 HEAD `b9dec42`／代码
+`96de67b` 的生产 Native 浮动 PIE 临时开启 D1，D3D12／SM6、B=true。
+实际观察通过：打击尾部与排队燃烧入场共存、尾部期间一次结束回合、
+同 RuntimeId 第二回合再出牌、战吼强制选择与消耗尾部、关闭及 Blocking
+回退、无活动 Blocking unit 的尾部 Skip 与后续技能出牌。
+只有“尾部仍在运动时缩放窗口”尚为 USER ACTION REQUIRED；工具缩放晚于
+尾部结束，不能冒充通过。缩放后的实际出牌正常。证据在
+`Saved/G9D1VisualEvidence/` 及上述专用文档；黑色编辑器 `OverlapLater.png`
+明确排除游戏视觉证据。此次未改 C++，复用既有构建／自动化。
+保留已临时开启 D1 的 GameInstance_2 PIE 供唯一剩余人工操作，最终 Idle、
+未锁定、无反馈；无资产保存。D1 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE／DEFAULT OFF，
 不得宣称 COMPLETE 或进入 D2；C／B 验收不重开，G9 未封板。
 
 ## G9-C 最后一项人工验收收口 — 2026-10-09
