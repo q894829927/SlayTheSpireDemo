@@ -1,16 +1,29 @@
 # Checkpoint — G9-D2 detached card arrival
 
-## 当前继续点：D2 契约就绪，开始完整入场事务
+## 当前继续点：D2 实施与自动化通过，唯一运动中缩放视觉待办
 
-2026-10-09，起点 HEAD `04d835b`。用户要求进行下一步，即已交付的下一
-阶段 D2。D1 已完成／默认开启，既有验收不重开。D2 的准入、纯预检、
-准确收据／生命周期保留、提前去向及回退契约见
-`SelectionPresentationG9D2Execution.md`。当前仅文档，无新 UE 运行。
+2026-10-09，起点 `04d835b`，本批验证时 HEAD `931eb30` 加 Native C++／测试
+工作区；提交后本段由交付记录核实。D2 准入、当前 Envelope 纯预检、
+Controller／Base 正式事务、独立去向收据、Native pending 去向连续尾部、
+容量及生命周期清理已实现。D2 默认 false，B／D1 默认 true。
 
-下一步实施 Controller／Base／Native 和协议测试；D2 默认 false，B／D1
-默认 true。修正目录旧可见播放顺序说明，保持正式 reducer 串行。规定
-生成／构建、聚焦测试及中文生产 PIE 后独立提交；不 push，不改外部
-Native HUD 资产，原 SHA256 保持并排除提交。E／F 未开始，G9 未封板。
+四次规定生成／构建均通过。初轮 83 项、夹具修正／补跑 30 项、最后仅
+受影响 2 项；97 个不同案例有效通过（4 个既有预期警告），不累加报告。
+范围／失败原因／日志见 `SelectionPresentationG9D2Execution.md`。生产 PIE
+已通过普通入场、后续确认 FIFO／多 job、一次 EndTurn、战吼 Blocking 与
+强制选择、关闭后必要去向提交、同实例下一回合再出及 Skip 清理观察。
+
+唯一未完成项：USER ACTION REQUIRED，D2 牌仍在入场或尾部衔接运动时
+实际调整窗口，检查定位／连续运动／无裁切、残留，之后悬停和再出牌。
+当前自有编辑器 PID 80756、生产浮动 PIE `GameInstance_1` 保留；实际 HUD
+D2=true、Idle、未锁定、可结束回合、能量 2，有剑柄打击／防御／坚毅／
+怒火可供验收。临时观察器已自行退出。默认关闭仍由 C++／Blueprint CDO
+读回确认；没有保存资产。
+
+下一步先获得这一个人工反馈，随后以独立批次启用 Native D2 默认、规定
+验证及生产读回再提交。不要重复已通过门槛，不进入 E／F，不宣称 D2
+COMPLETE 或 G9 SEALED。不 push；外部 Native HUD 资产原 SHA256 保持并
+排除提交。C／D1／B 原验收已关闭，不重开。
 以下为历史状态。
 
 ## 当前继续点：D1 完成、默认启用；下一开发阶段 D2

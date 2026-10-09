@@ -18,13 +18,15 @@ void UBattleHUDWidget::SetDetachedCardDestinationD1Enabled(bool bEnabled)
 void UBattleHUDWidget::NativeOnPresentationControllerChanged()
 {
 	if (PresentationController) PresentationController->SetDetachedCardDestinationD1Enabled(bEnableDetachedCardDestinationD1 && bNativeBindingsValid);
+	if (PresentationController) PresentationController->SetDetachedCardArrivalD2Enabled(bEnableDetachedCardArrivalD2 && bNativeBindingsValid);
 }
 
 bool UBattleHUDWidget::BuildPlayedCardDestinationVisual(const FNativePlayedCardVisualJob& Job,
-	const FPresentationRecord& Record, FPreparedCardDestinationVisual& OutSpec) const
+	const FPresentationRecord& Record, FPreparedCardDestinationVisual& OutSpec, bool bArrivalPreflight) const
 {
 	OutSpec = {};
-	if (Job.Phase != ECardVisualPhase::AtPlayArea || Job.bDetachedDestination || !IsValid(Job.Widget)
+	if ((Job.Phase != ECardVisualPhase::AtPlayArea && !(bArrivalPreflight && Job.Phase == ECardVisualPhase::Prepared))
+		|| Job.bDetachedDestination || !IsValid(Job.Widget)
 		|| Job.Widget->GetParent() != DetachedCardVFXHost || Job.ViewModel.Get() != ViewModel.Get()
 		|| Job.SurfaceGeneration != HandSurfaceGeneration || !OV_PlayArea
 		|| !DoesNativeCardViewMatchSnapshot(Job.Widget->GetCardView(), Record.CardZoneChanged.Card)) return false;
@@ -125,6 +127,6 @@ void UBattleHUDWidget::NativeRetireDetachedCardDestination(const FDetachedCardDe
 void UBattleHUDWidget::NativeCancelDetachedCardDestinationVisuals()
 {
 	for (int32 I = PlayedCardVisualJobs.Num()-1; I >= 0; --I)
-		if (PlayedCardVisualJobs[I].bDetachedDestination) RetirePlayedCardVisualJob(I);
+		if (PlayedCardVisualJobs[I].bDetachedDestination || PlayedCardVisualJobs[I].bDetachedArrival) RetirePlayedCardVisualJob(I);
 		else PlayedCardVisualJobs[I].PreparedDestination = {};
 }

@@ -64,6 +64,15 @@ Reducer application order MUST always remain the committed `PresentationSequence
 
 Visible playback normally follows the same order. The only authorized exception is an explicitly committed, complete and Controller-validated `PresentationGroup`: the Controller may co-present/look ahead to that group's own frozen members from the already sealed Envelope without reducing those future members early. This exception MUST NOT consume, skip, reorder or mark interleaved ungrouped Records as played, and MUST NOT be inferred from CardId, Effect type, destination, adjacency, timing or Widget state.
 
+The locked G9 design also authorizes detached CardPlayed/destination cosmetics
+after their own records commit. They do not wait for visual completion to advance
+chronology. D2 may only prove a future destination from the current sealed Envelope
+using copied canonical state; preflight never consumes that future record. Keep
+formal played-card correlation and admitted destination receipts independently
+from visual jobs until chronological consumption or recovery, including disable
+and visual loss. This G9 rule supersedes the earlier Group-only visible-order
+wording; reducer order and the Group lookahead restrictions above remain unchanged.
+
 Before a non-contiguous group is offered for co-presentation, Controller preflight MUST prove not only chronological reducer validity but also future-member visual independence. If any interleaved ungrouped Record directly moves, plays, replaces, or otherwise modifies an exact group member whose own reducer cursor has not yet been reached, the entire group is ineligible for lookahead and degrades to sequential playback. A dry-run reducer that merely succeeds is not sufficient evidence that early visible consumption is safe.
 
 If a future group member is visually consumed before its reducer cursor is reached, its formal historical visual MUST remain Presentation-suppressed by exact committed identity until that member is reduced. Intermediate `ApplyPresentationSnapshot` / HUD rebuilds must not make the already-consumed visual reappear. Suppression is Presentation-only state and must be cleared on exact member reduction or global reconciliation boundaries such as Skip, active-envelope failure reconciliation, envelope replacement/completion, battle replacement or Presentation-unavailable fallback.

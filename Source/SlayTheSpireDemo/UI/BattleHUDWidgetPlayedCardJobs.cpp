@@ -8,6 +8,7 @@
 #include "Components/Overlay.h"
 #include "Components/TextBlock.h"
 #include "../Presentation/BattlePresentationController.h"
+#include "UObject/StrongObjectPtr.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogBattleCardVisual, Log, All);
 
@@ -60,15 +61,7 @@ bool UBattleHUDWidget::BeginHostedCardPlayed(const FPresentationRecord& Record, 
 	const auto& RootGeometry = GetCardInputRootGeometry();
 	const auto& PlayGeometry = OV_PlayArea->GetCachedGeometry();
 	if (RootGeometry.GetLocalSize().IsNearlyZero() || PlayGeometry.GetLocalSize().IsNearlyZero()) return false;
-	TOptional<FCardPlayVisualOrigin> Origin;
-	if (SubmittedCardVisual.IsSet() && SubmittedCardViewModel.Get() == ViewModel.Get()
-		&& SubmittedCardController.Get() == PresentationController.Get()
-		&& SubmittedCardVisual->Turn.BattleId == static_cast<uint64>(Record.BattleId)
-		&& SubmittedCardVisual->RuntimeId == Lifecycle.RuntimeId && SubmittedCardVisual->CardId == Lifecycle.CardId
-		&& (SubmittedCardVisual->InputSequence == 0 || SubmittedCardVisual->TargetPresentationId == Record.CardPlayed.TargetPresentationId)
-		&& (!SubmittedCardVisual->PresentationFence.IsSet() || PresentationController->IsCurrentPresentationSession(SubmittedCardVisual->PresentationFence.GetValue())))
-		Origin = SubmittedCardVisual->VisualOrigin;
-	if (!Origin.IsSet()) Origin = CaptureCardPlayVisualOrigin(Lifecycle.RuntimeId);
+	const auto Origin = ResolveHostedCardPlayOrigin(Record, Lifecycle);
 	if (!Origin.IsSet() || !FMath::IsFinite(Origin->Angle) || Origin->Size.X <= 0 || Origin->Size.Y <= 0) return false;
 	FDetachedCardVisualToken VisualToken;
 	if (!PreparePlayedCardVisualJob(Record,Token,Lifecycle,Origin.GetValue(),Source,VisualToken)) return false;
@@ -113,7 +106,7 @@ bool UBattleHUDWidget::BeginNativePlayAreaToDestinationPresentation(const FPrese
 
 bool UBattleHUDWidget::PreparePlayedCardVisualJob(const FPresentationRecord& Record, const FPresentationPlaybackToken& BlockingToken,
 	const FPlayedCardPresentationLifecycleToken& Lifecycle, const FCardPlayVisualOrigin& Origin,
-	UBattleCardWidget* Source, FDetachedCardVisualToken& OutToken)
+	UBattleCardWidget* Source, FDetachedCardVisualToken& OutToken, bool bDetachedArrival)
 {
 	OutToken = {};
 	if (!Lifecycle.IsValid() || !IsValid(ViewModel) || ViewModel->BattleId != Lifecycle.BattleId
@@ -121,17 +114,20 @@ bool UBattleHUDWidget::PreparePlayedCardVisualJob(const FPresentationRecord& Rec
 		|| Record.Type != EBattlePresentationRecordType::CardPlayed || Record.BattleId != Lifecycle.BattleId
 		|| Record.ResolutionId != Lifecycle.SourceResolutionId || Record.PresentationSequence != Lifecycle.CardPlayedPresentationSequence
 		|| Record.CardPlayed.Card.RuntimeId != Lifecycle.RuntimeId || Record.CardPlayed.Card.CardId != Lifecycle.CardId
-		|| !IsNativeRecordTokenConsistent(Record,BlockingToken) || !IsNativeCardSnapshotValid(Record.CardPlayed.Card)
+		|| (!bDetachedArrival && !IsNativeRecordTokenConsistent(Record,BlockingToken))
+		|| (bDetachedArrival && BlockingToken.IsValid()) || !IsNativeCardSnapshotValid(Record.CardPlayed.Card)
 		|| PlayedCardVisualJobs.Num() >= 32 || NextCardVisualGeneration <= 0 || NextCardVisualGeneration == MAX_int64
 		|| !FMath::IsFinite(Origin.Center.X) || !FMath::IsFinite(Origin.Center.Y) || !FMath::IsFinite(Origin.Angle)
 		|| !FMath::IsFinite(Origin.Size.X) || !FMath::IsFinite(Origin.Size.Y) || Origin.Size.X <= 0 || Origin.Size.Y <= 0
 		|| !EnsureDetachedCardVFXHost()) return false;
 	for (const auto& Job : PlayedCardVisualJobs) if (Job.Token.Lifecycle == Lifecycle) return false;
+	const TStrongObjectPtr<UBattleCardWidget> KeepSource(Source);
 	UBattleCardWidget* Card = CreateNativePresentationCard(Record.CardPlayed.Card);
 	if (!Card) return false;
 	Card->ForceLayoutPrepass();
 	FNativePlayedCardVisualJob Job; Job.Token.Lifecycle = Lifecycle; Job.Token.LocalVisualGeneration = NextCardVisualGeneration++;
 	Job.BlockingToken = BlockingToken; Job.Widget = Card; Job.ViewModel = ViewModel; Job.SurfaceGeneration = HandSurfaceGeneration;
+	Job.bDetachedArrival = bDetachedArrival;
 	Job.Origin = Origin; Job.SourceHandWidget = Source; Job.SourceVisibility = Source ? Source->GetVisibility() : ESlateVisibility::Visible;
 	Job.DesiredSize = Card->GetDesiredSize();
 	if (Job.DesiredSize.X <= 0 || Job.DesiredSize.Y <= 0) Job.DesiredSize = Origin.Size;
@@ -187,9 +183,16 @@ void UBattleHUDWidget::UpdatePlayedCardVisualJobs(float DeltaSeconds)
 		if (!FMath::IsFinite(RootSize.X) || !FMath::IsFinite(RootSize.Y) || RootSize.X <= 0 || RootSize.Y <= 0
 			|| Play.GetLocalSize().IsNearlyZero()) { RetirePlayedCardVisualJob(I); continue; }
 		Job.Elapsed += FMath::IsFinite(DeltaSeconds) ? FMath::Max(DeltaSeconds,0.f) : 0.f;
+		if (Job.bDetachedArrival && Job.Phase == ECardVisualPhase::EnteringPlayArea && Job.Elapsed >= Job.Duration)
+		{
+			const float Remaining = Job.Elapsed-Job.Duration;
+			Job.Phase = ECardVisualPhase::AtPlayArea; Job.Elapsed = 0;
+			if (Job.bArrivalDestinationCommitted) BeginDetachedArrivalDestinationTail(Job, Remaining);
+		}
 		const float Alpha = FMath::InterpEaseOut(0.f,1.f,FMath::Clamp(Job.Elapsed/Job.Duration,0.f,1.f),3.f);
 		const FVector2D Size = Root.GetLocalSize();
-		const FVector2D PlayCenter = Root.AbsoluteToLocal(Play.LocalToAbsolute(Play.GetLocalSize()*0.5f));
+		const FVector2D PlayCenter = Job.bDetachedArrival ? Job.ArrivalDestination.StartCenter*Size
+			: Root.AbsoluteToLocal(Play.LocalToAbsolute(Play.GetLocalSize()*0.5f));
 		FVector2D Center = PlayCenter, Scale(1); float Angle = 0, Opacity = 1;
 		if (Job.Phase == ECardVisualPhase::EnteringPlayArea)
 		{
@@ -237,7 +240,7 @@ void UBattleHUDWidget::RetireCollidingPlayedCardVisualJobs()
 				if (auto* Card = Cast<UBattleCardWidget>(Child); Card && Card->IsVisible()
 					&& Card->GetRuntimeId() == Job.Token.Lifecycle.RuntimeId && ViewModel
 					&& ViewModel->GetCardPresentationOwner(Card->GetRuntimeId()) == ECardPresentationOwner::Hand)
-					bRetire = true;
+					if (Job.Phase != ECardVisualPhase::Prepared || Card != Job.SourceHandWidget.Get()) bRetire = true;
 		if (bRetire) RetirePlayedCardVisualJob(I);
 	}
 }
@@ -258,7 +261,7 @@ void UBattleHUDWidget::SetPlayedCardVisualsSelectionHidden(bool bHidden)
 	bPlayedCardVisualsSelectionHidden = bHidden;
 	const auto CosmeticVisibility = bHidden ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible;
 	for (auto& Job : PlayedCardVisualJobs)
-		if (Job.Widget && !Job.bDetachedDestination && Job.Phase != ECardVisualPhase::Prepared) Job.Widget->SetVisibility(CosmeticVisibility);
+		if (Job.Widget && !Job.bDetachedDestination && !Job.bDetachedArrival && Job.Phase != ECardVisualPhase::Prepared) Job.Widget->SetVisibility(CosmeticVisibility);
 	if (auto* Card = NativeBlockingFallbackPlayedCardWidget.Get()) Card->SetVisibility(CosmeticVisibility);
 }
 
@@ -267,7 +270,7 @@ bool UBattleHUDWidget::CompletePlayedCardVisualJob(const FDetachedCardVisualToke
 	for (int32 I = 0; I < PlayedCardVisualJobs.Num(); ++I)
 	{
 		auto& Job = PlayedCardVisualJobs[I];
-		if (Job.bDetachedDestination || !(Job.Token == VisualToken) || Job.BlockingToken != BlockingToken) continue;
+		if (Job.bDetachedDestination || Job.bDetachedArrival || !(Job.Token == VisualToken) || Job.BlockingToken != BlockingToken) continue;
 		if (Job.Phase == ECardVisualPhase::EnteringPlayArea)
 		{
 			Job.Phase = ECardVisualPhase::AtPlayArea; Job.Elapsed = 0; UpdatePlayedCardVisualJobs(0); return true;

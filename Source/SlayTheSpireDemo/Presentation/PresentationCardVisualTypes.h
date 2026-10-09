@@ -28,3 +28,20 @@ struct SLAYTHESPIREDEMO_API FDetachedCardDestinationToken
 	{ return Visual == Other.Visual && ResolutionId == Other.ResolutionId
 		&& PresentationSequence == Other.PresentationSequence && PreparationGeneration == Other.PreparationGeneration; }
 };
+
+// End-to-end arrival admission, retained independently from its visual job.
+USTRUCT()
+struct SLAYTHESPIREDEMO_API FDetachedCardArrivalToken
+{
+	GENERATED_BODY()
+	UPROPERTY() FDetachedCardVisualToken Visual;
+	UPROPERTY() int64 DestinationResolutionId = 0;
+	UPROPERTY() int64 DestinationPresentationSequence = 0;
+	UPROPERTY() int64 PreparationGeneration = 0;
+	bool IsValid() const
+	{ return Visual.IsValid() && DestinationResolutionId == Visual.Lifecycle.SourceResolutionId
+		&& DestinationPresentationSequence > Visual.Lifecycle.CardPlayedPresentationSequence && PreparationGeneration > 0; }
+	bool operator==(const FDetachedCardArrivalToken& Other) const
+	{ return Visual == Other.Visual && DestinationResolutionId == Other.DestinationResolutionId
+		&& DestinationPresentationSequence == Other.DestinationPresentationSequence && PreparationGeneration == Other.PreparationGeneration; }
+};

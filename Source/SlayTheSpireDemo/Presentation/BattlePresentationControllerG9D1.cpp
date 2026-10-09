@@ -80,6 +80,7 @@ UBattlePresentationController::TryCommitDetachedCardDestinationRecord(const FPre
 void UBattlePresentationController::CancelCurrentSessionPlayedCardVisuals()
 {
 	CommittedCardDestinationReceipt = {};
+	CommittedCardArrivalReceipt = {}; CommittedArrivalDestinationReceipt = {};
 	if (ActivePresentationSessionToken.IsValid() && IsValid(Widget))
 		Widget->CancelPlayedCardVisualsForSession(ActivePresentationSessionToken);
 }

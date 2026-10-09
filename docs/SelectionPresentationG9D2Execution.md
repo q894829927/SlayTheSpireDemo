@@ -1,7 +1,7 @@
 # G9-D2：出牌入场与提前去向衔接
 
 2026-10-09，分支 `codex/g9-buffered-input-detached-cards`，起点 `04d835b`。
-D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 IN PROGRESS／默认关闭；
+D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE／默认关闭；
 本轮仅 D2，不进入 E／F，不宣称 G9 封板。保留外部 Native HUD 资产原样，
 只改 Native C++、测试及文档；每个完整批次本地提交，不 push。
 
@@ -69,5 +69,82 @@ B=true、D1=true、D2 验收期间显式开启。不得修改资产或延长动�
 
 ## 当前证据
 
-契约基线 `04d835b`。本契约批次未改运行时代码或资产，未运行新构建、
-Automation 或 PIE。既有 D1 证据有效；D2 尚无通过结论。
+契约基线 `04d835b`，契约提交 `931eb30`。以下构建／Automation／PIE 均在
+`931eb30` 加本批 Native C++／测试工作区上实际执行，D2 默认 false。
+当前为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE，不能标记
+COMPLETE／VALIDATED 或进入 E。C／D1／B 原验收不重开，G9 NOT SEALED。
+
+## 实现和自动化证据 — 2026-10-09
+
+Controller 的预检复制当前封存 Envelope 的候选快照与生命周期，调用共享
+reducer；Base 限定准备／正式提交后激活／未来去向承接边界。Native job
+保存完整旅程、准确来源、阶段和 pending 去向，入场无 Blocking token／
+timer。正式收据独立保存；关闭、视觉丢失或 GC 之后仍按自己的游标消费。
+新正式 Hand 优先，旧视觉 generation 的收据不能删除新 job。未通过准备
+或超过 32 时保留现有 Blocking，历史无效仍走 Presentation 恢复。
+
+| 运行 | 工程生成／Development Editor 构建 | Automation 实际结果与范围 |
+|---|---|---|
+| 首次代码构建 | 10.81／390.50 秒通过，`G9D2ProjectFiles.log`／`G9D2Build.log` | 尚未测试。 |
+| 容量夹具修正 | 9.20／12.70 秒通过，`G9D2FixtureProjectFiles.log`／`G9D2FixtureBuild.log` | `G9D2` 报告 83 项：76 成功、4 带预期警告通过、3 失败。 |
+| 夹具目标／历史引用修正 | 8.19／23.56 秒通过，`G9D2RepairProjectFiles.log`／`G9D2RepairBuild.log` | `G9D2Repair` 报告 30 项：29 成功、1 失败，无警告。 |
+| 格挡表面补齐 | 7.66／77.36 秒通过，`G9D2BlockFixtureProjectFiles.log`／`G9D2BlockFixtureBuild.log` | 仅受影响 Loss／Capacity 两项重跑，`G9D2BlockFixture` 报告 2/2 成功，无警告。 |
+
+日志在 `Saved/Logs/`，报告在 `Saved/AutomationReports/` 对应目录；原始失败
+保留。首轮范围：G9D2、G9D1、G9C、Native R8、G9B、G8B、Native FastInput、
+G6、CardSelection.Presentation、G8D／G8A。首轮把 HandInteraction／UIA3
+冻结卡面的前缀写错而漏跑；第二轮使用实际前缀补跑这 14 项，同时重跑
+受夹具修正影响的 D2／D1／G9C.Visual。第二轮唯一剩余失败因没有配置
+Native 格挡表面，记录被正确 decline，无法形成需要验证的中间 Blocking
+窗口；补齐表面后只重跑 Loss／Capacity。没有把 decline 改成跳过断言。
+
+按案例身份去重并采用最后有效证据，**97 个不同案例均有通过证据，其中
+4 个既有异常输入／空测试牌库案例带预期警告**。不将重叠的 83、30、2
+相加，也不宣称最终版本一次 97/97。新增 6 个 D2 案例验证：提前去向／
+多 job／GC、纯预检缺失／重复／错误身份／索引／不支持去向、Blocking
+回退、发布重入、视觉丢失／关闭时必要关联、去向晚于入场、同 RuntimeId
+回手、旧收据、合法容量与全局清理。容量使用真实十张手牌上限，经正常
+回合流转、零费消耗牌累积 32 个 job；没有扩大 Gameplay 手数量。
+
+首轮失败均为新增夹具问题：格挡定义错误地使用 None 目标；异常预检临时
+替换封存记录数组导致调用方引用失效；最后是缺少格挡文本表面。修正夹具
+后通过，没有修改 Gameplay、吞掉日志错误或放宽正式断言。
+
+## 实际 Native PIE 证据 — 2026-10-09
+
+MCP 启动生产地图，Native C++ CDO／生产 Blueprint CDO／初始 HUD 均读回
+B=true、D1=true、D2=false；当前 PIE 通过运行时 setter 显式开启 D2，三项
+均 true。读回文件 `Saved/G9D2NativeCDO.json`、`G9D2BlueprintCDO.json`、
+`G9D2InitialHUD.json`、`G9D2OptInHUD.json`。日志 `Saved/Logs/G9D2PIE.log`。
+没有保存资产或改动画时长；Native HUD 外部资产 SHA256 始终保持
+`F896F7B59A91D4EC86AD73973451E19012B7523EE7D1D1ECEE2B570894E20F81`，排除提交。
+
+| 观察 | 实际操作与结果 | 证据 |
+|---|---|---|
+| 入场历史继续 | 真实点击剑柄打击及敌人。来源是原手牌选中位置，卡牌仍向出牌区移动时敌人扣血、抽牌记录继续。 | `ArrivalStart.png`、`OverlapTimeline.json`。 |
+| 完整 FIFO 与重叠 | 新 PIE 点击剑柄打击；入场时通过公开 HUD 输入，按 HUD 的冻结目标 Widget ID 确认燃烧和打击。两项均接受，顺序执行，追平后 Idle，能量 2，弃牌 2，敌人 HP 133；视觉 6／5／4 同时存续并各自退役。 | `ConfirmedOverlapTimeline.json`、`ConfirmedOverlap.png`、`ConfirmedOverlapComplete.png`；日志三个独立 Detached arrival。 |
+| 入场期间结束回合 | 正常 HUD 出牌请求后第一帧接受 EndTurn；第一次 true、重复 false。原牌效果／去向继续，之后一次结束回合；最终下一回合 Idle、能量 5、无 job／反馈。 | `EndTurnTimeline.json`、`EndTurnBoundary.png`、`EndTurnComplete.png`。 |
+| 战吼保守回退 | 真实点击战吼与玩家，日志 Hosted arrival，未进入 D2；强制选择表面 0/1 → 1/1，结束回合禁用。点击确认后选中牌进入抽牌堆，战吼消耗，恢复正常手牌。 | 当次窗口实际观察、日志 Runtime=11 的 Hosted arrival／去向／退役。 |
+| 关闭不丢正式去向 | 勾拳入场第一帧关闭 D2，job 立即清空；后续两条状态历史继续，去向最终提交一次，Idle、能量 3、弃牌 1。 | `DisableTimeline.json`、`DisableBoundary.png`、`DisableComplete.png`。 |
+| 同实例再出牌与 Skip | 第一轮 Runtime=6 经正常结束回合重新抽回，下一回合通过 HUD 再出；视觉 generation 从 1 到 7。入场期间 Skip，job 清空，显示 Idle、能量 2、弃牌 2，无反馈。 | `SkipTimeline.json`、`SkipBoundary.png`、`SkipComplete.png`；旧回调隔离另由自动化精确证明。 |
+
+截图／JSON 位于 `Saved/G9D2VisualEvidence/`。首条观察脚本最初用 ViewModel
+当前 LegalTargets 查 busy-time 目标，后续两项没有确认；该尝试仅证明普通
+入场，不当作 FIFO 通过。新 PIE 改为 HUD 冻结目标入口后两项确认成功。
+临时脚本只调用公开 HUD 输入、运行时策略及读取冻结 DTO／Widget，不写
+Gameplay、不访问私有 job、不改资产；运行日志未发现资产加载或运行错误。
+
+## 唯一剩余人工门槛：USER ACTION REQUIRED
+
+无法用当前逐步窗口操作在 0.5 秒入场窗口内确定完成缩放，所以未声称此项
+通过，也没有延长动画或用 C／D1 旧视觉证据代替本次 D2。实际同实例回手后
+可交互已观察；“旧 job 尚未结束时新正式所有者获胜”由自动化证明。
+
+| 操作步骤 | 预期现象／通过条件 | 需要的反馈 |
+|---|---|---|
+| 当前生产 PIE 已临时开启 D2。打出一张牌，在牌仍向出牌区移动或尚未完成续接时立即拖动窗口边缘改变大小；动画结束后悬停并再次打牌。 | 原卡随视口正确定位，入场到尾部连续，无跳到端点、闪回、重复牌、裁切或残留；其余手牌排列正常，后续悬停／出牌正常。 | 说明入场中／尾部衔接时实际调整了大小，及是否出现上述异常；必要时附截图。 |
+
+本次保留现有浮动 PIE，D2=true 仅该运行实例，源码／Blueprint 默认仍 false。
+新启动 PIE 需显式调用 HUD 的 `SetDetachedCardArrivalD2Enabled(true)`；不得
+保存资产来开启。该人工门槛通过后，才以独立提交启用 Native 默认并读回
+生产配置；E／F 另行开发，G9 整体不封板。

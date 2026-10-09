@@ -59,6 +59,11 @@ public:
 	void SetDetachedCardDestinationD1Enabled(bool bEnabled);
 	bool IsDetachedCardDestinationD1Enabled() const { return bDetachedCardDestinationD1Enabled; }
 	bool IsCommittedCardDestinationCurrent(const FDetachedCardDestinationToken& Token) const;
+	void SetDetachedCardArrivalD2Enabled(bool bEnabled);
+	bool IsDetachedCardArrivalD2Enabled() const { return bDetachedCardArrivalD2Enabled; }
+	bool TryGetDetachedCardArrivalPlan(const FPresentationRecord& Record,
+		FPlayedCardPresentationLifecycleToken& OutLifecycle, FPresentationRecord& OutDestination) const;
+	bool IsCommittedCardArrivalCurrent(const FDetachedCardArrivalToken& Token, bool bDestination) const;
 
 	// Intentionally C++-only. Blueprint completion/skip must pass through
 	// UBattleHUDWidgetBase so callback deferral and exact visual cancellation
@@ -96,6 +101,7 @@ public:
 	float PlaybackTimeoutSeconds = 3.0f;
 
 #if WITH_DEV_AUTOMATION_TESTS
+	friend struct FDetachedArrivalControllerTestProbe;
 	int32 GetBacklogCountForTesting() const;
 	bool IsWaitingForCompletionForTesting() const;
 	FPresentationPlaybackToken GetActivePlaybackTokenForTesting() const;
@@ -168,6 +174,8 @@ private:
 	void RefreshInputIfPresentationCaughtUp();
 	void CancelCurrentSessionDetachedDamageVisuals();
 	EDetachedRecordAttemptResult TryCommitDetachedCardDestinationRecord(const FPresentationRecord& Record);
+	EDetachedRecordAttemptResult TryCommitDetachedCardArrivalRecord(const FPresentationRecord& Record);
+	EDetachedRecordAttemptResult TryCommitDetachedArrivalDestinationRecord(const FPresentationRecord& Record);
 	void CancelCurrentSessionPlayedCardVisuals();
 
 	void EnterPresentationUnavailableFailSafe();
@@ -241,6 +249,10 @@ private:
 	bool bDetachedDamageG8CEnabled = true;
 	bool bDetachedCardDestinationD1Enabled = false;
 	FDetachedCardDestinationToken CommittedCardDestinationReceipt;
+	bool bDetachedCardArrivalD2Enabled = false;
+	UPROPERTY(Transient) TArray<FDetachedCardArrivalToken> DetachedCardArrivalReceipts;
+	FDetachedCardArrivalToken CommittedCardArrivalReceipt;
+	FDetachedCardArrivalToken CommittedArrivalDestinationReceipt;
 
 	// G6 visual bookkeeping is scoped to one exact Resolution. It never changes
 	// record order; future member indices are merely remembered as already shown

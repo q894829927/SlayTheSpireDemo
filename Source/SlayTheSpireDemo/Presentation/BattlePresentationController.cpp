@@ -439,7 +439,7 @@ void UBattlePresentationController::Shutdown()
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
 	DisplayedPresentationSnapshot = FPresentationStateSnapshot{};
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasDisplayedPresentationSnapshot = false;
@@ -554,7 +554,7 @@ void UBattlePresentationController::SkipPresentation()
 
 	if (Newest)
 	{
-		CardHistoryState.ClearCorrelations();
+		CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 		ApplyDisplayedSnapshot(Newest->FinalSnapshot, false);
 		MarkEntireBacklogCompletedExact(nullptr);
 		LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Newest->ResolutionId);
@@ -562,7 +562,7 @@ void UBattlePresentationController::SkipPresentation()
 
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -760,6 +760,11 @@ void UBattlePresentationController::StartNextRecord()
 	// formally through the Controller-owned detached transaction. A pre-commit
 	// visual eligibility decline falls through to the unchanged Blocking path;
 	// a consumed attempt has already advanced/reconciled exact chronology.
+	if (Record.Type == EBattlePresentationRecordType::CardPlayed && bDetachedCardArrivalD2Enabled && IsPresentationOwnedMode())
+		if (TryCommitDetachedCardArrivalRecord(Record) == EDetachedRecordAttemptResult::Consumed) return;
+	if (Record.Type == EBattlePresentationRecordType::CardZoneChanged && Record.CardZoneChanged.FromZone == ECardZone::PlayArea
+		&& IsPresentationOwnedMode() && DetachedCardArrivalReceipts.Num() > 0)
+		if (TryCommitDetachedArrivalDestinationRecord(Record) == EDetachedRecordAttemptResult::Consumed) return;
 	if (Record.Type == EBattlePresentationRecordType::Damage
 		&& bDetachedDamageG8CEnabled
 		&& IsPresentationOwnedMode())
@@ -980,7 +985,7 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
 
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	ApplyDisplayedSnapshot(RecoveredEnvelope.FinalSnapshot, false);
 	MarkPresentationResolutionCompletedExact(RecoveredEnvelope);
 	LastCompletedResolutionId = FMath::Max(
@@ -988,7 +993,7 @@ void UBattlePresentationController::ReconcileActiveEnvelopeToFinalSnapshot()
 		RecoveredEnvelope.ResolutionId);
 
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1030,14 +1035,14 @@ void UBattlePresentationController::CollapseEntireBacklogToEnvelope(
 	CancelActivePlaybackUnit();
 	AdvancePlaybackGeneration();
 
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	ApplyDisplayedSnapshot(Envelope.FinalSnapshot, false);
 	MarkEntireBacklogCompletedExact(&Envelope);
 	LastCompletedResolutionId = FMath::Max(LastCompletedResolutionId, Envelope.ResolutionId);
 
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1062,7 +1067,7 @@ void UBattlePresentationController::ResetPlaybackState(bool bAdvanceGeneration)
 	}
 	PlaybackQueue.Reset();
 	ActiveEnvelope = FPresentationResolutionEnvelope{};
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	WorkingPresentationSnapshot = FPresentationStateSnapshot{};
 	bHasActiveEnvelope = false;
 	bHasWorkingPresentationSnapshot = false;
@@ -1125,9 +1130,10 @@ bool UBattlePresentationController::IsPresentationOwnedMode() const
 void UBattlePresentationController::InvalidatePresentationSession(
 	UBattleHUDWidgetBase* CleanupWidget)
 {
-	CardHistoryState.ClearCorrelations();
+	CardHistoryState.ClearCorrelations(); DetachedCardArrivalReceipts.Reset();
 	const FPresentationSessionToken OldToken = ActivePresentationSessionToken;
 	CommittedCardDestinationReceipt = {};
+	CommittedCardArrivalReceipt = {}; CommittedArrivalDestinationReceipt = {};
 	// Invalidate first so any synchronous cleanup callback already observes stale.
 	ActivePresentationSessionToken = FPresentationSessionToken{};
 	if (OldToken.IsValid())

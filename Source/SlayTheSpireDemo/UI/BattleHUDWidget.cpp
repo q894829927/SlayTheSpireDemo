@@ -168,6 +168,7 @@ void UBattleHUDWidget::NativeConstruct()
 	Super::NativeConstruct();
 	SetBufferedPlayerInputEnabled(bEnableG9BufferedPlayerInput && bNativeBindingsValid);
 	if (PresentationController) PresentationController->SetDetachedCardDestinationD1Enabled(bEnableDetachedCardDestinationD1 && bNativeBindingsValid);
+	if (PresentationController) PresentationController->SetDetachedCardArrivalD2Enabled(bEnableDetachedCardArrivalD2 && bNativeBindingsValid);
 
 	if (!bNativeBindingsValid)
 	{
@@ -1561,7 +1562,8 @@ bool UBattleHUDWidget::FindExactHistoricalHandCard(
 bool UBattleHUDWidget::IsRuntimeIdAbsentFromNativeCardVisuals(int32 RuntimeId) const
 {
 	for (const auto& Job : PlayedCardVisualJobs)
-		if (!Job.bDetachedDestination && Job.Token.Lifecycle.RuntimeId == RuntimeId) return false;
+		if (!Job.bDetachedDestination && !(Job.bDetachedArrival && Job.bArrivalDestinationCommitted)
+			&& Job.Token.Lifecycle.RuntimeId == RuntimeId) return false;
 	if (RuntimeId == INDEX_NONE
 		|| (NativeBlockingFallbackPlayedCardWidget.IsValid() && NativeBlockingFallbackPlayedCardWidget->GetRuntimeId() == RuntimeId)
 		|| (ActiveNativeDrawnCardWidget.IsValid() && ActiveNativeDrawnCardWidget->GetRuntimeId() == RuntimeId)

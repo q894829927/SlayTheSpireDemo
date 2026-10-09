@@ -34,6 +34,11 @@ struct FNativePlayedCardVisualJob
 	UPROPERTY() ESlateVisibility SourceVisibility = ESlateVisibility::Visible;
 	UPROPERTY() ECardVisualPhase Phase = ECardVisualPhase::Prepared;
 	UPROPERTY() bool bDetachedDestination = false;
+	UPROPERTY() bool bDetachedArrival = false;
+	UPROPERTY() bool bArrivalDestinationCommitted = false;
+	UPROPERTY() FDetachedCardArrivalToken ArrivalToken;
+	UPROPERTY() FPreparedCardDestinationVisual ArrivalDestination;
+	UPROPERTY() FName SourcePresentationId;
 	UPROPERTY() FPreparedCardDestinationVisual PreparedDestination;
 	UPROPERTY() FDetachedCardDestinationToken LastDestinationPreparationToken;
 	UPROPERTY() FVector2D DetachedStartCenter = FVector2D::ZeroVector;

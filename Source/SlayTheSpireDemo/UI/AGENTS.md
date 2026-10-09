@@ -307,7 +307,7 @@ Coherent ownership data alone does not guarantee coherent Widgets: visual transf
 
 ## Committed Presentation
 
-The committed-history flow remains:
+The Blocking committed-history flow remains:
 
 ```text
 Record payload
@@ -317,6 +317,13 @@ Record payload
 → displayed snapshot reconciliation
 → Envelope FinalSnapshot reconciliation
 ```
+
+G9 detached cards prepare exact visual receipts, commit canonical history once,
+publish, recheck binding/session/cursor, then activate or update cosmetics. D2
+arrival has no tracked playback/timer; a formally committed destination may be
+pending until arrival finishes. Cosmetic clocks never publish, advance Controller
+or consume input. Disable/loss removes visuals while Controller retains necessary
+formal correlation. New formal Hand ownership retires old occurrence visuals.
 
 PresentationId is visual mapping identity, not Gameplay identity. Historical Status identity uses `TargetPresentationId + StatusId + RuntimeSequence`; never match only by StatusId or array index.
 

@@ -117,3 +117,27 @@ bool UPhase6UIA2NR8HUDProbe::NativeActivatePreparedDetachedCardDestination(const
 	auto Hook = MoveTemp(DetachedActivationHook); if (Hook) Hook();
 	return bActivated;
 }
+
+bool UPhase6UIA2NR8HUDProbe::NativePrepareDetachedCardArrival(const FPresentationRecord& Record, const FPresentationRecord& Destination,
+	const FPlayedCardPresentationLifecycleToken& Life, FDetachedCardArrivalToken& Out)
+{
+	LastArrivalRecord = Record; LastArrivalDestination = Destination;
+	const bool Prepared = Super::NativePrepareDetachedCardArrival(Record,Destination,Life,Out);
+	LastArrivalPreparation = Out;
+	auto Hook = MoveTemp(ArrivalPreparationHook); if (Hook) Hook();
+	return Prepared && !bRejectArrivalPreparation;
+}
+bool UPhase6UIA2NR8HUDProbe::NativeActivatePreparedDetachedCardArrival(const FDetachedCardArrivalToken& Token)
+{
+	if (bRejectArrivalActivation) return false;
+	const bool Activated = Super::NativeActivatePreparedDetachedCardArrival(Token);
+	auto Hook = MoveTemp(ArrivalActivationHook); if (Hook) Hook();
+	return Activated;
+}
+bool UPhase6UIA2NR8HUDProbe::NativeCommitDetachedCardArrivalDestination(const FDetachedCardArrivalToken& Token)
+{
+	if (bRejectArrivalDestination) return false;
+	const bool Committed = Super::NativeCommitDetachedCardArrivalDestination(Token);
+	auto Hook = MoveTemp(ArrivalDestinationHook); if (Hook) Hook();
+	return Committed;
+}

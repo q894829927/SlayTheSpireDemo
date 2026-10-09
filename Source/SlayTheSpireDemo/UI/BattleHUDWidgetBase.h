@@ -63,6 +63,12 @@ public:
 	void CancelPreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token);
 	void RetireDetachedCardDestination(const FDetachedCardDestinationToken& Token);
 	void CancelDetachedCardDestinationVisuals();
+	bool PrepareDetachedCardArrival(const FPresentationRecord& Record, const FPresentationRecord& Destination,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle, FDetachedCardArrivalToken& OutToken);
+	bool ActivatePreparedDetachedCardArrival(const FDetachedCardArrivalToken& Token);
+	bool CommitDetachedCardArrivalDestination(const FDetachedCardArrivalToken& Token);
+	void RetireDetachedCardArrival(const FDetachedCardArrivalToken& Token);
+	void CancelDetachedCardArrivalVisuals();
 	bool CanAcceptEndTurnIntent();
 	bool HasAcceptedBufferedEndTurn();
 	bool TryBufferCardSelection(int32 RuntimeId);
@@ -232,6 +238,13 @@ protected:
 	virtual void NativeCancelPreparedDetachedCardDestination(const FDetachedCardDestinationToken&) {}
 	virtual void NativeRetireDetachedCardDestination(const FDetachedCardDestinationToken&) {}
 	virtual void NativeCancelDetachedCardDestinationVisuals() {}
+	virtual bool NativePrepareDetachedCardArrival(const FPresentationRecord&, const FPresentationRecord&,
+		const FPlayedCardPresentationLifecycleToken&, FDetachedCardArrivalToken&) { return false; }
+	virtual bool NativeIsPreparedDetachedCardArrivalCurrent(const FDetachedCardArrivalToken&) const { return false; }
+	virtual bool NativeActivatePreparedDetachedCardArrival(const FDetachedCardArrivalToken&) { return false; }
+	virtual bool NativeCommitDetachedCardArrivalDestination(const FDetachedCardArrivalToken&) { return false; }
+	virtual void NativeRetireDetachedCardArrival(const FDetachedCardArrivalToken&) {}
+	virtual void NativeCancelDetachedCardArrivalVisuals() {}
 	virtual void NativeOnPresentationControllerChanged() {}
 	// Class-scope name lookup intentionally shadows the old translation-unit-local
 	// 0.5s constant used by Native playback member functions. Both legacy Blocking

@@ -88,6 +88,17 @@ public:
 	TFunction<void()> DetachedActivationHook;
 	FDetachedCardDestinationToken LastDetachedPreparation;
 	FPresentationRecord LastDetachedDestinationRecord;
+	bool bRejectArrivalPreparation = false;
+	bool bRejectArrivalActivation = false;
+	bool bRejectArrivalDestination = false;
+	TFunction<void()> ArrivalPreparationHook;
+	TFunction<void()> ArrivalActivationHook;
+	TFunction<void()> ArrivalDestinationHook;
+	FDetachedCardArrivalToken LastArrivalPreparation;
+	FPresentationRecord LastArrivalRecord;
+	FPresentationRecord LastArrivalDestination;
+	ECardVisualPhase ArrivalPhaseForTesting(int32 Index = 0) const { return GetPlayedCardPhaseForTesting(Index); }
+	bool ArrivalHasCommittedDestinationForTesting(int32 Index = 0) const { return IsArrivalDestinationCommittedForTesting(Index); }
 	FDetachedCardVisualToken HostedPlayedTokenForTesting(int32 Index = 0) const { return GetPlayedCardVisualToken(Index); }
 	bool CompleteHostedForTesting(const FDetachedCardVisualToken& Token, const FPresentationPlaybackToken& Blocking)
 	{ return CompletePlayedCardVisualJob(Token,Blocking); }
@@ -103,6 +114,7 @@ public:
 	void InvokeNativeTickForTesting(float DeltaSeconds);
 	void InvokeNativeDestructForTesting();
 	void ConfigureFanForTesting(UBattleHandFanPanel* Fan);
+	void ConfigureBlockForTesting(UTextBlock* PlayerBlock) { Txt_PlayerBlock = PlayerBlock; }
 	void PointerForTesting(FVector2D Pointer) { UpdatePointerCardVisuals(Pointer); }
 	bool ConfirmPointerForTesting() { return ConfirmPointerCard(); }
 	TOptional<FCardPlayVisualOrigin> OriginForTesting(int32 RuntimeId) const { return CaptureCardPlayVisualOrigin(RuntimeId); }
@@ -116,6 +128,10 @@ protected:
 	virtual bool NativePrepareDetachedCardDestination(const FPresentationRecord& Record,
 		const FPlayedCardPresentationLifecycleToken& Life, FDetachedCardDestinationToken& OutToken) override;
 	virtual bool NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
+	virtual bool NativePrepareDetachedCardArrival(const FPresentationRecord&, const FPresentationRecord&,
+		const FPlayedCardPresentationLifecycleToken&, FDetachedCardArrivalToken&) override;
+	virtual bool NativeActivatePreparedDetachedCardArrival(const FDetachedCardArrivalToken&) override;
+	virtual bool NativeCommitDetachedCardArrivalDestination(const FDetachedCardArrivalToken&) override;
 
 private:
 	UPROPERTY(Transient)

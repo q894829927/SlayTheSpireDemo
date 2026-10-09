@@ -22,13 +22,15 @@ namespace NativePlayedCardTest
 		UPhase6UIA2NR8HUDProbe* HUD = nullptr;
 		UBattleHandFanPanel* Fan = nullptr;
 		UBattlePresentationController* Controller = nullptr;
-		explicit FFixture(bool bEnableD1 = false, int32 HandCount = 1, ECardDestination Destination = ECardDestination::Discard)
+		explicit FFixture(bool bEnableD1 = false, int32 HandCount = 1, ECardDestination Destination = ECardDestination::Discard,
+			int32 GainBlockAmount = 0, int32 Cost = 1)
 		{
 			Game.World->AddToRoot(); Game.World->SetGameInstance(NewObject<UGameInstance>(Game.World));
 			Game.Battle->DebugStartingDeck.Reset();
 			for (int32 I=0; I<HandCount; ++I)
 			{
-				auto* Definition = Phase6UIA1Test::CreateCard(Game.World, *FString::Printf(TEXT("JobCard%d"), I), ECardTargetType::None, 1);
+				auto* Definition = Phase6UIA1Test::CreateCard(Game.World, *FString::Printf(TEXT("JobCard%d"), I),
+					GainBlockAmount > 0 ? ECardTargetType::Self : ECardTargetType::None, Cost, GainBlockAmount);
 				Definition->DefaultDestination = Destination;
 				Game.Battle->DebugStartingDeck.Add(Definition);
 			}
@@ -39,6 +41,7 @@ namespace NativePlayedCardTest
 			HUD = NewObject<UPhase6UIA2NR8HUDProbe>(Game.World); HUD->AddToRoot(); HUD->SetTestWorld(Game.World);
 			UOverlay* Play = NewObject<UOverlay>(HUD);
 			HUD->ConfigureCardSurfaces(NewObject<UHorizontalBox>(HUD),Play,NewObject<UTextBlock>(HUD),NewObject<UTextBlock>(HUD),NewObject<UTextBlock>(HUD));
+			if (GainBlockAmount > 0) HUD->ConfigureBlockForTesting(NewObject<UTextBlock>(HUD));
 			Fan = NewObject<UBattleHandFanPanel>(HUD); HUD->ConfigureFanForTesting(Fan); Fan->TakeWidget();
 			HUD->SetViewModel(Game.ViewModel);
 			const auto Root = FGeometry::MakeRoot(FVector2D(1000,700),FSlateLayoutTransform());
@@ -56,8 +59,10 @@ namespace NativePlayedCardTest
 		}
 		bool Play()
 		{
-			auto* Card = Game.Battle->GetDeckRuntimeForTesting()->GetHandCards()[0].Get();
-			const bool Accepted = Game.Battle->RequestPlayCard(Card,nullptr).IsAcceptedForResolution(); Game.FlushReady(); return Accepted;
+			auto* Card = Game.Battle->GetDeckRuntimeForTesting()->GetFirstHandCard();
+			if (!Card) return false;
+			const bool Accepted = Game.Battle->RequestPlayCard(Card,Card->GetTargetType()==ECardTargetType::Self ? Game.Player : nullptr).IsAcceptedForResolution();
+			Game.FlushReady(); return Accepted;
 		}
 		void Finish() { HUD->InvokeFinishForTesting(Controller->GetActivePlaybackTokenForTesting()); FTSTicker::GetCoreTicker().Tick(0); }
 	};

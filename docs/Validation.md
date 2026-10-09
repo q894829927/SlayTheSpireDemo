@@ -1,5 +1,32 @@
 # Validation
 
+## G9-D2 入场解耦实施 — 2026-10-09
+
+契约 `931eb30` 加本批 Native C++／测试工作区实际验证；完整范围、失败
+原因及文件见 [D2 执行](SelectionPresentationG9D2Execution.md)。首次工程生成／
+Development Editor 构建 10.81／390.50 秒通过；后续夹具修正均先生成再
+构建，通过时间 9.20／12.70、8.19／23.56、7.66／77.36 秒。
+首轮报告 `G9D2` 实际 83 项（76 成功、4 带预期警告通过、3 失败）。
+修正新增夹具的自身目标与封存记录引用保留，报告 `G9D2Repair` 30 项
+（29 成功、1 失败）；包括补跑原前缀写错遗漏的 HandInteraction／冻结
+CardPlayed 卡面。剩余格挡窗口缺少 Native 表面，补齐后只重跑受影响
+Loss／Capacity，`G9D2BlockFixture` 为 2/2 成功、无警告。
+全部原始失败保留，97 个不同案例有最后有效通过证据，4 个既有预期警告
+案例；重叠的 83／30／2 不相加，不声称最终版本一次 97/97。
+
+生产 `L_Battle_RuinedCitadel` Native PIE 实际观察入场期间历史继续、确认
+后续两牌 FIFO／多视觉重叠、一次性结束回合、战吼跨选择 Blocking 回退、
+关闭后未来去向照常提交、同 RuntimeId 下一回合重新出牌和 Skip 清理。
+日志 `Saved/Logs/G9D2PIE.log`，截图／时间线 `Saved/G9D2VisualEvidence/`；
+临时观察器只调用公开 HUD 请求／策略与读取冻结视图，未写 Gameplay 或
+资产，未改时长。Native C++／Blueprint CDO 读回 B=true、D1=true、D2=false；
+当前运行实例 D2=true、Idle、未锁定、可结束回合、无反馈，保留给用户验收。
+
+唯一未完成的实际运动中缩放窗口为 USER ACTION REQUIRED，中文操作及
+通过条件见 D2 执行文档。状态 IMPLEMENTED／AUTOMATED GATES PASS／
+PARTIAL PIE／NATIVE DEFAULT OFF；不进入 E／F，不封板。外部 Native HUD
+资产 SHA256 未变且排除提交；不 push。
+
 ## G9-D1 独立 Native 默认启用 — 2026-10-09
 
 起点 `1cc58de`（人工收口），交付 `98d917a`；代码批次仅启用原生 D1 默认和明确旧 Blocking

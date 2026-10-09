@@ -1,5 +1,21 @@
 # Architecture
 
+G9-D2 adds an opt-in detached arrival transaction. The Controller proves the
+entire remaining current sealed Envelope on copied snapshot/history using the
+shared card reducer, with exactly one supported destination for the same play
+occurrence. It never commits a future record during preflight. New admission
+requires both D2 arrival and D1 destination policies. Preparation freezes the
+source pose and complete journey in a hidden Native job; formal CardPlayed
+snapshot/history and its independent destination receipt install together before
+publication. Only the exact committed receipt permits visual activation.
+Preparation decline retains Blocking; post-commit visual failure cannot replay
+history. The destination consumes its formal correlation at its own cursor even
+after visual loss or policy disable. An entering job remembers that commitment
+and starts its tail only after arrival completes, carrying elapsed overshoot.
+Private clocks do not complete the Controller or submit queued input. Same-runtime
+formal Hand ownership retires the old visual; old receipts cannot affect a new
+generation. D2 remains default-off until its own visual acceptance closes.
+
 G9-D1 destination tails are an independent, validated default-on Native policy
 with a runtime disable path. The Controller proves a copied sealed card record
 with candidate snapshot/history,
@@ -16,7 +32,8 @@ Gameplay request. New formal Hand ownership wins over an old tail, including
 normal redraw of the same RuntimeId. Selection hiding excludes detached tails.
 Disable retires tails/preparations and pending input without replacing Session,
 turn authority or unresolved formal correlations. Skip/recovery clears retained
-visuals even with no active Blocking unit. CardPlayed arrival remains Blocking.
+visuals even with no active Blocking unit. D1 alone retains Blocking arrival;
+explicit D2 admission uses the transaction above.
 
 G9-C Native played cards use a HUD-owned, noninteractive DetachedCardVFXHost.
 Each GC-safe job owns its frozen clone, exact play occurrence plus independent

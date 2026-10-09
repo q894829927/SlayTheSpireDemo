@@ -137,6 +137,10 @@ public:
 	bool bEnableDetachedCardDestinationD1 = true;
 	UFUNCTION(BlueprintCallable, Category = "Battle Presentation|G9")
 	void SetDetachedCardDestinationD1Enabled(bool bEnabled);
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle Presentation|G9")
+	bool bEnableDetachedCardArrivalD2 = false;
+	UFUNCTION(BlueprintCallable, Category = "Battle Presentation|G9")
+	void SetDetachedCardArrivalD2Enabled(bool bEnabled);
 
 	// Runtime FanHand is created from Native code, so these values are the
 	// Blueprint-facing layout contract for the generated Hand surface.
@@ -292,7 +296,7 @@ protected:
 	bool EnsureDetachedCardVFXHost();
 	bool PreparePlayedCardVisualJob(const FPresentationRecord& Record, const FPresentationPlaybackToken& BlockingToken,
 		const FPlayedCardPresentationLifecycleToken& Lifecycle, const FCardPlayVisualOrigin& Origin,
-		UBattleCardWidget* Source, FDetachedCardVisualToken& OutToken);
+		UBattleCardWidget* Source, FDetachedCardVisualToken& OutToken, bool bDetachedArrival = false);
 	void UpdatePlayedCardVisualJobs(float DeltaSeconds);
 	void RetirePlayedCardVisualJob(int32 Index, bool bRestoreSource = false);
 	bool CompletePlayedCardVisualJob(const FDetachedCardVisualToken& VisualToken, const FPresentationPlaybackToken& BlockingToken);
@@ -300,7 +304,17 @@ protected:
 	UBattleCardWidget* FindPreferredPlayedCardVisual() const;
 	void SetPlayedCardVisualsSelectionHidden(bool bHidden);
 	bool BuildPlayedCardDestinationVisual(const FNativePlayedCardVisualJob& Job, const FPresentationRecord& Record,
-		FPreparedCardDestinationVisual& OutSpec) const;
+		FPreparedCardDestinationVisual& OutSpec, bool bArrivalPreflight = false) const;
+	TOptional<FCardPlayVisualOrigin> ResolveHostedCardPlayOrigin(const FPresentationRecord& Record,
+		const FPlayedCardPresentationLifecycleToken& Lifecycle) const;
+	void BeginDetachedArrivalDestinationTail(FNativePlayedCardVisualJob& Job, float Elapsed = 0);
+	virtual bool NativePrepareDetachedCardArrival(const FPresentationRecord&, const FPresentationRecord&,
+		const FPlayedCardPresentationLifecycleToken&, FDetachedCardArrivalToken&) override;
+	virtual bool NativeIsPreparedDetachedCardArrivalCurrent(const FDetachedCardArrivalToken&) const override;
+	virtual bool NativeActivatePreparedDetachedCardArrival(const FDetachedCardArrivalToken&) override;
+	virtual bool NativeCommitDetachedCardArrivalDestination(const FDetachedCardArrivalToken&) override;
+	virtual void NativeRetireDetachedCardArrival(const FDetachedCardArrivalToken&) override;
+	virtual void NativeCancelDetachedCardArrivalVisuals() override;
 	virtual bool NativePrepareDetachedCardDestination(const FPresentationRecord& Record,
 		const FPlayedCardPresentationLifecycleToken& Lifecycle, FDetachedCardDestinationToken& OutToken) override;
 	virtual bool NativeActivatePreparedDetachedCardDestination(const FDetachedCardDestinationToken& Token) override;
@@ -312,6 +326,12 @@ protected:
 	virtual void NativeCancelPlayedCardVisualsForSession(const FPresentationSessionToken& Session) override;
 	virtual void NativeCancelAllPlayedCardVisuals() override;
 	int32 GetPlayedCardVisualJobCount() const { return PlayedCardVisualJobs.Num(); }
+#if WITH_DEV_AUTOMATION_TESTS
+	ECardVisualPhase GetPlayedCardPhaseForTesting(int32 Index) const
+	{ return PlayedCardVisualJobs.IsValidIndex(Index) ? PlayedCardVisualJobs[Index].Phase : ECardVisualPhase::Prepared; }
+	bool IsArrivalDestinationCommittedForTesting(int32 Index) const
+	{ return PlayedCardVisualJobs.IsValidIndex(Index) && PlayedCardVisualJobs[Index].bArrivalDestinationCommitted; }
+#endif
 	FDetachedCardVisualToken GetPlayedCardVisualToken(int32 Index) const
 	{ return PlayedCardVisualJobs.IsValidIndex(Index) ? PlayedCardVisualJobs[Index].Token : FDetachedCardVisualToken{}; }
 	bool DoesNativeCardViewMatchSnapshot(
@@ -611,6 +631,7 @@ private:
 	UPROPERTY(Transient) TArray<FNativePlayedCardVisualJob> PlayedCardVisualJobs;
 	int64 NextCardVisualGeneration = 1;
 	int64 NextCardDestinationPreparationGeneration = 1;
+	int64 NextCardArrivalPreparationGeneration = 1;
 	FPlayedCardPresentationLifecycleToken BlockingFallbackPlayedLifecycle;
 	FDetachedCardVisualToken ActivePlayedCardVisualToken;
 	bool bPlayedCardVisualsSelectionHidden = false;
