@@ -1,5 +1,9 @@
 # Development Phases
 
+2026-10-09 **G9-E IN PROGRESS**：用户在 D2 默认交付 `3922055` 后要求下一步。
+本轮仅集成与清理，契约／中文矩阵见 [E 执行](SelectionPresentationG9EExecution.md)。
+B／D1／D2 默认保持开启，既有验收不重开；F 未开始，G9 未封板。
+
 2026-10-09 **G9-D2 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 起点 `04d835b`，契约 `931eb30`，实现 `ab07abb`。当前封存 Envelope 纯预检、入场正式事务、
 准确去向收据、提前去向与连续尾部、独立多 job 及关闭／恢复清理已实施。

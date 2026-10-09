@@ -1,4 +1,14 @@
-# Checkpoint — G9-D2 detached card arrival
+# Checkpoint — G9-E integration and cleanup
+
+## 当前继续点：E 契约就绪，开始输入／替换与重复状态收敛
+
+2026-10-09，起点 `3922055`，代码 `a6bc659`。D2 全部验收／默认开启已交付；
+用户要求下一步，即 G9-E。输入退役表面通知、ViewModel 旧播放／Controller
+解绑、重复活动视觉／draw 镜像清理及集成矩阵见 `SelectionPresentationG9EExecution.md`。
+本契约批次仅文档，无新 UE 运行；Native HUD 外部资产原 SHA256 保持且
+排除提交。下一步实施、规定生成／构建、聚焦自动化及必要 Native PIE 后
+独立本地提交。PID 32476 是上批自有空闲编辑器，先核实再管理。不 push，
+不进入 F，不封板。以下为历史状态。
 
 ## 当前继续点：D2 完成并默认开启，下一阶段 G9-E
 
