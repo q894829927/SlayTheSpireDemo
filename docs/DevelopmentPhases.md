@@ -1,7 +1,7 @@
 # Development Phases
 
 2026-10-09 **G9-D2 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE**：
-起点 `04d835b`，契约 `931eb30`。当前封存 Envelope 纯预检、入场正式事务、
+起点 `04d835b`，契约 `931eb30`，实现 `ab07abb`。当前封存 Envelope 纯预检、入场正式事务、
 准确去向收据、提前去向与连续尾部、独立多 job 及关闭／恢复清理已实施。
 规定生成／Development Editor 构建通过；聚焦运行及仅受影响修正重跑后，
 97 个不同案例有有效通过证据（4 个既有预期警告案例），不累加重叠报告。

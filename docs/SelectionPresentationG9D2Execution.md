@@ -69,7 +69,7 @@ B=true、D1=true、D2 验收期间显式开启。不得修改资产或延长动�
 
 ## 当前证据
 
-契约基线 `04d835b`，契约提交 `931eb30`。以下构建／Automation／PIE 均在
+契约基线 `04d835b`，契约提交 `931eb30`，实现提交 `ab07abb`。以下构建／Automation／PIE 均在
 `931eb30` 加本批 Native C++／测试工作区上实际执行，D2 默认 false。
 当前为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE，不能标记
 COMPLETE／VALIDATED 或进入 E。C／D1／B 原验收不重开，G9 NOT SEALED。
@@ -145,6 +145,9 @@ Gameplay、不访问私有 job、不改资产；运行日志未发现资产加�
 | 当前生产 PIE 已临时开启 D2。打出一张牌，在牌仍向出牌区移动或尚未完成续接时立即拖动窗口边缘改变大小；动画结束后悬停并再次打牌。 | 原卡随视口正确定位，入场到尾部连续，无跳到端点、闪回、重复牌、裁切或残留；其余手牌排列正常，后续悬停／出牌正常。 | 说明入场中／尾部衔接时实际调整了大小，及是否出现上述异常；必要时附截图。 |
 
 本次保留现有浮动 PIE，D2=true 仅该运行实例，源码／Blueprint 默认仍 false。
+最后读回 `Saved/G9D2ManualReadyHUD.json`／`G9D2ManualReadyVM.json`：
+Idle、未锁定、可结束回合、无反馈、能量 2；手牌有剑柄打击、防御、坚毅、
+怒火。临时 Python 观察器与 Slate observer 均已退出，编辑器 PID 80756 保留。
 新启动 PIE 需显式调用 HUD 的 `SetDetachedCardArrivalD2Enabled(true)`；不得
 保存资产来开启。该人工门槛通过后，才以独立提交启用 Native 默认并读回
 生产配置；E／F 另行开发，G9 整体不封板。
