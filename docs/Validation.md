@@ -2,7 +2,8 @@
 
 ## G9-E 集成与清理 — 2026-10-10
 
-契约 `e82595b`，验证时为该 HEAD 加最终 Native C++／测试工作区。
+契约 `e82595b`，验证时为该 HEAD 加最终 Native C++／测试工作区，均收进
+实现与验收提交 `50b7e24`。后继只补文档编号，不影响以下证据。
 输入退役即时通知、ViewModel／Controller 替换、旧计时器与回调隔离，
 重复单实例状态清理已实现。详细命令范围、失败原因、日志与中文 PIE
 结果见 [E 执行](SelectionPresentationG9EExecution.md)。

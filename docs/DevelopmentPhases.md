@@ -1,7 +1,7 @@
 # Development Phases
 
 2026-10-10 **G9-E COMPLETE／VALIDATED**：输入即时退役、绑定替换与旧回调
-隔离已收敛；删除重复活动视觉／draw 状态，保留 Blocking 回退。规定生成／
+隔离已收敛，交付 `50b7e24`；删除重复活动视觉／draw 状态，保留 Blocking 回退。规定生成／
 Editor 构建通过；修正后受影响自动化 90 项零失败，最后空所有者用例单项
 补跑成功，重叠报告不相加。生产 Native 的关闭／Skip／抽牌与强制选择组合
 已观察通过，无剩余 E 人工待办，完整证据见 [E 执行](SelectionPresentationG9EExecution.md)。
