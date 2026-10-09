@@ -21,6 +21,7 @@ void UBattleHUDWidgetBase::ReleaseBufferedPlayerInputBinding()
 
 void UBattleHUDWidgetBase::RebindBufferedPlayerInput()
 {
+	if (bBufferedInputBindingTransition) return;
 	ABattleManager* NewBattle = IsValid(ViewModel) ? ViewModel->BattleManager.Get() : nullptr;
 	if (BufferedInputBattle.Get() != NewBattle)
 	{
@@ -58,6 +59,7 @@ void UBattleHUDWidgetBase::SetBufferedPlayerInputEnabled(bool bEnabled)
 
 bool UBattleHUDWidgetBase::CanAcceptEndTurnIntent()
 {
+	if (bBufferedInputBindingTransition) return false;
 	RebindBufferedPlayerInput();
 	BufferedPlayerInput.EvaluatePending();
 	return BufferedPlayerInput.EvaluateEndTurnAvailability().bCanAcceptEndTurnIntent;
@@ -65,6 +67,7 @@ bool UBattleHUDWidgetBase::CanAcceptEndTurnIntent()
 
 bool UBattleHUDWidgetBase::HasAcceptedBufferedEndTurn()
 {
+	if (bBufferedInputBindingTransition) return false;
 	if (!bBufferedPlayerInputEnabled) return false;
 	RebindBufferedPlayerInput();
 	BufferedPlayerInput.EvaluatePending();
@@ -73,7 +76,7 @@ bool UBattleHUDWidgetBase::HasAcceptedBufferedEndTurn()
 
 bool UBattleHUDWidgetBase::TryBufferCardSelection(int32 RuntimeId)
 {
-	if (!bBufferedPlayerInputEnabled) return false;
+	if (!bBufferedPlayerInputEnabled || bBufferedInputBindingTransition) return false;
 	RebindBufferedPlayerInput();
 	BufferedPlayerInput.EvaluatePending();
 	if (!BufferedPlayerInput.BeginCardDraft(RuntimeId))
@@ -137,7 +140,7 @@ void UBattleHUDWidgetBase::NotifyBufferedPlayerInputReadinessChanged()
 
 void UBattleHUDWidgetBase::ProcessBufferedPlayerInput()
 {
-	if (!bBufferedPlayerInputEnabled || bBufferedInputProcessing) return;
+	if (!bBufferedPlayerInputEnabled || bBufferedInputProcessing || bBufferedInputBindingTransition) return;
 	TGuardValue<bool> Guard(bBufferedInputProcessing, true);
 	TGuardValue<bool> PreservePlayback(bSuppressPresentationCancellation, true);
 	RebindBufferedPlayerInput();
@@ -188,4 +191,13 @@ bool UBattleHUDWidgetBase::TryGetBufferedDraftTarget(FName PresentationId, FBatt
 void UBattleHUDWidgetBase::DiscardQueuedPlayerInput()
 {
 	BufferedPlayerInput.Clear();
+	// Retirement is its own input boundary, including while history is busy.
+	// Notify surfaces synchronously; this must not schedule/consume another play.
+	NativeOnBufferedPlayerInputChanged();
+}
+
+void UBattleHUDWidgetBase::RevalidateBufferedPlayerInput()
+{
+	BufferedPlayerInput.EvaluatePending();
+	NativeOnBufferedPlayerInputChanged();
 }

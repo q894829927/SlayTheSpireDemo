@@ -119,6 +119,11 @@ bool FG9CVisualOwnerTest::RunTest(const FString&)
 	TestEqual(TEXT("ViewModel unbind cleans private jobs without Tick"),F.HUD->HostedPlayedCountForTesting(),0);
 	TestFalse(TEXT("Unbound HUD cannot prepare a visual"),F.HUD->PrepareHostedForTesting(Record,Blocking,Life,Origin,Visual));
 	F.HUD->SetViewModel(F.Game.ViewModel);
+	F.Controller->SetWidget(F.HUD);
+	F.HUD->SetPresentationController(F.Controller);
+	TestFalse(TEXT("ViewModel replacement invalidates the old session"),F.Controller->IsCurrentPresentationSession(Session));
+	if (!TestTrue(TEXT("Explicit rebind creates a fresh session"),F.Controller->TryGetPresentationSessionToken(Session))) return false;
+	Record.BattleId=Session.BattleId; Life.BattleId=Session.BattleId; Life.SessionToken=Session; Blocking.BattleId=Session.BattleId;
 	if (!TestTrue(TEXT("Candidate for session replacement"),F.HUD->PrepareHostedForTesting(Record,Blocking,Life,Origin,Visual))) return false;
 	F.Controller->Shutdown();
 	TestEqual(TEXT("Session replacement retires every old job"),F.HUD->HostedPlayedCountForTesting(),0);

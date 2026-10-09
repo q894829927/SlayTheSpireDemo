@@ -1,8 +1,11 @@
 # Development Phases
 
-2026-10-09 **G9-E IN PROGRESS**：用户在 D2 默认交付 `3922055` 后要求下一步。
-本轮仅集成与清理，契约／中文矩阵见 [E 执行](SelectionPresentationG9EExecution.md)。
-B／D1／D2 默认保持开启，既有验收不重开；F 未开始，G9 未封板。
+2026-10-10 **G9-E COMPLETE／VALIDATED**：输入即时退役、绑定替换与旧回调
+隔离已收敛；删除重复活动视觉／draw 状态，保留 Blocking 回退。规定生成／
+Editor 构建通过；修正后受影响自动化 90 项零失败，最后空所有者用例单项
+补跑成功，重叠报告不相加。生产 Native 的关闭／Skip／抽牌与强制选择组合
+已观察通过，无剩余 E 人工待办，完整证据见 [E 执行](SelectionPresentationG9EExecution.md)。
+B／D1／D2 默认保持开启；F 未开始，G9 未封板。
 
 2026-10-09 **G9-D2 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 起点 `04d835b`，契约 `931eb30`，实现 `ab07abb`。当前封存 Envelope 纯预检、入场正式事务、

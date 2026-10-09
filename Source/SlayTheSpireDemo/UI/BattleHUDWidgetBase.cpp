@@ -10,6 +10,7 @@
 #include "Components/PanelWidget.h"
 #include "Containers/Ticker.h"
 #include "InputCoreTypes.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace
 {
@@ -116,16 +117,29 @@ void UBattleHUDWidgetBase::SetViewModel(UBattleHUDViewModel* InViewModel)
 		HandleNativeViewModelChanged(EBattleHUDDirtyFlags::All);
 		return;
 	}
-	CancelAllPlayedCardVisuals();
-
+	const TStrongObjectPtr<UBattleHUDViewModel> IncomingModel(InViewModel);
+	TGuardValue<bool> BindingTransition(bBufferedInputBindingTransition, true);
+	const TStrongObjectPtr<UBattleHUDViewModel> PreviousModel(ViewModel.Get());
+	const TStrongObjectPtr<UBattlePresentationController> PreviousController(PresentationController.Get());
 	if (IsValid(ViewModel))
 	{
 		ViewModel->OnNativeChanged.RemoveAll(this);
 	}
 
+	// Detach authority before cancellation can call back. A new model must not
+	// inherit the previous controller, tracked timer, or mutable UI destinations.
+	ViewModel = nullptr;
+	PresentationController = nullptr;
 	ReleaseBufferedPlayerInputBinding();
-	ViewModel = InViewModel;
-	BufferedPlayerInput.Clear();
+	const uint64 ReplacementGeneration = BufferedInputBindingGeneration;
+	if (PreviousController.IsValid()) PreviousController->NotifyWidgetLost(this);
+	if (BufferedInputBindingGeneration != ReplacementGeneration || ViewModel || PresentationController) return;
+	CancelTrackedPresentationPlayback();
+	if (BufferedInputBindingGeneration != ReplacementGeneration || ViewModel || PresentationController) return;
+	CancelAllPlayedCardVisuals();
+	if (BufferedInputBindingGeneration != ReplacementGeneration || ViewModel || PresentationController) return;
+	ViewModel = IncomingModel.Get();
+	bBufferedInputBindingTransition = false;
 	RebindBufferedPlayerInput();
 	if (IsValid(ViewModel))
 	{
@@ -143,8 +157,24 @@ void UBattleHUDWidgetBase::SetPresentationController(
 {
 	if (PresentationController != InController)
 	{
-		CancelAllPlayedCardVisuals();
+		const TStrongObjectPtr<UBattlePresentationController> Incoming(InController);
+		const TStrongObjectPtr<UBattlePresentationController> Previous(PresentationController.Get());
+		TGuardValue<bool> BindingTransition(bBufferedInputBindingTransition, true);
+		PresentationController = nullptr;
 		ReleaseBufferedPlayerInputBinding();
+		const uint64 ReplacementGeneration = BufferedInputBindingGeneration;
+		if (Previous.IsValid()) Previous->NotifyWidgetLost(this);
+		if (BufferedInputBindingGeneration != ReplacementGeneration || PresentationController) return;
+		CancelTrackedPresentationPlayback();
+		if (BufferedInputBindingGeneration != ReplacementGeneration || PresentationController) return;
+		CancelAllPlayedCardVisuals();
+		if (BufferedInputBindingGeneration != ReplacementGeneration || PresentationController) return;
+		PresentationController = Incoming.Get();
+		bBufferedInputBindingTransition = false;
+		NativeOnPresentationControllerChanged();
+		RebindBufferedPlayerInput();
+		NotifyBufferedPlayerInputReadinessChanged();
+		return;
 	}
 	PresentationController = InController;
 	NativeOnPresentationControllerChanged();
@@ -154,6 +184,7 @@ void UBattleHUDWidgetBase::SetPresentationController(
 
 bool UBattleHUDWidgetBase::SelectCard(int32 RuntimeId)
 {
+	if (bBufferedInputBindingTransition) return false;
 	if (bBufferedPlayerInputEnabled) return TryBufferCardSelection(RuntimeId);
 	return IsValid(ViewModel) && ViewModel->SelectCardByRuntimeId(RuntimeId);
 }
@@ -174,6 +205,7 @@ void UBattleHUDWidgetBase::CancelSelection()
 
 bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 {
+	if (bBufferedInputBindingTransition) return false;
 	if (!IsValid(ViewModel))
 	{
 		return false;
@@ -198,6 +230,7 @@ bool UBattleHUDWidgetBase::SelectTarget(int32 TargetId)
 
 bool UBattleHUDWidgetBase::ConfirmSelectedCard()
 {
+	if (bBufferedInputBindingTransition) return false;
 	if (bBufferedPlayerInputEnabled)
 	{
 		if (!BufferedPlayerInput.ConfirmCardDraft(NAME_None, CaptureCardPlayVisualOrigin(GetBufferedCardDraftRuntimeId()))) return false;
@@ -214,6 +247,7 @@ bool UBattleHUDWidgetBase::ConfirmSelectedCard()
 
 bool UBattleHUDWidgetBase::EndTurn()
 {
+	if (bBufferedInputBindingTransition) return false;
 	if (bBufferedPlayerInputEnabled)
 	{
 		RebindBufferedPlayerInput();

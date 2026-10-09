@@ -5,6 +5,7 @@
 #include "../Battle/BattleManager.h"
 #include "../UI/BattleHUDViewModel.h"
 #include "../UI/BattleHUDWidgetBase.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace
 {
@@ -421,6 +422,7 @@ void UBattlePresentationController::Shutdown()
 	InvalidatePresentationSession(Widget);
 	if (IsValid(Widget))
 	{
+		Widget->DiscardQueuedPlayerInput();
 		Widget->CancelAllDetachedDamageVisuals();
 		Widget->CancelAllPlayedCardVisuals();
 	}
@@ -466,6 +468,7 @@ void UBattlePresentationController::SetWidget(UBattleHUDWidgetBase* InWidget)
 	// session and the old G0-G7 playback owner before installing the new Widget;
 	// old playback tokens must never be delivered to the new owner during catch-up.
 	InvalidatePresentationSession(PreviousWidget);
+	if (IsValid(PreviousWidget)) PreviousWidget->DiscardQueuedPlayerInput();
 	RetireActivePlaybackForWidgetReplacement(PreviousWidget);
 	Widget = InWidget;
 	EstablishPresentationSessionForCurrentBinding();
@@ -584,6 +587,7 @@ void UBattlePresentationController::NotifyWidgetLost(UBattleHUDWidgetBase* LostW
 	}
 
 	InvalidatePresentationSession(LostWidget);
+	if (IsValid(LostWidget)) LostWidget->DiscardQueuedPlayerInput();
 	RetireActivePlaybackForWidgetReplacement(LostWidget);
 	Widget = nullptr;
 	SkipPresentation();
@@ -1136,13 +1140,17 @@ void UBattlePresentationController::InvalidatePresentationSession(
 	CommittedCardArrivalReceipt = {}; CommittedArrivalDestinationReceipt = {};
 	// Invalidate first so any synchronous cleanup callback already observes stale.
 	ActivePresentationSessionToken = FPresentationSessionToken{};
+	const TStrongObjectPtr<UBattleHUDWidgetBase> KeepOwner(IsValid(CleanupWidget) ? CleanupWidget : Widget.Get());
+	UBattleHUDWidgetBase* Owner = KeepOwner.Get();
 	if (OldToken.IsValid())
 	{
-		UBattleHUDWidgetBase* Owner = IsValid(CleanupWidget) ? CleanupWidget : Widget.Get();
 		if (IsValid(Owner))
 		{
 			Owner->CancelDetachedDamageVisualsForSession(OldToken);
 			Owner->CancelPlayedCardVisualsForSession(OldToken);
+			// A session fence belongs to card intent. EndTurn remains rooted in the
+			// exact Gameplay turn; DirectBaseline Ready must not discard its queue.
+			Owner->RevalidateBufferedPlayerInput();
 		}
 	}
 }

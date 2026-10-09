@@ -11,6 +11,7 @@
 #include "Containers/Ticker.h"
 #include "Engine/GameInstance.h"
 #include "UObject/GarbageCollection.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Presentation/BattlePresentationController.h"
 SLAYTHESPIREDEMO_API void CacheG9TestWidgetGeometry(UWidget*, const FGeometry&);
 
@@ -22,8 +23,11 @@ namespace NativePlayedCardTest
 		UPhase6UIA2NR8HUDProbe* HUD = nullptr;
 		UBattleHandFanPanel* Fan = nullptr;
 		UBattlePresentationController* Controller = nullptr;
+		// The fixture still owns the sender when HUD bindings are deliberately
+		// removed and GC runs before late-callback checks (as a real Presenter does).
+		TStrongObjectPtr<UBattlePresentationController> ControllerOwner;
 		explicit FFixture(bool bEnableD1 = false, int32 HandCount = 1, ECardDestination Destination = ECardDestination::Discard,
-			int32 GainBlockAmount = 0, int32 Cost = 1)
+			int32 GainBlockAmount = 0, int32 Cost = 1, ECardType CardType = ECardType::Attack)
 		{
 			Game.World->AddToRoot(); Game.World->SetGameInstance(NewObject<UGameInstance>(Game.World));
 			Game.Battle->DebugStartingDeck.Reset();
@@ -32,6 +36,7 @@ namespace NativePlayedCardTest
 				auto* Definition = Phase6UIA1Test::CreateCard(Game.World, *FString::Printf(TEXT("JobCard%d"), I),
 					GainBlockAmount > 0 ? ECardTargetType::Self : ECardTargetType::None, Cost, GainBlockAmount);
 				Definition->DefaultDestination = Destination;
+				Definition->CardType = CardType;
 				Game.Battle->DebugStartingDeck.Add(Definition);
 			}
 			Game.Battle->OpeningHandDrawCount = HandCount;
@@ -51,6 +56,7 @@ namespace NativePlayedCardTest
 			CacheG9TestWidgetGeometry(Fan,Root.MakeChild(FVector2D(800,220),FSlateLayoutTransform(FVector2D(100,480))));
 			CacheG9TestWidgetGeometry(Play,Root.MakeChild(FVector2D(400,300),FSlateLayoutTransform(FVector2D(300,100))));
 			Controller = NewObject<UBattlePresentationController>(Game.World);
+			ControllerOwner.Reset(Controller);
 			HUD->SetPresentationController(Controller); Controller->Initialize(Game.Battle,Game.ViewModel,HUD);
 			if (bEnableD1) Controller->SetDetachedCardDestinationD1Enabled(true);
 		}

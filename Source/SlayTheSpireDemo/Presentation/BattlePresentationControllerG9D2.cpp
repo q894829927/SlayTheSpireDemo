@@ -9,8 +9,9 @@ void UBattlePresentationController::SetDetachedCardArrivalD2Enabled(bool bEnable
 	bDetachedCardArrivalD2Enabled = bEnabled;
 	if (!bEnabled && IsValid(Widget))
 	{
-		Widget->DiscardQueuedPlayerInput();
-		Widget->CancelDetachedCardArrivalVisuals();
+		const TStrongObjectPtr<UBattleHUDWidgetBase> Owner(Widget.Get());
+		Owner->CancelDetachedCardArrivalVisuals();
+		Owner->DiscardQueuedPlayerInput();
 		RefreshInputIfPresentationCaughtUp();
 	}
 }

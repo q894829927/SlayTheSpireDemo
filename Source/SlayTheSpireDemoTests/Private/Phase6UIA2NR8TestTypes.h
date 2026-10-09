@@ -115,6 +115,9 @@ public:
 	void InvokeNativeDestructForTesting();
 	void ConfigureFanForTesting(UBattleHandFanPanel* Fan);
 	void ConfigureBlockForTesting(UTextBlock* PlayerBlock) { Txt_PlayerBlock = PlayerBlock; }
+	UTextBlock* BlockTextForTesting() const { return Txt_PlayerBlock; }
+	UBattleHUDViewModel* ModelForTesting() const { return ViewModel; }
+	UBattlePresentationController* ControllerForTesting() const { return PresentationController; }
 	void PointerForTesting(FVector2D Pointer) { UpdatePointerCardVisuals(Pointer); }
 	bool ConfirmPointerForTesting() { return ConfirmPointerCard(); }
 	TOptional<FCardPlayVisualOrigin> OriginForTesting(int32 RuntimeId) const { return CaptureCardPlayVisualOrigin(RuntimeId); }

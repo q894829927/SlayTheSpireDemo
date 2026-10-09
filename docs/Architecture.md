@@ -1,5 +1,22 @@
 # Architecture
 
+G9-E keeps input retirement synchronous and separate from readiness consumption.
+Discarding pending input immediately updates Native draft, pointer and gesture
+surfaces. A valid Session invalidation rechecks exact intent credentials;
+binding teardown drops pending requests. Ordinary Session-less DirectBaseline
+Ready preserves valid same-turn FIFO and EndTurn authority. Neither notification
+consumes input or pumps Gameplay.
+
+HUD model/controller replacement detaches the old binding before tracked playback
+and cosmetic cleanup, then installs the new owner. Input is rejected during that
+transition. Binding generations let a reentrant newer model win; strong lifetime
+pins cover old/new objects across callbacks and GC. Old timers and completions
+cannot mutate the new surface. Hosted Blocking completion finds the unique job
+by the current exact playback token and then validates its visual generation.
+IncomingHandAttachment is the sole temporary draw owner; no duplicate active
+draw Widget or active visual-token mirror is maintained. Native Blocking fallback
+remains required. E integration gates are accepted; overall G9 sealing is F.
+
 G9-D2 uses a validated, default-on Native detached arrival transaction. The Controller proves the
 entire remaining current sealed Envelope on copied snapshot/history using the
 shared card reducer, with exactly one supported destination for the same play

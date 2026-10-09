@@ -1,5 +1,30 @@
 # Validation
 
+## G9-E 集成与清理 — 2026-10-10
+
+契约 `e82595b`，验证时为该 HEAD 加最终 Native C++／测试工作区。
+输入退役即时通知、ViewModel／Controller 替换、旧计时器与回调隔离，
+重复单实例状态清理已实现。详细命令范围、失败原因、日志与中文 PIE
+结果见 [E 执行](SelectionPresentationG9EExecution.md)。
+
+四次规定生成／Development Editor 构建均成功。首轮 107 项成功、2 项
+失败后 GC 夹具崩溃，未导出完整报告；修复后受影响范围
+`Saved/AutomationReports/G9ERepair/index.json`：90 项，86 成功、4 项既有
+预期警告通过、0 失败／未运行。未受后续改动影响的首轮 HandInteraction
+13 项和 CardSelection.Presentation 13 项（含 G5）日志成功证据继续有效。
+最终空所有者重复退出检查仅重跑 1 项成功：`G9ENullOwner/index.json`。
+不把这些重叠或不同范围的报告相加。
+
+生产 Native MCP PIE：关闭 D2 时指针草稿即时退役、旧 FIFO 不执行、原牌
+及后续正常输入各结算一次；Skip 清理与 DamageNumber 共存；战吼 Blocking
+抽牌后的防御选择／确认、强制选择结束回合禁用及恢复后排列／输入通过。
+图片、冻结时间线已实际查看，保存于 `Saved/G9EVisualEvidence/`；日志
+`Saved/Logs/G9EPIE.log`。旧 D2 窗口缩放人工通过复用，E 无剩余人工门槛。
+
+实际 Native 默认 B／D1／D2=true；PIE 已停止，编辑器关闭，无资产保存。
+外部 HUD 资产 SHA256 保持并排除提交。**E COMPLETE／VALIDATED**；F 未
+开始，G9 NOT SEALED。
+
 ## G9-D2 独立 Native 默认启用 — 2026-10-09
 
 人工收口起点 `a40335f`，默认开启交付 `a6bc659`。本批仅启用 Native D2 默认，并在共享 C／D1 夹具

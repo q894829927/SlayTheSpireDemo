@@ -300,6 +300,7 @@ protected:
 	void UpdatePlayedCardVisualJobs(float DeltaSeconds);
 	void RetirePlayedCardVisualJob(int32 Index, bool bRestoreSource = false);
 	bool CompletePlayedCardVisualJob(const FDetachedCardVisualToken& VisualToken, const FPresentationPlaybackToken& BlockingToken);
+	bool CompleteBlockingPlayedCardVisualJob(const FPresentationPlaybackToken& BlockingToken);
 	void RetireCollidingPlayedCardVisualJobs();
 	UBattleCardWidget* FindPreferredPlayedCardVisual() const;
 	void SetPlayedCardVisualsSelectionHidden(bool bHidden);
@@ -446,7 +447,7 @@ protected:
 	}
 	UBattleCardWidget* GetNativeDrawnCardWidget() const
 	{
-		return ActiveNativeDrawnCardWidget.Get();
+		return IncomingHandAttachment.bCompleted ? nullptr : IncomingHandAttachment.Widget.Get();
 	}
 	UBattleCardWidget* GetNativeZoneCardWidget() const
 	{
@@ -633,7 +634,6 @@ private:
 	int64 NextCardDestinationPreparationGeneration = 1;
 	int64 NextCardArrivalPreparationGeneration = 1;
 	FPlayedCardPresentationLifecycleToken BlockingFallbackPlayedLifecycle;
-	FDetachedCardVisualToken ActivePlayedCardVisualToken;
 	bool bPlayedCardVisualsSelectionHidden = false;
 	UPROPERTY(Transient) TObjectPtr<UBorder> PointerInputBackdrop;
 	TOptional<FNativeHandPointerGesture> HandPointerGesture;
@@ -726,15 +726,12 @@ private:
 		ENativeCardPresentationKind::None;
 	TWeakObjectPtr<UBattleCardWidget> NativeBlockingFallbackPlayedCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeHistoricalHandCardWidget;
-	TWeakObjectPtr<UBattleCardWidget> ActiveNativeDrawnCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeZoneCardWidget;
 	TWeakObjectPtr<UBattleCardWidget> ActiveNativeMovingCardWidget;
 	TWeakObjectPtr<UWidget> ActiveNativeCardAnimationStartAnchor;
 	TWeakObjectPtr<UWidget> ActiveNativeCardAnimationEndAnchor;
 	ESlateVisibility ActiveNativeHistoricalHandVisibility = ESlateVisibility::Visible;
 	int32 ActiveNativeDrawCountBefore = 0;
-	int32 ActiveNativeDrawCountAfter = 0;
-	int32 ActiveNativeCardDestinationIndex = INDEX_NONE;
 	float ActiveNativeCardAnimationElapsedSeconds = 0.0f;
 	FVector2D ActiveNativeCardAnimationStartTranslation = FVector2D::ZeroVector;
 	FVector2D ActiveNativeCardAnimationEndTranslation = FVector2D::ZeroVector;

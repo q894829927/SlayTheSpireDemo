@@ -73,7 +73,6 @@ bool UBattleHUDWidget::BeginHostedCardPlayed(const FPresentationRecord& Record, 
 	{ RetirePlayedCardVisualJob(Index); return false; }
 	PlayedCardVisualJobs[Index].Phase = ECardVisualPhase::EnteringPlayArea;
 	PlayedCardVisualJobs[Index].Widget->SetVisibility(bPlayedCardVisualsSelectionHidden ? ESlateVisibility::Hidden : ESlateVisibility::HitTestInvisible);
-	ActivePlayedCardVisualToken = VisualToken;
 	ActiveNativeCardPresentationKind = ENativeCardPresentationKind::CardPlayed;
 	ActiveNativeHistoricalHandCardWidget = Source; ActiveNativeHistoricalHandVisibility = Source->GetVisibility();
 	Source->SetVisibility(ESlateVisibility::Hidden);
@@ -152,7 +151,6 @@ bool UBattleHUDWidget::BeginHostedCardDestination(const FPresentationRecord& Rec
 		Job.DestinationCenter = Spec.EndCenter; Job.EndScale = Spec.EndScale;
 		Job.EndOpacity = Spec.EndOpacity;
 		ActiveNativeCardPresentationKind = ENativeCardPresentationKind::PlayAreaToDestination;
-		ActivePlayedCardVisualToken = Job.Token;
 		UpdatePlayedCardVisualJobs(0);
 		if (!StartNativePresentationFinishTimer(0.5f))
 		{
@@ -263,6 +261,19 @@ void UBattleHUDWidget::SetPlayedCardVisualsSelectionHidden(bool bHidden)
 	for (auto& Job : PlayedCardVisualJobs)
 		if (Job.Widget && !Job.bDetachedDestination && !Job.bDetachedArrival && Job.Phase != ECardVisualPhase::Prepared) Job.Widget->SetVisibility(CosmeticVisibility);
 	if (auto* Card = NativeBlockingFallbackPlayedCardWidget.Get()) Card->SetVisibility(CosmeticVisibility);
+}
+
+bool UBattleHUDWidget::CompleteBlockingPlayedCardVisualJob(const FPresentationPlaybackToken& BlockingToken)
+{
+	if (!BlockingToken.IsValid() || BlockingToken != ActiveNativePresentationToken) return false;
+	FDetachedCardVisualToken Visual;
+	for (const auto& Job : PlayedCardVisualJobs)
+		if (!Job.bDetachedArrival && !Job.bDetachedDestination && Job.BlockingToken == BlockingToken)
+		{
+			if (Visual.IsValid()) return false; // ambiguous completion never selects arbitrarily
+			Visual = Job.Token;
+		}
+	return Visual.IsValid() && CompletePlayedCardVisualJob(Visual, BlockingToken);
 }
 
 bool UBattleHUDWidget::CompletePlayedCardVisualJob(const FDetachedCardVisualToken& VisualToken, const FPresentationPlaybackToken& BlockingToken)

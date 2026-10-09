@@ -77,6 +77,7 @@ public:
 	bool TryGetBufferedDraftTarget(FName PresentationId, FBattleHUDTargetView& OutTarget) const;
 	bool CanDraftBufferedCard(int32 RuntimeId) const { return BufferedPlayerInput.CanBeginCardDraft(RuntimeId); }
 	void DiscardQueuedPlayerInput();
+	void RevalidateBufferedPlayerInput();
 	// Explicit chronology/readiness notification; never a cosmetic completion.
 	void NotifyBufferedPlayerInputReadinessChanged();
 
@@ -305,6 +306,7 @@ private:
 	TWeakObjectPtr<ABattleManager> BufferedInputBattle;
 	bool bBufferedPlayerInputEnabled = false;
 	bool bBufferedInputProcessing = false;
+	bool bBufferedInputBindingTransition = false;
 	bool bBufferedInputEvaluationScheduled = false;
 	uint64 BufferedInputBindingGeneration = 1;
 	void HandleNativeViewModelChanged(EBattleHUDDirtyFlags DirtyFlags);

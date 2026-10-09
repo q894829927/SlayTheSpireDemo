@@ -1,5 +1,22 @@
 # Checkpoint — G9-E integration and cleanup
 
+## 当前继续点：E 实施和验收完成，下一阶段 F 尚未开始
+
+2026-10-10，验证时 HEAD `e82595b` 加本批最终工作区；本检查点随代码和
+证据一起本地提交，提交后补交付编号。同步输入退役、模型／Controller
+替换与重入隔离、精确 Blocking 完成及 IncomingHandAttachment 唯一持有
+已完成。规定构建通过，受影响自动化 90 项零失败；最终空所有者检查
+仅补跑 1 项成功。首轮未受影响 HandInteraction／G5 等成功日志复用，
+范围和初次失败／GC 夹具修正见 `SelectionPresentationG9EExecution.md`。
+
+生产 Native PIE 关闭 D2、Skip、DamageNumber 共存、Blocking 抽牌／战吼
+强制选择与恢复已观察通过，E 无剩余人工门槛；旧 D2 缩放通过复用。
+E COMPLETE／VALIDATED，B／D1／D2 默认 true，F 未开始，G9 NOT SEALED。
+下一步在用户开始 F 后汇总最终证据与封板文档；不自动开始 F 或重跑
+已通过验收。PIE 已停止，自有编辑器 21352 已关闭，无资产保存。
+外部 Native HUD SHA256 保持，仅该无关资产工作区改动保留并排除提交；
+不 push，不提交 Saved／生成文件。以下为历史状态。
+
 ## 当前继续点：E 契约就绪，开始输入／替换与重复状态收敛
 
 2026-10-09，起点 `3922055`，代码 `a6bc659`。D2 全部验收／默认开启已交付；
