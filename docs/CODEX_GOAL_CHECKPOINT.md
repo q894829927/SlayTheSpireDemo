@@ -2,9 +2,9 @@
 
 ## 当前继续点：D1 完成、默认启用；下一开发阶段 D2
 
-2026-10-09，人工收口提交 `1cc58de`，原代码实现 `96de67b`，独立启用批次
-标题 `feat(g9-d1): enable validated native destination tails by default`；提交后
-用 `git log -1` 核实精确 HEAD。只改 Native 默认 true 和旧 Blocking 回退
+2026-10-09，人工收口提交 `1cc58de`，原代码实现 `96de67b`，已核实独立启用
+实现 HEAD `98d917a`（`feat(g9-d1): enable validated native destination tails by default`）。
+本次后续提交仅记录交付编号，不改变已验证代码。只改 Native 默认 true 和旧 Blocking 回退
 用例的显式关闭策略，原断言保留。全部人工门槛已通过，不重复要求。
 
 规定生成／构建通过（8.43／201.97 秒）；首轮 65 项仅旧 Blocking 默认依赖

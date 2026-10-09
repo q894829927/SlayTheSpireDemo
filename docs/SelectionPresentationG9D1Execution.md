@@ -233,6 +233,6 @@ PIE 已停止并查询 false，编辑器已关闭，无资产保存；读回
 `F896F7B59A91D4EC86AD73973451E19012B7523EE7D1D1ECEE2B570894E20F81`，
 排除提交；无生成文件、Legacy、插件或依赖变更，不 push。
 
-独立启用提交标题 `feat(g9-d1): enable validated native destination tails by default`，
-精确交付编号以提交后 Git 为准。D1 COMPLETE／VALIDATED／Native 默认启用；
+独立启用已提交为 `98d917a`（`feat(g9-d1): enable validated native destination tails by default`）。
+后续交付编号记录仅改文档，无新 UE 运行。D1 COMPLETE／VALIDATED／Native 默认启用；
 CardPlayed 入场仍 Blocking。D2 是下一开发阶段，尚未实施；G9 整体 NOT SEALED。
