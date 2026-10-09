@@ -1,5 +1,24 @@
 # Checkpoint — G9-D2 detached card arrival
 
+## 当前继续点：D2 完成并默认开启，下一阶段 G9-E
+
+2026-10-09，人工收口 HEAD `a40335f`，D2 实现 `ab07abb`。默认批次在
+`a40335f` 加最终两处 C++／测试修改的工作区验证：Native D2=true；共享
+C／D1 夹具显式关闭 D2，D2 案例自行开启，原断言保留。待本批提交后
+交付记录补代码编号，不能用文档后继提交要求重跑有效证据。
+
+规定生成／构建 8.73／186.53 秒通过；一次聚焦 85 项：84 成功、1 个预期
+警告通过、零失败／未运行。生产 MCP 无覆盖读回 C++／Blueprint CDO／HUD
+均 B=true／D1=true／D2=true；初始 Idle、未锁定、可结束回合、无反馈。
+PIE 已停止，当前自有编辑器 PID 32476 空闲保留，无资产保存。完整路径／
+结果见 `SelectionPresentationG9D2Execution.md` 的默认批次，不累加旧报告。
+
+全部 D2 人工门槛已关闭，窗口缩放为 USER_REPORTED_PASS，D2 COMPLETE／
+VALIDATED／NATIVE DEFAULT ENABLED。下一开发阶段 G9-E：集成与清理，
+尚未开始；G9-F 未开始，G9 整体未封板。本轮不自动进入 E，不重开
+B／C／D1 或 D2 既有视觉验收。外部 Native HUD 原 SHA256 保持且排除
+提交；不 push。以下为历史状态。
+
 ## 当前继续点：D2 全部验收通过，独立启用 Native 默认
 
 2026-10-09，交付 HEAD `557fceb`，代码 `ab07abb`。用户回复“验证通过”，

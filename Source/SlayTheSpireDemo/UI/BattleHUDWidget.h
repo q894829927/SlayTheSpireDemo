@@ -132,13 +132,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle HUD|Input")
 	bool bEnableG9BufferedPlayerInput = true;
 
-	// G9-D1 validated Native default; CardPlayed arrival remains Blocking.
+	// Validated Native defaults; each policy retains its runtime disable path.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle Presentation|G9")
 	bool bEnableDetachedCardDestinationD1 = true;
 	UFUNCTION(BlueprintCallable, Category = "Battle Presentation|G9")
 	void SetDetachedCardDestinationD1Enabled(bool bEnabled);
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Battle Presentation|G9")
-	bool bEnableDetachedCardArrivalD2 = false;
+	bool bEnableDetachedCardArrivalD2 = true;
 	UFUNCTION(BlueprintCallable, Category = "Battle Presentation|G9")
 	void SetDetachedCardArrivalD2Enabled(bool bEnabled);
 

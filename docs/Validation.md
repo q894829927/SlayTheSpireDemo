@@ -1,5 +1,20 @@
 # Validation
 
+## G9-D2 独立 Native 默认启用 — 2026-10-09
+
+人工收口起点 `a40335f`。本批仅启用 Native D2 默认，并在共享 C／D1 夹具
+显式关闭 D2，保留原 Blocking 断言；D2 用例仍显式开启。规定生成／
+Development Editor 构建 8.73／186.53 秒通过。实际一次聚焦 85 项：84 成功、
+1 个既有 R8 异常身份拒绝预期警告通过、0 失败／未运行。精确范围与
+`G9D2Default` 报告／日志见 [D2 执行](SelectionPresentationG9D2Execution.md)。
+不与前一批 97 个不同案例累加，不重跑用户已通过的动画门槛。
+
+新编辑器生产 `L_Battle_RuinedCitadel`，无临时覆盖：C++ CDO、Blueprint CDO、
+HUD 实例均读回 B=true／D1=true／D2=true，初始 Idle、未锁定、可结束回合、
+无反馈、能量 5。PIE 已停止并查询 false，编辑器 PID 32476 空闲保留。
+未保存资产；外部 Native HUD 原 SHA256 保持并排除提交。不 push。
+D2 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED；E／F 未开始，G9 NOT SEALED。
+
 ## G9-D2 最后一项人工验收收口 — 2026-10-09
 
 用户在交付 `557fceb`（实现 `ab07abb`）后回复“验证通过”，对应唯一剩余的

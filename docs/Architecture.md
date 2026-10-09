@@ -1,6 +1,6 @@
 # Architecture
 
-G9-D2 adds an opt-in detached arrival transaction. The Controller proves the
+G9-D2 uses a validated, default-on Native detached arrival transaction. The Controller proves the
 entire remaining current sealed Envelope on copied snapshot/history using the
 shared card reducer, with exactly one supported destination for the same play
 occurrence. It never commits a future record during preflight. New admission
@@ -14,7 +14,9 @@ after visual loss or policy disable. An entering job remembers that commitment
 and starts its tail only after arrival completes, carrying elapsed overshoot.
 Private clocks do not complete the Controller or submit queued input. Same-runtime
 formal Hand ownership retires the old visual; old receipts cannot affect a new
-generation. D2 remains default-off until its own visual acceptance closes.
+generation. All D2 visual gates are accepted. Native startup enables D2 by
+default; runtime disable retains Blocking admission and necessary formal
+correlations. Generic Base/Controller defaults remain opt-in.
 
 G9-D1 destination tails are an independent, validated default-on Native policy
 with a runtime disable path. The Controller proves a copied sealed card record

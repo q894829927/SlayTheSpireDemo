@@ -1,6 +1,6 @@
 # Development Phases
 
-2026-10-09 **G9-D2 COMPLETE／VALIDATED／DEFAULT ACTIVATION PENDING**：
+2026-10-09 **G9-D2 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 起点 `04d835b`，契约 `931eb30`，实现 `ab07abb`。当前封存 Envelope 纯预检、入场正式事务、
 准确去向收据、提前去向与连续尾部、独立多 job 及关闭／恢复清理已实施。
 规定生成／Development Editor 构建通过；聚焦运行及仅受影响修正重跑后，
@@ -9,7 +9,11 @@
 回退及选择／关闭／Skip／同实例下一回合再出牌。用户在 `557fceb` 交付后
 确认唯一剩余的运动中窗口缩放“验证通过”，记为 USER_REPORTED_PASS，
 全部 D2 人工门槛关闭，详见 [D2 执行](SelectionPresentationG9D2Execution.md)。
-D2 默认开启待独立代码／验证批次；B／D1 默认开启保持。E／F 未开始，G9 未封板。
+人工收口 `a40335f` 后独立启用 Native D2 默认。规定生成／Editor 构建
+8.73／186.53 秒通过；一次聚焦 85 项，84 成功、1 个预期警告通过、无
+失败／未运行。生产 C++／Blueprint CDO／实际 HUD 无覆盖读回 B／D1／D2
+均 true，初始 Idle、正常输入；PIE 已停止。B／D1 默认开启保持；E／F
+未开始，G9 整体未封板。完整证据见 D2 执行文档。
 
 2026-10-09 **G9-D1 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED**：
 契约提交 `a211cd2`，实现提交 `96de67b`：正式去向事务及独立尾部已实施，

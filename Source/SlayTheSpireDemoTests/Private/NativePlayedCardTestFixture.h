@@ -39,6 +39,8 @@ namespace NativePlayedCardTest
 			Game.Battle->bEnableCommittedPresentationRecording = true;
 			Game.Battle->StartBattle(); Game.DrainInitialReady(); Game.InitializeViewModel();
 			HUD = NewObject<UPhase6UIA2NR8HUDProbe>(Game.World); HUD->AddToRoot(); HUD->SetTestWorld(Game.World);
+			// Shared C/D1 fixtures retain Blocking arrivals; D2 cases opt in explicitly.
+			HUD->SetDetachedCardArrivalD2Enabled(false);
 			UOverlay* Play = NewObject<UOverlay>(HUD);
 			HUD->ConfigureCardSurfaces(NewObject<UHorizontalBox>(HUD),Play,NewObject<UTextBlock>(HUD),NewObject<UTextBlock>(HUD),NewObject<UTextBlock>(HUD));
 			if (GainBlockAmount > 0) HUD->ConfigureBlockForTesting(NewObject<UTextBlock>(HUD));

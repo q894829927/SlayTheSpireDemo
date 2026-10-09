@@ -1,7 +1,7 @@
 # G9-D2：出牌入场与提前去向衔接
 
 2026-10-09，分支 `codex/g9-buffered-input-detached-cards`，起点 `04d835b`。
-D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 COMPLETE／VALIDATED／默认开启待独立验证；
+D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED；
 本轮仅 D2，不进入 E／F，不宣称 G9 封板。保留外部 Native HUD 资产原样，
 只改 Native C++、测试及文档；每个完整批次本地提交，不 push。
 
@@ -72,8 +72,9 @@ B=true、D1=true、D2 验收期间显式开启。不得修改资产或延长动�
 契约基线 `04d835b`，契约提交 `931eb30`，实现提交 `ab07abb`。以下构建／Automation／PIE 均在
 `931eb30` 加本批 Native C++／测试工作区上实际执行，D2 默认 false。
 实现批次原状态为 IMPLEMENTED／AUTOMATED GATES PASS／PARTIAL PIE。
-用户在交付 `557fceb` 后确认最后缩放门槛通过，当前 D2 COMPLETE／VALIDATED，
-默认开启为下一独立批次。C／D1／B 原验收不重开，G9 NOT SEALED。
+用户在交付 `557fceb` 后确认最后缩放门槛通过，收口提交 `a40335f`。下述
+独立默认开启批次也已通过，当前 D2 COMPLETE／VALIDATED／NATIVE DEFAULT
+ENABLED。C／D1／B 原验收不重开，G9 NOT SEALED。
 
 ## 实现和自动化证据 — 2026-10-09
 
@@ -153,3 +154,33 @@ Idle、未锁定、可结束回合、无反馈、能量 2；手牌有剑柄打�
 配置或构建记录；原自动化、构建及其余视觉证据继续有效，全部 D2 人工门槛
 关闭。下一独立批次启用 Native 默认、规定验证并读回生产配置；E／F 未开始，
 G9 整体不封板。默认开启前新启动 PIE 仍需显式 setter，不能保存资产来开启。
+
+## 独立 Native 默认开启批次 — 2026-10-09
+
+人工收口提交 `a40335f` 后，Native 的 `bEnableDetachedCardArrivalD2` 默认设为
+true，保留现有运行时关闭入口；通用 Base／Controller 不改默认，仍由生产
+Native 绑定同步策略。共享 C／D1 卡牌夹具显式关闭 D2，D2 案例自行开启，
+继续验证原 Blocking 断言，没有把旧用例改成解耦断言。
+
+规定先生成工程，再构建 Development Editor，两项通过：8.73／186.53 秒。
+日志 `Saved/Logs/G9D2DefaultProjectFiles.log`／`G9D2DefaultBuild.log`。实际一次
+聚焦 Automation **85 项：84 成功、1 带预期警告通过、0 失败／未运行**；
+警告为原 R8 异常身份拒绝案例。范围为 G9D2、G9D1、G9C.Visual、Native R8、
+G9B、G8B、Native FastInput、HandInteraction、G6、CardSelection.Presentation、
+UIA3.CardPlayedRichHandoff；日志 `Saved/Logs/G9D2DefaultAutomation.log`，报告
+`Saved/AutomationReports/G9D2Default/index.json`。不与前一批 97 个案例累加。
+已通过的动画视觉不重跑，也不再要求用户重复验收。
+
+本批验证在 `a40335f` 加最终两处 C++／测试修改的工作区实际执行。用户已
+关闭原编辑器后才构建，新启动自有编辑器 PID 32476，生产地图没有临时
+setter 或属性覆盖。MCP 三处读回 Native C++ CDO、生产 Blueprint CDO、
+实际 HUD 均为 B=true／D1=true／D2=true；ViewModel 初始 Idle、未锁定、可
+结束回合、无反馈、能量 5。读回文件（均在 `Saved/`）：
+`G9D2DefaultNativeCDO.json`、`G9D2DefaultBlueprintCDO.json`、
+`G9D2DefaultRuntimeHUD.json`、`G9D2DefaultReadyVM.json`。
+日志 `Saved/Logs/G9D2DefaultPIE.log`。已停止 PIE 并查询 false，文件
+`G9D2DefaultStopPIE.json`／`G9D2DefaultStopped.json`；编辑器空闲保留。
+
+没有保存资产，外部 Native HUD SHA256 保持原值并排除提交；生成文件、
+日志和报告只保留在忽略目录。不 push。全部 D2 门槛关闭，COMPLETE／
+VALIDATED／NATIVE DEFAULT ENABLED；E／F 未开始，G9 整体 NOT SEALED。
