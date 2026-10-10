@@ -1,5 +1,9 @@
 # Selection Presentation G9-A — Authority Foundation
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 A 当批执行历史及证据，
+“后续未开始／未封板”均指当时状态。
+
 Date: **2026-10-05**
 
 Status: **G9-A COMPLETE / VALIDATED / SHADOW ONLY; G9 NOT SEALED**

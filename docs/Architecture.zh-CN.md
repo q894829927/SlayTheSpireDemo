@@ -1,5 +1,29 @@
 # 整体架构说明
 
+G9 A–F 已 COMPLETE／VALIDATED／SEALED。Native 启动默认开启缓冲输入、
+D1 去向和 D2 入场，各自保留运行时关闭和 Blocking 回退；证据与当前
+契约见 [G9-F 封板](SelectionPresentationG9FSeal.md)。以下各阶段说明
+解释已交付的职责边界，不表示尚待实施。
+
+G9-E 将即时输入退役与就绪消费分开。清理待执行输入同步更新 Native
+草稿、指针牌和手势表面；有效 Session 失效只复核精确凭据，实际绑定
+退出清空待执行请求。无旧 Session 的 DirectBaseline 普通 Ready 保留
+合法的同回合 FIFO／EndTurn；通知本身不消费队列或推进 Gameplay。
+模型／Controller 替换先解绑，退役 tracked 播放、计时器和私有视觉，再
+安装新所有者；过渡期间拒绝输入，绑定 generation 让较新重入模型优先。
+跨回调强引用保证 GC 存续，旧回调不能修改新表面。Blocking 完成按精确
+播放 token 查找唯一 job，再校验视觉 generation；IncomingHandAttachment
+是唯一抽牌附着对象，必要 Blocking 渲染器仍保留。
+
+G9-D2 是已验收并默认开启的 Native 入场事务。Controller 使用共享纯
+reducer 在候选副本上证明当前封存 Envelope 的后续历史和同一次出牌的
+唯一受支持去向，预检不提前提交。准入同时要求 D1 和 D2 开启；隐藏的
+准备 job 冻结来源姿态和完整路径，正式 CardPlayed 与去向收据同时安装
+后发布，只有精确已提交收据授权激活。准备失败保留 Blocking，提交后
+视觉失败不重放历史；关闭或视觉丢失后去向仍在正式游标消费必要关联。
+提前去向由入场 job 保存，入场结束后带剩余时间连续接尾部；私有时钟
+不完成 Controller 或提交输入。新正式 Hand 优先于同 RuntimeId 旧视觉。
+
 G9-D1 去向尾部是独立、已验收后 Native 默认开启的策略，保留运行时关闭。
 Controller 对复制的封存记录及候选快照／生命周期做证明，准备有界视觉
 收据，正式候选同时安装后
@@ -12,7 +36,8 @@ Native 尾部复用 C 的 GC 安全 job，冻结归一化端点并独立计时�
 timer、完成回执、输入债务或 Gameplay 请求。同 RuntimeId 正常抽回时，新
 正式 Hand 优先；Selection 临时隐藏不控制已解耦尾部。关闭清理尾部／准备
 及待执行输入，不替换 Session／回合权限或删除必要的正式关联。Skip／恢复
-即使没有活动 Blocking unit，也清理留存视觉。CardPlayed 入场仍 Blocking。
+即使没有活动 Blocking unit，也清理留存视觉。仅开启 D1 时入场仍 Blocking；
+通过 D2 准入证明后才独立演出入场。
 
 G9-C Native 已打出卡牌使用 HUD 持有、不可交互的 DetachedCardVFXHost。
 每个 GC 安全 job 保存冻结 Widget、准确出牌发生与独立视觉 generation、
@@ -21,7 +46,8 @@ G9-C Native 已打出卡牌使用 HUD 持有、不可交互的 DetachedCardVFXHo
 新正式 Hand 所有者即使禁止输入，也立即退役旧视觉。Session 失效、Skip／
 恢复和销毁清理私有 job。准备容量为 32，不产生正式副作用；资源不足保留
 既有 Native Blocking 回退，Controller 历史／生命周期无效时不得回退。
-无 Controller 的独立 renderer 测试保留 R8 契约，本迁移不启用 D1／D2 时序。
+无 Controller 的独立 renderer 测试保留 R8 契约；D1／D2 时序在后续已验收
+阶段启用。
 
 G9-C 卡牌历史由一个原子的纯 reducer 处理正式 Blocking 提交、单记录和
 Group 预检。Controller 保存准确的未完成出牌发生；正常 Envelope 完成保留
@@ -115,16 +141,18 @@ CardData / CardInstance
 G9-A 增加 Gameplay 拥有的只读玩家回合身份 `BattleId + PlayerTurnSerial`。
 serial 在战斗初始化时重置，每次正式成功进入 PlayerTurn 时只递增一次；
 同一回合的 StateRevision 变化不改变它，它也不依赖 Presentation session。
-G9-A 建立影子评估；G9-B 增加可选启用的生产消费路径，默认开启仍受其视觉门禁约束。
+G9-A 建立影子评估；修订后的 G9-B 生产消费路径已验收，Native 默认开启。
 
-开启后，一个 HUD 拥有的仲裁器最多保存一个玩家物理输入意图。已接受的精确回合
-EndTurn 优先于缓冲选牌与 Native FastInput 重试。ViewModel 通过已有 Gameplay Request
-转发该回合 token，不要求历史显示已经追平，也不从实时状态重建历史显示。
-选牌只缓冲已经封存的精确 Presentation 目标，仍需新的确认或目标输入。
+开启后，HUD 唯一仲裁器保存一个未确认草稿、最多 32 项已确认出牌和一个
+精确回合 EndTurn 标记。播放期间依据冻结 Hand／目标视图完成确认，在
+显示追平的提交边界才解析当前绑定和合法性。EndTurn 先验权，保留此前
+确认及合法忙碌重试，取消草稿／FastInput，禁止后续追加；已有牌完成后
+结束同回合一次，不从实时状态重建历史显示。已接受 EndTurn 的转发复核
+Gameplay 回合权限，不要求显示追平，但仍须保留此前确认 FIFO 的顺序。
 Ready、Controller 和 ViewModel 通知驱动合并且非重入的消费；视觉 NativeTick 不轮询
 Gameplay readiness。正式 Hand Widget 保持 `(BattleId, RuntimeId)` 身份、冻结顺序和
-Hidden 历史槽位；悬停变换/层级与结构布局分离。卡牌播放仍为 Blocking。
-执行证据见 `docs/SelectionPresentationG9BExecution.md`。
+Hidden 历史槽位；悬停变换/层级与结构布局分离。不受支持或关闭的路径
+仍 Blocking，已证明的 D1／D2 视觉独立运行。执行证据见 B 收口及 G9-F 封板。
 
 ### Combatants
 
@@ -146,7 +174,7 @@ Hidden 历史槽位；悬停变换/层级与结构布局分离。卡牌播放仍
 
 任意时刻只允许一个权威 Action 执行。顺序和完成状态必须显式表达。Action 可以加入依赖 Action，但绝不能驱动 Queue 前进。
 
-同一逻辑链所需的依赖批次必须在当前 Action 完成前插入。嵌套反应使用排队的深度优先语义。Queue fault 在安全点进入 fault 状态，只广播一次，抑制正常的 `QueueEmpty`，并拒绝后续 mutation。
+同一逻辑链所需的依赖批次必须在当前 Action 完成前插入。Status 反应进入队首并保留排队的深度优先顺序，Relic 事件反应进入队尾，位于当前卡牌效果／去向之后；两端批次一并原子预检。Queue fault 在安全点进入 fault 状态，只广播一次，抑制正常的 `QueueEmpty`，并拒绝后续 mutation。
 
 `QueueEmpty` 是可观察且不可重入的边界。`BattleManager` 会等所有观察者返回后，才继续宏观回合流程。
 

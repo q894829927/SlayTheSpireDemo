@@ -1,20 +1,23 @@
 # Selection Presentation G9 — Buffered Player Input + Detached Card Presentation
 
-2026-10-05 authority amendment: [confirmed FIFO / relic tails / turn-end group](QueuedCardPlayAndRelicTimingAmendment.md)
-supersedes G9-B's selection-only/single-intent/fresh-confirmation contract and its
-16.1 input gate. Original text remains historical context. New B gates follow the
-amendment. G9-C is complete and validated, including the user-confirmed final
-moving-viewport visual gate under [C execution](SelectionPresentationG9CExecution.md);
-D1 is complete and validated with all automated and Native PIE gates passed,
-including the user-confirmed final moving-tail viewport gate. Its independently
-validated Native default is enabled
-under [D1 execution](SelectionPresentationG9D1Execution.md).
-D2 is in progress with its default off under [D2 execution](SelectionPresentationG9D2Execution.md).
-E–F are not started or accepted.
+2026-10-10 当前状态：**G9 COMPLETE／VALIDATED／SEALED**。A–F 全部门槛
+已关闭，Native B／D1／D2 默认开启；证据、提交及生效契约见
+[G9-F 封板](SelectionPresentationG9FSeal.md)。F 只做文档审查，没有新
+构建／Automation／PIE，按项目政策复用有效证据。
+
+[FIFO／遗物队尾／同时弃牌修订](QueuedCardPlayAndRelicTimingAmendment.md)
+取代旧 B 的单意图、只缓冲选中、追平后新确认及 16.1 门槛；持牌输入和
+EndTurn 最终规则见 [B 收口](G9BClosure.md)。显式 Skip／恢复清空待执行
+FIFO／草稿／EndTurn，以及 Session 失效与绑定退出的区别，以
+[E 集成](SelectionPresentationG9EExecution.md) 为准。正文中这些被取代
+的条款保留为历史基线，未修订的权限、reducer、视觉事务和回退仍有效。
+当前最终原则统一列于第 20 节。
 
 Date: **2026-09-13**
 
-Status: **DESIGN LOCKED / G9-A COMPLETE / G9-B COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9-C COMPLETE, VALIDATED / G9-D1 COMPLETE, VALIDATED, NATIVE DEFAULT ENABLED / G9 NOT SEALED**
+Status: **DESIGN LOCKED / G9-A–F COMPLETE / VALIDATED / SEALED / NATIVE B+D1+D2 DEFAULT ENABLED**
+
+以下日期条目记录当时执行状态，不作为当前待办。
 
 2026-10-09：用户确认 C 的唯一剩余人工门槛通过，G9-C COMPLETE／VALIDATED。
 Blocking 时序保持不变；D1 已具备进入条件，D1–F 尚未实施，G9 未封板。
@@ -2094,14 +2097,14 @@ requires destination-before-arrival + feature-disable/recovery + same-RuntimeId 
 
 ```text
 G8    — COMPLETE / VALIDATED / SEALED
-G9    — DESIGN LOCKED / G9-A + G9-B + G9-C + G9-D1 + G9-D2 + G9-E COMPLETE AND VALIDATED / NOT SEALED
+G9    — DESIGN LOCKED / COMPLETE / VALIDATED / SEALED
 G9-A  — COMPLETE / VALIDATED / SHADOW ONLY
 G9-B  — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-C  — COMPLETE / VALIDATED / BLOCKING TIMING RETAINED
 G9-D1 — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED / D1-ONLY ARRIVAL BLOCKING
 G9-D2 — COMPLETE / VALIDATED / NATIVE DEFAULT ENABLED
 G9-E  — COMPLETE / VALIDATED / INTEGRATION AND CLEANUP
-G9-F  — NOT STARTED
+G9-F  — COMPLETE / VALIDATED / EVIDENCE REVIEW AND SEAL
 ```
 
 Locked principles:
@@ -2110,9 +2113,12 @@ Locked principles:
 Gameplay remains serial
 Presentation visuals may overlap
 
-BufferedCardSelection belongs to Presentation target authority
-BufferedCardSelection is Presentation-lag only
-BufferedCardSelection requires an already-sealed exact target
+HUD owns one draft + confirmed FIFO (capacity 32) + one exact-turn EndTurn marker
+Frozen display authorizes draft and exact target confirmation during playback
+Captured revision tracks provenance; normal history progress does not invalidate FIFO
+Battle / turn / Session / binding / card / target identities are rechecked
+FIFO head is removed before the caught-up ViewModel forwards RequestPlayCard
+Previous Gameplay + Relic reactions + Blocking history finish before the next request
 DirectBaseline does not fabricate card Presentation credentials
 
 BufferedEndTurn belongs to Gameplay player-turn authority
@@ -2125,11 +2131,14 @@ CanAcceptEndTurnIntent is separate from CanExecuteEndTurnNow
 ordinary Resolving may delay EndTurn execution without blocking intent expression
 mandatory authoritative selection blocks/kills EndTurn
 
-accepted EndTurn
-> older BufferedCardSelection
-> pending G8 FastInput retry
+accepted EndTurn preserves earlier confirmed FIFO and legitimate busy retries
+accepted EndTurn cancels unconfirmed draft and FastInput retry; blocks later additions
+EndTurn executes once after earlier confirmed commands for the same exact turn
+submitted-turn receipt retires once at the caught-up normal next-turn boundary
+explicit Skip / recovery / disable / binding exit retires pending input
+valid Session invalidation rechecks credentials; sessionless Ready does not blanket-clear
 
-EndTurn authority is proven before destructive retirement of prior transient/card intent
+EndTurn authority is proven before retirement of the unconfirmed draft / FastInput
 
 G9-B explicitly supersedes only the configured ChoosingTarget/EndTurn G8-B interaction rule
 G9-disabled fallback preserves sealed G8-B behavior

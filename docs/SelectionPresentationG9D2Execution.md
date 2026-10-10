@@ -1,5 +1,9 @@
 # G9-D2：出牌入场与提前去向衔接
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 D2 实施／默认启用证据，
+旧的默认关闭、后续未实施和整体未封板均为当时状态。
+
 2026-10-09，分支 `codex/g9-buffered-input-detached-cards`，起点 `04d835b`。
 D1 COMPLETE／VALIDATED／默认开启。当前 D2 为 COMPLETE／VALIDATED／NATIVE DEFAULT ENABLED；
 本轮仅 D2，不进入 E／F，不宣称 G9 封板。保留外部 Native HUD 资产原样，

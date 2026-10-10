@@ -1,5 +1,14 @@
 # Development Phases
 
+2026-10-10 **G9 COMPLETE／VALIDATED／SEALED，G9-F COMPLETE／VALIDATED**：
+最终运行时代码 `50b7e24`，F 审查起点 `b7570aa`；A–E 构建、受影响
+自动化和人工门槛均有有效闭合证据。F 只做文档审查，未重新运行 UE。
+设计当前原则及英文／中文架构已统一为完整 FIFO、EndTurn 保留此前确认、
+遗物队尾、同时弃牌、独立卡牌视觉和即时退役协议。Native B／D1／D2 默认
+开启，各自关闭与 Blocking 回退保留；本轮没有新的人工待办。
+报告旧名和重叠范围均明确区分，详见 [F 封板](SelectionPresentationG9FSeal.md)。
+不自动启动 G9 之外的开发任务；下列条目保留各批当时的状态。
+
 2026-10-10 **G9-E COMPLETE／VALIDATED**：输入即时退役、绑定替换与旧回调
 隔离已收敛，交付 `50b7e24`；删除重复活动视觉／draw 状态，保留 Blocking 回退。规定生成／
 Editor 构建通过；修正后受影响自动化 90 项零失败，最后空所有者用例单项

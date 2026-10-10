@@ -1,4 +1,21 @@
-# Checkpoint — G9-E integration and cleanup
+# Checkpoint — G9-F evidence and seal
+
+## 当前继续点：G9 A–F 完成并封板
+
+2026-10-10，F 审查起点 HEAD `b7570aa`，运行时代码 `50b7e24`。本检查点
+随 F 文档批次提交，交付编号提交后补齐。本批只核对证据并统一设计、
+英文／中文架构、项目阶段及 Validation，没有新代码／资产或 UE 运行。
+A–E 各阶段有效构建、受影响自动化、代理 PIE 与用户人工反馈已闭合；
+同名旧 G9A 报告排除，早期失败与后续同名成功匹配，重叠报告不相加。
+最新运行时验证仍为 E 的 90 项及最后单项修正，范围／限制见
+`SelectionPresentationG9FSeal.md`。
+
+G9 COMPLETE／VALIDATED／SEALED，F COMPLETE／VALIDATED，Native B／
+D1／D2 默认 true，关闭及 Blocking 回退保留，无剩余 G9 人工待办。
+下一步由用户选择新的开发目标；不自动开展独立卡牌、角色动画、Legacy
+或其他阶段。无阻塞。E 的自有编辑器已关闭，F 不重新启动。
+外部 Native HUD SHA256 保持，唯一无关资产变更保留并排除提交；Saved、
+生成文件不提交，不 push。以下为执行历史，旧“未封板”不表示当前状态。
 
 ## 当前继续点：E 实施和验收完成，下一阶段 F 尚未开始
 

@@ -1,5 +1,11 @@
 # Architecture
 
+G9 A–F are COMPLETE / VALIDATED / SEALED. Native startup enables buffered input,
+D1 destinations and D2 arrivals; each keeps its runtime disable/fallback contract.
+Evidence and amended principles are consolidated in
+[G9-F seal](SelectionPresentationG9FSeal.md). The stage descriptions below explain
+delivered ownership boundaries, not pending implementation phases.
+
 G9-E keeps input retirement synchronous and separate from readiness consumption.
 Discarding pending input immediately updates Native draft, pointer and gesture
 surfaces. A valid Session invalidation rechecks exact intent credentials;
@@ -15,7 +21,7 @@ cannot mutate the new surface. Hosted Blocking completion finds the unique job
 by the current exact playback token and then validates its visual generation.
 IncomingHandAttachment is the sole temporary draw owner; no duplicate active
 draw Widget or active visual-token mirror is maintained. Native Blocking fallback
-remains required. E integration gates are accepted; overall G9 sealing is F.
+remains required. E integration and F evidence gates are accepted.
 
 G9-D2 uses a validated, default-on Native detached arrival transaction. The Controller proves the
 entire remaining current sealed Envelope on copied snapshot/history using the
@@ -64,7 +70,7 @@ disabled. Session invalidation, Skip/recovery and destruction clean private jobs
 Preparation is bounded at 32 and has no formal side effects. Resource decline
 retains the sealed Native Blocking fallback; a bound Controller with invalid
 history/lifecycle never uses that fallback. Standalone renderer tests retain the
-existing R8 contract. D1/D2 nonblocking timing is not enabled by this migration.
+existing R8 contract. D1/D2 timing was enabled in their later validated stages.
 
 G9-C card history uses one atomic pure reducer for Blocking commits, record
 preflight and Group candidates. Controller owns exact unresolved play occurrences;
@@ -190,26 +196,30 @@ Owns battle orchestration, turn transitions, battle-scoped identity/RNG allocati
 G9-A adds a read-only Gameplay player-turn identity, `BattleId + PlayerTurnSerial`.
 The serial resets at battle setup and increments once per successful formal PlayerTurn
 entry; same-turn StateRevision changes do not change it. It is independent of
-Presentation sessions. G9-A introduced the shadow evaluator. G9-B adds opt-in
-production consumption; default activation still depends on its visual gate.
+Presentation sessions. G9-A introduced the shadow evaluator. The amended G9-B
+consumer has passed its gates and is enabled by Native startup.
 
-When enabled, one HUD-owned arbiter stores at most one physical player intent.
-An accepted exact-turn EndTurn takes priority over buffered card selection and
-Native FastInput retry. Its ViewModel forwarding boundary calls the existing
-Gameplay Request without requiring displayed history to be current and without
-rebuilding that history from live state. Card selection buffers only an exact
-already-sealed Presentation target and still requires fresh Confirm/Target input.
+When enabled, one HUD-owned arbiter stores an unconfirmed draft, at most 32
+confirmed card commands and one exact-turn EndTurn marker. Frozen Hand/target
+views permit full confirmation during playback; current bindings and legality
+for card requests are resolved only at the caught-up submission boundary. EndTurn accepts
+authority first, retains earlier confirmed commands and legitimate busy retries,
+cancels the draft/FastInput and blocks later additions. It follows those commands
+once for the same turn, without rebuilding history from live Gameplay. Accepted
+EndTurn forwarding checks Gameplay turn authority without requiring display
+catch-up, while still preserving prior confirmed FIFO ordering.
 Ready, Controller and ViewModel notifications drive coalesced non-reentrant
 consumption; cosmetic NativeTick does not poll Gameplay readiness. Formal Hand
 Widgets retain `(BattleId, RuntimeId)` identity, frozen order and hidden structural
 slots; hover changes transforms/layers separately from structural layout.
-Card playback remains Blocking. Ordinary Skill/Power/untargeted-Attack drafts
+Unsupported or disabled card paths retain Blocking; validated D1/D2 cosmetics
+run independently of chronology. Ordinary Skill/Power/untargeted-Attack drafts
 can follow the mouse through Hand render transforms, without reparenting formal
 Widgets or changing panel layout. An optional queued cosmetic source receipt
 feeds the exact accepted CardPlayed visual; Gameplay never reads it. Source
 geometry is established before first Slate paint, not recovered by Tick. This
 is independent of mandatory SelectionArea ownership. See
-`docs/NativePointerCardPresentation.md` and `docs/SelectionPresentationG9BExecution.md`.
+`docs/NativePointerCardPresentation.md`, `docs/G9BClosure.md` and the G9-F seal.
 
 ### Combatants
 
@@ -231,7 +241,7 @@ Owns battle-scoped Relic membership. `URelicData` is immutable definition data; 
 
 Only one authoritative Action executes at a time. Ordering and completion are explicit. Actions may enqueue dependencies but never drive queue advancement.
 
-Dependent batches for one logical chain are inserted before the current action finishes. Nested reactions use queued depth-first semantics. Queue faults enter at safe points, broadcast once, suppress normal QueueEmpty and reject further mutation.
+Dependent batches for one logical chain are inserted before the current action finishes. Status reactions enter the front with queued depth-first ordering; Relic event reactions enter the tail after current card effects/destination. Both sides validate atomically before insertion. Queue faults enter at safe points, broadcast once, suppress normal QueueEmpty and reject further mutation.
 
 QueueEmpty is an observable non-reentrant boundary. BattleManager defers macro turn continuation until all observers return.
 

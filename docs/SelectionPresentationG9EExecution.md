@@ -1,5 +1,9 @@
 # G9-E：集成与清理
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 E 当批实施／验收证据，
+后文“F 未开始／G9 未封板”均为当时状态。
+
 2026-10-09，分支 `codex/g9-buffered-input-detached-cards`，起点 `3922055`。
 D2 COMPLETE／VALIDATED／默认开启，B／D1 默认开启保持。本轮仅 E，不进入
 F，不宣称 G9 整体封板。不改资产、Legacy、插件或依赖；保留外部 Native

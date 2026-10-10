@@ -1,5 +1,9 @@
 # G9-D1：出牌去向尾部演出解耦
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 D1 实施／默认启用证据，
+“入场仍 Blocking”指仅 D1 策略；后续未实施和未封板均为当时状态。
+
 日期：2026-10-09。分支 `codex/g9-buffered-input-detached-cards`，起点 `04124e2`。
 G9-C 已 COMPLETE／VALIDATED。当前 D1 为 **COMPLETE / VALIDATED / NATIVE
 DEFAULT ENABLED**；不实施 D2／E／F，G9 整体未封板。用户确认最后一项尾部

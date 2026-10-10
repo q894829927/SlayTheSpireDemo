@@ -1,5 +1,9 @@
 # G9-C：共享历史语义与多实例视觉所有权
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 C 当批实施／验收历史，
+后续未实施及整体未封板的描述均为当时状态。
+
 日期：2026-10-08，分支 `codex/g9-buffered-input-detached-cards`，起点 `2c29025`。
 G9-B 已通过并默认启用，不重新要求 B 人工验收。依据锁定的
 [G9 设计](SelectionPresentationG9Design.md) 实施 C，不启用 D1／D2 的非阻塞时序。

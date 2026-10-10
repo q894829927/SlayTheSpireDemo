@@ -1,5 +1,9 @@
 # G9-B 验收收口与默认启用
 
+2026-10-10：G9 当前总状态为 COMPLETE／VALIDATED／SEALED，见
+[F 封板](SelectionPresentationG9FSeal.md)。本页保留 B 收口／默认批次证据，
+后续阶段未实施及总体验收未封板的描述均为当时状态。
+
 日期：2026-10-07。分支 `codex/g9-buffered-input-detached-cards`。
 实现版本为 `e62cdbd`，验收记录起点 HEAD 为 `d2db956`。
 
