@@ -1,7 +1,7 @@
 # Development Phases
 
 2026-10-10 **G9 COMPLETE／VALIDATED／SEALED，G9-F COMPLETE／VALIDATED**：
-最终运行时代码 `50b7e24`，F 审查起点 `b7570aa`；A–E 构建、受影响
+封板交付 `b0fc8c8`，运行时代码 `50b7e24`，审查起点 `b7570aa`；A–E 构建、受影响
 自动化和人工门槛均有有效闭合证据。F 只做文档审查，未重新运行 UE。
 设计当前原则及英文／中文架构已统一为完整 FIFO、EndTurn 保留此前确认、
 遗物队尾、同时弃牌、独立卡牌视觉和即时退役协议。Native B／D1／D2 默认
